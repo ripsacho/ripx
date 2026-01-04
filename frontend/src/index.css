@@ -1,0 +1,2566 @@
+/**
+ * Global Styles - Intelligems-inspired design
+ * 
+ * Theme System: Supports light and dark themes with auto mode
+ * 
+ * CSS Organization:
+ * 1. CSS Variables (Theme System)
+ * 2. Base Styles (Reset, Typography)
+ * 3. Layout Components (Sidebar, TopBar, Main Content)
+ * 4. UI Components (Cards, Buttons, Forms)
+ * 5. Utility Classes
+ * 6. Theme-specific Overrides
+ */
+
+/* ============================================
+   1. CSS VARIABLES - THEME SYSTEM
+   ============================================ */
+
+/* Light Theme (Default) */
+:root {
+  /* Background Colors */
+  --bg-primary: #f6f6f7;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #fafbfb;
+  --bg-hover: rgba(0, 0, 0, 0.04);
+  --bg-active: rgba(0, 128, 96, 0.1);
+  
+  /* Text Colors */
+  --text-primary: #202223;
+  --text-secondary: #637381;
+  --text-tertiary: #8c9196;
+  --text-inverse: #ffffff;
+  --text-link: #008060;
+  
+  /* Border Colors */
+  --border-primary: rgba(0, 0, 0, 0.08);
+  --border-secondary: rgba(0, 0, 0, 0.06);
+  --border-accent: rgba(0, 128, 96, 0.2);
+  
+  /* Shadow Colors */
+  --shadow-sm: rgba(0, 0, 0, 0.06);
+  --shadow-md: rgba(0, 0, 0, 0.08);
+  --shadow-lg: rgba(0, 0, 0, 0.12);
+  
+  /* Accent Colors */
+  --accent-primary: #008060;
+  --accent-secondary: #00a86b;
+  --accent-hover: rgba(0, 128, 96, 0.1);
+  
+  /* Status Colors */
+  --status-success: #008060;
+  --status-warning: #f59e0b;
+  --status-error: #d72c0d;
+  --status-info: #637381;
+  
+  /* Spacing */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  
+  /* Border Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  
+  /* Transitions */
+  --transition-fast: 0.15s ease;
+  --transition-base: 0.2s ease;
+  --transition-slow: 0.3s ease;
+  --transition-smooth: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Dark Theme - Black & Orange High-End Design */
+[data-theme="dark"] {
+  /* Background Colors */
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #121212;
+  --bg-tertiary: #1a1a1a;
+  --bg-hover: rgba(255, 140, 0, 0.1);
+  --bg-active: rgba(255, 140, 0, 0.15);
+  
+  /* Text Colors */
+  --text-primary: #f5f5f5;
+  --text-secondary: #d4d4d4;
+  --text-tertiary: #a3a3a3;
+  --text-inverse: #0a0a0a;
+  --text-link: #ff8c00;
+  
+  /* Border Colors */
+  --border-primary: rgba(255, 140, 0, 0.2);
+  --border-secondary: rgba(255, 140, 0, 0.1);
+  --border-accent: rgba(255, 140, 0, 0.4);
+  
+  /* Shadow Colors */
+  --shadow-sm: rgba(0, 0, 0, 0.5);
+  --shadow-md: rgba(0, 0, 0, 0.7);
+  --shadow-lg: rgba(0, 0, 0, 0.9);
+  
+  /* Accent Colors */
+  --accent-primary: #ff8c00;
+  --accent-secondary: #ffa500;
+  --accent-hover: rgba(255, 140, 0, 0.2);
+  
+  /* Status Colors */
+  --status-success: #4ade80;
+  --status-warning: #ff8c00;
+  --status-error: #ef4444;
+  --status-info: #60a5fa;
+  
+  /* Polaris CSS Variable Overrides */
+  --p-shadow-button: 0 0 0 1px var(--border-primary);
+  --p-shadow-button-hover: 0 0 0 1px var(--border-accent);
+  --p-shadow-button-focus: 0 0 0 1px var(--accent-primary);
+  --p-shadow-button-active: 0 0 0 1px var(--accent-primary);
+  --p-border-subdued: var(--border-primary);
+  --p-border: var(--border-primary);
+  --p-border-base: var(--border-primary);
+  --p-border-disabled: var(--border-primary);
+  --p-text-critical: #ef4444;
+  --p-text-critical-hover: #ef4444;
+  --p-text-critical-subdued: #ef4444;
+}
+
+/* ============================================
+   2. BASE STYLES
+   ============================================ */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color var(--transition-slow), color var(--transition-slow);
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* ============================================
+   3. LAYOUT COMPONENTS
+   ============================================ */
+
+/* Main Content Wrapper */
+.main-content-wrapper {
+  background: var(--bg-primary);
+  min-height: 100vh;
+  padding-top: 72px;
+  margin-left: 280px;
+  transition: margin-left var(--transition-smooth);
+}
+
+.main-content-wrapper.sidebar-collapsed {
+  margin-left: 80px;
+}
+
+/* Sidebar */
+.sidebar {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 280px;
+  min-height: 100vh;
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+  border-right: 1px solid var(--border-primary);
+  transition: width var(--transition-smooth), background-color var(--transition-slow);
+  z-index: 1000;
+  padding: 0;
+  box-shadow: 2px 0 12px var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar.collapsed {
+  width: 80px;
+}
+
+[data-theme="dark"] .sidebar {
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, #0f0f0f 100%);
+}
+
+/* Sidebar Header */
+.sidebar-header {
+  padding: var(--spacing-lg) var(--spacing-xl);
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--bg-tertiary);
+  transition: padding var(--transition-smooth);
+}
+
+.sidebar.collapsed .sidebar-header {
+  padding: 1.25rem 0.75rem;
+}
+
+/* Sidebar Toggle Button */
+.sidebar-toggle {
+  min-width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-active);
+  border: 1px solid var(--border-accent);
+  cursor: pointer;
+  transition: all var(--transition-smooth);
+  position: relative;
+  overflow: hidden;
+}
+
+.sidebar-toggle:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-accent);
+  transform: scale(1.05);
+  box-shadow: 0 0 12px rgba(255, 140, 0, 0.3);
+}
+
+/* Sidebar Navigation */
+.sidebar-nav {
+  flex: 1;
+  padding: var(--spacing-md) 0;
+  overflow-y: auto;
+}
+
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  padding: var(--spacing-md) var(--spacing-xl);
+  margin: 0 var(--spacing-sm);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-base);
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  text-decoration: none;
+  border-left: 3px solid transparent;
+}
+
+.sidebar-nav-item:hover {
+  background: var(--bg-hover);
+  border-left-color: var(--border-accent);
+  transform: translateX(2px);
+}
+
+.sidebar-nav-item.active {
+  background: var(--bg-active);
+  border-left-color: var(--accent-primary);
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.sidebar.collapsed .sidebar-nav-item {
+  padding: var(--spacing-md);
+  justify-content: center;
+}
+
+/* Top Bar */
+.top-bar {
+  position: fixed;
+  top: 0;
+  left: 280px;
+  right: 0;
+  height: 72px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+  padding: 0 var(--spacing-xl);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 1000;
+  box-shadow: 0 2px 8px var(--shadow-md);
+  transition: left var(--transition-smooth), background-color var(--transition-slow), border-color var(--transition-slow);
+  color: var(--text-primary);
+  backdrop-filter: blur(10px);
+}
+
+.main-content-wrapper.sidebar-collapsed ~ .top-bar,
+.top-bar.sidebar-collapsed {
+  left: 80px;
+}
+
+/* Top Bar Buttons */
+.top-bar-button {
+  min-width: 40px;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border-secondary);
+  transition: all var(--transition-base);
+  position: relative;
+  box-sizing: border-box;
+  margin: 0;
+}
+
+.top-bar-button:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-primary);
+}
+
+.top-bar-button.active {
+  background: var(--bg-active);
+  border-color: var(--border-accent);
+}
+
+/* Notification Badge */
+.notification-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  border: 2px solid var(--bg-secondary);
+  box-shadow: 0 0 0 2px var(--accent-hover);
+}
+
+/* ============================================
+   4. UI COMPONENTS
+   ============================================ */
+
+/* Cards */
+.metric-card {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  padding: 1.75rem;
+  box-shadow: 0 2px 8px var(--shadow-md);
+  border: 1px solid var(--border-secondary);
+  transition: all var(--transition-smooth);
+  position: relative;
+  overflow: hidden;
+  color: var(--text-primary);
+}
+
+.metric-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+  opacity: 0;
+  transition: opacity var(--transition-slow);
+}
+
+.metric-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px var(--shadow-lg);
+  border-color: var(--border-accent);
+}
+
+.metric-card:hover::before {
+  opacity: 1;
+}
+
+/* Metric Card Variants */
+.metric-card-success {
+  border-left: 4px solid var(--status-success);
+}
+
+.metric-card-success::before {
+  background: linear-gradient(90deg, var(--status-success) 0%, var(--accent-secondary) 100%);
+}
+
+.metric-card-warning {
+  border-left: 4px solid var(--status-warning);
+}
+
+.metric-card-warning::before {
+  background: linear-gradient(90deg, var(--status-warning) 0%, #f59e0b 100%);
+}
+
+.metric-card-info {
+  border-left: 4px solid var(--status-info);
+}
+
+.metric-card-info::before {
+  background: linear-gradient(90deg, var(--status-info) 0%, #637381 100%);
+}
+
+[data-theme="dark"] .metric-card-success {
+  border-left-color: var(--status-success);
+}
+
+[data-theme="dark"] .metric-card-warning {
+  border-left-color: var(--status-warning);
+}
+
+[data-theme="dark"] .metric-card-info {
+  border-left-color: var(--status-info);
+}
+
+.test-card {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  padding: 1.75rem;
+  margin-bottom: var(--spacing-md);
+  border: 1px solid var(--border-primary);
+  transition: all var(--transition-smooth);
+  box-shadow: 0 1px 3px var(--shadow-sm);
+  color: var(--text-primary);
+}
+
+.test-card:hover {
+  border-color: var(--accent-primary);
+  box-shadow: 0 4px 16px var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.test-card-overview {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md) var(--spacing-lg);
+  border: 1px solid var(--border-secondary);
+  transition: all var(--transition-smooth);
+  color: var(--text-primary);
+}
+
+.test-card-overview:hover {
+  border-color: var(--accent-primary);
+  box-shadow: 0 2px 8px var(--shadow-md);
+  transform: translateY(-1px);
+  background: var(--bg-hover);
+}
+
+[data-theme="dark"] .test-card-overview {
+  border-color: var(--border-secondary);
+}
+
+[data-theme="dark"] .test-card-overview:hover {
+  border-color: var(--accent-primary);
+  box-shadow: 0 2px 12px rgba(255, 140, 0, 0.2);
+}
+
+.template-card {
+  background: var(--bg-secondary);
+  border: 2px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-xl) var(--spacing-lg);
+  cursor: pointer;
+  transition: all var(--transition-smooth);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  color: var(--text-primary);
+}
+
+.template-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+  transform: scaleX(0);
+  transition: transform var(--transition-slow);
+}
+
+.template-card:hover {
+  border-color: var(--accent-primary);
+  transform: translateY(-6px);
+  box-shadow: 0 8px 24px var(--shadow-lg);
+}
+
+.template-card:hover::before {
+  transform: scaleX(1);
+}
+
+.template-card.selected {
+  border-color: var(--accent-primary);
+  background: var(--bg-active);
+  box-shadow: 0 4px 16px var(--shadow-md);
+}
+
+.template-card.selected::before {
+  transform: scaleX(1);
+}
+
+.template-card-check {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-inverse);
+  font-size: 12px;
+  font-weight: bold;
+}
+
+/* Status Indicators */
+.status-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: var(--spacing-sm);
+}
+
+.status-indicator.running {
+  background-color: var(--status-success);
+  animation: pulse 2s infinite;
+}
+
+.status-indicator.draft {
+  background-color: var(--status-info);
+}
+
+.status-indicator.completed {
+  background-color: var(--status-success);
+}
+
+.status-indicator.stopped {
+  background-color: var(--status-warning);
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Profile Tabs */
+.profile-tab {
+  padding: 0.75rem var(--spacing-lg);
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-weight: 400;
+  transition: all var(--transition-base);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1rem;
+}
+
+.profile-tab:hover {
+  background: var(--bg-hover);
+  color: var(--accent-primary);
+  border-bottom-color: var(--border-accent);
+}
+
+.profile-tab.profile-tab-active {
+  background: var(--bg-active);
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.profile-tab.profile-tab-active:hover {
+  background: var(--bg-active);
+  box-shadow: 0 2px 8px var(--shadow-md);
+}
+
+/* Traffic Allocation Slider */
+.traffic-slider-container {
+  position: relative;
+  height: 60px;
+  background: var(--bg-primary);
+  border-radius: var(--radius-md);
+  margin: var(--spacing-md) 0;
+  overflow: hidden;
+  cursor: default;
+}
+
+.traffic-slider-container.dragging {
+  cursor: grabbing;
+}
+
+.traffic-slider-segment {
+  position: absolute;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  transition: all var(--transition-base);
+  border-right: 2px solid var(--bg-secondary);
+}
+
+.traffic-slider-segment.dragging {
+  transition: none;
+  box-shadow: 0 4px 12px var(--shadow-md);
+  z-index: 10;
+}
+
+.traffic-slider-handle {
+  position: absolute;
+  right: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 100%;
+  background: var(--bg-secondary);
+  border: 2px solid var(--accent-primary);
+  border-radius: var(--radius-sm);
+  cursor: ew-resize;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.traffic-slider-handle-bar {
+  width: 2px;
+  height: 20px;
+  background: var(--accent-primary);
+  border-radius: 1px;
+}
+
+.variant-color-indicator {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+}
+
+/* Template Grid */
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.template-grid-item {
+  cursor: pointer;
+}
+
+/* Info Icon */
+.info-icon {
+  font-size: 1rem;
+  opacity: 0.6;
+  cursor: help;
+}
+
+/* Flex Utilities */
+.flex-1 {
+  flex: 1;
+}
+
+/* Grid Utilities */
+.grid-responsive {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.5rem;
+}
+
+.grid-responsive-sm {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1rem;
+}
+
+.grid-2-col {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+.grid-template {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+/* Profile Header */
+.profile-header {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  margin-bottom: 1.5rem;
+  color: var(--text-primary);
+}
+
+/* Loading Container */
+.loading-container {
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-primary);
+}
+
+/* Empty State Container */
+.empty-state-container {
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-primary);
+}
+
+/* ============================================
+   5. WIZARD & FORMS
+   ============================================ */
+
+.wizard-step {
+  padding: var(--spacing-xl);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-lg);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  transition: all var(--transition-slow);
+}
+
+[data-theme="dark"] .wizard-step {
+  box-shadow: 0 2px 8px var(--shadow-md);
+}
+
+[data-theme="dark"] .wizard-step:hover {
+  border-color: var(--border-accent);
+  box-shadow: 0 4px 12px var(--shadow-lg);
+}
+
+.wizard-progress {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-xl);
+  padding: 0 var(--spacing-xl);
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.wizard-step-indicator {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  padding: 0 var(--spacing-sm);
+}
+
+.wizard-step-indicator::after {
+  content: '';
+  position: absolute;
+  top: 20px;
+  left: calc(50% + 20px);
+  right: calc(-50% + 20px);
+  height: 2px;
+  background: var(--border-secondary);
+  z-index: 0;
+}
+
+.wizard-step-indicator:last-child::after {
+  display: none;
+}
+
+.wizard-step-number {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  border: 2px solid var(--border-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  color: var(--text-secondary);
+  position: relative;
+  z-index: 1;
+  transition: all var(--transition-base);
+}
+
+.wizard-step-indicator.active .wizard-step-number {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: var(--text-inverse);
+  box-shadow: 0 0 10px rgba(0, 128, 96, 0.4);
+}
+
+[data-theme="dark"] .wizard-step-indicator.active .wizard-step-number {
+  box-shadow: 0 0 10px rgba(255, 140, 0, 0.4);
+}
+
+.wizard-step-indicator.active::after {
+  background: var(--accent-primary);
+  box-shadow: 0 0 4px rgba(0, 128, 96, 0.5);
+}
+
+[data-theme="dark"] .wizard-step-indicator.active::after {
+  box-shadow: 0 0 4px rgba(255, 140, 0, 0.5);
+}
+
+.wizard-step-label {
+  margin-top: var(--spacing-sm);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.wizard-step-indicator.active .wizard-step-label {
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+/* ============================================
+   6. CHARTS & ANALYTICS
+   ============================================ */
+
+.chart-container {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-xl);
+  margin-bottom: var(--spacing-lg);
+  box-shadow: 0 2px 8px var(--shadow-md);
+  border: 1px solid var(--border-secondary);
+  transition: all var(--transition-slow);
+  color: var(--text-primary);
+}
+
+.chart-container:hover {
+  box-shadow: 0 4px 16px var(--shadow-lg);
+}
+
+/* Chart Components - Dark Theme Support */
+[data-theme="dark"] .recharts-cartesian-grid line,
+[data-theme="dark"] .recharts-cartesian-grid-horizontal line,
+[data-theme="dark"] .recharts-cartesian-grid-vertical line {
+  stroke: var(--border-primary);
+}
+
+[data-theme="dark"] .recharts-x-axis line,
+[data-theme="dark"] .recharts-y-axis line {
+  stroke: var(--border-primary);
+}
+
+[data-theme="dark"] .recharts-x-axis .recharts-label,
+[data-theme="dark"] .recharts-y-axis .recharts-label {
+  fill: var(--text-secondary);
+}
+
+[data-theme="dark"] .recharts-legend-item-text {
+  fill: var(--text-primary);
+}
+
+[data-theme="dark"] .recharts-tooltip-wrapper {
+  color: var(--text-primary);
+}
+
+/* DataTable - Dark Theme - High Specificity */
+[data-theme="dark"] .Polaris-DataTable,
+[data-theme="dark"] .Polaris-DataTable__Table,
+[data-theme="dark"] table.Polaris-DataTable__Table {
+  background: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border-primary) !important;
+}
+
+[data-theme="dark"] .Polaris-DataTable__Heading,
+[data-theme="dark"] .Polaris-DataTable thead,
+[data-theme="dark"] .Polaris-DataTable thead tr {
+  background: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+  border-bottom: 1px solid var(--border-primary) !important;
+}
+
+[data-theme="dark"] .Polaris-DataTable__HeadingCell,
+[data-theme="dark"] .Polaris-DataTable thead th,
+[data-theme="dark"] .Polaris-DataTable thead td {
+  background: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+  border-bottom: 1px solid var(--border-primary) !important;
+  border-right: 1px solid var(--border-primary) !important;
+}
+
+[data-theme="dark"] .Polaris-DataTable__Cell,
+[data-theme="dark"] .Polaris-DataTable tbody td,
+[data-theme="dark"] .Polaris-DataTable td {
+  border-bottom: 1px solid var(--border-primary) !important;
+  border-right: 1px solid var(--border-primary) !important;
+  color: var(--text-primary) !important;
+  background: var(--bg-secondary) !important;
+}
+
+[data-theme="dark"] .Polaris-DataTable__Row,
+[data-theme="dark"] .Polaris-DataTable tbody tr,
+[data-theme="dark"] .Polaris-DataTable tr {
+  background: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+  transition: background-color var(--transition-base) !important;
+}
+
+[data-theme="dark"] .Polaris-DataTable__Row:hover,
+[data-theme="dark"] .Polaris-DataTable tbody tr:hover,
+[data-theme="dark"] .Polaris-DataTable tr:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .Polaris-DataTable__Row:hover .Polaris-DataTable__Cell,
+[data-theme="dark"] .Polaris-DataTable tbody tr:hover td,
+[data-theme="dark"] .Polaris-DataTable tr:hover td {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+  border-bottom-color: var(--border-accent) !important;
+  border-right-color: var(--border-accent) !important;
+}
+
+[data-theme="dark"] .Polaris-DataTable__Row:hover *,
+[data-theme="dark"] .Polaris-DataTable tbody tr:hover *,
+[data-theme="dark"] .Polaris-DataTable tr:hover * {
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .Polaris-DataTable__Row:hover .Polaris-Button--plain,
+[data-theme="dark"] .Polaris-DataTable__Row:hover .Polaris-Button[plain],
+[data-theme="dark"] .Polaris-DataTable tbody tr:hover .Polaris-Button--plain,
+[data-theme="dark"] .Polaris-DataTable tbody tr:hover .Polaris-Button[plain],
+[data-theme="dark"] .Polaris-DataTable tr:hover .Polaris-Button--plain,
+[data-theme="dark"] .Polaris-DataTable tr:hover .Polaris-Button[plain] {
+  background: var(--bg-active) !important;
+  border-color: var(--border-accent) !important;
+  color: var(--accent-primary) !important;
+  box-shadow: 0 0 8px rgba(255, 140, 0, 0.2) !important;
+}
+
+[data-theme="dark"] .Polaris-DataTable__Row:hover .Polaris-Button--plain:hover,
+[data-theme="dark"] .Polaris-DataTable__Row:hover .Polaris-Button[plain]:hover,
+[data-theme="dark"] .Polaris-DataTable tbody tr:hover .Polaris-Button--plain:hover,
+[data-theme="dark"] .Polaris-DataTable tbody tr:hover .Polaris-Button[plain]:hover {
+  background: var(--bg-active) !important;
+  border-color: var(--accent-primary) !important;
+  color: var(--accent-primary) !important;
+  box-shadow: 0 0 12px rgba(255, 140, 0, 0.4) !important;
+}
+
+/* Badge - Dark Theme */
+[data-theme="dark"] .Polaris-Badge {
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .Polaris-Badge--statusSuccess {
+  background: rgba(74, 222, 128, 0.2);
+  color: var(--status-success);
+}
+
+[data-theme="dark"] .Polaris-Badge--statusInfo {
+  background: rgba(96, 165, 250, 0.2);
+  color: var(--status-info);
+}
+
+[data-theme="dark"] .Polaris-Badge--statusWarning {
+  background: rgba(255, 140, 0, 0.2);
+  color: var(--status-warning);
+}
+
+[data-theme="dark"] .Polaris-Badge--statusCritical {
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--status-error);
+}
+
+[data-theme="dark"] .Polaris-Badge--statusAttention {
+  background: rgba(255, 140, 0, 0.2);
+  color: var(--status-warning);
+}
+
+/* EmptyState - Dark Theme */
+[data-theme="dark"] .Polaris-EmptyState {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .Polaris-EmptyState__Image {
+  opacity: 0.8;
+}
+
+[data-theme="dark"] .Polaris-EmptyState__Content {
+  color: var(--text-primary);
+}
+
+/* ProgressBar - Dark Theme */
+[data-theme="dark"] .Polaris-ProgressBar {
+  background: var(--bg-tertiary);
+}
+
+[data-theme="dark"] .Polaris-ProgressBar__Indicator {
+  background: var(--accent-primary);
+}
+
+/* Modal - Dark Theme */
+[data-theme="dark"] .Polaris-Modal,
+[data-theme="dark"] .Polaris-Modal__Dialog {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+}
+
+[data-theme="dark"] .Polaris-Modal__Header {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .Polaris-Modal__Body {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .Polaris-Modal__Footer {
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-primary);
+}
+
+/* Banner - Dark Theme */
+[data-theme="dark"] .Polaris-Banner {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .Polaris-Banner--statusSuccess {
+  background: rgba(74, 222, 128, 0.1);
+  border-color: var(--status-success);
+}
+
+[data-theme="dark"] .Polaris-Banner--statusCritical {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: var(--status-error);
+}
+
+[data-theme="dark"] .Polaris-Banner--statusWarning {
+  background: rgba(255, 140, 0, 0.1);
+  border-color: var(--status-warning);
+}
+
+[data-theme="dark"] .Polaris-Banner--statusInfo {
+  background: rgba(96, 165, 250, 0.1);
+  border-color: var(--status-info);
+}
+
+/* Divider - Dark Theme */
+[data-theme="dark"] .Polaris-Divider {
+  border-color: var(--border-primary);
+}
+
+/* Layout - Dark Theme */
+[data-theme="dark"] .Polaris-Layout {
+  background: transparent;
+}
+
+[data-theme="dark"] .Polaris-Layout__Section {
+  background: transparent;
+}
+
+[data-theme="dark"] .Polaris-Layout__Section--secondary {
+  background: transparent;
+}
+
+/* Loading Spinner - Dark Theme */
+[data-theme="dark"] .Polaris-Spinner {
+  color: var(--accent-primary);
+}
+
+/* Avatar - Dark Theme */
+[data-theme="dark"] .Polaris-Avatar {
+  color: var(--text-primary);
+}
+
+/* Icon - Dark Theme */
+[data-theme="dark"] .Polaris-Icon {
+  fill: var(--text-primary);
+}
+
+[data-theme="dark"] .Polaris-Icon--colorSubdued {
+  fill: var(--text-secondary);
+}
+
+/* Link - Dark Theme */
+[data-theme="dark"] .Polaris-Link {
+  color: var(--text-link);
+}
+
+[data-theme="dark"] .Polaris-Link:hover {
+  color: var(--accent-secondary);
+}
+
+/* Tabs - Dark Theme */
+[data-theme="dark"] .Polaris-Tabs {
+  border-bottom: 1px solid var(--border-primary);
+}
+
+[data-theme="dark"] .Polaris-Tabs__Tab {
+  color: var(--text-secondary);
+}
+
+[data-theme="dark"] .Polaris-Tabs__Tab:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+[data-theme="dark"] .Polaris-Tabs__Tab--selected {
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-primary);
+}
+
+/* Grid Containers - Dark Theme */
+[data-theme="dark"] .grid-responsive,
+[data-theme="dark"] .grid-responsive-sm,
+[data-theme="dark"] .grid-2-col,
+[data-theme="dark"] .grid-template {
+  color: var(--text-primary);
+}
+
+/* Grid Items Hover Effects - Dark Theme */
+[data-theme="dark"] .grid-responsive > *:hover,
+[data-theme="dark"] .grid-responsive-sm > *:hover,
+[data-theme="dark"] .grid-2-col > *:hover,
+[data-theme="dark"] .grid-template > *:hover {
+  transform: translateY(-2px);
+  transition: transform var(--transition-base);
+}
+
+/* Dashboard Quick Action Buttons - Dark Theme */
+[data-theme="dark"] .grid-responsive-sm .Polaris-Button {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .grid-responsive-sm .Polaris-Button:hover {
+  background: var(--bg-hover) !important;
+  border-color: var(--border-accent) !important;
+  color: var(--accent-primary) !important;
+  box-shadow: 0 0 12px rgba(255, 140, 0, 0.3) !important;
+  transform: translateY(-2px) !important;
+}
+
+[data-theme="dark"] .grid-responsive-sm .Polaris-Button:active {
+  background: var(--bg-active) !important;
+  border-color: var(--accent-primary) !important;
+}
+
+/* Profile Header - Dark Theme */
+[data-theme="dark"] .profile-header {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+}
+
+/* Loading & Empty State - Dark Theme */
+[data-theme="dark"] .loading-container,
+[data-theme="dark"] .empty-state-container {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+/* Additional Form Elements - Dark Theme */
+[data-theme="dark"] .Polaris-FormLayout__Item label,
+[data-theme="dark"] .Polaris-FormLayout__Item .Polaris-Label {
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .Polaris-FormLayout__Item .Polaris-HelpText {
+  color: var(--text-secondary);
+}
+
+/* Card Subsection - Dark Theme */
+[data-theme="dark"] .Polaris-Card--subdued,
+[data-theme="dark"] .Polaris-Card[subsection] {
+  background: var(--bg-tertiary);
+  border-color: var(--border-primary);
+}
+
+/* InlineStack & BlockStack - Dark Theme */
+[data-theme="dark"] .Polaris-InlineStack,
+[data-theme="dark"] .Polaris-BlockStack {
+  color: var(--text-primary);
+}
+
+/* Text in Cards - Dark Theme */
+[data-theme="dark"] .Polaris-Card p,
+[data-theme="dark"] .Polaris-Card div:not([class*="Polaris"]),
+[data-theme="dark"] .Polaris-Card span:not([class*="Polaris"]) {
+  color: var(--text-primary);
+}
+
+/* Dashboard & Profile Buttons - Additional Dark Theme Support */
+[data-theme="dark"] .Polaris-Card .Polaris-Button,
+[data-theme="dark"] .Polaris-Card button:not([class*="Polaris"]) {
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .Polaris-Card .Polaris-Button:hover,
+[data-theme="dark"] .Polaris-Card button:not([class*="Polaris"]):hover {
+  color: var(--accent-primary);
+}
+
+/* DataTable Button - Dark Theme - Maximum Specificity */
+[data-theme="dark"] .Polaris-DataTable .Polaris-Button--plain,
+[data-theme="dark"] .Polaris-DataTable .Polaris-Button[plain],
+[data-theme="dark"] .Polaris-DataTable td .Polaris-Button--plain,
+[data-theme="dark"] .Polaris-DataTable td .Polaris-Button[plain],
+[data-theme="dark"] .Polaris-DataTable .Polaris-Button--plain .Polaris-Button__Text,
+[data-theme="dark"] .Polaris-DataTable .Polaris-Button[plain] .Polaris-Button__Text,
+[data-theme="dark"] .Polaris-DataTable td .Polaris-Button--plain .Polaris-Button__Text,
+[data-theme="dark"] .Polaris-DataTable td .Polaris-Button[plain] .Polaris-Button__Text {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .Polaris-DataTable .Polaris-Button--plain:hover,
+[data-theme="dark"] .Polaris-DataTable .Polaris-Button[plain]:hover,
+[data-theme="dark"] .Polaris-DataTable td .Polaris-Button--plain:hover,
+[data-theme="dark"] .Polaris-DataTable td .Polaris-Button[plain]:hover {
+  background: var(--bg-hover) !important;
+  border-color: var(--border-accent) !important;
+  color: var(--accent-primary) !important;
+  box-shadow: 0 0 8px rgba(255, 140, 0, 0.2) !important;
+}
+
+[data-theme="dark"] .Polaris-DataTable .Polaris-Button--plain:active,
+[data-theme="dark"] .Polaris-DataTable .Polaris-Button[plain]:active,
+[data-theme="dark"] .Polaris-DataTable td .Polaris-Button--plain:active,
+[data-theme="dark"] .Polaris-DataTable td .Polaris-Button[plain]:active {
+  background: var(--bg-active) !important;
+  border-color: var(--accent-primary) !important;
+  color: var(--accent-primary) !important;
+}
+
+/* Metric Card Hover - Dark Theme */
+[data-theme="dark"] .metric-card:hover {
+  border-color: var(--border-accent);
+  box-shadow: 0 8px 24px var(--shadow-lg);
+}
+
+/* Template Grid Items - Dark Theme Hover */
+[data-theme="dark"] .template-grid-item:hover .template-card {
+  border-color: var(--accent-primary);
+  box-shadow: 0 8px 24px var(--shadow-lg);
+}
+
+/* Profile Grid Form Fields - Dark Theme */
+[data-theme="dark"] .grid-2-col .Polaris-TextField,
+[data-theme="dark"] .grid-2-col .Polaris-Select {
+  background: transparent;
+}
+
+[data-theme="dark"] .grid-2-col .Polaris-TextField__Input:hover,
+[data-theme="dark"] .grid-2-col .Polaris-Select__Input:hover {
+  border-color: var(--border-accent) !important;
+}
+
+/* All Buttons in Dark Theme - Ensure Consistency */
+[data-theme="dark"] button:not([class*="Polaris"]):not(.sidebar button):not(.profile-tab):not(.sidebar-toggle) {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  color: var(--text-primary);
+  transition: all var(--transition-base);
+}
+
+[data-theme="dark"] button:not([class*="Polaris"]):not(.sidebar button):not(.profile-tab):not(.sidebar-toggle):hover {
+  background: var(--bg-hover);
+  border-color: var(--border-accent);
+  color: var(--accent-primary);
+  box-shadow: 0 0 8px rgba(255, 140, 0, 0.2);
+}
+
+[data-theme="dark"] button:not([class*="Polaris"]):not(.sidebar button):not(.profile-tab):not(.sidebar-toggle):active {
+  background: var(--bg-active);
+  border-color: var(--accent-primary);
+}
+
+/* Profile Account Buttons - Dark Theme */
+[data-theme="dark"] .Polaris-InlineStack .Polaris-Button:not([primary]):not([plain]):not([destructive]) {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .Polaris-InlineStack .Polaris-Button:not([primary]):not([plain]):not([destructive]):hover {
+  background: var(--bg-hover) !important;
+  border-color: var(--border-accent) !important;
+  color: var(--accent-primary) !important;
+  box-shadow: 0 0 8px rgba(255, 140, 0, 0.2) !important;
+}
+
+/* Dashboard Create Test Button - Dark Theme */
+[data-theme="dark"] .Polaris-InlineStack[align="space-between"] .Polaris-Button:not([primary]):not([plain]) {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .Polaris-InlineStack[align="space-between"] .Polaris-Button:not([primary]):not([plain]):hover {
+  background: var(--bg-hover) !important;
+  border-color: var(--border-accent) !important;
+  color: var(--accent-primary) !important;
+  box-shadow: 0 0 8px rgba(255, 140, 0, 0.2) !important;
+}
+
+/* Dashboard & Profile Buttons - Additional Dark Theme Support */
+[data-theme="dark"] .Polaris-Card .Polaris-Button,
+[data-theme="dark"] .Polaris-Card button:not([class*="Polaris"]) {
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .Polaris-Card .Polaris-Button:hover,
+[data-theme="dark"] .Polaris-Card button:not([class*="Polaris"]):hover {
+  color: var(--accent-primary);
+}
+
+/* DataTable - Additional Overrides for Table Elements */
+[data-theme="dark"] .Polaris-DataTable tbody tr:nth-child(even) {
+  background: var(--bg-tertiary) !important;
+}
+
+[data-theme="dark"] .Polaris-DataTable tbody tr:nth-child(even):hover {
+  background: var(--bg-hover) !important;
+}
+
+[data-theme="dark"] .Polaris-DataTable tbody tr:nth-child(odd) {
+  background: var(--bg-secondary) !important;
+}
+
+[data-theme="dark"] .Polaris-DataTable tbody tr:nth-child(odd):hover {
+  background: var(--bg-hover) !important;
+}
+
+/* Force View Details Button Background - Maximum Specificity */
+[data-theme="dark"] .Polaris-DataTable td .Polaris-Button--plain,
+[data-theme="dark"] .Polaris-DataTable td .Polaris-Button[plain],
+[data-theme="dark"] .Polaris-DataTable tbody td .Polaris-Button--plain,
+[data-theme="dark"] .Polaris-DataTable tbody td .Polaris-Button[plain],
+[data-theme="dark"] .Polaris-DataTable tr td .Polaris-Button--plain,
+[data-theme="dark"] .Polaris-DataTable tr td .Polaris-Button[plain] {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-primary) !important;
+  color: var(--text-primary) !important;
+  min-height: 32px !important;
+  padding: 0.5rem 1rem !important;
+}
+
+[data-theme="dark"] .Polaris-DataTable td .Polaris-Button--plain .Polaris-Button__Text,
+[data-theme="dark"] .Polaris-DataTable td .Polaris-Button[plain] .Polaris-Button__Text,
+[data-theme="dark"] .Polaris-DataTable tbody td .Polaris-Button--plain .Polaris-Button__Text,
+[data-theme="dark"] .Polaris-DataTable tbody td .Polaris-Button[plain] .Polaris-Button__Text {
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .Polaris-DataTable td .Polaris-Button--plain:hover,
+[data-theme="dark"] .Polaris-DataTable td .Polaris-Button[plain]:hover,
+[data-theme="dark"] .Polaris-DataTable tbody td .Polaris-Button--plain:hover,
+[data-theme="dark"] .Polaris-DataTable tbody td .Polaris-Button[plain]:hover {
+  background: var(--bg-hover) !important;
+  border-color: var(--border-accent) !important;
+  color: var(--accent-primary) !important;
+  box-shadow: 0 0 8px rgba(255, 140, 0, 0.2) !important;
+}
+
+[data-theme="dark"] .Polaris-DataTable td .Polaris-Button--plain:hover .Polaris-Button__Text,
+[data-theme="dark"] .Polaris-DataTable td .Polaris-Button[plain]:hover .Polaris-Button__Text,
+[data-theme="dark"] .Polaris-DataTable tbody td .Polaris-Button--plain:hover .Polaris-Button__Text,
+[data-theme="dark"] .Polaris-DataTable tbody td .Polaris-Button[plain]:hover .Polaris-Button__Text {
+  color: var(--accent-primary) !important;
+}
+
+/* ============================================
+   LOGOUT BUTTON - FINAL OVERRIDE - MAXIMUM PRIORITY
+   ============================================ */
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item.logout-action-item,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item:last-child,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item[data-polaris-destructive],
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item[data-destructive="true"],
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item.logout-action-item *,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item:last-child *,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item[data-polaris-destructive] *,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item[data-destructive="true"] *,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item.logout-action-item span,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item:last-child span,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item[data-polaris-destructive] span,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item[data-destructive="true"] span,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item.logout-action-item .Polaris-ActionList__Text,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item:last-child .Polaris-ActionList__Text,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item[data-polaris-destructive] .Polaris-ActionList__Text,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item[data-destructive="true"] .Polaris-ActionList__Text {
+  color: #ef4444 !important;
+}
+
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item.logout-action-item:hover,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item:last-child:hover,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item[data-polaris-destructive]:hover,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item[data-destructive="true"]:hover,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item.logout-action-item:hover *,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item:last-child:hover *,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item[data-polaris-destructive]:hover *,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item[data-destructive="true"]:hover *,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item.logout-action-item:hover span,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item:last-child:hover span,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item[data-polaris-destructive]:hover span,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item[data-destructive="true"]:hover span,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item.logout-action-item:hover .Polaris-ActionList__Text,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item:last-child:hover .Polaris-ActionList__Text,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item[data-polaris-destructive]:hover .Polaris-ActionList__Text,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item[data-destructive="true"]:hover .Polaris-ActionList__Text {
+  color: #ef4444 !important;
+  background: rgba(239, 68, 68, 0.2) !important;
+}
+
+/* Ultra-Specific DataTable Row Hover - Target All Possible Selectors */
+[data-theme="dark"] .Polaris-Card .Polaris-DataTable tbody tr:hover,
+[data-theme="dark"] .Polaris-Card .Polaris-DataTable tr:hover,
+[data-theme="dark"] .Polaris-Card table tbody tr:hover,
+[data-theme="dark"] .Polaris-Card table tr:hover {
+  background: rgba(255, 140, 0, 0.1) !important;
+  cursor: pointer !important;
+}
+
+[data-theme="dark"] .Polaris-Card .Polaris-DataTable tbody tr:hover td,
+[data-theme="dark"] .Polaris-Card .Polaris-DataTable tr:hover td,
+[data-theme="dark"] .Polaris-Card table tbody tr:hover td,
+[data-theme="dark"] .Polaris-Card table tr:hover td {
+  background: rgba(255, 140, 0, 0.1) !important;
+  border-color: rgba(255, 140, 0, 0.3) !important;
+}
+
+/* ResourceList Bulk Actions - High-end UI */
+.Polaris-ResourceList__BulkActionsWrapper {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+  padding: var(--spacing-md);
+}
+
+[data-theme="dark"] .Polaris-ResourceList__BulkActionsWrapper {
+  background: var(--bg-secondary);
+  border-bottom-color: var(--border-primary);
+}
+
+.Polaris-ResourceList__Item {
+  transition: background-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.Polaris-ResourceList__Item:hover {
+  background: var(--bg-hover);
+  transform: translateX(2px);
+}
+
+[data-theme="dark"] .Polaris-ResourceList__Item:hover {
+  background: rgba(255, 140, 0, 0.1);
+}
+
+/* Template Grid Enhancements */
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--spacing-lg);
+  margin-top: var(--spacing-md);
+}
+
+.template-card {
+  transition: all var(--transition-fast);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.template-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px var(--shadow-lg);
+}
+
+.template-card.selected {
+  border: 2px solid var(--accent-primary) !important;
+  background: var(--bg-active) !important;
+  box-shadow: 0 4px 12px rgba(255, 140, 0, 0.3);
+}
+
+.template-card-check {
+  position: absolute;
+  top: var(--spacing-sm);
+  right: var(--spacing-sm);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-inverse);
+  font-size: 14px;
+  font-weight: bold;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(255, 140, 0, 0.4);
+}
+
+/* Wizard Progress Indicator */
+.wizard-progress {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-xl);
+  padding: var(--spacing-lg);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-primary);
+}
+
+.wizard-step-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex: 1;
+  position: relative;
+}
+
+.wizard-step-indicator:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 20px;
+  left: 60%;
+  width: 80%;
+  height: 2px;
+  background: var(--border-secondary);
+  z-index: 0;
+}
+
+.wizard-step-indicator.completed::after {
+  background: var(--accent-primary);
+}
+
+.wizard-step-number {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  border: 2px solid var(--border-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  color: var(--text-secondary);
+  z-index: 1;
+  position: relative;
+  transition: all var(--transition-fast);
+}
+
+.wizard-step-indicator.active .wizard-step-number {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: var(--text-inverse);
+  box-shadow: 0 0 0 4px rgba(255, 140, 0, 0.2);
+}
+
+.wizard-step-indicator.completed .wizard-step-number {
+  background: var(--status-success);
+  border-color: var(--status-success);
+  color: var(--text-inverse);
+}
+
+/* View Details Button - Force Background with All Selectors */
+[data-theme="dark"] .Polaris-Card .Polaris-DataTable button[class*="Button"],
+[data-theme="dark"] .Polaris-Card .Polaris-DataTable .Polaris-Button,
+[data-theme="dark"] .Polaris-Card table button[class*="Button"],
+[data-theme="dark"] .Polaris-Card table .Polaris-Button {
+  background-color: var(--bg-secondary) !important;
+  border: 1px solid var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .Polaris-Card .Polaris-DataTable button[class*="Button"]:hover,
+[data-theme="dark"] .Polaris-Card .Polaris-DataTable .Polaris-Button:hover,
+[data-theme="dark"] .Polaris-Card table button[class*="Button"]:hover,
+[data-theme="dark"] .Polaris-Card table .Polaris-Button:hover {
+  background-color: rgba(255, 140, 0, 0.15) !important;
+  border-color: var(--accent-primary) !important;
+  color: var(--accent-primary) !important;
+  box-shadow: 0 0 8px rgba(255, 140, 0, 0.3) !important;
+}
+
+/* ============================================
+   FINAL DATA TABLE OVERRIDES - MAXIMUM PRIORITY
+   ============================================ */
+
+/* Force DataTable Row Hover - Using All Possible Selectors */
+[data-theme="dark"] .Polaris-DataTable tbody > tr:hover,
+[data-theme="dark"] .Polaris-DataTable > tbody > tr:hover,
+[data-theme="dark"] table.Polaris-DataTable__Table tbody > tr:hover,
+[data-theme="dark"] .Polaris-Card .Polaris-DataTable tbody > tr:hover,
+[data-theme="dark"] .Polaris-Card table tbody > tr:hover {
+  background-color: rgba(255, 140, 0, 0.1) !important;
+  transition: background-color 0.2s ease !important;
+}
+
+[data-theme="dark"] .Polaris-DataTable tbody > tr:hover > td,
+[data-theme="dark"] .Polaris-DataTable > tbody > tr:hover > td,
+[data-theme="dark"] table.Polaris-DataTable__Table tbody > tr:hover > td,
+[data-theme="dark"] .Polaris-Card .Polaris-DataTable tbody > tr:hover > td,
+[data-theme="dark"] .Polaris-Card table tbody > tr:hover > td {
+  background-color: rgba(255, 140, 0, 0.1) !important;
+  border-bottom-color: rgba(255, 140, 0, 0.3) !important;
+  border-right-color: rgba(255, 140, 0, 0.3) !important;
+}
+
+/* Force View Details Button Background - All Variations */
+[data-theme="dark"] .Polaris-DataTable tbody td button,
+[data-theme="dark"] .Polaris-DataTable tbody td .Polaris-Button,
+[data-theme="dark"] table.Polaris-DataTable__Table tbody td button,
+[data-theme="dark"] table.Polaris-DataTable__Table tbody td .Polaris-Button,
+[data-theme="dark"] .Polaris-Card .Polaris-DataTable tbody td button,
+[data-theme="dark"] .Polaris-Card .Polaris-DataTable tbody td .Polaris-Button {
+  background-color: var(--bg-secondary) !important;
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-primary) !important;
+  border-color: var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .Polaris-DataTable tbody td button:hover,
+[data-theme="dark"] .Polaris-DataTable tbody td .Polaris-Button:hover,
+[data-theme="dark"] table.Polaris-DataTable__Table tbody td button:hover,
+[data-theme="dark"] table.Polaris-DataTable__Table tbody td .Polaris-Button:hover,
+[data-theme="dark"] .Polaris-Card .Polaris-DataTable tbody td button:hover,
+[data-theme="dark"] .Polaris-Card .Polaris-DataTable tbody td .Polaris-Button:hover {
+  background-color: rgba(255, 140, 0, 0.15) !important;
+  background: rgba(255, 140, 0, 0.15) !important;
+  border-color: var(--accent-primary) !important;
+  color: var(--accent-primary) !important;
+  box-shadow: 0 0 8px rgba(255, 140, 0, 0.3) !important;
+}
+
+/* Override any inline styles Polaris might add */
+[data-theme="dark"] .Polaris-DataTable tbody td button[style],
+[data-theme="dark"] .Polaris-DataTable tbody td .Polaris-Button[style] {
+  background-color: var(--bg-secondary) !important;
+  background: var(--bg-secondary) !important;
+  border-color: var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Nuclear Option - Target All Buttons in DataTable Cells */
+[data-theme="dark"] .Polaris-DataTable tbody td button,
+[data-theme="dark"] .Polaris-DataTable tbody td .Polaris-Button {
+  background-color: var(--bg-secondary) !important;
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-primary) !important;
+  border-color: var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .Polaris-DataTable tbody td button:hover,
+[data-theme="dark"] .Polaris-DataTable tbody td .Polaris-Button:hover {
+  background-color: rgba(255, 140, 0, 0.15) !important;
+  background: rgba(255, 140, 0, 0.15) !important;
+  border-color: var(--accent-primary) !important;
+  color: var(--accent-primary) !important;
+  box-shadow: 0 0 8px rgba(255, 140, 0, 0.3) !important;
+}
+
+/* Force all buttons in DataTable cells - Universal Selector */
+[data-theme="dark"] .Polaris-DataTable td *,
+[data-theme="dark"] .Polaris-DataTable tbody td * {
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .Polaris-DataTable td button,
+[data-theme="dark"] .Polaris-DataTable td .Polaris-Button,
+[data-theme="dark"] .Polaris-DataTable tbody td button,
+[data-theme="dark"] .Polaris-DataTable tbody td .Polaris-Button {
+  background-color: var(--bg-secondary) !important;
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-primary) !important;
+  border-color: var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .Polaris-DataTable td button:hover,
+[data-theme="dark"] .Polaris-DataTable td .Polaris-Button:hover,
+[data-theme="dark"] .Polaris-DataTable tbody td button:hover,
+[data-theme="dark"] .Polaris-DataTable tbody td .Polaris-Button:hover {
+  background-color: rgba(255, 140, 0, 0.15) !important;
+  background: rgba(255, 140, 0, 0.15) !important;
+  border-color: var(--accent-primary) !important;
+  color: var(--accent-primary) !important;
+  box-shadow: 0 0 8px rgba(255, 140, 0, 0.3) !important;
+}
+
+/* Metric Card Hover - Dark Theme */
+[data-theme="dark"] .metric-card:hover {
+  border-color: var(--border-accent);
+  box-shadow: 0 8px 24px var(--shadow-lg);
+}
+
+/* Template Grid Items - Dark Theme Hover */
+[data-theme="dark"] .template-grid-item:hover .template-card {
+  border-color: var(--accent-primary);
+  box-shadow: 0 8px 24px var(--shadow-lg);
+}
+
+/* Profile Grid Form Fields - Dark Theme */
+[data-theme="dark"] .grid-2-col .Polaris-TextField,
+[data-theme="dark"] .grid-2-col .Polaris-Select {
+  background: transparent;
+}
+
+[data-theme="dark"] .grid-2-col .Polaris-TextField__Input:hover,
+[data-theme="dark"] .grid-2-col .Polaris-Select__Input:hover {
+  border-color: var(--border-accent) !important;
+}
+
+/* All Buttons in Dark Theme - Ensure Consistency */
+[data-theme="dark"] button:not([class*="Polaris"]):not(.sidebar button):not(.profile-tab) {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  color: var(--text-primary);
+  transition: all var(--transition-base);
+}
+
+[data-theme="dark"] button:not([class*="Polaris"]):not(.sidebar button):not(.profile-tab):hover {
+  background: var(--bg-hover);
+  border-color: var(--border-accent);
+  color: var(--accent-primary);
+  box-shadow: 0 0 8px rgba(255, 140, 0, 0.2);
+}
+
+[data-theme="dark"] button:not([class*="Polaris"]):not(.sidebar button):not(.profile-tab):active {
+  background: var(--bg-active);
+  border-color: var(--accent-primary);
+}
+
+/* ============================================
+   7. SCROLLBAR
+   ============================================ */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-primary);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background var(--transition-base);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+  background-clip: padding-box;
+}
+
+/* ============================================
+   8. POLARIS OVERRIDES (Dark Theme)
+   ============================================ */
+
+/* Text Elements */
+[data-theme="dark"] .Polaris-Text,
+[data-theme="dark"] .Polaris-Text *,
+[data-theme="dark"] [class*="Polaris-Text"] {
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .Polaris-Text--toneSubdued,
+[data-theme="dark"] .Polaris-Text[color="subdued"],
+[data-theme="dark"] .Polaris-Text[tone="subdued"] {
+  color: var(--text-secondary);
+}
+
+/* Cards */
+[data-theme="dark"] .Polaris-Card,
+[data-theme="dark"] .Polaris-Card__Section {
+  background: var(--bg-secondary);
+  border-color: var(--border-primary);
+  color: var(--text-primary);
+}
+
+/* Form Labels */
+[data-theme="dark"] .Polaris-Label,
+[data-theme="dark"] .Polaris-Label__Text {
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .Polaris-Label--requiredIndicator::after {
+  color: var(--status-error);
+}
+
+/* Help Text */
+[data-theme="dark"] .Polaris-HelpText,
+[data-theme="dark"] .Polaris-HelpText__Text {
+  color: var(--text-secondary);
+}
+
+/* TextField Inputs */
+[data-theme="dark"] .Polaris-TextField__Input,
+[data-theme="dark"] .Polaris-TextField__Input input,
+[data-theme="dark"] .Polaris-TextField__Input input[type="text"],
+[data-theme="dark"] .Polaris-TextField__Input input[type="email"],
+[data-theme="dark"] .Polaris-TextField__Input input[type="tel"],
+[data-theme="dark"] .Polaris-TextField__Input input[type="number"],
+[data-theme="dark"] .Polaris-TextField__Input input[type="password"],
+[data-theme="dark"] .Polaris-TextField__Input input[type="datetime-local"],
+[data-theme="dark"] .Polaris-TextField__Input input[type="date"],
+[data-theme="dark"] .Polaris-TextField__Input input[type="time"] {
+  background: var(--bg-tertiary) !important;
+  border-color: var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .Polaris-TextField__Input::placeholder,
+[data-theme="dark"] .Polaris-TextField__Input input::placeholder {
+  color: var(--text-tertiary) !important;
+}
+
+/* TextField Backdrop/Container */
+[data-theme="dark"] .Polaris-TextField,
+[data-theme="dark"] .Polaris-TextField__Backdrop {
+  background: transparent !important;
+}
+
+[data-theme="dark"] .Polaris-TextField:hover,
+[data-theme="dark"] .Polaris-TextField:hover .Polaris-TextField__Backdrop,
+[data-theme="dark"] .Polaris-TextField__Input:hover,
+[data-theme="dark"] .Polaris-TextField__Input:hover input {
+  background: var(--bg-hover) !important;
+  border-color: var(--border-accent) !important;
+}
+
+[data-theme="dark"] .Polaris-TextField:hover .Polaris-TextField__Input,
+[data-theme="dark"] .Polaris-TextField:hover .Polaris-TextField__Input input {
+  background: var(--bg-hover) !important;
+}
+
+[data-theme="dark"] .Polaris-TextField__Input:focus,
+[data-theme="dark"] .Polaris-TextField__Input:focus-within,
+[data-theme="dark"] .Polaris-TextField__Input:focus input,
+[data-theme="dark"] .Polaris-TextField__Input:focus-within input {
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 0 1px var(--accent-primary), 0 0 8px rgba(255, 140, 0, 0.2) !important;
+  background: var(--bg-tertiary) !important;
+}
+
+[data-theme="dark"] .Polaris-TextField__Input:disabled,
+[data-theme="dark"] .Polaris-TextField__Input[disabled],
+[data-theme="dark"] .Polaris-TextField__Input:disabled input,
+[data-theme="dark"] .Polaris-TextField__Input[disabled] input {
+  background: var(--bg-primary) !important;
+  border-color: var(--border-secondary) !important;
+  color: var(--text-tertiary) !important;
+  opacity: 0.6;
+}
+
+[data-theme="dark"] .Polaris-TextField--error .Polaris-TextField__Input {
+  border-color: var(--status-error);
+}
+
+[data-theme="dark"] .Polaris-TextField--error .Polaris-TextField__Input:focus {
+  border-color: var(--status-error);
+  box-shadow: 0 0 0 1px var(--status-error), 0 0 8px rgba(239, 68, 68, 0.2);
+}
+
+/* Textarea */
+[data-theme="dark"] .Polaris-Textarea__Input,
+[data-theme="dark"] .Polaris-Textarea__Input textarea {
+  background: var(--bg-tertiary) !important;
+  border-color: var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .Polaris-Textarea__Input::placeholder,
+[data-theme="dark"] .Polaris-Textarea__Input textarea::placeholder {
+  color: var(--text-tertiary) !important;
+}
+
+[data-theme="dark"] .Polaris-Textarea__Input:hover,
+[data-theme="dark"] .Polaris-Textarea__Input:hover textarea {
+  background: var(--bg-hover) !important;
+  border-color: var(--border-accent) !important;
+}
+
+[data-theme="dark"] .Polaris-Textarea__Input:focus,
+[data-theme="dark"] .Polaris-Textarea__Input:focus-within,
+[data-theme="dark"] .Polaris-Textarea__Input:focus textarea,
+[data-theme="dark"] .Polaris-Textarea__Input:focus-within textarea {
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 0 1px var(--accent-primary), 0 0 8px rgba(255, 140, 0, 0.2) !important;
+  background: var(--bg-tertiary) !important;
+}
+
+[data-theme="dark"] .Polaris-Textarea__Input:disabled,
+[data-theme="dark"] .Polaris-Textarea__Input[disabled],
+[data-theme="dark"] .Polaris-Textarea__Input:disabled textarea,
+[data-theme="dark"] .Polaris-Textarea__Input[disabled] textarea {
+  background: var(--bg-primary) !important;
+  border-color: var(--border-secondary) !important;
+  color: var(--text-tertiary) !important;
+  opacity: 0.6;
+}
+
+/* Select Inputs */
+[data-theme="dark"] .Polaris-Select__Input,
+[data-theme="dark"] .Polaris-Select__Input select {
+  background: var(--bg-tertiary) !important;
+  border-color: var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Select Backdrop/Container */
+[data-theme="dark"] .Polaris-Select,
+[data-theme="dark"] .Polaris-Select__Backdrop {
+  background: transparent !important;
+}
+
+[data-theme="dark"] .Polaris-Select:hover,
+[data-theme="dark"] .Polaris-Select:hover .Polaris-Select__Backdrop,
+[data-theme="dark"] .Polaris-Select__Input:hover,
+[data-theme="dark"] .Polaris-Select__Input:hover select {
+  background: var(--bg-hover) !important;
+  border-color: var(--border-accent) !important;
+}
+
+[data-theme="dark"] .Polaris-Select:hover .Polaris-Select__Input,
+[data-theme="dark"] .Polaris-Select:hover .Polaris-Select__Input select {
+  background: var(--bg-hover) !important;
+}
+
+[data-theme="dark"] .Polaris-Select__Input:focus,
+[data-theme="dark"] .Polaris-Select__Input:focus-within,
+[data-theme="dark"] .Polaris-Select__Input:focus select,
+[data-theme="dark"] .Polaris-Select__Input:focus-within select {
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 0 1px var(--accent-primary), 0 0 8px rgba(255, 140, 0, 0.2) !important;
+  background: var(--bg-tertiary) !important;
+}
+
+[data-theme="dark"] .Polaris-Select__Input:disabled,
+[data-theme="dark"] .Polaris-Select__Input[disabled],
+[data-theme="dark"] .Polaris-Select__Input:disabled select,
+[data-theme="dark"] .Polaris-Select__Input[disabled] select {
+  background: var(--bg-primary) !important;
+  border-color: var(--border-secondary) !important;
+  color: var(--text-tertiary) !important;
+  opacity: 0.6;
+}
+
+/* Select Dropdown/Popover */
+[data-theme="dark"] .Polaris-Popover__Content .Polaris-Listbox,
+[data-theme="dark"] .Polaris-Listbox {
+  background: var(--bg-secondary) !important;
+  border-color: var(--border-primary) !important;
+  box-shadow: 0 4px 12px var(--shadow-md) !important;
+}
+
+[data-theme="dark"] .Polaris-Listbox__Option,
+[data-theme="dark"] .Polaris-Listbox__Option[role="option"] {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .Polaris-Listbox__Option:hover,
+[data-theme="dark"] .Polaris-Listbox__Option[role="option"]:hover {
+  background: rgba(255, 140, 0, 0.15) !important;
+  color: var(--accent-primary) !important;
+}
+
+[data-theme="dark"] .Polaris-Listbox__Option[aria-selected="true"],
+[data-theme="dark"] .Polaris-Listbox__Option[role="option"][aria-selected="true"] {
+  background: var(--bg-active);
+  color: var(--accent-primary);
+}
+
+[data-theme="dark"] .Polaris-Listbox__Option:focus,
+[data-theme="dark"] .Polaris-Listbox__Option[role="option"]:focus {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+}
+
+/* Checkbox */
+[data-theme="dark"] .Polaris-Checkbox__Input {
+  border-color: var(--border-primary);
+  background: var(--bg-tertiary);
+}
+
+[data-theme="dark"] .Polaris-Checkbox__Input:checked {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+[data-theme="dark"] .Polaris-Checkbox__Input:hover {
+  border-color: var(--border-accent);
+}
+
+[data-theme="dark"] .Polaris-Checkbox__Input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 1px var(--accent-primary), 0 0 8px rgba(255, 140, 0, 0.2);
+}
+
+[data-theme="dark"] .Polaris-Checkbox__Input:disabled {
+  background: var(--bg-primary);
+  border-color: var(--border-secondary);
+  opacity: 0.6;
+}
+
+[data-theme="dark"] .Polaris-Checkbox__Label {
+  color: var(--text-primary);
+}
+
+/* RadioButton */
+[data-theme="dark"] .Polaris-RadioButton__Input {
+  border-color: var(--border-primary);
+  background: var(--bg-tertiary);
+}
+
+[data-theme="dark"] .Polaris-RadioButton__Input:checked {
+  border-color: var(--accent-primary);
+}
+
+[data-theme="dark"] .Polaris-RadioButton__Input:checked::before {
+  background: var(--accent-primary);
+}
+
+[data-theme="dark"] .Polaris-RadioButton__Input:hover {
+  border-color: var(--border-accent);
+}
+
+[data-theme="dark"] .Polaris-RadioButton__Input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 1px var(--accent-primary), 0 0 8px rgba(255, 140, 0, 0.2);
+}
+
+[data-theme="dark"] .Polaris-RadioButton__Input:disabled {
+  background: var(--bg-primary);
+  border-color: var(--border-secondary);
+  opacity: 0.6;
+}
+
+[data-theme="dark"] .Polaris-RadioButton__Label {
+  color: var(--text-primary);
+}
+
+/* Buttons - Primary */
+[data-theme="dark"] .Polaris-Button--primary,
+[data-theme="dark"] .Polaris-Button[primary],
+[data-theme="dark"] .Polaris-Button--primary .Polaris-Button__Text,
+[data-theme="dark"] .Polaris-Button[primary] .Polaris-Button__Text {
+  background: var(--accent-primary) !important;
+  color: var(--text-inverse) !important;
+  border-color: var(--accent-primary) !important;
+}
+
+[data-theme="dark"] .Polaris-Button--primary:hover,
+[data-theme="dark"] .Polaris-Button[primary]:hover {
+  background: var(--accent-secondary) !important;
+  border-color: var(--accent-secondary) !important;
+  box-shadow: 0 0 12px rgba(255, 140, 0, 0.3) !important;
+}
+
+[data-theme="dark"] .Polaris-Button--primary:active,
+[data-theme="dark"] .Polaris-Button[primary]:active {
+  background: var(--accent-primary) !important;
+  border-color: var(--accent-primary) !important;
+}
+
+[data-theme="dark"] .Polaris-Button--primary:disabled,
+[data-theme="dark"] .Polaris-Button--primary[disabled],
+[data-theme="dark"] .Polaris-Button[primary]:disabled,
+[data-theme="dark"] .Polaris-Button[primary][disabled] {
+  background: var(--bg-primary) !important;
+  border-color: var(--border-secondary) !important;
+  color: var(--text-tertiary) !important;
+  opacity: 0.6;
+}
+
+[data-theme="dark"] .Polaris-Button--primary[aria-busy="true"],
+[data-theme="dark"] .Polaris-Button[primary][aria-busy="true"],
+[data-theme="dark"] .Polaris-Button--primary.loading,
+[data-theme="dark"] .Polaris-Button[primary].loading {
+  background: var(--accent-primary) !important;
+  border-color: var(--accent-primary) !important;
+  color: var(--text-inverse) !important;
+}
+
+/* Buttons - Secondary */
+[data-theme="dark"] .Polaris-Button--secondary,
+[data-theme="dark"] .Polaris-Button--secondary .Polaris-Button__Text,
+[data-theme="dark"] .Polaris-Button[secondary],
+[data-theme="dark"] .Polaris-Button[secondary] .Polaris-Button__Text {
+  background: transparent !important;
+  border: 1px solid var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .Polaris-Button--secondary:hover,
+[data-theme="dark"] .Polaris-Button[secondary]:hover {
+  background: var(--bg-hover) !important;
+  border-color: var(--border-accent) !important;
+  color: var(--accent-primary) !important;
+  box-shadow: 0 0 8px rgba(255, 140, 0, 0.2) !important;
+}
+
+[data-theme="dark"] .Polaris-Button--secondary:active,
+[data-theme="dark"] .Polaris-Button[secondary]:active {
+  background: var(--bg-active) !important;
+  border-color: var(--accent-primary) !important;
+  color: var(--accent-primary) !important;
+}
+
+[data-theme="dark"] .Polaris-Button--secondary:disabled,
+[data-theme="dark"] .Polaris-Button--secondary[disabled],
+[data-theme="dark"] .Polaris-Button[secondary]:disabled,
+[data-theme="dark"] .Polaris-Button[secondary][disabled] {
+  background: transparent !important;
+  border-color: var(--border-secondary) !important;
+  color: var(--text-tertiary) !important;
+  opacity: 0.6;
+}
+
+/* Buttons - Plain */
+[data-theme="dark"] .Polaris-Button--plain,
+[data-theme="dark"] .Polaris-Button--plain .Polaris-Button__Text,
+[data-theme="dark"] .Polaris-Button[plain],
+[data-theme="dark"] .Polaris-Button[plain] .Polaris-Button__Text {
+  background: transparent !important;
+  border: 1px solid var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .Polaris-Button--plain:hover,
+[data-theme="dark"] .Polaris-Button[plain]:hover {
+  background: var(--bg-hover) !important;
+  border-color: var(--border-accent) !important;
+  color: var(--accent-primary) !important;
+  box-shadow: 0 0 8px rgba(255, 140, 0, 0.2) !important;
+}
+
+[data-theme="dark"] .Polaris-Button--plain:active,
+[data-theme="dark"] .Polaris-Button[plain]:active {
+  background: var(--bg-active) !important;
+  border-color: var(--accent-primary) !important;
+  color: var(--accent-primary) !important;
+}
+
+[data-theme="dark"] .Polaris-Button--plain:disabled,
+[data-theme="dark"] .Polaris-Button--plain[disabled],
+[data-theme="dark"] .Polaris-Button[plain]:disabled,
+[data-theme="dark"] .Polaris-Button[plain][disabled] {
+  background: transparent !important;
+  border-color: var(--border-secondary) !important;
+  color: var(--text-tertiary) !important;
+  opacity: 0.6;
+}
+
+/* Buttons - Destructive */
+[data-theme="dark"] .Polaris-Button--destructive,
+[data-theme="dark"] .Polaris-Button--destructive .Polaris-Button__Text {
+  background: transparent;
+  border: 1px solid var(--status-error);
+  color: var(--status-error);
+}
+
+[data-theme="dark"] .Polaris-Button--destructive:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: var(--status-error);
+  color: var(--status-error);
+}
+
+[data-theme="dark"] .Polaris-Button--destructive:active {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: var(--status-error);
+}
+
+[data-theme="dark"] .Polaris-Button--destructive:disabled,
+[data-theme="dark"] .Polaris-Button--destructive[disabled] {
+  background: transparent;
+  border-color: var(--border-secondary);
+  color: var(--text-tertiary);
+  opacity: 0.6;
+}
+
+/* Form Layout */
+[data-theme="dark"] .Polaris-FormLayout {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .Polaris-FormLayout__Item {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .Polaris-FormLayout__Item > * {
+  color: var(--text-primary);
+}
+
+/* Box */
+[data-theme="dark"] .Polaris-Box {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-color: var(--border-primary);
+}
+
+[data-theme="dark"] .Polaris-ActionList__Item:hover .Polaris-Box {
+  background: transparent !important;
+}
+
+/* Page */
+[data-theme="dark"] .Polaris-Page,
+[data-theme="dark"] .Polaris-Page__Header,
+[data-theme="dark"] .Polaris-Page__Content {
+  background: transparent;
+}
+
+/* Popover & ActionList - Z-Index Fix */
+.Polaris-Popover,
+.Polaris-Popover__Content,
+.Polaris-Popover__ContentContainer,
+.Polaris-Popover__ContentContainer > div,
+.Polaris-Popover__ContentContainer > div > div {
+  z-index: 2000 !important;
+}
+
+/* Topbar Popovers - Ensure they appear above topbar */
+.top-bar ~ .Polaris-Popover,
+.top-bar .Polaris-Popover,
+.top-bar + * .Polaris-Popover,
+body > .Polaris-Popover,
+body > div > .Polaris-Popover,
+[data-polaris-portal-id] .Polaris-Popover {
+  z-index: 2000 !important;
+}
+
+/* Ensure Popover wrapper/container also has high z-index */
+.Polaris-Popover__ContentContainer,
+.Polaris-Popover__ContentContainer[style*="position"],
+div[class*="Popover"] {
+  z-index: 2000 !important;
+}
+
+[data-theme="dark"] .Polaris-Popover__Content,
+[data-theme="dark"] .Polaris-ActionList {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  box-shadow: 0 4px 12px var(--shadow-md);
+  border-radius: var(--radius-md);
+  z-index: 2000 !important;
+}
+
+[data-theme="dark"] .Polaris-ActionList__Item {
+  color: var(--text-primary);
+  background: transparent;
+  padding: 0.625rem var(--spacing-md);
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+[data-theme="dark"] .Polaris-ActionList__Item.Polaris-ActionList--destructive * {
+  color: #ef4444 !important;
+}
+
+[data-theme="dark"] .Polaris-ActionList__Item.Polaris-ActionList--destructive:hover {
+  background-color: var(--p-color-bg-surface-critical-hover) !important;
+}
+
+[data-theme="dark"] .Polaris-ActionList__Item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .Polaris-ActionList__Item[data-polaris-destructive],
+[data-theme="dark"] .Polaris-ActionList__Item[data-polaris-destructive] *,
+[data-theme="dark"] .Polaris-ActionList__Item[data-polaris-destructive] .Polaris-ActionList__Text {
+  color: #ef4444 !important;
+  color: var(--status-error) !important;
+}
+
+[data-theme="dark"] .Polaris-ActionList__Item[data-polaris-destructive]:hover,
+[data-theme="dark"] .Polaris-ActionList__Item[data-polaris-destructive]:hover *,
+[data-theme="dark"] .Polaris-ActionList__Item[data-polaris-destructive]:hover .Polaris-ActionList__Text {
+  background: rgba(239, 68, 68, 0.1) !important;
+  color: #ef4444 !important;
+  color: var(--status-error) !important;
+}
+
+/* Top Bar Dropdowns - Logout Button - Maximum Specificity */
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item:last-child[data-polaris-destructive],
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item:last-child[data-destructive="true"],
+[data-theme="dark"] .top-bar .logout-action-item,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item:last-child[data-polaris-destructive] *,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item:last-child[data-destructive="true"] *,
+[data-theme="dark"] .top-bar .logout-action-item *,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item:last-child[data-polaris-destructive] .Polaris-ActionList__Text,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item:last-child[data-destructive="true"] .Polaris-ActionList__Text,
+[data-theme="dark"] .top-bar .logout-action-item .Polaris-ActionList__Text {
+  color: #ef4444 !important;
+  color: var(--status-error) !important;
+}
+
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item:last-child[data-polaris-destructive]:hover,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item:last-child[data-destructive="true"]:hover,
+[data-theme="dark"] .top-bar .logout-action-item:hover,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item:last-child[data-polaris-destructive]:hover *,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item:last-child[data-destructive="true"]:hover *,
+[data-theme="dark"] .top-bar .logout-action-item:hover *,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item:last-child[data-polaris-destructive]:hover .Polaris-ActionList__Text,
+[data-theme="dark"] .top-bar .Polaris-ActionList__Item:last-child[data-destructive="true"]:hover .Polaris-ActionList__Text,
+[data-theme="dark"] .top-bar .logout-action-item:hover .Polaris-ActionList__Text {
+  background: rgba(239, 68, 68, 0.2) !important;
+  color: #ef4444 !important;
+  color: var(--status-error) !important;
+}
+
+/* Additional Input Field Overrides - Ensure all borders are visible */
+[data-theme="dark"] input[type="text"],
+[data-theme="dark"] input[type="email"],
+[data-theme="dark"] input[type="tel"],
+[data-theme="dark"] input[type="number"],
+[data-theme="dark"] input[type="password"],
+[data-theme="dark"] input[type="datetime-local"],
+[data-theme="dark"] input[type="date"],
+[data-theme="dark"] input[type="time"],
+[data-theme="dark"] input[type="url"],
+[data-theme="dark"] input[type="search"],
+[data-theme="dark"] select,
+[data-theme="dark"] textarea {
+  background: var(--bg-tertiary) !important;
+  border-color: var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] input[type="text"]:hover,
+[data-theme="dark"] input[type="email"]:hover,
+[data-theme="dark"] input[type="tel"]:hover,
+[data-theme="dark"] input[type="number"]:hover,
+[data-theme="dark"] input[type="password"]:hover,
+[data-theme="dark"] input[type="datetime-local"]:hover,
+[data-theme="dark"] input[type="date"]:hover,
+[data-theme="dark"] input[type="time"]:hover,
+[data-theme="dark"] input[type="url"]:hover,
+[data-theme="dark"] input[type="search"]:hover,
+[data-theme="dark"] select:hover,
+[data-theme="dark"] textarea:hover {
+  background: var(--bg-hover) !important;
+  border-color: var(--border-accent) !important;
+}
+
+[data-theme="dark"] input[type="text"]:focus,
+[data-theme="dark"] input[type="email"]:focus,
+[data-theme="dark"] input[type="tel"]:focus,
+[data-theme="dark"] input[type="number"]:focus,
+[data-theme="dark"] input[type="password"]:focus,
+[data-theme="dark"] input[type="datetime-local"]:focus,
+[data-theme="dark"] input[type="date"]:focus,
+[data-theme="dark"] input[type="time"]:focus,
+[data-theme="dark"] input[type="url"]:focus,
+[data-theme="dark"] input[type="search"]:focus,
+[data-theme="dark"] select:focus,
+[data-theme="dark"] textarea:focus {
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 0 1px var(--accent-primary), 0 0 8px rgba(255, 140, 0, 0.2) !important;
+  outline: none !important;
+}
+
+[data-theme="dark"] input[type="text"]:disabled,
+[data-theme="dark"] input[type="email"]:disabled,
+[data-theme="dark"] input[type="tel"]:disabled,
+[data-theme="dark"] input[type="number"]:disabled,
+[data-theme="dark"] input[type="password"]:disabled,
+[data-theme="dark"] input[type="datetime-local"]:disabled,
+[data-theme="dark"] input[type="date"]:disabled,
+[data-theme="dark"] input[type="time"]:disabled,
+[data-theme="dark"] input[type="url"]:disabled,
+[data-theme="dark"] input[type="search"]:disabled,
+[data-theme="dark"] select:disabled,
+[data-theme="dark"] textarea:disabled {
+  background: var(--bg-primary) !important;
+  border-color: var(--border-secondary) !important;
+  color: var(--text-tertiary) !important;
+  opacity: 0.6;
+}
+
+/* Profile Page Button Specific Overrides */
+[data-theme="dark"] .Polaris-InlineStack[align="end"] .Polaris-Button--primary,
+[data-theme="dark"] .Polaris-InlineStack[align="end"] .Polaris-Button[primary] {
+  background: var(--accent-primary) !important;
+  color: var(--text-inverse) !important;
+  border-color: var(--accent-primary) !important;
+}
+
+[data-theme="dark"] .Polaris-InlineStack[align="end"] .Polaris-Button--primary:hover,
+[data-theme="dark"] .Polaris-InlineStack[align="end"] .Polaris-Button[primary]:hover {
+  background: var(--accent-secondary) !important;
+  border-color: var(--accent-secondary) !important;
+  box-shadow: 0 0 12px rgba(255, 140, 0, 0.3) !important;
+}
+
+/* ============================================
+   ENHANCED SEARCH UI - CUSTOM FILTER BAR
+   ============================================ */
+
+/* Custom Filter Bar Container */
+.custom-filter-bar {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md) var(--spacing-lg);
+  margin-bottom: var(--spacing-lg);
+  transition: all var(--transition-smooth);
+}
+
+.custom-filter-bar:hover {
+  border-color: var(--border-primary);
+}
+
+[data-theme="dark"] .custom-filter-bar {
+  background: var(--bg-secondary);
+  border-color: var(--border-secondary);
+}
+
+[data-theme="dark"] .custom-filter-bar:hover {
+  border-color: var(--border-primary);
+}
+
+/* Search Input Wrapper */
+.filter-search-wrapper {
+  flex: 0 0 auto;
+  min-width: 280px;
+  max-width: 400px;
+}
+
+.filter-search-wrapper .Polaris-TextField {
+  margin-bottom: 0;
+}
+
+.filter-search-wrapper .Polaris-TextField__Input {
+  border-radius: var(--radius-md);
+  transition: all var(--transition-smooth);
+}
+
+.filter-search-wrapper .Polaris-TextField__Input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px var(--accent-hover), 0 0 0 4px rgba(0, 128, 96, 0.1);
+}
+
+[data-theme="dark"] .filter-search-wrapper .Polaris-TextField__Input:focus {
+  box-shadow: 0 0 0 2px var(--accent-hover), 0 0 0 4px rgba(255, 140, 0, 0.15);
+}
+
+/* Status Filter Buttons */
+.filter-status-buttons {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.status-filter-button {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-base);
+  white-space: nowrap;
+  outline: none;
+}
+
+.status-filter-button:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-primary);
+  transform: translateY(-1px);
+}
+
+.status-filter-button.active {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: var(--text-inverse);
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(0, 128, 96, 0.2);
+}
+
+[data-theme="dark"] .status-filter-button {
+  background: var(--bg-tertiary);
+  border-color: var(--border-secondary);
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .status-filter-button:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-accent);
+}
+
+[data-theme="dark"] .status-filter-button.active {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: var(--text-inverse);
+  box-shadow: 0 2px 8px rgba(255, 140, 0, 0.3);
+}
+
+.status-filter-button:active {
+  transform: translateY(0);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .custom-filter-bar {
+    padding: var(--spacing-sm) var(--spacing-md);
+  }
+
+  .filter-search-wrapper {
+    min-width: 100%;
+    max-width: 100%;
+    margin-bottom: var(--spacing-sm);
+  }
+
+  .filter-status-buttons {
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+  }
+
+  .status-filter-button {
+    font-size: 0.8125rem;
+    padding: 0.375rem 0.75rem;
+  }
+}
+
+/* Search Results Count Badge */
+.search-results-count {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  background: var(--bg-active);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-left: var(--spacing-sm);
+}
+
+[data-theme="dark"] .search-results-count {
+  background: var(--bg-active);
+  color: var(--text-secondary);
+}

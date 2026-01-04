@@ -1,0 +1,229 @@
+/**
+ * Custom Metrics Service
+ *
+ * Handles custom success metrics beyond standard conversion/revenue.
+ * Supports COGS, profit, custom events, and more.
+ */
+
+const { query } = require('../utils/database');
+
+class CustomMetricsService {
+  /**
+   * Calculate custom metric value
+   *
+   * @param {Object} metricConfig - Metric configuration
+   * @param {Object} variantData - Variant analytics data
+   * @returns {number} Calculated metric value
+   */
+  calculateMetric(metricConfig, variantData) {
+    switch (metricConfig.type) {
+      case 'revenue': {
+        return variantData.revenue || 0;
+      }
+
+      case 'profit': {
+        return this.calculateProfit(variantData, metricConfig.cogs);
+      }
+
+      case 'conversion_rate': {
+        return variantData.visitors > 0
+          ? (variantData.conversions / variantData.visitors) * 100
+          : 0;
+      }
+
+      case 'average_order_value': {
+        return variantData.conversions > 0
+          ? variantData.revenue / variantData.conversions
+          : 0;
+      }
+
+      case 'revenue_per_visitor': {
+        return variantData.visitors > 0
+          ? variantData.revenue / variantData.visitors
+          : 0;
+      }
+
+      case 'profit_per_visitor': {
+        const profit = this.calculateProfit(variantData, metricConfig.cogs);
+        return variantData.visitors > 0
+          ? profit / variantData.visitors
+          : 0;
+      }
+
+      case 'custom_event': {
+        return this.calculateCustomEvent(metricConfig, variantData);
+      }
+
+      case 'custom_formula': {
+        return this.calculateCustomFormula(metricConfig, variantData);
+      }
+
+      default: {
+        return 0;
+      }
+    }
+  }
+
+  /**
+   * Calculate profit (revenue - COGS)
+   *
+   * @param {Object} variantData - Variant data
+   * @param {Object} cogsConfig - COGS configuration
+   * @returns {number} Profit
+   */
+  calculateProfit(variantData, cogsConfig) {
+    if (!cogsConfig || !cogsConfig.enabled) {
+      return variantData.revenue || 0;
+    }
+
+    const revenue = variantData.revenue || 0;
+    let cogs = 0;
+
+    if (cogsConfig.type === 'percentage') {
+      cogs = revenue * (cogsConfig.value / 100);
+    } else if (cogsConfig.type === 'fixed_per_order') {
+      cogs = variantData.conversions * cogsConfig.value;
+    } else if (cogsConfig.type === 'fixed_per_item') {
+      // Would need item quantity data
+      cogs = variantData.conversions * cogsConfig.value; // Simplified
+    }
+
+    return revenue - cogs;
+  }
+
+  /**
+   * Calculate custom event metric
+   *
+   * @param {Object} metricConfig - Metric config
+   * @param {Object} variantData - Variant data
+   * @returns {number} Custom event count/value
+   */
+  async calculateCustomEvent(metricConfig, variantData) {
+    const { test_id, variant_id, shop_domain } = variantData;
+
+    const sql = `
+      SELECT 
+        COUNT(*) as event_count,
+        SUM(event_value) as event_value_sum
+      FROM events
+      WHERE test_id = $1
+        AND variant_id = $2
+        AND shop_domain = $3
+        AND event_type = $4
+    `;
+
+    const result = await query(sql, [
+      test_id,
+      variant_id,
+      shop_domain,
+      metricConfig.eventName
+    ]);
+
+    if (metricConfig.aggregation === 'count') {
+      return parseInt(result.rows[0].event_count) || 0;
+    } else if (metricConfig.aggregation === 'sum') {
+      return parseFloat(result.rows[0].event_value_sum) || 0;
+    } else if (metricConfig.aggregation === 'average') {
+      const count = parseInt(result.rows[0].event_count) || 0;
+      const sum = parseFloat(result.rows[0].event_value_sum) || 0;
+      return count > 0 ? sum / count : 0;
+    }
+
+    return 0;
+  }
+
+  /**
+   * Calculate custom formula metric
+   *
+   * @param {Object} metricConfig - Metric config
+   * @param {Object} variantData - Variant data
+   * @returns {number} Calculated value
+   */
+  calculateCustomFormula(metricConfig, variantData) {
+    try {
+      // Parse and evaluate custom formula
+      // Example: "revenue * 0.3 - cogs"
+      const formula = metricConfig.formula;
+
+      // Replace variables with actual values
+      const evaluatedFormula = formula
+        .replace(/\brevenue\b/g, variantData.revenue || 0)
+        .replace(/\bconversions\b/g, variantData.conversions || 0)
+        .replace(/\bvisitors\b/g, variantData.visitors || 0)
+        .replace(/\baov\b/g, variantData.conversions > 0
+          ? (variantData.revenue / variantData.conversions)
+          : 0);
+
+      // Evaluate safely (in production, use a proper expression evaluator)
+      // This is a simplified version - use a library like expr-eval for production
+      return Function(`"use strict"; return (${evaluatedFormula})`)();
+    } catch (error) {
+      console.error('Error evaluating custom formula:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Get all metrics for a test
+   *
+   * @param {string} testId - Test ID
+   * @param {string} shopDomain - Shop domain
+   * @param {Array} customMetrics - Custom metric configurations
+   * @returns {Promise<Object>} All metric values
+   */
+  async getAllMetrics(testId, shopDomain, customMetrics = []) {
+    const analyticsService = require('./analytics');
+    const baseAnalytics = await analyticsService.getTestAnalytics(testId, shopDomain);
+
+    const metrics = {
+      standard: {
+        conversionRate: baseAnalytics.variants.map(v => ({
+          variant: v.name,
+          value: v.conversionRate
+        })),
+        revenue: baseAnalytics.variants.map(v => ({
+          variant: v.name,
+          value: v.revenue
+        })),
+        revenuePerVisitor: baseAnalytics.variants.map(v => ({
+          variant: v.name,
+          value: v.visitors > 0 ? v.revenue / v.visitors : 0
+        }))
+      },
+      custom: {}
+    };
+
+    // Calculate custom metrics
+    for (const metricConfig of customMetrics) {
+      const metricValues = [];
+
+      for (const variant of baseAnalytics.variants) {
+        const variantData = {
+          ...variant,
+          test_id: testId,
+          variant_id: variant.id,
+          shop_domain: shopDomain
+        };
+
+        let value;
+        if (metricConfig.type === 'custom_event') {
+          value = await this.calculateCustomEvent(metricConfig, variantData);
+        } else {
+          value = this.calculateMetric(metricConfig, variantData);
+        }
+
+        metricValues.push({
+          variant: variant.name,
+          value: Math.round(value * 100) / 100
+        });
+      }
+
+      metrics.custom[metricConfig.name] = metricValues;
+    }
+
+    return metrics;
+  }
+}
+
+module.exports = new CustomMetricsService();
+
