@@ -85,7 +85,10 @@ function App() {
           position: 'relative',
           transition: 'background-color 0.3s ease'
         }}>
-          <Sidebar collapsed={sidebarCollapsed} />
+          <Sidebar 
+            collapsed={sidebarCollapsed} 
+            onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
+          />
           <div
             style={{
               marginLeft: sidebarWidth,
@@ -98,19 +101,18 @@ function App() {
             <TopBar 
               sidebarWidth={sidebarWidth} 
               sidebarCollapsed={sidebarCollapsed}
-              onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
             />
             <div 
               className="main-content-wrapper"
               style={{ 
-                marginTop: '72px', 
+                marginTop: '44px', 
                 padding: '2rem',
                 maxWidth: '1400px',
                 marginLeft: 'auto',
                 marginRight: 'auto',
                 width: '100%',
                 backgroundColor: 'var(--bg-primary)',
-                minHeight: 'calc(100vh - 72px)',
+                minHeight: 'calc(100vh - 44px)',
                 transition: 'background-color 0.3s ease'
               }}
             >

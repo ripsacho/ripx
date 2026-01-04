@@ -5,19 +5,15 @@
  */
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   InlineStack,
-  Button,
   Popover,
-  ActionList,
-  Avatar,
-  Text
+  ActionList
 } from '@shopify/polaris';
 
-function TopBar({ sidebarWidth = 280, sidebarCollapsed = false, onToggleSidebar }) {
+function TopBar({ sidebarWidth = 280, sidebarCollapsed = false }) {
   const navigate = useNavigate();
-  const location = useLocation();
   const [userMenuActive, setUserMenuActive] = useState(false);
   const [settingsMenuActive, setSettingsMenuActive] = useState(false);
 
@@ -63,20 +59,6 @@ function TopBar({ sidebarWidth = 280, sidebarCollapsed = false, onToggleSidebar 
       };
     }
   }, [userMenuActive]);
-
-  // Get page title based on route
-  const getPageTitle = () => {
-    if (location.pathname === '/') return 'Dashboard';
-    if (location.pathname === '/tests' || location.pathname === '/tests/') return 'All Tests';
-    if (location.pathname.startsWith('/tests/new')) return 'Create Test';
-    if (location.pathname.startsWith('/tests/') && location.pathname.includes('/analytics')) return 'Test Analytics';
-    if (location.pathname.startsWith('/tests/') && location.pathname.includes('/export')) return 'Export Test';
-    if (location.pathname.startsWith('/tests/')) return 'Test Details';
-    if (location.pathname === '/analytics') return 'Analytics';
-    if (location.pathname === '/settings') return 'Settings';
-    if (location.pathname === '/profile') return 'My Profile';
-    return 'Dashboard';
-  };
 
   const userMenuActions = [
     {
@@ -139,110 +121,39 @@ function TopBar({ sidebarWidth = 280, sidebarCollapsed = false, onToggleSidebar 
     <div
       className="top-bar"
       style={{ 
-        left: sidebarWidth,
-        right: 0,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '0 1.5rem',
-        overflow: 'hidden'
+        left: `${sidebarWidth}px`,
+        right: 0
       }}
     >
-      {/* Left Side: Toggle Button + Page Title */}
-      <InlineStack gap="300" align="center" blockAlign="center" style={{ flexShrink: 0, minWidth: 0 }}>
-        {/* Sidebar Toggle Button */}
-        <button
-          onClick={onToggleSidebar}
-          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          style={{
-            minWidth: '40px',
-            height: '40px',
-            borderRadius: '10px',
-            padding: '0',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: 'var(--bg-active)',
-            border: '1px solid var(--border-accent)',
-            cursor: 'pointer',
-            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-            position: 'relative',
-            overflow: 'hidden',
-            flexShrink: 0
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-            e.currentTarget.style.borderColor = 'var(--border-accent)';
-            e.currentTarget.style.transform = 'scale(1.05)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'var(--bg-active)';
-            e.currentTarget.style.borderColor = 'var(--border-accent)';
-            e.currentTarget.style.transform = 'scale(1)';
-          }}
-        >
-          <div style={{
-            position: 'relative',
-            width: '20px',
-            height: '20px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <div style={{
-              position: 'absolute',
-              width: '2px',
-              height: '12px',
-              backgroundColor: 'var(--accent-primary)',
-              borderRadius: '1px',
-              transform: sidebarCollapsed ? 'rotate(45deg) translateX(3px)' : 'rotate(-45deg) translateX(-3px)',
-              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
-            }} />
-            <div style={{
-              position: 'absolute',
-              width: '2px',
-              height: '12px',
-              backgroundColor: 'var(--accent-primary)',
-              borderRadius: '1px',
-              transform: sidebarCollapsed ? 'rotate(-45deg) translateX(-3px)' : 'rotate(45deg) translateX(3px)',
-              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
-            }} />
-          </div>
-        </button>
-
-        {/* Page Title Section */}
-        <div style={{ maxWidth: '600px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          <Text variant="headingMd" as="h1" fontWeight="semibold" tone="base">
-            {getPageTitle()}
-          </Text>
-        </div>
-      </InlineStack>
-      
       {/* Right Side: Notifications, Settings, User Menu */}
       <InlineStack gap="200" align="end" style={{ flexShrink: 0 }}>
         {/* Notifications */}
-        <Button
-          plain
+        <button
           onClick={() => {}}
-          accessibilityLabel="Notifications"
-          className="top-bar-button"
+          aria-label="Notifications"
+          className="top-bar-icon"
         >
-          <span style={{ fontSize: '1.25rem' }}>🔔</span>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
           <div className="notification-badge" />
-        </Button>
+        </button>
 
         {/* Settings Menu */}
         <Popover
           active={settingsMenuActive}
           activator={
-              <Button
-                plain
+              <button
                 onClick={toggleSettingsMenu}
-                accessibilityLabel="Settings"
-                className={`top-bar-button ${settingsMenuActive ? 'active' : ''}`}
+                aria-label="Settings"
+                className={`top-bar-icon ${settingsMenuActive ? 'active' : ''}`}
               >
-                <span style={{ fontSize: '1.25rem' }}>⚙️</span>
-              </Button>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
             }
             onClose={toggleSettingsMenu}
             preferredAlignment="right"
@@ -251,28 +162,20 @@ function TopBar({ sidebarWidth = 280, sidebarCollapsed = false, onToggleSidebar 
             <ActionList items={settingsMenuActions} />
           </Popover>
 
-        {/* User Menu */}
+        {/* User Menu - Icon Only */}
         <Popover
           active={userMenuActive}
           activator={
-              <Button
-                plain
+              <button
                 onClick={toggleUserMenu}
-                accessibilityLabel="User menu"
-                className={`top-bar-button ${userMenuActive ? 'active' : ''}`}
-                style={{ padding: '0.5rem 0.75rem', minWidth: 'fit-content' }}
+                aria-label="User menu"
+                className={`top-bar-icon ${userMenuActive ? 'active' : ''}`}
               >
-                <InlineStack gap="200" align="center">
-                  <Avatar
-                    name="User"
-                    size="small"
-                    initials="U"
-                  />
-                  <Text variant="bodyMd" fontWeight="medium" tone="base">
-                    User
-                  </Text>
-                </InlineStack>
-              </Button>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
             }
             onClose={toggleUserMenu}
             preferredAlignment="right"

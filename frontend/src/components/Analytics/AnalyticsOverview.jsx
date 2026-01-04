@@ -139,50 +139,148 @@ function AnalyticsOverview() {
     const totalConversions = test.variants?.reduce((sum, v) => sum + (v.conversions || 0), 0) || 0;
     const totalRevenue = test.variants?.reduce((sum, v) => sum + (v.revenue || 0), 0) || 0;
     const conversionRate = totalVisitors > 0 ? (totalConversions / totalVisitors * 100) : 0;
+    const variantCount = test.variants?.length || 0;
 
     return (
       <div 
         className="test-card-overview" 
+        data-status={test.status}
         onClick={handleCardClick}
         style={{ cursor: 'pointer' }}
       >
-        <BlockStack gap="200">
+        <BlockStack gap="400">
+          {/* Header Section */}
           <InlineStack align="space-between" blockAlign="start">
-            <BlockStack gap="100">
-              <InlineStack gap="200" align="center">
-                <div style={{ fontSize: '1.5rem' }}>
+            <BlockStack gap="200">
+              <InlineStack gap="300" align="center">
+                <div style={{ 
+                  fontSize: '1.75rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '48px',
+                  height: '48px',
+                  borderRadius: '10px',
+                  background: 'var(--bg-tertiary)',
+                  flexShrink: 0
+                }}>
                   {getTypeIcon(test.type)}
                 </div>
-                <Text variant="bodyMd" fontWeight="semibold" as="span">
-                  {test.name}
-                </Text>
-              </InlineStack>
-              <Text variant="bodySm" color="subdued" as="p">
-                {test.type} • Created {new Date(test.created_at).toLocaleDateString()}
-              </Text>
-              {/* Performance metrics */}
-              <InlineStack gap="400" blockAlign="center">
-                <Text variant="bodySm" color="subdued" as="span">
-                  👥 {totalVisitors.toLocaleString()} visitors
-                </Text>
-                <Text variant="bodySm" color="subdued" as="span">
-                  ✅ {totalConversions.toLocaleString()} conversions
-                </Text>
-                <Text variant="bodySm" color="subdued" as="span">
-                  📈 {conversionRate.toFixed(2)}%
-                </Text>
-                {totalRevenue > 0 && (
-                  <Text variant="bodySm" color="subdued" as="span">
-                    💰 ${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <BlockStack gap="100">
+                  <Text variant="bodyMd" fontWeight="semibold" as="span">
+                    {test.name}
                   </Text>
-                )}
+                  <Text variant="bodySm" color="subdued" as="p">
+                    {test.type} • {variantCount} variant{variantCount !== 1 ? 's' : ''} • Created {new Date(test.created_at).toLocaleDateString()}
+                  </Text>
+                </BlockStack>
               </InlineStack>
             </BlockStack>
-            <InlineStack gap="100">
+            <InlineStack gap="200" blockAlign="start">
               {getStatusBadge(test.status)}
               {getHealthBadge(test.health)}
             </InlineStack>
           </InlineStack>
+
+          {/* Performance Metrics - Always Show */}
+          <div style={{
+            padding: '1rem 1.25rem',
+            background: 'var(--bg-tertiary)',
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--border-secondary)'
+          }}>
+            {totalVisitors > 0 ? (
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                gap: '1.5rem',
+                alignItems: 'start'
+              }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <Text variant="bodySm" color="subdued" as="span">
+                    👥 Visitors
+                  </Text>
+                  <Text variant="bodyLg" fontWeight="semibold" as="span">
+                    {totalVisitors.toLocaleString()}
+                  </Text>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <Text variant="bodySm" color="subdued" as="span">
+                    ✅ Conversions
+                  </Text>
+                  <Text variant="bodyLg" fontWeight="semibold" as="span">
+                    {totalConversions.toLocaleString()}
+                  </Text>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <Text variant="bodySm" color="subdued" as="span">
+                    📈 Rate
+                  </Text>
+                  <Text variant="bodyLg" fontWeight="semibold" as="span" tone={conversionRate > 5 ? 'success' : conversionRate > 2 ? 'base' : 'subdued'}>
+                    {conversionRate.toFixed(2)}%
+                  </Text>
+                </div>
+                {totalRevenue > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <Text variant="bodySm" color="subdued" as="span">
+                      💰 Revenue
+                    </Text>
+                    <Text variant="bodyLg" fontWeight="semibold" as="span" tone="success">
+                      ${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </Text>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                gap: '1.5rem',
+                alignItems: 'start'
+              }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <Text variant="bodySm" color="subdued" as="span">
+                    👥 Visitors
+                  </Text>
+                  <Text variant="bodyLg" fontWeight="semibold" as="span">
+                    0
+                  </Text>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <Text variant="bodySm" color="subdued" as="span">
+                    ✅ Conversions
+                  </Text>
+                  <Text variant="bodyLg" fontWeight="semibold" as="span">
+                    0
+                  </Text>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <Text variant="bodySm" color="subdued" as="span">
+                    📈 Rate
+                  </Text>
+                  <Text variant="bodyLg" fontWeight="semibold" as="span" color="subdued">
+                    0.00%
+                  </Text>
+                </div>
+                {test.status === 'running' && (
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                    padding: '0.75rem',
+                    background: 'var(--bg-secondary)',
+                    borderRadius: 'var(--radius-sm)',
+                    gridColumn: 'span 1'
+                  }}>
+                    <Text variant="bodySm" color="subdued" as="span">
+                      ⏳ Waiting for traffic...
+                    </Text>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </BlockStack>
       </div>
     );
@@ -332,7 +430,7 @@ function AnalyticsOverview() {
                   <p>Start optimizing your store by creating an AB test. Test prices, content, shipping, and more to maximize conversions.</p>
                 </EmptyState>
               ) : (
-                <BlockStack gap="300">
+                <BlockStack gap="500">
                   {paginatedTests.map((test) => (
                     <TestCard key={test.id} test={test} />
                   ))}
