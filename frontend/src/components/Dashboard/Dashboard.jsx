@@ -148,32 +148,115 @@ function Dashboard() {
       navigate(`/tests/${test.id}`);
     };
 
+    // Calculate performance metrics
+    const totalVisitors = test.variants?.reduce((sum, v) => sum + (v.visitors || 0), 0) || 0;
+    const totalConversions = test.variants?.reduce((sum, v) => sum + (v.conversions || 0), 0) || 0;
+    const totalRevenue = test.variants?.reduce((sum, v) => sum + (v.revenue || 0), 0) || 0;
+    const conversionRate = totalVisitors > 0 ? (totalConversions / totalVisitors * 100) : 0;
+    const variantCount = test.variants?.length || 0;
+
     return (
       <div 
         className="test-card-overview" 
+        data-status={test.status}
         onClick={handleCardClick}
         style={{ cursor: 'pointer' }}
       >
-        <BlockStack gap="200">
+        <BlockStack gap="300">
+          {/* Header Section */}
           <InlineStack align="space-between" blockAlign="start">
-            <BlockStack gap="100">
+            <BlockStack gap="150">
               <InlineStack gap="200" align="center">
-                <div style={{ fontSize: '1.5rem' }}>
+                <div style={{ 
+                  fontSize: '1.75rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '8px',
+                  background: 'var(--bg-tertiary)',
+                  flexShrink: 0
+                }}>
                   {getTypeIcon(test.type)}
                 </div>
-                <Text variant="bodyMd" fontWeight="semibold" as="span">
-                  {test.name}
-                </Text>
+                <BlockStack gap="050">
+                  <Text variant="bodyMd" fontWeight="semibold" as="span">
+                    {test.name}
+                  </Text>
+                  <Text variant="bodySm" color="subdued" as="p">
+                    {test.type} • {variantCount} variant{variantCount !== 1 ? 's' : ''} • Created {new Date(test.created_at).toLocaleDateString()}
+                  </Text>
+                </BlockStack>
               </InlineStack>
-              <Text variant="bodySm" color="subdued" as="p">
-                {test.type} • Created {new Date(test.created_at).toLocaleDateString()}
-              </Text>
             </BlockStack>
-            <InlineStack gap="100">
+            <InlineStack gap="100" blockAlign="start">
               {getStatusBadge(test.status)}
               {getHealthBadge(test.health)}
             </InlineStack>
           </InlineStack>
+
+          {/* Performance Metrics */}
+          {totalVisitors > 0 && (
+            <div style={{
+              padding: '0.75rem',
+              background: 'var(--bg-tertiary)',
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--border-secondary)'
+            }}>
+              <InlineStack gap="400" align="start" blockAlign="center" wrap>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <Text variant="bodySm" color="subdued" as="span">
+                    Visitors
+                  </Text>
+                  <Text variant="bodyMd" fontWeight="semibold" as="span">
+                    {totalVisitors.toLocaleString()}
+                  </Text>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <Text variant="bodySm" color="subdued" as="span">
+                    Conversions
+                  </Text>
+                  <Text variant="bodyMd" fontWeight="semibold" as="span">
+                    {totalConversions.toLocaleString()}
+                  </Text>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <Text variant="bodySm" color="subdued" as="span">
+                    Rate
+                  </Text>
+                  <Text variant="bodyMd" fontWeight="semibold" as="span" tone={conversionRate > 5 ? 'success' : conversionRate > 2 ? 'base' : 'subdued'}>
+                    {conversionRate.toFixed(2)}%
+                  </Text>
+                </div>
+                {totalRevenue > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <Text variant="bodySm" color="subdued" as="span">
+                      Revenue
+                    </Text>
+                    <Text variant="bodyMd" fontWeight="semibold" as="span" tone="success">
+                      ${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </Text>
+                  </div>
+                )}
+              </InlineStack>
+            </div>
+          )}
+
+          {/* Empty State for Tests Without Data */}
+          {totalVisitors === 0 && test.status === 'running' && (
+            <div style={{
+              padding: '0.75rem',
+              background: 'var(--bg-tertiary)',
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--border-secondary)',
+              textAlign: 'center'
+            }}>
+              <Text variant="bodySm" color="subdued" as="p">
+                Waiting for traffic...
+              </Text>
+            </div>
+          )}
         </BlockStack>
       </div>
     );
@@ -307,7 +390,7 @@ function Dashboard() {
                   <p>Start optimizing your store by creating an AB test. Test prices, content, shipping, and more to maximize conversions.</p>
                 </EmptyState>
               ) : (
-                <BlockStack gap="300">
+                <BlockStack gap="400">
                   {paginatedTests.map((test) => (
                     <TestCard key={test.id} test={test} />
                   ))}

@@ -317,5 +317,143 @@ router.post('/:id/clone', async (req, res, next) => {
   }
 });
 
+/**
+ * PUT /api/tests/:id/variants/allocation
+ * Update traffic allocation for variants
+ */
+router.put('/:id/variants/allocation', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const shopDomain = req.shopDomain;
+    const { variants } = req.body;
+
+    if (!variants || !Array.isArray(variants)) {
+      return sendValidationError(res, ['Variants array is required']);
+    }
+
+    // Get existing test
+    const existingTest = await getTestById(id, shopDomain);
+    if (!existingTest) {
+      return sendNotFound(res, 'Test');
+    }
+
+    // Update allocation for each variant
+    const updatedVariants = existingTest.variants.map((existingVariant, index) => {
+      // Try to find matching update by id, name, or index
+      const update = variants.find((v, updateIndex) => {
+        // Match by id if both have it
+        if (v.id && existingVariant.id) {
+          return v.id === existingVariant.id;
+        }
+        // Match by name if both have it
+        if (v.name && existingVariant.name) {
+          return v.name === existingVariant.name;
+        }
+        // Match by index as fallback
+        return updateIndex === index;
+      });
+      
+      if (update && update.allocation !== undefined) {
+        return {
+          ...existingVariant,
+          allocation: update.allocation
+        };
+      }
+      return existingVariant;
+    });
+
+    // Validate total allocation
+    const totalAllocation = updatedVariants.reduce((sum, v) => sum + (v.allocation || 0), 0);
+    if (Math.abs(totalAllocation - 100) > 0.01) {
+      return sendValidationError(res, [`Total allocation must equal 100%. Current: ${totalAllocation}%`]);
+    }
+
+    // Update test with new variants
+    const test = await updateTest(id, shopDomain, { variants: updatedVariants });
+
+    if (!test) {
+      return sendNotFound(res, 'Test');
+    }
+
+    logger.info('Traffic allocation updated', { testId: id, shopDomain });
+
+    return sendSuccess(
+      res,
+      HTTP_STATUS.OK,
+      { test },
+      'Traffic allocation updated successfully'
+    );
+  } catch (error) {
+    logger.error('Error updating traffic allocation', { testId: id, error: error.message });
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/tests/:id/variants/codes
+ * Update variant codes
+ */
+router.put('/:id/variants/codes', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const shopDomain = req.shopDomain;
+    const { variants } = req.body;
+
+    if (!variants || !Array.isArray(variants)) {
+      return sendValidationError(res, ['Variants array is required']);
+    }
+
+    // Get existing test
+    const existingTest = await getTestById(id, shopDomain);
+    if (!existingTest) {
+      return sendNotFound(res, 'Test');
+    }
+
+    // Update code for each variant
+    const updatedVariants = existingTest.variants.map((existingVariant, index) => {
+      // Try to find matching update by id, name, or index
+      const update = variants.find((v, updateIndex) => {
+        // Match by id if both have it
+        if (v.id && existingVariant.id) {
+          return v.id === existingVariant.id;
+        }
+        // Match by name if both have it
+        if (v.name && existingVariant.name) {
+          return v.name === existingVariant.name;
+        }
+        // Match by index as fallback
+        return updateIndex === index;
+      });
+      
+      if (update && update.code !== undefined) {
+        return {
+          ...existingVariant,
+          code: update.code
+        };
+      }
+      return existingVariant;
+    });
+
+    // Update test with new variants
+    const test = await updateTest(id, shopDomain, { variants: updatedVariants });
+
+    if (!test) {
+      return sendNotFound(res, 'Test');
+    }
+
+    logger.info('Variant codes updated', { testId: id, shopDomain });
+
+    return sendSuccess(
+      res,
+      HTTP_STATUS.OK,
+      { test },
+      'Variant codes updated successfully'
+    );
+  } catch (error) {
+    logger.error('Error updating variant codes', { testId: id, error: error.message });
+    next(error);
+  }
+});
+
 module.exports = router;
 

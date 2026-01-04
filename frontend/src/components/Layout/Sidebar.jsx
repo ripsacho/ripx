@@ -20,9 +20,10 @@ const navigationItems = [
   { path: '/settings', label: 'Settings', icon: '⚙️', color: '#637381' }
 ];
 
-function Sidebar({ collapsed = false }) {
+function Sidebar({ collapsed = false, onToggleSidebar }) {
   const [showLogo, setShowLogo] = useState(true);
   const [showIcon, setShowIcon] = useState(true);
+  const [showCollapseButton, setShowCollapseButton] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -64,85 +65,144 @@ function Sidebar({ collapsed = false }) {
   return (
     <div className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
       {/* Logo/Brand Section */}
-      <div className="sidebar-header">
+      <div 
+        className="sidebar-header"
+        onMouseEnter={() => collapsed && setShowCollapseButton(true)}
+        onMouseLeave={() => collapsed && setShowCollapseButton(false)}
+      >
         {!collapsed ? (
-          <div 
-            onClick={() => navigate('/')}
-            style={{
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem'
-            }}
-          >
-            {showLogo && (
-              <img 
-                src="/RipsX.png" 
-                alt="RipX Logo" 
-                style={{
-                  height: '40px',
-                  width: 'auto',
-                  objectFit: 'contain',
-                  flexShrink: 0
-                }}
-                onError={(e) => {
-                  // Try SVG fallback
-                  if (e.target.src !== '/logo.svg') {
-                    e.target.src = '/logo.svg';
-                  } else {
-                    // Hide image on error, show text fallback
-                    setShowLogo(false);
-                    e.target.style.display = 'none';
-                  }
-                }}
-              />
-            )}
-            <div>
-              <Text variant="headingLg" as="h2" fontWeight="bold" tone="base">
-                RipX
-              </Text>
-              <Text variant="bodySm" as="p" tone="subdued">
-                AB Testing Platform
-              </Text>
-            </div>
-          </div>
-        ) : (
-          <div 
-            onClick={() => navigate('/')}
-            style={{
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '100%'
-            }}
-          >
-            {showIcon && (
-              <img 
-                src="/icon.svg" 
-                alt="RipX Icon" 
-                style={{
-                  height: '32px',
-                  width: '32px',
-                  objectFit: 'contain'
-                }}
-                onError={(e) => {
-                  // Hide image on error, show text fallback
-                  setShowIcon(false);
-                  e.target.style.display = 'none';
-                }}
-              />
-            )}
-            {!showIcon && (
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center' 
-              }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            width: '100%',
+            gap: '0.75rem'
+          }}>
+            <div 
+              onClick={() => navigate('/')}
+              style={{
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+                flex: 1,
+                minWidth: 0
+              }}
+            >
+              {showLogo && (
+                <img 
+                  src="/RipsX.png" 
+                  alt="RipX Logo" 
+                  style={{
+                    height: '40px',
+                    width: 'auto',
+                    objectFit: 'contain',
+                    flexShrink: 0
+                  }}
+                  onError={(e) => {
+                    // Try SVG fallback
+                    if (e.target.src !== '/logo.svg') {
+                      e.target.src = '/logo.svg';
+                    } else {
+                      // Hide image on error, show text fallback
+                      setShowLogo(false);
+                      e.target.style.display = 'none';
+                    }
+                  }}
+                />
+              )}
+              <div>
                 <Text variant="headingLg" as="h2" fontWeight="bold" tone="base">
-                  R
+                  RipX
+                </Text>
+                <Text variant="bodySm" as="p" tone="subdued">
+                  AB Testing Platform
                 </Text>
               </div>
+            </div>
+            {/* Collapse Button - Visible when expanded */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleSidebar && onToggleSidebar();
+              }}
+              className="sidebar-collapse-button"
+              aria-label="Collapse sidebar"
+              title="Collapse sidebar"
+            >
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M11 6L7 9L11 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="9" cy="9" r="8" stroke="currentColor" strokeWidth="1.5" fill="none" opacity="0.2"/>
+              </svg>
+            </button>
+          </div>
+        ) : (
+          <div style={{
+            position: 'relative',
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: '48px'
+          }}>
+            {/* Icon - Hidden when collapse button is shown */}
+            <div 
+              onClick={() => navigate('/')}
+              style={{
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '100%',
+                position: 'relative',
+                opacity: showCollapseButton ? 0 : 1,
+                transition: 'opacity 0.2s ease'
+              }}
+            >
+              {showIcon && (
+                <img 
+                  src="/icon.svg" 
+                  alt="RipX Icon" 
+                  style={{
+                    height: '32px',
+                    width: '32px',
+                    objectFit: 'contain'
+                  }}
+                  onError={(e) => {
+                    // Hide image on error, show text fallback
+                    setShowIcon(false);
+                    e.target.style.display = 'none';
+                  }}
+                />
+              )}
+              {!showIcon && (
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center' 
+                }}>
+                  <Text variant="headingLg" as="h2" fontWeight="bold" tone="base">
+                    R
+                  </Text>
+                </div>
+              )}
+            </div>
+            {/* Collapse Button - Shown on hover when collapsed */}
+            {showCollapseButton && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleSidebar && onToggleSidebar();
+                }}
+                className="sidebar-collapse-button sidebar-collapse-button-hover"
+                aria-label="Expand sidebar"
+                title="Expand sidebar"
+              >
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M7 6L11 10L7 14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  <circle cx="10" cy="10" r="9" stroke="currentColor" strokeWidth="1.5" fill="none" opacity="0.3"/>
+                </svg>
+              </button>
             )}
           </div>
         )}
