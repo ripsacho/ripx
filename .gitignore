@@ -79,6 +79,10 @@ frontend/build/
 docs/presentation/*.html
 docs/presentation/*.pdf
 
+# Docs folder (not needed for live) - keep only docs/README.md for local setup
+docs/*
+!docs/README.md
+
 # Cache
 .cache/
 .parcel-cache/

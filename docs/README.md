@@ -1,82 +1,53 @@
-# RipX Documentation
+# RipX – Local Setup & Connection
 
-Central documentation for the RipX AB Testing Platform. All project docs are organized here.
+Use this guide to connect and run RipX locally.
 
-> **In-app docs**: Open **/docs** in the RipX app for a visual, interactive documentation UI with search, quick jump, and reading progress.
+## Connect Locally
 
----
+### 1. Install Dependencies
 
-## Quick Links
+```bash
+npm install
+cd frontend && npm install && cd ..
+```
 
-| Topic | Document |
-|-------|----------|
-| **Complete Documentation** | [DOCUMENTATION.md](./DOCUMENTATION.md) — Full feature reference (also in-app at /docs) |
-| **Integrations** | [INTEGRATIONS.md](./INTEGRATIONS.md) — GA4, BigQuery, heatmap, funnel |
-| **Settings Guide** | [guides/SETTINGS_GUIDE.md](./guides/SETTINGS_GUIDE.md) — Installation, presets, integrations |
-| **Quick Start** | [getting-started/QUICK_START.md](./getting-started/QUICK_START.md) |
-| **Future Steps** | [FUTURE_STEPS.md](./FUTURE_STEPS.md) — Placeholders, commands, next work |
-| **Development Guide** | [development/DEVELOPMENT_GUIDE.md](./development/DEVELOPMENT_GUIDE.md) |
-| **Code Standards** | [development/CODE_STANDARDS.md](./development/CODE_STANDARDS.md) |
-| **Deployment** | [deployment/DEPLOYMENT.md](./deployment/DEPLOYMENT.md) |
-| **API Reference** | [architecture/API_DOCUMENTATION.md](./architecture/API_DOCUMENTATION.md) |
+### 2. Environment
 
----
+```bash
+cp .env.example .env
+```
 
-## Getting Started
+Edit `.env`:
 
-- [Quick Start](./getting-started/QUICK_START.md) — Get running in 15 minutes
-- [Environment Setup](./getting-started/ENV_SETUP_GUIDE.md) — Configure `.env`
-- [Database Migrations](./getting-started/DATABASE_MIGRATIONS.md) — Schema and migrations
-- [Detailed Setup](./getting-started/DETAILED_SETUP_GUIDE.md) — Full setup walkthrough
-- [Implementation Guide](./getting-started/IMPLEMENTATION_GUIDE.md) — Step-by-step implementation
+- `DATABASE_URL` – PostgreSQL (e.g. `postgresql://ripx:ripx@localhost:5432/ripx_dev`)
+- `JWT_SECRET` – `openssl rand -hex 32`
+- `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET` – from Shopify Partner Dashboard
+- `APP_URL` – `http://localhost:3000`
 
----
+### 3. Database
 
-## Architecture
+```bash
+npm run dev:db    # Postgres + Redis via Docker
+npm run migrate   # Run migrations
+```
 
-- [Architecture Overview](./architecture/ARCHITECTURE.md) — System design
-- [Data Flow & Caching](./architecture/DATA_FLOW_AND_CACHING.md) — Test data flow, variant display, React Query
-- [Multi-Platform](./architecture/MULTI_PLATFORM.md) — Shopify + standalone sites
-- [API Documentation](./architecture/API_DOCUMENTATION.md) — REST API reference
-- [Structure Analysis](./architecture/STRUCTURE_ANALYSIS.md) — Codebase structure
+### 4. Start Dev Servers
 
----
+```bash
+npm run dev
+```
 
-## Development
+- Backend: http://localhost:3000
+- Frontend: http://localhost:5173
 
-- [Development Guide](./development/DEVELOPMENT_GUIDE.md) — Best practices and workflow
-- [Code Standards](./development/CODE_STANDARDS.md) — Coding conventions
-- [Hooks Guide](./development/HOOKS_GUIDE.md) — React hooks usage
-- [Project Structure Assessment](./development/PROJECT_STRUCTURE_ASSESSMENT.md) — Audit and improvements
+### 5. Shopify (optional)
 
----
+```bash
+shopify app dev
+```
 
-## Features
+## Check It Works
 
-- [Implementation Status](./features/IMPLEMENTATION_STATUS.md) — What's built, what's not
-- [Features Overview](./features/FEATURES.md) — Feature list
-- [Roadmap](./features/ROADMAP.md) — Planned features
-- [Gap Analysis](./features/GAP_ANALYSIS_AND_NEW_OPPORTUNITIES.md) — Gaps and opportunities
-
----
-
-## Deployment
-
-- [Deployment Guide](./deployment/DEPLOYMENT.md) — Production deployment
-- [Production Readiness](./deployment/PRODUCTION_READINESS_REPORT.md) — Readiness checklist
-
----
-
-## Guides
-
-- [Project Organization](./guides/PROJECT_ORGANIZATION.md) — Codebase structure, constants, patterns
-- [Settings Guide](./guides/SETTINGS_GUIDE.md) — Installation, presets, integrations, appearance, targeting
-- [Branding](./guides/BRANDING.md) — Brand guidelines
-- [Git Setup](./guides/GIT_SETUP.md) — Git configuration
-- [Icons Usage](./guides/ICONS_USAGE.md) — Icon assets
-
----
-
-## Archive
-
-Historical and superseded docs are in [archive/](./archive/README.md).
+- Backend health: `curl http://localhost:3000/health`
+- Frontend: open http://localhost:5173
+- API docs: http://localhost:3000/api-docs
