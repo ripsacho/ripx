@@ -116,7 +116,9 @@ function validateEnvironment() {
 
   const jwtSecret = process.env.JWT_SECRET || '';
   if (jwtSecret.length < 32 || jwtSecret === 'your_jwt_secret_here') {
-    logger.warn('JWT_SECRET is weak or default. Use a strong random string (32+ chars) in production.');
+    logger.warn(
+      'JWT_SECRET is weak or default. Use a strong random string (32+ chars) in production.'
+    );
   }
 
   if (process.env.NODE_ENV === 'production') {
@@ -295,7 +297,8 @@ const healthHandler = async (req, res) => {
       redisStatus = 'error';
     }
   }
-  const overall = dbStatus === 'ok' && (redisStatus === 'skipped' || redisStatus === 'ok') ? 'ok' : 'degraded';
+  const overall =
+    dbStatus === 'ok' && (redisStatus === 'skipped' || redisStatus === 'ok') ? 'ok' : 'degraded';
   res.json({
     status: overall,
     version: APP_VERSION,
@@ -333,6 +336,17 @@ app.use('/api', (req, res) => {
     path: req.originalUrl,
   });
 });
+
+// Production: serve frontend static files (SPA)
+if (process.env.NODE_ENV === 'production') {
+  const path = require('path');
+  const frontendDist = path.join(__dirname, '../../frontend/dist');
+  app.use(express.static(frontendDist));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) {return next();}
+    res.sendFile(path.join(frontendDist, 'index.html'));
+  });
+}
 
 // Error handling middleware (must be last)
 app.use(errorHandler);

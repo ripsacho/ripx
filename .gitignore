@@ -75,13 +75,8 @@ frontend/build/
 *.min.js
 *.min.css
 
-# Generated docs/presentation (from npm run presentation)
-docs/presentation/*.html
-docs/presentation/*.pdf
-
-# Docs folder (not needed for live) - keep only docs/README.md for local setup
-docs/*
-!docs/README.md
+# Docs folder (not needed for live) - only root README.md in live
+docs/
 
 # Cache
 .cache/
