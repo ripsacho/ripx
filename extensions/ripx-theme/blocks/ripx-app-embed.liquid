@@ -1,0 +1,17 @@
+{% comment %}
+  RipX App Embed
+  Loads the storefront script via Shopify App Proxy.
+{% endcomment %}
+
+<script
+  src="https://{{ request.host }}/apps/ripx/script.js?v=1"
+  defer
+></script>
+
+{% schema %}
+{
+  "name": "RipX App Embed",
+  "target": "body",
+  "settings": []
+}
+{% endschema %}

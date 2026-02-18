@@ -32,6 +32,23 @@ class Validators {
   }
 
   /**
+   * Validate standalone website domain (e.g. example.com, www.example.com)
+   *
+   * @param {string} domain - Domain to validate
+   * @returns {boolean} Is valid
+   */
+  isValidDomain(domain) {
+    if (!domain || typeof domain !== 'string') {
+      return false;
+    }
+    const trimmed = domain.trim().replace(/^https?:\/\//, '').split('/')[0];
+    if (!trimmed || trimmed.length > 253) {
+      return false;
+    }
+    return /^[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}$/.test(trimmed);
+  }
+
+  /**
    * Validate Shopify shop domain
    *
    * @param {string} shopDomain - Shop domain
@@ -59,7 +76,8 @@ class Validators {
    * @returns {boolean} Is valid
    */
   isValidPercentage(percentage) {
-    return typeof percentage === 'number' && percentage >= 0 && percentage <= 100;
+    const n = Number(percentage);
+    return Number.isFinite(n) && n >= 0 && n <= 100;
   }
 
   /**
@@ -80,7 +98,9 @@ class Validators {
    * @returns {string} Sanitized string
    */
   sanitizeString(input) {
-    if (typeof input !== 'string') {return '';}
+    if (typeof input !== 'string') {
+      return '';
+    }
     return input.trim().replace(/[<>]/g, '');
   }
 
@@ -111,13 +131,16 @@ class Validators {
     }
 
     if (config.variants) {
-      const totalAllocation = config.variants.reduce((sum, v) => sum + (v.allocation || 0), 0);
+      const totalAllocation = config.variants.reduce(
+        (sum, v) => sum + (Number(v.allocation) || 0),
+        0
+      );
       if (Math.abs(totalAllocation - 100) > 0.01) {
         errors.push('Variant allocations must sum to 100%');
       }
 
       config.variants.forEach((variant, index) => {
-        if (!variant.name) {
+        if (!variant.name || String(variant.name).trim().length === 0) {
           errors.push(`Variant ${index + 1} must have a name`);
         }
         if (!this.isValidPercentage(variant.allocation)) {
@@ -128,10 +151,9 @@ class Validators {
 
     return {
       isValid: errors.length === 0,
-      errors
+      errors,
     };
   }
 }
 
 module.exports = new Validators();
-

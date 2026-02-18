@@ -1,0 +1,31 @@
+.notFound {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 2rem;
+}
+
+.notFoundContent {
+  text-align: center;
+  max-width: 420px;
+}
+
+.notFoundCode {
+  font-size: 4rem;
+  font-weight: 800;
+  line-height: 1;
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 1rem;
+}
+
+.notFoundContent h1 {
+  margin: 0 0 0.5rem;
+}
+
+.notFoundContent p {
+  margin: 0 0 1.5rem;
+}

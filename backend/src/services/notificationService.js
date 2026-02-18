@@ -21,7 +21,7 @@ class NotificationService {
       ? analytics.variants.find(v => v.id === analytics.significance.winner)?.name
       : 'No clear winner';
 
-    const body = `
+    const _body = `
       Your AB test "${test.name}" has completed.
 
       Results:
@@ -33,7 +33,8 @@ class NotificationService {
       View full results: ${process.env.APP_URL}/tests/${test.id}/analytics
     `;
 
-    console.log('Email notification:', { to: recipientEmail, subject, body });
+    const logger = require('../utils/logger');
+    logger.info('Email notification', { to: recipientEmail, subject });
 
     // In production:
     // await emailService.send({
@@ -57,7 +58,7 @@ class NotificationService {
     }
 
     const subject = `AB Test Reached Significance: ${test.name}`;
-    const body = `
+    const _body = `
       Your AB test "${test.name}" has reached statistical significance!
 
       Winner: ${analytics.significance.winner}
@@ -67,7 +68,8 @@ class NotificationService {
       View results: ${process.env.APP_URL}/tests/${test.id}/analytics
     `;
 
-    console.log('Significance notification:', { to: recipientEmail, subject, body });
+    const logger = require('../utils/logger');
+    logger.info('Significance notification', { to: recipientEmail, subject });
   }
 
   /**
@@ -93,10 +95,9 @@ class NotificationService {
       notification.type,
       notification.title,
       notification.message,
-      JSON.stringify(notification.data || {})
+      JSON.stringify(notification.data || {}),
     ]);
   }
 }
 
 module.exports = new NotificationService();
-

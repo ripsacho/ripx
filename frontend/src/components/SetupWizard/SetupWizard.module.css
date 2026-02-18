@@ -1,0 +1,328 @@
+/* Page layout - matches Settings/Profile */
+.setupPage {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 120px);
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  margin-bottom: -32px;
+  padding: 0 32px 32px;
+  position: relative;
+}
+
+.setupLayout {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: none;
+}
+
+.setupBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-top: 0.5rem;
+  margin-top: 0.25rem;
+  position: relative;
+  width: 100%;
+  max-width: none;
+}
+
+.setupBody::-webkit-scrollbar {
+  width: 8px;
+}
+
+.setupBody::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+}
+
+.setupBody::-webkit-scrollbar-thumb {
+  background: rgba(6, 182, 212, 0.3);
+  border-radius: 4px;
+}
+
+.setupBody::-webkit-scrollbar-thumb:hover {
+  background: rgba(6, 182, 212, 0.5);
+}
+
+.setupPage :global(.Polaris-Page),
+.setupPage :global(.Polaris-Page__Content),
+.setupPage :global(.Polaris-Page__Content) > *,
+.setupPage :global(.Polaris-BlockStack),
+.setupPage :global(.Polaris-Box),
+.setupPage :global(.Polaris-Card) {
+  max-width: none !important;
+  width: 100% !important;
+}
+
+.setupPage :global(.Polaris-Page),
+.setupPage :global(.Polaris-Page__Content) {
+  padding: 0 !important;
+}
+
+/* Mesh gradient background */
+.setupPage::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse 70% 40% at 20% 0%, rgba(6, 182, 212, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse 50% 30% at 90% 20%, rgba(139, 92, 246, 0.05) 0%, transparent 50%),
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(6, 182, 212, 0.05) 0%, transparent 60%);
+}
+
+[data-theme='dark'] .setupPage::before {
+  background:
+    radial-gradient(ellipse 70% 40% at 20% 0%, rgba(6, 182, 212, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse 50% 30% at 90% 20%, rgba(139, 92, 246, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(6, 182, 212, 0.04) 0%, transparent 60%);
+}
+
+/* Hero - premium (matches Settings/Profile) */
+.setupHero {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin: -0.5rem 0 1.75rem;
+  padding: 2rem 2.25rem;
+  background: linear-gradient(
+    165deg,
+    rgba(6, 182, 212, 0.1) 0%,
+    rgba(139, 92, 246, 0.06) 50%,
+    rgba(6, 182, 212, 0.05) 100%
+  );
+  border: 1px solid rgba(6, 182, 212, 0.18);
+  border-radius: 20px;
+  box-shadow: 0 8px 32px rgba(6, 182, 212, 0.06), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+  position: relative;
+  overflow: hidden;
+}
+
+.setupHero::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, transparent, var(--futuristic-cyan), var(--futuristic-violet), transparent);
+  opacity: 0.9;
+}
+
+.setupHeroIcon {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.25), rgba(139, 92, 246, 0.15));
+  color: var(--accent-primary);
+  flex-shrink: 0;
+  box-shadow: 0 4px 16px rgba(6, 182, 212, 0.2);
+}
+
+.setupHeroIcon svg {
+  width: 28px;
+  height: 28px;
+}
+
+.setupHeroTitle {
+  margin: 0;
+  font-size: 1.625rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: var(--text-primary);
+}
+
+.setupHeroSubtitle {
+  margin: 0.4rem 0 0;
+  font-size: 0.9375rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+[data-theme='dark'] .setupHero {
+  background: linear-gradient(
+    165deg,
+    rgba(6, 182, 212, 0.08) 0%,
+    rgba(139, 92, 246, 0.05) 50%,
+    rgba(6, 182, 212, 0.04) 100%
+  );
+  border-color: rgba(6, 182, 212, 0.22);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.heroCard {
+  position: relative;
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(6, 182, 212, 0.06) 50%, rgba(139, 92, 246, 0.03) 100%);
+  border: 1px solid rgba(6, 182, 212, 0.22);
+  box-shadow: 0 8px 24px rgba(6, 182, 212, 0.08);
+}
+
+.heroCard::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  border-radius: 12px 12px 0 0;
+  background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
+}
+
+.heroBadge {
+  align-self: flex-start;
+}
+
+.statusCard {
+  border: 1px solid rgba(98, 108, 116, 0.2);
+  background: #ffffff;
+}
+
+.statusBadges {
+  padding: 8px 0;
+}
+
+.stepsCard {
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.95) 50%, rgba(6, 182, 212, 0.04) 100%);
+  border: 1px solid rgba(6, 182, 212, 0.18);
+}
+
+.stepsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.stepIcon {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(6, 182, 212, 0.14);
+  font-size: 16px;
+  color: var(--futuristic-cyan);
+}
+
+.stepIcon svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+.stepNumber {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--futuristic-cyan);
+  background: #ffffff;
+  border: 1px solid rgba(6, 182, 212, 0.4);
+  padding: 0 4px;
+}
+
+.stepHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.stepTitleGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+@media (max-width: 520px) {
+  .stepHeader {
+    align-items: flex-start;
+  }
+}
+
+.railCard {
+  position: sticky;
+  top: 16px;
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.95) 100%);
+  box-shadow: 0 8px 24px rgba(6, 182, 212, 0.08);
+}
+
+.railList {
+  display: grid;
+  gap: 12px;
+}
+
+.railItem {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+.railDot {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--futuristic-cyan);
+  background: rgba(6, 182, 212, 0.12);
+  border: 1px solid rgba(6, 182, 212, 0.28);
+}
+
+.stepCard {
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  box-shadow: 0 6px 18px rgba(6, 182, 212, 0.08);
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.stepCard:hover {
+  transform: translateY(-2px);
+  border-color: rgba(6, 182, 212, 0.35);
+  box-shadow: 0 12px 24px rgba(6, 182, 212, 0.12);
+}
+
+@media (max-width: 840px) {
+  .stepsGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Standalone setup - snippet block */
+.snippetBlock {
+  padding: 12px 16px;
+  background: var(--bg-tertiary);
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  border-radius: 8px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8125rem;
+  word-break: break-all;
+}
+
+.snippetCode {
+  color: var(--text-primary);
+}
+

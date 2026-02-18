@@ -1,64 +1,122 @@
 /**
  * Top Bar Component
- * 
- * Premium top navigation bar with user menu and settings
+ *
+ * Premium top navigation bar matching site UI - gradient accent, breadcrumb, action group
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import {
-  InlineStack,
-  Popover,
-  ActionList
-} from '@shopify/polaris';
+import React, { useState, useCallback, useMemo } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { InlineStack, Popover, ActionList, Text, BlockStack, Button, Icon } from '@shopify/polaris';
+import { NotificationIcon, SettingsIcon, ProfileIcon } from '@shopify/polaris-icons';
+import { getShopDomain, apiGet, apiPut } from '../../services';
+import { ROUTES } from '../../constants';
+import StoreSwitcher from '../StoreSwitcher/StoreSwitcher';
+import styles from './TopBar.module.css';
 
-function TopBar({ sidebarWidth = 280, sidebarCollapsed = false }) {
+const ROUTE_LABELS = {
+  [ROUTES.DASHBOARD]: 'Dashboard',
+  [ROUTES.TESTS]: 'Tests',
+  [ROUTES.CREATE_TEST]: 'Create Test',
+  [ROUTES.ANALYTICS]: 'Analytics',
+  [ROUTES.SETTINGS]: 'Settings',
+  [ROUTES.SETUP]: 'Setup',
+  [ROUTES.PROFILE]: 'Profile',
+  [ROUTES.DOCS]: 'Documentation',
+  '/tests/new': 'Create Test',
+};
+
+function getBreadcrumb(pathname, search = '') {
+  const view = new URLSearchParams(search).get('view');
+  if (pathname === ROUTES.DASHBOARD) return { current: 'Dashboard' };
+  if (pathname === ROUTES.TESTS) {
+    return view === 'personalization'
+      ? { parent: 'Tests', current: 'Personalization' }
+      : { parent: 'Tests', current: 'All Tests' };
+  }
+  if (pathname.startsWith('/tests/') && pathname.includes('/analytics')) {
+    return { parent: 'Tests', current: 'Analytics' };
+  }
+  if (pathname.startsWith('/tests/') && !pathname.includes('/analytics') && pathname !== '/tests/new') {
+    const testId = pathname.split('/')[2];
+    return { parent: 'Tests', current: testId ? 'Test Details' : 'Tests' };
+  }
+  if (pathname === ROUTES.CREATE_TEST) return { parent: 'Tests', current: 'Create Test' };
+  if (pathname === ROUTES.ANALYTICS) return { current: 'Analytics' };
+  if (pathname === ROUTES.SETTINGS) return { current: 'Settings' };
+  if (pathname === ROUTES.SETUP) return { current: 'Setup Wizard' };
+  if (pathname === ROUTES.PROFILE) return { current: 'Profile' };
+  if (pathname === ROUTES.DOCS) return { current: 'Documentation' };
+  if (pathname === ROUTES.CONNECT) return { current: 'Connect' };
+  // Unknown route (e.g. 404)
+  const knownPaths = [ROUTES.DASHBOARD, ROUTES.TESTS, ROUTES.CREATE_TEST, ROUTES.ANALYTICS, ROUTES.SETTINGS, ROUTES.SETUP, ROUTES.PROFILE, ROUTES.DOCS, ROUTES.CONNECT];
+  const isKnown = knownPaths.includes(pathname) || pathname.startsWith('/tests/');
+  if (!isKnown) return { current: 'Page not found' };
+  return { current: ROUTE_LABELS[pathname] || 'RipX' };
+}
+
+function TopBar({
+  sidebarWidth = 280,
+  sidebarCollapsed = false,
+  showMobileToggle = false,
+  onMobileToggle,
+}) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [userMenuActive, setUserMenuActive] = useState(false);
   const [settingsMenuActive, setSettingsMenuActive] = useState(false);
+  const [notificationsActive, setNotificationsActive] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
 
-  const toggleUserMenu = useCallback(() => setUserMenuActive((active) => !active), []);
-  const toggleSettingsMenu = useCallback(() => setSettingsMenuActive((active) => !active), []);
+  const toggleUserMenu = useCallback(() => setUserMenuActive((a) => !a), []);
+  const toggleSettingsMenu = useCallback(() => setSettingsMenuActive((a) => !a), []);
 
-  // Force red color for logout button in dark theme
-  useEffect(() => {
-    if (document.documentElement.getAttribute('data-theme') === 'dark') {
-      const applyLogoutButtonStyles = () => {
-        const logoutButtons = document.querySelectorAll(
-          '.top-bar .logout-action-item, .top-bar .Polaris-ActionList__Item:last-child[data-polaris-destructive], .top-bar .Polaris-ActionList__Item:last-child[data-destructive="true"]'
-        );
-        
-        logoutButtons.forEach(button => {
-          // Force red color on the button and all its children
-          button.style.setProperty('color', '#ef4444', '!important');
-          
-          // Also target text elements inside
-          const textElements = button.querySelectorAll('*');
-          textElements.forEach(el => {
-            const computedStyle = window.getComputedStyle(el);
-            if (computedStyle.color !== 'rgb(239, 68, 68)' && computedStyle.color !== '#ef4444') {
-              el.style.setProperty('color', '#ef4444', 'important');
-            }
-          });
-        });
-      };
+  const breadcrumb = useMemo(
+    () => getBreadcrumb(location.pathname, location.search),
+    [location.pathname, location.search]
+  );
 
-      // Apply immediately
-      applyLogoutButtonStyles();
-
-      // Watch for DOM changes
-      const observer = new MutationObserver(applyLogoutButtonStyles);
-      observer.observe(document.body, { childList: true, subtree: true });
-
-      // Also apply on interval as fallback
-      const interval = setInterval(applyLogoutButtonStyles, 500);
-
-      return () => {
-        observer.disconnect();
-        clearInterval(interval);
-      };
+  const fetchNotifications = useCallback(async () => {
+    try {
+      setNotificationsLoading(true);
+      const res = await apiGet('/notifications', { limit: 10 });
+      const data = res.data;
+      setNotifications(data?.notifications || []);
+      setUnreadCount(data?.unreadCount ?? 0);
+    } catch {
+      setNotifications([]);
+      setUnreadCount(0);
+    } finally {
+      setNotificationsLoading(false);
     }
-  }, [userMenuActive]);
+  }, []);
+
+  React.useEffect(() => {
+    if (notificationsActive) fetchNotifications();
+  }, [notificationsActive, fetchNotifications]);
+
+  const handleMarkRead = useCallback(async (id) => {
+    try {
+      await apiPut(`/notifications/${id}/read`);
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+      );
+      setUnreadCount((c) => Math.max(0, c - 1));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const handleMarkAllRead = useCallback(async () => {
+    try {
+      await apiPut('/notifications/read-all');
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      setUnreadCount(0);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   const userMenuActions = [
     {
@@ -66,21 +124,21 @@ function TopBar({ sidebarWidth = 280, sidebarCollapsed = false }) {
       onAction: () => {
         setUserMenuActive(false);
         navigate('/profile');
-      }
+      },
     },
     {
       content: 'Account Settings',
       onAction: () => {
         setUserMenuActive(false);
         navigate('/profile?tab=account');
-      }
+      },
     },
     {
       content: 'Preferences',
       onAction: () => {
         setUserMenuActive(false);
         navigate('/profile?tab=preferences');
-      }
+      },
     },
     {
       content: 'Logout',
@@ -88,9 +146,14 @@ function TopBar({ sidebarWidth = 280, sidebarCollapsed = false }) {
       className: 'logout-action-item',
       onAction: () => {
         setUserMenuActive(false);
-        // Handle logout
-      }
-    }
+        const shopDomain = getShopDomain();
+        if (shopDomain) {
+          window.location.href = `https://${shopDomain}/admin`;
+        } else {
+          window.location.href = ROUTES.DASHBOARD;
+        }
+      },
+    },
   ];
 
   const settingsMenuActions = [
@@ -99,60 +162,157 @@ function TopBar({ sidebarWidth = 280, sidebarCollapsed = false }) {
       onAction: () => {
         setSettingsMenuActive(false);
         navigate('/settings');
-      }
+      },
     },
     {
       content: 'Notifications',
       onAction: () => {
         setSettingsMenuActive(false);
         navigate('/profile?tab=preferences');
-      }
+      },
     },
     {
       content: 'API Keys',
       onAction: () => {
         setSettingsMenuActive(false);
         navigate('/profile?tab=account');
-      }
-    }
+      },
+    },
   ];
+
+  const effectiveLeft = sidebarCollapsed ? 80 : sidebarWidth;
 
   return (
     <div
-      className="top-bar"
-      style={{ 
-        left: `${sidebarWidth}px`,
-        right: 0
-      }}
+      className={`top-bar ${styles.topBar}`}
+      style={{ '--topbar-left': `${effectiveLeft}px` }}
     >
-      {/* Right Side: Notifications, Settings, User Menu */}
-      <InlineStack gap="200" align="end" style={{ flexShrink: 0 }}>
-        {/* Notifications */}
-        <button
-          onClick={() => {}}
-          aria-label="Notifications"
-          className="top-bar-icon"
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          <div className="notification-badge" />
-        </button>
+      <div className={styles.topBarLeft}>
+        {showMobileToggle && (
+          <button
+            type="button"
+            onClick={onMobileToggle}
+            aria-label="Toggle navigation"
+            className={styles.mobileToggle}
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M4 6H20M4 12H20M4 18H20"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        )}
+        <span className={styles.breadcrumb}>
+          {breadcrumb.parent && (
+            <>
+              <span>{breadcrumb.parent}</span>
+              <span style={{ margin: '0 0.35rem', opacity: 0.5 }}>/</span>
+            </>
+          )}
+          <span className={styles.breadcrumbCurrent}>{breadcrumb.current}</span>
+        </span>
+      </div>
 
-        {/* Settings Menu */}
-        <Popover
-          active={settingsMenuActive}
-          activator={
+      <div className={styles.topBarRight}>
+        <StoreSwitcher />
+        <div className={styles.actionGroup}>
+          <Popover
+            active={notificationsActive}
+            activator={
               <button
+                type="button"
+                onClick={() => setNotificationsActive((a) => !a)}
+                aria-label="Notifications"
+                className={`${styles.iconBtn} ${notificationsActive ? styles.active : ''}`}
+              >
+                <Icon source={NotificationIcon} />
+                {unreadCount > 0 && <span className={styles.notificationBadge} />}
+              </button>
+            }
+            onClose={() => setNotificationsActive(false)}
+            preferredAlignment="right"
+            preferredPosition="below"
+          >
+            <div className={styles.notificationPopover}>
+              <BlockStack gap="300">
+                <InlineStack align="space-between" blockAlign="center">
+                  <Text variant="headingMd" as="h2">
+                    Notifications
+                  </Text>
+                  {unreadCount > 0 && (
+                    <Button size="slim" variant="plain" onClick={handleMarkAllRead}>
+                      Mark all read
+                    </Button>
+                  )}
+                </InlineStack>
+                {notificationsLoading ? (
+                  <Text variant="bodySm" tone="subdued">
+                    Loading...
+                  </Text>
+                ) : notifications.length === 0 ? (
+                  <>
+                    <Text variant="bodySm" tone="subdued" as="p">
+                      No new notifications
+                    </Text>
+                    <Text variant="bodySm" tone="subdued" as="p">
+                      You&apos;ll see test completion alerts and significance updates here.
+                    </Text>
+                  </>
+                ) : (
+                  <BlockStack gap="200">
+                    {notifications.map((n) => (
+                      <div
+                        key={n.id}
+                        className={`${styles.notificationItem} ${!n.read ? styles.notificationItemUnread : ''}`}
+                      >
+                        <Text variant="bodyMd" fontWeight="semibold" as="p">
+                          {n.title}
+                        </Text>
+                        {n.message && (
+                          <Text variant="bodySm" tone="subdued" as="p">
+                            {n.message}
+                          </Text>
+                        )}
+                        <Text variant="bodySm" tone="subdued" as="p">
+                          {new Date(n.createdAt).toLocaleDateString()}
+                        </Text>
+                        {!n.read && (
+                          <Button
+                            size="slim"
+                            variant="plain"
+                            onClick={() => handleMarkRead(n.id)}
+                          >
+                            Mark read
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </BlockStack>
+                )}
+              </BlockStack>
+            </div>
+          </Popover>
+
+          <Popover
+            active={settingsMenuActive}
+            activator={
+              <button
+                type="button"
                 onClick={toggleSettingsMenu}
                 aria-label="Settings"
-                className={`top-bar-icon ${settingsMenuActive ? 'active' : ''}`}
+                className={`${styles.iconBtn} ${settingsMenuActive ? styles.active : ''}`}
               >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
+                <Icon source={SettingsIcon} />
               </button>
             }
             onClose={toggleSettingsMenu}
@@ -162,19 +322,16 @@ function TopBar({ sidebarWidth = 280, sidebarCollapsed = false }) {
             <ActionList items={settingsMenuActions} />
           </Popover>
 
-        {/* User Menu - Icon Only */}
-        <Popover
-          active={userMenuActive}
-          activator={
+          <Popover
+            active={userMenuActive}
+            activator={
               <button
+                type="button"
                 onClick={toggleUserMenu}
                 aria-label="User menu"
-                className={`top-bar-icon ${userMenuActive ? 'active' : ''}`}
+                className={`${styles.iconBtn} ${userMenuActive ? styles.active : ''}`}
               >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
+                <Icon source={ProfileIcon} />
               </button>
             }
             onClose={toggleUserMenu}
@@ -183,7 +340,8 @@ function TopBar({ sidebarWidth = 280, sidebarCollapsed = false }) {
           >
             <ActionList items={userMenuActions} />
           </Popover>
-      </InlineStack>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,0 +1,249 @@
+/* FunnelView - Full-width premium section */
+
+.funnelSection {
+  width: 100%;
+  border-radius: var(--analytics-card-radius, 20px);
+  overflow: hidden;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(250, 251, 252, 0.95) 100%
+  );
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-shadow: 0 6px 32px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(0, 0, 0, 0.02);
+  transition: all 0.3s ease;
+}
+
+[data-theme="dark"] .funnelSection {
+  background: linear-gradient(
+    180deg,
+    rgba(26, 26, 26, 0.98) 0%,
+    rgba(18, 18, 18, 0.95) 100%
+  );
+  border-color: rgba(6, 182, 212, 0.12);
+}
+
+.funnelSection::before {
+  content: '';
+  display: block;
+  height: 4px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--futuristic-cyan),
+    var(--futuristic-violet),
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: funnelGradientShift 8s ease infinite;
+  opacity: 0.7;
+}
+
+@keyframes funnelGradientShift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.funnelHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 2rem 2.5rem 1.5rem;
+}
+
+.funnelHeaderLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.funnelTitle {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+}
+
+.funnelSubtitle {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.funnelFilters {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.funnelFilters > div {
+  min-width: 140px;
+}
+
+.funnelCompareBtn {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-radius: 10px;
+  border: 1px solid rgba(6, 182, 212, 0.25);
+  background: linear-gradient(
+    135deg,
+    rgba(6, 182, 212, 0.06) 0%,
+    rgba(139, 92, 246, 0.03) 100%
+  );
+  color: var(--accent-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.funnelCompareBtn:hover {
+  background: rgba(6, 182, 212, 0.12);
+  border-color: rgba(6, 182, 212, 0.4);
+}
+
+.funnelChartWrapper {
+  width: 100%;
+  padding: 0 2.5rem 2rem;
+}
+
+.funnelChartSingle {
+  width: 100%;
+  height: 380px;
+}
+
+.funnelCompareGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  padding: 0 2.5rem 2rem;
+}
+
+.funnelVariantCard {
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(6, 182, 212, 0.15);
+  background: rgba(255, 255, 255, 0.6);
+  transition: all 0.25s ease;
+}
+
+.funnelVariantCard:hover {
+  border-color: rgba(6, 182, 212, 0.3);
+  box-shadow: 0 8px 24px rgba(6, 182, 212, 0.08);
+}
+
+[data-theme="dark"] .funnelVariantCard {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(6, 182, 212, 0.2);
+}
+
+.funnelVariantCardHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="dark"] .funnelVariantCardHeader {
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+.funnelVariantDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.funnelVariantName {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.funnelVariantChart {
+  height: 260px;
+  padding: 1rem;
+}
+
+.funnelStatsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  padding: 2rem 2.5rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="dark"] .funnelStatsGrid {
+  border-top-color: rgba(255, 255, 255, 0.06);
+}
+
+.funnelStatCard {
+  padding: 1.25rem 1.5rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  transition: all 0.25s ease;
+}
+
+.funnelStatCard:hover {
+  border-color: rgba(6, 182, 212, 0.2);
+  box-shadow: 0 4px 16px rgba(6, 182, 212, 0.06);
+}
+
+[data-theme="dark"] .funnelStatCard {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(6, 182, 212, 0.12);
+}
+
+.funnelStatCardHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.funnelStatCardDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.funnelStatCardTitle {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.funnelStatCardValues {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.funnelStatCardValue {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.funnelStatCardHighlight {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.funnelBanner {
+  margin: 0 2.5rem 1.5rem;
+}
+
+.funnelEmpty {
+  padding: 3rem 2.5rem;
+}

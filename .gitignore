@@ -1,46 +1,132 @@
+# ============================================
 # Dependencies
+# ============================================
 node_modules/
-package-lock.json
+frontend/node_modules/
+backend/node_modules/
+# Commit package-lock.json for reproducible installs (npm ci in CI)
 yarn.lock
+.pnpm-store/
+.yarn/cache
+.yarn/unplugged
+.pnp.*
 
-# Environment variables
+# ============================================
+# Environment & Secrets (NEVER commit these)
+# ============================================
 .env
 .env.local
 .env.production
-# Allow .env.example to be committed
+.env.development
+.env.test
+.env.staging
+.env.*.local
+# Allow .env.example as template only
 !.env.example
 
-# Logs
+# Credentials, keys, certificates
+*.pem
+*.key
+*.crt
+*.cert
+*.p12
+*.pfx
+*-credentials.json
+*credentials*.json
+service-account*.json
+GOOGLE_APPLICATION_CREDENTIALS
+
+# ============================================
+# Logs & Debug
+# ============================================
 logs/
 *.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
 
-# OS files
+# ============================================
+# OS & Editor
+# ============================================
 .DS_Store
+.DS_Store?
+._*
 Thumbs.db
+*.swp
+*.swo
+*~
+*.bak
+*.backup
 
 # IDE
 .vscode/
 .idea/
-*.swp
-*.swo
+.cursor/
 
-# Build outputs
+# ============================================
+# Build outputs (generated, not needed in repo)
+# ============================================
 dist/
 build/
+frontend/dist/
+frontend/build/
 *.map
+*.min.js
+*.min.css
 
-# Database
+# Generated docs/presentation (from npm run presentation)
+docs/presentation/*.html
+docs/presentation/*.pdf
+
+# Cache
+.cache/
+.parcel-cache/
+.vite/
+.turbo/
+*.tsbuildinfo
+
+# ============================================
+# Database (local dev only)
+# ============================================
 *.sqlite
+*.sqlite3
 *.db
 
+# ============================================
 # Testing
+# ============================================
 coverage/
 .nyc_output/
+playwright-report/
+test-results/
+e2e/test-results/
+.last-run.json
+**/trace.zip
 
-# Shopify
+# ============================================
+# Shopify (local CLI state)
+# ============================================
 .shopify/
 
-# Documentation (optional - remove if you want to track docs)
-docs/
+# ============================================
+# Dev workflow (not needed for production deploy)
+# ============================================
+.github/
+.husky/
+
+# ============================================
+# Deployment / hosting cache
+# ============================================
+.netlify/
+.vercel/
+.elasticbeanstalk/
+
+# ============================================
+# Misc
+# ============================================
+CURSOR_TROUBLESHOOTING.md
+tmp/
+temp/
+*.tmp
 

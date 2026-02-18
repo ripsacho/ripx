@@ -16,7 +16,7 @@ class CombinationTestService {
   async createCombinationTest(testConfig) {
     const {
       variables, // [{ type: 'price', variants: [...] }, { type: 'shipping', variants: [...] }]
-      combinations // All combinations to test
+      combinations, // All combinations to test
     } = testConfig;
 
     // Generate all possible combinations if not provided
@@ -38,8 +38,8 @@ class CombinationTestService {
       variants: testConfig.combinations.map((combo, index) => ({
         name: `Combination ${index + 1}`,
         allocation: 100 / testConfig.combinations.length,
-        config: combo
-      }))
+        config: combo,
+      })),
     };
 
     // Use AB test engine to create the test
@@ -74,7 +74,7 @@ class CombinationTestService {
         generateRecursive(
           {
             ...currentCombo,
-            [currentVar.type]: variant
+            [currentVar.type]: variant,
           },
           remaining,
           index + 1
@@ -124,7 +124,7 @@ class CombinationTestService {
 
     return {
       isValid: errors.length === 0,
-      errors
+      errors,
     };
   }
 
@@ -147,7 +147,7 @@ class CombinationTestService {
       ...baseAnalytics,
       variableAnalysis,
       bestCombination: this.findBestCombination(baseAnalytics),
-      interactionEffects: this.calculateInteractionEffects(baseAnalytics)
+      interactionEffects: this.calculateInteractionEffects(baseAnalytics),
     };
   }
 
@@ -177,7 +177,7 @@ class CombinationTestService {
             variants: [],
             totalVisitors: 0,
             totalConversions: 0,
-            totalRevenue: 0
+            totalRevenue: 0,
           };
         }
 
@@ -192,12 +192,10 @@ class CombinationTestService {
     Object.keys(analysis).forEach(variableType => {
       Object.keys(analysis[variableType]).forEach(value => {
         const data = analysis[variableType][value];
-        data.conversionRate = data.totalVisitors > 0
-          ? (data.totalConversions / data.totalVisitors) * 100
-          : 0;
-        data.revenuePerVisitor = data.totalVisitors > 0
-          ? data.totalRevenue / data.totalVisitors
-          : 0;
+        data.conversionRate =
+          data.totalVisitors > 0 ? (data.totalConversions / data.totalVisitors) * 100 : 0;
+        data.revenuePerVisitor =
+          data.totalVisitors > 0 ? data.totalRevenue / data.totalVisitors : 0;
       });
     });
 
@@ -238,10 +236,9 @@ class CombinationTestService {
     return {
       hasInteraction: false,
       interactionStrength: 0,
-      message: 'Interaction analysis requires more data'
+      message: 'Interaction analysis requires more data',
     };
   }
 }
 
 module.exports = new CombinationTestService();
-

@@ -1,11 +1,21 @@
-node_modules
-dist
-build
-coverage
-*.log
-.env
-.env.local
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+*.min.js
+
+# Generated / lock files
 package-lock.json
 yarn.lock
-.DS_Store
 
+# Shopify
+.shopify/
+
+# Coverage
+coverage/
+
+# Playwright
+playwright-report/
+test-results/

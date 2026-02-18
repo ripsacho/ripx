@@ -1,13 +1,16 @@
+const analyticsService = require('./analytics');
+
 /**
  * Test Health Score Service
- * 
- * Calculates health score for AB tests based on various factors
+ *
+ * Calculates health score for AB tests based on various factors.
+ * Includes Sample Ratio Mismatch (SRM) detection for data quality.
  */
 
 class TestHealthService {
   /**
    * Calculate health score for a test
-   * 
+   *
    * @param {Object} test - Test object with analytics
    * @returns {Object} Health score and details
    */
@@ -21,7 +24,7 @@ class TestHealthService {
         issues: ['Test data is missing'],
         recommendations: ['Please check test configuration'],
         totalVisitors: 0,
-        daysRunning: 0
+        daysRunning: 0,
       };
     }
 
@@ -71,9 +74,7 @@ class TestHealthService {
       }
 
       // Check for balanced allocation
-      const isBalanced = variants.every(v => 
-        Math.abs(v.allocation - (100 / variants.length)) < 5
-      );
+      const isBalanced = variants.every(v => Math.abs(v.allocation - 100 / variants.length) < 5);
       if (!isBalanced && test.variants.length === 2) {
         // Not a critical issue, just a note
         recommendations.push('Consider 50/50 split for most reliable results');
@@ -93,13 +94,27 @@ class TestHealthService {
 
     // Conversion rate check
     if (variants && variants.length > 0) {
-      const hasZeroConversions = variants.some(v => 
-        (v.conversions || 0) === 0 && (v.visitors || 0) > 50
+      const hasZeroConversions = variants.some(
+        v => (v.conversions || 0) === 0 && (v.visitors || 0) > 50
       );
       if (hasZeroConversions) {
         score -= 15;
         issues.push('Some variants have zero conversions');
         recommendations.push('Check if test is properly tracking conversions');
+      }
+    }
+
+    // Sample Ratio Mismatch (SRM) - data quality check
+    if (variants && variants.length >= 2 && totalVisitors >= 100) {
+      const variantsWithAllocation = variants.map(v => ({
+        ...v,
+        allocation: v.allocation ?? 100 / variants.length,
+      }));
+      const srm = analyticsService.detectSampleRatioMismatch(variantsWithAllocation, totalVisitors);
+      if (srm.detected) {
+        score -= 20;
+        issues.push('Sample ratio mismatch detected');
+        recommendations.push(srm.message || 'Traffic split deviates from expected—verify tracking and check for bot traffic');
       }
     }
 
@@ -112,7 +127,7 @@ class TestHealthService {
     // Determine health level
     let healthLevel = 'excellent';
     let healthColor = 'success';
-    
+
     if (score < 50) {
       healthLevel = 'poor';
       healthColor = 'critical';
@@ -131,24 +146,24 @@ class TestHealthService {
       issues,
       recommendations,
       totalVisitors,
-      daysRunning: test.started_at ? 
-        Math.floor((Date.now() - new Date(test.started_at)) / (1000 * 60 * 60 * 24)) : 0
+      daysRunning: test.started_at
+        ? Math.floor((Date.now() - new Date(test.started_at)) / (1000 * 60 * 60 * 24))
+        : 0,
     };
   }
 
   /**
    * Get health score for multiple tests
-   * 
+   *
    * @param {Array} tests - Array of test objects
    * @returns {Array} Tests with health scores
    */
   calculateHealthScores(tests) {
     return tests.map(test => ({
       ...test,
-      health: this.calculateHealthScore(test)
+      health: this.calculateHealthScore(test),
     }));
   }
 }
 
 module.exports = new TestHealthService();
-

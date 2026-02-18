@@ -9,7 +9,7 @@ const logger = require('../utils/logger');
 
 /**
  * Safely parse JSON with error handling
- * 
+ *
  * @param {string|Object} jsonString - JSON string or object to parse
  * @param {*} defaultValue - Default value if parsing fails
  * @param {string} fieldName - Field name for logging
@@ -20,18 +20,18 @@ function safeParseJSON(jsonString, defaultValue, fieldName, testId = null) {
   if (!jsonString) {
     return defaultValue;
   }
-  
+
   if (typeof jsonString === 'object') {
     return jsonString;
   }
-  
+
   try {
     return JSON.parse(jsonString);
   } catch (e) {
     logger.error(`Error parsing ${fieldName} JSON`, {
       testId,
       error: e.message,
-      field: fieldName
+      field: fieldName,
     });
     return defaultValue;
   }
@@ -39,7 +39,7 @@ function safeParseJSON(jsonString, defaultValue, fieldName, testId = null) {
 
 /**
  * Safely stringify JSON for database storage
- * 
+ *
  * @param {*} data - Data to stringify
  * @param {*} defaultValue - Default value if stringify fails
  * @returns {string} JSON string
@@ -48,17 +48,45 @@ function safeStringifyJSON(data, defaultValue = '{}') {
   if (!data) {
     return defaultValue;
   }
-  
+
   if (typeof data === 'string') {
     return data;
   }
-  
+
   try {
     return JSON.stringify(data);
   } catch (e) {
     logger.error('Error stringifying JSON', { error: e.message });
     return defaultValue;
   }
+}
+
+function normalizeVariantCode(variants = []) {
+  if (!Array.isArray(variants)) {
+    return variants;
+  }
+
+  return variants.map(variant => {
+    if (!variant || typeof variant !== 'object') {
+      return variant;
+    }
+    const next = { ...variant };
+    const config = next.config && typeof next.config === 'object' ? { ...next.config } : {};
+
+    if (next.code !== undefined && next.code !== null && config.code === undefined) {
+      config.code = next.code;
+    }
+
+    if ((next.code === undefined || next.code === null) && config.code !== undefined) {
+      next.code = config.code;
+    }
+
+    if (Object.keys(config).length > 0) {
+      next.config = config;
+    }
+
+    return next;
+  });
 }
 
 /**
@@ -71,7 +99,7 @@ async function checkSchedulingColumns() {
   if (schedulingColumnsExist !== null) {
     return schedulingColumnsExist;
   }
-  
+
   try {
     const sql = `
       SELECT column_name 
@@ -93,7 +121,7 @@ async function checkSchedulingColumns() {
 class TestModel {
   /**
    * Build insert query and parameters for test creation
-   * 
+   *
    * @param {Object} testData - Test data
    * @param {boolean} includeScheduling - Whether to include scheduling columns
    * @returns {Object} { sql, params }
@@ -102,47 +130,86 @@ class TestModel {
     const {
       shop_domain,
       name,
+      description,
       type,
       target_type,
       target_id,
+      target_ids,
       status = 'draft',
       goal,
       variants,
+      segments,
+      holdout_percent,
+      guardrail_config,
       scheduled_start_at,
       scheduled_stop_at,
       auto_start = false,
       auto_stop = false,
-      timezone = 'UTC'
+      timezone = 'UTC',
     } = testData;
 
     const baseColumns = [
-      'shop_domain', 'name', 'type', 'target_type', 'target_id',
-      'status', 'goal', 'variants'
+      'shop_domain',
+      'name',
+      'description',
+      'type',
+      'target_type',
+      'target_id',
+      'target_ids',
+      'status',
+      'goal',
+      'variants',
     ];
-    
+
     const baseValues = [
       shop_domain,
       name,
+      description || null,
       type,
       target_type || null,
       target_id || null,
+      Array.isArray(target_ids) && target_ids.length > 0
+        ? safeStringifyJSON(target_ids, '[]')
+        : null,
       status,
       safeStringifyJSON(goal, '{}'),
-      safeStringifyJSON(variants, '[]')
+      safeStringifyJSON(variants, '[]'),
     ];
+
+    if (segments !== undefined) {
+      baseColumns.push('segments');
+      baseValues.push(safeStringifyJSON(segments || {}, '{}'));
+    }
+
+    if (holdout_percent !== undefined) {
+      baseColumns.push('holdout_percent');
+      baseValues.push(holdout_percent);
+    }
+
+    if (guardrail_config !== undefined) {
+      baseColumns.push('guardrail_config');
+      baseValues.push(
+        guardrail_config?.enabled
+          ? safeStringifyJSON(guardrail_config, '{}')
+          : null
+      );
+    }
 
     if (includeScheduling) {
       const schedulingColumns = [
-        'scheduled_start_at', 'scheduled_stop_at',
-        'auto_start', 'auto_stop', 'timezone'
+        'scheduled_start_at',
+        'scheduled_stop_at',
+        'auto_start',
+        'auto_stop',
+        'timezone',
       ];
-      
+
       const schedulingValues = [
         scheduled_start_at || null,
         scheduled_stop_at || null,
         auto_start,
         auto_stop,
-        timezone
+        timezone,
       ];
 
       const allColumns = [...baseColumns, ...schedulingColumns];
@@ -155,7 +222,7 @@ class TestModel {
           VALUES (${placeholders}, NOW(), NOW())
           RETURNING *
         `,
-        params: allValues
+        params: allValues,
       };
     }
 
@@ -168,7 +235,7 @@ class TestModel {
         VALUES (${placeholders}, NOW(), NOW())
         RETURNING *
       `,
-      params: baseValues
+      params: baseValues,
     };
   }
 
@@ -187,16 +254,16 @@ class TestModel {
 
       // Check if scheduling columns exist
       const hasSchedulingColumns = await checkSchedulingColumns();
-      
+
       // Build query based on column availability
       const { sql, params } = this._buildInsertQuery(testData, hasSchedulingColumns);
 
       const result = await query(sql, params);
-      
+
       // Parse JSON fields in response
       const test = result.rows[0];
       test.goal = safeParseJSON(test.goal, {}, 'goal', test.id);
-      test.variants = safeParseJSON(test.variants, [], 'variants', test.id);
+      test.variants = normalizeVariantCode(safeParseJSON(test.variants, [], 'variants', test.id));
 
       return test;
     } catch (error) {
@@ -209,8 +276,8 @@ class TestModel {
         testData: {
           name: testData?.name,
           type: testData?.type,
-          shop_domain: testData?.shop_domain
-        }
+          shop_domain: testData?.shop_domain,
+        },
       });
       throw error;
     }
@@ -238,9 +305,74 @@ class TestModel {
     const test = result.rows[0];
     // Parse JSON fields with error handling
     test.goal = safeParseJSON(test.goal, {}, 'goal', testId);
-    test.variants = safeParseJSON(test.variants, [], 'variants', testId);
+    test.variants = normalizeVariantCode(safeParseJSON(test.variants, [], 'variants', testId));
+    test.segments = safeParseJSON(test.segments, {}, 'segments', testId);
 
     return test;
+  }
+
+  /**
+   * Get multiple tests by IDs (batch, single query)
+   *
+   * @param {string[]} testIds - Test IDs
+   * @param {string} shopDomain - Shop domain
+   * @returns {Promise<Map<string, Object>>} Map of testId -> test
+   */
+  async getTestsByIds(testIds, shopDomain) {
+    if (!testIds || testIds.length === 0) {
+      return new Map();
+    }
+    const uniqueIds = [...new Set(testIds.filter(Boolean))];
+    const placeholders = uniqueIds.map((_, i) => `$${i + 2}`).join(', ');
+    const sql = `
+      SELECT * FROM tests
+      WHERE shop_domain = $1 AND id IN (${placeholders})
+    `;
+    const params = [shopDomain, ...uniqueIds];
+    const result = await query(sql, params);
+    const map = new Map();
+    for (const row of result.rows) {
+      const test = {
+        ...row,
+        goal: safeParseJSON(row.goal, {}, 'goal', row.id),
+        variants: normalizeVariantCode(safeParseJSON(row.variants, [], 'variants', row.id)),
+        segments: safeParseJSON(row.segments, {}, 'segments', row.id),
+      };
+      map.set(row.id, test);
+    }
+    return map;
+  }
+
+  /**
+   * Get tests that should be served on storefront (running OR personalized/rollout)
+   *
+   * @param {string} shopDomain - Shop domain
+   * @returns {Promise<Array>} List of tests
+   */
+  async getActiveTestsForStorefront(shopDomain) {
+    try {
+      const sql = `
+        SELECT * FROM tests
+        WHERE shop_domain = $1
+          AND (
+            status = 'running'
+            OR (status IN ('stopped', 'completed') AND personalization_mode IN ('personalized', 'rollout'))
+          )
+        ORDER BY created_at DESC
+      `;
+      const result = await query(sql, [shopDomain]);
+      return result.rows.map(test => {
+        const goal = safeParseJSON(test.goal, {}, 'goal', test.id);
+        const variants = normalizeVariantCode(safeParseJSON(test.variants, [], 'variants', test.id));
+        const segments = safeParseJSON(test.segments, {}, 'segments', test.id);
+        return { ...test, goal, variants, segments };
+      });
+    } catch (err) {
+      if (err.message?.includes('personalization_mode')) {
+        return this.getTestsByShop(shopDomain, 'running');
+      }
+      throw err;
+    }
   }
 
   /**
@@ -270,12 +402,14 @@ class TestModel {
     return result.rows.map(test => {
       // Parse JSON fields with error handling
       const goal = safeParseJSON(test.goal, {}, 'goal', test.id);
-      const variants = safeParseJSON(test.variants, [], 'variants', test.id);
-      
+      const variants = normalizeVariantCode(safeParseJSON(test.variants, [], 'variants', test.id));
+      const segments = safeParseJSON(test.segments, {}, 'segments', test.id);
+
       return {
         ...test,
         goal,
-        variants
+        variants,
+        segments,
       };
     });
   }
@@ -289,14 +423,23 @@ class TestModel {
    * @returns {Promise<Object>} Updated test
    */
   async updateTestStatus(testId, shopDomain, status) {
+    const updates = ['status = $1', 'updated_at = NOW()'];
+    const params = [status, testId, shopDomain];
+
+    if (status === 'running') {
+      updates.push('started_at = COALESCE(started_at, NOW())');
+    } else if (status === 'stopped' || status === 'completed') {
+      updates.push('stopped_at = NOW()');
+    }
+
     const sql = `
       UPDATE tests
-      SET status = $1, updated_at = NOW()
+      SET ${updates.join(', ')}
       WHERE id = $2 AND shop_domain = $3
       RETURNING *
     `;
 
-    const result = await query(sql, [status, testId, shopDomain]);
+    const result = await query(sql, params);
 
     if (result.rows.length === 0) {
       return null;
@@ -305,7 +448,7 @@ class TestModel {
     const test = result.rows[0];
     // Parse JSON fields with error handling
     test.goal = safeParseJSON(test.goal, {}, 'goal', testId);
-    test.variants = safeParseJSON(test.variants, [], 'variants', testId);
+    test.variants = normalizeVariantCode(safeParseJSON(test.variants, [], 'variants', testId));
 
     return test;
   }
@@ -329,9 +472,45 @@ class TestModel {
 
     // Handle JSON fields and regular fields
     Object.keys(updates).forEach(key => {
-      if (key === 'goal' || key === 'variants') {
-        fields.push(`${key} = $${paramIndex}`);
-        values.push(safeStringifyJSON(updates[key], key === 'goal' ? '{}' : '[]'));
+      if (
+        key === 'goal' ||
+        key === 'variants' ||
+        key === 'segments' ||
+        key === 'guardrail_config' ||
+        key === 'target_ids' ||
+        key === 'rollout_schedule'
+      ) {
+        // Use ::jsonb cast for JSONB columns so pg passes string correctly
+        const jsonbCast = key === 'rollout_schedule' ? '::jsonb' : '';
+        fields.push(`${key} = $${paramIndex}${jsonbCast}`);
+        const fallback = key === 'variants' ? '[]' : '{}';
+        const val =
+          key === 'guardrail_config'
+            ? updates[key]?.enabled
+              ? updates[key]
+              : null
+            : key === 'target_ids'
+              ? Array.isArray(updates[key]) && updates[key].length > 0
+                ? updates[key]
+                : null
+              : key === 'rollout_schedule'
+                ? Array.isArray(updates[key]) && updates[key].length > 0
+                  ? updates[key]
+                  : null
+                : updates[key];
+        values.push(
+          key === 'guardrail_config' && val === null
+            ? null
+            : key === 'target_ids'
+              ? val === null
+                ? null
+                : safeStringifyJSON(val, '[]')
+              : key === 'rollout_schedule'
+                ? val === null
+                  ? null
+                  : safeStringifyJSON(val, '[]')
+                : safeStringifyJSON(val, fallback)
+        );
       } else if (key !== 'id' && key !== 'shop_domain' && key !== 'created_at') {
         // Allow updating most fields, but protect certain ones
         fields.push(`${key} = $${paramIndex}`);
@@ -354,7 +533,7 @@ class TestModel {
     `;
 
     values.push(testId, shopDomain);
-    
+
     try {
       const result = await query(sql, values);
 
@@ -365,7 +544,8 @@ class TestModel {
       const test = result.rows[0];
       // Parse JSON fields with error handling
       test.goal = safeParseJSON(test.goal, {}, 'goal', testId);
-      test.variants = safeParseJSON(test.variants, [], 'variants', testId);
+      test.variants = normalizeVariantCode(safeParseJSON(test.variants, [], 'variants', testId));
+      test.segments = safeParseJSON(test.segments, {}, 'segments', testId);
 
       return test;
     } catch (error) {
@@ -374,7 +554,7 @@ class TestModel {
         code: error.code,
         testId,
         shopDomain,
-        fields: Object.keys(updates)
+        fields: Object.keys(updates),
       });
       throw error;
     }
@@ -402,11 +582,12 @@ class TestModel {
 const model = new TestModel();
 
 module.exports = {
-  createTest: (data) => model.createTest(data),
+  createTest: data => model.createTest(data),
   getTestById: (id, shop) => model.getTestById(id, shop),
+  getTestsByIds: (ids, shop) => model.getTestsByIds(ids, shop),
   getTestsByShop: (shop, status) => model.getTestsByShop(shop, status),
+  getActiveTestsForStorefront: shop => model.getActiveTestsForStorefront(shop),
   updateTestStatus: (id, shop, status) => model.updateTestStatus(id, shop, status),
   updateTest: (id, shop, updates) => model.updateTest(id, shop, updates),
-  deleteTest: (id, shop) => model.deleteTest(id, shop)
+  deleteTest: (id, shop) => model.deleteTest(id, shop),
 };
-

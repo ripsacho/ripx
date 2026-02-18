@@ -12,6 +12,7 @@
 // Import Node.js runtime adapter for Shopify API
 require('@shopify/shopify-api/adapters/node');
 const { shopifyApi, ApiVersion } = require('@shopify/shopify-api');
+const logger = require('../utils/logger');
 
 class ShopifyService {
   constructor() {
@@ -23,7 +24,7 @@ class ShopifyService {
       scopes: process.env.SHOPIFY_SCOPES?.split(',') || [],
       hostName: process.env.APP_URL?.replace(/https?:\/\//, '') || 'localhost:3000',
       apiVersion: ApiVersion.July23,
-      isEmbeddedApp: true
+      isEmbeddedApp: true,
     });
   }
 
@@ -38,7 +39,7 @@ class ShopifyService {
     return {
       shop: shopDomain,
       accessToken: accessToken,
-      state: 'active'
+      state: 'active',
     };
   }
 
@@ -74,8 +75,8 @@ class ShopifyService {
     const variables = {
       input: {
         id: variantId,
-        price: price.toString()
-      }
+        price: price.toString(),
+      },
     };
 
     try {
@@ -87,7 +88,7 @@ class ShopifyService {
 
       return response.data.productVariantUpdate.productVariant;
     } catch (error) {
-      console.error('Error updating product price:', error);
+      logger.error('Error updating product price', { error: error.message, productId });
       throw error;
     }
   }
@@ -126,11 +127,11 @@ class ShopifyService {
 
     try {
       const response = await client.request(query, {
-        variables: { id: productId }
+        variables: { id: productId },
       });
       return response.data.product;
     } catch (error) {
-      console.error('Error fetching product:', error);
+      logger.error('Error fetching product', { error: error.message, productId });
       throw error;
     }
   }
@@ -144,7 +145,7 @@ class ShopifyService {
   async trackOrder(order) {
     // This would integrate with your analytics tracking
     // Store order data for conversion analysis
-    console.log('Tracking order:', order.id);
+    logger.debug('Tracking order', { orderId: order?.id });
 
     // You would save this to your database for analytics
     // await saveOrderEvent(order);
@@ -162,7 +163,7 @@ class ShopifyService {
   async applyThemeModifications(shopDomain, accessToken, themeId, modifications) {
     // This would use Shopify Theme API to modify theme files
     // Implementation depends on your specific use case
-    console.log('Applying theme modifications:', modifications);
+    logger.debug('Applying theme modifications', { themeId, modifications });
     return { success: true };
   }
 
@@ -198,19 +199,18 @@ class ShopifyService {
       input: {
         subPath: proxyPath,
         subPathPrefix: 'apps',
-        proxyUrl: `${process.env.APP_URL}/api/proxy`
-      }
+        proxyUrl: `${process.env.APP_URL}/api/proxy/script.js`,
+      },
     };
 
     try {
       const response = await client.request(mutation, { variables });
       return response.data.appProxyCreate.appProxy;
     } catch (error) {
-      console.error('Error creating app proxy:', error);
+      logger.error('Error creating app proxy', { error: error.message, shopDomain });
       throw error;
     }
   }
 }
 
 module.exports = new ShopifyService();
-

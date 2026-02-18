@@ -1,6 +1,6 @@
 /**
  * Time-Series Analytics Service
- * 
+ *
  * Handles daily aggregation and time-series analytics
  */
 
@@ -9,7 +9,7 @@ const { query } = require('../utils/database');
 class TimeSeriesService {
   /**
    * Get time-series data for a test
-   * 
+   *
    * @param {string} testId - Test ID
    * @param {string} shopDomain - Shop domain
    * @param {Date} startDate - Start date (optional)
@@ -54,7 +54,7 @@ class TimeSeriesService {
 
   /**
    * Aggregate daily analytics (should be run daily via cron)
-   * 
+   *
    * @param {Date} date - Date to aggregate (defaults to yesterday)
    * @returns {Promise<void>}
    */
@@ -62,9 +62,9 @@ class TimeSeriesService {
     const targetDate = date || new Date(Date.now() - 24 * 60 * 60 * 1000);
     const dateStr = targetDate.toISOString().split('T')[0];
 
-    // Get all active tests
+    // Get all active tests with their variants
     const testsSql = `
-      SELECT DISTINCT t.id as test_id, t.shop_domain
+      SELECT t.id as test_id, t.shop_domain, t.variants
       FROM tests t
       WHERE t.status = 'running'
     `;
@@ -72,43 +72,58 @@ class TimeSeriesService {
     const testsResult = await query(testsSql);
 
     for (const test of testsResult.rows) {
-      // Get visitors for this date
-      const visitorsSql = `
-        SELECT 
-          variant_id,
-          variant_name,
-          COUNT(DISTINCT user_id) as visitors
-        FROM test_assignments
-        WHERE test_id = $1
-          AND DATE(created_at) = $2
-        GROUP BY variant_id, variant_name
-      `;
+      // Parse variants to get all variant_id and variant_name (include holdout if present)
+      let variants = [];
+      try {
+        const v = typeof test.variants === 'string' ? JSON.parse(test.variants) : (test.variants || []);
+        variants = Array.isArray(v) ? v : [];
+      } catch {
+        variants = [];
+      }
+      const variantList = variants
+        .filter(v => v && (v.id || v.variant_id) && v.name)
+        .map(v => ({ id: v.id || v.variant_id, name: v.name }));
 
-      const visitorsResult = await query(visitorsSql, [test.test_id, dateStr]);
+      if (variantList.length === 0) {
+        continue;
+      }
 
-      for (const variant of visitorsResult.rows) {
-        // Get conversions for this variant and date
+      for (const variant of variantList) {
+        const variantId = String(variant.id);
+        const variantName = String(variant.name);
+
+        // Get visitors assigned on this date for this variant
+        const visitorsSql = `
+          SELECT COUNT(DISTINCT user_id) as visitors
+          FROM test_assignments
+          WHERE test_id = $1 AND variant_id = $2 AND DATE(assigned_at) = $3
+        `;
+        const visitorsResult = await query(visitorsSql, [test.test_id, variantId, dateStr]);
+        const visitors = parseInt(visitorsResult.rows[0]?.visitors || 0);
+
+        // Get conversions for this variant and date (JOIN ensures only assigned users)
         const conversionsSql = `
           SELECT 
-            COUNT(DISTINCT user_id) as conversions,
-            COALESCE(SUM(event_value), 0) as revenue
-          FROM events
-          WHERE test_id = $1
-            AND variant_id = $2
-            AND event_type = 'conversion'
-            AND DATE(created_at) = $3
+            COUNT(DISTINCT e.user_id) as conversions,
+            COALESCE(SUM(e.event_value), 0) as revenue
+          FROM events e
+          INNER JOIN test_assignments ta ON ta.test_id = e.test_id AND ta.user_id = e.user_id AND ta.shop_domain = e.shop_domain AND ta.variant_id = e.variant_id
+          WHERE e.test_id = $1
+            AND e.variant_id = $2
+            AND e.event_type = 'conversion'
+            AND DATE(e.created_at) = $3
         `;
 
         const conversionsResult = await query(conversionsSql, [
           test.test_id,
-          variant.variant_id,
-          dateStr
+          variantId,
+          dateStr,
         ]);
 
         const conversions = parseInt(conversionsResult.rows[0]?.conversions || 0);
         const revenue = parseFloat(conversionsResult.rows[0]?.revenue || 0);
 
-        // Insert or update daily analytics
+        // Insert or update daily analytics (ensures row exists even when visitors=0)
         const upsertSql = `
           INSERT INTO analytics_daily (
             test_id, variant_id, variant_name, date, 
@@ -125,12 +140,12 @@ class TimeSeriesService {
 
         await query(upsertSql, [
           test.test_id,
-          variant.variant_id,
-          variant.variant_name,
+          variantId,
+          variantName,
           dateStr,
-          variant.visitors,
+          visitors,
           conversions,
-          revenue
+          revenue,
         ]);
       }
     }
@@ -138,7 +153,7 @@ class TimeSeriesService {
 
   /**
    * Get aggregated time-series data formatted for charts
-   * 
+   *
    * @param {string} testId - Test ID
    * @param {string} shopDomain - Shop domain
    * @returns {Promise<Array>} Chart-ready data
@@ -151,11 +166,11 @@ class TimeSeriesService {
 
     rawData.forEach(row => {
       const dateKey = row.date.toISOString().split('T')[0];
-      
+
       if (!dateMap[dateKey]) {
         dateMap[dateKey] = {
           date: dateKey,
-          name: new Date(dateKey).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+          name: new Date(dateKey).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
         };
       }
 
@@ -163,7 +178,7 @@ class TimeSeriesService {
         visitors: row.visitors,
         conversions: row.conversions,
         revenue: parseFloat(row.revenue),
-        conversionRate: parseFloat(row.conversion_rate)
+        conversionRate: parseFloat(row.conversion_rate),
       };
     });
 
@@ -172,4 +187,3 @@ class TimeSeriesService {
 }
 
 module.exports = new TimeSeriesService();
-

@@ -42,10 +42,7 @@ class TrafficAllocator {
     }
 
     // Validate allocations sum to 100
-    const totalAllocation = variants.reduce(
-      (sum, v) => sum + (v.allocation || 0),
-      0
-    );
+    const totalAllocation = variants.reduce((sum, v) => sum + (v.allocation || 0), 0);
 
     if (Math.abs(totalAllocation - 100) > 0.01) {
       throw new Error('Variant allocations must sum to 100%');
@@ -83,10 +80,7 @@ class TrafficAllocator {
       return { isValid: false, errors };
     }
 
-    const totalAllocation = variants.reduce(
-      (sum, v) => sum + (v.allocation || 0),
-      0
-    );
+    const totalAllocation = variants.reduce((sum, v) => sum + (v.allocation || 0), 0);
 
     if (Math.abs(totalAllocation - 100) > 0.01) {
       errors.push(`Allocations sum to ${totalAllocation}%, must be 100%`);
@@ -100,7 +94,7 @@ class TrafficAllocator {
 
     return {
       isValid: errors.length === 0,
-      errors
+      errors,
     };
   }
 
@@ -121,4 +115,3 @@ class TrafficAllocator {
 }
 
 module.exports = new TrafficAllocator();
-

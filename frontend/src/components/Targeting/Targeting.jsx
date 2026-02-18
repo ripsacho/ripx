@@ -1,30 +1,24 @@
 /**
  * Targeting Component
- * 
+ *
  * Configure targeting rules for AB tests
  */
 
 import React, { useState } from 'react';
-import {
-  Card,
-  FormLayout,
-  Select,
-  TextField,
-  Checkbox,
-  BlockStack,
-  Text
-} from '@shopify/polaris';
+import { Card, FormLayout, Select, TextField, Checkbox, BlockStack, Text } from '@shopify/polaris';
 
 function Targeting({ targeting, onChange }) {
-  const [config, setConfig] = useState(targeting || {
-    enabled: false,
-    geographic: { enabled: false },
-    device: { enabled: false },
-    customerSegment: { enabled: false },
-    timeBased: { enabled: false }
-  });
+  const [config, setConfig] = useState(
+    targeting || {
+      enabled: false,
+      geographic: { enabled: false },
+      device: { enabled: false },
+      customerSegment: { enabled: false },
+      timeBased: { enabled: false },
+    }
+  );
 
-  const updateConfig = (updates) => {
+  const updateConfig = updates => {
     const newConfig = { ...config, ...updates };
     setConfig(newConfig);
     if (onChange) onChange(newConfig);
@@ -36,7 +30,7 @@ function Targeting({ targeting, onChange }) {
         <Checkbox
           label="Enable targeting"
           checked={config.enabled}
-          onChange={(value) => updateConfig({ enabled: value })}
+          onChange={value => updateConfig({ enabled: value })}
         />
 
         {config.enabled && (
@@ -44,24 +38,33 @@ function Targeting({ targeting, onChange }) {
             {/* Geographic Targeting */}
             <Card subsection>
               <BlockStack gap="200">
-                <Text variant="headingSm" as="h3">Geographic Targeting</Text>
+                <Text variant="headingSm" as="h3">
+                  Geographic Targeting
+                </Text>
                 <Checkbox
                   label="Enable geographic targeting"
                   checked={config.geographic?.enabled || false}
-                  onChange={(value) => updateConfig({
-                    geographic: { ...config.geographic, enabled: value }
-                  })}
+                  onChange={value =>
+                    updateConfig({
+                      geographic: { ...config.geographic, enabled: value },
+                    })
+                  }
                 />
                 {config.geographic?.enabled && (
                   <TextField
                     label="Countries (comma-separated)"
                     value={config.geographic?.countries?.join(', ') || ''}
-                    onChange={(value) => updateConfig({
-                      geographic: {
-                        ...config.geographic,
-                        countries: value.split(',').map(c => c.trim()).filter(c => c)
-                      }
-                    })}
+                    onChange={value =>
+                      updateConfig({
+                        geographic: {
+                          ...config.geographic,
+                          countries: value
+                            .split(',')
+                            .map(c => c.trim())
+                            .filter(c => c),
+                        },
+                      })
+                    }
                     helpText="e.g., US, CA, GB"
                   />
                 )}
@@ -71,13 +74,17 @@ function Targeting({ targeting, onChange }) {
             {/* Device Targeting */}
             <Card subsection>
               <BlockStack gap="200">
-                <Text variant="headingSm" as="h3">Device Targeting</Text>
+                <Text variant="headingSm" as="h3">
+                  Device Targeting
+                </Text>
                 <Checkbox
                   label="Enable device targeting"
                   checked={config.device?.enabled || false}
-                  onChange={(value) => updateConfig({
-                    device: { ...config.device, enabled: value }
-                  })}
+                  onChange={value =>
+                    updateConfig({
+                      device: { ...config.device, enabled: value },
+                    })
+                  }
                 />
                 {config.device?.enabled && (
                   <Select
@@ -86,15 +93,17 @@ function Targeting({ targeting, onChange }) {
                       { label: 'All Devices', value: 'all' },
                       { label: 'Desktop Only', value: 'desktop' },
                       { label: 'Mobile Only', value: 'mobile' },
-                      { label: 'Tablet Only', value: 'tablet' }
+                      { label: 'Tablet Only', value: 'tablet' },
                     ]}
                     value={config.device?.types?.[0] || 'all'}
-                    onChange={(value) => updateConfig({
-                      device: {
-                        ...config.device,
-                        types: value === 'all' ? [] : [value]
-                      }
-                    })}
+                    onChange={value =>
+                      updateConfig({
+                        device: {
+                          ...config.device,
+                          types: value === 'all' ? [] : [value],
+                        },
+                      })
+                    }
                   />
                 )}
               </BlockStack>
@@ -103,13 +112,17 @@ function Targeting({ targeting, onChange }) {
             {/* Customer Segment Targeting */}
             <Card subsection>
               <BlockStack gap="200">
-                <Text variant="headingSm" as="h3">Customer Segment</Text>
+                <Text variant="headingSm" as="h3">
+                  Customer Segment
+                </Text>
                 <Checkbox
                   label="Enable customer segment targeting"
                   checked={config.customerSegment?.enabled || false}
-                  onChange={(value) => updateConfig({
-                    customerSegment: { ...config.customerSegment, enabled: value }
-                  })}
+                  onChange={value =>
+                    updateConfig({
+                      customerSegment: { ...config.customerSegment, enabled: value },
+                    })
+                  }
                 />
                 {config.customerSegment?.enabled && (
                   <Select
@@ -118,15 +131,17 @@ function Targeting({ targeting, onChange }) {
                       { label: 'All Customers', value: 'all' },
                       { label: 'New Customers', value: 'new' },
                       { label: 'Returning Customers', value: 'returning' },
-                      { label: 'VIP Customers', value: 'vip' }
+                      { label: 'VIP Customers', value: 'vip' },
                     ]}
                     value={config.customerSegment?.customerType || 'all'}
-                    onChange={(value) => updateConfig({
-                      customerSegment: {
-                        ...config.customerSegment,
-                        customerType: value === 'all' ? null : value
-                      }
-                    })}
+                    onChange={value =>
+                      updateConfig({
+                        customerSegment: {
+                          ...config.customerSegment,
+                          customerType: value === 'all' ? null : value,
+                        },
+                      })
+                    }
                   />
                 )}
               </BlockStack>
@@ -139,4 +154,3 @@ function Targeting({ targeting, onChange }) {
 }
 
 export default Targeting;
-

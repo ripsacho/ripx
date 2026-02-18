@@ -11,7 +11,7 @@ class Logger {
       error: 0,
       warn: 1,
       info: 2,
-      debug: 3
+      debug: 3,
     };
   }
 
@@ -46,11 +46,12 @@ class Logger {
    * @param {Error|Object} error - Error object or metadata
    */
   error(message, error = {}) {
-    if (!this.shouldLog('error')) {return;}
+    if (!this.shouldLog('error')) {
+      return;
+    }
 
-    const meta = error instanceof Error
-      ? { error: error.message, stack: error.stack, ...error }
-      : error;
+    const meta =
+      error instanceof Error ? { error: error.message, stack: error.stack, ...error } : error;
 
     console.error(this.formatMessage('error', message, meta));
   }
@@ -62,7 +63,9 @@ class Logger {
    * @param {Object} meta - Additional metadata
    */
   warn(message, meta = {}) {
-    if (!this.shouldLog('warn')) {return;}
+    if (!this.shouldLog('warn')) {
+      return;
+    }
     console.warn(this.formatMessage('warn', message, meta));
   }
 
@@ -73,7 +76,9 @@ class Logger {
    * @param {Object} meta - Additional metadata
    */
   info(message, meta = {}) {
-    if (!this.shouldLog('info')) {return;}
+    if (!this.shouldLog('info')) {
+      return;
+    }
     console.log(this.formatMessage('info', message, meta));
   }
 
@@ -84,10 +89,11 @@ class Logger {
    * @param {Object} meta - Additional metadata
    */
   debug(message, meta = {}) {
-    if (!this.shouldLog('debug')) {return;}
+    if (!this.shouldLog('debug')) {
+      return;
+    }
     console.debug(this.formatMessage('debug', message, meta));
   }
 }
 
 module.exports = new Logger();
-

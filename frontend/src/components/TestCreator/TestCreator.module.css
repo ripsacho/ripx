@@ -1,0 +1,245 @@
+/* Create Test page - matches Settings/Profile/Setup layout */
+.createPage {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 120px);
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  margin-bottom: -32px;
+  padding: 0 32px 32px;
+  position: relative;
+}
+
+.createLayout {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: none;
+}
+
+.createBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-top: 0.5rem;
+  margin-top: 0.25rem;
+  position: relative;
+  width: 100%;
+  max-width: none;
+}
+
+.createBody::-webkit-scrollbar {
+  width: 8px;
+}
+
+.createBody::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+}
+
+.createBody::-webkit-scrollbar-thumb {
+  background: rgba(6, 182, 212, 0.3);
+  border-radius: 4px;
+}
+
+.createBody::-webkit-scrollbar-thumb:hover {
+  background: rgba(6, 182, 212, 0.5);
+}
+
+.createPage :global(.Polaris-Page),
+.createPage :global(.Polaris-Page__Content),
+.createPage :global(.Polaris-Page__Content) > *,
+.createPage :global(.Polaris-BlockStack),
+.createPage :global(.Polaris-Box),
+.createPage :global(.Polaris-Card) {
+  max-width: none !important;
+  width: 100% !important;
+}
+
+.createPage :global(.Polaris-Page),
+.createPage :global(.Polaris-Page__Content) {
+  padding: 0 !important;
+}
+
+/* Mesh gradient background */
+.createPage::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse 70% 40% at 20% 0%, rgba(6, 182, 212, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse 50% 30% at 90% 20%, rgba(139, 92, 246, 0.05) 0%, transparent 50%),
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(6, 182, 212, 0.05) 0%, transparent 60%);
+}
+
+[data-theme='dark'] .createPage::before {
+  background:
+    radial-gradient(ellipse 70% 40% at 20% 0%, rgba(6, 182, 212, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse 50% 30% at 90% 20%, rgba(139, 92, 246, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(6, 182, 212, 0.04) 0%, transparent 60%);
+}
+
+/* Hero - premium first step header */
+.createHero {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin: -0.5rem 0 1.75rem;
+  padding: 1.5rem 2rem 2rem;
+  background: linear-gradient(
+    165deg,
+    rgba(6, 182, 212, 0.12) 0%,
+    rgba(139, 92, 246, 0.08) 40%,
+    rgba(6, 182, 212, 0.06) 100%
+  );
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  border-radius: 20px;
+  box-shadow:
+    0 8px 32px rgba(6, 182, 212, 0.08),
+    0 0 0 1px rgba(255, 255, 255, 0.6) inset,
+    0 2px 4px rgba(0, 0, 0, 0.02);
+  position: relative;
+  overflow: hidden;
+}
+
+.createHero::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, transparent, var(--futuristic-cyan), var(--futuristic-violet), transparent);
+  opacity: 0.9;
+}
+
+.createHeroTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.createHeroBadge {
+  display: inline-flex;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--futuristic-cyan);
+  background: rgba(6, 182, 212, 0.12);
+  border: 1px solid rgba(6, 182, 212, 0.25);
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(6, 182, 212, 0.15);
+}
+
+.createHeroProgress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.createHeroDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(6, 182, 212, 0.2);
+  transition: all 0.3s ease;
+}
+
+.createHeroDotActive {
+  width: 8px;
+  height: 8px;
+  background: var(--futuristic-cyan);
+  box-shadow: 0 0 8px rgba(6, 182, 212, 0.5);
+}
+
+.createHeroMain {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.5rem;
+}
+
+.createHeroText {
+  flex: 1;
+  min-width: 0;
+}
+
+.createHeroIcon {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.28), rgba(139, 92, 246, 0.18));
+  color: var(--accent-primary);
+  flex-shrink: 0;
+  box-shadow: 0 4px 16px rgba(6, 182, 212, 0.25);
+  animation: createHeroIconGlow 4s ease-in-out infinite;
+}
+
+@keyframes createHeroIconGlow {
+  0%, 100% { box-shadow: 0 4px 16px rgba(6, 182, 212, 0.25); }
+  50% { box-shadow: 0 4px 20px rgba(6, 182, 212, 0.35); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .createHeroIcon {
+    animation: none;
+  }
+}
+
+.createHeroIcon svg {
+  width: 28px;
+  height: 28px;
+}
+
+.createHeroTitle {
+  margin: 0;
+  font-size: 1.625rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: var(--text-primary);
+}
+
+.createHeroSubtitle {
+  margin: 0.4rem 0 0;
+  font-size: 0.9375rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+[data-theme='dark'] .createHero {
+  background: linear-gradient(
+    165deg,
+    rgba(6, 182, 212, 0.1) 0%,
+    rgba(139, 92, 246, 0.06) 40%,
+    rgba(6, 182, 212, 0.05) 100%
+  );
+  border-color: rgba(6, 182, 212, 0.25);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme='dark'] .createHeroBadge {
+  color: var(--futuristic-cyan);
+  background: rgba(6, 182, 212, 0.15);
+  border-color: rgba(6, 182, 212, 0.3);
+}
+
+[data-theme='dark'] .createHeroDot {
+  background: rgba(6, 182, 212, 0.25);
+}
+
+[data-theme='dark'] .createHeroDotActive {
+  background: var(--futuristic-cyan);
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.6);
+}

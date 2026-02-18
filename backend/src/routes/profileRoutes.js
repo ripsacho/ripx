@@ -6,14 +6,9 @@
 
 const express = require('express');
 const router = express.Router();
-const {
-  getProfile,
-  upsertProfile,
-  updateAccount,
-  updatePreferences
-} = require('../models/user');
-const { sendSuccess, sendError, sendNotFound } = require('../utils/response');
-const { HTTP_STATUS, SUCCESS_MESSAGES, ERROR_MESSAGES } = require('../constants');
+const { getProfile, upsertProfile, updateAccount, updatePreferences } = require('../models/user');
+const { sendSuccess, sendError } = require('../utils/response');
+const { HTTP_STATUS, SUCCESS_MESSAGES } = require('../constants');
 const logger = require('../utils/logger');
 
 /**
@@ -28,86 +23,91 @@ router.get('/', async (req, res, next) => {
 
     if (!userData) {
       // Return defaults if user doesn't exist yet
-      return sendSuccess(res, HTTP_STATUS.OK, {
-        profile: {
-          firstName: '',
-          lastName: '',
-          email: '',
-          phone: '',
-          jobTitle: '',
-          company: shopDomain,
-          bio: '',
-          timezone: 'UTC',
-          language: 'en',
-          dateFormat: 'MM/DD/YYYY',
-          timeFormat: '12h'
+      return sendSuccess(
+        res,
+        HTTP_STATUS.OK,
+        {
+          profile: {
+            firstName: '',
+            lastName: '',
+            email: '',
+            phone: '',
+            jobTitle: '',
+            company: shopDomain,
+            bio: '',
+            timezone: 'UTC',
+            language: 'en',
+            dateFormat: 'MM/DD/YYYY',
+            timeFormat: '12h',
+          },
+          account: {
+            shopDomain,
+            plan: 'Professional',
+            billingEmail: '',
+            apiKey: '',
+            twoFactorEnabled: false,
+            emailNotifications: true,
+            pushNotifications: true,
+            weeklyReports: true,
+          },
+          preferences: {
+            theme: 'light',
+            dashboardView: 'grid',
+            defaultTestType: 'price',
+            autoSave: true,
+            showTooltips: true,
+            compactMode: false,
+          },
         },
-        account: {
-          shopDomain,
-          plan: 'Professional',
-          billingEmail: '',
-          apiKey: '',
-          twoFactorEnabled: false,
-          emailNotifications: true,
-          pushNotifications: true,
-          weeklyReports: true
-        },
-        preferences: {
-          theme: 'light',
-          dashboardView: 'grid',
-          defaultTestType: 'price',
-          autoSave: true,
-          showTooltips: true,
-          compactMode: false
-        }
-      }, 'Profile data retrieved');
+        'Profile data retrieved'
+      );
     }
 
     logger.info('Profile retrieved', { shopDomain });
 
-    return sendSuccess(
-      res,
-      HTTP_STATUS.OK,
-      userData,
-      'Profile data retrieved'
-    );
+    return sendSuccess(res, HTTP_STATUS.OK, userData, 'Profile data retrieved');
   } catch (error) {
     // If table doesn't exist, return defaults instead of error
     if (error.message && error.message.includes('does not exist')) {
       logger.warn('Users table does not exist, returning defaults', { shopDomain: req.shopDomain });
-      return sendSuccess(res, HTTP_STATUS.OK, {
-        profile: {
-          firstName: '',
-          lastName: '',
-          email: '',
-          phone: '',
-          jobTitle: '',
-          company: req.shopDomain,
-          bio: '',
-          timezone: 'UTC',
-          language: 'en',
-          dateFormat: 'MM/DD/YYYY',
-          timeFormat: '12h'
+      return sendSuccess(
+        res,
+        HTTP_STATUS.OK,
+        {
+          profile: {
+            firstName: '',
+            lastName: '',
+            email: '',
+            phone: '',
+            jobTitle: '',
+            company: req.shopDomain,
+            bio: '',
+            timezone: 'UTC',
+            language: 'en',
+            dateFormat: 'MM/DD/YYYY',
+            timeFormat: '12h',
+          },
+          account: {
+            shopDomain: req.shopDomain,
+            plan: 'Professional',
+            billingEmail: '',
+            apiKey: '',
+            twoFactorEnabled: false,
+            emailNotifications: true,
+            pushNotifications: true,
+            weeklyReports: true,
+          },
+          preferences: {
+            theme: 'light',
+            dashboardView: 'grid',
+            defaultTestType: 'price',
+            autoSave: true,
+            showTooltips: true,
+            compactMode: false,
+          },
         },
-        account: {
-          shopDomain: req.shopDomain,
-          plan: 'Professional',
-          billingEmail: '',
-          apiKey: '',
-          twoFactorEnabled: false,
-          emailNotifications: true,
-          pushNotifications: true,
-          weeklyReports: true
-        },
-        preferences: {
-          theme: 'light',
-          dashboardView: 'grid',
-          defaultTestType: 'price',
-          autoSave: true,
-          showTooltips: true,
-          compactMode: false
-        }
-      }, 'Profile data retrieved (using defaults - table not created yet)');
+        'Profile data retrieved (using defaults - table not created yet)'
+      );
     }
     logger.error('Error getting profile', { error: error.message, shopDomain: req.shopDomain });
     next(error);
@@ -226,10 +226,12 @@ router.put('/preferences', async (req, res, next) => {
         'Database table not found. Please run migrations: npm run migrate'
       );
     }
-    logger.error('Error updating preferences', { error: error.message, shopDomain: req.shopDomain });
+    logger.error('Error updating preferences', {
+      error: error.message,
+      shopDomain: req.shopDomain,
+    });
     next(error);
   }
 });
 
 module.exports = router;
-

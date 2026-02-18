@@ -67,6 +67,7 @@ END;
 $$ language 'plpgsql';
 
 -- Trigger to auto-update updated_at
+DROP TRIGGER IF EXISTS update_tests_updated_at ON tests;
 CREATE TRIGGER update_tests_updated_at BEFORE UPDATE ON tests
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 

@@ -5,6 +5,7 @@
  */
 
 const analyticsService = require('./analytics');
+const { getFunnelMetrics } = require('../models/analytics');
 
 class ExportService {
   /**
@@ -12,9 +13,10 @@ class ExportService {
    *
    * @param {string} testId - Test ID
    * @param {string} shopDomain - Shop domain
+   * @param {Object} [dateRange] - Optional { start_date, end_date } for funnel
    * @returns {Promise<string>} CSV content
    */
-  async exportToCSV(testId, shopDomain) {
+  async exportToCSV(testId, shopDomain, dateRange = null) {
     const analytics = await analyticsService.getTestAnalytics(testId, shopDomain);
     const { getTestById } = require('../models/test');
     const test = await getTestById(testId, shopDomain);
@@ -56,6 +58,26 @@ class ExportService {
       csv += `Impact %,${analytics.revenueImpact.impactPercent.toFixed(2)}%\n`;
     }
 
+    // Funnel
+    try {
+      const funnel = await getFunnelMetrics(testId, shopDomain, dateRange || {});
+      if (funnel?.byVariant && Object.keys(funnel.byVariant).length > 0) {
+        csv += '\nConversion Funnel\n';
+        csv += 'Variant,Visitors,Add to Cart,Purchase,Cart Rate %,Purchase Rate %\n';
+        Object.entries(funnel.byVariant).forEach(([vid, data]) => {
+          const name = funnel.variantNames?.[vid] || vid;
+          const v = data.visitors || 0;
+          const c = data.add_to_cart || 0;
+          const p = data.conversion || 0;
+          const cartRate = v > 0 ? ((c / v) * 100).toFixed(2) : '0';
+          const purchaseRate = v > 0 ? ((p / v) * 100).toFixed(2) : '0';
+          csv += `"${name}",${v},${c},${p},${cartRate},${purchaseRate}\n`;
+        });
+      }
+    } catch {
+      // Funnel optional
+    }
+
     return csv;
   }
 
@@ -66,12 +88,16 @@ class ExportService {
    * @param {string} shopDomain - Shop domain
    * @returns {Promise<Object>} JSON data
    */
-  async exportToJSON(testId, shopDomain) {
-    const analytics = await analyticsService.getTestAnalytics(testId, shopDomain);
+  async exportToJSON(testId, shopDomain, dateRange = null) {
+    const opts = dateRange || {};
+    const [analytics, funnel] = await Promise.all([
+      analyticsService.getTestAnalytics(testId, shopDomain),
+      getFunnelMetrics(testId, shopDomain, opts).catch(() => null),
+    ]);
     const { getTestById } = require('../models/test');
     const test = await getTestById(testId, shopDomain);
 
-    return {
+    const result = {
       test: {
         id: test.id,
         name: test.name,
@@ -79,11 +105,15 @@ class ExportService {
         status: test.status,
         created_at: test.created_at,
         started_at: test.started_at,
-        stopped_at: test.stopped_at
+        stopped_at: test.stopped_at,
       },
-      analytics: analytics,
-      exported_at: new Date().toISOString()
+      analytics,
+      exported_at: new Date().toISOString(),
     };
+    if (funnel?.byVariant && Object.keys(funnel.byVariant).length > 0) {
+      result.funnel = funnel;
+    }
+    return result;
   }
 
   /**
@@ -102,4 +132,3 @@ class ExportService {
 }
 
 module.exports = new ExportService();
-

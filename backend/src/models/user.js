@@ -14,11 +14,11 @@ function safeParseJSON(jsonString, defaultValue) {
   if (!jsonString) {
     return defaultValue;
   }
-  
+
   if (typeof jsonString === 'object') {
     return jsonString;
   }
-  
+
   try {
     return JSON.parse(jsonString);
   } catch (e) {
@@ -58,17 +58,20 @@ class UserModel {
           defaultTestType: 'price',
           autoSave: true,
           showTooltips: true,
-          compactMode: false
+          compactMode: false,
         }),
         createdAt: user.created_at,
-        updatedAt: user.updated_at
+        updatedAt: user.updated_at,
       };
     } catch (error) {
       // If table doesn't exist, return null (will trigger defaults in route)
       if (error.message && error.message.includes('does not exist')) {
         // Only log once per session to avoid spam
         if (!this._tableMissingLogged) {
-          logger.warn('Users table does not exist. Using defaults. Run migrations to create table.', { shopDomain });
+          logger.warn(
+            'Users table does not exist. Using defaults. Run migrations to create table.',
+            { shopDomain }
+          );
           this._tableMissingLogged = true;
         }
         return null;
@@ -98,14 +101,11 @@ class UserModel {
           RETURNING profile, updated_at
         `;
 
-        const result = await query(sql, [
-          JSON.stringify(profileData),
-          shopDomain
-        ]);
+        const result = await query(sql, [JSON.stringify(profileData), shopDomain]);
 
         return {
           profile: safeParseJSON(result.rows[0].profile, {}),
-          updatedAt: result.rows[0].updated_at
+          updatedAt: result.rows[0].updated_at,
         };
       } else {
         // Create new user
@@ -123,7 +123,7 @@ class UserModel {
           twoFactorEnabled: false,
           emailNotifications: true,
           pushNotifications: true,
-          weeklyReports: true
+          weeklyReports: true,
         };
 
         const defaultPreferences = {
@@ -132,19 +132,19 @@ class UserModel {
           defaultTestType: 'price',
           autoSave: true,
           showTooltips: true,
-          compactMode: false
+          compactMode: false,
         };
 
         const result = await query(sql, [
           shopDomain,
           JSON.stringify(profileData),
           JSON.stringify(defaultAccount),
-          JSON.stringify(defaultPreferences)
+          JSON.stringify(defaultPreferences),
         ]);
 
         return {
           profile: safeParseJSON(result.rows[0].profile, {}),
-          updatedAt: result.rows[0].updated_at
+          updatedAt: result.rows[0].updated_at,
         };
       }
     } catch (error) {
@@ -182,7 +182,7 @@ class UserModel {
           timezone: 'UTC',
           language: 'en',
           dateFormat: 'MM/DD/YYYY',
-          timeFormat: '12h'
+          timeFormat: '12h',
         });
       }
 
@@ -193,14 +193,11 @@ class UserModel {
         RETURNING account, updated_at
       `;
 
-      const result = await query(sql, [
-        JSON.stringify(accountData),
-        shopDomain
-      ]);
+      const result = await query(sql, [JSON.stringify(accountData), shopDomain]);
 
       return {
         account: safeParseJSON(result.rows[0].account, {}),
-        updatedAt: result.rows[0].updated_at
+        updatedAt: result.rows[0].updated_at,
       };
     } catch (error) {
       // If table doesn't exist, throw error to be handled by route
@@ -237,7 +234,7 @@ class UserModel {
           timezone: 'UTC',
           language: 'en',
           dateFormat: 'MM/DD/YYYY',
-          timeFormat: '12h'
+          timeFormat: '12h',
         });
       }
 
@@ -248,14 +245,11 @@ class UserModel {
         RETURNING preferences, updated_at
       `;
 
-      const result = await query(sql, [
-        JSON.stringify(preferences),
-        shopDomain
-      ]);
+      const result = await query(sql, [JSON.stringify(preferences), shopDomain]);
 
       return {
         preferences: safeParseJSON(result.rows[0].preferences, {}),
-        updatedAt: result.rows[0].updated_at
+        updatedAt: result.rows[0].updated_at,
       };
     } catch (error) {
       // If table doesn't exist, throw error to be handled by route
@@ -273,9 +267,9 @@ const userModel = new UserModel();
 
 // Export individual functions for convenience
 module.exports = {
-  getProfile: (shopDomain) => userModel.getProfile(shopDomain),
+  getProfile: shopDomain => userModel.getProfile(shopDomain),
   upsertProfile: (shopDomain, profileData) => userModel.upsertProfile(shopDomain, profileData),
   updateAccount: (shopDomain, accountData) => userModel.updateAccount(shopDomain, accountData),
-  updatePreferences: (shopDomain, preferences) => userModel.updatePreferences(shopDomain, preferences)
+  updatePreferences: (shopDomain, preferences) =>
+    userModel.updatePreferences(shopDomain, preferences),
 };
-

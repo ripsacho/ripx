@@ -1,0 +1,56 @@
+.page {
+  display: block;
+}
+
+.page :global(.Polaris-Page__Header) {
+  padding-bottom: var(--spacing-sm);
+  border-bottom: 1px solid var(--border-secondary);
+  margin-bottom: var(--spacing-md);
+  position: relative;
+}
+.page :global(.Polaris-Page__Header)::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  width: 48px;
+  background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
+  border-radius: 2px;
+}
+
+.page :global(.Polaris-Page__Content) {
+  padding-top: 0;
+}
+
+.page :global(.Polaris-Page__Title) {
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.page :global(.Polaris-Card) {
+  position: relative;
+  border: 1px solid rgba(6, 182, 212, 0.18);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--surface-2);
+  transition: transform var(--transition-smooth), box-shadow var(--transition-smooth), border-color var(--transition-smooth);
+  overflow: hidden;
+}
+
+.page :global(.Polaris-Card)::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
+  opacity: 0.6;
+}
+
+.page :global(.Polaris-Card:hover) {
+  transform: translateY(-2px);
+  border-color: rgba(6, 182, 212, 0.35);
+  box-shadow: var(--surface-3);
+}
+

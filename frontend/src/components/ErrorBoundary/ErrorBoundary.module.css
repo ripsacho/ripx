@@ -1,0 +1,26 @@
+/* Error Boundary - Futuristic sync */
+
+.errorPage {
+  padding: 2rem;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.errorPage :global(.Polaris-Card) {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(6, 182, 212, 0.2) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: 0 8px 32px var(--shadow-lg), 0 0 0 1px rgba(6, 182, 212, 0.08) !important;
+}
+
+.errorPage :global(.Polaris-Card)::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
+  z-index: 1;
+}

@@ -1,0 +1,122 @@
+/* Connect page - standalone/non-Shopify onboarding */
+.connectPage {
+  min-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  padding: 2rem 1.5rem 3rem;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.connectHero {
+  text-align: center;
+  margin-bottom: 2rem;
+  padding: 2rem 1.5rem;
+  background: linear-gradient(
+    165deg,
+    rgba(6, 182, 212, 0.08) 0%,
+    rgba(139, 92, 246, 0.05) 50%,
+    rgba(6, 182, 212, 0.04) 100%
+  );
+  border: 1px solid rgba(6, 182, 212, 0.18);
+  border-radius: 20px;
+  position: relative;
+  overflow: hidden;
+}
+
+.connectHero::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--futuristic-cyan),
+    var(--futuristic-violet),
+    transparent
+  );
+  opacity: 0.9;
+}
+
+.connectHeroTitle {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: var(--text-primary);
+}
+
+.connectHeroSubtitle {
+  margin: 0.5rem 0 0;
+  font-size: 0.9375rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  max-width: 480px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.connectBadge {
+  display: inline-block;
+  margin-top: 1rem;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--futuristic-cyan);
+  background: rgba(6, 182, 212, 0.12);
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  border-radius: 999px;
+}
+
+.connectCard {
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(6, 182, 212, 0.08);
+  overflow: hidden;
+}
+
+.connectCardHeader {
+  padding: 1.25rem 1.5rem;
+  background: linear-gradient(
+    180deg,
+    rgba(6, 182, 212, 0.06) 0%,
+    transparent 100%
+  );
+  border-bottom: 1px solid rgba(6, 182, 212, 0.12);
+}
+
+.connectNextSteps {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: var(--bg-tertiary);
+  border-radius: 12px;
+  border: 1px solid rgba(6, 182, 212, 0.12);
+}
+
+.connectNextStepsTitle {
+  margin: 0 0 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.connectNextStepsText {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.connectNextStepsText a {
+  color: var(--futuristic-cyan);
+  text-decoration: none;
+}
+
+.connectNextStepsText a:hover {
+  text-decoration: underline;
+}

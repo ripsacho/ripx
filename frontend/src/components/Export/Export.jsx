@@ -1,88 +1,212 @@
 /**
- * Export Component
- * 
- * Export test results to CSV, JSON, etc.
+ * Export Component - Advanced reporting and data export
+ *
+ * Features: Date range filter, format options, report preview, copy snippet.
  */
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
+  Page,
   Card,
   Button,
   Select,
   BlockStack,
+  InlineStack,
+  Text,
+  Banner,
 } from '@shopify/polaris';
-import Toast from '../Toast/Toast';
+import { ExportIcon } from '@shopify/polaris-icons';
+import { useNavigate } from 'react-router-dom';
+import { PageShell } from '../Shared';
 import { apiGet } from '../../services';
+import { getDefaultExportFormat, getDefaultAnalyticsDateRange } from '../../utils/preferences';
+import styles from './Export.module.css';
+
+const DATE_RANGES = [
+  { label: 'All time', value: 'all' },
+  { label: 'Last 7 days', value: '7' },
+  { label: 'Last 30 days', value: '30' },
+  { label: 'Last 90 days', value: '90' },
+];
+
+function getDateRangeParams(value) {
+  if (!value || value === 'all') return {};
+  const days = parseInt(value, 10);
+  if (isNaN(days)) return {};
+  const end = new Date();
+  const start = new Date();
+  start.setDate(start.getDate() - days);
+  const endNext = new Date(end);
+  endNext.setDate(endNext.getDate() + 1);
+  return {
+    start_date: start.toISOString().split('T')[0],
+    end_date: endNext.toISOString().split('T')[0],
+  };
+}
 
 function Export({ testId }) {
-  const [format, setFormat] = useState('csv');
+  const [format, setFormat] = useState(() => getDefaultExportFormat());
+  const [dateRange, setDateRange] = useState(() => getDefaultAnalyticsDateRange());
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState(null);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!testId || testId === 'undefined') {
+      navigate('/tests');
+    }
+  }, [testId, navigate]);
 
   const handleExport = async () => {
+    if (!testId || testId === 'undefined') return;
     try {
       setExporting(true);
       setError(null);
-      
-      const response = await apiGet(`/analytics/tests/${testId}/export`, {
-        format: format
-      }, {
-        responseType: 'blob'
+
+      const params = { format };
+      const dateParams = getDateRangeParams(dateRange);
+      if (dateParams.start_date) params.start_date = dateParams.start_date;
+      if (dateParams.end_date) params.end_date = dateParams.end_date;
+
+      const response = await apiGet(`/analytics/tests/${testId}/export`, params, {
+        responseType: 'blob',
       });
 
-      // Create download link
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `test_${testId}_${new Date().toISOString().split('T')[0]}.${format}`);
+      const dateStr = new Date().toISOString().split('T')[0];
+      link.setAttribute('download', `ripx_report_${testId}_${dateStr}.${format}`);
       document.body.appendChild(link);
       link.click();
       link.remove();
-      
+      window.URL.revokeObjectURL(url);
     } catch (err) {
-      // Log error details for debugging (only in development)
-      if (import.meta.env.DEV) {
-        console.error('Export error:', err);
+      if (import.meta.env.DEV) console.error('Export error:', err);
+      const errMsg = err.message || 'Failed to export data';
+      const data = err.response?.data;
+      if (data instanceof Blob) {
+        try {
+          const t = await data.text();
+          const parsed = JSON.parse(t);
+          setError(parsed.error || errMsg);
+        } catch {
+          setError(errMsg);
+        }
+      } else if (data && typeof data === 'object') {
+        setError(data.error || errMsg);
+      } else {
+        setError(errMsg);
       }
-      setError(err.response?.data?.error || 'Failed to export data');
     } finally {
       setExporting(false);
     }
   };
 
-  return (
-    <>
-      <Toast
-        message={error}
-        type="error"
-        onClose={() => setError(null)}
-        duration={5000}
-      />
+  if (!testId || testId === 'undefined') {
+    return null;
+  }
 
-      <Card sectioned title="Export Results">
-        <BlockStack gap="200">
-        <Select
-          label="Export Format"
-          options={[
-            { label: 'CSV', value: 'csv' },
-            { label: 'JSON', value: 'json' }
-          ]}
-          value={format}
-          onChange={setFormat}
-        />
-        
-        <Button
-          primary
-          onClick={handleExport}
-          loading={exporting}
-        >
-          Export {format.toUpperCase()}
-        </Button>
-      </BlockStack>
-    </Card>
-    </>
+  return (
+    <PageShell
+      message={error}
+      messageType="error"
+      onCloseMessage={() => setError(null)}
+      messageDuration={5000}
+    >
+      <Page
+        title="Export Report"
+        subtitle="Download test analytics, funnel, and events"
+        breadcrumbs={[
+          { content: 'All Tests', onAction: () => navigate('/tests') },
+          { content: 'Test Details', onAction: () => navigate(`/tests/${testId}`) },
+          { content: 'Export' },
+        ]}
+      >
+        <BlockStack gap="400">
+          <div className={styles.exportHero}>
+            <div className={styles.exportHeroInner}>
+              <div className={styles.exportHeroIcon}>
+                <ExportIcon />
+              </div>
+              <div>
+                <Text variant="headingLg" as="h2" fontWeight="bold">
+                  Export your test data
+                </Text>
+                <Text variant="bodyMd" tone="subdued" as="p">
+                  Download CSV or JSON with variant metrics, funnel data, and statistical significance.
+                </Text>
+              </div>
+            </div>
+          </div>
+          <Card>
+            <BlockStack gap="400">
+              <Text variant="headingMd" as="h2">
+                Report Options
+              </Text>
+              <InlineStack gap="400" wrap>
+                <div style={{ minWidth: 200 }}>
+                  <Select
+                    label="Export format"
+                    options={[
+                      { label: 'CSV (spreadsheet)', value: 'csv' },
+                      { label: 'JSON (raw data)', value: 'json' },
+                    ]}
+                    value={format}
+                    onChange={setFormat}
+                  />
+                </div>
+                <div style={{ minWidth: 180 }}>
+                  <Select
+                    label="Date range"
+                    options={DATE_RANGES}
+                    value={dateRange}
+                    onChange={setDateRange}
+                  />
+                </div>
+              </InlineStack>
+              <Text variant="bodySm" color="subdued" as="p">
+                Date range applies to funnel data. Core metrics use all-time data.
+              </Text>
+              <Button variant="primary" onClick={handleExport} loading={exporting}>
+                Download {format.toUpperCase()}
+              </Button>
+            </BlockStack>
+          </Card>
+
+          <Card>
+            <BlockStack gap="300">
+              <Text variant="headingMd" as="h2">
+                Report contents
+              </Text>
+              <BlockStack gap="200">
+                <Text as="p" variant="bodySm">
+                  • <strong>Test info</strong> – name, type, status, dates
+                </Text>
+                <Text as="p" variant="bodySm">
+                  • <strong>Variant metrics</strong> – visitors, conversions, conversion rate, revenue, AOV
+                </Text>
+                <Text as="p" variant="bodySm">
+                  • <strong>Statistical significance</strong> – p-value, confidence, lift, winner
+                </Text>
+                <Text as="p" variant="bodySm">
+                  • <strong>Revenue impact</strong> – control vs test revenue, impact
+                </Text>
+                <Text as="p" variant="bodySm">
+                  • <strong>Conversion funnel</strong> – visitors, add to cart, purchase by variant
+                </Text>
+              </BlockStack>
+            </BlockStack>
+          </Card>
+
+          <Banner tone="info" title="Scheduled reports">
+            <Text as="p" variant="bodySm">
+              Export reports manually for now. Scheduled email reports coming in a future update.
+            </Text>
+          </Banner>
+        </BlockStack>
+      </Page>
+    </PageShell>
   );
 }
 
 export default Export;
-

@@ -1,16 +1,40 @@
+# Dependencies
 node_modules
-npm-debug.log
+frontend/node_modules
+
+# Environment
 .env
-.env.local
+.env.*
+!.env.example
+
+# Version control
 .git
 .gitignore
-README.md
-*.md
+.gitattributes
+
+# IDE
 .vscode
 .idea
-coverage
-.nyc_output
+*.swp
+*.swo
+
+# Build & test
 dist
 build
+coverage
+.nyc_output
+playwright-report
+test-results
 *.log
+*.map
+
+# Docs (keep README for image metadata if desired)
+# *.md
+
+# Misc
+.husky
+.github
+Dockerfile
+docker-compose*.yml
+*.md
 

@@ -29,7 +29,10 @@ class TargetingService {
     }
 
     // Customer segment targeting
-    if (targeting.customerSegment && !this.matchesCustomerSegment(targeting.customerSegment, userContext)) {
+    if (
+      targeting.customerSegment &&
+      !this.matchesCustomerSegment(targeting.customerSegment, userContext)
+    ) {
       return false;
     }
 
@@ -54,7 +57,9 @@ class TargetingService {
    * @returns {boolean}
    */
   matchesGeographic(geographic, userContext) {
-    if (!geographic.enabled) {return true;}
+    if (!geographic.enabled) {
+      return true;
+    }
 
     const userCountry = userContext.country || userContext.geo?.country;
     const userRegion = userContext.region || userContext.geo?.region;
@@ -97,7 +102,9 @@ class TargetingService {
    * @returns {boolean}
    */
   matchesDevice(device, userContext) {
-    if (!device.enabled) {return true;}
+    if (!device.enabled) {
+      return true;
+    }
 
     const userDevice = userContext.device || this.detectDevice(userContext.userAgent);
 
@@ -138,7 +145,9 @@ class TargetingService {
    * @returns {boolean}
    */
   matchesCustomerSegment(segment, userContext) {
-    if (!segment.enabled) {return true;}
+    if (!segment.enabled) {
+      return true;
+    }
 
     const customerTags = userContext.customerTags || [];
     const customerType = userContext.customerType; // 'new', 'returning', 'vip', etc.
@@ -188,7 +197,9 @@ class TargetingService {
    * @returns {boolean}
    */
   matchesTimeBased(timeBased) {
-    if (!timeBased.enabled) {return true;}
+    if (!timeBased.enabled) {
+      return true;
+    }
 
     const now = new Date();
     const currentHour = now.getHours();
@@ -231,7 +242,9 @@ class TargetingService {
    * @returns {boolean}
    */
   matchesCustomRules(customRules, userContext) {
-    if (!customRules || customRules.length === 0) {return true;}
+    if (!customRules || customRules.length === 0) {
+      return true;
+    }
 
     // Evaluate each rule
     return customRules.every(rule => {
@@ -265,7 +278,9 @@ class TargetingService {
    * @returns {Object} Device info
    */
   detectDevice(userAgent) {
-    if (!userAgent) {return { type: 'desktop' };}
+    if (!userAgent) {
+      return { type: 'desktop' };
+    }
 
     const ua = userAgent.toLowerCase();
 
@@ -285,19 +300,30 @@ class TargetingService {
    * @returns {string} Browser name
    */
   detectBrowser(userAgent) {
-    if (!userAgent) {return 'unknown';}
+    if (!userAgent) {
+      return 'unknown';
+    }
 
     const ua = userAgent.toLowerCase();
 
-    if (ua.includes('chrome')) {return 'chrome';}
-    if (ua.includes('firefox')) {return 'firefox';}
-    if (ua.includes('safari') && !ua.includes('chrome')) {return 'safari';}
-    if (ua.includes('edge')) {return 'edge';}
-    if (ua.includes('opera')) {return 'opera';}
+    if (ua.includes('chrome')) {
+      return 'chrome';
+    }
+    if (ua.includes('firefox')) {
+      return 'firefox';
+    }
+    if (ua.includes('safari') && !ua.includes('chrome')) {
+      return 'safari';
+    }
+    if (ua.includes('edge')) {
+      return 'edge';
+    }
+    if (ua.includes('opera')) {
+      return 'opera';
+    }
 
     return 'unknown';
   }
 }
 
 module.exports = new TargetingService();
-

@@ -17,14 +17,14 @@ router.post('/', async (req, res, next) => {
     const shopDomain = req.shopDomain;
     const linkData = {
       ...req.body,
-      shop_domain: shopDomain
+      shop_domain: shopDomain,
     };
 
     const promoLink = await promoLinkService.generatePromoLink(linkData);
 
     res.status(201).json({
       success: true,
-      promoLink
+      promoLink,
     });
   } catch (error) {
     next(error);
@@ -44,7 +44,7 @@ router.get('/test/:testId', async (req, res, next) => {
 
     res.json({
       success: true,
-      promoLinks
+      promoLinks,
     });
   } catch (error) {
     next(error);
@@ -64,13 +64,13 @@ router.get('/validate/:token', async (req, res, next) => {
 
     if (!promoLink) {
       return res.status(404).json({
-        error: 'Promo link not found or expired'
+        error: 'Promo link not found or expired',
       });
     }
 
     res.json({
       success: true,
-      promoLink
+      promoLink,
     });
   } catch (error) {
     next(error);
@@ -78,4 +78,3 @@ router.get('/validate/:token', async (req, res, next) => {
 });
 
 module.exports = router;
-

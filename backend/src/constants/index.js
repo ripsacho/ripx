@@ -1,6 +1,6 @@
 /**
  * Application Constants
- * 
+ *
  * Centralized constants for the RipX application
  */
 
@@ -13,7 +13,7 @@ const HTTP_STATUS = {
   FORBIDDEN: 403,
   NOT_FOUND: 404,
   CONFLICT: 409,
-  INTERNAL_SERVER_ERROR: 500
+  INTERNAL_SERVER_ERROR: 500,
 };
 
 // Test Status Values
@@ -22,7 +22,7 @@ const TEST_STATUS = {
   RUNNING: 'running',
   PAUSED: 'paused',
   COMPLETED: 'completed',
-  ARCHIVED: 'archived'
+  ARCHIVED: 'archived',
 };
 
 // Test Types
@@ -36,7 +36,7 @@ const TEST_TYPES = {
   TEMPLATE: 'template',
   THEME: 'theme',
   CHECKOUT: 'checkout',
-  COMBINATION: 'combination'
+  COMBINATION: 'combination',
 };
 
 // Target Types
@@ -46,13 +46,13 @@ const TARGET_TYPES = {
   HOMEPAGE: 'homepage',
   CART: 'cart',
   CHECKOUT: 'checkout',
-  ALL_PRODUCTS: 'all-products'
+  ALL_PRODUCTS: 'all-products',
 };
 
 // Statistical Significance Threshold
 const STATISTICAL_THRESHOLD = {
   P_VALUE: 0.05,
-  CONFIDENCE_LEVEL: 95
+  CONFIDENCE_LEVEL: 95,
 };
 
 // Default Values
@@ -60,7 +60,7 @@ const DEFAULTS = {
   TEST_STATUS: TEST_STATUS.DRAFT,
   TRAFFIC_ALLOCATION: 50,
   MIN_VARIANTS: 2,
-  MAX_VARIANTS: 10
+  MAX_VARIANTS: 10,
 };
 
 // Error Messages
@@ -72,7 +72,7 @@ const ERROR_MESSAGES = {
   INTERNAL_ERROR: 'Internal server error',
   INVALID_INPUT: 'Invalid input',
   DATABASE_ERROR: 'Database error',
-  SHOPIFY_ERROR: 'Shopify API error'
+  SHOPIFY_ERROR: 'Shopify API error',
 };
 
 // Success Messages
@@ -85,20 +85,20 @@ const SUCCESS_MESSAGES = {
   TEST_CLONED: 'Test cloned successfully',
   PROFILE_UPDATED: 'Profile updated successfully',
   ACCOUNT_UPDATED: 'Account settings updated successfully',
-  PREFERENCES_UPDATED: 'Preferences updated successfully'
+  PREFERENCES_UPDATED: 'Preferences updated successfully',
 };
 
-// Rate Limiting
+// Rate Limiting (env overrides for production tuning)
 const RATE_LIMIT = {
-  WINDOW_MS: 15 * 60 * 1000, // 15 minutes
-  MAX_REQUESTS: 100
+  WINDOW_MS: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 15 * 60 * 1000, // 15 min default
+  MAX_REQUESTS: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 100,
 };
 
 // Pagination
 const PAGINATION = {
   DEFAULT_PAGE: 1,
   DEFAULT_LIMIT: 20,
-  MAX_LIMIT: 100
+  MAX_LIMIT: 100,
 };
 
 module.exports = {
@@ -111,6 +111,5 @@ module.exports = {
   ERROR_MESSAGES,
   SUCCESS_MESSAGES,
   RATE_LIMIT,
-  PAGINATION
+  PAGINATION,
 };
-

@@ -1,18 +1,25 @@
 /**
  * Authentication Middleware
  *
- * Handles Shopify OAuth authentication
+ * Handles Shopify OAuth and API key authentication (multi-platform)
  */
 
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const logger = require('../utils/logger');
-const { HTTP_STATUS, ERROR_MESSAGES } = require('../constants');
+const { ERROR_MESSAGES } = require('../constants');
 const { sendUnauthorized } = require('../utils/response');
+const { getShopSession } = require('../models/shopSession');
+const { getTenantByApiKey, isShopifyDomain } = require('../models/tenant');
+const {
+  getAccountByApiKey,
+  getTenantByAccountAndDomain,
+  getFirstTenantForAccount,
+} = require('../models/account');
 
 /**
  * Verify HMAC signature for Shopify requests
- * 
+ *
  * @param {string} data - Request data
  * @param {string} hmacHeader - HMAC signature from header
  * @returns {boolean} True if signature is valid
@@ -25,10 +32,7 @@ function verifyHMAC(data, hmacHeader) {
   try {
     const hmac = crypto.createHmac('sha256', process.env.SHOPIFY_API_SECRET);
     const hash = hmac.update(data, 'utf8').digest('base64');
-    return crypto.timingSafeEqual(
-      Buffer.from(hash),
-      Buffer.from(hmacHeader)
-    );
+    return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(hmacHeader));
   } catch (error) {
     logger.error('HMAC verification error', { error });
     return false;
@@ -43,7 +47,7 @@ function verifyHMAC(data, hmacHeader) {
  * @param {Object} res - Express response object
  * @param {Function} next - Express next function
  */
-function authenticateShopify(req, res, next) {
+async function authenticateShopify(req, res, next) {
   try {
     // Get shop domain from query or headers
     const shop = req.query.shop || req.headers['x-shopify-shop-domain'];
@@ -51,7 +55,7 @@ function authenticateShopify(req, res, next) {
     if (!shop) {
       logger.warn('Authentication failed: Shop domain required', {
         path: req.path,
-        method: req.method
+        method: req.method,
       });
       return sendUnauthorized(res, 'Shop domain required');
     }
@@ -60,7 +64,7 @@ function authenticateShopify(req, res, next) {
     if (!shop.match(/^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/)) {
       logger.warn('Authentication failed: Invalid shop domain format', {
         shop,
-        path: req.path
+        path: req.path,
       });
       return sendUnauthorized(res, 'Invalid shop domain');
     }
@@ -68,16 +72,14 @@ function authenticateShopify(req, res, next) {
     // For POST/PUT requests with body, verify HMAC if present
     if ((req.method === 'POST' || req.method === 'PUT') && req.body) {
       const hmacHeader = req.headers['x-shopify-hmac-sha256'];
-      
+
       if (hmacHeader) {
-        const bodyString = typeof req.body === 'string' 
-          ? req.body 
-          : JSON.stringify(req.body);
-        
+        const bodyString = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+
         if (!verifyHMAC(bodyString, hmacHeader)) {
           logger.warn('Authentication failed: Invalid HMAC signature', {
             shop,
-            path: req.path
+            path: req.path,
           });
           return sendUnauthorized(res, 'Invalid request signature');
         }
@@ -88,26 +90,22 @@ function authenticateShopify(req, res, next) {
     // 1. Check if shop has installed the app (query database)
     // 2. Get access token from database based on shop domain
     // 3. Verify token is still valid
-    
-    // For now, we'll use environment variable or attempt to get from database
-    // In a full implementation, you would query your database for the shop's access token
-    req.shopDomain = shop;
-    
-    // Try to get access token from database (if you have a sessions table)
-    // For now, fall back to environment variable
-    // TODO: Implement proper session storage and retrieval
-    req.shopifyAccessToken = process.env.SHOPIFY_ACCESS_TOKEN || 'demo_token';
 
-    // In development, allow demo token
-    // In production, you should require a valid token from database
-    if (process.env.NODE_ENV === 'production' && req.shopifyAccessToken === 'demo_token') {
-      logger.warn('Using demo token in production - this should be replaced with database lookup', {
+    req.shopDomain = shop;
+
+    const shopSession = await getShopSession(shop);
+    if (shopSession?.access_token) {
+      req.shopifyAccessToken = shopSession.access_token;
+    } else if (process.env.NODE_ENV !== 'production' && process.env.SHOPIFY_ACCESS_TOKEN) {
+      // Dev-only fallback when shop has not completed OAuth
+      req.shopifyAccessToken = process.env.SHOPIFY_ACCESS_TOKEN;
+      logger.debug('Using SHOPIFY_ACCESS_TOKEN dev fallback', { shop });
+    } else {
+      logger.warn('Authentication failed: No access token found for shop', {
         shop,
-        path: req.path
+        path: req.path,
       });
-      // In production, reject requests with demo token for security
-      // Uncomment the following lines once you implement proper session storage:
-      // return sendUnauthorized(res, 'Invalid authentication token');
+      return sendUnauthorized(res, 'Shop not authenticated');
     }
 
     next();
@@ -130,7 +128,7 @@ function verifyToken(req, res, next) {
   if (!token) {
     logger.warn('Token verification failed: No token provided', {
       path: req.path,
-      method: req.method
+      method: req.method,
     });
     return sendUnauthorized(res, 'No token provided');
   }
@@ -142,13 +140,112 @@ function verifyToken(req, res, next) {
   } catch (error) {
     logger.warn('Token verification failed: Invalid token', {
       error: error.message,
-      path: req.path
+      path: req.path,
     });
     return sendUnauthorized(res, 'Invalid token');
   }
 }
 
+/**
+ * Authenticate via API key (standalone sites)
+ * Header: X-RipX-API-Key or Authorization: Bearer <api_key>
+ * Optional: X-RipX-Store for multi-store (domain to use when account has multiple stores)
+ */
+async function authenticateApiKey(req, res, next) {
+  try {
+    const apiKey =
+      req.headers['x-ripx-api-key'] ||
+      req.headers['x-ripx-apikey'] ||
+      req.headers.authorization?.replace(/^Bearer\s+/i, '');
+
+    if (!apiKey) {
+      return sendUnauthorized(res, 'API key required');
+    }
+
+    const trimmedKey = apiKey.trim();
+
+    // 1. Try legacy tenant-level API key (backward compat)
+    const tenant = await getTenantByApiKey(trimmedKey);
+    if (tenant) {
+      req.shopDomain = tenant.domain;
+      req.platform = tenant.platform;
+      req.tenantId = tenant.id;
+      req.accountId = tenant.account_id;
+      return next();
+    }
+
+    // 2. Try account-level API key (multi-store)
+    let account = null;
+    try {
+      account = await getAccountByApiKey(trimmedKey);
+    } catch (err) {
+      logger.debug('Account lookup skipped', { error: err.message });
+    }
+    if (!account) {
+      logger.warn('API key authentication failed: Invalid key', { path: req.path });
+      return sendUnauthorized(res, 'Invalid API key');
+    }
+
+    req.accountId = account.id;
+    const storeHeader = req.headers['x-ripx-store'] || req.query.store;
+
+    if (storeHeader) {
+      const storeTenant = await getTenantByAccountAndDomain(account.id, storeHeader);
+      if (storeTenant) {
+        req.shopDomain = storeTenant.domain;
+        req.platform = storeTenant.platform;
+        req.tenantId = storeTenant.id;
+      } else {
+        const first = await getFirstTenantForAccount(account.id);
+        req.shopDomain = first?.domain;
+        req.platform = first?.platform;
+        req.tenantId = first?.id;
+      }
+    } else {
+      const first = await getFirstTenantForAccount(account.id);
+      if (!first) {
+        return sendUnauthorized(res, 'No stores in account. Add a website first.');
+      }
+      req.shopDomain = first.domain;
+      req.platform = first.platform;
+      req.tenantId = first.id;
+    }
+
+    next();
+  } catch (error) {
+    logger.error('API key auth error', { error: error.message, path: req.path });
+    return sendUnauthorized(res, ERROR_MESSAGES.UNAUTHORIZED);
+  }
+}
+
+/**
+ * Multi-platform auth: try Shopify first, then API key
+ */
+async function authenticate(req, res, next) {
+  const shop = req.query.shop || req.headers['x-shopify-shop-domain'];
+  const apiKey =
+    req.headers['x-ripx-api-key'] ||
+    req.headers['x-ripx-apikey'] ||
+    req.headers.authorization?.replace(/^Bearer\s+/i, '');
+
+  if (shop && isShopifyDomain(shop)) {
+    return authenticateShopify(req, res, next);
+  }
+  if (apiKey) {
+    return authenticateApiKey(req, res, next);
+  }
+
+  logger.warn('Authentication failed: No valid credentials', {
+    path: req.path,
+    hasShop: !!shop,
+    hasApiKey: !!apiKey,
+  });
+  return sendUnauthorized(res, 'Shop domain or API key required');
+}
+
 module.exports = {
   authenticateShopify,
-  verifyToken
+  authenticateApiKey,
+  authenticate,
+  verifyToken,
 };

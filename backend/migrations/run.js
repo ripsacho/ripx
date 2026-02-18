@@ -3,6 +3,7 @@
  *
  * Runs SQL migrations to set up the database schema
  */
+/* eslint-disable no-console */
 
 const fs = require('fs');
 const path = require('path');
@@ -17,7 +18,11 @@ async function runMigrations() {
   const files = fs
     .readdirSync(migrationsDir)
     .filter(file => file.endsWith('.sql'))
-    .sort();
+    .sort((a, b) => {
+      const numA = parseInt(a.match(/^(\d+)/)?.[1] || '0', 10);
+      const numB = parseInt(b.match(/^(\d+)/)?.[1] || '0', 10);
+      return numA - numB;
+    });
 
   for (const file of files) {
     console.log(`  Running ${file}...`);

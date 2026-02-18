@@ -1,6 +1,6 @@
 /**
  * DataTable Styles Utility
- * 
+ *
  * Common utility for applying dark theme styles to DataTable buttons
  * Reduces code duplication across components
  */
@@ -8,7 +8,7 @@
 /**
  * Apply dark theme styles to DataTable buttons
  * This is a workaround for Polaris DataTable buttons not respecting dark theme
- * 
+ *
  * @param {boolean} isDarkTheme - Whether dark theme is active
  */
 export function applyDataTableButtonStyles(isDarkTheme) {
@@ -21,9 +21,13 @@ export function applyDataTableButtonStyles(isDarkTheme) {
   buttons.forEach(button => {
     const computedStyle = window.getComputedStyle(button);
     const bgColor = computedStyle.backgroundColor;
-    
+
     // Only apply if background is transparent or white
-    if (bgColor === 'rgba(0, 0, 0, 0)' || bgColor === 'rgb(255, 255, 255)' || bgColor === 'transparent') {
+    if (
+      bgColor === 'rgba(0, 0, 0, 0)' ||
+      bgColor === 'rgb(255, 255, 255)' ||
+      bgColor === 'transparent'
+    ) {
       button.style.setProperty('background', 'transparent', 'important');
       button.style.setProperty('color', 'var(--accent-primary)', 'important');
     }
@@ -33,12 +37,12 @@ export function applyDataTableButtonStyles(isDarkTheme) {
 /**
  * Set up automatic DataTable button styling
  * Call this in useEffect to continuously apply styles
- * 
+ *
  * @returns {Function} Cleanup function
  */
 export function setupDataTableButtonStyling() {
   const isDarkTheme = document.documentElement.getAttribute('data-theme') === 'dark';
-  
+
   if (!isDarkTheme) {
     return () => {}; // No-op cleanup
   }
@@ -51,9 +55,9 @@ export function setupDataTableButtonStyling() {
     applyDataTableButtonStyles(true);
   });
 
-  observer.observe(document.body, { 
-    childList: true, 
-    subtree: true 
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
   });
 
   // Also apply on interval as fallback
@@ -67,4 +71,3 @@ export function setupDataTableButtonStyling() {
     clearInterval(interval);
   };
 }
-

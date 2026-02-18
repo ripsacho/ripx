@@ -1,12 +1,12 @@
 /**
  * Custom Tabs Component
- * 
+ *
  * A custom tabs implementation that only renders one tab bar
  * to avoid duplicate tab bars from Polaris Tabs
  */
 
 import React from 'react';
-import { BlockStack, InlineStack, Text } from '@shopify/polaris';
+import { InlineStack, Text } from '@shopify/polaris';
 import './CustomTabs.css';
 
 function CustomTabs({ tabs, selected, onSelect, children }) {
@@ -21,19 +21,20 @@ function CustomTabs({ tabs, selected, onSelect, children }) {
               onClick={() => onSelect(index)}
               type="button"
             >
-              <Text as="span" variant="bodyMd" fontWeight={selected === index ? 'semibold' : 'medium'}>
+              <Text
+                as="span"
+                variant="bodyMd"
+                fontWeight={selected === index ? 'semibold' : 'medium'}
+              >
                 {tab.content}
               </Text>
             </button>
           ))}
         </InlineStack>
       </div>
-      <div className="custom-tabs-panel">
-        {children}
-      </div>
+      <div className="custom-tabs-panel">{children}</div>
     </div>
   );
 }
 
 export default CustomTabs;
-

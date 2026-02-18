@@ -1,0 +1,7 @@
+{
+  "watch": ["backend/src"],
+  "ext": "js,json",
+  "ignore": ["backend/src/**/*.test.js", "node_modules/"],
+  "exec": "node backend/src/app.js",
+  "delay": 500
+}

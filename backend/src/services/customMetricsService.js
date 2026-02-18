@@ -32,22 +32,16 @@ class CustomMetricsService {
       }
 
       case 'average_order_value': {
-        return variantData.conversions > 0
-          ? variantData.revenue / variantData.conversions
-          : 0;
+        return variantData.conversions > 0 ? variantData.revenue / variantData.conversions : 0;
       }
 
       case 'revenue_per_visitor': {
-        return variantData.visitors > 0
-          ? variantData.revenue / variantData.visitors
-          : 0;
+        return variantData.visitors > 0 ? variantData.revenue / variantData.visitors : 0;
       }
 
       case 'profit_per_visitor': {
         const profit = this.calculateProfit(variantData, metricConfig.cogs);
-        return variantData.visitors > 0
-          ? profit / variantData.visitors
-          : 0;
+        return variantData.visitors > 0 ? profit / variantData.visitors : 0;
       }
 
       case 'custom_event': {
@@ -112,12 +106,7 @@ class CustomMetricsService {
         AND event_type = $4
     `;
 
-    const result = await query(sql, [
-      test_id,
-      variant_id,
-      shop_domain,
-      metricConfig.eventName
-    ]);
+    const result = await query(sql, [test_id, variant_id, shop_domain, metricConfig.eventName]);
 
     if (metricConfig.aggregation === 'count') {
       return parseInt(result.rows[0].event_count) || 0;
@@ -141,24 +130,45 @@ class CustomMetricsService {
    */
   calculateCustomFormula(metricConfig, variantData) {
     try {
-      // Parse and evaluate custom formula
-      // Example: "revenue * 0.3 - cogs"
-      const formula = metricConfig.formula;
+      const formula = metricConfig?.formula;
+      if (!formula || typeof formula !== 'string' || !formula.trim()) {
+        return 0;
+      }
 
-      // Replace variables with actual values
+      const revenue = Number(variantData.revenue) || 0;
+      const conversions = Number(variantData.conversions) || 0;
+      const visitors = Number(variantData.visitors) || 0;
+      const aov = conversions > 0 ? revenue / conversions : 0;
+
+      let cogs = 0;
+      const cogsConfig = metricConfig.cogs;
+      if (cogsConfig?.enabled) {
+        if (cogsConfig.type === 'percentage') {
+          cogs = revenue * (cogsConfig.value / 100);
+        } else if (cogsConfig.type === 'fixed_per_order' || cogsConfig.type === 'fixed_per_item') {
+          cogs = conversions * (cogsConfig.value || 0);
+        }
+      }
+
+      // Replace variables with actual values (safe numeric substitution)
       const evaluatedFormula = formula
-        .replace(/\brevenue\b/g, variantData.revenue || 0)
-        .replace(/\bconversions\b/g, variantData.conversions || 0)
-        .replace(/\bvisitors\b/g, variantData.visitors || 0)
-        .replace(/\baov\b/g, variantData.conversions > 0
-          ? (variantData.revenue / variantData.conversions)
-          : 0);
+        .replace(/\brevenue\b/g, String(revenue))
+        .replace(/\bconversions\b/g, String(conversions))
+        .replace(/\bvisitors\b/g, String(visitors))
+        .replace(/\baov\b/g, String(aov))
+        .replace(/\bcogs\b/g, String(cogs));
 
-      // Evaluate safely (in production, use a proper expression evaluator)
-      // This is a simplified version - use a library like expr-eval for production
-      return Function(`"use strict"; return (${evaluatedFormula})`)();
+      // Evaluate formula - restricted to numeric ops; consider a proper math parser for production
+      // eslint-disable-next-line no-new-func -- formula evaluation from trusted config
+      const result = Function(`"use strict"; return (${evaluatedFormula})`)();
+      const num = Number(result);
+      return Number.isFinite(num) ? num : 0;
     } catch (error) {
-      console.error('Error evaluating custom formula:', error);
+      const logger = require('../utils/logger');
+      logger.error('Error evaluating custom formula', {
+        error: error.message,
+        formula: metricConfig?.formula,
+      });
       return 0;
     }
   }
@@ -179,18 +189,18 @@ class CustomMetricsService {
       standard: {
         conversionRate: baseAnalytics.variants.map(v => ({
           variant: v.name,
-          value: v.conversionRate
+          value: v.conversionRate,
         })),
         revenue: baseAnalytics.variants.map(v => ({
           variant: v.name,
-          value: v.revenue
+          value: v.revenue,
         })),
         revenuePerVisitor: baseAnalytics.variants.map(v => ({
           variant: v.name,
-          value: v.visitors > 0 ? v.revenue / v.visitors : 0
-        }))
+          value: v.visitors > 0 ? v.revenue / v.visitors : 0,
+        })),
       },
-      custom: {}
+      custom: {},
     };
 
     // Calculate custom metrics
@@ -202,7 +212,7 @@ class CustomMetricsService {
           ...variant,
           test_id: testId,
           variant_id: variant.id,
-          shop_domain: shopDomain
+          shop_domain: shopDomain,
         };
 
         let value;
@@ -214,7 +224,7 @@ class CustomMetricsService {
 
         metricValues.push({
           variant: variant.name,
-          value: Math.round(value * 100) / 100
+          value: Math.round(value * 100) / 100,
         });
       }
 
@@ -226,4 +236,3 @@ class CustomMetricsService {
 }
 
 module.exports = new CustomMetricsService();
-

@@ -38,12 +38,30 @@ class TestAssignmentModel {
       shop_domain,
       variant_id,
       variant_name,
-      assigned_at
+      assigned_at,
+      device,
+      country,
     } = assignment;
 
-    const sql = `
+    const sqlWithSegment = `
       INSERT INTO test_assignments (
-        test_id, user_id, shop_domain, variant_id, 
+        test_id, user_id, shop_domain, variant_id,
+        variant_name, assigned_at, device, country
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      ON CONFLICT (test_id, user_id, shop_domain)
+      DO UPDATE SET
+        variant_id = EXCLUDED.variant_id,
+        variant_name = EXCLUDED.variant_name,
+        assigned_at = EXCLUDED.assigned_at,
+        device = COALESCE(EXCLUDED.device, test_assignments.device),
+        country = COALESCE(EXCLUDED.country, test_assignments.country)
+      RETURNING *
+    `;
+
+    const sqlWithoutSegment = `
+      INSERT INTO test_assignments (
+        test_id, user_id, shop_domain, variant_id,
         variant_name, assigned_at
       )
       VALUES ($1, $2, $3, $4, $5, $6)
@@ -55,16 +73,59 @@ class TestAssignmentModel {
       RETURNING *
     `;
 
-    const result = await query(sql, [
-      test_id,
-      user_id,
-      shop_domain,
-      variant_id,
-      variant_name,
-      assigned_at
-    ]);
+    try {
+      const result = await query(sqlWithSegment, [
+        test_id,
+        user_id,
+        shop_domain,
+        variant_id,
+        variant_name,
+        assigned_at,
+        device || null,
+        country || null,
+      ]);
+      return result.rows[0];
+    } catch (err) {
+      if (err.message?.includes('device') || err.message?.includes('country')) {
+        const result = await query(sqlWithoutSegment, [
+          test_id,
+          user_id,
+          shop_domain,
+          variant_id,
+          variant_name,
+          assigned_at,
+        ]);
+        return result.rows[0];
+      }
+      throw err;
+    }
+  }
 
-    return result.rows[0];
+  /**
+   * Get assignments for a user across multiple tests (batch, single query)
+   *
+   * @param {string} userId - User ID
+   * @param {string} shopDomain - Shop domain
+   * @param {string[]} testIds - Test IDs to fetch
+   * @returns {Promise<Map<string, Object>>} Map of testId -> assignment
+   */
+  async getTestAssignmentsBatch(userId, shopDomain, testIds) {
+    if (!testIds || testIds.length === 0) {
+      return new Map();
+    }
+    const uniqueIds = [...new Set(testIds.filter(Boolean))];
+    const placeholders = uniqueIds.map((_, i) => `$${i + 3}`).join(', ');
+    const sql = `
+      SELECT * FROM test_assignments
+      WHERE user_id = $1 AND shop_domain = $2 AND test_id IN (${placeholders})
+    `;
+    const params = [userId, shopDomain, ...uniqueIds];
+    const result = await query(sql, params);
+    const map = new Map();
+    for (const row of result.rows) {
+      map.set(row.test_id, row);
+    }
+    return map;
   }
 
   /**
@@ -93,11 +154,8 @@ class TestAssignmentModel {
 const model = new TestAssignmentModel();
 
 module.exports = {
-  getTestAssignment: (testId, userId, shop) =>
-    model.getTestAssignment(testId, userId, shop),
-  saveTestAssignment: (assignment) =>
-    model.saveTestAssignment(assignment),
-  getAssignmentStats: (testId, shop) =>
-    model.getAssignmentStats(testId, shop)
+  getTestAssignment: (testId, userId, shop) => model.getTestAssignment(testId, userId, shop),
+  getTestAssignmentsBatch: (userId, shop, testIds) => model.getTestAssignmentsBatch(userId, shop, testIds),
+  saveTestAssignment: assignment => model.saveTestAssignment(assignment),
+  getAssignmentStats: (testId, shop) => model.getAssignmentStats(testId, shop),
 };
-

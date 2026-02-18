@@ -1,11 +1,11 @@
 /**
  * Loading Skeleton Component
- * 
+ *
  * Provides a modern loading skeleton UI for better UX
  */
 
 import React from 'react';
-import { Card, BlockStack, InlineStack } from '@shopify/polaris';
+import { Card, BlockStack } from '@shopify/polaris';
 import './LoadingSkeleton.css';
 
 export function LoadingSkeleton({ type = 'card', count = 1 }) {
@@ -45,4 +45,3 @@ export function LoadingSkeleton({ type = 'card', count = 1 }) {
 }
 
 export default LoadingSkeleton;
-

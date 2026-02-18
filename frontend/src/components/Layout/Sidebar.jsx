@@ -1,113 +1,159 @@
 /**
  * Sidebar Navigation Component
- * 
+ *
  * Premium collapsible sidebar with enhanced UI
  */
 
-import React, { useState } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { BlockStack, Text, Icon } from '@shopify/polaris';
 import {
-  BlockStack,
-  InlineStack,
-  Text
-} from '@shopify/polaris';
+  ChartVerticalIcon,
+  ClipboardChecklistIcon,
+  PlusIcon,
+  ChartLineIcon,
+  CompassIcon,
+  SettingsIcon,
+  ProfileIcon,
+  BookIcon,
+  ConnectIcon,
+  MagicIcon,
+} from '@shopify/polaris-icons';
+import { ROUTES } from '../../constants';
+import { isStandaloneMode } from '../../services';
+import { useTests } from '../../hooks';
+import { prefetchOnHover } from '../../utils/prefetch';
 
-const navigationItems = [
-  { path: '/', label: 'Dashboard', icon: '📊', color: '#008060' },
-  { path: '/tests', label: 'All Tests', icon: '🧪', color: '#5C6AC4' },
-  { path: '/tests/new', label: 'Create Test', icon: '✨', color: '#5C6AC4' },
-  { path: '/analytics', label: 'Analytics', icon: '📈', color: '#F49342' },
-  { path: '/settings', label: 'Settings', icon: '⚙️', color: '#637381' }
+const baseNavigationGroups = [
+  {
+    label: 'Main',
+    items: [
+      { path: ROUTES.DASHBOARD, label: 'Dashboard', icon: ChartVerticalIcon },
+      { path: ROUTES.TESTS, label: 'All Tests', icon: ClipboardChecklistIcon },
+      { path: ROUTES.TESTS_PERSONALIZATION, label: 'Personalization', icon: MagicIcon, badgeKey: 'personalization' },
+      { path: ROUTES.CREATE_TEST, label: 'Create Test', icon: PlusIcon },
+      { path: ROUTES.ANALYTICS, label: 'Analytics', icon: ChartLineIcon },
+    ],
+  },
+  {
+    label: 'Setup & Settings',
+    items: [
+      { path: ROUTES.SETUP, label: 'Setup Wizard', icon: CompassIcon },
+      { path: ROUTES.SETTINGS, label: 'Settings', icon: SettingsIcon },
+      { path: ROUTES.DOCS, label: 'Documentation', icon: BookIcon },
+      { path: ROUTES.PROFILE, label: 'Profile', icon: ProfileIcon },
+    ],
+  },
 ];
 
-function Sidebar({ collapsed = false, onToggleSidebar }) {
+function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMobileClose }) {
   const [showLogo, setShowLogo] = useState(true);
   const [showIcon, setShowIcon] = useState(true);
   const [showCollapseButton, setShowCollapseButton] = useState(false);
+  const [hoverDrawer, setHoverDrawer] = useState(null); // { label, top, height }
   const navigate = useNavigate();
   const location = useLocation();
+  const { data: tests = [] } = useTests();
 
-  const isActive = (path) => {
-    // Exact match for root
-    if (path === '/') {
-      return location.pathname === '/';
+  const personalizationCount = useMemo(
+    () => tests.filter((t) => ['personalized', 'rollout'].includes(t.personalization_mode || '')).length,
+    [tests]
+  );
+
+  const navigationGroups = useMemo(() => {
+    if (!isStandaloneMode()) return baseNavigationGroups;
+    return baseNavigationGroups.map((group) =>
+      group.label === 'Setup & Settings'
+        ? {
+            ...group,
+            items: [
+              ...group.items,
+              { path: ROUTES.CONNECT, label: 'Reconnect / API Key', icon: ConnectIcon },
+            ],
+          }
+        : group
+    );
+  }, []);
+
+  const handleNavMouseEnter = useCallback(
+    (item, el) => {
+      if (!collapsed || !el) return;
+      const rect = el.getBoundingClientRect();
+      setHoverDrawer({ label: item.label, top: rect.top, height: rect.height });
+    },
+    [collapsed]
+  );
+
+  const handleNavMouseLeave = useCallback(() => {
+    setHoverDrawer(null);
+  }, []);
+
+  const allPaths = navigationGroups.flatMap((g) => g.items.map((i) => i.path));
+  const searchParams = new URLSearchParams(location.search || '');
+  const viewParam = searchParams.get('view');
+
+  const isActive = (path, _item) => {
+    if (path === ROUTES.DASHBOARD) return location.pathname === ROUTES.DASHBOARD;
+    if (path === ROUTES.TESTS_PERSONALIZATION) {
+      return location.pathname === '/tests' && viewParam === 'personalization';
     }
-    
-    // Exact match
-    if (location.pathname === path) {
-      return true;
+    if (path === ROUTES.TESTS) {
+      return location.pathname === '/tests' && viewParam !== 'personalization';
     }
-    
-    // For paths that start with the navigation path, check if it's not another nav item
+    if (location.pathname === path) return true;
     if (location.pathname.startsWith(path)) {
-      // Get all other navigation paths that are longer/more specific
-      const otherPaths = navigationItems
-        .map(item => item.path)
-        .filter(p => p !== path && p.startsWith(path));
-      
-      // If there are more specific paths, check if current pathname matches any of them
-      // If it does, this item should not be active
+      const otherPaths = allPaths.filter(p => p !== path && p.startsWith(path));
       if (otherPaths.length > 0) {
-        const matchesMoreSpecific = otherPaths.some(otherPath => 
-          location.pathname === otherPath || location.pathname.startsWith(otherPath + '/')
+        const matchesMoreSpecific = otherPaths.some(
+          otherPath =>
+            location.pathname === otherPath || location.pathname.startsWith(otherPath + '/')
         );
-        // Only active if it doesn't match a more specific path
         return !matchesMoreSpecific;
       }
-      
-      // No more specific paths, so this is active
       return true;
     }
-    
     return false;
   };
 
   return (
-    <div className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
+    <div className={`sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
       {/* Logo/Brand Section */}
-      <div 
+      <div
         className="sidebar-header"
         onMouseEnter={() => collapsed && setShowCollapseButton(true)}
         onMouseLeave={() => collapsed && setShowCollapseButton(false)}
       >
         {!collapsed ? (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            width: '100%',
-            gap: '0.75rem'
-          }}>
-            <div 
-              onClick={() => navigate('/')}
-              style={{
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.75rem',
-                flex: 1,
-                minWidth: 0
-              }}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              gap: '0.75rem',
+            }}
+          >
+            <div
+              onClick={() => navigate(ROUTES.DASHBOARD)}
+              className="sidebar-brand"
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && navigate(ROUTES.DASHBOARD)}
+              aria-label="Go to Dashboard"
+              style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: 0 }}
             >
               {showLogo && (
-                <img 
-                  src="/RipsX.png" 
-                  alt="RipX Logo" 
+                <img
+                  src="/logo.svg"
+                  alt="RipX Logo"
                   style={{
-                    height: '40px',
+                    height: '36px',
                     width: 'auto',
                     objectFit: 'contain',
-                    flexShrink: 0
+                    flexShrink: 0,
                   }}
-                  onError={(e) => {
-                    // Try SVG fallback
-                    if (e.target.src !== '/logo.svg') {
-                      e.target.src = '/logo.svg';
-                    } else {
-                      // Hide image on error, show text fallback
-                      setShowLogo(false);
-                      e.target.style.display = 'none';
-                    }
+                  onError={() => {
+                    setShowLogo(false);
                   }}
                 />
               )}
@@ -122,7 +168,7 @@ function Sidebar({ collapsed = false, onToggleSidebar }) {
             </div>
             {/* Collapse Button - Visible when expanded */}
             <button
-              onClick={(e) => {
+              onClick={e => {
                 e.stopPropagation();
                 onToggleSidebar && onToggleSidebar();
               }}
@@ -130,45 +176,66 @@ function Sidebar({ collapsed = false, onToggleSidebar }) {
               aria-label="Collapse sidebar"
               title="Collapse sidebar"
             >
-              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M11 6L7 9L11 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <circle cx="9" cy="9" r="8" stroke="currentColor" strokeWidth="1.5" fill="none" opacity="0.2"/>
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 18 18"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M11 6L7 9L11 12"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <circle
+                  cx="9"
+                  cy="9"
+                  r="8"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  fill="none"
+                  opacity="0.2"
+                />
               </svg>
             </button>
           </div>
         ) : (
-          <div style={{
-            position: 'relative',
-            width: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            minHeight: '48px'
-          }}>
+          <div
+            style={{
+              position: 'relative',
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: '48px',
+            }}
+          >
             {/* Icon - Hidden when collapse button is shown */}
-            <div 
-              onClick={() => navigate('/')}
+            <div
+              onClick={() => navigate(ROUTES.DASHBOARD)}
+              className="sidebar-brand sidebar-brand-icon"
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && navigate(ROUTES.DASHBOARD)}
+              aria-label="Go to Dashboard"
               style={{
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '100%',
-                position: 'relative',
                 opacity: showCollapseButton ? 0 : 1,
-                transition: 'opacity 0.2s ease'
+                transition: 'opacity 0.2s ease',
               }}
             >
               {showIcon && (
-                <img 
-                  src="/icon.svg" 
-                  alt="RipX Icon" 
+                <img
+                  src="/icon.svg"
+                  alt="RipX Icon"
                   style={{
                     height: '32px',
                     width: '32px',
-                    objectFit: 'contain'
+                    objectFit: 'contain',
                   }}
-                  onError={(e) => {
+                  onError={e => {
                     // Hide image on error, show text fallback
                     setShowIcon(false);
                     e.target.style.display = 'none';
@@ -176,11 +243,13 @@ function Sidebar({ collapsed = false, onToggleSidebar }) {
                 />
               )}
               {!showIcon && (
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center' 
-                }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
                   <Text variant="headingLg" as="h2" fontWeight="bold" tone="base">
                     R
                   </Text>
@@ -190,7 +259,7 @@ function Sidebar({ collapsed = false, onToggleSidebar }) {
             {/* Collapse Button - Shown on hover when collapsed */}
             {showCollapseButton && (
               <button
-                onClick={(e) => {
+                onClick={e => {
                   e.stopPropagation();
                   onToggleSidebar && onToggleSidebar();
                 }}
@@ -198,9 +267,29 @@ function Sidebar({ collapsed = false, onToggleSidebar }) {
                 aria-label="Expand sidebar"
                 title="Expand sidebar"
               >
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M7 6L11 10L7 14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  <circle cx="10" cy="10" r="9" stroke="currentColor" strokeWidth="1.5" fill="none" opacity="0.3"/>
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M7 6L11 10L7 14"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <circle
+                    cx="10"
+                    cy="10"
+                    r="9"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    fill="none"
+                    opacity="0.3"
+                  />
                 </svg>
               </button>
             )}
@@ -208,67 +297,91 @@ function Sidebar({ collapsed = false, onToggleSidebar }) {
         )}
       </div>
 
-      {/* Navigation Items */}
+      {/* Navigation Items - Grouped */}
       <div className="sidebar-nav">
-        <BlockStack gap="100">
-          {navigationItems.map((item) => {
-            const active = isActive(item.path);
-            
-            return (
-              <button
-                key={item.path}
-                onClick={() => navigate(item.path)}
-                className={`sidebar-nav-item ${active ? 'active' : ''}`}
-              >
-                <span style={{ 
-                  fontSize: '1.25rem',
-                  opacity: active ? 1 : 0.7,
-                  transition: 'opacity 0.2s ease',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: '24px',
-                  height: '24px'
-                }}>
-                  {item.icon}
-                </span>
-                {!collapsed && (
-                  <Text 
-                    variant="bodyMd" 
-                    fontWeight={active ? 'semibold' : 'regular'}
-                    tone={active ? 'base' : 'subdued'}
-                    as="span"
+        {navigationGroups.map(group => (
+          <div key={group.label} className="sidebar-nav-group">
+            {!collapsed && (
+              <div className="sidebar-nav-group-label">
+                <Text variant="bodySm" as="span" tone="subdued" fontWeight="medium">
+                  {group.label}
+                </Text>
+              </div>
+            )}
+            <BlockStack gap="050">
+              {group.items.map(item => {
+                const active = isActive(item.path, item);
+                const IconComponent = item.icon;
+                const badgeCount = item.badgeKey === 'personalization' ? personalizationCount : null;
+                const content = (
+                  <>
+                    <span className="sidebar-nav-icon">
+                      <Icon source={IconComponent} />
+                    </span>
+                    {!collapsed && (
+                      <Text
+                        variant="bodyMd"
+                        fontWeight={active ? 'semibold' : 'regular'}
+                        tone={active ? 'base' : 'subdued'}
+                        as="span"
+                      >
+                        {item.label}
+                      </Text>
+                    )}
+                    {!collapsed && badgeCount !== null && badgeCount !== undefined && badgeCount > 0 && (
+                      <span className="sidebar-nav-badge">{badgeCount}</span>
+                    )}
+                    {active && !collapsed && <span className="sidebar-nav-active-dot" />}
+                  </>
+                );
+                const btn = (
+                  <button
+                    key={item.path}
+                    onClick={() => {
+                      navigate(item.path);
+                      if (onMobileClose) onMobileClose();
+                    }}
+                    onMouseEnter={() => prefetchOnHover(item.path)}
+                    className={`sidebar-nav-item ${active ? 'active' : ''}`}
                   >
-                    {item.label}
-                  </Text>
-                )}
-                {active && !collapsed && (
-                  <div style={{
-                    position: 'absolute',
-                    right: '1.5rem',
-                    width: '6px',
-                    height: '6px',
-                    borderRadius: '50%',
-                    backgroundColor: 'var(--accent-primary)',
-                    boxShadow: '0 0 0 3px var(--accent-hover)'
-                  }} />
-                )}
-              </button>
-            );
-          })}
-        </BlockStack>
+                    {content}
+                  </button>
+                );
+                return collapsed ? (
+                  <div
+                    key={item.path}
+                    className="sidebar-nav-item-wrapper"
+                    onMouseEnter={e => handleNavMouseEnter(item, e.currentTarget)}
+                    onMouseLeave={handleNavMouseLeave}
+                  >
+                    {btn}
+                    {hoverDrawer?.label === item.label && (
+                      <div
+                        className="sidebar-hover-drawer"
+                        style={{
+                          top: hoverDrawer.top,
+                          minHeight: hoverDrawer.height,
+                        }}
+                      >
+                        <Text variant="bodyMd" fontWeight="semibold" as="span">
+                          {hoverDrawer.label}
+                        </Text>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  btn
+                );
+              })}
+            </BlockStack>
+          </div>
+        ))}
       </div>
 
-      {/* Footer Section */}
+      {/* Footer - Compact version badge */}
       {!collapsed && (
-        <div style={{
-          padding: '1rem 1.25rem',
-          borderTop: '1px solid var(--border-primary)',
-          backgroundColor: 'var(--bg-tertiary)'
-        }}>
-          <Text variant="bodySm" as="p" tone="subdued" alignment="center">
-            Version 1.0.0
-          </Text>
+        <div className="sidebar-footer">
+          <span className="sidebar-version">v1.0</span>
         </div>
       )}
     </div>
@@ -276,4 +389,3 @@ function Sidebar({ collapsed = false, onToggleSidebar }) {
 }
 
 export default Sidebar;
-

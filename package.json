@@ -5,19 +5,32 @@
   "main": "backend/src/app.js",
   "scripts": {
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "dev:backend": "nodemon backend/src/app.js",
+    "dev:backend": "nodemon",
     "dev:frontend": "cd frontend && npm run dev",
+    "dev:db": "docker compose -f docker-compose.dev.yml up -d",
+    "dev:db:stop": "docker compose -f docker-compose.dev.yml down",
     "build": "npm run build:frontend",
     "build:frontend": "cd frontend && npm run build",
     "start": "node backend/src/app.js",
     "migrate": "cd backend && node migrations/run.js",
-    "test": "jest",
+    "seed:dummy": "node backend/scripts/seed-dummy-data.js",
+    "test": "npm run test:backend",
     "test:backend": "cd backend && jest",
     "test:frontend": "cd frontend && npm test",
-    "lint": "eslint backend/src --ext .js",
-    "lint:fix": "eslint backend/src --ext .js --fix",
+    "lint": "npm run lint:backend && npm run lint:frontend",
+    "lint:backend": "eslint backend/src --ext .js",
+    "lint:frontend": "cd frontend && eslint src --ext .js,.jsx",
+    "lint:fix": "npm run lint:fix:backend && npm run lint:fix:frontend",
+    "lint:fix:backend": "eslint backend/src --ext .js --fix",
+    "lint:fix:frontend": "cd frontend && eslint src --ext .js,.jsx --fix",
     "format": "prettier --write \"**/*.{js,jsx,json,md}\"",
-    "format:check": "prettier --check \"**/*.{js,jsx,json,md}\""
+    "format:check": "prettier --check \"**/*.{js,jsx,json,md}\"",
+    "prepare": "husky",
+    "validate": "npm run lint && npm run test:backend",
+    "audit": "npm audit && cd frontend && npm audit",
+    "presentation": "npx @marp-team/marp-cli docs/presentation/PRESENTATION.md -o docs/presentation/PRESENTATION.html --allow-local-files",
+    "presentation:pdf": "npx @marp-team/marp-cli docs/presentation/PRESENTATION.md -o docs/presentation/PRESENTATION.pdf --allow-local-files",
+    "speech:pdf": "npx @marp-team/marp-cli docs/presentation/SPEECH_DECK.md -o docs/presentation/SPEECH.pdf --allow-local-files --no-stdin"
   },
   "keywords": [
     "ripx",
@@ -32,29 +45,65 @@
   ],
   "author": "",
   "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/ripx.git"
+  },
+  "homepage": "https://github.com/your-org/ripx#readme",
+  "bugs": {
+    "url": "https://github.com/your-org/ripx/issues"
+  },
   "dependencies": {
+    "@google-cloud/bigquery": "^7.3.0",
     "@shopify/shopify-api": "^9.0.0",
     "bcrypt": "^5.1.1",
     "body-parser": "^1.20.2",
+    "bull": "^4.16.5",
+    "compression": "^1.8.1",
+    "connect-redis": "^7.1.1",
     "cookie-parser": "^1.4.6",
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
-    "express": "^4.18.2",
-    "express-rate-limit": "^7.1.5",
-    "helmet": "^7.1.0",
+    "cors": "^2.8.6",
+    "dotenv": "^16.4.0",
+    "express": "^4.21.0",
+    "express-rate-limit": "^8.2.0",
+    "express-session": "^1.19.0",
+    "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
-    "pg": "^8.11.3",
+    "pg": "^8.18.0",
     "redis": "^4.6.10",
-    "uuid": "^9.0.1"
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
+    "uuid": "^10.0.0"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2",
+    "concurrently": "^9.2.1",
     "eslint": "^8.57.1",
+    "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-react": "^7.33.2",
     "eslint-plugin-react-hooks": "^4.6.0",
+    "husky": "^9.1.7",
     "jest": "^29.7.0",
+    "lint-staged": "^16.2.7",
     "nodemon": "^3.0.2",
-    "prettier": "^3.7.4",
+    "prettier": "^3.8.1",
     "supertest": "^6.3.3"
+  },
+  "lint-staged": {
+    "backend/**/*.js": [
+      "eslint --fix"
+    ],
+    "frontend/src/**/*.{js,jsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{js,jsx,json,md}": [
+      "prettier --write"
+    ]
+  },
+  "overrides": {
+    "tar": "^7.2.0"
   }
 }

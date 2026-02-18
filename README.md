@@ -1,8 +1,10 @@
 # RipX 🧪
 
-**Professional AB Testing Platform for Shopify Stores**
+**Professional AB Testing Platform for Shopify and Standalone Sites**
 
-RipX is a comprehensive, enterprise-grade AB testing platform designed specifically for Shopify merchants. Test product prices, content, shipping rates, and promotional offers to optimize conversion rates and maximize revenue.
+[![CI](https://github.com/your-org/ripx/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/ripx/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+RipX is a comprehensive, enterprise-grade AB testing platform supporting **Shopify** and **standalone** (non-Shopify) sites. One backend, one engine, multiple platforms. Test product prices, content, shipping rates, and promotional offers to optimize conversion rates and maximize revenue.
 
 > **RipX** - Where data-driven decisions meet e-commerce excellence.
 
@@ -68,25 +70,25 @@ RipX empowers Shopify merchants to:
    - Test cloning functionality
    - Headline and description variations
 
-4. **Shipping Rate Testing**
+5. **Shipping Rate Testing**
    - Dynamic shipping rate modifications
    - Threshold testing
    - Conversion impact analysis
    - Free shipping threshold experiments
 
-5. **Offer Testing**
+6. **Offer Testing**
    - Promo Links (no promo codes needed)
    - Discount testing (percentage and fixed)
    - Time-limited offers
    - Usage limits per link
 
-6. **Combination Testing** 🆕
+7. **Combination Testing** 🆕
    - Test multiple variables together (e.g., price + shipping)
    - Interaction effect analysis
    - Variable impact analysis
    - Full factorial designs
 
-7. **Analytics & Reporting**
+8. **Analytics & Reporting**
    - Real-time conversion tracking
    - Statistical significance calculations (Z-test)
    - Revenue impact analysis
@@ -95,26 +97,26 @@ RipX empowers Shopify merchants to:
    - Profit calculations with COGS
    - Custom event tracking
 
-8. **Targeting & Segmentation** 🆕
+9. **Targeting & Segmentation** 🆕
    - Geographic targeting (country, region, city)
    - Device type targeting (desktop, mobile, tablet)
    - Customer segment targeting (new, returning, VIP)
    - Time-based targeting (time of day, day of week)
    - Custom targeting rules
 
-9. **Webhooks Integration** 🆕
-   - Automatic order tracking
-   - Real-time conversion events
-   - Product update synchronization
-   - App uninstall handling
+10. **Webhooks Integration** 🆕
+    - Automatic order tracking
+    - Real-time conversion events
+    - Product update synchronization
+    - App uninstall handling
 
-10. **Notifications** 🆕
+11. **Notifications** 🆕
     - Email notifications for test completion
     - Significance alerts
     - In-app notifications
     - Customizable notification preferences
 
-11. **Advanced Features** 🆕
+12. **Advanced Features** 🆕
     - Custom metrics (beyond revenue/conversion)
     - COGS (Cost of Goods Sold) integration
     - Custom formula calculations
@@ -142,7 +144,7 @@ RipX empowers Shopify merchants to:
 │  └──────┬───────┘  └──────────┬──────────┘  │
 │         │                     │              │
 │  ┌──────▼─────────────────────▼──────────┐  │
-│  │      Database (PostgreSQL/MongoDB)    │  │
+│  │      Database (PostgreSQL)            │  │
 │  │  - Tests, Variants, Analytics         │  │
 │  └───────────────────────────────────────┘  │
 └────────┬────────────────────────────────────┘
@@ -159,9 +161,9 @@ RipX empowers Shopify merchants to:
 
 - **Backend**: Node.js + Express.js
 - **Frontend**: React + Shopify Polaris
-- **Database**: PostgreSQL (or MongoDB)
+- **Database**: PostgreSQL
 - **Shopify Integration**: Shopify Admin API, Storefront API
-- **Session Management**: Redis (for traffic allocation)
+- **Session Management**: Redis (optional; in-memory fallback when not set)
 - **Analytics**: Custom tracking + Shopify Analytics API
 
 ## 🚀 Getting Started
@@ -175,8 +177,8 @@ RipX empowers Shopify merchants to:
 2. **Development Tools**
    - Node.js 18+ and npm
    - Shopify CLI: `npm install -g @shopify/cli @shopify/theme`
-   - PostgreSQL (or MongoDB)
-   - Redis (for session management)
+   - PostgreSQL
+   - Redis (optional; for session store)
 
 3. **Shopify App Setup**
    - Create a new app in your Partner Dashboard
@@ -185,28 +187,48 @@ RipX empowers Shopify merchants to:
 ### Installation Steps
 
 1. **Clone and Install Dependencies**
+
    ```bash
    cd /Users/m.a.k.ripon/Desktop/DEV
    npm install
    ```
 
 2. **Environment Configuration**
+
    ```bash
    cp .env.example .env
    # Edit .env with your credentials
    ```
 
+   Required env vars:
+   - `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_SCOPES`
+   - `APP_URL`, `DATABASE_URL`, `JWT_SECRET` (use 32+ char random string; `openssl rand -hex 32`)
+     Optional:
+   - `SHOPIFY_ACCESS_TOKEN` (dev fallback only; not used in production)
+   - `REDIS_URL` (session store; memory used if not set)
+   - `SESSION_SECRET` (defaults to JWT_SECRET)
+   - `SENTRY_DSN` (error reporting; scaffolded for future use)
+   - `LOG_TRACK_EVENTS=true` (verbose AB test tracking logs)
+
 3. **Database Setup**
+
+   Option A – Local PostgreSQL:
    ```bash
-   # PostgreSQL
    createdb shopify_ab_testing
    npm run migrate
-   
-   # Or MongoDB
-   mongod
+   ```
+
+   Option B – Docker (Postgres + Redis):
+   ```bash
+   npm run dev:db
+   # Then in .env: DATABASE_URL=postgresql://ripx:ripx@localhost:5432/ripx_dev
+   # And: REDIS_URL=redis://localhost:6379
+   npm run migrate
+   # To stop: npm run dev:db:stop
    ```
 
 4. **Start Development Server**
+
    ```bash
    npm run dev
    ```
@@ -216,10 +238,57 @@ RipX empowers Shopify merchants to:
    shopify app dev
    ```
 
+### Connect to Shopify Partner App
+
+1. Install Shopify CLI: `npm install -g @shopify/cli`
+2. Link config to your Partner app:
+   ```bash
+   shopify app config link
+   ```
+3. Start the dev tunnel and install:
+   ```bash
+   shopify app dev
+   ```
+   Then open the install URL shown in the CLI.
+
+### Shopify OAuth & Webhooks
+
+- Start OAuth install by navigating to: `https://YOUR_APP_URL/api/auth?shop=your-shop.myshopify.com`
+- OAuth stores access tokens in `shop_sessions`; no SHOPIFY_ACCESS_TOKEN in production.
+- Configure Shopify webhooks (HMAC-verified, idempotent) at:
+  - `POST /api/webhooks/orders/create`
+  - `POST /api/webhooks/products/update`
+  - `POST /api/webhooks/app/uninstalled`
+
+### Storefront Script
+
+- Use the configured script endpoint (includes runtime config):
+  - `GET /api/track/script.js?shop=your-shop.myshopify.com&v=1`
+- This script handles variant assignment and conversion tracking on the storefront.
+
+### App Embed + App Proxy (Recommended)
+
+1. Configure App Proxy in the Partner Dashboard:
+   - Subpath prefix: `apps`
+   - Subpath: `ripx`
+   - Proxy URL: `https://YOUR_APP_URL/api/proxy/script.js`
+2. Deploy the theme app extension and enable **RipX App Embed** in the theme editor.
+3. The storefront will load:
+   - `https://your-shop-domain/apps/ripx/script.js?v=1`
+
+### Smoke Test Checklist
+
+- **OAuth**: Install completes and redirects back; token stored in `shop_sessions`.
+- **Storefront script**: `GET /api/track/script.js?shop=...&v=1` loads with runtime config (`apiUrl`, `activeTests`).
+- **Webhooks**: Accept HMAC-signed requests; dedupe via `webhook_events` table; return 200 on duplicate.
+- **Analytics**: Conversion events tracked via `POST /api/track`; webhook conversions logged when `LOG_TRACK_EVENTS=true`.
+
 ## 📁 Project Structure
 
+See [Project Organization](./docs/guides/PROJECT_ORGANIZATION.md) for detailed structure and conventions.
+
 ```
-shopify-ab-testing-app/
+ripx/
 ├── backend/
 │   ├── src/
 │   │   ├── controllers/      # Request handlers
@@ -293,32 +362,41 @@ Manages Shopify API interactions:
 - **Order Tracking**: Monitors conversions
 - **Webhook Handling**: Processes Shopify events
 
+## 🌐 Multi-Platform
+
+RipX supports **Shopify** and **standalone** sites:
+
+| Platform | Auth | Track Script |
+|----------|------|--------------|
+| **Shopify** | OAuth (shop install) | `?shop=xxx.myshopify.com` |
+| **Standalone** | API key | `?site=example.com` |
+
+**Standalone setup:**
+1. Register: `POST /api/tenants/standalone` with `{ "domain": "example.com" }`
+2. Add script: `<script src="https://your-api/api/track/script.js?site=example.com"></script>`
+3. Open admin with API key: set `VITE_RIPX_API_KEY` or use `/connect` to enter it
+
+See [Multi-Platform Architecture](./docs/architecture/MULTI_PLATFORM.md) for details.
+
 ## 📚 Documentation
 
-All project documentation has been organized into the [`docs/`](./docs/) folder for easy navigation:
+All project documentation lives in [`docs/`](./docs/). Start with the [Documentation Index](./docs/README.md).
 
-- **[📖 Documentation Index](./docs/README.md)** - Complete documentation guide
-- **[🚀 Getting Started](./docs/getting-started/)** - Setup and installation guides
-- **[🏗️ Architecture](./docs/architecture/)** - System design and structure
-- **[💻 Development](./docs/development/)** - Development guides and standards
-- **[✨ Features](./docs/features/)** - Feature documentation and roadmap
-- **[📊 Reports](./docs/reports/)** - Status reports and summaries
-- **[🚢 Deployment](./docs/deployment/)** - Deployment guides
-- **[📝 Other](./docs/other/)** - Additional resources
-
-### Quick Links
-
-- [Quick Start Guide](./docs/getting-started/QUICK_START.md) - Get started in 5 minutes
-- [Development Guide](./docs/development/DEVELOPMENT_GUIDE.md) - Development workflow
-- [Code Standards](./docs/development/CODE_STANDARDS.md) - Coding conventions
-- [API Documentation](./docs/architecture/API_DOCUMENTATION.md) - API reference
-- [Deployment Guide](./docs/deployment/DEPLOYMENT.md) - Production deployment
+| Section | Description |
+|---------|-------------|
+| [Getting Started](./docs/getting-started/) | Setup, env, database, migrations |
+| [Architecture](./docs/architecture/) | System design, API, multi-platform |
+| [Development](./docs/development/) | Dev guide, code standards, structure assessment |
+| [Features](./docs/features/) | Implementation status, roadmap |
+| [Deployment](./docs/deployment/) | Production deployment |
+| [Guides](./docs/guides/) | Branding, Git, assets |
 
 ## 📖 Implementation Guide
 
 ### Step 1: Database Schema
 
 Create tables for:
+
 - **Tests**: Test metadata (name, type, status, dates)
 - **Variants**: Test variations (A, B, C, etc.)
 - **Test Assignments**: User-to-variant mappings
@@ -328,6 +406,7 @@ Create tables for:
 ### Step 2: Backend API
 
 Implement REST endpoints:
+
 - `POST /api/tests` - Create new test
 - `GET /api/tests` - List all tests
 - `GET /api/tests/:id` - Get test details
@@ -341,6 +420,7 @@ Implement REST endpoints:
 ### Step 3: Frontend Components
 
 Build React components:
+
 - **Dashboard**: Overview of all tests
 - **Test Creator**: Wizard for creating tests
 - **Test Editor**: Modify existing tests
@@ -350,6 +430,7 @@ Build React components:
 ### Step 4: Shopify Integration
 
 Implement:
+
 - **App Proxy**: Serve test scripts to storefront
 - **Theme App Extension**: Inject test code
 - **Webhooks**: Listen for order events
@@ -358,6 +439,7 @@ Implement:
 ### Step 5: Testing Logic
 
 Implement:
+
 - **Variant Selection Algorithm**
 - **Cookie Management**
 - **Event Tracking**
@@ -443,7 +525,7 @@ Response:
 1. **Hosting**
    - Backend: Heroku, AWS, or DigitalOcean
    - Database: Managed PostgreSQL (AWS RDS, Heroku Postgres)
-   - Redis: Redis Cloud or AWS ElastiCache
+   - Redis (optional): Redis Cloud or AWS ElastiCache
 
 2. **Environment Variables**
    - `SHOPIFY_API_KEY`
@@ -479,13 +561,12 @@ Response:
 
 ## 📝 License
 
-MIT License - feel free to use this as a starting point for your own AB testing tool.
+MIT License - see [LICENSE](LICENSE) for details.
 
 ## 🤝 Contributing
 
-This is a template/starting point. Customize it based on your specific needs and requirements.
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for guidelines.
 
 ---
 
 **Note**: This is a comprehensive guide and starting point. You'll need to implement the actual code based on your specific requirements and business logic.
-

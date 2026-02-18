@@ -26,7 +26,7 @@ class PromoLinkService {
       target_id,
       expires_at,
       max_uses,
-      name
+      name,
     } = linkData;
 
     // Generate unique token
@@ -54,7 +54,7 @@ class PromoLinkService {
       target_type,
       target_id,
       expires_at,
-      max_uses
+      max_uses,
     ]);
 
     // Generate full URL
@@ -62,7 +62,7 @@ class PromoLinkService {
 
     return {
       ...result.rows[0],
-      url: promoUrl
+      url: promoUrl,
     };
   }
 
@@ -180,4 +180,3 @@ class PromoLinkService {
 }
 
 module.exports = new PromoLinkService();
-

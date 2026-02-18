@@ -15,14 +15,15 @@ let pool = null;
 function initDatabase() {
   if (process.env.DATABASE_URL) {
     // PostgreSQL
-    const sslConfig = process.env.NODE_ENV === 'production' 
-      ? {
-          // In production, verify SSL certificates for security
-          rejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false',
-          // Allow custom CA certificate if provided
-          ...(process.env.DATABASE_SSL_CA && { ca: process.env.DATABASE_SSL_CA })
-        }
-      : false;
+    const sslConfig =
+      process.env.NODE_ENV === 'production'
+        ? {
+            // In production, verify SSL certificates for security
+            rejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false',
+            // Allow custom CA certificate if provided
+            ...(process.env.DATABASE_SSL_CA && { ca: process.env.DATABASE_SSL_CA }),
+          }
+        : false;
 
     pool = new Pool({
       connectionString: process.env.DATABASE_URL,
@@ -30,10 +31,10 @@ function initDatabase() {
       // Connection pool settings for production
       max: process.env.NODE_ENV === 'production' ? 20 : 10,
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 2000
+      connectionTimeoutMillis: 2000,
     });
 
-    pool.on('error', (err) => {
+    pool.on('error', err => {
       const logger = require('./logger');
       logger.error('Unexpected error on idle database client', { error: err });
     });
@@ -46,7 +47,7 @@ function initDatabase() {
     const logger = require('./logger');
     logger.error('DATABASE_URL environment variable is not set!', {
       message: 'Please set DATABASE_URL in your .env file.',
-      example: 'DATABASE_URL=postgresql://username:password@localhost:5432/shopify_ab_testing'
+      example: 'DATABASE_URL=postgresql://username:password@localhost:5432/shopify_ab_testing',
     });
   }
 }
@@ -64,23 +65,25 @@ async function query(sql, params = []) {
   }
 
   if (!pool) {
-    throw new Error('Database connection not initialized. Please set DATABASE_URL in your .env file.');
+    throw new Error(
+      'Database connection not initialized. Please set DATABASE_URL in your .env file.'
+    );
   }
 
   try {
     const startTime = Date.now();
     const result = await pool.query(sql, params);
     const duration = Date.now() - startTime;
-    
+
     // Log slow queries in development
     if (process.env.NODE_ENV === 'development' && duration > 1000) {
       const logger = require('./logger');
       logger.warn('Slow query detected', {
         duration: `${duration}ms`,
-        sql: sql.substring(0, 100)
+        sql: sql.substring(0, 100),
       });
     }
-    
+
     return result;
   } catch (error) {
     const logger = require('./logger');
@@ -88,7 +91,7 @@ async function query(sql, params = []) {
       error: error.message,
       code: error.code,
       sql: sql.substring(0, 100), // Log first 100 chars of SQL for debugging
-      params: params.length > 0 ? `[${params.length} params]` : 'no params'
+      params: params.length > 0 ? `[${params.length} params]` : 'no params',
     });
     throw error;
   }
@@ -133,6 +136,5 @@ module.exports = {
   query,
   getClient,
   initDatabase,
-  closeDatabase
+  closeDatabase,
 };
-

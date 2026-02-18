@@ -1,10 +1,11 @@
 /**
  * Test List Component
- * 
- * Full test list page with advanced filtering and search
+ *
+ * Full test list page with advanced filtering and search.
+ * UI matches Settings/Profile for consistency.
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   Page,
   Card,
@@ -17,80 +18,72 @@ import {
   Text,
   Modal,
   TextField,
-  Select
+  Select,
+  Icon,
 } from '@shopify/polaris';
-import { useNavigate } from 'react-router-dom';
+import {
+  DataTableIcon,
+  PlusIcon,
+  PlayIcon,
+  StopCircleIcon,
+  DuplicateIcon,
+  DeleteIcon,
+  ChartLineIcon,
+  ViewIcon,
+} from '@shopify/polaris-icons';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import Toast from '../Toast/Toast';
-import { apiGet, apiPost, apiDelete } from '../../services';
+import { apiPost } from '../../services';
 import LoadingSkeleton from '../LoadingSkeleton/LoadingSkeleton';
-import { TEST_STATUS_OPTIONS, TEST_TYPE_ICONS } from '../../constants';
+import { PageShell } from '../Shared';
+import { useTests, useStartTest, useStopTest, useDeleteTest, useInvalidateTests } from '../../hooks';
+import { TEST_STATUS_OPTIONS, PERSONALIZATION_MODES } from '../../constants';
+import { getTestTypeDisplay, getVariantCount } from '../../utils/testType';
+import styles from './TestList.module.css';
 
 function TestList() {
-  const [tests, setTests] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [selectedTests, setSelectedTests] = useState([]);
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
   const [deleteModal, setDeleteModal] = useState(false);
   const [statusFilter, setStatusFilter] = useState(['all']);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('created_desc');
-  const [viewMode, setViewMode] = useState('list'); // 'grid' or 'list'
-  const [actionLoading, setActionLoading] = useState({}); // Track loading state per test
+  const [viewMode, setViewMode] = useState('list');
+  const [actionLoading, setActionLoading] = useState({});
+  const [errorMessage, setErrorMessage] = useState(null);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const viewFilter = searchParams.get('view') || 'all';
 
-  const fetchTests = useCallback(async () => {
-    try {
-      setLoading(true);
-      
-      const response = await apiGet('/tests');
-      const testData = response.data?.tests || response.data?.data?.tests || [];
-      setTests(testData);
-      
-      setError(null);
-    } catch (err) {
-      if (import.meta.env.DEV) {
-        console.error('Error fetching tests:', err);
-      }
-      setError(err.response?.data?.error || 'Failed to load tests');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const invalidateTests = useInvalidateTests();
+  const { data: tests = [], isLoading: loading, isError, error, refetch: _fetchTests } = useTests();
+  const startMutation = useStartTest();
+  const stopMutation = useStopTest();
+  const deleteMutation = useDeleteTest();
 
-  useEffect(() => {
-    fetchTests();
-  }, [fetchTests]);
-
-  const getStatusBadge = (status) => {
+  const getStatusBadge = status => {
     const statusMap = {
-      draft: { status: 'info', label: 'Draft' },
-      running: { status: 'success', label: 'Running' },
-      stopped: { status: 'warning', label: 'Stopped' },
-      completed: { status: 'complete', label: 'Completed' }
+      draft: { tone: 'info', label: 'Draft' },
+      running: { tone: 'success', label: 'Running' },
+      stopped: { tone: 'warning', label: 'Stopped' },
+      completed: { tone: 'success', label: 'Completed' },
     };
-    
-    const config = statusMap[status] || { status: 'info', label: status };
-    return <Badge status={config.status}>{config.label}</Badge>;
+
+    const config = statusMap[status] || { tone: 'info', label: status };
+    return <Badge tone={config.tone}>{config.label}</Badge>;
   };
 
-  const getTypeIcon = (type) => {
-    return TEST_TYPE_ICONS[type] || TEST_TYPE_ICONS.default;
-  };
-
-  const getHealthBadge = (health) => {
+  const getHealthBadge = health => {
     if (!health) return null;
     const colorMap = {
       excellent: 'success',
       good: 'attention',
       fair: 'warning',
-      poor: 'critical'
+      poor: 'critical',
     };
     return (
       <InlineStack gap="100" align="start">
-        <Badge status={colorMap[health.healthLevel] || 'info'}>
-          {health.score}/100
-        </Badge>
+        <Badge tone={colorMap[health.healthLevel] || 'info'}>{health.score}/100</Badge>
       </InlineStack>
     );
   };
@@ -98,125 +91,109 @@ function TestList() {
   // Bulk action handlers
   const handleBulkStart = useCallback(async () => {
     if (selectedTests.length === 0) return;
-    
     setBulkActionLoading(true);
+    setErrorMessage(null);
     try {
-      await Promise.all(
-        selectedTests.map(testId =>
-          apiPost(`/tests/${testId}/start`, {})
-        )
-      );
-      
+      await Promise.all(selectedTests.map(testId => startMutation.mutateAsync(testId)));
       setSelectedTests([]);
-      fetchTests();
-      setError(null);
     } catch (err) {
-      setError('Failed to start some tests');
+      setErrorMessage('Failed to start some tests');
     } finally {
       setBulkActionLoading(false);
     }
-  }, [selectedTests, fetchTests]);
+  }, [selectedTests, startMutation]);
 
   const handleBulkStop = useCallback(async () => {
     if (selectedTests.length === 0) return;
-    
     setBulkActionLoading(true);
+    setErrorMessage(null);
     try {
-      await Promise.all(
-        selectedTests.map(testId =>
-          apiPost(`/tests/${testId}/stop`, {})
-        )
-      );
-      
+      await Promise.all(selectedTests.map(testId => stopMutation.mutateAsync(testId)));
       setSelectedTests([]);
-      fetchTests();
-      setError(null);
     } catch (err) {
-      setError('Failed to stop some tests');
+      setErrorMessage('Failed to stop some tests');
     } finally {
       setBulkActionLoading(false);
     }
-  }, [selectedTests, fetchTests]);
+  }, [selectedTests, stopMutation]);
 
   const handleBulkDelete = useCallback(async () => {
     if (selectedTests.length === 0) return;
-    
     setBulkActionLoading(true);
+    setErrorMessage(null);
     try {
-      await Promise.all(
-        selectedTests.map(testId =>
-          apiDelete(`/tests/${testId}`)
-        )
-      );
-      
+      await Promise.all(selectedTests.map(testId => deleteMutation.mutateAsync(testId)));
       setSelectedTests([]);
       setDeleteModal(false);
-      fetchTests();
-      setError(null);
     } catch (err) {
-      setError('Failed to delete some tests');
+      setErrorMessage('Failed to delete some tests');
     } finally {
       setBulkActionLoading(false);
     }
-  }, [selectedTests, fetchTests]);
+  }, [selectedTests, deleteMutation]);
 
   const handleBulkClone = useCallback(async () => {
     if (selectedTests.length === 0) return;
-    
     setBulkActionLoading(true);
+    setErrorMessage(null);
     try {
-      await Promise.all(
-        selectedTests.map(testId =>
-          apiPost(`/tests/${testId}/clone`, {})
-        )
-      );
-      
+      await Promise.all(selectedTests.map(testId => apiPost(`/tests/${testId}/clone`, {})));
       setSelectedTests([]);
-      fetchTests();
-      setError(null);
+      invalidateTests();
     } catch (err) {
-      setError('Failed to clone some tests');
+      setErrorMessage('Failed to clone some tests');
     } finally {
       setBulkActionLoading(false);
     }
-  }, [selectedTests, fetchTests]);
+  }, [selectedTests, invalidateTests]);
 
   // Individual test action handlers
-  const handleTestStart = useCallback(async (testId, e) => {
-    e.stopPropagation();
-    setActionLoading(prev => ({ ...prev, [testId]: true }));
-    try {
-      await apiPost(`/tests/${testId}/start`, {});
-      await fetchTests();
-      setError(null);
+  const handleTestStart = useCallback(
+    async (testId, e) => {
+      e.stopPropagation();
+      setActionLoading(prev => ({ ...prev, [testId]: true }));
+      setErrorMessage(null);
+      try {
+        await startMutation.mutateAsync(testId);
     } catch (err) {
-      setError('Failed to start test');
+      setErrorMessage(err.response?.data?.error || 'Failed to start test');
     } finally {
-      setActionLoading(prev => ({ ...prev, [testId]: false }));
-    }
-  }, [fetchTests]);
+        setActionLoading(prev => ({ ...prev, [testId]: false }));
+      }
+    },
+    [startMutation]
+  );
 
-  const handleTestStop = useCallback(async (testId, e) => {
-    e.stopPropagation();
-    setActionLoading(prev => ({ ...prev, [testId]: true }));
-    try {
-      await apiPost(`/tests/${testId}/stop`, {});
-      await fetchTests();
-      setError(null);
+  const handleTestStop = useCallback(
+    async (testId, e) => {
+      e.stopPropagation();
+      setActionLoading(prev => ({ ...prev, [testId]: true }));
+      setErrorMessage(null);
+      try {
+        await stopMutation.mutateAsync(testId);
     } catch (err) {
-      setError('Failed to stop test');
+      setErrorMessage(err.response?.data?.error || 'Failed to stop test');
     } finally {
-      setActionLoading(prev => ({ ...prev, [testId]: false }));
-    }
-  }, [fetchTests]);
+        setActionLoading(prev => ({ ...prev, [testId]: false }));
+      }
+    },
+    [stopMutation]
+  );
 
-  const handleSelectionChange = useCallback((selected) => {
+  const _handleSelectionChange = useCallback(selected => {
     setSelectedTests(selected);
   }, []);
 
   // Filter and sort tests
   const filteredAndSortedTests = useMemo(() => {
     let filtered = tests;
+
+    // Filter by view (personalization)
+    if (viewFilter === 'personalization') {
+      filtered = filtered.filter(
+        (t) => [PERSONALIZATION_MODES.PERSONALIZED, PERSONALIZATION_MODES.ROLLOUT].includes(t.personalization_mode || '')
+      );
+    }
 
     // Filter by status
     if (!statusFilter.includes('all')) {
@@ -228,10 +205,11 @@ function TestList() {
       const query = searchQuery.toLowerCase().trim();
       filtered = filtered.filter(test => {
         const nameMatch = test.name?.toLowerCase().includes(query);
-        const typeMatch = test.type?.toLowerCase().includes(query);
+        const typeDisplay = getTestTypeDisplay(test).label;
+        const typeMatch = test.type?.toLowerCase().includes(query) || typeDisplay?.toLowerCase().includes(query);
         const descriptionMatch = test.description?.toLowerCase().includes(query);
         const statusMatch = test.status?.toLowerCase().includes(query);
-        
+
         return nameMatch || typeMatch || descriptionMatch || statusMatch;
       });
     }
@@ -267,18 +245,20 @@ function TestList() {
     });
 
     return sorted;
-  }, [tests, statusFilter, searchQuery, sortBy]);
+  }, [tests, statusFilter, searchQuery, sortBy, viewFilter]);
 
   // Test Card Component
-  const TestCard = ({ test, isSelected, onSelect }) => {
-    const handleCardClick = (e) => {
+  const TestCard = ({ test, isSelected, onSelect, viewMode }) => {
+    const handleCardClick = e => {
       // Don't navigate if clicking checkbox, action buttons, or control buttons
-      if (e.target.closest('.test-card-checkbox') || 
-          e.target.closest('.test-card-actions') || 
-          e.target.closest('.test-control-buttons')) {
+      if (
+        e.target.closest('.test-card-checkbox') ||
+        e.target.closest('.test-card-actions') ||
+        e.target.closest('.test-control-buttons')
+      ) {
         return;
       }
-      navigate(`/tests/${test.id}`);
+      navigate(`/tests/${test.id}`, { state: { listTest: test } });
     };
 
     const isLoading = actionLoading[test.id] || false;
@@ -287,59 +267,70 @@ function TestList() {
     const totalVisitors = test.variants?.reduce((sum, v) => sum + (v.visitors || 0), 0) || 0;
     const totalConversions = test.variants?.reduce((sum, v) => sum + (v.conversions || 0), 0) || 0;
     const totalRevenue = test.variants?.reduce((sum, v) => sum + (v.revenue || 0), 0) || 0;
-    const conversionRate = totalVisitors > 0 ? (totalConversions / totalVisitors * 100) : 0;
-    const variantCount = test.variants?.length || 0;
+    const conversionRate = totalVisitors > 0 ? (totalConversions / totalVisitors) * 100 : 0;
+    const variantCount = getVariantCount(test);
+
+    const createdDate = test.created_at
+      ? (() => {
+          try {
+            const d = new Date(test.created_at);
+            return isNaN(d.getTime()) ? '—' : d.toLocaleDateString();
+          } catch {
+            return '—';
+          }
+        })()
+      : '—';
 
     return (
-      <div 
-        className={`test-list-card ${isSelected ? 'selected' : ''}`}
+      <div
+        className={`test-list-card ${styles.testListCard} ${viewMode || 'list'} ${isSelected ? 'selected' : ''}`}
         data-status={test.status}
         onClick={handleCardClick}
       >
         <BlockStack gap="400">
           {/* Header with Checkbox */}
-          <InlineStack align="space-between" blockAlign="start">
-            <InlineStack gap="300" align="center">
+          <div className={styles.testListCardHeader}>
+            <div className={styles.testListCardHeaderLeft}>
               <input
                 type="checkbox"
                 checked={isSelected}
-                onChange={(e) => {
+                onChange={e => {
                   e.stopPropagation();
                   onSelect(test.id, e.target.checked);
                 }}
-                className="test-card-checkbox"
-                onClick={(e) => e.stopPropagation()}
+                className={`${styles.testListCheckbox} test-card-checkbox`}
+                onClick={e => e.stopPropagation()}
+                aria-label={`Select ${test.name || 'test'}`}
               />
-              <div style={{ 
-                fontSize: '1.75rem',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '48px',
-                height: '48px',
-                borderRadius: '10px',
-                background: 'var(--bg-tertiary)',
-                flexShrink: 0
-              }}>
-                {getTypeIcon(test.type)}
+              <div className={styles.testListCardIcon}>{getTestTypeDisplay(test).icon}</div>
+              <div className={styles.testListCardTitleBlock}>
+                <span className={styles.testListCardTitle}>
+                  <Text variant="bodyMd" fontWeight="semibold" as="span">
+                    {test.name || 'Unnamed'}
+                  </Text>
+                </span>
+                <Text variant="bodySm" color="subdued" as="p" className={styles.testListCardMeta}>
+                  {getTestTypeDisplay(test).label} • {variantCount} variant{variantCount !== 1 ? 's' : ''} • Created{' '}
+                  {createdDate}
+                </Text>
               </div>
-              <BlockStack gap="100">
-                <Text variant="bodyMd" fontWeight="semibold" as="span">
-                  {test.name}
-                </Text>
-                <Text variant="bodySm" color="subdued" as="p">
-                  {test.type} • {variantCount} variant{variantCount !== 1 ? 's' : ''} • Created {new Date(test.created_at).toLocaleDateString()}
-                </Text>
-              </BlockStack>
-            </InlineStack>
-            <InlineStack gap="200" blockAlign="start">
+            </div>
+            <div className={styles.testListCardBadges}>
               {getStatusBadge(test.status)}
+              {test.personalization_mode === PERSONALIZATION_MODES.PERSONALIZED && (
+                <Badge tone="success">Winner 100%</Badge>
+              )}
+              {test.personalization_mode === PERSONALIZATION_MODES.ROLLOUT && (
+                <Badge tone="attention">
+                  Rollout {Number(test.effective_rollout_percent ?? test.rollout_percent ?? 0)}%
+                </Badge>
+              )}
               {getHealthBadge(test.health)}
-            </InlineStack>
-          </InlineStack>
+            </div>
+          </div>
 
           {/* Test Control Actions Bar */}
-          <div className="test-control-actions-bar" onClick={(e) => e.stopPropagation()}>
+          <div className="test-control-actions-bar" onClick={e => e.stopPropagation()}>
             <InlineStack align="space-between" blockAlign="center">
               <Text variant="bodySm" color="subdued" as="span">
                 Quick Actions
@@ -349,7 +340,7 @@ function TestList() {
                   <button
                     type="button"
                     className="test-control-button test-control-play"
-                    onClick={(e) => handleTestStart(test.id, e)}
+                    onClick={e => handleTestStart(test.id, e)}
                     disabled={isLoading}
                     title="Start Test"
                     aria-label="Start Test"
@@ -358,8 +349,14 @@ function TestList() {
                       <span className="test-control-spinner"></span>
                     ) : (
                       <>
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M4 2L12 8L4 14V2Z" fill="currentColor"/>
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path d="M4 2L12 8L4 14V2Z" fill="currentColor" />
                         </svg>
                         <span>Start</span>
                       </>
@@ -371,7 +368,7 @@ function TestList() {
                     <button
                       type="button"
                       className="test-control-button test-control-pause"
-                      onClick={(e) => handleTestStop(test.id, e)}
+                      onClick={e => handleTestStop(test.id, e)}
                       disabled={isLoading}
                       title="Pause Test"
                       aria-label="Pause Test"
@@ -380,9 +377,22 @@ function TestList() {
                         <span className="test-control-spinner"></span>
                       ) : (
                         <>
-                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <rect x="5" y="3" width="2.5" height="10" rx="1" fill="currentColor"/>
-                            <rect x="8.5" y="3" width="2.5" height="10" rx="1" fill="currentColor"/>
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 16 16"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <rect x="5" y="3" width="2.5" height="10" rx="1" fill="currentColor" />
+                            <rect
+                              x="8.5"
+                              y="3"
+                              width="2.5"
+                              height="10"
+                              rx="1"
+                              fill="currentColor"
+                            />
                           </svg>
                           <span>Pause</span>
                         </>
@@ -391,7 +401,7 @@ function TestList() {
                     <button
                       type="button"
                       className="test-control-button test-control-stop"
-                      onClick={(e) => handleTestStop(test.id, e)}
+                      onClick={e => handleTestStop(test.id, e)}
                       disabled={isLoading}
                       title="Stop Test"
                       aria-label="Stop Test"
@@ -400,8 +410,14 @@ function TestList() {
                         <span className="test-control-spinner"></span>
                       ) : (
                         <>
-                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <rect x="3" y="3" width="10" height="10" rx="1.5" fill="currentColor"/>
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 16 16"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <rect x="3" y="3" width="10" height="10" rx="1.5" fill="currentColor" />
                           </svg>
                           <span>Stop</span>
                         </>
@@ -413,7 +429,7 @@ function TestList() {
                   <button
                     type="button"
                     className="test-control-button test-control-play"
-                    onClick={(e) => handleTestStart(test.id, e)}
+                    onClick={e => handleTestStart(test.id, e)}
                     disabled={isLoading}
                     title="Restart Test"
                     aria-label="Restart Test"
@@ -422,8 +438,14 @@ function TestList() {
                       <span className="test-control-spinner"></span>
                     ) : (
                       <>
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M4 2L12 8L4 14V2Z" fill="currentColor"/>
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path d="M4 2L12 8L4 14V2Z" fill="currentColor" />
                         </svg>
                         <span>Restart</span>
                       </>
@@ -435,98 +457,60 @@ function TestList() {
           </div>
 
           {/* Performance Metrics */}
-          <div style={{
-            padding: '1rem 1.25rem',
-            background: 'var(--bg-tertiary)',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--border-secondary)'
-          }}>
+          <div className={styles.testListCardMetrics}>
             {totalVisitors > 0 ? (
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-                gap: '1.5rem',
-                alignItems: 'start'
-              }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <Text variant="bodySm" color="subdued" as="span">
-                    👥 Visitors
-                  </Text>
-                  <Text variant="bodyLg" fontWeight="semibold" as="span">
-                    {totalVisitors.toLocaleString()}
-                  </Text>
+              <div className={styles.testListCardMetricsGrid}>
+                <div className={styles.testListCardMetric}>
+                  <span className={styles.testListCardMetricLabel}>Visitors</span>
+                  <span className={styles.testListCardMetricValue}>{totalVisitors.toLocaleString()}</span>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <Text variant="bodySm" color="subdued" as="span">
-                    ✅ Conversions
-                  </Text>
-                  <Text variant="bodyLg" fontWeight="semibold" as="span">
-                    {totalConversions.toLocaleString()}
-                  </Text>
+                <div className={styles.testListCardMetric}>
+                  <span className={styles.testListCardMetricLabel}>Conversions</span>
+                  <span className={styles.testListCardMetricValue}>{totalConversions.toLocaleString()}</span>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <Text variant="bodySm" color="subdued" as="span">
-                    📈 Rate
-                  </Text>
-                  <Text variant="bodyLg" fontWeight="semibold" as="span" tone={conversionRate > 5 ? 'success' : conversionRate > 2 ? 'base' : 'subdued'}>
+                <div className={styles.testListCardMetric}>
+                  <span className={styles.testListCardMetricLabel}>Rate</span>
+                  <span
+                    className={`${styles.testListCardMetricValue} ${
+                      conversionRate > 5 ? styles.testListCardMetricValueSuccess : conversionRate > 2 ? '' : styles.testListCardMetricValueSubdued
+                    }`}
+                  >
                     {conversionRate.toFixed(2)}%
-                  </Text>
+                  </span>
                 </div>
                 {totalRevenue > 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    <Text variant="bodySm" color="subdued" as="span">
-                      💰 Revenue
-                    </Text>
-                    <Text variant="bodyLg" fontWeight="semibold" as="span" tone="success">
-                      ${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </Text>
+                  <div className={styles.testListCardMetric}>
+                    <span className={styles.testListCardMetricLabel}>Revenue</span>
+                    <span className={`${styles.testListCardMetricValue} ${styles.testListCardMetricValueSuccess}`}>
+                      $
+                      {totalRevenue.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
                   </div>
                 )}
               </div>
             ) : (
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-                gap: '1.5rem',
-                alignItems: 'start'
-              }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <Text variant="bodySm" color="subdued" as="span">
-                    👥 Visitors
-                  </Text>
-                  <Text variant="bodyLg" fontWeight="semibold" as="span">
-                    0
-                  </Text>
+              <div className={styles.testListCardMetricsGrid}>
+                <div className={styles.testListCardMetric}>
+                  <span className={styles.testListCardMetricLabel}>Visitors</span>
+                  <span className={styles.testListCardMetricValue}>0</span>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <Text variant="bodySm" color="subdued" as="span">
-                    ✅ Conversions
-                  </Text>
-                  <Text variant="bodyLg" fontWeight="semibold" as="span">
-                    0
-                  </Text>
+                <div className={styles.testListCardMetric}>
+                  <span className={styles.testListCardMetricLabel}>Conversions</span>
+                  <span className={styles.testListCardMetricValue}>0</span>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <Text variant="bodySm" color="subdued" as="span">
-                    📈 Rate
-                  </Text>
-                  <Text variant="bodyLg" fontWeight="semibold" as="span" color="subdued">
+                <div className={styles.testListCardMetric}>
+                  <span className={styles.testListCardMetricLabel}>Rate</span>
+                  <span className={`${styles.testListCardMetricValue} ${styles.testListCardMetricValueSubdued}`}>
                     0.00%
-                  </Text>
+                  </span>
                 </div>
                 {test.status === 'running' && (
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center',
-                    gap: '0.5rem',
-                    padding: '0.75rem',
-                    background: 'var(--bg-secondary)',
-                    borderRadius: 'var(--radius-sm)',
-                    gridColumn: 'span 1'
-                  }}>
+                  <div className={styles.testListCardWaiting}>
                     <Text variant="bodySm" color="subdued" as="span">
-                      ⏳ Waiting for traffic...
+                      Waiting for traffic...
                     </Text>
                   </div>
                 )}
@@ -535,22 +519,23 @@ function TestList() {
           </div>
 
           {/* Quick Actions */}
-          <div className="test-card-actions" onClick={(e) => e.stopPropagation()}>
-            <InlineStack gap="200" align="end">
-              <Button
-                size="small"
-                variant="secondary"
-                onClick={() => navigate(`/tests/${test.id}/analytics`)}
-              >
-                View Analytics
-              </Button>
-              <Button
-                size="small"
-                onClick={() => navigate(`/tests/${test.id}`)}
-              >
-                View Details
-              </Button>
-            </InlineStack>
+          <div className={`${styles.cardActions} test-card-actions`} onClick={e => e.stopPropagation()}>
+            <button
+              type="button"
+              className={styles.cardActionLink}
+              onClick={() => navigate(`/tests/${test.id}/analytics`)}
+            >
+              <Icon source={ChartLineIcon} />
+              View Analytics
+            </button>
+            <button
+              type="button"
+              className={`${styles.cardActionLink} ${styles.cardActionLinkPrimary}`}
+              onClick={() => navigate(`/tests/${test.id}`, { state: { listTest: test } })}
+            >
+              <Icon source={ViewIcon} />
+              View Details
+            </button>
           </div>
         </BlockStack>
       </div>
@@ -565,41 +550,24 @@ function TestList() {
     }
   }, []);
 
-  const handleSelectAll = useCallback((checked) => {
-    if (checked) {
-      setSelectedTests(filteredAndSortedTests.map(t => t.id));
-    } else {
-      setSelectedTests([]);
-    }
-  }, [filteredAndSortedTests]);
-
-  const bulkActions = [
-    {
-      content: 'Start Tests',
-      onAction: handleBulkStart,
-      loading: bulkActionLoading
+  const handleSelectAll = useCallback(
+    checked => {
+      if (checked) {
+        setSelectedTests(filteredAndSortedTests.map(t => t.id));
+      } else {
+        setSelectedTests([]);
+      }
     },
-    {
-      content: 'Stop Tests',
-      onAction: handleBulkStop,
-      loading: bulkActionLoading
-    },
-    {
-      content: 'Clone Tests',
-      onAction: handleBulkClone,
-      loading: bulkActionLoading
-    },
-    {
-      content: 'Delete Tests',
-      onAction: () => setDeleteModal(true),
-      destructive: true,
-      loading: bulkActionLoading
-    }
-  ];
+    [filteredAndSortedTests]
+  );
 
   const statusOptions = TEST_STATUS_OPTIONS;
+  const personalizationCount = tests.filter(
+    (t) => [PERSONALIZATION_MODES.PERSONALIZED, PERSONALIZATION_MODES.ROLLOUT].includes(t.personalization_mode || '')
+  ).length;
 
-  const hasActiveFilters = searchQuery || (statusFilter.length > 0 && !statusFilter.includes('all'));
+  const hasActiveFilters =
+    searchQuery || (statusFilter.length > 0 && !statusFilter.includes('all')) || viewFilter !== 'all';
 
   const sortOptions = [
     { label: 'Newest First', value: 'created_desc' },
@@ -608,7 +576,7 @@ function TestList() {
     { label: 'Name (Z-A)', value: 'name_desc' },
     { label: 'Status (A-Z)', value: 'status_asc' },
     { label: 'Most Visitors', value: 'visitors_desc' },
-    { label: 'Most Revenue', value: 'revenue_desc' }
+    { label: 'Most Revenue', value: 'revenue_desc' },
   ];
 
   const filterControl = (
@@ -646,10 +614,16 @@ function TestList() {
                 title="List View"
                 aria-label="List View"
               >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <rect x="1" y="2" width="14" height="2" rx="1" fill="currentColor"/>
-                  <rect x="1" y="7" width="14" height="2" rx="1" fill="currentColor"/>
-                  <rect x="1" y="12" width="14" height="2" rx="1" fill="currentColor"/>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <rect x="1" y="2" width="14" height="2" rx="1" fill="currentColor" />
+                  <rect x="1" y="7" width="14" height="2" rx="1" fill="currentColor" />
+                  <rect x="1" y="12" width="14" height="2" rx="1" fill="currentColor" />
                 </svg>
                 <span>List</span>
               </button>
@@ -660,16 +634,86 @@ function TestList() {
                 title="Grid View"
                 aria-label="Grid View"
               >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-                  <rect x="9" y="1" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-                  <rect x="1" y="9" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-                  <rect x="9" y="9" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <rect
+                    x="1"
+                    y="1"
+                    width="6"
+                    height="6"
+                    rx="1"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    fill="none"
+                  />
+                  <rect
+                    x="9"
+                    y="1"
+                    width="6"
+                    height="6"
+                    rx="1"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    fill="none"
+                  />
+                  <rect
+                    x="1"
+                    y="9"
+                    width="6"
+                    height="6"
+                    rx="1"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    fill="none"
+                  />
+                  <rect
+                    x="9"
+                    y="9"
+                    width="6"
+                    height="6"
+                    rx="1"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    fill="none"
+                  />
                 </svg>
                 <span>Grid</span>
               </button>
             </div>
           </InlineStack>
+        </InlineStack>
+
+        {/* View Chips: All | Personalization */}
+        <InlineStack gap="200" align="start" blockAlign="center" wrap>
+          <Text variant="bodySm" fontWeight="medium" as="span">
+            View:
+          </Text>
+          <div className="filter-status-buttons">
+            <InlineStack gap="100" align="start" blockAlign="center">
+              <button
+                type="button"
+                onClick={() => setSearchParams({})}
+                className={`status-filter-button ${viewFilter === 'all' ? 'active' : ''}`}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                onClick={() => setSearchParams({ view: 'personalization' })}
+                className={`status-filter-button ${viewFilter === 'personalization' ? 'active' : ''}`}
+              >
+                Personalization
+                {personalizationCount > 0 && (
+                  <span className={styles.viewChipBadge}>{personalizationCount}</span>
+                )}
+              </button>
+            </InlineStack>
+          </div>
         </InlineStack>
 
         {/* Bottom Row: Status Filters */}
@@ -679,7 +723,7 @@ function TestList() {
           </Text>
           <div className="filter-status-buttons">
             <InlineStack gap="100" align="start" blockAlign="center">
-              {statusOptions.map((option) => {
+              {statusOptions.map(option => {
                 const isSelected = statusFilter.includes(option.value);
                 return (
                   <button
@@ -691,8 +735,8 @@ function TestList() {
                         const newFilter = statusFilter.includes('all')
                           ? [option.value]
                           : isSelected
-                          ? statusFilter.filter(f => f !== option.value)
-                          : [...statusFilter.filter(f => f !== 'all'), option.value];
+                            ? statusFilter.filter(f => f !== option.value)
+                            : [...statusFilter.filter(f => f !== 'all'), option.value];
                         setStatusFilter(newFilter.length > 0 ? newFilter : ['all']);
                       }
                     }}
@@ -711,6 +755,7 @@ function TestList() {
               onClick={() => {
                 setStatusFilter(['all']);
                 setSearchQuery('');
+                setSearchParams({});
               }}
               size="small"
             >
@@ -723,149 +768,206 @@ function TestList() {
   );
 
   return (
-    <>
-      <Toast
-        message={error}
-        type="error"
-        onClose={() => setError(null)}
-        duration={5000}
-      />
+    <PageShell className={styles.testsPage}>
+      <Toast message={errorMessage || (isError ? (error?.response?.data?.error || error?.message || 'Failed to load tests') : null)} type="error" onClose={() => setErrorMessage(null)} duration={5000} />
 
-      <Page
-        title="All Tests"
-        primaryAction={{
-          content: 'Create Test',
-          onAction: () => navigate('/tests/new')
-        }}
-      >
-        <Layout>
-          <Layout.Section>
-            <Card>
-              <BlockStack gap="500">
-                {/* Header Section */}
-                <InlineStack align="space-between" blockAlign="center" wrap>
-                  <BlockStack gap="100">
-                    <Text variant="headingLg" as="h1">
-                      All Tests
-                    </Text>
-                    <Text variant="bodySm" color="subdued" as="p">
-                      {filteredAndSortedTests.length} of {tests.length} {tests.length === 1 ? 'test' : 'tests'}
-                      {hasActiveFilters && ' (filtered)'}
-                    </Text>
-                  </BlockStack>
-                  {selectedTests.length > 0 && (
-                    <InlineStack gap="200">
-                      <Text variant="bodySm" color="subdued" as="span">
-                        {selectedTests.length} selected
-                      </Text>
-                      <Button
-                        size="small"
+      <Page title="" subtitle="">
+        <div className={styles.testsLayout}>
+          <div className={styles.testsHero}>
+            <div className={styles.testsHeroIcon}>
+              <DataTableIcon />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <h1 className={styles.testsHeroTitle}>
+                {viewFilter === 'personalization' ? 'Personalization & Rollout' : 'All Tests'}
+              </h1>
+              <p className={styles.testsHeroSubtitle}>
+                {viewFilter === 'personalization'
+                  ? `${filteredAndSortedTests.length} personalized or rollout ${filteredAndSortedTests.length === 1 ? 'test' : 'tests'}`
+                  : `${filteredAndSortedTests.length} of ${tests.length} ${tests.length === 1 ? 'test' : 'tests'}${hasActiveFilters ? ' (filtered)' : ''}`}
+              </p>
+            </div>
+            <div className={styles.heroActions}>
+              <button
+                type="button"
+                className={styles.createTestBtn}
+                onClick={() => navigate('/tests/new')}
+              >
+                <Icon source={PlusIcon} />
+                Create Test
+              </button>
+              {selectedTests.length > 0 && (
+                <>
+                  <div className={styles.heroActionsDivider} aria-hidden="true" />
+                  <div className={styles.selectedBulkBar}>
+                    <span className={styles.selectedCountBadge}>
+                      {selectedTests.length} selected
+                    </span>
+                    <div className={styles.bulkActionButtons}>
+                      <button
+                        type="button"
+                        className={`${styles.bulkActionBtn} ${styles.bulkActionBtnStart}`}
                         onClick={handleBulkStart}
-                        loading={bulkActionLoading}
+                        disabled={bulkActionLoading}
                       >
+                        {bulkActionLoading ? (
+                          <span className={styles.bulkActionSpinner} />
+                        ) : (
+                          <Icon source={PlayIcon} />
+                        )}
                         Start
-                      </Button>
-                      <Button
-                        size="small"
-                        variant="secondary"
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.bulkActionBtn} ${styles.bulkActionBtnStop}`}
                         onClick={handleBulkStop}
-                        loading={bulkActionLoading}
+                        disabled={bulkActionLoading}
                       >
+                        {bulkActionLoading ? (
+                          <span className={styles.bulkActionSpinner} />
+                        ) : (
+                          <Icon source={StopCircleIcon} />
+                        )}
                         Stop
-                      </Button>
-                      <Button
-                        size="small"
-                        variant="secondary"
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.bulkActionBtn} ${styles.bulkActionBtnClone}`}
                         onClick={handleBulkClone}
-                        loading={bulkActionLoading}
+                        disabled={bulkActionLoading}
                       >
+                        {bulkActionLoading ? (
+                          <span className={styles.bulkActionSpinner} />
+                        ) : (
+                          <Icon source={DuplicateIcon} />
+                        )}
                         Clone
-                      </Button>
-                      <Button
-                        size="small"
-                        variant="secondary"
-                        tone="critical"
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.bulkActionBtn} ${styles.bulkActionBtnDelete}`}
                         onClick={() => setDeleteModal(true)}
-                        loading={bulkActionLoading}
+                        disabled={bulkActionLoading}
                       >
+                        <Icon source={DeleteIcon} />
                         Delete
-                      </Button>
-                    </InlineStack>
-                  )}
-                </InlineStack>
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
 
-                {loading ? (
-                  <LoadingSkeleton type="table" count={5} />
-                ) : tests.length === 0 ? (
-                  <EmptyState
-                    heading="Create your first AB test"
-                    action={{
-                      content: 'Create Test',
-                      onAction: () => navigate('/tests/new')
-                    }}
-                    image="https://cdn.shopify.com/s/files/1/0757/9955/files/empty-state.svg"
-                  >
-                    <p>Start optimizing your store by creating an AB test. Test prices, content, shipping, and more to maximize conversions.</p>
-                  </EmptyState>
-                ) : (
-                  <>
-                    {filterControl}
-                    
-                    {/* Select All Checkbox */}
-                    {filteredAndSortedTests.length > 0 && (
-                      <InlineStack gap="200" align="start" blockAlign="center">
-                        <input
-                          type="checkbox"
-                          checked={selectedTests.length === filteredAndSortedTests.length && filteredAndSortedTests.length > 0}
-                          onChange={(e) => handleSelectAll(e.target.checked)}
-                          style={{ cursor: 'pointer' }}
-                        />
-                        <Text variant="bodySm" color="subdued" as="span">
-                          Select all {filteredAndSortedTests.length} {filteredAndSortedTests.length === 1 ? 'test' : 'tests'}
-                        </Text>
-                      </InlineStack>
-                    )}
-
-                    {/* Grid or List View */}
-                    {filteredAndSortedTests.length === 0 ? (
+          <div className={styles.testsBody}>
+            <Layout>
+              <Layout.Section>
+                <Card>
+                  <BlockStack gap="500">
+                    {loading ? (
+                      <LoadingSkeleton type="table" count={5} />
+                    ) : tests.length === 0 ? (
                       <EmptyState
-                        heading="No tests found"
+                        heading="Create your first AB test"
                         action={{
                           content: 'Create Test',
-                          onAction: () => navigate('/tests/new')
+                          onAction: () => navigate('/tests/new'),
                         }}
+                        image="https://cdn.shopify.com/s/files/1/0757/9955/files/empty-state.svg"
                       >
-                        <p>Try adjusting your filters or create a new test.</p>
+                        <p>
+                          Start optimizing your store by creating an AB test. Test prices, content,
+                          shipping, and more to maximize conversions.
+                        </p>
                       </EmptyState>
-                    ) : viewMode === 'grid' ? (
-                      <div className="test-list-grid">
-                        {filteredAndSortedTests.map((test) => (
-                          <TestCard
-                            key={test.id}
-                            test={test}
-                            isSelected={selectedTests.includes(test.id)}
-                            onSelect={handleCardSelect}
-                          />
-                        ))}
-                      </div>
                     ) : (
-                      <BlockStack gap="400">
-                        {filteredAndSortedTests.map((test) => (
-                          <TestCard
-                            key={test.id}
-                            test={test}
-                            isSelected={selectedTests.includes(test.id)}
-                            onSelect={handleCardSelect}
-                          />
-                        ))}
-                      </BlockStack>
+                      <>
+                        {filterControl}
+
+                        {/* Select All Checkbox */}
+                        {filteredAndSortedTests.length > 0 && (
+                          <label className={styles.selectAllBar} htmlFor="test-list-select-all">
+                            <input
+                              type="checkbox"
+                              id="test-list-select-all"
+                              className={styles.testListCheckbox}
+                              checked={
+                                selectedTests.length === filteredAndSortedTests.length &&
+                                filteredAndSortedTests.length > 0
+                              }
+                              onChange={e => handleSelectAll(e.target.checked)}
+                              aria-label={`Select all ${filteredAndSortedTests.length} tests`}
+                            />
+                            <span className={styles.selectAllLabel}>
+                              Select all{' '}
+                              <span className={styles.selectAllCount}>
+                                {filteredAndSortedTests.length} {filteredAndSortedTests.length === 1 ? 'test' : 'tests'}
+                              </span>
+                            </span>
+                          </label>
+                        )}
+
+                        {/* Grid or List View */}
+                        {filteredAndSortedTests.length === 0 ? (
+                          <EmptyState
+                            heading={
+                              viewFilter === 'personalization'
+                                ? 'No personalized or rollout tests'
+                                : 'No tests found'
+                            }
+                            action={
+                              viewFilter === 'personalization'
+                                ? {
+                                    content: 'View All Tests',
+                                    onAction: () => setSearchParams({}),
+                                  }
+                                : {
+                                    content: 'Create Test',
+                                    onAction: () => navigate('/tests/new'),
+                                  }
+                            }
+                          >
+                            <p>
+                              {viewFilter === 'personalization'
+                                ? 'Stop a running test and choose "Apply winner" or "Gradual rollout" to add tests here.'
+                                : 'Try adjusting your filters or create a new test.'}
+                            </p>
+                          </EmptyState>
+                        ) : viewMode === 'grid' ? (
+                          <div className={`test-list-grid ${styles.testListGrid}`}>
+                            {filteredAndSortedTests.map(test => (
+                              <TestCard
+                                key={test.id}
+                                test={test}
+                                isSelected={selectedTests.includes(test.id)}
+                                onSelect={handleCardSelect}
+                                viewMode="grid"
+                              />
+                            ))}
+                          </div>
+                        ) : (
+                          <div className={styles.testListList}>
+                            <BlockStack gap="400">
+                            {filteredAndSortedTests.map(test => (
+                              <TestCard
+                                key={test.id}
+                                test={test}
+                                isSelected={selectedTests.includes(test.id)}
+                                onSelect={handleCardSelect}
+                                viewMode="list"
+                              />
+                            ))}
+                            </BlockStack>
+                          </div>
+                        )}
+                      </>
                     )}
-                  </>
-                )}
-              </BlockStack>
-            </Card>
-          </Layout.Section>
-        </Layout>
+                    </BlockStack>
+                  </Card>
+              </Layout.Section>
+            </Layout>
+          </div>
+        </div>
 
         <Modal
           open={deleteModal}
@@ -875,26 +977,25 @@ function TestList() {
             content: 'Delete',
             destructive: true,
             onAction: handleBulkDelete,
-            loading: bulkActionLoading
+            loading: bulkActionLoading,
           }}
           secondaryActions={[
             {
               content: 'Cancel',
-              onAction: () => setDeleteModal(false)
-            }
+              onAction: () => setDeleteModal(false),
+            },
           ]}
         >
           <Modal.Section>
             <Text as="p">
-              Are you sure you want to delete {selectedTests.length} test{selectedTests.length !== 1 ? 's' : ''}? 
-              This action cannot be undone.
+              Are you sure you want to delete {selectedTests.length} test
+              {selectedTests.length !== 1 ? 's' : ''}? This action cannot be undone.
             </Text>
           </Modal.Section>
         </Modal>
       </Page>
-    </>
+    </PageShell>
   );
 }
 
 export default TestList;
-

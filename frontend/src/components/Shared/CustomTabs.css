@@ -29,16 +29,15 @@
   top: 0;
   left: 0;
   right: 0;
-  height: 2px;
+  height: 3px;
   background: linear-gradient(
     90deg,
     transparent,
-    var(--border-accent),
-    var(--accent-primary),
-    var(--border-accent),
+    var(--futuristic-cyan),
+    var(--futuristic-violet),
     transparent
   );
-  opacity: 0.6;
+  opacity: 0.8;
   z-index: 1;
 }
 
@@ -86,7 +85,7 @@
   transform: translateX(-50%) scaleX(0);
   width: 80%;
   height: 3px;
-  background: linear-gradient(90deg, transparent, var(--accent-primary), transparent);
+  background: linear-gradient(90deg, transparent, var(--futuristic-cyan), transparent);
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   transition: transform var(--transition-smooth);
   opacity: 0;
@@ -98,8 +97,8 @@
   inset: 0;
   background: linear-gradient(
     135deg,
-    rgba(0, 128, 96, 0.05),
-    rgba(0, 128, 96, 0.02)
+    rgba(6, 182, 212, 0.06),
+    rgba(139, 92, 246, 0.03)
   );
   opacity: 0;
   transition: opacity var(--transition-base);
@@ -107,7 +106,7 @@
 }
 
 .custom-tab:hover {
-  color: var(--accent-primary);
+  color: var(--futuristic-cyan);
   transform: translateY(-2px);
   background: var(--bg-hover);
   box-shadow: 
@@ -125,17 +124,17 @@
 }
 
 .custom-tab--selected {
-  color: var(--accent-primary);
+  color: var(--futuristic-cyan);
   font-weight: 600;
   background: linear-gradient(
     135deg,
     var(--bg-active),
-    rgba(0, 128, 96, 0.08)
+    rgba(6, 182, 212, 0.1)
   );
   box-shadow: 
     0 4px 16px var(--glow-primary),
     0 0 0 1px var(--border-accent),
-    inset 0 1px 2px rgba(0, 128, 96, 0.1);
+    inset 0 1px 2px rgba(6, 182, 212, 0.12);
   transform: translateY(-1px);
   position: relative;
 }
@@ -144,7 +143,7 @@
   transform: translateX(-50%) scaleX(1);
   opacity: 1;
   height: 3px;
-  background: linear-gradient(90deg, transparent, var(--accent-primary), transparent);
+  background: linear-gradient(90deg, transparent, var(--futuristic-cyan), transparent);
   box-shadow: 0 0 8px var(--glow-primary);
 }
 
@@ -152,8 +151,8 @@
   opacity: 1;
   background: linear-gradient(
     135deg,
-    rgba(0, 128, 96, 0.1),
-    rgba(0, 128, 96, 0.05)
+    rgba(6, 182, 212, 0.12),
+    rgba(139, 92, 246, 0.06)
   );
 }
 
@@ -162,7 +161,7 @@
   box-shadow: 
     0 6px 20px var(--glow-primary),
     0 0 0 1px var(--border-accent),
-    inset 0 1px 2px rgba(0, 128, 96, 0.15);
+    inset 0 1px 2px rgba(6, 182, 212, 0.18);
 }
 
 .custom-tabs-panel {
@@ -189,7 +188,7 @@
     0 8px 40px rgba(0, 0, 0, 0.6),
     0 4px 20px rgba(0, 0, 0, 0.4),
     0 0 0 1px var(--border-primary),
-    inset 0 1px 0 rgba(255, 140, 0, 0.15),
+    inset 0 1px 0 rgba(6, 182, 212, 0.15),
     inset 0 -1px 0 rgba(0, 0, 0, 0.3);
   border-color: var(--border-primary);
 }
@@ -198,9 +197,9 @@
   background: linear-gradient(
     90deg,
     transparent,
-    rgba(255, 140, 0, 0.4),
+    rgba(6, 182, 212, 0.4),
     var(--accent-primary),
-    rgba(255, 140, 0, 0.4),
+    rgba(6, 182, 212, 0.4),
     transparent
   );
   opacity: 0.8;
@@ -210,7 +209,7 @@
   background: linear-gradient(
     90deg,
     transparent,
-    rgba(255, 140, 0, 0.1),
+    rgba(6, 182, 212, 0.1),
     transparent
   );
   opacity: 0.4;
@@ -219,8 +218,8 @@
 [data-theme="dark"] .custom-tab::after {
   background: linear-gradient(
     135deg,
-    rgba(255, 140, 0, 0.08),
-    rgba(255, 140, 0, 0.03)
+    rgba(6, 182, 212, 0.08),
+    rgba(6, 182, 212, 0.03)
   );
 }
 
@@ -228,45 +227,45 @@
   background: var(--bg-hover);
   color: var(--accent-primary);
   box-shadow: 
-    0 4px 16px rgba(255, 140, 0, 0.15),
-    0 0 0 1px rgba(255, 140, 0, 0.3);
+    0 4px 16px rgba(6, 182, 212, 0.15),
+    0 0 0 1px rgba(6, 182, 212, 0.3);
 }
 
 [data-theme="dark"] .custom-tab:hover::before {
-  background: linear-gradient(90deg, transparent, var(--accent-primary), transparent);
-  box-shadow: 0 0 8px rgba(255, 140, 0, 0.4);
+  background: linear-gradient(90deg, transparent, var(--futuristic-cyan), transparent);
+  box-shadow: 0 0 8px rgba(6, 182, 212, 0.4);
 }
 
 [data-theme="dark"] .custom-tab--selected {
   background: linear-gradient(
     135deg,
     var(--bg-active),
-    rgba(255, 140, 0, 0.12)
+    rgba(6, 182, 212, 0.12)
   );
   box-shadow: 
-    0 4px 20px rgba(255, 140, 0, 0.25),
-    0 0 0 1px rgba(255, 140, 0, 0.4),
-    inset 0 1px 2px rgba(255, 140, 0, 0.15);
+    0 4px 20px rgba(6, 182, 212, 0.25),
+    0 0 0 1px rgba(6, 182, 212, 0.4),
+    inset 0 1px 2px rgba(6, 182, 212, 0.15);
 }
 
 [data-theme="dark"] .custom-tab--selected::before {
-  background: linear-gradient(90deg, transparent, var(--accent-primary), transparent);
-  box-shadow: 0 0 12px rgba(255, 140, 0, 0.6);
+  background: linear-gradient(90deg, transparent, var(--futuristic-cyan), transparent);
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.6);
 }
 
 [data-theme="dark"] .custom-tab--selected::after {
   background: linear-gradient(
     135deg,
-    rgba(255, 140, 0, 0.15),
-    rgba(255, 140, 0, 0.08)
+    rgba(6, 182, 212, 0.15),
+    rgba(6, 182, 212, 0.08)
   );
 }
 
 [data-theme="dark"] .custom-tab--selected:hover {
   box-shadow: 
-    0 6px 24px rgba(255, 140, 0, 0.35),
-    0 0 0 1px rgba(255, 140, 0, 0.5),
-    inset 0 1px 2px rgba(255, 140, 0, 0.2);
+    0 6px 24px rgba(6, 182, 212, 0.35),
+    0 0 0 1px rgba(6, 182, 212, 0.5),
+    inset 0 1px 2px rgba(6, 182, 212, 0.2);
 }
 
 /* Responsive */

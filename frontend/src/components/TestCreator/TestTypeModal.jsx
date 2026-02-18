@@ -1,19 +1,11 @@
 /**
  * Test Type Selection Modal
- * 
+ *
  * Modal for selecting test type before creating a new test
  */
 
 import React, { useState } from 'react';
-import {
-  Modal,
-  TextField,
-  Button,
-  BlockStack,
-  InlineStack,
-  Text,
-  Card
-} from '@shopify/polaris';
+import { Modal, TextField, BlockStack, InlineStack, Text, Card } from '@shopify/polaris';
 
 const TEST_TYPES = {
   content: {
@@ -23,32 +15,33 @@ const TEST_TYPES = {
       {
         id: 'onsite-edit',
         name: 'Onsite Edit',
-        description: 'Edit or hide page elements like text, images, or sections without changing your theme.',
+        description:
+          'Edit or hide page elements like text, images, or sections without changing your theme.',
         icon: '✏️',
-        category: 'content'
+        category: 'content',
       },
       {
         id: 'split-url',
         name: 'Split URL',
         description: 'Send visitors to alternate URLs to test page-level changes.',
         icon: '🔀',
-        category: 'content'
+        category: 'content',
       },
       {
         id: 'template',
         name: 'Template',
         description: 'Compare and test different homepage, product, and collections templates.',
         icon: '📄',
-        category: 'content'
+        category: 'content',
       },
       {
         id: 'theme',
         name: 'Theme',
         description: 'Test theme redesigns, new navigation, or impact of adding an app.',
         icon: '🎨',
-        category: 'theme'
-      }
-    ]
+        category: 'theme',
+      },
+    ],
   },
   profit: {
     title: 'Profit Tests',
@@ -59,37 +52,78 @@ const TEST_TYPES = {
         name: 'Pricing',
         description: 'Test price points on one product, multiple products, or entire collections.',
         icon: '💰',
-        category: 'price'
+        category: 'price',
       },
       {
         id: 'shipping',
         name: 'Shipping',
         description: 'Explore different shipping rates and free shipping thresholds.',
         icon: '🚚',
-        category: 'shipping'
+        category: 'shipping',
       },
       {
         id: 'offer',
         name: 'Offer',
         description: 'Compare percentage discounts, dollar-off amounts, or tiered incentives.',
         icon: '🎁',
-        category: 'offer'
+        category: 'offer',
       },
       {
         id: 'checkout',
         name: 'Checkout Test',
-        description: 'Try checkout customizations like trust badges, guarantees, and custom images.',
+        description:
+          'Try checkout customizations like trust badges, guarantees, and custom images.',
         icon: '🛒',
-        category: 'checkout'
-      }
-    ]
-  }
+        category: 'checkout',
+      },
+    ],
+  },
 };
+
+/** Auto-generate test name from type and date */
+function suggestTestName(typeId) {
+  const names = {
+    pricing: 'Pricing Test',
+    'onsite-edit': 'Onsite Edit Test',
+    'split-url': 'Split URL Test',
+    template: 'Template Test',
+    theme: 'Theme Test',
+    shipping: 'Shipping Test',
+    offer: 'Offer Test',
+    checkout: 'Checkout Test',
+  };
+  const base = names[typeId] || 'A/B Test';
+  const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return `${base} - ${date}`;
+}
+
+/** Suggest description from type */
+function suggestDescription(typeId) {
+  const descs = {
+    pricing: 'Find optimal price points for better conversion',
+    'onsite-edit': 'Test different messaging and layout',
+    'split-url': 'Compare page variations',
+    template: 'Test template performance',
+    theme: 'Evaluate theme impact on conversion',
+    shipping: 'Optimize shipping rates and thresholds',
+    offer: 'Test discount effectiveness',
+    checkout: 'Improve checkout experience',
+  };
+  return descs[typeId] || 'Measure impact on conversion and revenue';
+}
 
 function TestTypeModal({ open, onClose, onSelect }) {
   const [testName, setTestName] = useState('');
   const [testDescription, setTestDescription] = useState('');
   const [selectedType, setSelectedType] = useState(null);
+
+  /** Auto-fill name and description when type is selected (only if empty) */
+  React.useEffect(() => {
+    if (selectedType) {
+      setTestName(prev => (prev.trim() ? prev : suggestTestName(selectedType.id)));
+      setTestDescription(prev => (prev.trim() ? prev : suggestDescription(selectedType.id)));
+    }
+  }, [selectedType]);
 
   const handleCreate = () => {
     if (!testName.trim() || !selectedType) {
@@ -101,7 +135,7 @@ function TestTypeModal({ open, onClose, onSelect }) {
       name: testName,
       description: testDescription,
       type: testType,
-      testTypeId: selectedType.id
+      testTypeId: selectedType.id,
     });
 
     // Reset form
@@ -125,13 +159,13 @@ function TestTypeModal({ open, onClose, onSelect }) {
       primaryAction={{
         content: 'Create',
         onAction: handleCreate,
-        disabled: !testName.trim() || !selectedType
+        disabled: !testName.trim() || !selectedType,
       }}
       secondaryActions={[
         {
           content: 'Cancel',
-          onAction: handleClose
-        }
+          onAction: handleClose,
+        },
       ]}
       large
     >
@@ -140,18 +174,19 @@ function TestTypeModal({ open, onClose, onSelect }) {
           {/* Name and Description Fields */}
           <BlockStack gap="300">
             <TextField
-              label="Name"
+              label="Test name"
               value={testName}
               onChange={setTestName}
-              placeholder="Enter the name of your test"
+              placeholder="Auto-filled when you select a type"
+              helpText="Choose a type below — name and description are auto-suggested"
               requiredIndicator
               autoComplete="off"
             />
             <TextField
-              label="Description"
+              label="Description (optional)"
               value={testDescription}
               onChange={setTestDescription}
-              placeholder="Describe purpose or hypothesis"
+              placeholder="Auto-filled when you select a type"
               multiline={2}
               autoComplete="off"
             />
@@ -163,48 +198,55 @@ function TestTypeModal({ open, onClose, onSelect }) {
               <Text variant="headingMd" as="h3" fontWeight="semibold">
                 {TEST_TYPES.content.title}
               </Text>
-              <span style={{ fontSize: '1rem', opacity: 0.6, cursor: 'help' }} title={TEST_TYPES.content.description}>
+              <span
+                style={{ fontSize: '1rem', opacity: 0.6, cursor: 'help' }}
+                title={TEST_TYPES.content.description}
+              >
                 ⓘ
               </span>
             </InlineStack>
 
             <div className="grid-template">
-              {TEST_TYPES.content.types.map((type) => (
+              {TEST_TYPES.content.types.map(type => (
                 <Card
                   key={type.id}
                   sectioned
                   onClick={() => setSelectedType(type)}
                   style={{
                     cursor: 'pointer',
-                    border: selectedType?.id === type.id ? '2px solid var(--accent-primary)' : '1px solid var(--border-primary)',
-                    backgroundColor: selectedType?.id === type.id ? 'var(--bg-active)' : 'var(--bg-secondary)',
+                    border:
+                      selectedType?.id === type.id
+                        ? '2px solid var(--accent-primary)'
+                        : '1px solid var(--border-primary)',
+                    backgroundColor:
+                      selectedType?.id === type.id ? 'var(--bg-active)' : 'var(--bg-secondary)',
                     position: 'relative',
-                    transition: 'all 0.2s ease'
+                    transition: 'all 0.2s ease',
                   }}
                 >
                   {selectedType?.id === type.id && (
-                    <div style={{
-                      position: 'absolute',
-                      top: '8px',
-                      right: '8px',
-                      width: '20px',
-                      height: '20px',
-                      borderRadius: '50%',
-                      backgroundColor: 'var(--accent-primary)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'var(--text-inverse)',
-                      fontSize: '12px',
-                      fontWeight: 'bold'
-                    }}>
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '8px',
+                        right: '8px',
+                        width: '20px',
+                        height: '20px',
+                        borderRadius: '50%',
+                        backgroundColor: 'var(--accent-primary)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'var(--text-inverse)',
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                      }}
+                    >
                       ✓
                     </div>
                   )}
                   <BlockStack gap="200">
-                    <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
-                      {type.icon}
-                    </div>
+                    <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{type.icon}</div>
                     <Text variant="bodyMd" fontWeight="semibold" as="p">
                       {type.name}
                     </Text>
@@ -223,48 +265,55 @@ function TestTypeModal({ open, onClose, onSelect }) {
               <Text variant="headingMd" as="h3" fontWeight="semibold">
                 {TEST_TYPES.profit.title}
               </Text>
-              <span style={{ fontSize: '1rem', opacity: 0.6, cursor: 'help' }} title={TEST_TYPES.profit.description}>
+              <span
+                style={{ fontSize: '1rem', opacity: 0.6, cursor: 'help' }}
+                title={TEST_TYPES.profit.description}
+              >
                 ⓘ
               </span>
             </InlineStack>
 
             <div className="grid-template">
-              {TEST_TYPES.profit.types.map((type) => (
+              {TEST_TYPES.profit.types.map(type => (
                 <Card
                   key={type.id}
                   sectioned
                   onClick={() => setSelectedType(type)}
                   style={{
                     cursor: 'pointer',
-                    border: selectedType?.id === type.id ? '2px solid var(--accent-primary)' : '1px solid var(--border-primary)',
-                    backgroundColor: selectedType?.id === type.id ? 'var(--bg-active)' : 'var(--bg-secondary)',
+                    border:
+                      selectedType?.id === type.id
+                        ? '2px solid var(--accent-primary)'
+                        : '1px solid var(--border-primary)',
+                    backgroundColor:
+                      selectedType?.id === type.id ? 'var(--bg-active)' : 'var(--bg-secondary)',
                     position: 'relative',
-                    transition: 'all 0.2s ease'
+                    transition: 'all 0.2s ease',
                   }}
                 >
                   {selectedType?.id === type.id && (
-                    <div style={{
-                      position: 'absolute',
-                      top: '8px',
-                      right: '8px',
-                      width: '20px',
-                      height: '20px',
-                      borderRadius: '50%',
-                      backgroundColor: 'var(--accent-primary)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'var(--text-inverse)',
-                      fontSize: '12px',
-                      fontWeight: 'bold'
-                    }}>
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '8px',
+                        right: '8px',
+                        width: '20px',
+                        height: '20px',
+                        borderRadius: '50%',
+                        backgroundColor: 'var(--accent-primary)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'var(--text-inverse)',
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                      }}
+                    >
                       ✓
                     </div>
                   )}
                   <BlockStack gap="200">
-                    <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
-                      {type.icon}
-                    </div>
+                    <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{type.icon}</div>
                     <Text variant="bodyMd" fontWeight="semibold" as="p">
                       {type.name}
                     </Text>
@@ -283,4 +332,3 @@ function TestTypeModal({ open, onClose, onSelect }) {
 }
 
 export default TestTypeModal;
-
