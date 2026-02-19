@@ -148,14 +148,16 @@ app.use('/api', (req, res, next) => {
 });
 
 // Security middleware
-// Disable upgradeInsecureRequests - when using HTTP, browser would try HTTPS and assets fail
+// useDefaults: false to disable upgrade-insecure-requests (causes asset load failure over HTTP)
 app.use(
   helmet({
     contentSecurityPolicy: {
+      useDefaults: false,
       directives: {
         defaultSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'], // Polaris + fonts
         scriptSrc: ["'self'"],
+        scriptSrcAttr: ["'none'"],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
         fontSrc: ["'self'", 'https://fonts.gstatic.com'],
         imgSrc: ["'self'", 'data:', 'https:'],
         connectSrc: [
@@ -164,7 +166,10 @@ app.use(
           'https://*.myshopify.com',
           'https://*.shopify.com',
         ],
-        upgradeInsecureRequests: [], // Disable - causes asset load failure when served over HTTP
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+        frameAncestors: ["'self'"],
+        objectSrc: ["'none'"],
       },
     },
     crossOriginEmbedderPolicy: false, // Required for Shopify Polaris
