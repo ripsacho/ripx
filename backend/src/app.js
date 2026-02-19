@@ -148,6 +148,8 @@ app.use('/api', (req, res, next) => {
 });
 
 // Security middleware
+// Disable upgradeInsecureRequests when using HTTP (no SSL) - otherwise browser tries HTTPS and assets fail
+const useHttps = (process.env.APP_URL || '').startsWith('https://');
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -163,6 +165,7 @@ app.use(
           'https://*.myshopify.com',
           'https://*.shopify.com',
         ],
+        ...(useHttps ? {} : { upgradeInsecureRequests: [] }),
       },
     },
     crossOriginEmbedderPolicy: false, // Required for Shopify Polaris
@@ -343,7 +346,9 @@ if (process.env.NODE_ENV === 'production') {
   const frontendDist = path.join(__dirname, '../../frontend/dist');
   app.use(express.static(frontendDist));
   app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api')) {return next();}
+    if (req.path.startsWith('/api')) {
+      return next();
+    }
     res.sendFile(path.join(frontendDist, 'index.html'));
   });
 }
