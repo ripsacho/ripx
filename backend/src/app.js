@@ -148,8 +148,7 @@ app.use('/api', (req, res, next) => {
 });
 
 // Security middleware
-// Disable upgradeInsecureRequests when using HTTP (no SSL) - otherwise browser tries HTTPS and assets fail
-const useHttps = (process.env.APP_URL || '').startsWith('https://');
+// Disable upgradeInsecureRequests - when using HTTP, browser would try HTTPS and assets fail
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -165,7 +164,7 @@ app.use(
           'https://*.myshopify.com',
           'https://*.shopify.com',
         ],
-        ...(useHttps ? {} : { upgradeInsecureRequests: [] }),
+        upgradeInsecureRequests: [], // Disable - causes asset load failure when served over HTTP
       },
     },
     crossOriginEmbedderPolicy: false, // Required for Shopify Polaris
