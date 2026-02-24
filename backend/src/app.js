@@ -153,6 +153,14 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
+// Serve static assets (JS/CSS/fonts) before Helmet so they don't get CSP/CORP headers
+// that can cause "blocked" or failed loads in some browsers when using crossorigin.
+if (process.env.NODE_ENV === 'production') {
+  const path = require('path');
+  const frontendDist = path.join(__dirname, '../../frontend/dist');
+  app.use('/assets', express.static(path.join(frontendDist, 'assets')));
+}
+
 // Security middleware
 // useDefaults: false to disable upgrade-insecure-requests (causes asset load failure over HTTP)
 app.use(
