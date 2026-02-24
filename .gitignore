@@ -68,9 +68,9 @@ Thumbs.db
 # Build outputs (generated, not needed in repo)
 # ============================================
 dist/
+!frontend/dist/
 build/
-frontend/dist/
-frontend/build/
+# frontend/dist tracked so we can push built app for server (build locally, git push, pull on server)
 *.map
 *.min.js
 *.min.css
