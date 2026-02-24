@@ -80,59 +80,64 @@ class ErrorBoundary extends React.Component {
     if (this.state.hasError) {
       return (
         <div className={styles.errorPage} role="alert" aria-live="assertive">
-        <Page title="Something went wrong">
-          <Card sectioned>
-            <BlockStack gap="400">
-              <div>
-                <Text variant="headingLg" as="h2" tone="critical">
-                  Something went wrong
-                </Text>
-                <Text variant="bodyMd" as="p" tone="subdued">
-                  We&apos;re sorry, but something unexpected happened. Please try refreshing the page.
-                </Text>
-              </div>
+          <Page title="Something went wrong">
+            <Card sectioned>
+              <BlockStack gap="400">
+                <div>
+                  <Text variant="headingLg" as="h2" tone="critical">
+                    Something went wrong
+                  </Text>
+                  <Text variant="bodyMd" as="p" tone="subdued">
+                    We&apos;re sorry, but something unexpected happened. Please try refreshing the
+                    page.
+                  </Text>
+                </div>
 
-              {import.meta.env.DEV && this.state.error && (
-                <Card sectioned>
-                  <BlockStack gap="200">
-                    <Text variant="headingSm" as="h3">
-                      Error Details (Development Only)
-                    </Text>
-                    <Text
-                      variant="bodySm"
-                      as="pre"
-                      style={{
-                        background: 'var(--bg-tertiary)',
-                        padding: '1rem',
-                        borderRadius: '4px',
-                        overflow: 'auto',
-                        fontSize: '0.875rem',
-                      }}
-                    >
-                      {this.state.error.toString()}
-                      {this.state.errorInfo?.componentStack}
-                    </Text>
-                  </BlockStack>
-                </Card>
-              )}
+                {import.meta.env.DEV && this.state.error && (
+                  <Card sectioned>
+                    <BlockStack gap="200">
+                      <Text variant="headingSm" as="h3">
+                        Error Details (Development Only)
+                      </Text>
+                      <Text
+                        variant="bodySm"
+                        as="pre"
+                        style={{
+                          background: 'var(--bg-tertiary)',
+                          padding: '1rem',
+                          borderRadius: '4px',
+                          overflow: 'auto',
+                          fontSize: '0.875rem',
+                        }}
+                      >
+                        {this.state.error.toString()}
+                        {this.state.errorInfo?.componentStack}
+                      </Text>
+                    </BlockStack>
+                  </Card>
+                )}
 
-              <InlineStack gap="200">
-                <Button variant="primary" onClick={this.handleReset} aria-label="Try again and reload the page">
-                  Try Again
-                </Button>
-                <Button
-                  onClick={() => {
-                    window.location.href = ROUTES.DASHBOARD;
-                    window.location.reload();
-                  }}
-                  aria-label="Go to dashboard and reload"
-                >
-                  Go to Dashboard
-                </Button>
-              </InlineStack>
-            </BlockStack>
-          </Card>
-        </Page>
+                <InlineStack gap="200">
+                  <Button
+                    variant="primary"
+                    onClick={this.handleReset}
+                    aria-label="Try again and reload the page"
+                  >
+                    Try Again
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      window.location.href = ROUTES.DASHBOARD;
+                      window.location.reload();
+                    }}
+                    aria-label="Go to dashboard and reload"
+                  >
+                    Go to Dashboard
+                  </Button>
+                </InlineStack>
+              </BlockStack>
+            </Card>
+          </Page>
         </div>
       );
     }

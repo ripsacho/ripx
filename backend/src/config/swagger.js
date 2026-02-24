@@ -12,13 +12,21 @@ const options = {
       version: '1.0.0',
       description: 'AB Testing Platform API - Shopify and standalone sites',
     },
-    servers: [
-      { url: process.env.APP_URL || 'http://localhost:3000', description: 'API Server' },
-    ],
+    servers: [{ url: process.env.APP_URL || 'http://localhost:3000', description: 'API Server' }],
     components: {
       securitySchemes: {
-        shopParam: { type: 'apiKey', in: 'query', name: 'shop', description: 'Shopify shop domain' },
-        apiKey: { type: 'apiKey', in: 'header', name: 'X-RipX-API-Key', description: 'Standalone API key' },
+        shopParam: {
+          type: 'apiKey',
+          in: 'query',
+          name: 'shop',
+          description: 'Shopify shop domain',
+        },
+        apiKey: {
+          type: 'apiKey',
+          in: 'header',
+          name: 'X-RipX-API-Key',
+          description: 'Standalone API key',
+        },
       },
     },
   },

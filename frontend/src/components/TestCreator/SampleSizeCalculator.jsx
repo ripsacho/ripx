@@ -52,12 +52,15 @@ function SampleSizeCalculator({ onCalculate, embedded, initialValues = {}, class
     const zAlpha = getZAlpha(parseFloat(confidenceLevel));
     const zBeta = POWER_Z[powerValue] || 0.84;
     // Binary search for effect: n = ((zα+zβ)² * (p̄(1-p̄) + p1(1-p1) + p2(1-p2))) / (p2-p1)²
-    let lo = 0.001, hi = 5;
+    let lo = 0.001,
+      hi = 5;
     for (let i = 0; i < 50; i++) {
       const effect = (lo + hi) / 2;
       const p2 = baseline * (1 + effect);
       const pBar = (baseline + p2) / 2;
-      const num = Math.pow(zAlpha + zBeta, 2) * (pBar * (1 - pBar) + baseline * (1 - baseline) + p2 * (1 - p2));
+      const num =
+        Math.pow(zAlpha + zBeta, 2) *
+        (pBar * (1 - pBar) + baseline * (1 - baseline) + p2 * (1 - p2));
       const den = Math.pow(p2 - baseline, 2);
       if (den <= 0 || !Number.isFinite(num)) {
         setMdeResult(null);
@@ -67,7 +70,7 @@ function SampleSizeCalculator({ onCalculate, embedded, initialValues = {}, class
       if (calcN <= n) hi = effect;
       else lo = effect;
     }
-    const mdePercent = ((lo + hi) / 2 * 100).toFixed(1);
+    const mdePercent = (((lo + hi) / 2) * 100).toFixed(1);
     setMdeResult({ mdePercent: parseFloat(mdePercent), baseline });
   }, [baselineRate, sampleSizePerVariant, confidenceLevel, power]);
 
@@ -193,9 +196,11 @@ function SampleSizeCalculator({ onCalculate, embedded, initialValues = {}, class
       )}
 
       <div className={embedded ? 'sample-size-inputs-grid' : ''}>
-      <BlockStack gap="300">
+        <BlockStack gap="300">
           <div>
-            <Text variant="bodyMd" fontWeight="medium" as="p" tone="subdued">Baseline conversion rate</Text>
+            <Text variant="bodyMd" fontWeight="medium" as="p" tone="subdued">
+              Baseline conversion rate
+            </Text>
             <div className="sample-size-presets-row">
               {BASELINE_PRESETS.map(v => (
                 <button
@@ -221,48 +226,52 @@ function SampleSizeCalculator({ onCalculate, embedded, initialValues = {}, class
           </div>
 
           {mode === 'sample' && (
-          <div>
-            <Text variant="bodyMd" fontWeight="medium" as="p" tone="subdued">Minimum detectable effect (MDE)</Text>
-            <div className="sample-size-presets-row">
-              {MDE_PRESETS.map(v => (
-                <button
-                  key={v}
-                  type="button"
-                  className={`sample-size-preset ${minimumEffect === String(v) ? 'sample-size-preset-active' : ''}`}
-                  onClick={() => setMinimumEffect(String(v))}
-                >
-                  {v}%
-                </button>
-              ))}
+            <div>
+              <Text variant="bodyMd" fontWeight="medium" as="p" tone="subdued">
+                Minimum detectable effect (MDE)
+              </Text>
+              <div className="sample-size-presets-row">
+                {MDE_PRESETS.map(v => (
+                  <button
+                    key={v}
+                    type="button"
+                    className={`sample-size-preset ${minimumEffect === String(v) ? 'sample-size-preset-active' : ''}`}
+                    onClick={() => setMinimumEffect(String(v))}
+                  >
+                    {v}%
+                  </button>
+                ))}
+              </div>
+              <TextField
+                label=""
+                labelHidden
+                type="number"
+                value={minimumEffect}
+                onChange={setMinimumEffect}
+                suffix="%"
+                helpText="Smallest lift you want to detect (e.g., 20% = 2% → 2.4%)"
+                min={1}
+                max={100}
+              />
             </div>
-            <TextField
-              label=""
-              labelHidden
-              type="number"
-              value={minimumEffect}
-              onChange={setMinimumEffect}
-              suffix="%"
-              helpText="Smallest lift you want to detect (e.g., 20% = 2% → 2.4%)"
-              min={1}
-              max={100}
-            />
-          </div>
           )}
 
           {mode === 'mde' && (
-          <TextField
-            label="Sample size per variant"
-            type="number"
-            value={sampleSizePerVariant}
-            onChange={setSampleSizePerVariant}
-            helpText="Number of visitors per variant (e.g., 1000)"
-            min={10}
-            max={10000000}
-          />
+            <TextField
+              label="Sample size per variant"
+              type="number"
+              value={sampleSizePerVariant}
+              onChange={setSampleSizePerVariant}
+              helpText="Number of visitors per variant (e.g., 1000)"
+              min={10}
+              max={10000000}
+            />
           )}
 
           <div>
-            <Text variant="bodyMd" fontWeight="medium" as="p" tone="subdued">Confidence Level (%)</Text>
+            <Text variant="bodyMd" fontWeight="medium" as="p" tone="subdued">
+              Confidence Level (%)
+            </Text>
             <div className="sample-size-presets-row">
               {CONFIDENCE_PRESETS.map(v => (
                 <button
@@ -289,7 +298,9 @@ function SampleSizeCalculator({ onCalculate, embedded, initialValues = {}, class
           </div>
 
           <div>
-            <Text variant="bodyMd" fontWeight="medium" as="p" tone="subdued">Statistical Power (%)</Text>
+            <Text variant="bodyMd" fontWeight="medium" as="p" tone="subdued">
+              Statistical Power (%)
+            </Text>
             <div className="sample-size-presets-row">
               {POWER_PRESETS.map(v => (
                 <button
@@ -316,21 +327,21 @@ function SampleSizeCalculator({ onCalculate, embedded, initialValues = {}, class
           </div>
 
           {mode === 'sample' && (
-          <TextField
-            label="Daily visitors (for duration estimate)"
-            type="number"
-            value={dailyVisitors}
-            onChange={setDailyVisitors}
-            helpText="Approximate visitors per day to your test pages"
-            min={10}
-            max={1000000}
-          />
+            <TextField
+              label="Daily visitors (for duration estimate)"
+              type="number"
+              value={dailyVisitors}
+              onChange={setDailyVisitors}
+              helpText="Approximate visitors per day to your test pages"
+              min={10}
+              max={1000000}
+            />
           )}
         </BlockStack>
       </div>
 
-        {mode === 'sample' && result && (
-          <div className={embedded ? 'sample-size-result' : ''}>
+      {mode === 'sample' && result && (
+        <div className={embedded ? 'sample-size-result' : ''}>
           <Card sectioned>
             <BlockStack gap="200">
               <Text variant="headingMd" as="h3">
@@ -358,7 +369,8 @@ function SampleSizeCalculator({ onCalculate, embedded, initialValues = {}, class
                     Estimated Duration:
                   </Text>
                   <Text variant="bodyMd" fontWeight="semibold" as="p">
-                    {formatDuration(result.estimatedDays)} (at {result.dailyVisitors?.toLocaleString() || 100}/day)
+                    {formatDuration(result.estimatedDays)} (at{' '}
+                    {result.dailyVisitors?.toLocaleString() || 100}/day)
                   </Text>
                 </InlineStack>
               </BlockStack>
@@ -367,43 +379,47 @@ function SampleSizeCalculator({ onCalculate, embedded, initialValues = {}, class
               </Text>
             </BlockStack>
           </Card>
-          </div>
-        )}
+        </div>
+      )}
 
-        {mode === 'mde' && mdeResult && (
-          <div className={embedded ? 'sample-size-result' : ''}>
-            <Card sectioned>
-              <BlockStack gap="200">
-                <Text variant="headingMd" as="h3">
-                  Detectable Effect
-                </Text>
-                <BlockStack gap="100">
-                  <InlineStack align="space-between">
-                    <Text variant="bodyMd" as="p">Minimum detectable effect:</Text>
-                    <Text variant="bodyMd" fontWeight="semibold" as="p">
-                      {mdeResult.mdePercent}%
-                    </Text>
-                  </InlineStack>
-                  <Text variant="bodySm" color="subdued" as="p">
-                    With {sampleSizePerVariant} visitors per variant at {baselineRate}% baseline, you can detect a lift of {mdeResult.mdePercent}% or more (e.g., {baselineRate}% → {(parseFloat(baselineRate) * (1 + mdeResult.mdePercent / 100)).toFixed(2)}%).
+      {mode === 'mde' && mdeResult && (
+        <div className={embedded ? 'sample-size-result' : ''}>
+          <Card sectioned>
+            <BlockStack gap="200">
+              <Text variant="headingMd" as="h3">
+                Detectable Effect
+              </Text>
+              <BlockStack gap="100">
+                <InlineStack align="space-between">
+                  <Text variant="bodyMd" as="p">
+                    Minimum detectable effect:
                   </Text>
-                </BlockStack>
+                  <Text variant="bodyMd" fontWeight="semibold" as="p">
+                    {mdeResult.mdePercent}%
+                  </Text>
+                </InlineStack>
+                <Text variant="bodySm" color="subdued" as="p">
+                  With {sampleSizePerVariant} visitors per variant at {baselineRate}% baseline, you
+                  can detect a lift of {mdeResult.mdePercent}% or more (e.g., {baselineRate}% →{' '}
+                  {(parseFloat(baselineRate) * (1 + mdeResult.mdePercent / 100)).toFixed(2)}%).
+                </Text>
               </BlockStack>
-            </Card>
-          </div>
-        )}
-      </BlockStack>
+            </BlockStack>
+          </Card>
+        </div>
+      )}
+    </BlockStack>
   );
 
   if (embedded) {
-    return <div className={className || 'sample-size-calculator-embedded'} data-embedded="true">{formContent}</div>;
+    return (
+      <div className={className || 'sample-size-calculator-embedded'} data-embedded="true">
+        {formContent}
+      </div>
+    );
   }
 
-  return (
-    <Card>
-      {formContent}
-    </Card>
-  );
+  return <Card>{formContent}</Card>;
 }
 
 export default SampleSizeCalculator;

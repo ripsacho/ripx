@@ -154,8 +154,8 @@ function AnalyticsOverview() {
                   </Text>
                 </span>
                 <Text variant="bodySm" color="subdued" as="p" className={styles.testCardMeta}>
-                  {getTestTypeDisplay(test).label} • {variantCount} variant{variantCount !== 1 ? 's' : ''} • Created{' '}
-                  {createdDate}
+                  {getTestTypeDisplay(test).label} • {variantCount} variant
+                  {variantCount !== 1 ? 's' : ''} • Created {createdDate}
                 </Text>
               </div>
             </div>
@@ -174,13 +174,19 @@ function AnalyticsOverview() {
               </div>
               <div className={styles.testCardMetric}>
                 <span className={styles.testCardMetricLabel}>Conversions</span>
-                <span className={styles.testCardMetricValue}>{totalConversions.toLocaleString()}</span>
+                <span className={styles.testCardMetricValue}>
+                  {totalConversions.toLocaleString()}
+                </span>
               </div>
               <div className={styles.testCardMetric}>
                 <span className={styles.testCardMetricLabel}>Rate</span>
                 <span
                   className={`${styles.testCardMetricValue} ${
-                    conversionRate > 5 ? styles.testCardMetricValueSuccess : conversionRate > 2 ? '' : styles.testCardMetricValueSubdued
+                    conversionRate > 5
+                      ? styles.testCardMetricValueSuccess
+                      : conversionRate > 2
+                        ? ''
+                        : styles.testCardMetricValueSubdued
                   }`}
                 >
                   {conversionRate.toFixed(2)}%
@@ -189,8 +195,14 @@ function AnalyticsOverview() {
               {totalRevenue > 0 && (
                 <div className={styles.testCardMetric}>
                   <span className={styles.testCardMetricLabel}>Revenue</span>
-                  <span className={`${styles.testCardMetricValue} ${styles.testCardMetricValueSuccess}`}>
-                    ${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <span
+                    className={`${styles.testCardMetricValue} ${styles.testCardMetricValueSuccess}`}
+                  >
+                    $
+                    {totalRevenue.toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
                   </span>
                 </div>
               )}
@@ -209,14 +221,20 @@ function AnalyticsOverview() {
   };
 
   const chartData = tests
-    .filter(test => (test.status || '').toLowerCase() === 'running' && test.variants && test.variants.length > 0)
+    .filter(
+      test =>
+        (test.status || '').toLowerCase() === 'running' && test.variants && test.variants.length > 0
+    )
     .map(test => {
       const totalVisitors = test.variants.reduce((sum, v) => sum + (v.visitors || 0), 0);
       const totalConversions = test.variants.reduce((sum, v) => sum + (v.conversions || 0), 0);
       const conversionRate = totalVisitors > 0 ? (totalConversions / totalVisitors) * 100 : 0;
 
       return {
-        name: (test.name || 'Unnamed').length > 15 ? (test.name || 'Unnamed').substring(0, 15) + '...' : (test.name || 'Unnamed'),
+        name:
+          (test.name || 'Unnamed').length > 15
+            ? (test.name || 'Unnamed').substring(0, 15) + '...'
+            : test.name || 'Unnamed',
         'Conversion Rate': parseFloat(conversionRate.toFixed(2)),
         Visitors: totalVisitors,
       };
@@ -228,7 +246,14 @@ function AnalyticsOverview() {
         <Page title="" subtitle="">
           <BlockStack gap="400">
             <div className={styles.skeletonHero} />
-            <div className="grid-responsive" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
+            <div
+              className="grid-responsive"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                gap: '1rem',
+              }}
+            >
               {[1, 2, 3, 4].map(i => (
                 <div key={i} className={styles.skeletonMetric} />
               ))}
@@ -240,7 +265,9 @@ function AnalyticsOverview() {
     );
   }
 
-  const errorMessage = isError ? (error?.response?.data?.error || error?.message || 'Failed to load analytics') : null;
+  const errorMessage = isError
+    ? error?.response?.data?.error || error?.message || 'Failed to load analytics'
+    : null;
 
   if (errorMessage) {
     return (
@@ -271,186 +298,193 @@ function AnalyticsOverview() {
       <Page title="" subtitle="">
         <div className={styles.overviewLayout}>
           <div className={styles.overviewHeader}>
-          {/* Hero Section */}
-          <section className={styles.heroSection}>
-            <div className={styles.heroContent}>
-              <div>
-                <h1 className={styles.heroTitle}>Analytics Overview</h1>
-                <p className={styles.heroSubtitle}>
-                  Performance across all tests • {tests.length} test{tests.length !== 1 ? 's' : ''} total
-                </p>
+            {/* Hero Section */}
+            <section className={styles.heroSection}>
+              <div className={styles.heroContent}>
+                <div>
+                  <h1 className={styles.heroTitle}>Analytics Overview</h1>
+                  <p className={styles.heroSubtitle}>
+                    Performance across all tests • {tests.length} test
+                    {tests.length !== 1 ? 's' : ''} total
+                  </p>
+                </div>
+                <div className={styles.heroQuickStats}>
+                  <div className={styles.heroStat}>
+                    <span className={styles.heroStatValue}>{activeTests}</span>
+                    <span className={styles.heroStatLabel}>Active</span>
+                  </div>
+                  <div className={styles.heroStat}>
+                    <span className={styles.heroStatValue}>
+                      {aggregateMetrics.totalVisitors.toLocaleString()}
+                    </span>
+                    <span className={styles.heroStatLabel}>Visitors</span>
+                  </div>
+                  <div className={styles.heroStat}>
+                    <span className={styles.heroStatValue}>
+                      $
+                      {aggregateMetrics.totalRevenue.toLocaleString(undefined, {
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      })}
+                    </span>
+                    <span className={styles.heroStatLabel}>Revenue</span>
+                  </div>
+                </div>
               </div>
-              <div className={styles.heroQuickStats}>
-                <div className={styles.heroStat}>
-                  <span className={styles.heroStatValue}>{activeTests}</span>
-                  <span className={styles.heroStatLabel}>Active</span>
-                </div>
-                <div className={styles.heroStat}>
-                  <span className={styles.heroStatValue}>{aggregateMetrics.totalVisitors.toLocaleString()}</span>
-                  <span className={styles.heroStatLabel}>Visitors</span>
-                </div>
-                <div className={styles.heroStat}>
-                  <span className={styles.heroStatValue}>
-                    ${aggregateMetrics.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                  </span>
-                  <span className={styles.heroStatLabel}>Revenue</span>
-                </div>
-              </div>
-            </div>
-          </section>
+            </section>
           </div>
 
-        <div className={styles.overviewContent}>
-        <Layout>
-          {/* Summary Metrics */}
-          <Layout.Section>
-            <MetricGrid>
-              <MetricCard
-                title="Total Tests"
-                value={tests.length}
-                subtitle={`${activeTests} active, ${completedTests} completed`}
-                tooltip="Total number of A/B tests"
-              />
-              <MetricCard
-                title="Total Visitors"
-                value={aggregateMetrics.totalVisitors.toLocaleString()}
-                subtitle="Across all tests"
-                tooltip="Total visitors across all test variants"
-              />
-              <MetricCard
-                title="Total Conversions"
-                value={aggregateMetrics.totalConversions.toLocaleString()}
-                subtitle={`${overallConversionRate}% conversion rate`}
-                tooltip="Total conversions across all tests"
-              />
-              <MetricCard
-                title="Total Revenue"
-                value={`$${aggregateMetrics.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                subtitle="From all tests"
-                tooltip="Total revenue from all variants"
-              />
-            </MetricGrid>
-          </Layout.Section>
+          <div className={styles.overviewContent}>
+            <Layout>
+              {/* Summary Metrics */}
+              <Layout.Section>
+                <MetricGrid>
+                  <MetricCard
+                    title="Total Tests"
+                    value={tests.length}
+                    subtitle={`${activeTests} active, ${completedTests} completed`}
+                    tooltip="Total number of A/B tests"
+                  />
+                  <MetricCard
+                    title="Total Visitors"
+                    value={aggregateMetrics.totalVisitors.toLocaleString()}
+                    subtitle="Across all tests"
+                    tooltip="Total visitors across all test variants"
+                  />
+                  <MetricCard
+                    title="Total Conversions"
+                    value={aggregateMetrics.totalConversions.toLocaleString()}
+                    subtitle={`${overallConversionRate}% conversion rate`}
+                    tooltip="Total conversions across all tests"
+                  />
+                  <MetricCard
+                    title="Total Revenue"
+                    value={`$${aggregateMetrics.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                    subtitle="From all tests"
+                    tooltip="Total revenue from all variants"
+                  />
+                </MetricGrid>
+              </Layout.Section>
 
-          {/* Charts */}
-          {chartData.length > 0 && (
-            <Layout.Section>
-              <div className={`chart-container ${styles.chartCard}`}>
-                <Text variant="headingLg" as="h2" style={{ marginBottom: '1.5rem' }}>
-                  Active Tests Performance
-                </Text>
-                <ResponsiveContainer width="100%" height={420}>
-                    <BarChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-primary)" />
-                      <XAxis dataKey="name" stroke="var(--text-secondary)" />
-                      <YAxis stroke="var(--text-secondary)" />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: 'var(--bg-secondary)',
-                          border: '1px solid var(--border-primary)',
-                          borderRadius: '8px',
-                          color: 'var(--text-primary)',
-                        }}
-                      />
-                      <Legend />
-                      <Bar
-                        dataKey="Conversion Rate"
-                        fill="var(--accent-primary)"
-                        radius={[8, 8, 0, 0]}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-              </div>
-            </Layout.Section>
-          )}
-
-          {chartData.length === 0 && tests.length > 0 && (
-            <Layout.Section>
-              <div className="chart-container">
-                <Text variant="headingLg" as="h2" style={{ marginBottom: '1.5rem' }}>
-                  Active Tests Performance
-                </Text>
-                <div className={styles.emptyChart}>
-                  <Text variant="bodyMd" color="subdued" as="p">
-                    No active tests with traffic yet. Start a test to see performance charts.
-                  </Text>
-                </div>
-              </div>
-            </Layout.Section>
-          )}
-
-          {/* All Tests Performance */}
-          <Layout.Section>
-            <Card>
-              <BlockStack gap="400">
-                <InlineStack align="space-between" blockAlign="center">
-                  <BlockStack gap="100">
-                    <Text variant="headingMd" as="h2">
-                      All Tests Performance
+              {/* Charts */}
+              {chartData.length > 0 && (
+                <Layout.Section>
+                  <div className={`chart-container ${styles.chartCard}`}>
+                    <Text variant="headingLg" as="h2" style={{ marginBottom: '1.5rem' }}>
+                      Active Tests Performance
                     </Text>
-                    <Text variant="bodySm" color="subdued" as="p">
-                      Showing {paginatedTests.length} of {tests.length} tests
+                    <ResponsiveContainer width="100%" height={420}>
+                      <BarChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border-primary)" />
+                        <XAxis dataKey="name" stroke="var(--text-secondary)" />
+                        <YAxis stroke="var(--text-secondary)" />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: 'var(--bg-secondary)',
+                            border: '1px solid var(--border-primary)',
+                            borderRadius: '8px',
+                            color: 'var(--text-primary)',
+                          }}
+                        />
+                        <Legend />
+                        <Bar
+                          dataKey="Conversion Rate"
+                          fill="var(--accent-primary)"
+                          radius={[8, 8, 0, 0]}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </Layout.Section>
+              )}
+
+              {chartData.length === 0 && tests.length > 0 && (
+                <Layout.Section>
+                  <div className="chart-container">
+                    <Text variant="headingLg" as="h2" style={{ marginBottom: '1.5rem' }}>
+                      Active Tests Performance
                     </Text>
-                  </BlockStack>
-                  <InlineStack gap="200">
-                    <Button onClick={() => navigate('/tests')} variant="secondary">
-                      View All Tests
-                    </Button>
-                    <Button onClick={() => navigate('/tests/new')}>Create Test</Button>
-                  </InlineStack>
-                </InlineStack>
+                    <div className={styles.emptyChart}>
+                      <Text variant="bodyMd" color="subdued" as="p">
+                        No active tests with traffic yet. Start a test to see performance charts.
+                      </Text>
+                    </div>
+                  </div>
+                </Layout.Section>
+              )}
 
-                {loading ? (
-                  <LoadingSkeleton type="table" count={3} />
-                ) : tests.length === 0 ? (
-                  <EmptyState
-                    heading="Create your first AB test"
-                    action={{
-                      content: 'Create Test',
-                      onAction: () => navigate('/tests/new'),
-                    }}
-                    image="https://cdn.shopify.com/s/files/1/0757/9955/files/empty-state.svg"
-                  >
-                    <p>
-                      Start optimizing your store by creating an AB test. Test prices, content,
-                      shipping, and more to maximize conversions.
-                    </p>
-                  </EmptyState>
-                ) : (
-                  <BlockStack gap="500">
-                    {paginatedTests.map(test => (
-                      <TestCard key={test.id} test={test} />
-                    ))}
-
-                    {/* Pagination */}
-                    {totalPages > 1 && (
-                      <InlineStack align="center" blockAlign="center" gap="200">
-                        <Button
-                          plain
-                          onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                          disabled={currentPage === 1}
-                        >
-                          Previous
-                        </Button>
-                        <Text variant="bodySm" color="subdued" as="span">
-                          Page {currentPage} of {totalPages}
+              {/* All Tests Performance */}
+              <Layout.Section>
+                <Card>
+                  <BlockStack gap="400">
+                    <InlineStack align="space-between" blockAlign="center">
+                      <BlockStack gap="100">
+                        <Text variant="headingMd" as="h2">
+                          All Tests Performance
                         </Text>
-                        <Button
-                          plain
-                          onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                          disabled={currentPage === totalPages}
-                        >
-                          Next
+                        <Text variant="bodySm" color="subdued" as="p">
+                          Showing {paginatedTests.length} of {tests.length} tests
+                        </Text>
+                      </BlockStack>
+                      <InlineStack gap="200">
+                        <Button onClick={() => navigate('/tests')} variant="secondary">
+                          View All Tests
                         </Button>
+                        <Button onClick={() => navigate('/tests/new')}>Create Test</Button>
                       </InlineStack>
+                    </InlineStack>
+
+                    {loading ? (
+                      <LoadingSkeleton type="table" count={3} />
+                    ) : tests.length === 0 ? (
+                      <EmptyState
+                        heading="Create your first AB test"
+                        action={{
+                          content: 'Create Test',
+                          onAction: () => navigate('/tests/new'),
+                        }}
+                        image="https://cdn.shopify.com/s/files/1/0757/9955/files/empty-state.svg"
+                      >
+                        <p>
+                          Start optimizing your store by creating an AB test. Test prices, content,
+                          shipping, and more to maximize conversions.
+                        </p>
+                      </EmptyState>
+                    ) : (
+                      <BlockStack gap="500">
+                        {paginatedTests.map(test => (
+                          <TestCard key={test.id} test={test} />
+                        ))}
+
+                        {/* Pagination */}
+                        {totalPages > 1 && (
+                          <InlineStack align="center" blockAlign="center" gap="200">
+                            <Button
+                              plain
+                              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                              disabled={currentPage === 1}
+                            >
+                              Previous
+                            </Button>
+                            <Text variant="bodySm" color="subdued" as="span">
+                              Page {currentPage} of {totalPages}
+                            </Text>
+                            <Button
+                              plain
+                              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                              disabled={currentPage === totalPages}
+                            >
+                              Next
+                            </Button>
+                          </InlineStack>
+                        )}
+                      </BlockStack>
                     )}
                   </BlockStack>
-                )}
-              </BlockStack>
-            </Card>
-          </Layout.Section>
-        </Layout>
-        </div>
+                </Card>
+              </Layout.Section>
+            </Layout>
+          </div>
         </div>
       </Page>
     </div>

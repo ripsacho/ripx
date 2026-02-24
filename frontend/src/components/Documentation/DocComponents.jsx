@@ -98,7 +98,9 @@ export function DocTable({ headers, rows }) {
 
 export function DocCallout({ type = 'info', title, children }) {
   return (
-    <div className={`${styles.callout} ${styles[`callout${type.charAt(0).toUpperCase() + type.slice(1)}`]}`}>
+    <div
+      className={`${styles.callout} ${styles[`callout${type.charAt(0).toUpperCase() + type.slice(1)}`]}`}
+    >
       <div className={styles.calloutTitle}>{title}</div>
       <div className={styles.calloutBody}>{children}</div>
     </div>
@@ -123,18 +125,30 @@ export function FlowDiagram({ steps }) {
 }
 
 export function Badge({ children, tone = 'info' }) {
-  return <span className={`${styles.badge} ${styles[`badge${tone.charAt(0).toUpperCase() + tone.slice(1)}`]}`}>{children}</span>;
+  return (
+    <span
+      className={`${styles.badge} ${styles[`badge${tone.charAt(0).toUpperCase() + tone.slice(1)}`]}`}
+    >
+      {children}
+    </span>
+  );
 }
 
 export function DocGrid({ children, columns = 2 }) {
-  return <div className={styles.docGrid} style={{ '--cols': columns }}>{children}</div>;
+  return (
+    <div className={styles.docGrid} style={{ '--cols': columns }}>
+      {children}
+    </div>
+  );
 }
 
 export function DocCard({ icon, title, children }) {
   return (
     <div className={styles.docCard}>
       {icon && <div className={styles.docCardIcon}>{icon}</div>}
-      <Text variant="headingSm" as="h4">{title}</Text>
+      <Text variant="headingSm" as="h4">
+        {title}
+      </Text>
       <div className={styles.docCardBody}>{children}</div>
     </div>
   );

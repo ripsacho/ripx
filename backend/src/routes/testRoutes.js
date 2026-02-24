@@ -6,6 +6,7 @@
 
 const express = require('express');
 const router = express.Router();
+const { asyncHandler } = require('../middleware/asyncHandler');
 const validators = require('../utils/validators');
 const abTestEngine = require('../services/abTestEngine');
 
@@ -35,7 +36,8 @@ const { scheduleTestJobs } = require('../jobs/scheduledTestsProcessor');
 const auditLogService = require('../services/auditLogService');
 const conflictDetectionService = require('../services/conflictDetectionService');
 const personalizationService = require('../services/personalizationService');
-const { getTestAnalytics } = require('../models/analytics');
+const { getTestAnalytics, getBatchVariantMetrics } = require('../models/analytics');
+const { normalizeDomain } = require('../models/tenant');
 const logger = require('../utils/logger');
 
 function normalizeHoldout(value) {
@@ -51,9 +53,13 @@ function normalizeHoldout(value) {
 
 /** Ensure test has variant_count for consistent frontend display */
 function ensureVariantCount(test) {
-  if (!test) {return test;}
+  if (!test) {
+    return test;
+  }
   const variants = test.variants || [];
-  test.variant_count = Array.isArray(variants) ? variants.filter(v => v !== null && v !== undefined).length : 0;
+  test.variant_count = Array.isArray(variants)
+    ? variants.filter(v => v !== null && v !== undefined).length
+    : 0;
   return test;
 }
 
@@ -61,8 +67,9 @@ function ensureVariantCount(test) {
  * POST /api/tests
  * Create a new AB test
  */
-router.post('/', async (req, res, next) => {
-  try {
+router.post(
+  '/',
+  asyncHandler(async (req, res) => {
     const shopDomain = req.shopDomain;
     const testData = {
       ...req.body,
@@ -138,67 +145,114 @@ router.post('/', async (req, res, next) => {
       payload.warning = 'Overlapping tests may affect results';
     }
     return sendSuccess(res, HTTP_STATUS.CREATED, payload, SUCCESS_MESSAGES.TEST_CREATED);
-  } catch (error) {
-    logger.error('Error creating test', {
-      error: error.message,
-      stack: error.stack,
-      shopDomain: req.shopDomain,
-      testData: {
-        name: req.body?.name,
-        type: req.body?.type,
-        hasVariants: !!req.body?.variants,
-      },
-    });
-    next(error);
-  }
-});
+  })
+);
 
 /**
  * GET /api/tests
  * Get all tests for a shop
  */
-router.get('/', async (req, res, next) => {
-  try {
-    const shopDomain = req.shopDomain;
+function mergeVariantMetrics(variants, analytics) {
+  if (!Array.isArray(analytics) || analytics.length === 0) {
+    return variants.map(v => ({ ...v, visitors: 0, conversions: 0, revenue: 0 }));
+  }
+  const byId = new Map();
+  const byName = new Map();
+  analytics.forEach(a => {
+    const id = a.variant_id !== null && a.variant_id !== undefined ? String(a.variant_id) : null;
+    const name =
+      a.variant_name !== null && a.variant_name !== undefined ? String(a.variant_name) : null;
+    if (id) {
+      byId.set(id, a);
+    }
+    if (name) {
+      byName.set(name, a);
+    }
+  });
+  return variants.map(v => {
+    const vId =
+      (v?.id ?? v?.variant_id) !== null && (v?.id ?? v?.variant_id) !== undefined
+        ? String(v.id ?? v.variant_id)
+        : null;
+    const vName = v?.name !== null && v?.name !== undefined ? String(v.name) : null;
+    const a =
+      (vId && byId.get(vId)) ||
+      (vName && byName.get(vName)) ||
+      (vId && byName.get(vId)) ||
+      (vName && byId.get(vId));
+    return a
+      ? {
+          ...v,
+          visitors: a.visitors || 0,
+          conversions: a.conversions || 0,
+          revenue: a.revenue || 0,
+        }
+      : { ...v, visitors: 0, conversions: 0, revenue: 0 };
+  });
+}
+
+router.get(
+  '/',
+  asyncHandler(async (req, res) => {
+    // Normalize shop domain for consistent matching (DB stores lowercase, e.g. makripon.myshopify.com)
+    const rawShop = req.shopDomain;
+    const shopDomain = normalizeDomain(rawShop) || rawShop;
     const status = req.query.status || null;
 
-    const tests = await getTestsByShop(shopDomain, status);
+    let tests = await getTestsByShop(shopDomain, status);
+    // Fallback: if normalized domain returns no tests, try raw (handles legacy/custom formats)
+    if (tests.length === 0 && shopDomain !== rawShop) {
+      tests = await getTestsByShop(rawShop, status);
+    }
 
-    // Enrich each test with variant analytics (visitors, conversions, revenue) for dashboard
+    // Batch fetch variant metrics (visitors, conversions, revenue) for all tests in 2 queries
+    const testIds = tests.map(t => t.id);
+    const analyticsShop =
+      (tests[0] && (normalizeDomain(tests[0].shop_domain) || tests[0].shop_domain)) || shopDomain;
+    let batchMetrics = new Map();
+    try {
+      batchMetrics = await getBatchVariantMetrics(testIds, analyticsShop);
+      if (batchMetrics.size === 0 && tests.length > 0 && tests[0].shop_domain !== analyticsShop) {
+        batchMetrics = await getBatchVariantMetrics(
+          testIds,
+          (tests[0] && tests[0].shop_domain) || shopDomain
+        );
+      }
+    } catch (batchErr) {
+      logger.debug('Batch analytics skipped', { error: batchErr.message });
+    }
+
     const testsWithAnalytics = await Promise.all(
-      tests.map(async (test) => {
+      tests.map(async test => {
         const enriched = enrichGoalWithTemplateKey(test);
         const variants = enriched.variants || [];
-        let variantsWithMetrics = variants;
-
-        try {
-          const analytics = await getTestAnalytics(test.id, shopDomain);
-          if (Array.isArray(analytics) && analytics.length > 0) {
-            const analyticsByVariant = new Map();
-            analytics.forEach((a) => {
-              const id = a.variant_id;
-              const name = a.variant_name;
-              if (id !== null && id !== undefined) {analyticsByVariant.set(String(id), a);}
-              if (name !== null && name !== undefined) {analyticsByVariant.set(String(name), a);}
-            });
-            variantsWithMetrics = variants.map((v) => {
-              const vId = v?.id !== null && v?.id !== undefined ? String(v.id) : null;
-              const vName = v?.name !== null && v?.name !== undefined ? String(v.name) : null;
-              const a = (vId && analyticsByVariant.get(vId)) || (vName && analyticsByVariant.get(vName));
-              return a
-                ? { ...v, visitors: a.visitors || 0, conversions: a.conversions || 0, revenue: a.revenue || 0 }
-                : { ...v, visitors: 0, conversions: 0, revenue: 0 };
-            });
+        let analytics = batchMetrics.get(test.id);
+        if (!analytics || analytics.length === 0) {
+          const testShop = normalizeDomain(test.shop_domain) || test.shop_domain || shopDomain;
+          try {
+            analytics = await getTestAnalytics(test.id, testShop);
+            if (!Array.isArray(analytics) || analytics.length === 0) {
+              analytics = await getTestAnalytics(test.id, shopDomain);
+            }
+          } catch {
+            analytics = null;
           }
-        } catch (err) {
-          logger.debug('Analytics enrichment skipped for test', { testId: test.id, error: err.message });
         }
-
-        const health = testHealthService.calculateHealthScore({ ...enriched, variants: variantsWithMetrics });
-        const variantCount = Array.isArray(variantsWithMetrics) ? variantsWithMetrics.filter((v) => v !== null && v !== undefined).length : 0;
-        const result = { ...enriched, variants: variantsWithMetrics, health, variant_count: variantCount };
+        const variantsWithMetrics = mergeVariantMetrics(variants, analytics);
+        const health = testHealthService.calculateHealthScore({
+          ...enriched,
+          variants: variantsWithMetrics,
+        });
+        const variantCount = variantsWithMetrics.filter(v => v !== null && v !== undefined).length;
+        const result = {
+          ...enriched,
+          variants: variantsWithMetrics,
+          health,
+          variant_count: variantCount,
+        };
         if (test.personalization_mode === 'rollout') {
-          result.effective_rollout_percent = personalizationService.getEffectiveRolloutPercent(test);
+          result.effective_rollout_percent =
+            personalizationService.getEffectiveRolloutPercent(test);
         }
         return result;
       })
@@ -208,17 +262,17 @@ router.get('/', async (req, res, next) => {
       tests: testsWithAnalytics,
       count: testsWithAnalytics.length,
     });
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);
 
 /**
  * GET /api/tests/:id
  * Get a specific test
  */
-router.get('/:id', validateTestId, async (req, res, next) => {
-  try {
+router.get(
+  '/:id',
+  validateTestId,
+  asyncHandler(async (req, res) => {
     const { id } = req.params;
     const shopDomain = req.shopDomain;
 
@@ -256,18 +310,17 @@ router.get('/:id', validateTestId, async (req, res, next) => {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.set('Pragma', 'no-cache');
     return sendSuccess(res, HTTP_STATUS.OK, { test });
-  } catch (error) {
-    logger.error('Error fetching test', { testId: req.params?.id, shopDomain: req.shopDomain, error });
-    next(error);
-  }
-});
+  })
+);
 
 /**
  * PUT /api/tests/:id/variants/codes
  * Update variant codes only (no validation of name/type/etc)
  */
-router.put('/:id/variants/codes', validateTestId, async (req, res, next) => {
-  try {
+router.put(
+  '/:id/variants/codes',
+  validateTestId,
+  asyncHandler(async (req, res) => {
     const { id } = req.params;
     const shopDomain = req.shopDomain;
     const { variants } = req.body;
@@ -300,15 +353,35 @@ router.put('/:id/variants/codes', validateTestId, async (req, res, next) => {
         return updateIndex === index;
       });
 
-      if (update && 'code' in update) {
+      if (update && ('code' in update || 'customCss' in update || 'customJs' in update)) {
         const codeValue =
-          update.code !== undefined && update.code !== null ? String(update.code) : '';
+          update.code !== undefined && update.code !== null
+            ? String(update.code)
+            : existingVariant.config && existingVariant.config.code !== undefined
+              ? existingVariant.config.code
+              : '';
+        const customCss =
+          update.customCss !== undefined && update.customCss !== null
+            ? String(update.customCss)
+            : existingVariant.config && existingVariant.config.customCss !== undefined
+              ? existingVariant.config.customCss
+              : '';
+        const customJs =
+          update.customJs !== undefined && update.customJs !== null
+            ? String(update.customJs)
+            : existingVariant.config && existingVariant.config.customJs !== undefined
+              ? existingVariant.config.customJs
+              : '';
         const nextConfig = {
           ...(existingVariant.config && typeof existingVariant.config === 'object'
             ? existingVariant.config
             : {}),
           code: codeValue,
+          customCss: customCss || undefined,
+          customJs: customJs || undefined,
         };
+        if (!nextConfig.customCss) {delete nextConfig.customCss;}
+        if (!nextConfig.customJs) {delete nextConfig.customJs;}
         return {
           ...existingVariant,
           code: codeValue,
@@ -328,18 +401,17 @@ router.put('/:id/variants/codes', validateTestId, async (req, res, next) => {
     logger.info('Variant codes updated', { testId: id, shopDomain });
 
     return sendSuccess(res, HTTP_STATUS.OK, { test }, 'Variant codes updated successfully');
-  } catch (error) {
-    logger.error('Error updating variant codes', { testId: req.params?.id, error: error.message });
-    next(error);
-  }
-});
+  })
+);
 
 /**
  * PUT /api/tests/:id/variants/allocation
  * Update traffic allocation for variants
  */
-router.put('/:id/variants/allocation', validateTestId, async (req, res, next) => {
-  try {
+router.put(
+  '/:id/variants/allocation',
+  validateTestId,
+  asyncHandler(async (req, res) => {
     const { id } = req.params;
     const shopDomain = req.shopDomain;
     const { variants } = req.body;
@@ -390,22 +462,17 @@ router.put('/:id/variants/allocation', validateTestId, async (req, res, next) =>
     logger.info('Traffic allocation updated', { testId: id, shopDomain });
 
     return sendSuccess(res, HTTP_STATUS.OK, { test }, 'Traffic allocation updated successfully');
-  } catch (error) {
-    logger.error('Error updating traffic allocation', {
-      testId: req.params?.id,
-      shopDomain: req.shopDomain,
-      error: error.message,
-    });
-    next(error);
-  }
-});
+  })
+);
 
 /**
  * PUT /api/tests/:id
  * Update a test
  */
-router.put('/:id', validateTestId, async (req, res, next) => {
-  try {
+router.put(
+  '/:id',
+  validateTestId,
+  asyncHandler(async (req, res) => {
     const { id } = req.params;
     const shopDomain = req.shopDomain;
     const updates = req.body;
@@ -450,7 +517,9 @@ router.put('/:id', validateTestId, async (req, res, next) => {
         const matchedIncomingIndices = new Set();
         const mergedVariants = existingTest.variants.map((existingVariant, index) => {
           const incoming = updates.variants.find((variant, incomingIndex) => {
-            if (matchedIncomingIndices.has(incomingIndex)) {return false;}
+            if (matchedIncomingIndices.has(incomingIndex)) {
+              return false;
+            }
             if (variant?.id && existingVariant?.id && variant.id === existingVariant.id) {
               return true;
             }
@@ -480,7 +549,9 @@ router.put('/:id', validateTestId, async (req, res, next) => {
         });
 
         // Append new variants that don't match any existing (user added variants)
-        const newVariants = updates.variants.filter((_, incomingIndex) => !matchedIncomingIndices.has(incomingIndex));
+        const newVariants = updates.variants.filter(
+          (_, incomingIndex) => !matchedIncomingIndices.has(incomingIndex)
+        );
         const allVariants = [...mergedVariants, ...newVariants];
         // Ensure allocations are numbers (JSON may send strings)
         updates.variants = allVariants.map(v => ({
@@ -505,25 +576,35 @@ router.put('/:id', validateTestId, async (req, res, next) => {
     test = enrichGoalWithTemplateKey(test);
     ensureVariantCount(test);
 
-    if (updates.scheduled_start_at !== undefined || updates.scheduled_stop_at !== undefined || updates.auto_start !== undefined || updates.auto_stop !== undefined) {
+    if (
+      updates.scheduled_start_at !== undefined ||
+      updates.scheduled_stop_at !== undefined ||
+      updates.auto_start !== undefined ||
+      updates.auto_stop !== undefined
+    ) {
       scheduleTestJobs(test);
     }
-    auditLogService.log(shopDomain, { entityType: 'test', entityId: id, action: 'update', changes: Object.keys(updates) });
+    auditLogService.log(shopDomain, {
+      entityType: 'test',
+      entityId: id,
+      action: 'update',
+      changes: Object.keys(updates),
+    });
 
     logger.info('Test updated', { testId: id, shopDomain });
 
     return sendSuccess(res, HTTP_STATUS.OK, { test }, SUCCESS_MESSAGES.TEST_UPDATED);
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);
 
 /**
  * DELETE /api/tests/:id
  * Delete a test
  */
-router.delete('/:id', validateTestId, async (req, res, next) => {
-  try {
+router.delete(
+  '/:id',
+  validateTestId,
+  asyncHandler(async (req, res) => {
     const { id } = req.params;
     const shopDomain = req.shopDomain;
 
@@ -536,17 +617,17 @@ router.delete('/:id', validateTestId, async (req, res, next) => {
     logger.info('Test deleted', { testId: id, shopDomain });
 
     return sendSuccess(res, HTTP_STATUS.OK, {}, SUCCESS_MESSAGES.TEST_DELETED);
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);
 
 /**
  * POST /api/tests/:id/start
  * Start a test
  */
-router.post('/:id/start', validateTestId, async (req, res, next) => {
-  try {
+router.post(
+  '/:id/start',
+  validateTestId,
+  asyncHandler(async (req, res) => {
     const { id } = req.params;
     const shopDomain = req.shopDomain;
 
@@ -559,17 +640,17 @@ router.post('/:id/start', validateTestId, async (req, res, next) => {
     logger.info('Test started', { testId: id, shopDomain });
 
     return sendSuccess(res, HTTP_STATUS.OK, { test }, SUCCESS_MESSAGES.TEST_STARTED);
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);
 
 /**
  * POST /api/tests/:id/stop
  * Stop a test
  */
-router.post('/:id/stop', validateTestId, async (req, res, next) => {
-  try {
+router.post(
+  '/:id/stop',
+  validateTestId,
+  asyncHandler(async (req, res) => {
     const { id } = req.params;
     const shopDomain = req.shopDomain;
 
@@ -613,100 +694,109 @@ router.post('/:id/stop', validateTestId, async (req, res, next) => {
     logger.info('Test stopped', { testId: id, shopDomain });
 
     return sendSuccess(res, HTTP_STATUS.OK, { test }, SUCCESS_MESSAGES.TEST_STOPPED);
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);
 
 /**
  * POST /api/tests/:id/personalize
  * Apply winning variant to 100% of traffic
  */
-router.post('/:id/personalize', validateTestId, async (req, res, next) => {
-  try {
+router.post(
+  '/:id/personalize',
+  validateTestId,
+  asyncHandler(async (req, res) => {
     const { id } = req.params;
     const shopDomain = req.shopDomain;
     const { variantIndex } = req.body || {};
 
-    const test = await personalizationService.applyPersonalization(id, shopDomain, {
-      variantIndex: variantIndex !== null && variantIndex !== undefined ? Number(variantIndex) : undefined,
-    });
-
-    auditLogService.log(shopDomain, { entityType: 'test', entityId: id, action: 'personalize' });
-    logger.info('Personalization applied', { testId: id, shopDomain });
-
-    return sendSuccess(res, HTTP_STATUS.OK, { test }, 'Winner applied to 100% of traffic');
-  } catch (error) {
-    if (error.message?.includes('not found')) {
-      return sendNotFound(res, 'Test');
+    try {
+      const test = await personalizationService.applyPersonalization(id, shopDomain, {
+        variantIndex:
+          variantIndex !== null && variantIndex !== undefined ? Number(variantIndex) : undefined,
+      });
+      auditLogService.log(shopDomain, { entityType: 'test', entityId: id, action: 'personalize' });
+      logger.info('Personalization applied', { testId: id, shopDomain });
+      return sendSuccess(res, HTTP_STATUS.OK, { test }, 'Winner applied to 100% of traffic');
+    } catch (err) {
+      if (err.message?.includes('not found')) {return sendNotFound(res, 'Test');}
+      if (err.message?.includes('stopped') || err.message?.includes('No winner')) {
+        return sendValidationError(res, [err.message]);
+      }
+      throw err;
     }
-    if (error.message?.includes('stopped') || error.message?.includes('No winner')) {
-      return sendValidationError(res, [error.message]);
-    }
-    next(error);
-  }
-});
+  })
+);
 
 /**
  * POST /api/tests/:id/rollout
  * Start gradual rollout of winning variant
  */
-router.post('/:id/rollout', validateTestId, async (req, res, next) => {
-  try {
+router.post(
+  '/:id/rollout',
+  validateTestId,
+  asyncHandler(async (req, res) => {
     const { id } = req.params;
     const shopDomain = req.shopDomain;
     const { variantIndex, initialPercent, schedule } = req.body || {};
 
-    const test = await personalizationService.startRollout(id, shopDomain, {
-      variantIndex: variantIndex !== null && variantIndex !== undefined ? Number(variantIndex) : undefined,
-      initialPercent: initialPercent !== null && initialPercent !== undefined ? Number(initialPercent) : undefined,
-      schedule: Array.isArray(schedule) ? schedule : undefined,
-    });
-
-    auditLogService.log(shopDomain, { entityType: 'test', entityId: id, action: 'rollout' });
-    logger.info('Rollout started', { testId: id, shopDomain });
-
-    return sendSuccess(res, HTTP_STATUS.OK, { test }, 'Rollout started');
-  } catch (error) {
-    if (error.message?.includes('not found')) {
-      return sendNotFound(res, 'Test');
+    try {
+      const test = await personalizationService.startRollout(id, shopDomain, {
+        variantIndex:
+          variantIndex !== null && variantIndex !== undefined ? Number(variantIndex) : undefined,
+        initialPercent:
+          initialPercent !== null && initialPercent !== undefined
+            ? Number(initialPercent)
+            : undefined,
+        schedule: Array.isArray(schedule) ? schedule : undefined,
+      });
+      auditLogService.log(shopDomain, { entityType: 'test', entityId: id, action: 'rollout' });
+      logger.info('Rollout started', { testId: id, shopDomain });
+      return sendSuccess(res, HTTP_STATUS.OK, { test }, 'Rollout started');
+    } catch (err) {
+      if (err.message?.includes('not found')) {return sendNotFound(res, 'Test');}
+      if (err.message?.includes('stopped') || err.message?.includes('No winner')) {
+        return sendValidationError(res, [err.message]);
+      }
+      throw err;
     }
-    if (error.message?.includes('stopped') || error.message?.includes('No winner')) {
-      return sendValidationError(res, [error.message]);
-    }
-    next(error);
-  }
-});
+  })
+);
 
 /**
  * POST /api/tests/:id/personalization/disable
  * Disable personalization/rollout
  */
-router.post('/:id/personalization/disable', validateTestId, async (req, res, next) => {
-  try {
+router.post(
+  '/:id/personalization/disable',
+  validateTestId,
+  asyncHandler(async (req, res) => {
     const { id } = req.params;
     const shopDomain = req.shopDomain;
 
-    const test = await personalizationService.disablePersonalization(id, shopDomain);
-
-    auditLogService.log(shopDomain, { entityType: 'test', entityId: id, action: 'disable_personalization' });
-    logger.info('Personalization disabled', { testId: id, shopDomain });
-
-    return sendSuccess(res, HTTP_STATUS.OK, { test }, 'Personalization disabled');
-  } catch (error) {
-    if (error.message?.includes('not found')) {
-      return sendNotFound(res, 'Test');
+    try {
+      const test = await personalizationService.disablePersonalization(id, shopDomain);
+      auditLogService.log(shopDomain, {
+        entityType: 'test',
+        entityId: id,
+        action: 'disable_personalization',
+      });
+      logger.info('Personalization disabled', { testId: id, shopDomain });
+      return sendSuccess(res, HTTP_STATUS.OK, { test }, 'Personalization disabled');
+    } catch (err) {
+      if (err.message?.includes('not found')) {return sendNotFound(res, 'Test');}
+      throw err;
     }
-    next(error);
-  }
-});
+  })
+);
 
 /**
  * POST /api/tests/:id/clone
  * Clone a test
  */
-router.post('/:id/clone', validateTestId, async (req, res, next) => {
-  try {
+router.post(
+  '/:id/clone',
+  validateTestId,
+  asyncHandler(async (req, res) => {
     const { id } = req.params;
     const shopDomain = req.shopDomain;
 
@@ -762,9 +852,7 @@ router.post('/:id/clone', validateTestId, async (req, res, next) => {
       { test: clonedTest },
       SUCCESS_MESSAGES.TEST_CLONED
     );
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);
 
 module.exports = router;

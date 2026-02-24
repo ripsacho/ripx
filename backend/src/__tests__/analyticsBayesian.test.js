@@ -11,7 +11,13 @@ describe('AnalyticsService Bayesian probability', () => {
       { id: 'control', name: 'Control', visitors: 1000, conversions: 50 },
     ];
     const goal = { analysis_method: 'bayesian' };
-    const _test = { goal, variants: [{ id: 'control', allocation: 50 }, { id: 'b', allocation: 50 }] };
+    const _test = {
+      goal,
+      variants: [
+        { id: 'control', allocation: 50 },
+        { id: 'b', allocation: 50 },
+      ],
+    };
     // Manually invoke the Bayesian logic via getTestAnalytics - we need the full flow
     // Instead, test the significance calculation with two variants
     const control = variants[0];

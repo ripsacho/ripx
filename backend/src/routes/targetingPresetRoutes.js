@@ -6,12 +6,9 @@
 
 const express = require('express');
 const router = express.Router();
+const { asyncHandler } = require('../middleware/asyncHandler');
 const validators = require('../utils/validators');
-const {
-  getPresetsByShop,
-  createPreset,
-  deletePreset,
-} = require('../models/targetingPreset');
+const { getPresetsByShop, createPreset, deletePreset } = require('../models/targetingPreset');
 const { sendError } = require('../utils/response');
 
 const validatePresetId = (req, res, next) => {
@@ -26,8 +23,9 @@ const validatePresetId = (req, res, next) => {
  * GET /api/targeting-presets
  * List all presets for the shop
  */
-router.get('/', async (req, res, next) => {
-  try {
+router.get(
+  '/',
+  asyncHandler(async (req, res) => {
     const shopDomain = req.shopDomain;
     if (!shopDomain) {
       return sendError(res, 401, 'Shop domain required');
@@ -35,18 +33,17 @@ router.get('/', async (req, res, next) => {
 
     const presets = await getPresetsByShop(shopDomain);
     res.json({ success: true, presets });
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);
 
 /**
  * POST /api/targeting-presets
  * Create or update a preset
  * Body: { name, segments, goal?, variants? } - goal and variants make it a full test template
  */
-router.post('/', async (req, res, next) => {
-  try {
+router.post(
+  '/',
+  asyncHandler(async (req, res) => {
     const shopDomain = req.shopDomain;
     if (!shopDomain) {
       return sendError(res, 401, 'Shop domain required');
@@ -62,17 +59,17 @@ router.post('/', async (req, res, next) => {
 
     const preset = await createPreset(shopDomain, name.trim(), segments || {}, goal, variants);
     res.json({ success: true, preset });
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);
 
 /**
  * DELETE /api/targeting-presets/:id
  * Delete a preset
  */
-router.delete('/:id', validatePresetId, async (req, res, next) => {
-  try {
+router.delete(
+  '/:id',
+  validatePresetId,
+  asyncHandler(async (req, res) => {
     const shopDomain = req.shopDomain;
     if (!shopDomain) {
       return sendError(res, 401, 'Shop domain required');
@@ -87,9 +84,7 @@ router.delete('/:id', validatePresetId, async (req, res, next) => {
     }
 
     res.json({ success: true });
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);
 
 module.exports = router;

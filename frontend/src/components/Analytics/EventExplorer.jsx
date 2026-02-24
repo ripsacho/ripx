@@ -110,14 +110,18 @@ function EventExplorer({ testId, variants = [] }) {
         {copiedId === ev.id ? 'Copied!' : ''}
       </Button>
       <Text variant="bodySm" as="span" tone="subdued">
-        {ev.id?.slice(0, 8)}…
+        {ev.id ? `${ev.id.slice(0, 8)}…` : '—'}
       </Text>
     </InlineStack>,
-    <Badge key={`${ev.id}-badge`} tone={ev.event_type === 'conversion' ? 'success' : 'info'}>{ev.event_type}</Badge>,
+    <Badge key={`${ev.id}-badge`} tone={ev.event_type === 'conversion' ? 'success' : 'info'}>
+      {ev.event_type}
+    </Badge>,
     ev.event_name || '—',
     getVariantName(ev.variant_id),
     ev.user_id?.slice(0, 12) + (ev.user_id?.length > 12 ? '…' : ''),
-    ev.event_type === 'conversion' ? `$${Number(ev.event_value || 0).toFixed(2)}` : ev.event_value ?? '—',
+    ev.event_type === 'conversion'
+      ? `$${Number(ev.event_value || 0).toFixed(2)}`
+      : (ev.event_value ?? '—'),
     ev.created_at ? new Date(ev.created_at).toLocaleString() : '—',
   ]);
 
@@ -154,14 +158,14 @@ function EventExplorer({ testId, variants = [] }) {
         </p>
         <div className={styles.eventsSetupCode}>
           <pre>{`// Add to cart
-document.querySelector('[name="add"]').addEventListener('click', () => {
-  RipX.trackEvent('TEST_ID', 'add_to_cart');
-});
+          document.querySelector('[name="add"]').addEventListener('click', () => {
+            RipX.trackEvent('TEST_ID', 'add_to_cart');
+          });
 
-// Newsletter signup
-form.addEventListener('submit', () => {
-  RipX.trackEvent('TEST_ID', 'newsletter_signup');
-});`}</pre>
+          // Newsletter signup
+          form.addEventListener('submit', () => {
+            RipX.trackEvent('TEST_ID', 'newsletter_signup');
+          });`}</pre>
         </div>
         <p className={styles.eventsSetupHint}>
           Common events: add_to_cart, view_content, newsletter_signup, signup, form_submit
@@ -169,10 +173,30 @@ form.addEventListener('submit', () => {
       </div>
 
       <div className={styles.eventsFilters}>
-        <Select label="Date range" options={DATE_RANGES} value={dateRange} onChange={setDateRange} />
-        <Select label="Event type" options={typeOptions} value={eventType} onChange={setEventType} />
-        <Select label="Event name" options={nameOptions} value={eventName} onChange={setEventName} />
-        <Select label="Variant" options={variantOptions} value={variantFilter} onChange={setVariantFilter} />
+        <Select
+          label="Date range"
+          options={DATE_RANGES}
+          value={dateRange}
+          onChange={setDateRange}
+        />
+        <Select
+          label="Event type"
+          options={typeOptions}
+          value={eventType}
+          onChange={setEventType}
+        />
+        <Select
+          label="Event name"
+          options={nameOptions}
+          value={eventName}
+          onChange={setEventName}
+        />
+        <Select
+          label="Variant"
+          options={variantOptions}
+          value={variantFilter}
+          onChange={setVariantFilter}
+        />
       </div>
 
       <div className={styles.eventsContent}>
@@ -181,7 +205,8 @@ form.addEventListener('submit', () => {
         ) : events.length === 0 ? (
           <div className={styles.eventsEmpty}>
             <Text as="p" color="subdued">
-              No events found. Events appear once the storefront script tracks conversions or custom events.
+              No events found. Events appear once the storefront script tracks conversions or custom
+              events.
             </Text>
           </div>
         ) : (

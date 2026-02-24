@@ -22,10 +22,7 @@ const HEATMAP_EXPORT_STATE_KEY = 'bigquery_heatmap_last_export_at';
 
 async function getLastExportTime(key = EXPORT_STATE_KEY) {
   try {
-    const result = await query(
-      'SELECT value FROM key_value_store WHERE key = $1',
-      [key]
-    );
+    const result = await query('SELECT value FROM key_value_store WHERE key = $1', [key]);
     if (result.rows.length > 0 && result.rows[0].value) {
       return new Date(result.rows[0].value);
     }
@@ -118,7 +115,7 @@ async function exportToBigQuery(options = {}) {
         event_type: r.event_type || null,
         event_name: r.event_name || null,
         event_value: parseFloat(r.event_value) || 0,
-        metadata: typeof r.metadata === 'object' ? JSON.stringify(r.metadata) : (r.metadata || '{}'),
+        metadata: typeof r.metadata === 'object' ? JSON.stringify(r.metadata) : r.metadata || '{}',
         created_at: r.created_at,
       }));
       await eventsTable.insert(rows);
@@ -143,8 +140,9 @@ async function exportToBigQuery(options = {}) {
           description: r.description || null,
           type: r.type || null,
           status: r.status || null,
-          goal: typeof r.goal === 'object' ? JSON.stringify(r.goal) : (r.goal || '{}'),
-          variants: typeof r.variants === 'object' ? JSON.stringify(r.variants) : (r.variants || '[]'),
+          goal: typeof r.goal === 'object' ? JSON.stringify(r.goal) : r.goal || '{}',
+          variants:
+            typeof r.variants === 'object' ? JSON.stringify(r.variants) : r.variants || '[]',
           holdout_percent: r.holdout_percent ?? 0,
           created_at: r.created_at,
           updated_at: r.updated_at,
@@ -179,9 +177,14 @@ async function exportToBigQuery(options = {}) {
           event_type: r.event_type || null,
           x: r.x !== null && r.x !== undefined ? r.x : null,
           y: r.y !== null && r.y !== undefined ? r.y : null,
-          scroll_depth: r.scroll_depth !== null && r.scroll_depth !== undefined ? r.scroll_depth : null,
-          viewport_width: r.viewport_width !== null && r.viewport_width !== undefined ? r.viewport_width : null,
-          viewport_height: r.viewport_height !== null && r.viewport_height !== undefined ? r.viewport_height : null,
+          scroll_depth:
+            r.scroll_depth !== null && r.scroll_depth !== undefined ? r.scroll_depth : null,
+          viewport_width:
+            r.viewport_width !== null && r.viewport_width !== undefined ? r.viewport_width : null,
+          viewport_height:
+            r.viewport_height !== null && r.viewport_height !== undefined
+              ? r.viewport_height
+              : null,
           created_at: r.created_at,
         }));
         await heatmapTable.insert(heatmapRows);
@@ -213,7 +216,10 @@ async function exportToBigQuery(options = {}) {
     const msg = String(err.message || '');
     if (msg.includes('Could not load the default credentials') || msg.includes('credential')) {
       logger.warn('BigQuery export skipped: credentials not configured');
-      return { skipped: true, reason: 'Set GOOGLE_APPLICATION_CREDENTIALS or run on GCP with default credentials' };
+      return {
+        skipped: true,
+        reason: 'Set GOOGLE_APPLICATION_CREDENTIALS or run on GCP with default credentials',
+      };
     }
     logger.error('BigQuery export failed', { error: err.message });
     throw err;

@@ -102,7 +102,9 @@ class AnalyticsService {
       confidence: Math.round(confidence * 100) / 100,
       lift: Math.round(lift * 100) / 100,
       winner,
-      zScore: !useFisher ? Math.round(((p1 - p2) / Math.sqrt(p * q * (1 / n1 + 1 / n2))) * 100) / 100 : null,
+      zScore: !useFisher
+        ? Math.round(((p1 - p2) / Math.sqrt(p * q * (1 / n1 + 1 / n2))) * 100) / 100
+        : null,
       method: useFisher ? 'fisher' : 'ztest',
       confidenceInterval: {
         variantA: ciA,
@@ -124,7 +126,9 @@ class AnalyticsService {
 
     let p = 0;
     const logChoose = (n, k) => {
-      if (k < 0 || k > n) {return -Infinity;}
+      if (k < 0 || k > n) {
+        return -Infinity;
+      }
       let r = 0;
       for (let i = 0; i < k; i++) {
         r += Math.log(n - i) - Math.log(i + 1);
@@ -132,14 +136,14 @@ class AnalyticsService {
       return r;
     };
 
-    const prob = (aVal) => {
+    const prob = aVal => {
       const bVal = r1 - aVal;
       const cVal = c1 - aVal;
       const dVal = n - r1 - cVal;
-      if (bVal < 0 || cVal < 0 || dVal < 0) {return 0;}
-      return Math.exp(
-        logChoose(r1, aVal) + logChoose(n - r1, cVal) - logChoose(n, c1)
-      );
+      if (bVal < 0 || cVal < 0 || dVal < 0) {
+        return 0;
+      }
+      return Math.exp(logChoose(r1, aVal) + logChoose(n - r1, cVal) - logChoose(n, c1));
     };
 
     const pObs = prob(a);
@@ -156,7 +160,9 @@ class AnalyticsService {
    * @returns {{ low: number, high: number }} as percentage 0-100
    */
   _wilsonScoreInterval(x, n, conf = 0.95) {
-    if (n <= 0) {return { low: 0, high: 0 };}
+    if (n <= 0) {
+      return { low: 0, high: 0 };
+    }
     const z = conf === 0.95 ? 1.96 : conf === 0.99 ? 2.576 : 1.96;
     const p = x / n;
     const denom = 1 + (z * z) / n;
@@ -285,7 +291,13 @@ class AnalyticsService {
   calculateMultiVariantSignificance(variants, options = {}) {
     const threshold = Number(options.significanceThreshold) || 0.05;
     if (!variants || variants.length < 2) {
-      return { significant: false, pValue: 1, confidence: 0, method: 'chi2', message: 'Insufficient data' };
+      return {
+        significant: false,
+        pValue: 1,
+        confidence: 0,
+        method: 'chi2',
+        message: 'Insufficient data',
+      };
     }
 
     const totalN = variants.reduce((s, v) => s + (Number(v.visitors) || 0), 0);
@@ -293,7 +305,13 @@ class AnalyticsService {
     const pPooled = totalN > 0 ? totalX / totalN : 0;
 
     if (totalN <= 0 || !Number.isFinite(pPooled)) {
-      return { significant: false, pValue: 1, confidence: 0, method: 'chi2', message: 'Insufficient data' };
+      return {
+        significant: false,
+        pValue: 1,
+        confidence: 0,
+        method: 'chi2',
+        message: 'Insufficient data',
+      };
     }
 
     // Chi-square test for homogeneity (2xk contingency: converted vs not, by variant)
@@ -301,14 +319,16 @@ class AnalyticsService {
     for (const v of variants) {
       const n = Number(v.visitors) || 0;
       const x = Number(v.conversions) || 0;
-      if (n <= 0) {continue;}
+      if (n <= 0) {
+        continue;
+      }
       const expectedConverted = n * pPooled;
       const expectedNot = n * (1 - pPooled);
       if (expectedConverted > 0.5) {
         chiSquare += Math.pow(x - expectedConverted, 2) / expectedConverted;
       }
       if (expectedNot > 0.5) {
-        chiSquare += Math.pow((n - x) - expectedNot, 2) / expectedNot;
+        chiSquare += Math.pow(n - x - expectedNot, 2) / expectedNot;
       }
     }
 
@@ -328,7 +348,9 @@ class AnalyticsService {
     let pairwisePValue = null;
 
     if (significant && best && control && best.id !== control.id) {
-      const pairSig = this.calculateSignificance(control, best, { significanceThreshold: threshold });
+      const pairSig = this.calculateSignificance(control, best, {
+        significanceThreshold: threshold,
+      });
       pairwisePValue = pairSig.pValue;
       if (pairSig.significant && pairSig.winner === 'variantB') {
         winner = 'best';
@@ -336,8 +358,10 @@ class AnalyticsService {
     }
 
     const confidence = (1 - pValue) * 100;
-    const controlRate = (control?.visitors || 0) > 0 ? ((control?.conversions || 0) / control.visitors) * 100 : 0;
-    const bestRate = (best?.visitors || 0) > 0 ? ((best?.conversions || 0) / best.visitors) * 100 : 0;
+    const controlRate =
+      (control?.visitors || 0) > 0 ? ((control?.conversions || 0) / control.visitors) * 100 : 0;
+    const bestRate =
+      (best?.visitors || 0) > 0 ? ((best?.conversions || 0) / best.visitors) * 100 : 0;
     const lift = controlRate > 0 ? ((bestRate - controlRate) / controlRate) * 100 : 0;
 
     return {
@@ -361,7 +385,9 @@ class AnalyticsService {
    * For df>1: Wilson-Hilferty approximation
    */
   _chiSquareToPValue(chiSquare, df) {
-    if (chiSquare <= 0 || df <= 0) {return 1;}
+    if (chiSquare <= 0 || df <= 0) {
+      return 1;
+    }
     if (df === 1) {
       const z = Math.sqrt(chiSquare);
       return 2 * (1 - this.normalCDF(z));
@@ -381,11 +407,11 @@ class AnalyticsService {
    * @returns {string[]} Event names
    */
   _getSecondaryEventNames(goal) {
-    if (!goal || typeof goal !== 'object') {return [];}
+    if (!goal || typeof goal !== 'object') {
+      return [];
+    }
     if (Array.isArray(goal.secondary)) {
-      return goal.secondary
-        .map(s => s?.event_name || s?.eventName)
-        .filter(Boolean);
+      return goal.secondary.map(s => s?.event_name || s?.eventName).filter(Boolean);
     }
     return [];
   }
@@ -408,13 +434,15 @@ class AnalyticsService {
     }
 
     const goal = test?.goal || {};
-    const conversionWindowDays = options.conversionWindowDays ?? goal.conversion_window_days ?? null;
+    const conversionWindowDays =
+      options.conversionWindowDays ?? goal.conversion_window_days ?? null;
     const conversionUrl = options.conversionUrl ?? goal.conversion_url ?? null;
 
     const rawData = await getTestAnalytics(testId, shopDomain, {
       ...options,
       conversionWindowDays: conversionWindowDays || null,
-      conversionUrl: conversionUrl && String(conversionUrl).trim() ? String(conversionUrl).trim() : null,
+      conversionUrl:
+        conversionUrl && String(conversionUrl).trim() ? String(conversionUrl).trim() : null,
     });
 
     const secondaryEventNames = goal ? this._getSecondaryEventNames(goal) : [];
@@ -435,7 +463,10 @@ class AnalyticsService {
         name: variant.variant_name,
         visitors: variant.visitors || 0,
         conversions: variant.conversions || 0,
-        conversionRate: this.calculateConversionRate(variant.conversions || 0, variant.visitors || 0),
+        conversionRate: this.calculateConversionRate(
+          variant.conversions || 0,
+          variant.visitors || 0
+        ),
         revenue: variant.revenue || 0,
         avgOrderValue: variant.conversions > 0 ? (variant.revenue || 0) / variant.conversions : 0,
         secondaryEvents: {},
@@ -461,7 +492,8 @@ class AnalyticsService {
           significant: false,
           pValue: 1,
           confidence: 0,
-          message: rawData?.length === 1 ? 'Need at least 2 variants to compare' : 'No variants with data',
+          message:
+            rawData?.length === 1 ? 'Need at least 2 variants to compare' : 'No variants with data',
         },
         summary: {
           totalVisitors,
@@ -486,7 +518,9 @@ class AnalyticsService {
     }
     let significance;
     if (variants.length === 2) {
-      significance = this.calculateSignificance(variants[0], variants[1], { significanceThreshold });
+      significance = this.calculateSignificance(variants[0], variants[1], {
+        significanceThreshold,
+      });
     } else if (variants.length > 2) {
       significance = this.calculateMultiVariantSignificance(variants, { significanceThreshold });
     } else {
@@ -507,7 +541,11 @@ class AnalyticsService {
         const z = se > 0 ? (pB - pA) / se : 0;
         // P(B beats A) = Φ(z) where z = (pB-pA)/SE (normal approximation)
         const prob = this.normalCDF(z);
-        return { variantId: v.id, variantName: v.name, probabilityToBeatControl: Math.round(prob * 1000) / 1000 };
+        return {
+          variantId: v.id,
+          variantName: v.name,
+          probabilityToBeatControl: Math.round(prob * 1000) / 1000,
+        };
       });
       significance = { ...significance, bayesian: true, probToBeatControl };
     }

@@ -1,0 +1,999 @@
+/**
+ * Admin Panel Styles
+ * Matches project design system: same card accents, nav styling, and spacing as Dashboard/Settings/Sidebar
+ */
+
+.adminLayout {
+  display: flex;
+  gap: var(--spacing-lg);
+  min-height: 100vh;
+  padding: var(--spacing-md);
+  background: var(--bg-primary);
+}
+
+@media (max-width: 768px) {
+  .adminLayout {
+    flex-direction: column;
+    padding: var(--spacing-sm);
+  }
+
+  .adminSidebar {
+    position: relative;
+    width: 100%;
+    max-height: 45vh;
+    flex-shrink: 0;
+    border-radius: var(--radius-lg);
+  }
+
+  .adminSidebar.collapsed {
+    width: 100%;
+  }
+
+  .adminHoverDrawer {
+    display: none;
+  }
+}
+
+/* Sidebar: first column, sticky full height - visible next to main app sidebar */
+.adminSidebar {
+  flex-shrink: 0;
+  width: 240px;
+  position: sticky;
+  top: var(--spacing-md);
+  align-self: flex-start;
+  max-height: calc(100vh - var(--spacing-md) * 2);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.95) 100%);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--surface-2);
+  overflow: hidden;
+  transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.adminSidebar.collapsed {
+  width: 80px;
+}
+
+.adminSidebar.collapsed .adminSidebarSubtitle,
+.adminSidebar.collapsed .adminNavItemText {
+  display: none;
+}
+
+.adminSidebar.collapsed .adminNavItem {
+  justify-content: center;
+  padding: 0.75rem;
+}
+
+.adminSidebar.collapsed .adminNavIcon {
+  margin: 0;
+}
+
+.adminNavItemWrapper {
+  position: relative;
+}
+
+/* Admin hover drawer - fixed so it isn't clipped by sidebar overflow */
+.adminHoverDrawer {
+  position: fixed;
+  min-width: 160px;
+  padding: 0.625rem 1.25rem;
+  display: flex;
+  align-items: center;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0 10px 10px 0;
+  box-shadow: 4px 0 20px -2px var(--shadow-lg);
+  z-index: 1060;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  transform-origin: left center;
+  animation: adminDrawerUnfold 0.22s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  overflow: hidden;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.adminHoverDrawer::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--futuristic-cyan), var(--futuristic-violet));
+  border-radius: 2px 0 0 2px;
+}
+
+@keyframes adminDrawerUnfold {
+  from {
+    opacity: 0;
+    transform: scaleX(0);
+  }
+  to {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+[data-theme='dark'] .adminHoverDrawer {
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, #0f0f0f 100%);
+  border-color: var(--border-primary);
+}
+
+.adminSidebar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
+  opacity: 0.85;
+}
+
+[data-theme='dark'] .adminSidebar {
+  background: linear-gradient(180deg, rgba(26, 26, 26, 0.7) 0%, rgba(18, 18, 18, 0.6) 100%);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.adminSidebarHeader {
+  flex-shrink: 0;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.adminSidebar.collapsed .adminSidebarHeader {
+  padding: 1rem 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.adminSidebar.collapsed .adminSidebarHeader > div {
+  justify-content: center;
+}
+
+.adminCollapseBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1.5px solid var(--border-secondary);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-smooth);
+  flex-shrink: 0;
+}
+
+.adminCollapseBtn:hover {
+  background: rgba(6, 182, 212, 0.08);
+  border-color: var(--futuristic-cyan);
+  color: var(--futuristic-cyan);
+}
+
+.adminCollapseBtn :global(svg) {
+  width: 18px;
+  height: 18px;
+}
+
+.adminSidebarTitle {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  margin: 0;
+  min-width: 0;
+}
+
+.adminSidebarSubtitle {
+  font-size: 0.75rem;
+  margin: 0.25rem 0 0;
+  color: var(--text-tertiary);
+}
+
+.adminNav {
+  flex: 1;
+  min-height: 0;
+  padding: 0.5rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(6, 182, 212, 0.25) transparent;
+}
+
+.adminNav::-webkit-scrollbar {
+  width: 4px;
+}
+
+.adminNav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.adminNav::-webkit-scrollbar-thumb {
+  background: rgba(6, 182, 212, 0.2);
+  border-radius: 4px;
+}
+
+.adminNav::-webkit-scrollbar-thumb:hover {
+  background: rgba(6, 182, 212, 0.35);
+}
+
+.adminNavItem {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 2px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  text-align: left;
+  font-size: 0.9375rem;
+}
+
+.adminNavItem:hover {
+  background: rgba(6, 182, 212, 0.08);
+  color: var(--text-primary);
+}
+
+.adminNavItem:focus-visible {
+  outline: 2px solid var(--futuristic-cyan);
+  outline-offset: 2px;
+}
+
+.adminNavItem.active {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.14) 0%, rgba(139, 92, 246, 0.08) 100%);
+  color: var(--futuristic-cyan);
+  font-weight: 600;
+}
+
+.adminNavItem.active .adminNavIcon {
+  background: rgba(6, 182, 212, 0.2);
+  color: var(--futuristic-cyan);
+}
+
+.adminNavIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.adminNavItem:hover .adminNavIcon {
+  background: rgba(6, 182, 212, 0.1);
+}
+
+.adminNavIcon :global(svg) {
+  width: 20px;
+  height: 20px;
+}
+
+.adminSidebarFooter {
+  flex-shrink: 0;
+  margin-top: auto;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--border-primary);
+}
+
+.adminSidebarFooterBrand {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+}
+
+.adminSidebarFooterActions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.adminBackToTop,
+.adminBackToApp {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border-radius: 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.adminBackToTop:hover,
+.adminBackToApp:hover {
+  background: rgba(6, 182, 212, 0.08);
+  color: var(--futuristic-cyan);
+  border-color: rgba(6, 182, 212, 0.2);
+}
+
+.adminBackToTop:active,
+.adminBackToApp:active {
+  background: rgba(6, 182, 212, 0.12);
+}
+
+.adminBackToTop :global(svg),
+.adminBackToApp :global(svg) {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.adminSidebar.collapsed .adminBackToTop span,
+.adminSidebar.collapsed .adminBackToApp span {
+  display: none;
+}
+
+.adminSidebar.collapsed .adminSidebarFooterActions {
+  align-items: center;
+}
+
+.adminBackToApp {
+  border-color: var(--border-secondary);
+}
+
+.adminBackToApp:hover {
+  border-color: rgba(6, 182, 212, 0.25);
+  color: var(--text-primary);
+}
+
+.adminBackToApp :global(svg) {
+  width: 18px;
+  height: 18px;
+}
+
+.adminStatCardLink {
+  all: unset;
+  display: block;
+  width: 100%;
+  cursor: pointer;
+  text-align: left;
+}
+
+.adminStatCardLink:hover .adminStatCard {
+  border-color: rgba(6, 182, 212, 0.4);
+  transform: translateY(-3px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
+}
+
+.adminStatCardLink:focus-visible .adminStatCard {
+  outline: 2px solid var(--futuristic-cyan);
+  outline-offset: 2px;
+}
+
+/* Same effective width and spacing as main app content; gradient line matches main-content-wrapper */
+.adminContent {
+  flex: 1;
+  min-width: 0;
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  width: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.adminContent::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--futuristic-cyan), var(--futuristic-violet), transparent);
+  opacity: 0.5;
+  border-radius: 2px;
+}
+
+/* Content area header (breadcrumb) */
+.adminContentHead {
+  flex-shrink: 0;
+  padding: var(--spacing-sm) 0 var(--spacing-md);
+  border-bottom: 1px solid var(--border-secondary);
+  margin-bottom: var(--spacing-md);
+}
+
+.adminBreadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.adminBreadcrumbItem {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.875rem;
+  color: var(--futuristic-cyan);
+  cursor: pointer;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.adminBreadcrumbItem:hover {
+  text-decoration: underline;
+}
+
+.adminBreadcrumbItem:focus-visible {
+  outline: 2px solid var(--futuristic-cyan);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.adminBreadcrumbSep {
+  font-size: 0.875rem;
+  color: var(--text-tertiary);
+}
+
+.adminBreadcrumbCurrent {
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* Content inner (scrollable) */
+.adminContentInner {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Content area footer */
+.adminContentFoot {
+  flex-shrink: 0;
+  margin-top: var(--spacing-xl);
+  padding-top: var(--spacing-md);
+  padding-bottom: var(--spacing-sm);
+  border-top: 1px solid var(--border-secondary);
+}
+
+.adminFooterInner {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-lg);
+  flex-wrap: wrap;
+}
+
+.adminFooterCopy {
+  font-size: 0.8125rem;
+  color: var(--text-tertiary);
+}
+
+.adminFooterLink,
+.adminFooterLinkBtn {
+  font-size: 0.8125rem;
+  color: var(--futuristic-cyan);
+  text-decoration: none;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.adminFooterLink:hover,
+.adminFooterLinkBtn:hover {
+  text-decoration: underline;
+}
+
+.adminFooterLink:focus-visible,
+.adminFooterLinkBtn:focus-visible {
+  outline: 2px solid var(--futuristic-cyan);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Page wrapper: title and description section (same overall as app) */
+.adminPage :global(.Polaris-Page__Header) {
+  padding: var(--spacing-lg) 0 var(--spacing-lg);
+  margin-bottom: var(--spacing-lg);
+  background: linear-gradient(180deg, rgba(6, 182, 212, 0.04) 0%, transparent 100%);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-lg);
+  padding-left: var(--spacing-md);
+  padding-right: var(--spacing-md);
+  position: relative;
+}
+
+.adminPage :global(.Polaris-Page__Header)::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: var(--spacing-md);
+  height: 3px;
+  width: 72px;
+  background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
+  border-radius: 2px;
+  opacity: 0.9;
+}
+
+[data-theme='dark'] .adminPage :global(.Polaris-Page__Header) {
+  background: linear-gradient(180deg, rgba(6, 182, 212, 0.08) 0%, transparent 100%);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Back arrow / back action: button-like, clear affordance */
+.adminPage :global(.Polaris-Page__Header) :global(a[href]),
+.adminPage :global(.Polaris-Page__Header) :global(.Polaris-Link),
+.adminPage :global(.Polaris-Page__Header) :global([class*="BackAction"]),
+.adminPage :global(.Polaris-Page__Header) :global(button[aria-label*="back" i]) {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9375rem !important;
+  font-weight: 600 !important;
+  color: var(--futuristic-cyan) !important;
+  text-decoration: none !important;
+  padding: 0.5rem 0.75rem !important;
+  margin: -0.5rem 0 -0.5rem -0.75rem !important;
+  margin-right: var(--spacing-sm) !important;
+  border-radius: var(--radius-md) !important;
+  border: 1px solid rgba(6, 182, 212, 0.25) !important;
+  background: rgba(6, 182, 212, 0.06) !important;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.adminPage :global(.Polaris-Page__Header) :global(a[href]:hover),
+.adminPage :global(.Polaris-Page__Header) :global(.Polaris-Link:hover),
+.adminPage :global(.Polaris-Page__Header) :global([class*="BackAction"]:hover) {
+  background: rgba(6, 182, 212, 0.12) !important;
+  border-color: rgba(6, 182, 212, 0.4) !important;
+  color: var(--futuristic-cyan) !important;
+  text-decoration: none !important;
+}
+
+.adminPage :global(.Polaris-Page__Header) :global(a[href]:focus-visible),
+.adminPage :global(.Polaris-Page__Header) :global(.Polaris-Link:focus-visible) {
+  outline: 2px solid var(--futuristic-cyan) !important;
+  outline-offset: 2px !important;
+  border-radius: var(--radius-md) !important;
+}
+
+.adminPage :global(.Polaris-Page__Header) :global(a[href] svg),
+.adminPage :global(.Polaris-Page__Header) :global(.Polaris-Link svg) {
+  width: 20px !important;
+  height: 20px !important;
+  flex-shrink: 0;
+  opacity: 0.95;
+}
+
+/* Title: prominent, design-system typography */
+.adminPage :global(.Polaris-Page__Title) {
+  font-size: 1.625rem !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.025em;
+  color: var(--text-primary) !important;
+  line-height: 1.2;
+  margin-top: 0.25rem !important;
+  margin-bottom: 0.35rem !important;
+}
+
+/* Subtitle / description: readable, muted */
+.adminPage :global(.Polaris-Page-Header__Subtitle),
+.adminPage :global(.Polaris-Page__Title) + [class*="Subtitle"],
+.adminPage :global(.Polaris-Page__Header p) {
+  font-size: 0.9375rem !important;
+  line-height: 1.45 !important;
+  color: var(--text-tertiary) !important;
+  font-weight: 400;
+  margin-top: 0;
+  margin-bottom: 0;
+  max-width: 42em;
+}
+
+/* Action buttons in header: grouped, clear hierarchy */
+.adminPage :global(.Polaris-Page__Header) :global(.Polaris-ButtonGroup) {
+  gap: 0.5rem;
+  padding: 0.2rem 0;
+}
+
+.adminPage :global(.Polaris-Page__Header) :global(.Polaris-Button) {
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  min-height: 38px;
+  padding-inline: 1rem;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.adminPage :global(.Polaris-Page__Header) :global(.Polaris-Button:active) {
+  transform: scale(0.98);
+}
+
+.adminPage :global(.Polaris-Page__Header) :global(.Polaris-Button[disabled]),
+.adminPage :global(.Polaris-Page__Header) :global(.Polaris-Button.Polaris-Button--disabled) {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+/* Destructive actions (Suspend, Lock, Stop): clear critical styling */
+.adminPage :global(.Polaris-Button--destructive),
+.adminPage :global(button.Polaris-Button[tone="critical"]) {
+  border-color: var(--status-error);
+  color: var(--status-error);
+}
+
+.adminPage :global(.Polaris-Button--destructive:hover),
+.adminPage :global(button.Polaris-Button[tone="critical"]:hover) {
+  background: rgba(215, 44, 13, 0.08) !important;
+  border-color: var(--status-error) !important;
+  color: var(--status-error) !important;
+}
+
+.adminPage :global(.Polaris-Card) {
+  position: relative;
+  border: 1px solid rgba(6, 182, 212, 0.18);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--surface-2);
+  transition: transform var(--transition-smooth), box-shadow var(--transition-smooth),
+    border-color var(--transition-smooth);
+  overflow: hidden;
+}
+
+.adminPage :global(.Polaris-Card)::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
+  opacity: 0.6;
+}
+
+.adminPage :global(.Polaris-Card:hover) {
+  transform: translateY(-2px);
+  border-color: rgba(6, 182, 212, 0.35);
+  box-shadow: var(--surface-3);
+}
+
+/* Stats grid on overview - matches Dashboard metric cards */
+.adminStatsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.adminStatCard {
+  position: relative;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(255, 255, 255, 0.82) 100%);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+  overflow: hidden;
+  transition: all var(--transition-smooth);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.02);
+}
+
+.adminStatCard::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, transparent, var(--futuristic-cyan), var(--futuristic-violet), transparent);
+  opacity: 0.85;
+}
+
+.adminStatCard:hover {
+  border-color: var(--border-accent);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(6, 182, 212, 0.1);
+  transform: translateY(-2px);
+}
+
+[data-theme='dark'] .adminStatCard {
+  background: linear-gradient(180deg, rgba(26, 26, 26, 0.7) 0%, rgba(18, 18, 18, 0.6) 100%);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.adminStatLabel {
+  font-size: 0.8125rem;
+  color: var(--text-tertiary);
+  margin-bottom: 0.25rem;
+}
+
+.adminStatValue {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+/* Filters / toolbar above tables */
+.adminToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.adminPagination {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-md);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--border-secondary);
+}
+
+/* Empty state container - match project EmptyState styling */
+.adminEmptyState {
+  padding: var(--spacing-xl) var(--spacing-md);
+}
+
+.adminEmptyState :global(.Polaris-EmptyState) {
+  border-radius: var(--radius-lg);
+}
+
+/* Table wrapper: same border-radius and hover as main app DataTables */
+.adminTableWrap {
+  overflow-x: auto;
+  margin-bottom: var(--spacing-sm);
+}
+
+.adminTableWrap :global(.Polaris-DataTable) {
+  border-radius: var(--radius-lg);
+}
+
+.adminTableWrap :global(.Polaris-DataTable__Table) {
+  border-radius: var(--radius-lg);
+}
+
+.adminTableWrap :global(.Polaris-DataTable__Row):hover {
+  background: rgba(6, 182, 212, 0.04);
+}
+
+/* Filter row for list pages */
+.adminFilters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+  align-items: flex-end;
+}
+
+/* Main section intro: title/description block (visually distinct) */
+.adminMainSection {
+  padding: var(--spacing-lg) var(--spacing-xl);
+  margin-bottom: var(--spacing-lg);
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.04) 0%, rgba(139, 92, 246, 0.03) 100%);
+  border: 1px solid var(--border-secondary);
+  border-left: 4px solid transparent;
+  border-left-color: var(--futuristic-cyan);
+  border-radius: var(--radius-lg);
+  position: relative;
+}
+
+.adminMainSection::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
+  opacity: 0.4;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+[data-theme='dark'] .adminMainSection {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.08) 0%, rgba(139, 92, 246, 0.05) 100%);
+  border-color: rgba(255, 255, 255, 0.06);
+  border-left-color: var(--futuristic-cyan);
+}
+
+/* In-page description block (below header) */
+.adminPageDescription {
+  font-size: 0.9375rem;
+  color: var(--text-tertiary);
+  margin-top: 0;
+  margin-bottom: 0;
+  max-width: 42em;
+}
+
+/* Page subtitle / result count */
+.adminPageSubtitle {
+  font-size: 0.875rem;
+  color: var(--text-tertiary);
+  margin-top: 0.25rem;
+}
+
+/* Section heading for overview and list pages */
+.adminSectionHeading {
+  margin-top: var(--spacing-lg);
+  margin-bottom: var(--spacing-sm);
+}
+
+.adminSectionHeading:first-of-type {
+  margin-top: 0;
+}
+
+.adminSystemRow {
+  margin-top: var(--spacing-sm);
+}
+
+.adminHealthLink {
+  font-size: 0.9375rem;
+  color: var(--futuristic-cyan);
+  text-decoration: none;
+}
+
+.adminHealthLink:hover {
+  text-decoration: underline;
+}
+
+.adminHealthLink:focus-visible {
+  outline: 2px solid var(--futuristic-cyan);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Admin page buttons: match design system (cyan/violet accent) */
+.adminPage :global(.Polaris-Button--primary),
+.adminPage :global(button.Polaris-Button[variant="primary"]) {
+  background: linear-gradient(135deg, var(--futuristic-cyan), var(--futuristic-teal)) !important;
+  border-color: rgba(6, 182, 212, 0.4) !important;
+  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.25);
+}
+
+.adminPage :global(.Polaris-Button--primary:hover),
+.adminPage :global(button.Polaris-Button[variant="primary"]:hover) {
+  background: linear-gradient(135deg, #08c4e0, var(--futuristic-cyan)) !important;
+  border-color: var(--futuristic-cyan) !important;
+  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.35);
+}
+
+.adminPage :global(.Polaris-Button--plain),
+.adminPage :global(button.Polaris-Button[plain]) {
+  color: var(--futuristic-cyan);
+}
+
+.adminPage :global(.Polaris-Button--plain:hover),
+.adminPage :global(button.Polaris-Button[plain]:hover) {
+  background: rgba(6, 182, 212, 0.08) !important;
+  color: var(--futuristic-cyan);
+}
+
+.adminPage :global(.Polaris-Button--secondary),
+.adminPage :global(button.Polaris-Button[variant="secondary"]) {
+  border-color: rgba(6, 182, 212, 0.35);
+  color: var(--futuristic-cyan);
+}
+
+.adminPage :global(.Polaris-Button--secondary:hover),
+.adminPage :global(button.Polaris-Button[variant="secondary"]:hover) {
+  background: rgba(6, 182, 212, 0.06) !important;
+  border-color: var(--futuristic-cyan) !important;
+}
+
+/* Toolbar and pagination: consistent button shape */
+.adminPage .adminToolbar :global(.Polaris-Button) {
+  border-radius: var(--radius-md);
+  font-weight: 500;
+}
+
+/* Pagination buttons: consistent with secondary style */
+.adminPagination :global(.Polaris-Button) {
+  border-radius: var(--radius-md);
+  min-width: 2.5rem;
+  min-height: 36px;
+}
+
+/* Table action buttons (View, Set role, Lock, etc.): touch-friendly */
+.adminTableWrap :global(.Polaris-Button--plain),
+.adminTableWrap :global(.Polaris-Button[size="slim"]) {
+  min-height: 32px;
+  padding-inline: 0.6rem;
+  border-radius: var(--radius-md);
+}
+
+/* ========== Advanced UI: all buttons and controls ========== */
+
+/* Global focus-visible for every button in admin (keyboard a11y) */
+.adminPage :global(.Polaris-Button:focus-visible),
+.adminPage :global(button.Polaris-Button:focus-visible) {
+  outline: 2px solid var(--futuristic-cyan) !important;
+  outline-offset: 2px !important;
+  border-radius: var(--radius-md);
+}
+
+.adminPage :global(.Polaris-Button--primary:focus-visible),
+.adminPage :global(button.Polaris-Button[variant="primary"]:focus-visible) {
+  box-shadow: 0 0 0 4px rgba(6, 182, 212, 0.25) !important;
+}
+
+/* Modal: footer buttons match page button system */
+.adminPage :global(.Polaris-Modal-Footer) :global(.Polaris-Button) {
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  min-height: 36px;
+  padding-inline: 1rem;
+}
+
+/* Toolbar form controls: subtle border and radius */
+.adminPage .adminToolbar :global(.Polaris-Select),
+.adminPage .adminToolbar :global(.Polaris-TextField__Input) {
+  border-radius: var(--radius-md);
+}
+
+.adminPage .adminToolbar :global(.Polaris-Select:hover),
+.adminPage .adminToolbar :global(.Polaris-TextField__Input:hover) {
+  border-color: rgba(6, 182, 212, 0.3);
+}
+
+.adminPage .adminToolbar :global(.Polaris-TextField__Input:focus),
+.adminPage .adminToolbar :global(.Polaris-Select:focus-within) {
+  border-color: var(--futuristic-cyan);
+  box-shadow: 0 0 0 1px var(--futuristic-cyan);
+}
+
+/* Card inner spacing and content rhythm */
+.adminPage :global(.Polaris-Card) :global(.Polaris-Card__Section),
+.adminPage :global(.Polaris-Card) :global(.Polaris-LegacyCard__Section) {
+  padding: var(--spacing-lg) var(--spacing-xl);
+}
+
+.adminPage :global(.Polaris-Card) :global(.Polaris-Card__Section):not(:last-child),
+.adminPage :global(.Polaris-Card) :global(.Polaris-LegacyCard__Section):not(:last-child) {
+  border-bottom: 1px solid var(--border-secondary);
+}
+
+/* Section headings: stronger hierarchy */
+.adminSectionHeading :global(.Polaris-Text),
+.adminSectionHeading h3 {
+  font-weight: 600 !important;
+  letter-spacing: -0.01em;
+  color: var(--text-primary) !important;
+}
+
+/* Empty state: more breathing room and soft border */
+.adminEmptyState {
+  padding: var(--spacing-2xl) var(--spacing-xl);
+  background: linear-gradient(180deg, rgba(6, 182, 212, 0.02) 0%, transparent 100%);
+  border-radius: var(--radius-lg);
+  border: 1px dashed var(--border-secondary);
+}
+
+[data-theme='dark'] .adminEmptyState {
+  background: linear-gradient(180deg, rgba(6, 182, 212, 0.04) 0%, transparent 100%);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Badges in admin: consistent with design system */
+.adminPage :global(.Polaris-Badge) {
+  border-radius: 6px;
+  font-weight: 500;
+  padding: 0.2em 0.5em;
+}
+
+/* Content area: consistent vertical rhythm */
+.adminContentInner {
+  padding-bottom: var(--spacing-2xl);
+}
+
+.adminPage :global(.Polaris-Page__Content) {
+  padding-top: 0;
+}

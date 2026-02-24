@@ -7,8 +7,18 @@
 const { query } = require('../utils/database');
 
 async function insertHeatmapEvent(data) {
-  const { test_id, variant_id, shop_domain, page_url, event_type, x, y, scroll_depth, viewport_width, viewport_height } =
-    data;
+  const {
+    test_id,
+    variant_id,
+    shop_domain,
+    page_url,
+    event_type,
+    x,
+    y,
+    scroll_depth,
+    viewport_width,
+    viewport_height,
+  } = data;
 
   const sql = `
     INSERT INTO heatmap_events (
@@ -36,7 +46,9 @@ async function insertHeatmapEvent(data) {
 }
 
 async function insertHeatmapEventsBatch(events) {
-  if (!events || events.length === 0) {return { inserted: 0 };}
+  if (!events || events.length === 0) {
+    return { inserted: 0 };
+  }
 
   const values = [];
   const placeholders = [];
@@ -164,10 +176,137 @@ async function getHeatmapPages(testId, shopDomain) {
   return result.rows.map(r => r.page_url);
 }
 
+const REFERENCE_VIEWPORT = { width: 1280, height: 720 };
+
+/**
+ * Get click heatmap data normalized to reference viewport (1280×720) for overlay on screenshot.
+ * Returns points with x, y in 0..1280 and 0..720 (binned to int) and count per bin.
+ */
+async function getClickHeatmapForOverlay(testId, shopDomain, pageUrl, options = {}) {
+  const { variantId = null, since = null } = options;
+  const w = REFERENCE_VIEWPORT.width;
+  const h = REFERENCE_VIEWPORT.height;
+
+  let where =
+    'test_id = $1 AND shop_domain = $2 AND event_type = $3 AND x IS NOT NULL AND y IS NOT NULL AND viewport_width > 0 AND viewport_height > 0';
+  const params = [testId, shopDomain, 'click'];
+
+  if (pageUrl) {
+    where += ' AND page_url = $4';
+    params.push(pageUrl);
+  }
+  if (variantId) {
+    params.push(variantId);
+    where += ` AND variant_id = $${params.length}`;
+  }
+  if (since) {
+    params.push(since);
+    where += ` AND created_at > $${params.length}`;
+  }
+
+  const sql = `
+    WITH normalized AS (
+      SELECT
+        LEAST(${w}, GREATEST(0, FLOOR((x::numeric / NULLIF(viewport_width, 0)) * ${w})::int)) AS x_norm,
+        LEAST(${h}, GREATEST(0, FLOOR((y::numeric / NULLIF(viewport_height, 0)) * ${h})::int)) AS y_norm
+      FROM heatmap_events
+      WHERE ${where}
+    )
+    SELECT x_norm, y_norm, COUNT(*) AS count
+    FROM normalized
+    GROUP BY x_norm, y_norm
+    ORDER BY count DESC
+    LIMIT 2000
+  `;
+
+  const result = await query(sql, params);
+  return {
+    points: result.rows.map(r => ({ x: r.x_norm, y: r.y_norm, count: Number(r.count) })),
+    referenceWidth: w,
+    referenceHeight: h,
+  };
+}
+
+const HEATMAP_SCREENSHOT_KEY_PREFIX = 'heatmap_screenshot.';
+
+/**
+ * Build key for heatmap screenshot in key_value_store: heatmap_screenshot.{shop_domain}.{page_url}
+ * Page URL is normalized for key (slash and query safe).
+ */
+function heatmapScreenshotKey(shopDomain, pageUrl) {
+  if (!shopDomain || !pageUrl) {
+    return null;
+  }
+  const safe = String(pageUrl).trim().replace(/\//g, '_').replace(/\?/g, '_').substring(0, 200);
+  return `${HEATMAP_SCREENSHOT_KEY_PREFIX}${shopDomain}.${safe}`;
+}
+
+/** Alternate key without leading underscore (e.g. products_abc for /products/abc) for key_value_store lookup */
+function heatmapScreenshotKeyAlt(shopDomain, pageUrl) {
+  if (!shopDomain || !pageUrl) {
+    return null;
+  }
+  const trimmed = String(pageUrl).trim();
+  const withoutLeading = trimmed.replace(/^\//, '');
+  const safe = withoutLeading.replace(/\//g, '_').replace(/\?/g, '_').substring(0, 200);
+  return `${HEATMAP_SCREENSHOT_KEY_PREFIX}${shopDomain}.${safe}`;
+}
+
+function parseScreenshotValue(v) {
+  if (v === null || v === undefined) {
+    return null;
+  }
+  const raw = String(v).trim();
+  if (raw === '') {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.url === 'string' && parsed.url.trim() !== '') {
+      return parsed.url.trim();
+    }
+  } catch (_) {
+    /* not JSON, use as plain URL */
+  }
+  return raw;
+}
+
+/**
+ * Get stored screenshot URL for heatmap overlay (from key_value_store).
+ * Key format: heatmap_screenshot.{shop_domain}.{page_url_normalized}
+ * Page URL is normalized: slashes and ? become underscores (e.g. /products/abc -> _products_abc).
+ * Tries primary key and alternate (no leading _) so admin can use either.
+ * Value can be a plain URL string or JSON like {"url": "https://..."}.
+ */
+async function getHeatmapScreenshotUrl(shopDomain, pageUrl) {
+  const key1 = heatmapScreenshotKey(shopDomain, pageUrl);
+  const key2 = heatmapScreenshotKeyAlt(shopDomain, pageUrl);
+  if (!key1 && !key2) {
+    return null;
+  }
+  try {
+    for (const key of [key1, key2].filter(Boolean)) {
+      const result = await query('SELECT value FROM key_value_store WHERE key = $1', [key]);
+      const v = result.rows[0]?.value;
+      const url = parseScreenshotValue(v);
+      if (url) {
+        return url;
+      }
+    }
+    return null;
+  } catch (_) {
+    return null;
+  }
+}
+
 module.exports = {
   insertHeatmapEvent,
   insertHeatmapEventsBatch,
   getClickHeatmap,
   getScrollHeatmap,
   getHeatmapPages,
+  getClickHeatmapForOverlay,
+  getHeatmapScreenshotUrl,
+  heatmapScreenshotKey,
+  REFERENCE_VIEWPORT,
 };

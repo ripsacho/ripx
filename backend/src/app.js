@@ -40,6 +40,11 @@ try {
   } catch (e) {
     logger.warn('Significance alert processor not started', { error: e.message });
   }
+  try {
+    require('./jobs/productSyncProcessor').startProductSyncProcessor();
+  } catch (e) {
+    logger.warn('Product sync processor not started', { error: e.message });
+  }
 } catch (err) {
   logger.warn('Job processors not started (Redis?)', { error: err.message });
 }
@@ -77,11 +82,12 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const tenantRoutes = require('./routes/tenantRoutes');
 const accountRoutes = require('./routes/accountRoutes');
 const authRoutes = require('./routes/authRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 const apiDocsRoutes = require('./routes/apiDocsRoutes');
 const { errorHandler } = require('./middleware/errorHandler');
 const { requestIdMiddleware } = require('./middleware/requestId');
 const { authenticate, authenticateShopify } = require('./middleware/auth');
-const { RATE_LIMIT } = require('./constants');
+const { RATE_LIMIT, HTTP_STATUS } = require('./constants');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -264,9 +270,20 @@ const apiLimiter = rateLimit({
     req.path === '/health' ||
     req.originalUrl === '/api/health' ||
     req.originalUrl?.startsWith('/api/track') ||
-    req.originalUrl?.startsWith('/api/webhooks'),
+    req.originalUrl?.startsWith('/api/webhooks') ||
+    req.originalUrl?.startsWith('/api/admin'),
 });
 app.use('/api/', apiLimiter);
+
+// Admin panel: separate rate limit (Phase 2) so admin has its own bucket and can be stricter
+const adminLimiter = rateLimit({
+  windowMs: RATE_LIMIT.WINDOW_MS,
+  max: parseInt(process.env.RATE_LIMIT_ADMIN_MAX, 10) || 120,
+  message: 'Too many admin requests, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/admin', adminLimiter);
 
 // Track endpoint: higher limit for storefront traffic (public, high volume)
 const trackLimiter = rateLimit({
@@ -285,10 +302,30 @@ app.use('/api-docs', apiDocsRoutes);
 const healthHandler = async (req, res) => {
   let dbStatus = 'unknown';
   let redisStatus = 'skipped';
+  let maintenanceValue = null;
+  let maintenanceMessage = null;
+  let announcementBanner = null;
   try {
     const { query } = require('./utils/database');
     await query('SELECT 1');
     dbStatus = 'ok';
+    const { getMaintenanceMode } = require('./utils/maintenanceMode');
+    maintenanceValue = await getMaintenanceMode();
+    const kv = await query(
+      "SELECT key, value FROM key_value_store WHERE key IN ('config.announcement_banner', 'config.maintenance_message')"
+    );
+    for (const row of kv.rows || []) {
+      const v =
+        row.value !== null && row.value !== undefined && String(row.value).trim() !== ''
+          ? String(row.value).trim()
+          : null;
+      if (row.key === 'config.announcement_banner' && v) {
+        announcementBanner = v;
+      }
+      if (row.key === 'config.maintenance_message' && v) {
+        maintenanceMessage = v;
+      }
+    }
   } catch (err) {
     dbStatus = 'error';
   }
@@ -306,16 +343,53 @@ const healthHandler = async (req, res) => {
   }
   const overall =
     dbStatus === 'ok' && (redisStatus === 'skipped' || redisStatus === 'ok') ? 'ok' : 'degraded';
-  res.json({
+  // 503 when DB is down so load balancers/orchestrators can mark instance unhealthy
+  if (dbStatus === 'error') {
+    res.status(HTTP_STATUS.SERVICE_UNAVAILABLE);
+  }
+  const payload = {
     status: overall,
     version: APP_VERSION,
     uptime: Math.floor((Date.now() - startTime) / 1000),
     timestamp: new Date().toISOString(),
     checks: { db: dbStatus, redis: redisStatus },
-  });
+  };
+  if (maintenanceValue) {
+    payload.maintenance = true;
+    payload.maintenanceMessage = maintenanceMessage || maintenanceValue;
+  }
+  if (announcementBanner) {
+    payload.announcementBanner = announcementBanner;
+  }
+  res.json(payload);
 };
 app.get('/health', healthHandler);
 app.get('/api/health', healthHandler);
+
+// Public config (Terms/Privacy URLs for app footer)
+app.get('/api/config/legal', async (req, res) => {
+  try {
+    const { query } = require('./utils/database');
+    const kv = await query(
+      "SELECT key, value FROM key_value_store WHERE key IN ('config.terms_url', 'config.privacy_url')"
+    );
+    const termsUrl = kv.rows.find(r => r.key === 'config.terms_url')?.value;
+    const privacyUrl = kv.rows.find(r => r.key === 'config.privacy_url')?.value;
+    res.json({
+      success: true,
+      termsUrl:
+        termsUrl !== null && termsUrl !== undefined && String(termsUrl).trim() !== ''
+          ? String(termsUrl).trim()
+          : null,
+      privacyUrl:
+        privacyUrl !== null && privacyUrl !== undefined && String(privacyUrl).trim() !== ''
+          ? String(privacyUrl).trim()
+          : null,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Failed to load config' });
+  }
+});
 
 // API Routes
 if (process.env.RIPX_STANDALONE_ONLY !== 'true') {
@@ -323,6 +397,7 @@ if (process.env.RIPX_STANDALONE_ONLY !== 'true') {
 }
 app.use('/api/tenants', tenantRoutes); // Tenant registration (standalone)
 app.use('/api/account', authenticate, accountRoutes); // Multi-store: list/add stores
+app.use('/api/dashboard', authenticate, require('./routes/dashboardRoutes'));
 app.use('/api/tests', authenticate, testRoutes);
 app.use('/api/analytics', authenticate, analyticsRoutes);
 app.use('/api/shopify', authenticateShopify, shopifyRoutes); // Shopify-specific (requires shop)
@@ -334,6 +409,7 @@ app.use('/api/profile', authenticate, profileRoutes);
 app.use('/api/settings', authenticate, settingsRoutes);
 app.use('/api/targeting-presets', authenticate, targetingPresetRoutes);
 app.use('/api/notifications', authenticate, notificationRoutes);
+app.use('/api/admin', adminRoutes); // Admin panel (requireAdmin inside router)
 
 // 404 handler for API routes - return JSON for unmatched /api/* paths
 app.use('/api', (req, res) => {

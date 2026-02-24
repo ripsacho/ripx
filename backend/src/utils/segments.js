@@ -59,9 +59,10 @@ function normalizeSegments(segments) {
     const filtered = segments.page_rules
       .filter(r => r && typeof r.type === 'string' && r.pattern != null && String(r.pattern).trim()) // eslint-disable-line eqeqeq
       .map(r => {
-        const matchType = (r.match_type && VALID_MATCH_TYPES.includes(String(r.match_type).toLowerCase()))
-          ? String(r.match_type).toLowerCase()
-          : 'regex';
+        const matchType =
+          r.match_type && VALID_MATCH_TYPES.includes(String(r.match_type).toLowerCase())
+            ? String(r.match_type).toLowerCase()
+            : 'regex';
         return {
           type: String(r.type || 'include').toLowerCase(),
           pattern: String(r.pattern).trim(),
@@ -73,31 +74,46 @@ function normalizeSegments(segments) {
 
   // Device rules: multiple include/exclude devices
   if (Array.isArray(segments.device_rules) && segments.device_rules.length > 0) {
-    result.device_rules = segments.device_rules.filter(
-      r => r && typeof r.type === 'string' && ['desktop', 'mobile'].includes(String(r.value || '').toLowerCase())
-    ).map(r => ({ type: r.type.toLowerCase(), value: String(r.value).toLowerCase() }));
+    result.device_rules = segments.device_rules
+      .filter(
+        r =>
+          r &&
+          typeof r.type === 'string' &&
+          ['desktop', 'mobile'].includes(String(r.value || '').toLowerCase())
+      )
+      .map(r => ({ type: r.type.toLowerCase(), value: String(r.value).toLowerCase() }));
   }
 
   // Audience rules: multiple include/exclude (customer type or countries)
   if (Array.isArray(segments.audience_rules) && segments.audience_rules.length > 0) {
-    result.audience_rules = segments.audience_rules.filter(
-      r => r && typeof r.type === 'string' && r.field && r.value != null // eslint-disable-line eqeqeq
-    ).map(r => {
-      const rule = { type: r.type.toLowerCase(), field: String(r.field).toLowerCase() };
-      if (rule.field === 'customer') {
-        rule.value = String(r.value || '').toLowerCase();
-      } else if (rule.field === 'country') {
-        rule.value = Array.isArray(r.value)
-          ? r.value.map(String).filter(Boolean)
-          : String(r.value || '').split(',').map(s => s.trim()).filter(Boolean);
-      }
-      return rule;
-    });
+    result.audience_rules = segments.audience_rules
+      .filter(
+        r => r && typeof r.type === 'string' && r.field && r.value != null // eslint-disable-line eqeqeq
+      )
+      .map(r => {
+        const rule = { type: r.type.toLowerCase(), field: String(r.field).toLowerCase() };
+        if (rule.field === 'customer') {
+          rule.value = String(r.value || '').toLowerCase();
+        } else if (rule.field === 'country') {
+          rule.value = Array.isArray(r.value)
+            ? r.value.map(String).filter(Boolean)
+            : String(r.value || '')
+                .split(',')
+                .map(s => s.trim())
+                .filter(Boolean);
+        }
+        return rule;
+      });
   }
 
   // JS targeting: custom code evaluated client-side
-  if (segments.js_targeting && typeof segments.js_targeting === 'object' && segments.js_targeting.enabled) {
-    const code = typeof segments.js_targeting.code === 'string' ? segments.js_targeting.code.trim() : '';
+  if (
+    segments.js_targeting &&
+    typeof segments.js_targeting === 'object' &&
+    segments.js_targeting.enabled
+  ) {
+    const code =
+      typeof segments.js_targeting.code === 'string' ? segments.js_targeting.code.trim() : '';
     if (code) {
       result.js_targeting = { enabled: true, code };
     }

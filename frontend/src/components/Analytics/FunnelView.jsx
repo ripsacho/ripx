@@ -10,14 +10,7 @@ import { apiGet } from '../../services';
 import { getDefaultAnalyticsDateRange } from '../../utils/preferences';
 import { CHART_PALETTE, FUNNEL_STEP_COLORS } from '../../constants';
 import styles from './FunnelView.module.css';
-import {
-  FunnelChart,
-  Funnel,
-  LabelList,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-} from 'recharts';
+import { FunnelChart, Funnel, LabelList, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 const COLORS = CHART_PALETTE;
 
@@ -48,10 +41,16 @@ function FunnelSkeleton() {
     <div className={styles.funnelSection}>
       <div className={styles.funnelHeader}>
         <div className={styles.funnelHeaderLeft}>
-          <div style={{ width: 180, height: 24, background: 'var(--bg-tertiary)', borderRadius: 4 }} />
-          <div style={{ width: 280, height: 16, background: 'var(--bg-tertiary)', borderRadius: 4 }} />
+          <div
+            style={{ width: 180, height: 24, background: 'var(--bg-tertiary)', borderRadius: 4 }}
+          />
+          <div
+            style={{ width: 280, height: 16, background: 'var(--bg-tertiary)', borderRadius: 4 }}
+          />
         </div>
-        <div style={{ width: 140, height: 36, background: 'var(--bg-tertiary)', borderRadius: 8 }} />
+        <div
+          style={{ width: 140, height: 36, background: 'var(--bg-tertiary)', borderRadius: 8 }}
+        />
       </div>
       <div className={styles.funnelChartWrapper}>
         <div style={{ height: 320, background: 'var(--bg-tertiary)', borderRadius: 12 }} />
@@ -86,7 +85,9 @@ function FunnelView({ testId, variants = [], segmentDevice = 'all', segmentCount
         const data = res.data?.funnel || res.data?.data?.funnel;
         setFunnel(data || null);
         if (data?.byVariant && Object.keys(data.byVariant).length > 0) {
-          setSelectedVariant(prev => (prev && data.byVariant[prev] ? prev : Object.keys(data.byVariant)[0]));
+          setSelectedVariant(prev =>
+            prev && data.byVariant[prev] ? prev : Object.keys(data.byVariant)[0]
+          );
         }
       })
       .catch(() => setFunnel(null))
@@ -120,7 +121,8 @@ function FunnelView({ testId, variants = [], segmentDevice = 'all', segmentCount
                 <li>
                   <Text as="span" variant="bodySm">
                     <strong>Add to Cart</strong> – Call{' '}
-                    <code>RipX.trackEvent(testId, &apos;add_to_cart&apos;)</code> on the add-to-cart button
+                    <code>RipX.trackEvent(testId, &apos;add_to_cart&apos;)</code> on the add-to-cart
+                    button
                   </Text>
                 </li>
                 <li>
@@ -167,7 +169,8 @@ function FunnelView({ testId, variants = [], segmentDevice = 'all', segmentCount
   const funnelData = buildFunnelData(selectedData, steps);
 
   const addToCartStep = steps.find(s => s.id === 'add_to_cart');
-  const hasZeroAddToCart = addToCartStep && variantIds.some(vid => (funnel.byVariant[vid][addToCartStep.id] || 0) === 0);
+  const hasZeroAddToCart =
+    addToCartStep && variantIds.some(vid => (funnel.byVariant[vid][addToCartStep.id] || 0) === 0);
   const totalVisitors = variantIds.reduce((s, vid) => s + (funnel.byVariant[vid].visitors || 0), 0);
 
   const CustomTooltip = ({ active, payload }) => {
@@ -175,7 +178,9 @@ function FunnelView({ testId, variants = [], segmentDevice = 'all', segmentCount
     const entry = payload[0].payload;
     const prev = funnelData[funnelData.indexOf(entry) - 1];
     const dropOff =
-      prev && prev.value > 0 ? `${(((prev.value - entry.value) / prev.value) * 100).toFixed(1)}% drop-off` : null;
+      prev && prev.value > 0
+        ? `${(((prev.value - entry.value) / prev.value) * 100).toFixed(1)}% drop-off`
+        : null;
     return (
       <div
         style={{
@@ -200,20 +205,37 @@ function FunnelView({ testId, variants = [], segmentDevice = 'all', segmentCount
 
   const SingleFunnelChart = ({ data, height = 320 }) => (
     <ResponsiveContainer width="100%" height={height}>
-      <FunnelChart data={data} layout="centric" margin={{ top: 20, right: 40, bottom: 20, left: 40 }}>
+      <FunnelChart
+        data={data}
+        layout="centric"
+        margin={{ top: 20, right: 40, bottom: 20, left: 40 }}
+      >
         <Tooltip content={<CustomTooltip />} />
         <Funnel dataKey="value" nameKey="name" isAnimationActive>
           {data.map((entry, index) => (
-            <Cell key={`cell-${index}`} fill={entry.fill} stroke="rgba(255,255,255,0.3)" strokeWidth={1} />
+            <Cell
+              key={`cell-${index}`}
+              fill={entry.fill}
+              stroke="rgba(255,255,255,0.3)"
+              strokeWidth={1}
+            />
           ))}
-          <LabelList dataKey="name" position="center" fill="#fff" stroke="none" style={{ fontWeight: 600, fontSize: 14 }} />
+          <LabelList
+            dataKey="name"
+            position="center"
+            fill="#fff"
+            stroke="none"
+            style={{ fontWeight: 600, fontSize: 14 }}
+          />
           <LabelList
             dataKey="value"
             position="center"
             fill="#fff"
             stroke="none"
             style={{ fontWeight: 400, fontSize: 12 }}
-            formatter={val => (val !== null && val !== undefined ? Number(val).toLocaleString() : '0')}
+            formatter={val =>
+              val !== null && val !== undefined ? Number(val).toLocaleString() : '0'
+            }
           />
         </Funnel>
       </FunnelChart>
@@ -258,7 +280,8 @@ function FunnelView({ testId, variants = [], segmentDevice = 'all', segmentCount
         <div className={styles.funnelBanner}>
           <Banner tone="warning" title="Add to Cart has no data">
             <Text as="p" variant="bodySm">
-              Add <code>RipX.trackEvent(testId, &apos;add_to_cart&apos;)</code> to your add-to-cart button to track this step.
+              Add <code>RipX.trackEvent(testId, &apos;add_to_cart&apos;)</code> to your add-to-cart
+              button to track this step.
             </Text>
           </Banner>
         </div>
@@ -304,21 +327,23 @@ function FunnelView({ testId, variants = [], segmentDevice = 'all', segmentCount
           const conversion = data.conversion || 0;
           const cartRate = visitors > 0 ? ((addToCart / visitors) * 100).toFixed(1) : '0';
           const purchaseRate = visitors > 0 ? ((conversion / visitors) * 100).toFixed(1) : '0';
-          const cartToPurchaseRate = addToCart > 0 ? ((conversion / addToCart) * 100).toFixed(1) : '0';
+          const cartToPurchaseRate =
+            addToCart > 0 ? ((conversion / addToCart) * 100).toFixed(1) : '0';
 
           return (
             <div key={variantId} className={styles.funnelStatCard}>
               <div className={styles.funnelStatCardHeader}>
-                <div
-                  className={styles.funnelStatCardDot}
-                  style={{ backgroundColor: color }}
-                />
+                <div className={styles.funnelStatCardDot} style={{ backgroundColor: color }} />
                 <h3 className={styles.funnelStatCardTitle}>{name}</h3>
               </div>
               <div className={styles.funnelStatCardValues}>
                 <span className={styles.funnelStatCardValue}>Visitors → Cart: {cartRate}%</span>
-                <span className={styles.funnelStatCardValue}>Cart → Purchase: {cartToPurchaseRate}%</span>
-                <span className={styles.funnelStatCardHighlight}>Overall: {purchaseRate}% conversion</span>
+                <span className={styles.funnelStatCardValue}>
+                  Cart → Purchase: {cartToPurchaseRate}%
+                </span>
+                <span className={styles.funnelStatCardHighlight}>
+                  Overall: {purchaseRate}% conversion
+                </span>
               </div>
             </div>
           );

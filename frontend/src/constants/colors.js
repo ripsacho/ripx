@@ -14,10 +14,6 @@ export const CHART_PALETTE = [
   '#e91e63', // pink
 ];
 
-export const FUNNEL_STEP_COLORS = [
-  '#06b6d4',
-  '#0891b2',
-  '#14b8a6',
-];
+export const FUNNEL_STEP_COLORS = ['#06b6d4', '#0891b2', '#14b8a6'];
 
 export const VARIANT_COLORS = CHART_PALETTE;

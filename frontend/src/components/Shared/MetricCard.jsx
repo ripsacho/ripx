@@ -22,16 +22,25 @@ import { useAnimatedCounter } from '../../hooks';
  * @param {boolean} animated - When true, animates numeric values with count-up effect
  * @param {string} format - When animated: 'number' (toLocaleString), 'currency' ($), 'plain'
  */
-function MetricCard({ title, value, subtitle, trend, variant = 'default', tooltip, animated = false, format = 'number' }) {
+function MetricCard({
+  title,
+  value,
+  subtitle,
+  trend,
+  variant = 'default',
+  tooltip,
+  animated = false,
+  format = 'number',
+}) {
   const isNumeric = typeof value === 'number';
   const shouldAnimate = animated && isNumeric;
   const animatedVal = useAnimatedCounter(shouldAnimate ? value : 0, 800, shouldAnimate);
   const displayValue = shouldAnimate
-    ? (format === 'currency'
+    ? format === 'currency'
       ? `$${Number(animatedVal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
       : format === 'plain'
         ? animatedVal
-        : Number(animatedVal).toLocaleString())
+        : Number(animatedVal).toLocaleString()
     : value;
 
   const getTrendColor = trendValue => {

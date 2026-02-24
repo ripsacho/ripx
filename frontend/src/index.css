@@ -99,6 +99,16 @@
   --transition-smooth: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Respect reduced motion preference globally */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition-fast: 0.01ms;
+    --transition-base: 0.01ms;
+    --transition-slow: 0.01ms;
+    --transition-smooth: 0.01ms;
+  }
+}
+
 /* Dark Theme - Futuristic cyan/violet */
 [data-theme="dark"] {
   /* Background Colors */
@@ -288,7 +298,8 @@ textarea:focus-visible {
   transition: top 0.25s ease, transform 0.2s ease;
 }
 
-.skip-to-main:focus {
+.skip-to-main:focus,
+.skip-to-main:focus-visible {
   top: 16px;
   outline: 2px solid var(--text-inverse);
   outline-offset: 2px;
@@ -347,7 +358,9 @@ textarea:focus-visible {
   left: 0;
   top: 0;
   width: 280px;
-  min-height: 100vh;
+  height: 100vh;
+  max-height: 100vh;
+  min-height: 0;
   border-right: 1px solid rgba(6, 182, 212, 0.1);
   background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
   backdrop-filter: blur(12px) saturate(1.1);
@@ -605,9 +618,10 @@ textarea:focus-visible {
   }
 }
 
-/* Sidebar Navigation - Smart pill-style active, icon badges */
+/* Sidebar Navigation - Smart pill-style active, icon badges; scrolls when list is long */
 .sidebar-nav {
   flex: 1;
+  min-height: 0;
   padding: 0.75rem 0.5rem;
   overflow-y: auto;
   overflow-x: hidden;
@@ -2046,42 +2060,61 @@ textarea:focus-visible {
   align-items: flex-start;
   gap: 0.5rem;
   margin-bottom: 0;
-  padding: 4px 0 0;
+  padding: 0;
   background: transparent;
   color: var(--text-primary);
   transition: margin-bottom 0.2s ease-out, padding 0.25s ease;
 }
 
-.wizard-progress-bar {
+/* Progress steps - in flow until you scroll; then sticks below TopBar (create + test detail) */
+.wizard-page .wizard-progress-bar {
   position: sticky;
-  top: 48px;
+  top: 56px; /* when stuck, sit below app TopBar */
   z-index: 100;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.99) 0%, rgba(248, 250, 252, 0.98) 50%, rgba(6, 182, 212, 0.02) 100%);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  padding: 10px 20px 14px;
-  margin-bottom: 16px;
-  border: 1px solid var(--border-secondary);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.99) 0%,
+    rgba(250, 253, 254, 0.98) 40%,
+    rgba(240, 253, 255, 0.96) 100%
+  );
+  backdrop-filter: blur(24px) saturate(1.05);
+  -webkit-backdrop-filter: blur(24px) saturate(1.05);
+  padding: 6px 20px 8px;
+  margin-bottom: 8px;
+  border: 1px solid rgba(6, 182, 212, 0.12);
   border-top: none;
   border-left: 4px solid var(--futuristic-cyan);
-  border-radius: 0 0 14px 14px;
+  border-radius: 0 0 12px 12px;
   box-shadow:
-    0 2px 10px rgba(0, 0, 0, 0.03),
-    0 1px 0 rgba(255, 255, 255, 0.9) inset,
-    0 0 0 1px rgba(0, 0, 0, 0.02);
+    0 1px 0 0 rgba(255, 255, 255, 0.9) inset,
+    0 4px 16px -4px rgba(0, 0, 0, 0.06),
+    0 2px 6px -2px rgba(6, 182, 212, 0.08);
   transition: box-shadow 0.3s ease, padding 0.25s ease, margin-bottom 0.25s ease, border-radius 0.25s ease;
 }
 
 /* Prevent inputs from scrolling under sticky steps - scroll padding for focus */
 html:has(.wizard-page),
 body:has(.wizard-page) {
-  scroll-padding-top: 140px;
+  scroll-padding-top: 110px;
 }
 
-/* Ensure wizard step content has space below sticky bar */
+/* Wizard section: flex column so progress bar can stick when scrolling */
+.wizard-page .wizard-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 60vh;
+}
+
+.wizard-page .wizard-section .wizard-step {
+  flex: 1;
+  padding-bottom: 92px; /* space above fixed action bar */
+}
+
+/* Step content area – no top gap below progress bar */
 .wizard-page .wizard-step {
-  padding-top: 8px;
-  scroll-margin-top: 140px;
+  padding-top: 0;
+  padding-left: 2px;
+  scroll-margin-top: 110px;
 }
 
 .wizard-progress-bar::before {
@@ -2091,31 +2124,45 @@ body:has(.wizard-page) {
   left: 0;
   right: 0;
   height: 3px;
-  background: linear-gradient(90deg, var(--accent-primary) 0%, var(--futuristic-violet) 50%, var(--futuristic-teal) 100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--futuristic-cyan) 15%,
+    var(--futuristic-violet) 50%,
+    var(--futuristic-teal) 85%,
+    transparent 100%
+  );
   border-radius: 0 0 3px 3px;
-  opacity: 0.9;
+  opacity: 0.92;
+  box-shadow: 0 0 12px -2px rgba(6, 182, 212, 0.25);
 }
 
 .wizard-progress-bar.is-stuck {
-  padding: 16px 26px 20px;
-  margin-bottom: 24px;
-  border-radius: 0 0 18px 18px;
+  padding: 8px 24px 10px;
+  margin-bottom: 10px;
+  border-radius: 0 0 14px 14px;
   box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.1),
-    0 2px 12px rgba(6, 182, 212, 0.08),
-    0 1px 0 rgba(255, 255, 255, 0.95) inset,
-    0 0 0 1px rgba(0, 0, 0, 0.04);
+    0 1px 0 0 rgba(255, 255, 255, 0.95) inset,
+    0 10px 40px -8px rgba(0, 0, 0, 0.12),
+    0 4px 16px -4px rgba(6, 182, 212, 0.12),
+    0 0 0 1px rgba(0, 0, 0, 0.03);
 }
 
 [data-theme="dark"] .wizard-progress-bar {
-  background: linear-gradient(180deg, rgba(28, 28, 28, 0.98) 0%, rgba(22, 22, 22, 0.96) 50%, rgba(6, 182, 212, 0.03) 100%);
-  border-color: rgba(255, 255, 255, 0.06);
+  background: linear-gradient(
+    165deg,
+    rgba(26, 28, 30, 0.98) 0%,
+    rgba(22, 26, 30, 0.97) 40%,
+    rgba(18, 28, 32, 0.95) 100%
+  );
+  border-color: rgba(6, 182, 212, 0.15);
   border-left: 4px solid var(--futuristic-cyan);
-  border-radius: 0 0 20px 20px;
+  border-radius: 0 0 18px 18px;
   box-shadow:
-    0 4px 28px rgba(0, 0, 0, 0.5),
-    0 1px 0 rgba(255, 255, 255, 0.03) inset,
-    0 0 0 1px rgba(255, 255, 255, 0.05);
+    0 1px 0 0 rgba(255, 255, 255, 0.02) inset,
+    0 6px 20px -4px rgba(0, 0, 0, 0.5),
+    0 2px 8px -2px rgba(6, 182, 212, 0.08),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 [data-theme="dark"] .wizard-progress-bar::before {
@@ -2157,6 +2204,7 @@ body:has(.wizard-page) {
   margin-top: 2px;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   max-width: 100%;
@@ -2196,6 +2244,7 @@ body:has(.wizard-page) {
 
 .wizard-title-in-page .wizard-title-description {
   -webkit-line-clamp: 1;
+  line-clamp: 1;
   margin-top: 0;
 }
 
@@ -2203,214 +2252,297 @@ body:has(.wizard-page) {
   margin-bottom: 0;
 }
 
-/* Actions row: save status + buttons - Premium card-style footer */
-.wizard-actions {
+/* Sticky footer: premium bar, status left / actions right */
+.wizard-page .wizard-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1.5rem;
   flex-wrap: wrap;
-  margin-top: 2rem;
-  padding: 1.5rem 2rem;
+  margin-top: auto;
+  padding: 14px 28px 18px;
+  padding-bottom: max(18px, env(safe-area-inset-bottom));
+  min-height: 60px;
+  max-width: 100%;
   background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.85) 0%,
-    rgba(250, 251, 252, 0.75) 100%
+    175deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(248, 252, 254, 0.97) 50%,
+    rgba(240, 253, 255, 0.95) 100%
   );
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(6, 182, 212, 0.15);
-  border-radius: 18px;
+  backdrop-filter: blur(28px) saturate(1.08);
+  -webkit-backdrop-filter: blur(28px) saturate(1.08);
+  border-top: 1px solid rgba(6, 182, 212, 0.1);
   box-shadow:
-    0 4px 24px rgba(0, 0, 0, 0.06),
-    0 0 0 1px rgba(0, 0, 0, 0.02),
-    inset 0 1px 0 rgba(255, 255, 255, 0.5);
-  position: relative;
+    0 1px 0 0 rgba(255, 255, 255, 0.85) inset,
+    0 -1px 0 0 rgba(0, 0, 0, 0.04),
+    0 -12px 32px -8px rgba(0, 0, 0, 0.08),
+    0 -4px 12px -4px rgba(6, 182, 212, 0.06);
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 999;
   overflow: hidden;
-  animation: wizard-actions-fade 0.35s ease-out;
+  animation: wizard-actions-fade 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 @keyframes wizard-actions-fade {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .wizard-actions {
+  .wizard-page .wizard-actions {
     animation: none;
   }
 }
 
-.wizard-actions::before {
+.wizard-page .wizard-actions::before {
   content: '';
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  height: 3px;
+  height: 2px;
   background: linear-gradient(
     90deg,
-    transparent,
-    var(--futuristic-cyan),
-    var(--futuristic-violet),
-    transparent
+    transparent 0%,
+    var(--futuristic-cyan) 18%,
+    var(--futuristic-violet) 50%,
+    var(--futuristic-teal) 82%,
+    transparent 100%
   );
-  opacity: 0.8;
+  opacity: 0.7;
+  box-shadow: 0 0 16px -2px rgba(6, 182, 212, 0.2);
 }
 
-[data-theme="dark"] .wizard-actions {
+[data-theme="dark"] .wizard-page .wizard-actions {
   background: linear-gradient(
-    180deg,
-    rgba(26, 26, 26, 0.9) 0%,
-    rgba(18, 18, 18, 0.85) 100%
+    175deg,
+    rgba(22, 24, 26, 0.98) 0%,
+    rgba(18, 22, 26, 0.97) 50%,
+    rgba(14, 24, 28, 0.95) 100%
   );
-  border-color: rgba(6, 182, 212, 0.2);
+  border-top-color: rgba(6, 182, 212, 0.18);
   box-shadow:
-    0 4px 24px rgba(0, 0, 0, 0.4),
-    0 0 0 1px rgba(6, 182, 212, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    0 1px 0 0 rgba(255, 255, 255, 0.03) inset,
+    0 -1px 0 0 rgba(0, 0, 0, 0.2),
+    0 -12px 36px -8px rgba(0, 0, 0, 0.45),
+    0 -4px 14px -4px rgba(6, 182, 212, 0.1);
 }
 
-/* Step indicator (create mode) */
-.wizard-step-indicator-text {
-  display: flex;
+[data-theme="dark"] .wizard-page .wizard-step-indicator-text {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.1) 0%, rgba(6, 182, 212, 0.05) 100%);
+  border-color: rgba(6, 182, 212, 0.2);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="dark"] .wizard-page .wizard-save-status {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.08) 0%, rgba(6, 182, 212, 0.04) 100%);
+  border-color: rgba(6, 182, 212, 0.18);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme="dark"] .wizard-page .wizard-actions-buttons .Polaris-Button:not(.Polaris-Button--primary):not([primary]) {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(6, 182, 212, 0.3) !important;
+  box-shadow: 0 1px 0 0 rgba(0, 0, 0, 0.2) !important;
+}
+
+[data-theme="dark"] .wizard-page .wizard-actions-buttons .Polaris-Button:not(.Polaris-Button--primary):not([primary]):hover {
+  background: rgba(6, 182, 212, 0.14) !important;
+  border-color: rgba(6, 182, 212, 0.45) !important;
+  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.15) !important;
+}
+
+/* Left: step indicator (create) – pill with clear hierarchy */
+.wizard-page .wizard-step-indicator-text {
+  display: inline-flex;
   align-items: baseline;
-  gap: 0.35rem;
-  font-size: 0.9375rem;
+  gap: 0.4rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: var(--text-secondary);
+  padding: 0.4rem 0.9rem;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.08) 0%, rgba(6, 182, 212, 0.04) 100%);
+  border: 1px solid rgba(6, 182, 212, 0.14);
+  box-shadow: 0 1px 2px rgba(6, 182, 212, 0.06);
+  letter-spacing: 0.02em;
 }
 
-.wizard-step-current {
-  font-size: 1.25rem;
+.wizard-page .wizard-step-current {
+  font-size: 1.1875rem;
   font-weight: 800;
   color: var(--accent-primary);
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
 
-.wizard-step-sep {
+.wizard-page .wizard-step-sep {
   font-weight: 500;
   color: var(--text-tertiary);
+  font-size: 0.8125rem;
 }
 
-.wizard-step-total {
+.wizard-page .wizard-step-total {
   font-weight: 600;
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
 
-.wizard-actions-buttons {
+/* Right: action buttons – clear grouping and spacing */
+.wizard-page .wizard-actions-buttons {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.625rem;
   flex-wrap: wrap;
 }
 
-/* Primary action (Next, Create Test, Save Changes) */
-.wizard-actions-buttons .Polaris-Button--primary,
-.wizard-actions-buttons .Polaris-Button[primary] {
+/* Primary: Next / Create Test / Save (final) – strong CTA */
+.wizard-page .wizard-actions-buttons .Polaris-Button--primary,
+.wizard-page .wizard-actions-buttons .Polaris-Button[primary] {
   min-height: 42px !important;
-  padding: 0.625rem 1.5rem !important;
+  padding: 0.55rem 1.5rem !important;
   font-size: 0.9375rem !important;
-  font-weight: 700 !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.02em !important;
   border-radius: 12px !important;
-  background: linear-gradient(135deg, var(--futuristic-cyan) 0%, #0891b2 100%) !important;
+  background: linear-gradient(145deg, #06b6d4 0%, #0891b2 48%, #0e7490 100%) !important;
   border: none !important;
-  box-shadow: 0 4px 14px rgba(6, 182, 212, 0.35) !important;
-  transition: all 0.22s ease !important;
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.28) inset,
+    0 2px 4px rgba(6, 182, 212, 0.22),
+    0 6px 16px -4px rgba(6, 182, 212, 0.38),
+    0 0 0 1px rgba(6, 182, 212, 0.1) !important;
+  transition: transform 0.18s ease, box-shadow 0.22s ease, background 0.2s ease !important;
 }
 
-.wizard-actions-buttons .Polaris-Button--primary:hover:not(:disabled),
-.wizard-actions-buttons .Polaris-Button[primary]:hover:not(:disabled) {
+.wizard-page .wizard-actions-buttons .Polaris-Button--primary:hover:not(:disabled),
+.wizard-page .wizard-actions-buttons .Polaris-Button[primary]:hover:not(:disabled) {
+  background: linear-gradient(145deg, #22d3ee 0%, #06b6d4 48%, #0891b2 100%) !important;
   transform: translateY(-2px) !important;
-  box-shadow: 0 6px 20px rgba(6, 182, 212, 0.45) !important;
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.32) inset,
+    0 4px 10px rgba(6, 182, 212, 0.28),
+    0 10px 24px -6px rgba(6, 182, 212, 0.42),
+    0 0 0 1px rgba(6, 182, 212, 0.15) !important;
 }
 
-.wizard-actions-buttons .Polaris-Button--primary:disabled,
-.wizard-actions-buttons .Polaris-Button[primary]:disabled,
-.wizard-actions-buttons .Polaris-Button--primary[aria-busy="true"],
-.wizard-actions-buttons .Polaris-Button[primary][aria-busy="true"] {
-  opacity: 0.65 !important;
+.wizard-page .wizard-actions-buttons .Polaris-Button--primary:active:not(:disabled),
+.wizard-page .wizard-actions-buttons .Polaris-Button[primary]:active:not(:disabled) {
+  transform: translateY(0) !important;
+  box-shadow:
+    0 1px 0 0 rgba(0, 0, 0, 0.1) inset,
+    0 1px 3px rgba(6, 182, 212, 0.3) !important;
+}
+
+.wizard-page .wizard-actions-buttons .Polaris-Button--primary:disabled,
+.wizard-page .wizard-actions-buttons .Polaris-Button[primary]:disabled,
+.wizard-page .wizard-actions-buttons .Polaris-Button--primary[aria-busy="true"],
+.wizard-page .wizard-actions-buttons .Polaris-Button[primary][aria-busy="true"] {
+  opacity: 0.5 !important;
   transform: none !important;
+  box-shadow: 0 1px 3px rgba(6, 182, 212, 0.2) !important;
 }
 
-/* Secondary actions (Back, Save Changes mid-flow, Cancel) */
-.wizard-actions-buttons .Polaris-Button:not(.Polaris-Button--primary):not([primary]) {
-  min-height: 40px !important;
-  padding: 0.5rem 1.25rem !important;
+/* Secondary: Back, Save (mid-flow), Cancel – outline style */
+.wizard-page .wizard-actions-buttons .Polaris-Button:not(.Polaris-Button--primary):not([primary]) {
+  min-height: 42px !important;
+  padding: 0.55rem 1.2rem !important;
   font-size: 0.875rem !important;
   font-weight: 600 !important;
-  border-radius: 10px !important;
-  border: 1px solid rgba(6, 182, 212, 0.25) !important;
-  background: linear-gradient(
-    135deg,
-    rgba(6, 182, 212, 0.06) 0%,
-    rgba(139, 92, 246, 0.03) 100%
-  ) !important;
+  letter-spacing: 0.02em !important;
+  border-radius: 12px !important;
+  border: 1.5px solid rgba(6, 182, 212, 0.24) !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.85) 0%, rgba(250, 252, 253, 0.75) 100%) !important;
   color: var(--accent-primary) !important;
-  transition: all 0.2s ease !important;
+  box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.6) inset, 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease !important;
 }
 
-.wizard-actions-buttons .Polaris-Button:not(.Polaris-Button--primary):not([primary]):hover {
-  background: rgba(6, 182, 212, 0.12) !important;
-  border-color: rgba(6, 182, 212, 0.4) !important;
+.wizard-page .wizard-actions-buttons .Polaris-Button:not(.Polaris-Button--primary):not([primary]):hover {
+  background: rgba(6, 182, 212, 0.1) !important;
+  border-color: rgba(6, 182, 212, 0.45) !important;
+  box-shadow: 0 2px 6px rgba(6, 182, 212, 0.12) !important;
+  transform: translateY(-1px) !important;
 }
 
-/* Icon sizing in wizard buttons */
-.wizard-actions-buttons .Polaris-Button .Polaris-Icon,
-.wizard-actions-buttons .Polaris-Button svg {
+.wizard-page .wizard-actions-buttons .Polaris-Button:not(.Polaris-Button--primary):not([primary]):active {
+  transform: translateY(0) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+}
+
+/* Icon sizing in wizard footer buttons */
+.wizard-page .wizard-actions-buttons .Polaris-Button .Polaris-Icon,
+.wizard-page .wizard-actions-buttons .Polaris-Button svg {
   width: 18px !important;
   height: 18px !important;
+  opacity: 0.95;
 }
 
-/* Focus states - accessibility */
-.wizard-actions-buttons .Polaris-Button:focus-visible {
+/* Focus states - accessibility (wizard footer buttons) */
+.wizard-page .wizard-actions-buttons .Polaris-Button:not(.Polaris-Button--primary):not([primary]):focus-visible {
   outline: 2px solid var(--accent-primary) !important;
   outline-offset: 2px !important;
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.6) inset,
+    0 1px 3px rgba(0, 0, 0, 0.04),
+    0 0 0 4px rgba(6, 182, 212, 0.22) !important;
 }
 
-.wizard-actions-buttons .Polaris-Button--primary:focus-visible,
-.wizard-actions-buttons .Polaris-Button[primary]:focus-visible {
-  outline: 2px solid rgba(255, 255, 255, 0.9) !important;
+.wizard-page .wizard-actions-buttons .Polaris-Button--primary:focus-visible,
+.wizard-page .wizard-actions-buttons .Polaris-Button[primary]:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.95) !important;
   outline-offset: 2px !important;
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.28) inset,
+    0 0 0 4px rgba(6, 182, 212, 0.35),
+    0 4px 12px -2px rgba(6, 182, 212, 0.3) !important;
 }
 
-/* Divider before Cancel */
-.wizard-actions-divider {
+/* Divider between main actions and Cancel */
+.wizard-page .wizard-actions-divider {
   display: block;
   width: 1px;
-  height: 24px;
-  min-height: 24px;
-  background: rgba(6, 182, 212, 0.2);
+  height: 26px;
+  min-height: 26px;
+  background: linear-gradient(180deg, transparent, rgba(6, 182, 212, 0.25), transparent);
   flex-shrink: 0;
-  margin: 0 0.5rem;
+  margin: 0 0.25rem 0 0.875rem;
   align-self: center;
+  border-radius: 1px;
 }
 
-.wizard-actions-buttons .Polaris-InlineStack {
-  gap: 0.75rem !important;
+.wizard-page .wizard-actions-buttons .Polaris-InlineStack {
+  gap: 0.625rem !important;
 }
 
-.wizard-save-status {
+/* Save status (edit mode): grouped pills and time */
+.wizard-page .wizard-save-status {
   display: flex;
   align-items: center;
   gap: 0.75rem;
   flex-shrink: 0;
-  padding-left: 0.5rem;
-  border-left: 3px solid rgba(6, 182, 212, 0.2);
+  padding: 0.4rem 0.9rem;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.06) 0%, rgba(6, 182, 212, 0.03) 100%);
+  border: 1px solid rgba(6, 182, 212, 0.12);
+  box-shadow: 0 1px 2px rgba(6, 182, 212, 0.05);
 }
 
-.wizard-save-pill {
+.wizard-page .wizard-save-pill {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
+  gap: 0.4rem;
+  padding: 0.32rem 0.7rem;
   font-size: 0.8125rem;
   font-weight: 600;
   letter-spacing: 0.02em;
   border-radius: 10px;
-  transition: all 0.2s ease;
+  transition: opacity 0.2s ease, transform 0.15s ease;
 }
 
 .wizard-save-pill .Polaris-Icon,
@@ -2520,7 +2652,7 @@ body:has(.wizard-page) {
   align-items: center;
   justify-content: flex-start;
   position: relative;
-  padding: 0 10px;
+  padding: 0 8px;
   background: transparent;
   border: none;
   text-align: center;
@@ -2534,7 +2666,7 @@ body:has(.wizard-page) {
 }
 
 .wizard-progress-bar.is-stuck .wizard-step-indicator {
-  padding: 0 12px;
+  padding: 0 10px;
 }
 
 .wizard-step-indicator.clickable:hover {
@@ -2602,10 +2734,10 @@ body:has(.wizard-page) {
 .wizard-step-indicator::after {
   content: '';
   position: absolute;
-  top: 20px;
-  left: calc(50% + 24px);
-  right: calc(-50% + 24px);
-  height: 3px;
+  top: 16px;
+  left: calc(50% + 20px);
+  right: calc(-50% + 20px);
+  height: 2px;
   background: linear-gradient(90deg, var(--border-secondary) 0%, var(--border-primary) 100%);
   border-radius: 2px;
   z-index: 0;
@@ -2613,10 +2745,10 @@ body:has(.wizard-page) {
 }
 
 .wizard-progress-bar.is-stuck .wizard-step-indicator::after {
-  top: 22px;
-  left: calc(50% + 28px);
-  right: calc(-50% + 28px);
-  height: 4px;
+  top: 18px;
+  left: calc(50% + 22px);
+  right: calc(-50% + 22px);
+  height: 3px;
 }
 
 .wizard-step-indicator:last-child::after {
@@ -2633,18 +2765,18 @@ body:has(.wizard-page) {
 }
 
 .wizard-step-number {
-  width: 40px;
-  height: 40px;
-  min-width: 40px;
-  min-height: 40px;
-  border-radius: 12px;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: 10px;
   background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
   border: 2px solid var(--border-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 0.9375rem;
+  font-size: 0.8125rem;
   line-height: 1;
   color: var(--text-secondary);
   position: relative;
@@ -2657,12 +2789,12 @@ body:has(.wizard-page) {
 }
 
 .wizard-progress-bar.is-stuck .wizard-step-number {
-  width: 44px;
-  height: 44px;
-  min-width: 44px;
-  min-height: 44px;
-  font-size: 1rem;
-  border-radius: 14px;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  font-size: 0.875rem;
+  border-radius: 10px;
 }
 
 .wizard-step-indicator.completed .wizard-step-number {
@@ -2710,26 +2842,27 @@ body:has(.wizard-page) {
 }
 
 .wizard-step-label {
-  margin-top: 8px;
+  margin-top: 4px;
   padding: 0 2px;
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   font-weight: 500;
   color: var(--text-tertiary);
   text-align: center;
   letter-spacing: 0.01em;
-  line-height: 1.3;
+  line-height: 1.25;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   transition: color 0.25s ease, margin 0.25s ease, font-size 0.25s ease;
 }
 
 .wizard-progress-bar.is-stuck .wizard-step-label {
-  margin-top: 10px;
-  font-size: 0.875rem;
+  margin-top: 6px;
+  font-size: 0.8125rem;
 }
 
 .wizard-step-indicator.active .wizard-step-label {
@@ -2743,34 +2876,40 @@ body:has(.wizard-page) {
 
 @media (max-width: 900px) {
   .wizard-progress-bar {
-    padding: 18px 20px 22px;
+    padding: 6px 16px 8px;
   }
 
   .wizard-progress-bar::before {
     height: 2px;
   }
 
-  .wizard-actions {
+  .wizard-page .wizard-actions {
     flex-direction: column;
     align-items: stretch;
-    gap: 1rem;
-    margin-top: 1.5rem;
-    padding: 1.25rem 1.5rem;
+    gap: 0.75rem;
+    padding: 10px 16px 14px;
+    padding-bottom: max(14px, env(safe-area-inset-bottom));
+    min-height: auto;
   }
 
-  .wizard-actions-buttons {
+  .wizard-page .wizard-step-indicator-text {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .wizard-page .wizard-save-status {
+    justify-content: center;
+  }
+
+  .wizard-page .wizard-actions-buttons {
     margin-left: 0;
+    margin-right: 0;
+    justify-content: stretch;
+  }
+
+  .wizard-page .wizard-actions-buttons .Polaris-InlineStack {
     justify-content: flex-end;
-  }
-
-  .wizard-save-status {
-    justify-content: center;
-    padding-left: 0;
-    border-left: none;
-  }
-
-  .wizard-step-indicator-text {
-    justify-content: center;
+    flex-wrap: wrap;
   }
 
   .wizard-progress {
@@ -2804,13 +2943,14 @@ body:has(.wizard-page) {
 
   .wizard-step-label {
     font-size: 0.6875rem;
-    margin-top: 6px;
+    margin-top: 4px;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
   }
 
-  .wizard-save-pill {
-    padding: 6px 12px;
-    font-size: 0.75rem;
+  .wizard-page .wizard-save-pill {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.6875rem;
   }
 }
 
@@ -3010,27 +3150,154 @@ body:has(.wizard-page) {
   background: var(--accent-primary);
 }
 
-/* Modal - Dark Theme */
-[data-theme="dark"] .Polaris-Modal,
-[data-theme="dark"] .Polaris-Modal__Dialog {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
+/* ============================================
+   MODAL - Project design system (all modals)
+   ============================================ */
+
+/* Modal - above main sidebar (sidebar z-index: 1000) so admin/app modals are not cropped */
+.Polaris-Modal-Dialog,
+.Polaris-Modal-DialogContainer,
+div[class*="Polaris-Modal"] {
+  z-index: 1100 !important;
 }
 
-[data-theme="dark"] .Polaris-Modal__Header {
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-primary);
-  color: var(--text-primary);
+/* Modal overlay/backdrop - project look: subtle cyan tint + blur */
+[class*="Polaris-Modal"][class*="Backdrop"],
+[class*="Modal"][class*="Backdrop"] {
+  background: rgba(6, 182, 212, 0.06) !important;
+  backdrop-filter: blur(8px) saturate(1.1);
+  -webkit-backdrop-filter: blur(8px) saturate(1.1);
 }
 
-[data-theme="dark"] .Polaris-Modal__Body {
-  background: var(--bg-secondary);
-  color: var(--text-primary);
+/* Modal dialog panel - card style matching project (notificationPopover, cards) */
+.Polaris-Modal__Dialog,
+.Polaris-Modal-Dialog,
+div[class*="Polaris-Modal"] [class*="Dialog"],
+div[class*="Modal__Dialog"] {
+  background: var(--bg-secondary) !important;
+  border: 1px solid rgba(6, 182, 212, 0.18) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: 0 8px 32px rgba(6, 182, 212, 0.08), 0 0 0 1px rgba(255, 255, 255, 0.5) inset, var(--surface-3) !important;
+  overflow: hidden;
+  position: relative;
+  max-width: min(500px, 92vw);
+  transition: box-shadow var(--transition-base), border-color var(--transition-base);
 }
 
+/* Gradient accent bar at top of modal (like notification popover / project panels) */
+.Polaris-Modal__Dialog::before,
+.Polaris-Modal-Dialog::before,
+div[class*="Polaris-Modal"] [class*="Dialog"]::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Modal header */
+.Polaris-Modal__Header,
+div[class*="Modal__Header"] {
+  background: var(--bg-secondary) !important;
+  border-bottom: 1px solid var(--border-primary) !important;
+  color: var(--text-primary) !important;
+  padding: 1rem 1.25rem !important;
+  font-weight: 600 !important;
+  font-size: 1rem !important;
+  letter-spacing: -0.02em;
+}
+
+.Polaris-Modal__CloseButton,
+button[class*="Modal"][class*="Close"] {
+  color: var(--text-secondary) !important;
+  border-radius: var(--radius-md);
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.Polaris-Modal__CloseButton:hover,
+button[class*="Modal"][class*="Close"]:hover {
+  color: var(--futuristic-cyan) !important;
+  background: rgba(6, 182, 212, 0.08) !important;
+}
+
+/* Modal body */
+.Polaris-Modal__Body,
+div[class*="Modal__Body"] {
+  background: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+  padding: 1rem 1.25rem !important;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+/* Modal footer - actions area */
+.Polaris-Modal__Footer,
+div[class*="Modal__Footer"] {
+  background: var(--bg-secondary) !important;
+  border-top: 1px solid var(--border-primary) !important;
+  padding: 1rem 1.25rem !important;
+  gap: 0.75rem;
+}
+
+/* Modal sections (content blocks inside body) */
+.Polaris-Modal__Section,
+div[class*="Modal__Section"] {
+  padding: 0.5rem 0 !important;
+}
+
+.Polaris-Modal__Section:first-child {
+  padding-top: 0 !important;
+}
+
+/* Admin page: constrain modal overlay to main section (right of app sidebar) and center dialog */
+body.admin-page .Polaris-Modal-DialogContainer,
+body.admin-page div[class*="Polaris-Modal"][class*="Container"] {
+  left: 280px !important;
+  right: 0 !important;
+  width: auto !important;
+  max-width: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+body.admin-page .Polaris-Modal-Dialog,
+body.admin-page div[class*="Polaris-Modal"] [class*="Dialog"] {
+  margin: auto !important;
+}
+
+@media (max-width: 900px) {
+  body.admin-page .Polaris-Modal-DialogContainer,
+  body.admin-page div[class*="Polaris-Modal"][class*="Container"] {
+    left: 0 !important;
+  }
+}
+
+/* Modal - Dark theme overrides */
+[data-theme="dark"] .Polaris-Modal__Dialog,
+[data-theme="dark"] .Polaris-Modal-Dialog,
+[data-theme="dark"] div[class*="Polaris-Modal"] [class*="Dialog"] {
+  background: var(--bg-secondary) !important;
+  border-color: rgba(6, 182, 212, 0.2) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--border-primary) !important;
+}
+
+[data-theme="dark"] [class*="Polaris-Modal"][class*="Backdrop"],
+[data-theme="dark"] [class*="Modal"][class*="Backdrop"] {
+  background: rgba(0, 0, 0, 0.6) !important;
+}
+
+[data-theme="dark"] .Polaris-Modal__Header,
+[data-theme="dark"] .Polaris-Modal__Body,
 [data-theme="dark"] .Polaris-Modal__Footer {
-  background: var(--bg-secondary);
-  border-top: 1px solid var(--border-primary);
+  background: var(--bg-secondary) !important;
+  border-color: var(--border-primary) !important;
+  color: var(--text-primary) !important;
 }
 
 /* Banner - Dark Theme */
@@ -5429,6 +5696,64 @@ body > .Polaris-Tabs:not(:first-of-type),
 /* Variant Codes Tab - Enhanced UI */
 .test-detail-variant-codes-card {
   margin-bottom: var(--spacing-md);
+}
+
+/* Variant Visual Editor (accordion in config step) */
+.variant-visual-editor-content {
+  padding: var(--spacing-md) 0;
+  border-top: 1px solid var(--border-secondary);
+  margin-top: var(--spacing-xs);
+}
+
+.variant-visual-editor-default-page {
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-secondary);
+}
+
+.variant-visual-editor-default-page p {
+  margin: 0;
+}
+
+.variant-visual-editor-empty {
+  padding: var(--spacing-xl) var(--spacing-md);
+  text-align: center;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--border-primary);
+}
+
+.variant-visual-editor-empty p {
+  margin: 0;
+  max-width: 36em;
+  margin-inline: auto;
+}
+
+.variant-visual-editor-preview-wrap {
+  position: relative;
+  width: 100%;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  margin-top: var(--spacing-sm);
+}
+
+.variant-visual-editor-preview-iframe {
+  width: 100%;
+  min-height: 400px;
+  height: 55vh;
+  max-height: 700px;
+  border: 0;
+  display: block;
+}
+
+[data-theme='dark'] .variant-visual-editor-default-page,
+[data-theme='dark'] .variant-visual-editor-empty,
+[data-theme='dark'] .variant-visual-editor-preview-wrap {
+  background: var(--bg-tertiary);
+  border-color: var(--border-primary);
 }
 
 /* Variant Selector */

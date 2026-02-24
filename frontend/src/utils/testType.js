@@ -18,6 +18,7 @@ const TEMPLATE_KEY_LABELS = {
   theme: TEST_TYPE_LABELS.theme,
   content: TEST_TYPE_LABELS.content,
   checkout: TEST_TYPE_LABELS.checkout,
+  combination: TEST_TYPE_LABELS.combination,
 };
 
 /**
@@ -60,10 +61,11 @@ export function getVariantCount(test) {
 export function inferTemplateKeyFromVariants(variants = [], testType = '') {
   const type = (testType || '').toLowerCase();
 
-  // Trust type first for shipping/offer/checkout (prevents wrong inference from config pollution)
+  // Trust type first for shipping/offer/checkout/combination (prevents wrong inference from config pollution)
   if (type === 'shipping') return 'shipping';
   if (type === 'offer') return 'offer';
   if (type === 'checkout') return 'checkout';
+  if (type === 'combination') return 'combination';
 
   for (const v of variants) {
     const c = v?.config;
@@ -92,10 +94,14 @@ export function inferTemplateKeyFromVariants(variants = [], testType = '') {
 export function getTestTypeDisplay(test) {
   const type = (test.type || '').toLowerCase();
 
-  // Always trust type for shipping/offer/checkout (overrides wrong goal.template_key from pollution)
-  if (type === 'shipping') return { label: TEST_TYPE_LABELS.shipping, icon: TEST_TYPE_ICONS.shipping };
+  // Always trust type for shipping/offer/checkout/combination (overrides wrong goal.template_key from pollution)
+  if (type === 'shipping')
+    return { label: TEST_TYPE_LABELS.shipping, icon: TEST_TYPE_ICONS.shipping };
   if (type === 'offer') return { label: TEST_TYPE_LABELS.offer, icon: TEST_TYPE_ICONS.offer };
-  if (type === 'checkout') return { label: TEST_TYPE_LABELS.checkout, icon: TEST_TYPE_ICONS.checkout };
+  if (type === 'checkout')
+    return { label: TEST_TYPE_LABELS.checkout, icon: TEST_TYPE_ICONS.checkout };
+  if (type === 'combination')
+    return { label: TEST_TYPE_LABELS.combination, icon: TEST_TYPE_ICONS.combination };
 
   const config = getEffectiveConfig(test);
 
@@ -112,12 +118,17 @@ export function getTestTypeDisplay(test) {
       'price' in config ||
       'code' in config);
   if (hasDistinctiveConfig) {
-    if ('rate' in config) return { label: TEST_TYPE_LABELS.shipping, icon: TEST_TYPE_ICONS.shipping };
-    if ('discount_type' in config || 'discount_value' in config) return { label: TEST_TYPE_LABELS.offer, icon: TEST_TYPE_ICONS.offer };
-    if ('url' in config) return { label: TEST_TYPE_LABELS['split-url'], icon: TEST_TYPE_ICONS['split-url'] };
-    if ('template' in config) return { label: TEST_TYPE_LABELS.template, icon: TEST_TYPE_ICONS.template };
+    if ('rate' in config)
+      return { label: TEST_TYPE_LABELS.shipping, icon: TEST_TYPE_ICONS.shipping };
+    if ('discount_type' in config || 'discount_value' in config)
+      return { label: TEST_TYPE_LABELS.offer, icon: TEST_TYPE_ICONS.offer };
+    if ('url' in config)
+      return { label: TEST_TYPE_LABELS['split-url'], icon: TEST_TYPE_ICONS['split-url'] };
+    if ('template' in config)
+      return { label: TEST_TYPE_LABELS.template, icon: TEST_TYPE_ICONS.template };
     if ('price' in config) return { label: TEST_TYPE_LABELS.price, icon: TEST_TYPE_ICONS.price };
-    if ('code' in config) return { label: TEST_TYPE_LABELS['onsite-edit'], icon: TEST_TYPE_ICONS['onsite-edit'] };
+    if ('code' in config)
+      return { label: TEST_TYPE_LABELS['onsite-edit'], icon: TEST_TYPE_ICONS['onsite-edit'] };
   }
 
   // Use goal.template_key when set (critical for onsite-edit vs theme when config is empty)

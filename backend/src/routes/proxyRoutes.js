@@ -8,6 +8,7 @@ const express = require('express');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
+const { asyncHandler } = require('../middleware/asyncHandler');
 const { getActiveTestsForStorefront } = require('../models/test');
 const logger = require('../utils/logger');
 
@@ -78,8 +79,9 @@ function verifyAppProxySignature(query) {
  * GET /api/proxy/script.js
  * Serve storefront script via app proxy.
  */
-router.get('/script.js', async (req, res, next) => {
-  try {
+router.get(
+  '/script.js',
+  asyncHandler(async (req, res) => {
     const shop = req.query.shop || req.query.shop_domain;
 
     if (!shop || !isValidShopDomain(shop)) {
@@ -109,9 +111,7 @@ router.get('/script.js', async (req, res, next) => {
     res.set('Content-Type', 'application/javascript');
     res.set('Cache-Control', `public, max-age=${cacheSeconds}`);
     res.send(`window.AB_TEST_RUNTIME_CONFIG=${JSON.stringify(runtimeConfig)};\n${scriptContents}`);
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);
 
 module.exports = router;

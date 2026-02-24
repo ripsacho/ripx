@@ -17,9 +17,15 @@ class ExportService {
    * @returns {Promise<string>} CSV content
    */
   async exportToCSV(testId, shopDomain, dateRange = null) {
-    const analytics = await analyticsService.getTestAnalytics(testId, shopDomain);
     const { getTestById } = require('../models/test');
     const test = await getTestById(testId, shopDomain);
+    if (!test) {
+      const err = new Error('Test not found');
+      err.status = 404;
+      throw err;
+    }
+
+    const analytics = await analyticsService.getTestAnalytics(testId, shopDomain);
 
     // Build CSV content
     let csv = `Test: ${test.name}\n`;
@@ -89,13 +95,19 @@ class ExportService {
    * @returns {Promise<Object>} JSON data
    */
   async exportToJSON(testId, shopDomain, dateRange = null) {
+    const { getTestById } = require('../models/test');
+    const test = await getTestById(testId, shopDomain);
+    if (!test) {
+      const err = new Error('Test not found');
+      err.status = 404;
+      throw err;
+    }
+
     const opts = dateRange || {};
     const [analytics, funnel] = await Promise.all([
       analyticsService.getTestAnalytics(testId, shopDomain),
       getFunnelMetrics(testId, shopDomain, opts).catch(() => null),
     ]);
-    const { getTestById } = require('../models/test');
-    const test = await getTestById(testId, shopDomain);
 
     const result = {
       test: {

@@ -1,0 +1,4 @@
+# RipX - AB Testing Platform
+# Allow crawlers; admin and app routes typically require auth.
+User-agent: *
+Allow: /

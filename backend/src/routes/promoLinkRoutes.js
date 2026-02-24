@@ -6,14 +6,16 @@
 
 const express = require('express');
 const router = express.Router();
+const { asyncHandler } = require('../middleware/asyncHandler');
 const promoLinkService = require('../services/promoLinkService');
 
 /**
  * POST /api/promo-links
  * Generate a new promo link
  */
-router.post('/', async (req, res, next) => {
-  try {
+router.post(
+  '/',
+  asyncHandler(async (req, res) => {
     const shopDomain = req.shopDomain;
     const linkData = {
       ...req.body,
@@ -26,17 +28,16 @@ router.post('/', async (req, res, next) => {
       success: true,
       promoLink,
     });
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);
 
 /**
  * GET /api/promo-links/test/:testId
  * Get all promo links for a test
  */
-router.get('/test/:testId', async (req, res, next) => {
-  try {
+router.get(
+  '/test/:testId',
+  asyncHandler(async (req, res) => {
     const { testId } = req.params;
     const shopDomain = req.shopDomain;
 
@@ -46,17 +47,16 @@ router.get('/test/:testId', async (req, res, next) => {
       success: true,
       promoLinks,
     });
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);
 
 /**
  * GET /api/promo-links/validate/:token
  * Validate and get promo link details
  */
-router.get('/validate/:token', async (req, res, next) => {
-  try {
+router.get(
+  '/validate/:token',
+  asyncHandler(async (req, res) => {
     const { token } = req.params;
     const shopDomain = req.query.shop || req.shopDomain;
 
@@ -64,6 +64,7 @@ router.get('/validate/:token', async (req, res, next) => {
 
     if (!promoLink) {
       return res.status(404).json({
+        success: false,
         error: 'Promo link not found or expired',
       });
     }
@@ -72,9 +73,7 @@ router.get('/validate/:token', async (req, res, next) => {
       success: true,
       promoLink,
     });
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);
 
 module.exports = router;

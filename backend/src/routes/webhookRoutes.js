@@ -6,10 +6,12 @@
 
 const express = require('express');
 const router = express.Router();
+const { asyncHandler } = require('../middleware/asyncHandler');
 const { trackEvent } = require('../models/analytics');
 const { getTestsByShop, updateTestStatus } = require('../models/test');
 const { deleteShopSession } = require('../models/shopSession');
 const { query } = require('../utils/database');
+const { productSyncQueue } = require('../jobs/queue');
 const logger = require('../utils/logger');
 const crypto = require('crypto');
 
@@ -40,12 +42,34 @@ async function recordWebhookEvent({ shopDomain, webhookId, topic, payloadHash })
 }
 
 /**
+ * Purge orphaned webhook_events and test_assignments for a shop after uninstall.
+ * Idempotent; safe to run multiple times.
+ */
+async function purgeShopDataAfterUninstall(shopDomain) {
+  if (!shopDomain) {
+    return;
+  }
+  const normalized = String(shopDomain).toLowerCase().trim();
+  const delWebhook = await query('DELETE FROM webhook_events WHERE shop_domain = $1', [normalized]);
+  const delAssignments = await query('DELETE FROM test_assignments WHERE shop_domain = $1', [
+    normalized,
+  ]);
+  logger.info('Purged shop data after uninstall', {
+    shopDomain: normalized,
+    webhook_events: delWebhook.rowCount,
+    test_assignments: delAssignments.rowCount,
+  });
+}
+
+/**
  * POST /api/webhooks/orders/create
  * Track conversions when orders are created
  */
-router.post('/orders/create', express.raw({ type: 'application/json' }), async (req, res) => {
-  let shop = null;
-  try {
+router.post(
+  '/orders/create',
+  express.raw({ type: 'application/json' }),
+  asyncHandler(async (req, res) => {
+    let shop = null;
     const hmac = req.get('X-Shopify-Hmac-Sha256');
     shop = req.get('X-Shopify-Shop-Domain');
     const webhookId = req.get('X-Shopify-Webhook-Id');
@@ -126,29 +150,17 @@ router.post('/orders/create', express.raw({ type: 'application/json' }), async (
     }
 
     res.status(200).send('OK');
-  } catch (error) {
-    logger.error('Webhook error', {
-      error: error.message,
-      stack: error.stack,
-      shop,
-      path: req.path,
-    });
-    // Log for retry/monitoring - webhook will be retried by Shopify
-    logger.error('Webhook processing failed (will retry)', {
-      topic: 'orders/create',
-      shop,
-      error: error.message,
-    });
-    res.status(500).send('Error processing webhook');
-  }
-});
+  })
+);
 
 /**
  * POST /api/webhooks/products/update
  * Handle product updates (for price tests)
  */
-router.post('/products/update', express.raw({ type: 'application/json' }), async (req, res) => {
-  try {
+router.post(
+  '/products/update',
+  express.raw({ type: 'application/json' }),
+  asyncHandler(async (req, res) => {
     const hmac = req.get('X-Shopify-Hmac-Sha256');
     const shop = req.get('X-Shopify-Shop-Domain');
     const webhookId = req.get('X-Shopify-Webhook-Id');
@@ -177,10 +189,17 @@ router.post('/products/update', express.raw({ type: 'application/json' }), async
 
     const product = JSON.parse(req.body.toString());
 
-    // Update any active price tests for this product
-    // TODO: Implement product sync job - fetch full product details from Admin API
-    // and reconcile with test variant configs (e.g. prices). Run async to avoid
-    // blocking webhook response; use retry with exponential backoff on failure.
+    // Queue product sync job: fetch full product from Admin API and reconcile price tests (async, retries)
+    if (productSyncQueue && product?.id) {
+      productSyncQueue.add({ shop, productId: String(product.id) }).catch(err => {
+        logger.warn('Failed to queue product sync', {
+          shop,
+          productId: product.id,
+          error: err?.message,
+        });
+      });
+    }
+
     const tests = await getTestsByShop(shop, 'running');
     const affectedTests = tests.filter(
       test =>
@@ -191,26 +210,21 @@ router.post('/products/update', express.raw({ type: 'application/json' }), async
     logger.info('Product updated', {
       productId: product.id,
       shop,
-      affectedTests: affectedTests.map(test => test.id),
+      affectedTests: affectedTests.map(t => t.id),
     });
 
     res.status(200).send('OK');
-  } catch (error) {
-    logger.error('Webhook processing failed (will retry)', {
-      topic: 'products/update',
-      shop: req.get('X-Shopify-Shop-Domain'),
-      error: error.message,
-    });
-    res.status(500).send('Error processing webhook');
-  }
-});
+  })
+);
 
 /**
  * POST /api/webhooks/app/uninstalled
  * Handle app uninstallation
  */
-router.post('/app/uninstalled', express.raw({ type: 'application/json' }), async (req, res) => {
-  try {
+router.post(
+  '/app/uninstalled',
+  express.raw({ type: 'application/json' }),
+  asyncHandler(async (req, res) => {
     const hmac = req.get('X-Shopify-Hmac-Sha256');
     const shopDomain = req.get('X-Shopify-Shop-Domain');
     const webhookId = req.get('X-Shopify-Webhook-Id');
@@ -245,22 +259,20 @@ router.post('/app/uninstalled', express.raw({ type: 'application/json' }), async
 
     await deleteShopSession(shopDomain);
 
-    // TODO: Implement cleanup job - purge orphaned webhook_events, test_assignments,
-    // and analytics for this shop. Run async; ensure idempotency for retries.
+    // Purge orphaned webhook_events and test_assignments for this shop (async, idempotent)
+    setImmediate(() => {
+      purgeShopDataAfterUninstall(shopDomain).catch(err => {
+        logger.error('Cleanup after uninstall failed', { shopDomain, error: err?.message });
+      });
+    });
+
     logger.info('App uninstalled', {
       shopDomain,
       stoppedTests: tests.map(test => test.id),
     });
 
     res.status(200).send('OK');
-  } catch (error) {
-    logger.error('Webhook processing failed (app uninstalled)', {
-      topic: 'app/uninstalled',
-      shopDomain: req.get('X-Shopify-Shop-Domain'),
-      error: error.message,
-    });
-    res.status(500).send('Error processing webhook');
-  }
-});
+  })
+);
 
 module.exports = router;

@@ -19,9 +19,10 @@ const apiClient = axios.create({
 });
 
 // Request interceptor: add correlation ID for distributed tracing
-apiClient.interceptors.request.use((config) => {
+apiClient.interceptors.request.use(config => {
   if (!config.headers['X-Request-ID']) {
-    config.headers['X-Request-ID'] = `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
+    config.headers['X-Request-ID'] =
+      `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
   }
   return config;
 });
@@ -123,9 +124,7 @@ export function getShopDomain() {
 export function getApiKey() {
   try {
     return (
-      import.meta.env.VITE_RIPX_API_KEY ||
-      window.localStorage.getItem(STORAGE_KEYS.API_KEY) ||
-      null
+      import.meta.env.VITE_RIPX_API_KEY || window.localStorage.getItem(STORAGE_KEYS.API_KEY) || null
     );
   } catch {
     return null;
@@ -192,6 +191,15 @@ export function apiRequest(method, endpoint, data = null, config = {}) {
   }
 
   return apiClient(requestConfig);
+}
+
+/**
+ * Unwrap API response payload. Backend may return { data } or the payload directly.
+ * Use for consistent handling: const payload = unwrapData(res);
+ */
+export function unwrapData(response) {
+  if (!response?.data) return response;
+  return response.data?.data !== undefined ? response.data.data : response.data;
 }
 
 /**

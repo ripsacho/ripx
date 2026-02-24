@@ -43,7 +43,7 @@ function StoreSwitcher() {
   }, [fetchStores]);
 
   const handleActivatorClick = useCallback(() => {
-    setActive((a) => {
+    setActive(a => {
       if (!a) {
         fetchStores();
       }
@@ -52,7 +52,7 @@ function StoreSwitcher() {
   }, [fetchStores]);
 
   const handleStoreSelect = useCallback(
-    (domain) => {
+    domain => {
       if (domain === currentStore) {
         setActive(false);
         return;
@@ -82,7 +82,7 @@ function StoreSwitcher() {
   const displayLabelFull = currentStore ? currentStore.replace(/^www\./, '') : displayLabel;
 
   const actionItems = [
-    ...stores.map((store) => ({
+    ...stores.map(store => ({
       content: store.domain,
       onAction: () => handleStoreSelect(store.domain),
       active: store.domain === currentStore,

@@ -260,6 +260,50 @@ class UserModel {
       throw error;
     }
   }
+
+  /**
+   * Get user role and status by shop domain (for admin check)
+   *
+   * @param {string} shopDomain - Shop domain
+   * @returns {Promise<{ role: string|null, status: string }|null>}
+   */
+  async getRoleAndStatus(shopDomain) {
+    try {
+      const sql =
+        "SELECT role, COALESCE(status, 'active') AS status FROM users WHERE shop_domain = $1";
+      const result = await query(sql, [shopDomain]);
+      if (result.rows.length === 0) {
+        return null;
+      }
+      const row = result.rows[0];
+      return { role: row.role, status: row.status };
+    } catch (err) {
+      if (err.message && err.message.includes('does not exist')) {
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Set user status (active | locked | suspended)
+   */
+  async setStatus(shopDomain, status) {
+    const sql =
+      'UPDATE users SET status = $1, updated_at = NOW() WHERE shop_domain = $2 RETURNING shop_domain';
+    const result = await query(sql, [status, shopDomain]);
+    return result.rows.length > 0;
+  }
+
+  /**
+   * Set user role (for admin assignment)
+   */
+  async setRole(shopDomain, role) {
+    const sql =
+      'UPDATE users SET role = $1, updated_at = NOW() WHERE shop_domain = $2 RETURNING shop_domain';
+    const result = await query(sql, [role, shopDomain]);
+    return result.rows.length > 0;
+  }
 }
 
 // Export singleton instance
@@ -272,4 +316,7 @@ module.exports = {
   updateAccount: (shopDomain, accountData) => userModel.updateAccount(shopDomain, accountData),
   updatePreferences: (shopDomain, preferences) =>
     userModel.updatePreferences(shopDomain, preferences),
+  getRoleAndStatus: shopDomain => userModel.getRoleAndStatus(shopDomain),
+  setStatus: (shopDomain, status) => userModel.setStatus(shopDomain, status),
+  setRole: (shopDomain, role) => userModel.setRole(shopDomain, role),
 };

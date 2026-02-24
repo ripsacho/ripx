@@ -25,25 +25,51 @@ function inferTemplateKey(variants = [], testType = '') {
   const type = (testType || '').toLowerCase();
 
   // Trust type for shipping/offer/checkout (config can be polluted)
-  if (type === 'shipping') {return 'shipping';}
-  if (type === 'offer') {return 'offer';}
-  if (type === 'checkout') {return 'checkout';}
+  if (type === 'shipping') {
+    return 'shipping';
+  }
+  if (type === 'offer') {
+    return 'offer';
+  }
+  if (type === 'checkout') {
+    return 'checkout';
+  }
 
   const config = getEffectiveConfig(variants);
 
   if (config && typeof config === 'object') {
-    if ('url' in config) {return 'split-url';}
-    if ('template' in config) {return 'template';}
-    if ('rate' in config) {return 'shipping';}
-    if ('discount_type' in config || 'discount_value' in config) {return 'offer';}
-    if ('price' in config) {return type === 'pricing' ? 'pricing' : 'price';}
-    if ('code' in config) {return 'onsite-edit';}
+    if ('url' in config) {
+      return 'split-url';
+    }
+    if ('template' in config) {
+      return 'template';
+    }
+    if ('rate' in config) {
+      return 'shipping';
+    }
+    if ('discount_type' in config || 'discount_value' in config) {
+      return 'offer';
+    }
+    if ('price' in config) {
+      return type === 'pricing' ? 'pricing' : 'price';
+    }
+    if ('code' in config) {
+      return 'onsite-edit';
+    }
   }
 
-  if (type === 'price' || type === 'pricing') {return type === 'pricing' ? 'pricing' : 'price';}
-  if (type === 'offer') {return 'offer';}
-  if (type === 'checkout') {return 'checkout';}
-  if (type === 'content') {return 'theme';}
+  if (type === 'price' || type === 'pricing') {
+    return type === 'pricing' ? 'pricing' : 'price';
+  }
+  if (type === 'offer') {
+    return 'offer';
+  }
+  if (type === 'checkout') {
+    return 'checkout';
+  }
+  if (type === 'content') {
+    return 'theme';
+  }
   return null;
 }
 
@@ -53,7 +79,9 @@ function inferTemplateKey(variants = [], testType = '') {
  * @returns {Object} test with goal.template_key set if inferred
  */
 function enrichGoalWithTemplateKey(test) {
-  if (!test || !test.goal) {return test;}
+  if (!test || !test.goal) {
+    return test;
+  }
 
   const type = (test.type || '').toLowerCase();
   const existingKey = (test.goal.template_key || '').toLowerCase().replace(/\s+/g, '-');
@@ -76,7 +104,9 @@ function enrichGoalWithTemplateKey(test) {
     };
   }
 
-  if (existingKey) {return test;}
+  if (existingKey) {
+    return test;
+  }
 
   if (inferred) {
     return {

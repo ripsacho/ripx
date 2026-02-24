@@ -133,7 +133,8 @@ function Export({ testId }) {
                   Export your test data
                 </Text>
                 <Text variant="bodyMd" tone="subdued" as="p">
-                  Download CSV or JSON with variant metrics, funnel data, and statistical significance.
+                  Download CSV or JSON with variant metrics, funnel data, and statistical
+                  significance.
                 </Text>
               </div>
             </div>
@@ -183,7 +184,8 @@ function Export({ testId }) {
                   • <strong>Test info</strong> – name, type, status, dates
                 </Text>
                 <Text as="p" variant="bodySm">
-                  • <strong>Variant metrics</strong> – visitors, conversions, conversion rate, revenue, AOV
+                  • <strong>Variant metrics</strong> – visitors, conversions, conversion rate,
+                  revenue, AOV
                 </Text>
                 <Text as="p" variant="bodySm">
                   • <strong>Statistical significance</strong> – p-value, confidence, lift, winner

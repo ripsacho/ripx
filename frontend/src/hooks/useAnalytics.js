@@ -3,7 +3,7 @@
  */
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiGet } from '../services';
+import { apiGet, unwrapData } from '../services';
 
 export function useAnalytics(testId, segmentDevice = 'all', segmentCountry = 'all', options = {}) {
   return useQuery({
@@ -15,7 +15,7 @@ export function useAnalytics(testId, segmentDevice = 'all', segmentCountry = 'al
       const queryString = params.toString();
       const url = `/analytics/tests/${testId}${queryString ? `?${queryString}` : ''}`;
       const response = await apiGet(url);
-      return response.data?.analytics || response.data?.data?.analytics;
+      return unwrapData(response)?.analytics ?? unwrapData(response);
     },
     enabled: !!testId && testId !== 'undefined',
     staleTime: 60 * 1000, // 1 minute
@@ -30,7 +30,7 @@ export function useAnalyticsTimeSeries(testId, options = {}) {
       const response = await apiGet(`/analytics/tests/${testId}/timeseries`).catch(() => ({
         data: { timeSeries: [] },
       }));
-      return response.data?.timeSeries || response.data?.data?.timeSeries || [];
+      return unwrapData(response)?.timeSeries ?? [];
     },
     enabled: !!testId && testId !== 'undefined',
     staleTime: 60 * 1000,
@@ -41,7 +41,12 @@ export function useAnalyticsTimeSeries(testId, options = {}) {
 /**
  * Fetches all analytics dashboard data in parallel (analytics, timeseries, test, segments)
  */
-export function useAnalyticsDashboard(testId, segmentDevice = 'all', segmentCountry = 'all', options = {}) {
+export function useAnalyticsDashboard(
+  testId,
+  segmentDevice = 'all',
+  segmentCountry = 'all',
+  options = {}
+) {
   return useQuery({
     queryKey: ['analytics-dashboard', testId, segmentDevice, segmentCountry],
     queryFn: async () => {
@@ -61,10 +66,10 @@ export function useAnalyticsDashboard(testId, segmentDevice = 'all', segmentCoun
       ]);
 
       return {
-        analytics: analyticsRes.data?.analytics || analyticsRes.data?.data?.analytics,
-        timeSeries: timeSeriesRes.data?.timeSeries || timeSeriesRes.data?.data?.timeSeries || [],
-        testInfo: testRes.data?.test || testRes.data?.data?.test || null,
-        segments: segmentsRes.data?.segments || { devices: [], countries: [] },
+        analytics: unwrapData(analyticsRes)?.analytics ?? unwrapData(analyticsRes),
+        timeSeries: unwrapData(timeSeriesRes)?.timeSeries ?? [],
+        testInfo: unwrapData(testRes)?.test ?? unwrapData(testRes) ?? null,
+        segments: unwrapData(segmentsRes)?.segments ?? { devices: [], countries: [] },
       };
     },
     enabled: !!testId && testId !== 'undefined',

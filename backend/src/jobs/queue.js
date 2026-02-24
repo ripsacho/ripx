@@ -11,7 +11,9 @@ const logger = require('../utils/logger');
 const redisUrl = process.env.REDIS_URL;
 
 function createQueue(name, opts = {}) {
-  if (!redisUrl) {return null;}
+  if (!redisUrl) {
+    return null;
+  }
 
   try {
     const queue = new Queue(name, redisUrl, {
@@ -35,8 +37,10 @@ function createQueue(name, opts = {}) {
 
 const scheduledTestsQueue = createQueue('scheduled-tests');
 const archiveQueue = createQueue('archive-old-tests');
+const productSyncQueue = createQueue('product-sync');
 
 module.exports = {
   scheduledTestsQueue,
   archiveQueue,
+  productSyncQueue,
 };

@@ -197,3 +197,62 @@
   padding: 3rem 2rem;
   text-align: center;
 }
+
+/* Heatmap over page image (screenshot + click overlay) */
+.heatmapOverlayHint {
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.heatmapOverlayWrap {
+  position: relative;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg-tertiary);
+}
+
+.heatmapOverlayImg {
+  display: block;
+  width: 100%;
+  height: auto;
+  vertical-align: middle;
+}
+
+.heatmapOverlayPlaceholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 360px;
+  background: var(--bg-tertiary);
+  border: 2px dashed var(--border-primary);
+  color: var(--text-tertiary);
+  font-size: 0.9375rem;
+  gap: 0.5rem;
+}
+
+.heatmapOverlayPlaceholderHint {
+  font-size: 0.8125rem;
+  color: var(--text-tertiary);
+  opacity: 0.9;
+}
+
+.heatmapOverlayCanvas {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.heatmapOverlayPoint {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(6, 182, 212, 0.7);
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.5);
+}

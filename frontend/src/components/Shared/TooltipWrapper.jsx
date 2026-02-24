@@ -17,7 +17,13 @@ import { Tooltip } from '@shopify/polaris';
  * @param {string} [preferredPosition] - 'above' | 'below' | 'mostSpace' - avoids blocking
  * @param {number} [hoverDelay] - ms before showing (reduces accidental triggers)
  */
-function TooltipWrapper({ children, content, accessibilityLabel, preferredPosition = 'mostSpace', hoverDelay = 400 }) {
+function TooltipWrapper({
+  children,
+  content,
+  accessibilityLabel,
+  preferredPosition = 'mostSpace',
+  hoverDelay = 400,
+}) {
   if (!content) return children;
   return (
     <Tooltip

@@ -114,7 +114,10 @@ class TestHealthService {
       if (srm.detected) {
         score -= 20;
         issues.push('Sample ratio mismatch detected');
-        recommendations.push(srm.message || 'Traffic split deviates from expected—verify tracking and check for bot traffic');
+        recommendations.push(
+          srm.message ||
+            'Traffic split deviates from expected—verify tracking and check for bot traffic'
+        );
       }
     }
 

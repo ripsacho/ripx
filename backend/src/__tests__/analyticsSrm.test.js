@@ -50,6 +50,8 @@ describe('AnalyticsService.detectSampleRatioMismatch', () => {
   it('returns not detected for empty or insufficient data', () => {
     expect(analyticsService.detectSampleRatioMismatch([], 0).detected).toBe(false);
     expect(analyticsService.detectSampleRatioMismatch(null, 100).detected).toBe(false);
-    expect(analyticsService.detectSampleRatioMismatch([{ visitors: 50 }, { visitors: 50 }], 100).detected).toBe(false);
+    expect(
+      analyticsService.detectSampleRatioMismatch([{ visitors: 50 }, { visitors: 50 }], 100).detected
+    ).toBe(false);
   });
 });

@@ -14,6 +14,7 @@ const HTTP_STATUS = {
   NOT_FOUND: 404,
   CONFLICT: 409,
   INTERNAL_SERVER_ERROR: 500,
+  SERVICE_UNAVAILABLE: 503,
 };
 
 // Test Status Values
@@ -26,6 +27,7 @@ const TEST_STATUS = {
 };
 
 // Test Types
+// API/backend canonical for price tests is "price"; UI may label as "Pricing Test". Validators accept both "price" and "pricing".
 const TEST_TYPES = {
   PRICE: 'price',
   CONTENT: 'content',
@@ -47,6 +49,8 @@ const TARGET_TYPES = {
   CART: 'cart',
   CHECKOUT: 'checkout',
   ALL_PRODUCTS: 'all-products',
+  PAGE: 'page',
+  ALL: 'all',
 };
 
 // Statistical Significance Threshold

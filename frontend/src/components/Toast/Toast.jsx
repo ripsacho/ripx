@@ -28,7 +28,12 @@ function Toast({ message, type = 'success', onClose = () => {}, duration = 3000 
           {type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ'}
         </span>
         <span className="toast-message">{message}</span>
-        <button className="toast-close" onClick={onClose} aria-label="Close notification">
+        <button
+          type="button"
+          className="toast-close"
+          onClick={onClose}
+          aria-label="Close notification"
+        >
           ×
         </button>
       </div>

@@ -3,24 +3,33 @@
  */
 import { useState, useEffect, useRef } from 'react';
 
+function toNum(v) {
+  if (typeof v === 'number' && !Number.isNaN(v)) return v;
+  const n = Number(v);
+  return Number.isNaN(n) ? 0 : n;
+}
+
 export function useAnimatedCounter(target, duration = 1200, enabled = true) {
   const [displayValue, setDisplayValue] = useState(0);
   const prevTarget = useRef();
   const startTime = useRef(null);
   const rafRef = useRef();
+  const endVal = toNum(target);
 
   useEffect(() => {
     if (!enabled) {
-      setDisplayValue(typeof target === 'number' ? target : 0);
+      setDisplayValue(endVal);
       return;
     }
 
     const start = prevTarget.current;
-    prevTarget.current = target;
-    const startVal = typeof start === 'number' ? start : 0;
-    const endVal = typeof target === 'number' ? target : 0;
+    prevTarget.current = endVal;
+    const startVal = typeof start === 'number' && !Number.isNaN(start) ? start : 0;
 
-    if (startVal === endVal) return;
+    if (startVal === endVal) {
+      setDisplayValue(endVal);
+      return;
+    }
 
     const animate = timestamp => {
       if (!startTime.current) startTime.current = timestamp;
@@ -40,7 +49,7 @@ export function useAnimatedCounter(target, duration = 1200, enabled = true) {
 
     rafRef.current = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [target, duration, enabled]);
+  }, [endVal, duration, enabled]);
 
   return displayValue;
 }

@@ -14,40 +14,21 @@
 .createLayout {
   display: flex;
   flex-direction: column;
-  flex: 1;
-  min-height: 0;
+  flex: 1 1 auto;
+  min-height: min-content;
   width: 100%;
   max-width: none;
 }
 
+/* No overflow so page scrolls with window - progress bar sticks like Test Detail */
 .createBody {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
+  flex: 0 1 auto;
+  overflow: visible;
   padding-top: 0.5rem;
   margin-top: 0.25rem;
   position: relative;
   width: 100%;
   max-width: none;
-}
-
-.createBody::-webkit-scrollbar {
-  width: 8px;
-}
-
-.createBody::-webkit-scrollbar-track {
-  background: var(--bg-tertiary);
-  border-radius: 4px;
-}
-
-.createBody::-webkit-scrollbar-thumb {
-  background: rgba(6, 182, 212, 0.3);
-  border-radius: 4px;
-}
-
-.createBody::-webkit-scrollbar-thumb:hover {
-  background: rgba(6, 182, 212, 0.5);
 }
 
 .createPage :global(.Polaris-Page),

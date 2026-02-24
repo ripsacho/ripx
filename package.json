@@ -7,6 +7,7 @@
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "nodemon",
     "dev:frontend": "cd frontend && npm run dev",
+    "install:all": "npm install && cd frontend && npm install && cd ..",
     "dev:db": "docker compose -f docker-compose.dev.yml up -d",
     "dev:db:stop": "docker compose -f docker-compose.dev.yml down",
     "build": "npm run build:frontend",
@@ -14,7 +15,7 @@
     "start": "node backend/src/app.js",
     "migrate": "cd backend && node migrations/run.js",
     "seed:dummy": "node backend/scripts/seed-dummy-data.js",
-    "test": "npm run test:backend",
+    "test": "npm run test:backend && npm run test:frontend",
     "test:backend": "cd backend && jest",
     "test:frontend": "cd frontend && npm test",
     "lint": "npm run lint:backend && npm run lint:frontend",
@@ -26,7 +27,7 @@
     "format": "prettier --write \"**/*.{js,jsx,json,md}\"",
     "format:check": "prettier --check \"**/*.{js,jsx,json,md}\"",
     "prepare": "husky",
-    "validate": "npm run lint && npm run test:backend",
+    "validate": "npm run lint && npm run test",
     "audit": "npm audit && cd frontend && npm audit",
     "presentation": "npx @marp-team/marp-cli docs/presentation/PRESENTATION.md -o docs/presentation/PRESENTATION.html --allow-local-files",
     "presentation:pdf": "npx @marp-team/marp-cli docs/presentation/PRESENTATION.md -o docs/presentation/PRESENTATION.pdf --allow-local-files",
@@ -104,6 +105,7 @@
     ]
   },
   "overrides": {
-    "tar": "^7.2.0"
+    "tar": "^7.2.0",
+    "minimatch": "^10.2.1"
   }
 }

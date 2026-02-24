@@ -15,13 +15,18 @@ function hashApiKey(apiKey) {
   return crypto.createHash('sha256').update(apiKey).digest('hex');
 }
 
-
 /**
  * Normalize domain for storage (lowercase, trim)
  */
 function normalizeDomain(domain) {
-  if (!domain || typeof domain !== 'string') {return null;}
-  return domain.toLowerCase().trim().replace(/^https?:\/\//, '').split('/')[0];
+  if (!domain || typeof domain !== 'string') {
+    return null;
+  }
+  return domain
+    .toLowerCase()
+    .trim()
+    .replace(/^https?:\/\//, '')
+    .split('/')[0];
 }
 
 /**
@@ -77,10 +82,19 @@ async function createStandaloneTenant(domain) {
   const { account, apiKey } = await createAccount('My Account');
   const tenant = await addStoreToAccount(account.id, normalized, 'standalone');
 
-  logger.info('Standalone tenant created', { domain: normalized, tenantId: tenant.id, accountId: account.id });
+  logger.info('Standalone tenant created', {
+    domain: normalized,
+    tenantId: tenant.id,
+    accountId: account.id,
+  });
 
   return {
-    tenant: { id: tenant.id, domain: tenant.domain, platform: tenant.platform, accountId: account.id },
+    tenant: {
+      id: tenant.id,
+      domain: tenant.domain,
+      platform: tenant.platform,
+      accountId: account.id,
+    },
     apiKey,
   };
 }
@@ -90,7 +104,9 @@ async function createStandaloneTenant(domain) {
  */
 async function getTenantByDomain(domain) {
   const normalized = normalizeDomain(domain);
-  if (!normalized) {return null;}
+  if (!normalized) {
+    return null;
+  }
 
   const sql = 'SELECT * FROM tenants WHERE domain = $1';
   const result = await query(sql, [normalized]);
@@ -121,7 +137,9 @@ async function getTenantByApiKey(apiKey) {
  */
 async function tenantExists(domain) {
   const tenant = await getTenantByDomain(domain);
-  if (tenant) {return true;}
+  if (tenant) {
+    return true;
+  }
 
   // Backward compat: Shopify shops in shop_sessions but not yet in tenants
   if (isShopifyDomain(domain)) {
@@ -133,6 +151,44 @@ async function tenantExists(domain) {
   return false;
 }
 
+/**
+ * Set tenant status (active | suspended | blocked). Used by admin.
+ */
+async function setTenantStatus(domain, status) {
+  const normalized = normalizeDomain(domain);
+  if (!normalized) {
+    return false;
+  }
+
+  const sql = `
+    UPDATE tenants SET status = $1, updated_at = NOW()
+    WHERE domain = $2
+    RETURNING id
+  `;
+  try {
+    const result = await query(sql, [status, normalized]);
+    return result.rows.length > 0;
+  } catch (e) {
+    if (e.message && e.message.includes('column "status" does not exist')) {
+      return false;
+    }
+    throw e;
+  }
+}
+
+/**
+ * List all tenants (for admin)
+ */
+async function listTenants() {
+  const sql = `
+    SELECT id, domain, platform, status, created_at, updated_at, account_id
+    FROM tenants
+    ORDER BY updated_at DESC
+  `;
+  const result = await query(sql);
+  return result.rows;
+}
+
 module.exports = {
   normalizeDomain,
   isShopifyDomain,
@@ -141,5 +197,7 @@ module.exports = {
   getTenantByDomain,
   getTenantByApiKey,
   tenantExists,
+  setTenantStatus,
+  listTenants,
   hashApiKey,
 };

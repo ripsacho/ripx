@@ -41,7 +41,10 @@ class Validators {
     if (!domain || typeof domain !== 'string') {
       return false;
     }
-    const trimmed = domain.trim().replace(/^https?:\/\//, '').split('/')[0];
+    const trimmed = domain
+      .trim()
+      .replace(/^https?:\/\//, '')
+      .split('/')[0];
     if (!trimmed || trimmed.length > 253) {
       return false;
     }
@@ -121,7 +124,20 @@ class Validators {
       errors.push('Test name must be less than 255 characters');
     }
 
-    const validTypes = ['price', 'content', 'shipping', 'offer', 'theme', 'combination'];
+    // Align with abTestEngine and constants: accept all types used by frontend and API
+    const validTypes = [
+      'price',
+      'pricing',
+      'content',
+      'shipping',
+      'offer',
+      'theme',
+      'checkout',
+      'combination',
+      'template',
+      'split-url',
+      'onsite-edit',
+    ];
     if (!validTypes.includes(config.type)) {
       errors.push(`Test type must be one of: ${validTypes.join(', ')}`);
     }

@@ -115,7 +115,10 @@ describe('validators.validateTestConfig', () => {
   it('returns errors for missing name', () => {
     const result = validators.validateTestConfig({
       type: 'price',
-      variants: [{ name: 'A', allocation: 50 }, { name: 'B', allocation: 50 }],
+      variants: [
+        { name: 'A', allocation: 50 },
+        { name: 'B', allocation: 50 },
+      ],
     });
     expect(result.isValid).toBe(false);
     expect(result.errors).toContain('Test name is required');
@@ -125,7 +128,10 @@ describe('validators.validateTestConfig', () => {
     const result = validators.validateTestConfig({
       name: 'Test',
       type: 'invalid',
-      variants: [{ name: 'A', allocation: 50 }, { name: 'B', allocation: 50 }],
+      variants: [
+        { name: 'A', allocation: 50 },
+        { name: 'B', allocation: 50 },
+      ],
     });
     expect(result.isValid).toBe(false);
     expect(result.errors.some(e => e.includes('Test type must be one of'))).toBe(true);

@@ -85,7 +85,11 @@ async function getStoresForAccount(accountId) {
 const MAX_DOMAIN_LENGTH = 253;
 
 async function addStoreToAccount(accountId, domain, platform = 'standalone') {
-  const normalized = domain.toLowerCase().trim().replace(/^https?:\/\//, '').split('/')[0];
+  const normalized = domain
+    .toLowerCase()
+    .trim()
+    .replace(/^https?:\/\//, '')
+    .split('/')[0];
 
   if (!normalized) {
     throw new Error('Invalid domain');
@@ -122,7 +126,11 @@ async function getTenantByAccountAndDomain(accountId, domain) {
     return null;
   }
 
-  const normalized = domain.toLowerCase().trim().replace(/^https?:\/\//, '').split('/')[0];
+  const normalized = domain
+    .toLowerCase()
+    .trim()
+    .replace(/^https?:\/\//, '')
+    .split('/')[0];
 
   const sql = `
     SELECT * FROM tenants
@@ -150,6 +158,66 @@ async function getFirstTenantForAccount(accountId) {
   return result.rows[0] || null;
 }
 
+/**
+ * List all accounts with domain count (for admin)
+ */
+async function listAccounts(limit = 100, offset = 0) {
+  const limitNum = Math.min(Math.max(1, parseInt(limit, 10) || 100), 500);
+  const offsetNum = Math.max(0, parseInt(offset, 10) || 0);
+  const sql = `
+    SELECT a.id, a.name, a.api_key_prefix, a.created_at, a.updated_at,
+           COUNT(t.id)::int AS domain_count
+    FROM accounts a
+    LEFT JOIN tenants t ON t.account_id = a.id
+    GROUP BY a.id, a.name, a.api_key_prefix, a.created_at, a.updated_at
+    ORDER BY a.created_at DESC
+    LIMIT $1 OFFSET $2
+  `;
+  const result = await query(sql, [limitNum, offsetNum]);
+  const countResult = await query('SELECT COUNT(*)::int AS total FROM accounts');
+  const total = countResult.rows[0]?.total || 0;
+  return {
+    accounts: result.rows.map(r => ({
+      id: r.id,
+      name: r.name,
+      apiKeyPrefix: r.api_key_prefix,
+      domainCount: r.domain_count,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    })),
+    total,
+    limit: limitNum,
+    offset: offsetNum,
+  };
+}
+
+/**
+ * Get account by id (for admin detail)
+ */
+async function getAccountById(accountId) {
+  if (!accountId) {
+    return null;
+  }
+  const sql = 'SELECT id, name, api_key_prefix, created_at, updated_at FROM accounts WHERE id = $1';
+  const result = await query(sql, [accountId]);
+  const row = result.rows[0];
+  if (!row) {return null;}
+  const stores = await getStoresForAccount(row.id);
+  return {
+    id: row.id,
+    name: row.name,
+    apiKeyPrefix: row.api_key_prefix,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    domains: stores.map(s => ({
+      id: s.id,
+      domain: s.domain,
+      platform: s.platform,
+      createdAt: s.created_at,
+    })),
+  };
+}
+
 module.exports = {
   hashApiKey,
   generateApiKey,
@@ -159,4 +227,6 @@ module.exports = {
   addStoreToAccount,
   getTenantByAccountAndDomain,
   getFirstTenantForAccount,
+  listAccounts,
+  getAccountById,
 };

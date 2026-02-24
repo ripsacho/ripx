@@ -8,15 +8,26 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ProductIcon } from '@shopify/polaris-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { PageShell } from '../Shared';
-import { apiPost } from '../../services';
+import { apiPost, isStandaloneMode, unwrapData } from '../../services';
 import { useInvalidateTests } from '../../hooks';
+import { STANDALONE_TEST_TYPE_IDS } from '../../constants';
 import TestWizard from '../TestWizard/TestWizard';
 import styles from './TestCreator.module.css';
 
-const VALID_TEMPLATES = new Set([
-  'price', 'pricing', 'content', 'onsite-edit', 'split-url', 'template', 'theme',
-  'shipping', 'offer', 'checkout', 'combination',
+const SHOPIFY_TEMPLATES = new Set([
+  'price',
+  'pricing',
+  'content',
+  'onsite-edit',
+  'split-url',
+  'template',
+  'theme',
+  'shipping',
+  'offer',
+  'checkout',
+  'combination',
 ]);
+const STANDALONE_TEMPLATES = new Set(['content', 'onsite-edit', 'split-url']);
 
 function TestCreator() {
   const navigate = useNavigate();
@@ -24,7 +35,12 @@ function TestCreator() {
   const invalidateTests = useInvalidateTests();
   const [searchParams] = useSearchParams();
   const rawTemplate = searchParams.get('type');
-  const templateType = rawTemplate && VALID_TEMPLATES.has(rawTemplate) ? rawTemplate : null;
+  const validSet = isStandaloneMode() ? STANDALONE_TEMPLATES : SHOPIFY_TEMPLATES;
+  const templateType = rawTemplate && validSet.has(rawTemplate) ? rawTemplate : null;
+  const initialTemplateForWizard =
+    isStandaloneMode() && templateType && !STANDALONE_TEST_TYPE_IDS.includes(templateType)
+      ? null
+      : templateType;
   const testName = searchParams.get('name') || '';
   const testDescription = searchParams.get('description') || '';
 
@@ -36,7 +52,7 @@ function TestCreator() {
   const handleSubmit = async payload => {
     try {
       const response = await apiPost('/tests', payload);
-      const testData = response?.data?.test ?? response?.data?.data?.test;
+      const testData = unwrapData(response)?.test ?? unwrapData(response);
       if (testData?.id) {
         // Pre-populate cache so TestDetail shows correct data immediately (avoids stale variant count)
         queryClient.setQueryData(['tests', testData.id], testData);
@@ -47,9 +63,10 @@ function TestCreator() {
       }
     } catch (err) {
       const details = err?.response?.data?.details;
-      const message = Array.isArray(details) && details.length > 0
-        ? details.join(' ')
-        : err?.response?.data?.error || err?.message || 'Failed to create test';
+      const message =
+        Array.isArray(details) && details.length > 0
+          ? details.join(' ')
+          : err?.response?.data?.error || err?.message || 'Failed to create test';
       throw new Error(message);
     }
   };
@@ -63,7 +80,10 @@ function TestCreator() {
               <div className={styles.createHeroBadge}>Step 1 of 5</div>
               <div className={styles.createHeroProgress} aria-hidden>
                 {[1, 2, 3, 4, 5].map(i => (
-                  <span key={i} className={`${styles.createHeroDot} ${i === 1 ? styles.createHeroDotActive : ''}`} />
+                  <span
+                    key={i}
+                    className={`${styles.createHeroDot} ${i === 1 ? styles.createHeroDotActive : ''}`}
+                  />
                 ))}
               </div>
             </div>
@@ -84,8 +104,8 @@ function TestCreator() {
               mode="create"
               showTemplateStep
               initialData={initialData}
-              initialTemplate={templateType}
-              initialStep={templateType ? 2 : 1}
+              initialTemplate={initialTemplateForWizard}
+              initialStep={initialTemplateForWizard ? 2 : 1}
               submitLabel="Create Test"
               onSubmit={handleSubmit}
               onCancel={() => navigate('/tests')}

@@ -4,8 +4,10 @@
  * Modal for selecting test type before creating a new test
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Modal, TextField, BlockStack, InlineStack, Text, Card } from '@shopify/polaris';
+import { isStandaloneMode } from '../../services';
+import { STANDALONE_TEST_TYPE_IDS } from '../../constants';
 
 const TEST_TYPES = {
   content: {
@@ -76,6 +78,14 @@ const TEST_TYPES = {
         icon: '🛒',
         category: 'checkout',
       },
+      {
+        id: 'combination',
+        name: 'Combination Test',
+        description:
+          'Test multiple variables together (e.g., price + shipping) for interaction effects.',
+        icon: '🔬',
+        category: 'combination',
+      },
     ],
   },
 };
@@ -91,9 +101,14 @@ function suggestTestName(typeId) {
     shipping: 'Shipping Test',
     offer: 'Offer Test',
     checkout: 'Checkout Test',
+    combination: 'Combination Test',
   };
   const base = names[typeId] || 'A/B Test';
-  const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const date = new Date().toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
   return `${base} - ${date}`;
 }
 
@@ -108,14 +123,24 @@ function suggestDescription(typeId) {
     shipping: 'Optimize shipping rates and thresholds',
     offer: 'Test discount effectiveness',
     checkout: 'Improve checkout experience',
+    combination: 'Test interaction effects between price, shipping, and other variables',
   };
   return descs[typeId] || 'Measure impact on conversion and revenue';
 }
+
+const STANDALONE_CONTENT_TYPES = TEST_TYPES.content.types.filter(t =>
+  STANDALONE_TEST_TYPE_IDS.includes(t.id)
+);
 
 function TestTypeModal({ open, onClose, onSelect }) {
   const [testName, setTestName] = useState('');
   const [testDescription, setTestDescription] = useState('');
   const [selectedType, setSelectedType] = useState(null);
+  const isStandalone = isStandaloneMode();
+  const contentTypesToShow = useMemo(
+    () => (isStandalone ? STANDALONE_CONTENT_TYPES : TEST_TYPES.content.types),
+    [isStandalone]
+  );
 
   /** Auto-fill name and description when type is selected (only if empty) */
   React.useEffect(() => {
@@ -207,7 +232,7 @@ function TestTypeModal({ open, onClose, onSelect }) {
             </InlineStack>
 
             <div className="grid-template">
-              {TEST_TYPES.content.types.map(type => (
+              {contentTypesToShow.map(type => (
                 <Card
                   key={type.id}
                   sectioned
@@ -259,72 +284,74 @@ function TestTypeModal({ open, onClose, onSelect }) {
             </div>
           </BlockStack>
 
-          {/* Profit Tests Section */}
-          <BlockStack gap="300">
-            <InlineStack gap="200" align="start" blockAlign="center">
-              <Text variant="headingMd" as="h3" fontWeight="semibold">
-                {TEST_TYPES.profit.title}
-              </Text>
-              <span
-                style={{ fontSize: '1rem', opacity: 0.6, cursor: 'help' }}
-                title={TEST_TYPES.profit.description}
-              >
-                ⓘ
-              </span>
-            </InlineStack>
-
-            <div className="grid-template">
-              {TEST_TYPES.profit.types.map(type => (
-                <Card
-                  key={type.id}
-                  sectioned
-                  onClick={() => setSelectedType(type)}
-                  style={{
-                    cursor: 'pointer',
-                    border:
-                      selectedType?.id === type.id
-                        ? '2px solid var(--accent-primary)'
-                        : '1px solid var(--border-primary)',
-                    backgroundColor:
-                      selectedType?.id === type.id ? 'var(--bg-active)' : 'var(--bg-secondary)',
-                    position: 'relative',
-                    transition: 'all 0.2s ease',
-                  }}
+          {/* Profit Tests Section - Shopify only */}
+          {!isStandalone && (
+            <BlockStack gap="300">
+              <InlineStack gap="200" align="start" blockAlign="center">
+                <Text variant="headingMd" as="h3" fontWeight="semibold">
+                  {TEST_TYPES.profit.title}
+                </Text>
+                <span
+                  style={{ fontSize: '1rem', opacity: 0.6, cursor: 'help' }}
+                  title={TEST_TYPES.profit.description}
                 >
-                  {selectedType?.id === type.id && (
-                    <div
-                      style={{
-                        position: 'absolute',
-                        top: '8px',
-                        right: '8px',
-                        width: '20px',
-                        height: '20px',
-                        borderRadius: '50%',
-                        backgroundColor: 'var(--accent-primary)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: 'var(--text-inverse)',
-                        fontSize: '12px',
-                        fontWeight: 'bold',
-                      }}
-                    >
-                      ✓
-                    </div>
-                  )}
-                  <BlockStack gap="200">
-                    <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{type.icon}</div>
-                    <Text variant="bodyMd" fontWeight="semibold" as="p">
-                      {type.name}
-                    </Text>
-                    <Text variant="bodySm" color="subdued" as="p">
-                      {type.description}
-                    </Text>
-                  </BlockStack>
-                </Card>
-              ))}
-            </div>
-          </BlockStack>
+                  ⓘ
+                </span>
+              </InlineStack>
+
+              <div className="grid-template">
+                {TEST_TYPES.profit.types.map(type => (
+                  <Card
+                    key={type.id}
+                    sectioned
+                    onClick={() => setSelectedType(type)}
+                    style={{
+                      cursor: 'pointer',
+                      border:
+                        selectedType?.id === type.id
+                          ? '2px solid var(--accent-primary)'
+                          : '1px solid var(--border-primary)',
+                      backgroundColor:
+                        selectedType?.id === type.id ? 'var(--bg-active)' : 'var(--bg-secondary)',
+                      position: 'relative',
+                      transition: 'all 0.2s ease',
+                    }}
+                  >
+                    {selectedType?.id === type.id && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '8px',
+                          right: '8px',
+                          width: '20px',
+                          height: '20px',
+                          borderRadius: '50%',
+                          backgroundColor: 'var(--accent-primary)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: 'var(--text-inverse)',
+                          fontSize: '12px',
+                          fontWeight: 'bold',
+                        }}
+                      >
+                        ✓
+                      </div>
+                    )}
+                    <BlockStack gap="200">
+                      <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{type.icon}</div>
+                      <Text variant="bodyMd" fontWeight="semibold" as="p">
+                        {type.name}
+                      </Text>
+                      <Text variant="bodySm" color="subdued" as="p">
+                        {type.description}
+                      </Text>
+                    </BlockStack>
+                  </Card>
+                ))}
+              </div>
+            </BlockStack>
+          )}
         </BlockStack>
       </Modal.Section>
     </Modal>

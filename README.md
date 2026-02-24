@@ -2,76 +2,24 @@
 
 **AB Testing Platform for Shopify and Standalone Sites**
 
-RipX is an AB testing platform supporting Shopify and standalone e-commerce sites. Test prices, content, shipping rates, and offers to optimize conversion.
+RipX is an A/B testing platform for Shopify and standalone e-commerce sites. Test prices, content, shipping, and offers to optimize conversion.
 
-## Quick Start
+**Full documentation:** [docs/README.md](docs/README.md) — quick start, project structure, scripts, and links to all specs and guides.
 
-### Prerequisites
-
-- Node.js 18+
-- PostgreSQL
-- (Optional) Redis for sessions
-
-### Run Locally
+## Quick commands
 
 ```bash
-# Install dependencies
-npm install
-cd frontend && npm install && cd ..
-
-# Configure environment
+npm run install:all
 cp .env.example .env
-# Edit .env with DATABASE_URL, SHOPIFY_API_KEY, SHOPIFY_API_SECRET, JWT_SECRET
-
-# Database
-npm run dev:db          # Start Postgres + Redis (Docker)
-npm run migrate         # Run migrations
-
-# Start dev servers
-npm run dev             # Backend (3000) + Frontend (5173)
+npm run dev:db && npm run migrate
+npm run dev
 ```
 
-### Production Build
+**Test & validate:** `npm run test` (backend + frontend), `npm run validate` (lint + test), `npm run build` (frontend). **Audit:** `npm run audit` (root + frontend).
 
-```bash
-npm run build           # Build frontend
-npm start               # Start backend (serves frontend from backend)
-```
+**Health:** `GET /health` or `GET /api/health` returns app status and DB/Redis checks (503 when DB is down).
 
-## Project Structure
-
-```
-ripx/
-├── backend/
-│   ├── src/
-│   │   ├── routes/         # API routes
-│   │   ├── services/      # Business logic (abTestEngine, analytics, etc.)
-│   │   ├── models/        # Database models
-│   │   ├── middleware/    # Auth, error handling
-│   │   └── app.js         # Express app
-│   └── migrations/       # SQL migrations
-├── frontend/
-│   └── src/
-│       ├── components/    # React UI (Dashboard, TestCreator, Analytics)
-│       ├── hooks/         # useTests, useAnalytics
-│       └── services/      # API client
-├── extensions/            # Shopify theme extension
-└── shopify/               # Storefront script
-```
-
-## Key Scripts
-
-| Command                | Description                    |
-| ---------------------- | ------------------------------ |
-| `npm run dev`          | Backend + frontend dev servers |
-| `npm run build`        | Build frontend for production  |
-| `npm start`            | Start production server        |
-| `npm run migrate`      | Run database migrations        |
-| `npm run test:backend` | Run backend tests              |
-
-## Environment
-
-See `.env.example` for required variables. Essential: `DATABASE_URL`, `JWT_SECRET`, `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `APP_URL`.
+**Local admin:** In `.env` set `RIPX_ADMIN_SHOP_DOMAINS=your-store.myshopify.com` to access the Admin panel at `/admin` without setting DB roles. Production: see [docs/getting-started/ADMIN_SETUP.md](docs/getting-started/ADMIN_SETUP.md).
 
 ## License
 

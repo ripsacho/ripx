@@ -3,13 +3,14 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPost, apiDelete } from '../services';
+import { apiGet, apiPost, apiDelete, unwrapData } from '../services';
 
 const TESTS_QUERY_KEY = ['tests'];
 
 async function fetchTests() {
   const response = await apiGet('/tests');
-  const data = response.data?.tests ?? response.data?.data?.tests;
+  const raw = unwrapData(response);
+  const data = raw?.tests ?? raw;
   return Array.isArray(data) ? data : [];
 }
 
@@ -27,7 +28,8 @@ export function useTest(id, options = {}) {
     queryKey: ['tests', id],
     queryFn: async () => {
       const response = await apiGet(`/tests/${id}`);
-      return response.data?.test || response.data?.data?.test;
+      const data = unwrapData(response);
+      return data?.test ?? data;
     },
     enabled: !!id && id !== 'undefined',
     staleTime: 10 * 1000, // 10s - balance freshness vs requests; variants must stay in sync
@@ -54,14 +56,12 @@ export function useInvalidateTests() {
 export function useStartTest() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (testId) => apiPost(`/tests/${testId}/start`, {}),
-    onMutate: async (testId) => {
+    mutationFn: testId => apiPost(`/tests/${testId}/start`, {}),
+    onMutate: async testId => {
       await queryClient.cancelQueries({ queryKey: TESTS_QUERY_KEY });
       const prev = queryClient.getQueryData(TESTS_QUERY_KEY);
-      queryClient.setQueryData(TESTS_QUERY_KEY, (old) =>
-        Array.isArray(old)
-          ? old.map((t) => (t.id === testId ? { ...t, status: 'running' } : t))
-          : old
+      queryClient.setQueryData(TESTS_QUERY_KEY, old =>
+        Array.isArray(old) ? old.map(t => (t.id === testId ? { ...t, status: 'running' } : t)) : old
       );
       return { prev };
     },
@@ -78,14 +78,12 @@ export function useStartTest() {
 export function useStopTest() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (testId) => apiPost(`/tests/${testId}/stop`, {}),
-    onMutate: async (testId) => {
+    mutationFn: testId => apiPost(`/tests/${testId}/stop`, {}),
+    onMutate: async testId => {
       await queryClient.cancelQueries({ queryKey: TESTS_QUERY_KEY });
       const prev = queryClient.getQueryData(TESTS_QUERY_KEY);
-      queryClient.setQueryData(TESTS_QUERY_KEY, (old) =>
-        Array.isArray(old)
-          ? old.map((t) => (t.id === testId ? { ...t, status: 'stopped' } : t))
-          : old
+      queryClient.setQueryData(TESTS_QUERY_KEY, old =>
+        Array.isArray(old) ? old.map(t => (t.id === testId ? { ...t, status: 'stopped' } : t)) : old
       );
       return { prev };
     },
@@ -103,7 +101,10 @@ export function usePersonalizeTest() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ testId, variantIndex }) =>
-      apiPost(`/tests/${testId}/personalize`, variantIndex !== null && variantIndex !== undefined ? { variantIndex } : {}),
+      apiPost(
+        `/tests/${testId}/personalize`,
+        variantIndex !== null && variantIndex !== undefined ? { variantIndex } : {}
+      ),
     onSuccess: (_data, { testId }) => {
       queryClient.invalidateQueries({ queryKey: ['tests', testId] });
       queryClient.invalidateQueries({ queryKey: TESTS_QUERY_KEY });
@@ -129,7 +130,7 @@ export function useRolloutTest() {
 export function useDisablePersonalization() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (testId) => apiPost(`/tests/${testId}/personalization/disable`, {}),
+    mutationFn: testId => apiPost(`/tests/${testId}/personalization/disable`, {}),
     onSuccess: (_data, testId) => {
       queryClient.invalidateQueries({ queryKey: ['tests', testId] });
       queryClient.invalidateQueries({ queryKey: TESTS_QUERY_KEY });
@@ -140,7 +141,7 @@ export function useDisablePersonalization() {
 export function useDeleteTest() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (testId) => apiDelete(`/tests/${testId}`),
+    mutationFn: testId => apiDelete(`/tests/${testId}`),
     onSuccess: (_data, testId) => {
       queryClient.invalidateQueries({ queryKey: TESTS_QUERY_KEY });
       if (testId) queryClient.removeQueries({ queryKey: ['tests', testId] });

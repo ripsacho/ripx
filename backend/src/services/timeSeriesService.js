@@ -75,7 +75,8 @@ class TimeSeriesService {
       // Parse variants to get all variant_id and variant_name (include holdout if present)
       let variants = [];
       try {
-        const v = typeof test.variants === 'string' ? JSON.parse(test.variants) : (test.variants || []);
+        const v =
+          typeof test.variants === 'string' ? JSON.parse(test.variants) : test.variants || [];
         variants = Array.isArray(v) ? v : [];
       } catch {
         variants = [];
@@ -114,11 +115,7 @@ class TimeSeriesService {
             AND DATE(e.created_at) = $3
         `;
 
-        const conversionsResult = await query(conversionsSql, [
-          test.test_id,
-          variantId,
-          dateStr,
-        ]);
+        const conversionsResult = await query(conversionsSql, [test.test_id, variantId, dateStr]);
 
         const conversions = parseInt(conversionsResult.rows[0]?.conversions || 0);
         const revenue = parseFloat(conversionsResult.rows[0]?.revenue || 0);

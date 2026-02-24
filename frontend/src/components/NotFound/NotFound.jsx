@@ -17,7 +17,9 @@ function NotFound() {
   useEffect(() => {
     const prev = document.title;
     document.title = 'Page not found - RipX';
-    return () => { document.title = prev; };
+    return () => {
+      document.title = prev;
+    };
   }, []);
 
   return (
@@ -32,10 +34,17 @@ function NotFound() {
             The page you&apos;re looking for doesn&apos;t exist or has been moved.
           </Text>
           <InlineStack gap="300">
-            <Button icon={HomeIcon} variant="primary" onClick={() => navigate(ROUTES.DASHBOARD)}>
+            <Button
+              icon={HomeIcon}
+              variant="primary"
+              onClick={() => navigate(ROUTES.DASHBOARD)}
+              aria-label="Go to Dashboard"
+            >
               Go to Dashboard
             </Button>
-            <Button onClick={() => window.history.back()}>Go back</Button>
+            <Button onClick={() => window.history.back()} aria-label="Go back to previous page">
+              Go back
+            </Button>
           </InlineStack>
         </div>
       </Page>

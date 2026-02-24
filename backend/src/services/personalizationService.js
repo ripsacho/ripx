@@ -36,8 +36,13 @@ function getWinnerFromAnalytics(analytics, goal = {}, testVariants = []) {
     if (significance?.winner) {
       let winnerIdx = significance.winner === 'variantB' ? 1 : 0;
       let variant = analytics.variants[winnerIdx];
-      if (significance.winner === 'best' && (significance.winnerVariantId || significance.bestVariantId)) {
-        const idx = analytics.variants.findIndex(v => v.id === (significance.winnerVariantId || significance.bestVariantId));
+      if (
+        significance.winner === 'best' &&
+        (significance.winnerVariantId || significance.bestVariantId)
+      ) {
+        const idx = analytics.variants.findIndex(
+          v => v.id === (significance.winnerVariantId || significance.bestVariantId)
+        );
         if (idx >= 0) {
           winnerIdx = idx;
           variant = analytics.variants[idx];
@@ -274,10 +279,16 @@ async function disablePersonalization(testId, shopDomain) {
  * @returns {number} Effective percent 0-100
  */
 function getEffectiveRolloutPercent(test) {
-  if (!test) {return 0;}
+  if (!test) {
+    return 0;
+  }
   const mode = test.personalization_mode;
-  if (mode === PERSONALIZATION_MODES.PERSONALIZED) {return 100;}
-  if (mode !== PERSONALIZATION_MODES.ROLLOUT) {return 0;}
+  if (mode === PERSONALIZATION_MODES.PERSONALIZED) {
+    return 100;
+  }
+  if (mode !== PERSONALIZATION_MODES.ROLLOUT) {
+    return 0;
+  }
 
   const schedule = test.rollout_schedule;
   if (!schedule || !Array.isArray(schedule) || schedule.length === 0) {
@@ -285,7 +296,9 @@ function getEffectiveRolloutPercent(test) {
   }
 
   const startedAt = test.rollout_started_at ? new Date(test.rollout_started_at) : null;
-  if (!startedAt) {return Number(test.rollout_percent) || 0;}
+  if (!startedAt) {
+    return Number(test.rollout_percent) || 0;
+  }
 
   const now = new Date();
   const daysSinceStart = (now - startedAt) / (24 * 60 * 60 * 1000);

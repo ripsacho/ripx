@@ -36,7 +36,13 @@ import Toast from '../Toast/Toast';
 import { apiPost } from '../../services';
 import LoadingSkeleton from '../LoadingSkeleton/LoadingSkeleton';
 import { PageShell } from '../Shared';
-import { useTests, useStartTest, useStopTest, useDeleteTest, useInvalidateTests } from '../../hooks';
+import {
+  useTests,
+  useStartTest,
+  useStopTest,
+  useDeleteTest,
+  useInvalidateTests,
+} from '../../hooks';
 import { TEST_STATUS_OPTIONS, PERSONALIZATION_MODES } from '../../constants';
 import { getTestTypeDisplay, getVariantCount } from '../../utils/testType';
 import styles from './TestList.module.css';
@@ -155,9 +161,9 @@ function TestList() {
       setErrorMessage(null);
       try {
         await startMutation.mutateAsync(testId);
-    } catch (err) {
-      setErrorMessage(err.response?.data?.error || 'Failed to start test');
-    } finally {
+      } catch (err) {
+        setErrorMessage(err.response?.data?.error || 'Failed to start test');
+      } finally {
         setActionLoading(prev => ({ ...prev, [testId]: false }));
       }
     },
@@ -171,9 +177,9 @@ function TestList() {
       setErrorMessage(null);
       try {
         await stopMutation.mutateAsync(testId);
-    } catch (err) {
-      setErrorMessage(err.response?.data?.error || 'Failed to stop test');
-    } finally {
+      } catch (err) {
+        setErrorMessage(err.response?.data?.error || 'Failed to stop test');
+      } finally {
         setActionLoading(prev => ({ ...prev, [testId]: false }));
       }
     },
@@ -190,8 +196,10 @@ function TestList() {
 
     // Filter by view (personalization)
     if (viewFilter === 'personalization') {
-      filtered = filtered.filter(
-        (t) => [PERSONALIZATION_MODES.PERSONALIZED, PERSONALIZATION_MODES.ROLLOUT].includes(t.personalization_mode || '')
+      filtered = filtered.filter(t =>
+        [PERSONALIZATION_MODES.PERSONALIZED, PERSONALIZATION_MODES.ROLLOUT].includes(
+          t.personalization_mode || ''
+        )
       );
     }
 
@@ -206,7 +214,8 @@ function TestList() {
       filtered = filtered.filter(test => {
         const nameMatch = test.name?.toLowerCase().includes(query);
         const typeDisplay = getTestTypeDisplay(test).label;
-        const typeMatch = test.type?.toLowerCase().includes(query) || typeDisplay?.toLowerCase().includes(query);
+        const typeMatch =
+          test.type?.toLowerCase().includes(query) || typeDisplay?.toLowerCase().includes(query);
         const descriptionMatch = test.description?.toLowerCase().includes(query);
         const statusMatch = test.status?.toLowerCase().includes(query);
 
@@ -310,8 +319,8 @@ function TestList() {
                   </Text>
                 </span>
                 <Text variant="bodySm" color="subdued" as="p" className={styles.testListCardMeta}>
-                  {getTestTypeDisplay(test).label} • {variantCount} variant{variantCount !== 1 ? 's' : ''} • Created{' '}
-                  {createdDate}
+                  {getTestTypeDisplay(test).label} • {variantCount} variant
+                  {variantCount !== 1 ? 's' : ''} • Created {createdDate}
                 </Text>
               </div>
             </div>
@@ -462,17 +471,25 @@ function TestList() {
               <div className={styles.testListCardMetricsGrid}>
                 <div className={styles.testListCardMetric}>
                   <span className={styles.testListCardMetricLabel}>Visitors</span>
-                  <span className={styles.testListCardMetricValue}>{totalVisitors.toLocaleString()}</span>
+                  <span className={styles.testListCardMetricValue}>
+                    {totalVisitors.toLocaleString()}
+                  </span>
                 </div>
                 <div className={styles.testListCardMetric}>
                   <span className={styles.testListCardMetricLabel}>Conversions</span>
-                  <span className={styles.testListCardMetricValue}>{totalConversions.toLocaleString()}</span>
+                  <span className={styles.testListCardMetricValue}>
+                    {totalConversions.toLocaleString()}
+                  </span>
                 </div>
                 <div className={styles.testListCardMetric}>
                   <span className={styles.testListCardMetricLabel}>Rate</span>
                   <span
                     className={`${styles.testListCardMetricValue} ${
-                      conversionRate > 5 ? styles.testListCardMetricValueSuccess : conversionRate > 2 ? '' : styles.testListCardMetricValueSubdued
+                      conversionRate > 5
+                        ? styles.testListCardMetricValueSuccess
+                        : conversionRate > 2
+                          ? ''
+                          : styles.testListCardMetricValueSubdued
                     }`}
                   >
                     {conversionRate.toFixed(2)}%
@@ -481,7 +498,9 @@ function TestList() {
                 {totalRevenue > 0 && (
                   <div className={styles.testListCardMetric}>
                     <span className={styles.testListCardMetricLabel}>Revenue</span>
-                    <span className={`${styles.testListCardMetricValue} ${styles.testListCardMetricValueSuccess}`}>
+                    <span
+                      className={`${styles.testListCardMetricValue} ${styles.testListCardMetricValueSuccess}`}
+                    >
                       $
                       {totalRevenue.toLocaleString(undefined, {
                         minimumFractionDigits: 2,
@@ -503,7 +522,9 @@ function TestList() {
                 </div>
                 <div className={styles.testListCardMetric}>
                   <span className={styles.testListCardMetricLabel}>Rate</span>
-                  <span className={`${styles.testListCardMetricValue} ${styles.testListCardMetricValueSubdued}`}>
+                  <span
+                    className={`${styles.testListCardMetricValue} ${styles.testListCardMetricValueSubdued}`}
+                  >
                     0.00%
                   </span>
                 </div>
@@ -519,7 +540,10 @@ function TestList() {
           </div>
 
           {/* Quick Actions */}
-          <div className={`${styles.cardActions} test-card-actions`} onClick={e => e.stopPropagation()}>
+          <div
+            className={`${styles.cardActions} test-card-actions`}
+            onClick={e => e.stopPropagation()}
+          >
             <button
               type="button"
               className={styles.cardActionLink}
@@ -562,12 +586,16 @@ function TestList() {
   );
 
   const statusOptions = TEST_STATUS_OPTIONS;
-  const personalizationCount = tests.filter(
-    (t) => [PERSONALIZATION_MODES.PERSONALIZED, PERSONALIZATION_MODES.ROLLOUT].includes(t.personalization_mode || '')
+  const personalizationCount = tests.filter(t =>
+    [PERSONALIZATION_MODES.PERSONALIZED, PERSONALIZATION_MODES.ROLLOUT].includes(
+      t.personalization_mode || ''
+    )
   ).length;
 
   const hasActiveFilters =
-    searchQuery || (statusFilter.length > 0 && !statusFilter.includes('all')) || viewFilter !== 'all';
+    searchQuery ||
+    (statusFilter.length > 0 && !statusFilter.includes('all')) ||
+    viewFilter !== 'all';
 
   const sortOptions = [
     { label: 'Newest First', value: 'created_desc' },
@@ -769,7 +797,17 @@ function TestList() {
 
   return (
     <PageShell className={styles.testsPage}>
-      <Toast message={errorMessage || (isError ? (error?.response?.data?.error || error?.message || 'Failed to load tests') : null)} type="error" onClose={() => setErrorMessage(null)} duration={5000} />
+      <Toast
+        message={
+          errorMessage ||
+          (isError
+            ? error?.response?.data?.error || error?.message || 'Failed to load tests'
+            : null)
+        }
+        type="error"
+        onClose={() => setErrorMessage(null)}
+        duration={5000}
+      />
 
       <Page title="" subtitle="">
         <div className={styles.testsLayout}>
@@ -901,7 +939,8 @@ function TestList() {
                             <span className={styles.selectAllLabel}>
                               Select all{' '}
                               <span className={styles.selectAllCount}>
-                                {filteredAndSortedTests.length} {filteredAndSortedTests.length === 1 ? 'test' : 'tests'}
+                                {filteredAndSortedTests.length}{' '}
+                                {filteredAndSortedTests.length === 1 ? 'test' : 'tests'}
                               </span>
                             </span>
                           </label>
@@ -948,22 +987,22 @@ function TestList() {
                         ) : (
                           <div className={styles.testListList}>
                             <BlockStack gap="400">
-                            {filteredAndSortedTests.map(test => (
-                              <TestCard
-                                key={test.id}
-                                test={test}
-                                isSelected={selectedTests.includes(test.id)}
-                                onSelect={handleCardSelect}
-                                viewMode="list"
-                              />
-                            ))}
+                              {filteredAndSortedTests.map(test => (
+                                <TestCard
+                                  key={test.id}
+                                  test={test}
+                                  isSelected={selectedTests.includes(test.id)}
+                                  onSelect={handleCardSelect}
+                                  viewMode="list"
+                                />
+                              ))}
                             </BlockStack>
                           </div>
                         )}
                       </>
                     )}
-                    </BlockStack>
-                  </Card>
+                  </BlockStack>
+                </Card>
               </Layout.Section>
             </Layout>
           </div>

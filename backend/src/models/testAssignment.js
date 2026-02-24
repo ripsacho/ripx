@@ -136,17 +136,18 @@ class TestAssignmentModel {
    * @returns {Promise<Array>} Assignment stats by variant
    */
   async getAssignmentStats(testId, shopDomain) {
+    const normalized = (shopDomain || '').toString().toLowerCase().trim();
     const sql = `
       SELECT 
         variant_id,
         variant_name,
         COUNT(*) as assignment_count
       FROM test_assignments
-      WHERE test_id = $1 AND shop_domain = $2
+      WHERE test_id = $1 AND LOWER(TRIM(shop_domain)) = LOWER(TRIM($2))
       GROUP BY variant_id, variant_name
     `;
 
-    const result = await query(sql, [testId, shopDomain]);
+    const result = await query(sql, [testId, normalized || shopDomain]);
     return result.rows;
   }
 }
@@ -155,7 +156,8 @@ const model = new TestAssignmentModel();
 
 module.exports = {
   getTestAssignment: (testId, userId, shop) => model.getTestAssignment(testId, userId, shop),
-  getTestAssignmentsBatch: (userId, shop, testIds) => model.getTestAssignmentsBatch(userId, shop, testIds),
+  getTestAssignmentsBatch: (userId, shop, testIds) =>
+    model.getTestAssignmentsBatch(userId, shop, testIds),
   saveTestAssignment: assignment => model.saveTestAssignment(assignment),
   getAssignmentStats: (testId, shop) => model.getAssignmentStats(testId, shop),
 };

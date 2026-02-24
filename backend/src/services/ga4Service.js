@@ -31,13 +31,25 @@ function mapToGA4Event(event) {
   if (!event) {
     return null;
   }
-  const { event_type, event_name, event_value, user_id: _user_id, test_id, variant_id, shop_domain, metadata = {} } = event;
+  const {
+    event_type,
+    event_name,
+    event_value,
+    user_id: _user_id,
+    test_id,
+    variant_id,
+    shop_domain,
+    metadata = {},
+  } = event;
 
   let name;
   const meta = typeof metadata === 'object' && metadata !== null ? metadata : {};
   const safeMeta = Object.fromEntries(
     Object.entries(meta).filter(
-      ([, v]) => v !== undefined && v !== null && (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean')
+      ([, v]) =>
+        v !== undefined &&
+        v !== null &&
+        (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean')
     )
   );
   const params = {
@@ -50,9 +62,10 @@ function mapToGA4Event(event) {
   if (event_type === 'conversion') {
     name = 'purchase';
     params.value = parseFloat(event_value) || 0;
-    params.currency = (meta?.currency && typeof meta.currency === 'string')
-      ? String(meta.currency).substring(0, 10)
-      : 'USD';
+    params.currency =
+      meta?.currency && typeof meta.currency === 'string'
+        ? String(meta.currency).substring(0, 10)
+        : 'USD';
   } else if (event_name) {
     name = event_name.replace(/[^a-zA-Z0-9_]/g, '_').substring(0, 40);
     if (event_value !== null && event_value !== undefined && event_value !== '') {
@@ -69,9 +82,13 @@ function mapToGA4Event(event) {
   const truncated = filtered.map(([k, v]) => {
     const key = String(k).substring(0, 40);
     let val = v;
-    if (typeof val === 'boolean') {val = String(val);}
-    else if (typeof val === 'string' && val.length > 100) {val = val.substring(0, 100);}
-    else if (typeof val === 'number' && !Number.isFinite(val)) {val = 0;}
+    if (typeof val === 'boolean') {
+      val = String(val);
+    } else if (typeof val === 'string' && val.length > 100) {
+      val = val.substring(0, 100);
+    } else if (typeof val === 'number' && !Number.isFinite(val)) {
+      val = 0;
+    }
     return [key, val];
   });
 
@@ -90,7 +107,12 @@ function mapToGA4Event(event) {
 async function sendToGA4(event, clientId, shopDomain) {
   const config = shopDomain
     ? await integrationConfig.getGA4Config(shopDomain)
-    : (isConfigured() ? { measurementId: process.env.GA4_MEASUREMENT_ID.trim(), apiSecret: process.env.GA4_API_SECRET.trim() } : null);
+    : isConfigured()
+      ? {
+          measurementId: process.env.GA4_MEASUREMENT_ID.trim(),
+          apiSecret: process.env.GA4_API_SECRET.trim(),
+        }
+      : null;
   if (!config?.measurementId || !config?.apiSecret) {
     return;
   }

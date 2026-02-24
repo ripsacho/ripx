@@ -14,12 +14,13 @@ const outboundWebhookService = require('../services/outboundWebhookService');
 
 async function processScheduledStart(testId) {
   try {
-    const { rows } = await query(
-      'SELECT id, shop_domain, name, status FROM tests WHERE id = $1',
-      [testId]
-    );
+    const { rows } = await query('SELECT id, shop_domain, name, status FROM tests WHERE id = $1', [
+      testId,
+    ]);
     const test = rows[0];
-    if (!test || test.status !== 'draft') {return;}
+    if (!test || test.status !== 'draft') {
+      return;
+    }
 
     await updateTest(testId, test.shop_domain, { status: 'running', started_at: new Date() });
     logger.info('Test auto-started', { testId, shopDomain: test.shop_domain });
@@ -30,12 +31,13 @@ async function processScheduledStart(testId) {
 
 async function processScheduledStop(testId) {
   try {
-    const { rows } = await query(
-      'SELECT id, shop_domain, name, status FROM tests WHERE id = $1',
-      [testId]
-    );
+    const { rows } = await query('SELECT id, shop_domain, name, status FROM tests WHERE id = $1', [
+      testId,
+    ]);
     const test = rows[0];
-    if (!test || test.status !== 'running') {return;}
+    if (!test || test.status !== 'running') {
+      return;
+    }
 
     await updateTest(testId, test.shop_domain, { status: 'stopped', stopped_at: new Date() });
 
@@ -62,9 +64,18 @@ async function processScheduledStop(testId) {
 }
 
 function scheduleTestJobs(test) {
-  if (!scheduledTestsQueue) {return;}
+  if (!scheduledTestsQueue) {
+    return;
+  }
 
-  const { id, shop_domain: _shop_domain, scheduled_start_at, scheduled_stop_at, auto_start, auto_stop } = test;
+  const {
+    id,
+    shop_domain: _shop_domain,
+    scheduled_start_at,
+    scheduled_stop_at,
+    auto_start,
+    auto_stop,
+  } = test;
 
   if (auto_start && scheduled_start_at) {
     const delay = new Date(scheduled_start_at) - Date.now();
@@ -84,8 +95,12 @@ function scheduleTestJobs(test) {
 if (scheduledTestsQueue) {
   scheduledTestsQueue.process(async job => {
     const { action, testId } = job.data;
-    if (action === 'start') {await processScheduledStart(testId);}
-    if (action === 'stop') {await processScheduledStop(testId);}
+    if (action === 'start') {
+      await processScheduledStart(testId);
+    }
+    if (action === 'stop') {
+      await processScheduledStop(testId);
+    }
   });
 }
 

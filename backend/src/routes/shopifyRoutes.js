@@ -6,6 +6,7 @@
 
 const express = require('express');
 const router = express.Router();
+const { asyncHandler } = require('../middleware/asyncHandler');
 const shopifyService = require('../services/shopifyService');
 
 async function checkAppProxyStatus(shopDomain) {
@@ -60,8 +61,9 @@ async function checkEmbedStatus(shopDomain) {
  * GET /api/shopify/products/:id
  * Get product information
  */
-router.get('/products/:id', async (req, res, next) => {
-  try {
+router.get(
+  '/products/:id',
+  asyncHandler(async (req, res) => {
     const { id } = req.params;
     const shopDomain = req.shopDomain;
     const accessToken = req.shopifyAccessToken;
@@ -72,17 +74,63 @@ router.get('/products/:id', async (req, res, next) => {
       success: true,
       product,
     });
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);
+
+/**
+ * GET /api/shopify/store-resources
+ * List store resources for targeting selector (products, collections, pages).
+ * Query: type=product(s)|collection(s)|page(s), query=optional search
+ */
+router.get(
+  '/store-resources',
+  asyncHandler(async (req, res) => {
+    const shopDomain = req.shopDomain;
+    const accessToken = req.shopifyAccessToken;
+    const rawType = (req.query.type || '').toLowerCase().trim();
+    const searchQuery = (req.query.query || '').trim() || undefined;
+    const first = Math.min(parseInt(req.query.first, 10) || 100, 100);
+
+    const typeMap = {
+      product: 'products',
+      products: 'products',
+      collection: 'collections',
+      collections: 'collections',
+      page: 'pages',
+      pages: 'pages',
+    };
+    const type = typeMap[rawType];
+    if (!type) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid type. Use product(s), collection(s), or page(s).',
+      });
+    }
+
+    let list;
+    if (type === 'products') {
+      list = await shopifyService.listProducts(shopDomain, accessToken, searchQuery, first);
+    } else if (type === 'collections') {
+      list = await shopifyService.listCollections(shopDomain, accessToken, searchQuery, first);
+    } else {
+      list = await shopifyService.listPages(shopDomain, accessToken, searchQuery, first);
+    }
+
+    res.json({
+      success: true,
+      type: rawType,
+      resources: list,
+    });
+  })
+);
 
 /**
  * GET /api/shopify/setup/status
  * Check App Proxy and App Embed status.
  */
-router.get('/setup/status', async (req, res, next) => {
-  try {
+router.get(
+  '/setup/status',
+  asyncHandler(async (req, res) => {
     const shopDomain = req.shopDomain;
 
     const appUrl = process.env.APP_URL || null;
@@ -101,9 +149,7 @@ router.get('/setup/status', async (req, res, next) => {
       proxyStatus,
       embedStatus,
     });
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);
 
 module.exports = router;

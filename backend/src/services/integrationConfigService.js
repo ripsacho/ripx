@@ -13,7 +13,9 @@ const { query } = require('../utils/database');
  * @returns {Promise<Object|null>}
  */
 async function getIntegrationConfig(shopDomain) {
-  if (!shopDomain || !shopDomain.trim()) {return null;}
+  if (!shopDomain || !shopDomain.trim()) {
+    return null;
+  }
   try {
     const result = await query(
       `SELECT ga4_measurement_id, ga4_api_secret, bigquery_project_id, bigquery_dataset, bigquery_credentials
@@ -21,12 +23,14 @@ async function getIntegrationConfig(shopDomain) {
       [shopDomain]
     );
     const row = result.rows[0];
-    if (!row) {return null;}
+    if (!row) {
+      return null;
+    }
     return {
       ga4MeasurementId: row.ga4_measurement_id?.trim() || null,
       ga4ApiSecret: row.ga4_api_secret?.trim() || null,
       bigqueryProjectId: row.bigquery_project_id?.trim() || null,
-      bigqueryDataset: (row.bigquery_dataset?.trim() || 'ripx_analytics'),
+      bigqueryDataset: row.bigquery_dataset?.trim() || 'ripx_analytics',
       bigqueryCredentials: row.bigquery_credentials?.trim() || null,
     };
   } catch (e) {
@@ -47,7 +51,9 @@ async function getGA4Config(shopDomain) {
   }
   const id = process.env.GA4_MEASUREMENT_ID?.trim();
   const secret = process.env.GA4_API_SECRET?.trim();
-  if (id && secret) {return { measurementId: id, apiSecret: secret };}
+  if (id && secret) {
+    return { measurementId: id, apiSecret: secret };
+  }
   return null;
 }
 
@@ -101,7 +107,7 @@ async function getBigQueryConfig(shopDomain) {
  */
 async function isBigQueryConfigured(shopDomain) {
   const config = await getBigQueryConfig(shopDomain);
-  return !!(config?.projectId);
+  return !!config?.projectId;
 }
 
 /**
@@ -110,7 +116,9 @@ async function isBigQueryConfigured(shopDomain) {
  * @param {Object} config - { ga4MeasurementId, ga4ApiSecret, bigqueryProjectId, bigqueryDataset, bigqueryCredentials }
  */
 async function saveIntegrationConfig(shopDomain, config) {
-  if (!shopDomain?.trim()) {throw new Error('Shop domain required');}
+  if (!shopDomain?.trim()) {
+    throw new Error('Shop domain required');
+  }
 
   const ga4Id = (config.ga4MeasurementId || '').trim() || null;
   const ga4Secret = (config.ga4ApiSecret || '').trim() || null;

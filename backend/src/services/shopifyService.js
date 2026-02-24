@@ -137,6 +137,132 @@ class ShopifyService {
   }
 
   /**
+   * List products for store resource selector (targeting)
+   *
+   * @param {string} shopDomain - Shop domain
+   * @param {string} accessToken - Access token
+   * @param {string} [searchQuery] - Optional search query
+   * @param {number} [first] - Max items (default 100)
+   * @returns {Promise<Array<{id: string, title: string, handle: string}>>}
+   */
+  async listProducts(shopDomain, accessToken, searchQuery = '', first = 100) {
+    const session = this.getSession(shopDomain, accessToken);
+    const client = new this.api.clients.Graphql({ session });
+    const query = `
+      query listProducts($first: Int!, $query: String) {
+        products(first: $first, query: $query) {
+          edges {
+            node {
+              id
+              title
+              handle
+            }
+          }
+          pageInfo { hasNextPage endCursor }
+        }
+      }
+    `;
+    try {
+      const response = await client.request(query, {
+        variables: { first, query: searchQuery || null },
+      });
+      const edges = response.data?.products?.edges || [];
+      return edges.map(e => ({
+        id: e.node.id,
+        title: e.node.title || '(Untitled)',
+        handle: e.node.handle || '',
+      }));
+    } catch (error) {
+      logger.error('Error listing products', { error: error.message, shopDomain });
+      throw error;
+    }
+  }
+
+  /**
+   * List collections for store resource selector (targeting)
+   *
+   * @param {string} shopDomain - Shop domain
+   * @param {string} accessToken - Access token
+   * @param {string} [searchQuery] - Optional search query
+   * @param {number} [first] - Max items (default 100)
+   * @returns {Promise<Array<{id: string, title: string, handle: string}>>}
+   */
+  async listCollections(shopDomain, accessToken, searchQuery = '', first = 100) {
+    const session = this.getSession(shopDomain, accessToken);
+    const client = new this.api.clients.Graphql({ session });
+    const query = `
+      query listCollections($first: Int!, $query: String) {
+        collections(first: $first, query: $query) {
+          edges {
+            node {
+              id
+              title
+              handle
+            }
+          }
+          pageInfo { hasNextPage endCursor }
+        }
+      }
+    `;
+    try {
+      const response = await client.request(query, {
+        variables: { first, query: searchQuery || null },
+      });
+      const edges = response.data?.collections?.edges || [];
+      return edges.map(e => ({
+        id: e.node.id,
+        title: e.node.title || '(Untitled)',
+        handle: e.node.handle || '',
+      }));
+    } catch (error) {
+      logger.error('Error listing collections', { error: error.message, shopDomain });
+      throw error;
+    }
+  }
+
+  /**
+   * List Online Store pages for store resource selector (targeting)
+   *
+   * @param {string} shopDomain - Shop domain
+   * @param {string} accessToken - Access token
+   * @param {string} [searchQuery] - Optional search query
+   * @param {number} [first] - Max items (default 100)
+   * @returns {Promise<Array<{id: string, title: string, handle: string}>>}
+   */
+  async listPages(shopDomain, accessToken, searchQuery = '', first = 100) {
+    const session = this.getSession(shopDomain, accessToken);
+    const client = new this.api.clients.Graphql({ session });
+    const query = `
+      query listPages($first: Int!, $query: String) {
+        pages(first: $first, query: $query) {
+          edges {
+            node {
+              id
+              title
+              handle
+            }
+          }
+          pageInfo { hasNextPage endCursor }
+        }
+      }
+    `;
+    try {
+      const response = await client.request(query, {
+        variables: { first, query: searchQuery || null },
+      });
+      const edges = response.data?.pages?.edges || [];
+      return edges.map(e => ({
+        id: e.node.id,
+        title: e.node.title || '(Untitled)',
+        handle: e.node.handle || '',
+      }));
+    } catch (error) {
+      logger.error('Error listing pages', { error: error.message, shopDomain });
+      throw error;
+    }
+  }
+
+  /**
    * Track order event (for conversion tracking)
    *
    * @param {Object} order - Order data from webhook

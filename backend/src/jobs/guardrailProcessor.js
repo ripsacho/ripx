@@ -26,25 +26,24 @@ async function processGuardrails() {
         const config = test.guardrail_config || {};
         const minDropPercent = config.minDropPercent ?? 10;
 
-        const analytics = await analyticsService.getTestAnalytics(
-          test.id,
-          test.shop_domain
-        );
+        const analytics = await analyticsService.getTestAnalytics(test.id, test.shop_domain);
 
-        if (!analytics?.variants || analytics.variants.length < 2) {continue;}
+        if (!analytics?.variants || analytics.variants.length < 2) {
+          continue;
+        }
 
         const control = analytics.variants[0];
-        const controlRate = control.visitors > 0
-          ? (control.conversions / control.visitors) * 100
-          : 0;
+        const controlRate =
+          control.visitors > 0 ? (control.conversions / control.visitors) * 100 : 0;
 
-        if (controlRate === 0) {continue;}
+        if (controlRate === 0) {
+          continue;
+        }
 
         for (let i = 1; i < analytics.variants.length; i++) {
           const variant = analytics.variants[i];
-          const variantRate = variant.visitors > 0
-            ? (variant.conversions / variant.visitors) * 100
-            : 0;
+          const variantRate =
+            variant.visitors > 0 ? (variant.conversions / variant.visitors) * 100 : 0;
 
           const dropPercent = ((controlRate - variantRate) / controlRate) * 100;
 

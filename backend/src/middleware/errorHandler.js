@@ -45,8 +45,9 @@ function errorHandler(err, req, res, _next) {
     ...(req.id && { requestId: req.id }),
   };
 
-  // Include more details in development
-  if (process.env.NODE_ENV === 'development') {
+  // Never expose stack or internal details in production
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  if (isDevelopment) {
     response.stack = err.stack;
     response.details = {
       message: err.message,

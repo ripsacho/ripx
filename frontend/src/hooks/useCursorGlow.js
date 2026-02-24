@@ -9,7 +9,7 @@ export function useCursorGlow(enabled = true) {
 
   useEffect(() => {
     if (!enabled) return;
-    const handleMove = (e) => {
+    const handleMove = e => {
       setPos({ x: e.clientX, y: e.clientY });
       setVisible(true);
     };

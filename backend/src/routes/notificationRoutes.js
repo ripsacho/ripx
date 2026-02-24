@@ -9,6 +9,7 @@ const router = express.Router();
 const validators = require('../utils/validators');
 const { query } = require('../utils/database');
 const { sendError } = require('../utils/response');
+const { asyncHandler } = require('../middleware/asyncHandler');
 
 const validateNotificationId = (req, res, next) => {
   const id = req.params?.id;
@@ -22,22 +23,25 @@ const validateNotificationId = (req, res, next) => {
  * GET /api/notifications
  * Get notifications for the current shop
  */
-router.get('/', async (req, res, next) => {
-  try {
+router.get(
+  '/',
+  asyncHandler(async (req, res) => {
     const shopDomain = req.shopDomain;
     if (!shopDomain) {
       return sendError(res, 401, 'Shop domain required');
     }
 
-    const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
+    const rawLimit =
+      req.query.limit !== undefined && req.query.limit !== '' ? parseInt(req.query.limit, 10) : 20;
+    const limit = Math.min(Number.isNaN(rawLimit) || rawLimit <= 0 ? 20 : rawLimit, 50);
     const unreadOnly = req.query.unread === 'true';
 
     let sql = `
-      SELECT id, type, title, message, data, read, created_at
-      FROM notifications
-      WHERE shop_domain = $1
-    `;
-    const params = [shopDomain];
+    SELECT id, type, title, message, data, read, scope, created_at
+    FROM notifications
+    WHERE shop_domain = $1 OR (shop_domain = $2 AND (scope = 'all' OR scope IS NULL))
+  `;
+    const params = [shopDomain, '*'];
 
     if (unreadOnly) {
       sql += ' AND read = false';
@@ -55,6 +59,7 @@ router.get('/', async (req, res, next) => {
       message: row.message,
       data: row.data || {},
       read: row.read,
+      scope: row.scope || 'shop',
       createdAt: row.created_at,
     }));
 
@@ -72,17 +77,17 @@ router.get('/', async (req, res, next) => {
       notifications,
       unreadCount: parseInt(unreadCount, 10),
     });
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);
 
 /**
  * PUT /api/notifications/:id/read
  * Mark a notification as read
  */
-router.put('/:id/read', validateNotificationId, async (req, res, next) => {
-  try {
+router.put(
+  '/:id/read',
+  validateNotificationId,
+  asyncHandler(async (req, res) => {
     const shopDomain = req.shopDomain;
     const { id } = req.params;
 
@@ -90,38 +95,34 @@ router.put('/:id/read', validateNotificationId, async (req, res, next) => {
       return sendError(res, 401, 'Shop domain required');
     }
 
-    await query(
-      'UPDATE notifications SET read = true WHERE id = $1 AND shop_domain = $2',
-      [id, shopDomain]
-    );
+    await query('UPDATE notifications SET read = true WHERE id = $1 AND shop_domain = $2', [
+      id,
+      shopDomain,
+    ]);
 
     res.json({ success: true });
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);
 
 /**
  * PUT /api/notifications/read-all
  * Mark all notifications as read
  */
-router.put('/read-all', async (req, res, next) => {
-  try {
+router.put(
+  '/read-all',
+  asyncHandler(async (req, res) => {
     const shopDomain = req.shopDomain;
 
     if (!shopDomain) {
       return sendError(res, 401, 'Shop domain required');
     }
 
-    await query(
-      'UPDATE notifications SET read = true WHERE shop_domain = $1 AND read = false',
-      [shopDomain]
-    );
+    await query('UPDATE notifications SET read = true WHERE shop_domain = $1 AND read = false', [
+      shopDomain,
+    ]);
 
     res.json({ success: true });
-  } catch (error) {
-    next(error);
-  }
-});
+  })
+);
 
 module.exports = router;

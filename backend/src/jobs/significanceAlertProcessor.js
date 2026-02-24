@@ -13,18 +13,19 @@ const outboundWebhookService = require('../services/outboundWebhookService');
 async function processSignificanceAlerts() {
   try {
     const { rows } = await query(
-      'SELECT id, shop_domain, name FROM tests WHERE status = \'running\''
+      "SELECT id, shop_domain, name FROM tests WHERE status = 'running'"
     );
 
     for (const test of rows) {
       try {
-        const analytics = await analyticsService.getTestAnalytics(
-          test.id,
-          test.shop_domain
-        );
+        const analytics = await analyticsService.getTestAnalytics(test.id, test.shop_domain);
 
-        if (!analytics?.significance || !analytics.significance.significant) {continue;}
-        if (!analytics.variants || analytics.variants.length < 2) {continue;}
+        if (!analytics?.significance || !analytics.significance.significant) {
+          continue;
+        }
+        if (!analytics.variants || analytics.variants.length < 2) {
+          continue;
+        }
 
         const sig = analytics.significance;
         let winnerId = null;
@@ -37,9 +38,11 @@ async function processSignificanceAlerts() {
         }
         const winner = winnerId
           ? analytics.variants.find(v => v.id === winnerId)
-          : (analytics.variants[1] || analytics.variants[0]);
+          : analytics.variants[1] || analytics.variants[0];
 
-        if (!winner) {continue;}
+        if (!winner) {
+          continue;
+        }
 
         let existing = [];
         try {
@@ -49,39 +52,48 @@ async function processSignificanceAlerts() {
           );
           existing = r.rows;
         } catch (tblErr) {
-          if (tblErr.message?.includes('significance_alerts')) {continue;}
+          if (tblErr.message?.includes('significance_alerts')) {
+            continue;
+          }
           throw tblErr;
         }
-        if (existing.length > 0) {continue;}
+        if (existing.length > 0) {
+          continue;
+        }
 
         try {
           await query(
-          `INSERT INTO significance_alerts (test_id, shop_domain, winner_variant_id, winner_variant_name, lift, p_value)
+            `INSERT INTO significance_alerts (test_id, shop_domain, winner_variant_id, winner_variant_name, lift, p_value)
            VALUES ($1, $2, $3, $4, $5, $6)
            ON CONFLICT (test_id, shop_domain) DO NOTHING`,
-          [
-            test.id,
-            test.shop_domain,
-            winner.id,
-            winner.name,
-            analytics.significance.lift ?? null,
-            analytics.significance.pValue ?? null,
-          ]
-        );
+            [
+              test.id,
+              test.shop_domain,
+              winner.id,
+              winner.name,
+              analytics.significance.lift ?? null,
+              analytics.significance.pValue ?? null,
+            ]
+          );
         } catch (insErr) {
-          if (insErr.message?.includes('duplicate') || insErr.code === '23505') {continue;}
+          if (insErr.message?.includes('duplicate') || insErr.code === '23505') {
+            continue;
+          }
           throw insErr;
         }
 
         try {
           await notificationService.createInAppNotification(test.shop_domain, {
-          type: 'significance_reached',
-          title: 'Test reached significance',
-          message: `"${test.name}": ${winner.name} is winning with ${analytics.significance.lift ?? 0}% lift (p=${analytics.significance.pValue}).`,
-          data: { testId: test.id, testName: test.name, winner: winner.name },
-        });
+            type: 'significance_reached',
+            title: 'Test reached significance',
+            message: `"${test.name}": ${winner.name} is winning with ${analytics.significance.lift ?? 0}% lift (p=${analytics.significance.pValue}).`,
+            data: { testId: test.id, testName: test.name, winner: winner.name },
+          });
         } catch (notifErr) {
-          logger.warn('Significance notification failed', { testId: test.id, error: notifErr.message });
+          logger.warn('Significance notification failed', {
+            testId: test.id,
+            error: notifErr.message,
+          });
         }
 
         await outboundWebhookService.fireWebhook(test.shop_domain, 'significance', {

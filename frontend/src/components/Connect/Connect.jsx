@@ -17,12 +17,13 @@ import {
   BlockStack,
   InlineStack,
   Box,
+  Banner,
 } from '@shopify/polaris';
 import { CustomTabs } from '../Shared';
-import { ClipboardIcon } from '@shopify/polaris-icons';
-import { PageShell } from '../Shared';
+import { ClipboardIcon, ViewIcon } from '@shopify/polaris-icons';
+import { PageShell, LegalFooter } from '../Shared';
 import { CONTENT_GAP, FORM_GAP, STORAGE_KEYS, ROUTES } from '../../constants';
-import { getApiKey, apiPostPublic, apiPost } from '../../services';
+import { getApiKey, getShopDomain, apiPostPublic, apiPost, apiGet } from '../../services';
 import styles from './Connect.module.css';
 
 function Connect() {
@@ -47,8 +48,11 @@ function Connect() {
   const [newApiKey, setNewApiKey] = useState(null);
   const [addDomain, setAddDomain] = useState('');
   const [addingDomain, setAddingDomain] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [showNewApiKey, setShowNewApiKey] = useState(false);
+  const [testConnectionLoading, setTestConnectionLoading] = useState(false);
 
-  const handleConnect = (e) => {
+  const handleConnect = e => {
     e?.preventDefault();
     setError(null);
 
@@ -76,13 +80,16 @@ function Connect() {
     }
   };
 
-  const handleRegister = async (e) => {
+  const handleRegister = async e => {
     e?.preventDefault();
     setError(null);
     setSuccess(null);
     setNewApiKey(null);
 
-    const trimmed = domain.trim().replace(/^https?:\/\//, '').split('/')[0];
+    const trimmed = domain
+      .trim()
+      .replace(/^https?:\/\//, '')
+      .split('/')[0];
     if (!trimmed) {
       setError('Please enter your website domain (e.g. example.com)');
       return;
@@ -100,7 +107,9 @@ function Connect() {
       const key = data?.apiKey;
       if (key) {
         setNewApiKey(key);
-        setSuccess('Site registered. Copy and store your API key securely — it will not be shown again.');
+        setSuccess(
+          'Site registered. Copy and store your API key securely — it will not be shown again.'
+        );
       } else {
         setError('Registration succeeded but no API key returned');
       }
@@ -120,7 +129,10 @@ function Connect() {
     if (newApiKey) {
       try {
         window.localStorage.setItem(STORAGE_KEYS.API_KEY, newApiKey);
-        const normalizedDomain = domain.trim().replace(/^https?:\/\//, '').split('/')[0];
+        const normalizedDomain = domain
+          .trim()
+          .replace(/^https?:\/\//, '')
+          .split('/')[0];
         if (normalizedDomain) {
           window.localStorage.setItem(STORAGE_KEYS.SHOP_DOMAIN, normalizedDomain);
           window.localStorage.setItem(STORAGE_KEYS.CURRENT_STORE, normalizedDomain);
@@ -154,11 +166,36 @@ function Connect() {
     }
   };
 
-  const handleAddWebsite = async (e) => {
+  const handleTestConnection = async () => {
+    if (!getApiKey()) return;
+    setError(null);
+    setSuccess(null);
+    setTestConnectionLoading(true);
+    try {
+      await apiGet('/profile');
+      setSuccess('Connection OK. Your API key is valid.');
+    } catch (err) {
+      setError(
+        err?.response?.data?.error || err?.message || 'Connection failed. Check your API key.'
+      );
+    } finally {
+      setTestConnectionLoading(false);
+    }
+  };
+
+  const maskApiKey = key => {
+    if (!key || key.length < 8) return '••••••••';
+    return key.slice(0, 6) + '••••••••••••' + key.slice(-2);
+  };
+
+  const handleAddWebsite = async e => {
     e?.preventDefault();
     setError(null);
     setSuccess(null);
-    const trimmed = addDomain.trim().replace(/^https?:\/\//, '').split('/')[0];
+    const trimmed = addDomain
+      .trim()
+      .replace(/^https?:\/\//, '')
+      .split('/')[0];
     if (!trimmed) {
       setError('Please enter your website domain');
       return;
@@ -202,6 +239,7 @@ function Connect() {
 
   return (
     <PageShell
+      className={styles.connectPageWrapper}
       message={error || success}
       messageType={error ? 'error' : 'success'}
       onCloseMessage={() => {
@@ -210,19 +248,38 @@ function Connect() {
       }}
       messageDuration={error ? 5000 : 3000}
     >
-      <Page title="Connect RipX">
+      <Page title="">
         <div className={styles.connectPage}>
           <div className={styles.connectHero}>
             <h1 className={styles.connectHeroTitle}>Connect your website</h1>
             <p className={styles.connectHeroSubtitle}>
-              RipX works with any website — WordPress, Webflow, custom HTML, or Shopify.
-              Register your domain to get an API key, or enter an existing key.
+              RipX works with any website — WordPress, Webflow, custom HTML, or Shopify. Register
+              your domain to get an API key, or enter an existing key.
             </p>
-            <span className={styles.connectBadge}>Non-Shopify / Standalone</span>
+            <div className={styles.connectHeroBadgeRow}>
+              <span className={styles.connectBadge}>Non-Shopify / Standalone</span>
+              <Link to={ROUTES.DOCS} className={styles.connectNeedHelp}>
+                Need help?
+              </Link>
+            </div>
           </div>
 
           <Card className={styles.connectCard}>
             <Box padding="400">
+              {hasApiKey && safeActiveTab === 0 && (
+                <div className={styles.connectCurrentBanner}>
+                  <span className={styles.connectCurrentBannerLabel}>
+                    Currently connected:{' '}
+                    <span className={styles.connectCurrentBannerKey}>
+                      {maskApiKey(getApiKey())}
+                    </span>
+                    {getShopDomain() ? ` · ${getShopDomain()}` : ''}
+                  </span>
+                  <Button size="slim" onClick={handleClear} tone="critical">
+                    Clear & use different key
+                  </Button>
+                </div>
+              )}
               <CustomTabs tabs={tabs} selected={safeActiveTab} onSelect={setActiveTab}>
                 <Box paddingBlockStart="400">
                   {safeActiveTab === 0 && (
@@ -238,20 +295,33 @@ function Connect() {
                           <TextField
                             label="RipX API Key"
                             value={apiKey}
-                            onChange={setApiKey}
-                            type="password"
+                            onChange={v => {
+                              setApiKey(v);
+                              setError(null);
+                            }}
+                            type={showApiKey ? 'text' : 'password'}
                             placeholder="sk_..."
                             autoComplete="off"
                             helpText="Your API key from tenant registration"
                             error={error}
                           />
-                          <InlineStack gap={FORM_GAP}>
+                          <InlineStack gap={FORM_GAP} wrap>
+                            <Button
+                              icon={ViewIcon}
+                              onClick={() => setShowApiKey(v => !v)}
+                              accessibilityLabel={showApiKey ? 'Hide API key' : 'Show API key'}
+                            >
+                              {showApiKey ? 'Hide key' : 'Show key'}
+                            </Button>
                             <Button submit variant="primary">
                               Connect
                             </Button>
                             {hasApiKey && (
-                              <Button onClick={handleClear} tone="critical">
-                                Clear & use different key
+                              <Button
+                                onClick={handleTestConnection}
+                                loading={testConnectionLoading}
+                              >
+                                Test connection
                               </Button>
                             )}
                           </InlineStack>
@@ -276,7 +346,10 @@ function Connect() {
                             <TextField
                               label="Website domain"
                               value={domain}
-                              onChange={setDomain}
+                              onChange={v => {
+                                setDomain(v);
+                                setError(null);
+                              }}
                               placeholder="example.com"
                               autoComplete="off"
                               helpText="Your site domain without https://"
@@ -289,15 +362,26 @@ function Connect() {
                         </form>
                       ) : (
                         <BlockStack gap={CONTENT_GAP}>
+                          <Banner title="Save your API key now" tone="warning">
+                            This key is shown only once. Copy it and store it securely. You won’t be
+                            able to see it again.
+                          </Banner>
                           <FormLayout>
                             <TextField
-                              label="Your API key (save this — shown once)"
+                              label="Your API key"
                               value={newApiKey}
                               readOnly
-                              type="password"
-                              helpText="Copy and store securely. Use in X-RipX-API-Key header or at /connect"
+                              type={showNewApiKey ? 'text' : 'password'}
+                              helpText="Use in X-RipX-API-Key header or at /connect"
                             />
-                            <InlineStack gap={FORM_GAP}>
+                            <InlineStack gap={FORM_GAP} wrap>
+                              <Button
+                                icon={ViewIcon}
+                                onClick={() => setShowNewApiKey(v => !v)}
+                                accessibilityLabel={showNewApiKey ? 'Hide API key' : 'Show API key'}
+                              >
+                                {showNewApiKey ? 'Hide key' : 'Show key'}
+                              </Button>
                               <Button icon={ClipboardIcon} onClick={handleCopyKey}>
                                 Copy key
                               </Button>
@@ -317,14 +401,18 @@ function Connect() {
                         Add another website
                       </Text>
                       <Text as="p" variant="bodySm" tone="subdued">
-                        Add more websites to your account. Use the store selector in the top bar to switch between them.
+                        Add more websites to your account. Use the store selector in the top bar to
+                        switch between them.
                       </Text>
                       <form onSubmit={handleAddWebsite}>
                         <FormLayout>
                           <TextField
                             label="Website domain"
                             value={addDomain}
-                            onChange={setAddDomain}
+                            onChange={v => {
+                              setAddDomain(v);
+                              setError(null);
+                            }}
                             placeholder="another-site.com"
                             autoComplete="off"
                             helpText="Domain visitors see (e.g. example.com)"
@@ -345,12 +433,21 @@ function Connect() {
           <div className={styles.connectNextSteps}>
             <h3 className={styles.connectNextStepsTitle}>What happens next</h3>
             <p className={styles.connectNextStepsText}>
-              After connecting, you&apos;ll land on the dashboard. Go to{' '}
-              <Link to={ROUTES.SETUP}>Setup Wizard</Link> or{' '}
-              <Link to={ROUTES.SETTINGS}>Settings → Installation</Link> to copy the script snippet and add it to your site.
-              One script tag — that&apos;s all you need.
+              After connecting, you&apos;ll land on the dashboard. Then:
             </p>
+            <ul className={styles.connectNextStepsList}>
+              <li>
+                <Link to={ROUTES.SETUP}>Setup Wizard</Link> or{' '}
+                <Link to={ROUTES.SETTINGS}>Settings → Installation</Link> — copy the script snippet
+                and add one script tag to your site.
+              </li>
+              <li>
+                <Link to={ROUTES.DOCS}>Documentation</Link> — installation guide, API reference, and
+                examples.
+              </li>
+            </ul>
           </div>
+          <LegalFooter />
         </div>
       </Page>
     </PageShell>

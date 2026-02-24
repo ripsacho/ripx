@@ -20,7 +20,9 @@ async function processAutoStop() {
       'SELECT shop_domain FROM shop_settings WHERE auto_stop_enabled = true'
     );
 
-    if (shops.length === 0) {return;}
+    if (shops.length === 0) {
+      return;
+    }
 
     const shopDomains = shops.map(s => s.shop_domain);
 
@@ -32,18 +34,21 @@ async function processAutoStop() {
 
     for (const test of tests) {
       try {
-        const analytics = await analyticsService.getTestAnalytics(
-          test.id,
-          test.shop_domain
-        );
+        const analytics = await analyticsService.getTestAnalytics(test.id, test.shop_domain);
 
-        if (!analytics?.significance || !analytics?.variants) {continue;}
-        if (analytics.variants.length < 2) {continue;}
+        if (!analytics?.significance || !analytics?.variants) {
+          continue;
+        }
+        if (analytics.variants.length < 2) {
+          continue;
+        }
 
         const { significant, pValue, winner } = analytics.significance;
 
         const minVisitors = Math.min(...analytics.variants.map(v => v.visitors || 0));
-        if (minVisitors < MIN_VISITORS_PER_VARIANT) {continue;}
+        if (minVisitors < MIN_VISITORS_PER_VARIANT) {
+          continue;
+        }
 
         if (significant && winner) {
           await updateTest(test.id, test.shop_domain, {
@@ -53,7 +58,8 @@ async function processAutoStop() {
 
           const winnerIndex = winner === 'variantB' ? 1 : 0;
           const winnerVariant = analytics.variants[winnerIndex];
-          const winnerName = winnerVariant?.name || (winner === 'variantB' ? 'Variant B' : 'Control');
+          const winnerName =
+            winnerVariant?.name || (winner === 'variantB' ? 'Variant B' : 'Control');
 
           await notificationService.createInAppNotification(test.shop_domain, {
             type: 'test_complete',
@@ -62,10 +68,7 @@ async function processAutoStop() {
             data: { testId: test.id, testName: test.name },
           });
 
-          const stopAnalytics = await analyticsService.getTestAnalytics(
-            test.id,
-            test.shop_domain
-          );
+          const stopAnalytics = await analyticsService.getTestAnalytics(test.id, test.shop_domain);
           await outboundWebhookService.fireWebhook(test.shop_domain, 'test_complete', {
             testId: test.id,
             testName: test.name,

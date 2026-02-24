@@ -58,7 +58,7 @@ async function seedDummyData(shopDomain, options = {}) {
   } = options;
 
   const tests = await getTestsByShop(shopDomain, null);
-  const testsWithVariants = tests.filter((t) => t.variants && t.variants.length > 0);
+  const testsWithVariants = tests.filter(t => t.variants && t.variants.length > 0);
 
   if (testsWithVariants.length === 0) {
     console.log('No tests with variants found. Create and run some tests first.');
@@ -72,8 +72,10 @@ async function seedDummyData(shopDomain, options = {}) {
   let totalHeatmapEvents = 0;
 
   for (const test of testsWithVariants) {
-    const variants = test.variants.filter((v) => v && (v.id || v.name));
-    if (variants.length === 0) {continue;}
+    const variants = test.variants.filter(v => v && (v.id || v.name));
+    if (variants.length === 0) {
+      continue;
+    }
 
     const visitorCount = randomInt(visitorsMin, visitorsMax);
     const conversionRate = randomFloat(conversionRateMin, conversionRateMax);
@@ -86,7 +88,9 @@ async function seedDummyData(shopDomain, options = {}) {
       Math.max(1, Math.floor((visitorCount * variantWeights[i]) / weightSum))
     );
     const diff = visitorCount - variantCounts.reduce((s, c) => s + c, 0);
-    if (diff !== 0) {variantCounts[0] += diff;}
+    if (diff !== 0) {
+      variantCounts[0] += diff;
+    }
 
     const client = await getClient();
 
@@ -148,7 +152,10 @@ async function seedDummyData(shopDomain, options = {}) {
               ]);
             }
           } catch (err) {
-            if (useSegmentColumns && (err.message?.includes('device') || err.message?.includes('country'))) {
+            if (
+              useSegmentColumns &&
+              (err.message?.includes('device') || err.message?.includes('country'))
+            ) {
               useSegmentColumns = false;
               await client.query(assignSqlPlain, [
                 test.id,
@@ -257,7 +264,10 @@ async function seedDummyData(shopDomain, options = {}) {
           }
         }
       } catch (heatmapErr) {
-        if (heatmapErr.message?.includes('heatmap_events') || heatmapErr.message?.includes('does not exist')) {
+        if (
+          heatmapErr.message?.includes('heatmap_events') ||
+          heatmapErr.message?.includes('does not exist')
+        ) {
           console.log('  (heatmap_events table not found - run migrations)');
         } else {
           throw heatmapErr;
@@ -272,14 +282,16 @@ async function seedDummyData(shopDomain, options = {}) {
     }
   }
 
-  return { tests: testsWithVariants.length, assignments: totalAssignments, events: totalEvents, heatmap: totalHeatmapEvents };
+  return {
+    tests: testsWithVariants.length,
+    assignments: totalAssignments,
+    events: totalEvents,
+    heatmap: totalHeatmapEvents,
+  };
 }
 
 async function main() {
-  const shopDomain =
-    process.env.SHOP_DOMAIN ||
-    process.env.VITE_SHOP_DOMAIN ||
-    process.argv[2];
+  const shopDomain = process.env.SHOP_DOMAIN || process.env.VITE_SHOP_DOMAIN || process.argv[2];
 
   if (!shopDomain) {
     console.error('Usage: SHOP_DOMAIN=store.myshopify.com node seed-dummy-data.js');
@@ -299,7 +311,9 @@ async function main() {
 
   try {
     const result = await seedDummyData(shopDomain, options);
-    console.log(`\nDone! Seeded ${result.assignments} visitors, ${result.events} events${result.heatmap ? `, ${result.heatmap} heatmap events` : ''} across ${result.tests} tests.`);
+    console.log(
+      `\nDone! Seeded ${result.assignments} visitors, ${result.events} events${result.heatmap ? `, ${result.heatmap} heatmap events` : ''} across ${result.tests} tests.`
+    );
     console.log('Refresh your dashboard and analytics to see the data.');
   } catch (err) {
     console.error('Seed failed:', err.message);

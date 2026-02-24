@@ -9,7 +9,7 @@ export function useMouseTilt(maxTilt = 8, enabled = true) {
   const ref = useRef(null);
 
   const handleMouseMove = useCallback(
-    (e) => {
+    e => {
       if (!enabled || !ref.current) return;
       const rect = ref.current.getBoundingClientRect();
       const x = (e.clientX - rect.left) / rect.width - 0.5;

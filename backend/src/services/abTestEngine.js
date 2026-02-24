@@ -9,7 +9,11 @@
  */
 
 const crypto = require('crypto');
-const { getTestAssignment, getTestAssignmentsBatch, saveTestAssignment } = require('../models/testAssignment');
+const {
+  getTestAssignment,
+  getTestAssignmentsBatch,
+  saveTestAssignment,
+} = require('../models/testAssignment');
 const { getTestById, getTestsByIds } = require('../models/test');
 const personalizationService = require('./personalizationService');
 
@@ -18,10 +22,16 @@ class ABTestEngine {
    * Check if test should serve variants (running OR personalized/rollout)
    */
   _shouldServeTest(test) {
-    if (!test) {return false;}
-    if (test.status === 'running') {return true;}
+    if (!test) {
+      return false;
+    }
+    if (test.status === 'running') {
+      return true;
+    }
     const mode = test.personalization_mode;
-    if (mode === 'personalized') {return true;}
+    if (mode === 'personalized') {
+      return true;
+    }
     if (mode === 'rollout') {
       const percent = personalizationService.getEffectiveRolloutPercent(test);
       return percent > 0;
@@ -33,7 +43,9 @@ class ABTestEngine {
    * Get winner variant for personalized/rollout tests
    */
   _getWinnerVariant(test) {
-    if (!test?.variants?.length) {return null;}
+    if (!test?.variants?.length) {
+      return null;
+    }
     const idx = test.winner_variant_index ?? 0;
     const variant = test.variants[idx];
     return variant || null;
@@ -59,7 +71,9 @@ class ABTestEngine {
       // Personalization/rollout: serve winner to eligible users
       if (test.status !== 'running') {
         const winner = this._getWinnerVariant(test);
-        if (!winner) {return null;}
+        if (!winner) {
+          return null;
+        }
 
         if (test.personalization_mode === 'personalized') {
           return {
@@ -72,7 +86,9 @@ class ABTestEngine {
 
         if (test.personalization_mode === 'rollout') {
           const percent = personalizationService.getEffectiveRolloutPercent(test);
-          if (percent <= 0) {return null;}
+          if (percent <= 0) {
+            return null;
+          }
           const hash = crypto.createHash('md5').update(userId).digest('hex');
           const bucket = parseInt(hash.substring(0, 8), 16) % 100;
           if (bucket >= percent) {
@@ -93,13 +109,22 @@ class ABTestEngine {
 
       // Traffic ramp: only assign to X% of users, ramping to 100% over 7 days
       const rampPercent = test.segments?.traffic_ramp_percent;
-      if (rampPercent !== null && rampPercent !== undefined && rampPercent > 0 && rampPercent < 100) { // eslint-disable-line eqeqeq
+      if (
+        rampPercent !== null &&
+        rampPercent !== undefined &&
+        rampPercent > 0 &&
+        rampPercent < 100
+      ) {
+        // eslint-disable-line eqeqeq
         const startedAt = test.started_at ? new Date(test.started_at) : null;
         const rampDays = 7;
         let effectivePercent = rampPercent;
         if (startedAt) {
           const daysSinceStart = (Date.now() - startedAt.getTime()) / (24 * 60 * 60 * 1000);
-          effectivePercent = Math.min(100, rampPercent + (daysSinceStart / rampDays) * (100 - rampPercent));
+          effectivePercent = Math.min(
+            100,
+            rampPercent + (daysSinceStart / rampDays) * (100 - rampPercent)
+          );
         }
         const hash = crypto.createHash('md5').update(userId).digest('hex');
         const bucket = parseInt(hash.substring(0, 8), 16) % 100;
@@ -113,10 +138,12 @@ class ABTestEngine {
 
       if (existingAssignment) {
         const variantMap = this._buildVariantMap(test.variants);
-        const matchedVariant = variantMap.get(existingAssignment.variant_id) ??
+        const matchedVariant =
+          variantMap.get(existingAssignment.variant_id) ??
           variantMap.get(existingAssignment.variant_name) ??
           (test.variants || []).find(
-            v => v?.id === existingAssignment.variant_id || v?.name === existingAssignment.variant_name
+            v =>
+              v?.id === existingAssignment.variant_id || v?.name === existingAssignment.variant_name
           );
         return {
           variantId: existingAssignment.variant_id,
@@ -133,20 +160,27 @@ class ABTestEngine {
       }
 
       // Save assignment (include device/country for segment breakdown)
+      // Use variant.id || variant.name so we never store undefined (variants from templates may lack id)
+      const variantId = variant.id ?? variant.name;
+      if (!variantId) {
+        const logger = require('../utils/logger');
+        logger.warn('Variant has no id or name, skipping assignment', { testId, variant });
+        return null;
+      }
       await saveTestAssignment({
         test_id: testId,
         user_id: userId,
         shop_domain: shopDomain,
-        variant_id: variant.id,
-        variant_name: variant.name,
+        variant_id: String(variantId),
+        variant_name: variant.name || String(variantId),
         assigned_at: new Date(),
         device: context.device || null,
         country: context.country || null,
       });
 
       return {
-        variantId: variant.id,
-        variantName: variant.name,
+        variantId: String(variantId),
+        variantName: variant.name || String(variantId),
         isNewAssignment: true,
         config: variant.config || {},
       };
@@ -170,7 +204,10 @@ class ABTestEngine {
       return null;
     }
     // Create a hash from userId
-    const hash = crypto.createHash('md5').update(String(userId || '')).digest('hex');
+    const hash = crypto
+      .createHash('md5')
+      .update(String(userId || ''))
+      .digest('hex');
     const hashInt = parseInt(hash.substring(0, 8), 16);
 
     // Calculate cumulative allocation percentages
@@ -208,8 +245,12 @@ class ABTestEngine {
   _buildVariantMap(variants) {
     const map = new Map();
     for (const v of variants || []) {
-      if (v?.id) {map.set(v.id, v);}
-      if (v?.name && !map.has(v.name)) {map.set(v.name, v);}
+      if (v?.id) {
+        map.set(v.id, v);
+      }
+      if (v?.name && !map.has(v.name)) {
+        map.set(v.name, v);
+      }
     }
     return map;
   }
@@ -226,7 +267,9 @@ class ABTestEngine {
    */
   async getVariantsBatch(testIds, userId, shopDomain, context = {}, contextOverrides = {}) {
     const ids = [...new Set((testIds || []).filter(Boolean))];
-    if (ids.length === 0) {return {};}
+    if (ids.length === 0) {
+      return {};
+    }
 
     const [testsMap, assignmentsMap] = await Promise.all([
       getTestsByIds(ids, shopDomain),
@@ -238,31 +281,50 @@ class ABTestEngine {
 
     for (const testId of ids) {
       const test = testsMap.get(testId);
-      if (!test || test.status !== 'running') {continue;}
+      if (!test || test.status !== 'running') {
+        continue;
+      }
       const testContext = { ...context, ...(contextOverrides[testId] || {}) };
-      if (!this.isUserEligible(test, testContext)) {continue;}
+      if (!this.isUserEligible(test, testContext)) {
+        continue;
+      }
 
       const rampPercent = test.segments?.traffic_ramp_percent;
-      if (rampPercent !== null && rampPercent !== undefined && rampPercent > 0 && rampPercent < 100) {
+      if (
+        rampPercent !== null &&
+        rampPercent !== undefined &&
+        rampPercent > 0 &&
+        rampPercent < 100
+      ) {
         const startedAt = test.started_at ? new Date(test.started_at) : null;
         const rampDays = 7;
         let effectivePercent = rampPercent;
         if (startedAt) {
           const daysSinceStart = (Date.now() - startedAt.getTime()) / (24 * 60 * 60 * 1000);
-          effectivePercent = Math.min(100, rampPercent + (daysSinceStart / rampDays) * (100 - rampPercent));
+          effectivePercent = Math.min(
+            100,
+            rampPercent + (daysSinceStart / rampDays) * (100 - rampPercent)
+          );
         }
-        const hash = crypto.createHash('md5').update(String(userId || '')).digest('hex');
+        const hash = crypto
+          .createHash('md5')
+          .update(String(userId || ''))
+          .digest('hex');
         const bucket = parseInt(hash.substring(0, 8), 16) % 100;
-        if (bucket >= effectivePercent) {continue;}
+        if (bucket >= effectivePercent) {
+          continue;
+        }
       }
 
       const existingAssignment = assignmentsMap.get(testId);
       if (existingAssignment) {
         const variantMap = this._buildVariantMap(test.variants);
-        const matchedVariant = variantMap.get(existingAssignment.variant_id) ??
+        const matchedVariant =
+          variantMap.get(existingAssignment.variant_id) ??
           variantMap.get(existingAssignment.variant_name) ??
           (test.variants || []).find(
-            v => v?.id === existingAssignment.variant_id || v?.name === existingAssignment.variant_name
+            v =>
+              v?.id === existingAssignment.variant_id || v?.name === existingAssignment.variant_name
           );
         result[testId] = {
           variantId: existingAssignment.variant_id,
@@ -274,7 +336,9 @@ class ABTestEngine {
       }
 
       const variant = this.selectVariant(test.variants, userId, test.holdout_percent || 0);
-      if (!variant) {continue;}
+      if (!variant) {
+        continue;
+      }
 
       result[testId] = {
         variantId: variant.id,
@@ -303,14 +367,40 @@ class ABTestEngine {
    * Check if user-agent looks like a bot/crawler
    */
   _isBotUserAgent(ua) {
-    if (!ua || typeof ua !== 'string') {return false;}
+    if (!ua || typeof ua !== 'string') {
+      return false;
+    }
     const u = ua.toLowerCase();
     const botPatterns = [
-      'bot', 'crawler', 'spider', 'slurp', 'googlebot', 'bingbot', 'yandexbot',
-      'baiduspider', 'facebookexternalhit', 'twitterbot', 'rogerbot', 'linkedinbot',
-      'embedly', 'quora link preview', 'showyoubot', 'outbrain', 'pinterest',
-      'slackbot', 'vkshare', 'w3c_validator', 'whatsapp', 'duckduckbot', 'applebot',
-      'semrushbot', 'ahrefsbot', 'mj12bot', 'dotbot', 'petalbot', 'bytespider',
+      'bot',
+      'crawler',
+      'spider',
+      'slurp',
+      'googlebot',
+      'bingbot',
+      'yandexbot',
+      'baiduspider',
+      'facebookexternalhit',
+      'twitterbot',
+      'rogerbot',
+      'linkedinbot',
+      'embedly',
+      'quora link preview',
+      'showyoubot',
+      'outbrain',
+      'pinterest',
+      'slackbot',
+      'vkshare',
+      'w3c_validator',
+      'whatsapp',
+      'duckduckbot',
+      'applebot',
+      'semrushbot',
+      'ahrefsbot',
+      'mj12bot',
+      'dotbot',
+      'petalbot',
+      'bytespider',
     ];
     return botPatterns.some(p => u.includes(p));
   }
@@ -319,10 +409,20 @@ class ABTestEngine {
    * Check if IP looks internal (private ranges, localhost)
    */
   _isInternalIP(ip) {
-    if (!ip || typeof ip !== 'string') {return false;}
+    if (!ip || typeof ip !== 'string') {
+      return false;
+    }
     const trimmed = ip.trim();
-    if (trimmed === '127.0.0.1' || trimmed === '::1' || trimmed === 'localhost') {return true;}
-    if (/^10\./.test(trimmed) || /^172\.(1[6-9]|2\d|3[01])\./.test(trimmed) || /^192\.168\./.test(trimmed)) {return true;}
+    if (trimmed === '127.0.0.1' || trimmed === '::1' || trimmed === 'localhost') {
+      return true;
+    }
+    if (
+      /^10\./.test(trimmed) ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(trimmed) ||
+      /^192\.168\./.test(trimmed)
+    ) {
+      return true;
+    }
     return false;
   }
 
@@ -334,26 +434,32 @@ class ABTestEngine {
 
     // Exclude bots by user-agent
     if (segments.exclude_bots === true && context.user_agent) {
-      if (this._isBotUserAgent(context.user_agent)) {return false;}
+      if (this._isBotUserAgent(context.user_agent)) {
+        return false;
+      }
     }
 
     // Exclude internal IPs (office/VPN)
     if (segments.exclude_internal_ips === true && context.user_ip) {
-      if (this._isInternalIP(context.user_ip)) {return false;}
+      if (this._isInternalIP(context.user_ip)) {
+        return false;
+      }
     }
 
     // JS targeting: evaluated client-side, result passed in context
     const jsTargeting = segments.js_targeting;
     if (jsTargeting && jsTargeting.enabled && jsTargeting.code) {
       const passed = context.js_targeting_passed;
-      if (passed === false) {return false;}
+      if (passed === false) {
+        return false;
+      }
     }
 
     // Page rules: multiple include/exclude URL patterns with match_type
     const pageRules = segments.page_rules;
     if (Array.isArray(pageRules) && pageRules.length > 0 && context.current_url) {
       const url = String(context.current_url);
-      const matchUrl = (rule) => {
+      const matchUrl = rule => {
         const pattern = rule.pattern || '';
         const matchType = rule.match_type || 'regex';
         switch (matchType) {
@@ -377,11 +483,15 @@ class ABTestEngine {
       const excludes = pageRules.filter(r => r.type === 'exclude');
       const includes = pageRules.filter(r => r.type === 'include');
       for (const r of excludes) {
-        if (matchUrl(r)) {return false;}
+        if (matchUrl(r)) {
+          return false;
+        }
       }
       if (includes.length > 0) {
         const anyMatch = includes.some(matchUrl);
-        if (!anyMatch) {return false;}
+        if (!anyMatch) {
+          return false;
+        }
       }
     } else {
       // Legacy: single url_pattern
@@ -389,7 +499,9 @@ class ABTestEngine {
       if (urlPattern && urlPattern.trim() && context.current_url) {
         try {
           const re = new RegExp(urlPattern.trim());
-          if (!re.test(String(context.current_url))) {return false;}
+          if (!re.test(String(context.current_url))) {
+            return false;
+          }
         } catch {
           return false;
         }
@@ -401,11 +513,15 @@ class ABTestEngine {
     if (Array.isArray(deviceRules) && deviceRules.length > 0 && context.device) {
       const dev = String(context.device).toLowerCase();
       const excludes = deviceRules.filter(r => r.type === 'exclude' && r.value === dev);
-      if (excludes.length > 0) {return false;}
+      if (excludes.length > 0) {
+        return false;
+      }
       const includes = deviceRules.filter(r => r.type === 'include');
       if (includes.length > 0) {
         const anyMatch = includes.some(r => r.value === dev);
-        if (!anyMatch) {return false;}
+        if (!anyMatch) {
+          return false;
+        }
       }
     } else {
       // Legacy: single device
@@ -422,15 +538,22 @@ class ABTestEngine {
       for (const r of audienceRules) {
         if (r.type === 'exclude') {
           if (r.field === 'customer' && context.customer) {
-            const match = String(context.customer).toLowerCase() === String(r.value || '').toLowerCase();
-            if (match) {return false;}
+            const match =
+              String(context.customer).toLowerCase() === String(r.value || '').toLowerCase();
+            if (match) {
+              return false;
+            }
           } else if (r.field === 'country' && context.country) {
             const countries = Array.isArray(r.value) ? r.value : [r.value];
             const countrySet = new Set(countries.map(c => String(c).toLowerCase()));
-            if (countrySet.has(String(context.country).toLowerCase())) {return false;}
+            if (countrySet.has(String(context.country).toLowerCase())) {
+              return false;
+            }
           }
         } else if (r.type === 'include') {
-          if (!includesByField[r.field]) {includesByField[r.field] = [];}
+          if (!includesByField[r.field]) {
+            includesByField[r.field] = [];
+          }
           includesByField[r.field].push(r);
         }
       }
@@ -438,7 +561,9 @@ class ABTestEngine {
         if (field === 'customer') {
           const ctxVal = String(context.customer || '').toLowerCase();
           const anyMatch = rules.some(r => String(r.value || '').toLowerCase() === ctxVal);
-          if (!anyMatch && rules.length > 0) {return false;}
+          if (!anyMatch && rules.length > 0) {
+            return false;
+          }
         } else if (field === 'country') {
           const ctxVal = String(context.country || '').toLowerCase();
           const anyMatch = rules.some(r => {
@@ -446,7 +571,9 @@ class ABTestEngine {
             const valSet = new Set(vals.map(v => String(v).toLowerCase()));
             return valSet.has(ctxVal);
           });
-          if (!anyMatch && rules.length > 0) {return false;}
+          if (!anyMatch && rules.length > 0) {
+            return false;
+          }
         }
       }
     } else {
@@ -475,7 +602,7 @@ class ABTestEngine {
 
     // Advanced targeting: minimum sessions
     const minSessions = segments.min_sessions;
-    if (minSessions != null && minSessions > 0) { // eslint-disable-line eqeqeq
+    if (minSessions !== null && minSessions !== undefined && minSessions > 0) {
       const sessionCount = Number(context.session_count);
       if (Number.isNaN(sessionCount) || sessionCount < minSessions) {
         return false;
@@ -486,7 +613,9 @@ class ABTestEngine {
     const customRules = segments.custom_rules;
     if (Array.isArray(customRules) && customRules.length > 0) {
       for (const rule of customRules) {
-        if (!rule || !rule.field || rule.value == null) { continue; } // eslint-disable-line eqeqeq
+        if (!rule || !rule.field || rule.value === null || rule.value === undefined) {
+          continue;
+        }
         const field = String(rule.field).toLowerCase();
         const op = (rule.operator || 'equals').toLowerCase();
         const val = rule.value;
@@ -495,8 +624,12 @@ class ABTestEngine {
         const matches = (() => {
           const strCtx = String(ctxVal || '').toLowerCase();
           const strVal = String(val || '').toLowerCase();
-          if (op === 'equals') {return strCtx === strVal;}
-          if (op === 'contains') {return strCtx.includes(strVal);}
+          if (op === 'equals') {
+            return strCtx === strVal;
+          }
+          if (op === 'contains') {
+            return strCtx.includes(strVal);
+          }
           if (op === 'regex') {
             try {
               return new RegExp(val).test(ctxVal);
@@ -511,7 +644,9 @@ class ABTestEngine {
           return false;
         })();
 
-        if (!matches) {return false;}
+        if (!matches) {
+          return false;
+        }
       }
     }
 
@@ -533,7 +668,15 @@ class ABTestEngine {
     }
 
     // Check test type
-    const validTypes = ['price', 'content', 'shipping', 'offer', 'theme', 'checkout', 'combination'];
+    const validTypes = [
+      'price',
+      'content',
+      'shipping',
+      'offer',
+      'theme',
+      'checkout',
+      'combination',
+    ];
     if (!validTypes.includes(testConfig.type)) {
       errors.push(`Test type must be one of: ${validTypes.join(', ')}`);
     }
@@ -601,7 +744,12 @@ class ABTestEngine {
         );
       }
 
-      if (url_pattern != null && url_pattern !== '' && typeof url_pattern === 'string') { // eslint-disable-line eqeqeq
+      if (
+        url_pattern !== null &&
+        url_pattern !== undefined &&
+        url_pattern !== '' &&
+        typeof url_pattern === 'string'
+      ) {
         try {
           new RegExp(url_pattern.trim());
         } catch {

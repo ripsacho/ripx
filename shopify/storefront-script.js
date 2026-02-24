@@ -8,6 +8,11 @@
  *
  * Shopify: Load via app proxy or GET /api/track/script.js?shop=xxx.myshopify.com
  * Standalone: Load via GET /api/track/script.js?site=example.com
+ *
+ * Graceful degradation: If the assignment API fails (network error, 5xx, or 503 maintenance),
+ * getVariant/getVariantCachePromise return null or {} so the page shows the control variant
+ * and does not break. Track (conversion/event) failures are logged but do not throw.
+ * Do not cache the script per-user; assignment is fetched per session/page as needed.
  */
 
 (function () {
@@ -201,7 +206,11 @@
     }
     const userId = getUserId();
     const shopDomain = getShopDomain();
-    const testIds = CONFIG.activeTests.map(function (t) { return t.id; }).join(',');
+    const testIds = CONFIG.activeTests
+      .map(function (t) {
+        return t.id;
+      })
+      .join(',');
     const device = getDeviceType();
     const customer = getCustomerType();
     const country = getCountryCode();
@@ -235,9 +244,15 @@
       params.set('js_targeting_results', JSON.stringify(jsTargetingResults));
     }
     _variantCachePromise = fetch(`${CONFIG.apiUrl}/track/variants?${params.toString()}`)
-      .then(function (r) { return r.ok ? r.json() : { variants: {} }; })
-      .then(function (data) { return data.variants || {}; })
-      .catch(function () { return {}; });
+      .then(function (r) {
+        return r.ok ? r.json() : { variants: {} };
+      })
+      .then(function (data) {
+        return data.variants || {};
+      })
+      .catch(function () {
+        return {};
+      });
     return _variantCachePromise;
   }
 
@@ -303,9 +318,19 @@
         utm_source: urlParams.get('utm_source') || '',
         utm_medium: urlParams.get('utm_medium') || '',
       });
-      const testConfig = CONFIG.activeTests.find(function (t) { return t.id === id; });
-      if (testConfig && testConfig.jsTargeting && testConfig.jsTargeting.enabled && testConfig.jsTargeting.code) {
-        params.set('js_targeting_passed', String(evaluateJsTargeting(id, testConfig.jsTargeting.code)));
+      const testConfig = CONFIG.activeTests.find(function (t) {
+        return t.id === id;
+      });
+      if (
+        testConfig &&
+        testConfig.jsTargeting &&
+        testConfig.jsTargeting.enabled &&
+        testConfig.jsTargeting.code
+      ) {
+        params.set(
+          'js_targeting_passed',
+          String(evaluateJsTargeting(id, testConfig.jsTargeting.code))
+        );
       }
       const response = await fetch(`${CONFIG.apiUrl}/track/variant?${params.toString()}`);
 
@@ -474,33 +499,40 @@
   }
 
   function applyCustomCode(testId, variant) {
+    const marker = `ab-test-${testId}`;
+    const customCss = variant?.config?.customCss;
+    const customJs = variant?.config?.customJs;
     const combinedCode = variant?.config?.code || variant?.code;
-    if (!combinedCode) {
+    const parsed = combinedCode ? parseCombinedCode(combinedCode) : { css: '', js: '' };
+
+    const cssToApply =
+      typeof customCss === 'string' && customCss.trim() ? customCss.trim() : parsed.css || '';
+    const jsToApply =
+      typeof customJs === 'string' && customJs.trim() ? customJs.trim() : parsed.js || '';
+
+    if (!cssToApply && !jsToApply) {
       return;
     }
 
-    const parsed = parseCombinedCode(combinedCode);
-    const marker = `ab-test-${testId}`;
-
-    if (parsed.css) {
+    if (cssToApply) {
       const existingStyle = document.querySelector(`style[data-ab-test="${marker}"]`);
       if (existingStyle) {
         existingStyle.remove();
       }
       const styleEl = document.createElement('style');
       styleEl.setAttribute('data-ab-test', marker);
-      styleEl.textContent = parsed.css;
+      styleEl.textContent = cssToApply;
       document.head.appendChild(styleEl);
     }
 
-    if (parsed.js) {
+    if (jsToApply) {
       const existingScript = document.querySelector(`script[data-ab-test="${marker}"]`);
       if (existingScript) {
         existingScript.remove();
       }
       const scriptEl = document.createElement('script');
       scriptEl.setAttribute('data-ab-test', marker);
-      scriptEl.textContent = parsed.js;
+      scriptEl.textContent = jsToApply;
       document.body.appendChild(scriptEl);
     }
   }
@@ -583,7 +615,8 @@
    * Check if current page matches test target (single or multiple)
    */
   function matchesTarget(test) {
-    const ids = test.targetIds || (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
+    const ids =
+      test.targetIds || (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
     if (!ids.length) return true;
     const current = getCurrentTargetId();
     if (!current) return false;
@@ -666,7 +699,9 @@
               if (!matchesTarget(test)) return;
               const v = cache[test.id];
               if (!v || !v.variantId) return;
-              captureHeatmapEvent(test.id, v.variantId, 'scroll', { scroll_depth: Math.min(100, depth) });
+              captureHeatmapEvent(test.id, v.variantId, 'scroll', {
+                scroll_depth: Math.min(100, depth),
+              });
             });
           }, 200);
         },
@@ -711,9 +746,10 @@
           applyCustomCode(test.id, variant);
 
           if (test.type === 'price') {
-            const productId = (test.targetIds && test.targetIds.length > 0 && currentTargetId)
-              ? currentTargetId
-              : test.targetId || test.target_id;
+            const productId =
+              test.targetIds && test.targetIds.length > 0 && currentTargetId
+                ? currentTargetId
+                : test.targetId || test.target_id;
             if (productId) {
               applyPriceTest(test.id, productId, test.targetVariantId || null, variant);
             }

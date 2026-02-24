@@ -128,7 +128,7 @@ function Profile() {
             ...userData.preferences,
             theme: ['light', 'dark', 'auto', 'custom'].includes(savedTheme)
               ? savedTheme
-              : (userData.preferences.theme || prev.theme),
+              : userData.preferences.theme || prev.theme,
           }));
         }
       } catch (err) {
@@ -195,10 +195,15 @@ function Profile() {
     setError(null);
     try {
       await updatePreferences(preferences);
-      updateTheme(preferences.theme, preferences.theme === 'custom' ? {
-        start: preferences.customThemeStart ?? 7,
-        end: preferences.customThemeEnd ?? 19,
-      } : null);
+      updateTheme(
+        preferences.theme,
+        preferences.theme === 'custom'
+          ? {
+              start: preferences.customThemeStart ?? 7,
+              end: preferences.customThemeEnd ?? 19,
+            }
+          : null
+      );
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
@@ -208,7 +213,7 @@ function Profile() {
     }
   };
 
-  const setActiveTab = (id) => setSearchParams({ tab: id });
+  const setActiveTab = id => setSearchParams({ tab: id });
 
   if (loading) {
     return (
@@ -216,7 +221,9 @@ function Profile() {
         <Page title="">
           <div className={styles.profileLayout}>
             <div className={styles.profileHero}>
-              <div className={styles.profileHeroIcon}><ProfileIcon /></div>
+              <div className={styles.profileHeroIcon}>
+                <ProfileIcon />
+              </div>
               <div>
                 <h1 className={styles.profileHeroTitle}>My Profile</h1>
                 <p className={styles.profileHeroSubtitle}>Loading...</p>
@@ -235,7 +242,10 @@ function Profile() {
     <PageShell
       message={success ? 'Settings saved successfully!' : null}
       messageType={success ? 'success' : 'error'}
-      onCloseMessage={() => { setSuccess(false); setError(null); }}
+      onCloseMessage={() => {
+        setSuccess(false);
+        setError(null);
+      }}
       messageDuration={3000}
       className={styles.profilePage}
     >
@@ -257,7 +267,7 @@ function Profile() {
             </div>
 
             <nav className={styles.profileTabBar} role="tablist" aria-label="Profile sections">
-              {TAB_CONFIG.map((tab) => (
+              {TAB_CONFIG.map(tab => (
                 <button
                   key={tab.id}
                   type="button"
@@ -287,7 +297,9 @@ function Profile() {
                     aria-labelledby="profile-tab-profile"
                     className={`${styles.profileContent} ${styles.profilePanelLayout} ${styles.profilePanelProfile}`}
                   >
-                    <Card className={`${styles.profilePanelCard} ${styles.profilePanelCardFull} ${styles.profileHeaderCard}`}>
+                    <Card
+                      className={`${styles.profilePanelCard} ${styles.profilePanelCardFull} ${styles.profileHeaderCard}`}
+                    >
                       <Box padding="500">
                         <div className={styles.profileHeaderInner}>
                           <div className={styles.profileAvatarWrap}>
@@ -301,10 +313,20 @@ function Profile() {
                             <h2 className={styles.profileHeaderName}>
                               {profileData.firstName} {profileData.lastName}
                             </h2>
-                            <Text as="p" variant="bodyMd" tone="subdued" className={styles.profileHeaderMeta}>
+                            <Text
+                              as="p"
+                              variant="bodyMd"
+                              tone="subdued"
+                              className={styles.profileHeaderMeta}
+                            >
                               {profileData.jobTitle} at {profileData.company}
                             </Text>
-                            <Text as="p" variant="bodySm" tone="subdued" className={styles.profileHeaderEmail}>
+                            <Text
+                              as="p"
+                              variant="bodySm"
+                              tone="subdued"
+                              className={styles.profileHeaderEmail}
+                            >
                               {profileData.email}
                             </Text>
                           </div>
@@ -320,7 +342,9 @@ function Profile() {
                               <PersonIcon />
                             </div>
                             <div className={styles.sectionHeaderContent}>
-                              <Text variant="headingMd" as="h2">Personal Information</Text>
+                              <Text variant="headingMd" as="h2">
+                                Personal Information
+                              </Text>
                               <Text as="p" variant="bodySm" tone="subdued">
                                 Your name, contact details, and professional info
                               </Text>
@@ -389,7 +413,9 @@ function Profile() {
                               <GlobeIcon />
                             </div>
                             <div className={styles.sectionHeaderContent}>
-                              <Text variant="headingMd" as="h2">Regional Settings</Text>
+                              <Text variant="headingMd" as="h2">
+                                Regional Settings
+                              </Text>
                               <Text as="p" variant="bodySm" tone="subdued">
                                 Timezone and language for dates and display
                               </Text>
@@ -410,11 +436,17 @@ function Profile() {
                                 { label: 'Tokyo (JST)', value: 'Asia/Tokyo' },
                                 { label: 'Sydney (AEST)', value: 'Australia/Sydney' },
                               ]}
-                              value={profileData.timezone === detectedTimezone() ? '__auto__' : profileData.timezone}
-                              onChange={v => setProfileData({
-                                ...profileData,
-                                timezone: v === '__auto__' ? detectedTimezone() : v,
-                              })}
+                              value={
+                                profileData.timezone === detectedTimezone()
+                                  ? '__auto__'
+                                  : profileData.timezone
+                              }
+                              onChange={v =>
+                                setProfileData({
+                                  ...profileData,
+                                  timezone: v === '__auto__' ? detectedTimezone() : v,
+                                })
+                              }
                               helpText="Auto-detect uses your browser's timezone — recommended"
                             />
                             <Select
@@ -433,7 +465,9 @@ function Profile() {
                       </Box>
                     </Card>
 
-                    <Card className={`${styles.profilePanelCard} ${styles.profilePanelCardFull} ${styles.profileSaveCard}`}>
+                    <Card
+                      className={`${styles.profilePanelCard} ${styles.profilePanelCardFull} ${styles.profileSaveCard}`}
+                    >
                       <Box padding="500">
                         <InlineStack align="end">
                           <Button variant="primary" loading={saving} onClick={handleProfileUpdate}>
@@ -460,15 +494,27 @@ function Profile() {
                               <SettingsIcon />
                             </div>
                             <div className={styles.sectionHeaderContent}>
-                              <Text variant="headingMd" as="h2">Account Information</Text>
+                              <Text variant="headingMd" as="h2">
+                                Account Information
+                              </Text>
                               <Text as="p" variant="bodySm" tone="subdued">
                                 Your shop domain, plan, and billing details
                               </Text>
                             </div>
                           </div>
                           <div className={styles.panelCardBody}>
-                            <TextField label="Shop Domain" value={accountData.shopDomain} disabled helpText="Your Shopify store domain" />
-                            <TextField label="Plan" value={accountData.plan} disabled helpText="Current subscription plan" />
+                            <TextField
+                              label="Shop Domain"
+                              value={accountData.shopDomain}
+                              disabled
+                              helpText="Your Shopify store domain"
+                            />
+                            <TextField
+                              label="Plan"
+                              value={accountData.plan}
+                              disabled
+                              helpText="Current subscription plan"
+                            />
                             <TextField
                               label="Billing Email"
                               type="email"
@@ -489,14 +535,21 @@ function Profile() {
                               <SettingsIcon />
                             </div>
                             <div className={styles.sectionHeaderContent}>
-                              <Text variant="headingMd" as="h2">API Access</Text>
+                              <Text variant="headingMd" as="h2">
+                                API Access
+                              </Text>
                               <Text as="p" variant="bodySm" tone="subdued">
                                 Programmatic access to your data
                               </Text>
                             </div>
                           </div>
                           <div className={styles.panelCardBody}>
-                            <TextField label="API Key" value={accountData.apiKey} disabled helpText="Your API key for programmatic access" />
+                            <TextField
+                              label="API Key"
+                              value={accountData.apiKey}
+                              disabled
+                              helpText="Your API key for programmatic access"
+                            />
                             <InlineStack gap="200">
                               <Button>Regenerate API Key</Button>
                               <Button>View API Documentation</Button>
@@ -514,7 +567,9 @@ function Profile() {
                               <SettingsIcon />
                             </div>
                             <div className={styles.sectionHeaderContent}>
-                              <Text variant="headingMd" as="h2">Security & Notifications</Text>
+                              <Text variant="headingMd" as="h2">
+                                Security & Notifications
+                              </Text>
                               <Text as="p" variant="bodySm" tone="subdued">
                                 Two-factor authentication and notification preferences
                               </Text>
@@ -524,19 +579,25 @@ function Profile() {
                             <Checkbox
                               label="Enable Two-Factor Authentication"
                               checked={accountData.twoFactorEnabled}
-                              onChange={v => setAccountData({ ...accountData, twoFactorEnabled: v })}
+                              onChange={v =>
+                                setAccountData({ ...accountData, twoFactorEnabled: v })
+                              }
                               helpText="Add an extra layer of security to your account"
                             />
                             <Checkbox
                               label="Email Notifications"
                               checked={accountData.emailNotifications}
-                              onChange={v => setAccountData({ ...accountData, emailNotifications: v })}
+                              onChange={v =>
+                                setAccountData({ ...accountData, emailNotifications: v })
+                              }
                               helpText="Receive email updates about your tests"
                             />
                             <Checkbox
                               label="Push Notifications"
                               checked={accountData.pushNotifications}
-                              onChange={v => setAccountData({ ...accountData, pushNotifications: v })}
+                              onChange={v =>
+                                setAccountData({ ...accountData, pushNotifications: v })
+                              }
                               helpText="Receive browser push notifications"
                             />
                             <Checkbox
@@ -548,7 +609,9 @@ function Profile() {
                             <Checkbox
                               label="Significance alerts"
                               checked={accountData.significanceAlerts}
-                              onChange={v => setAccountData({ ...accountData, significanceAlerts: v })}
+                              onChange={v =>
+                                setAccountData({ ...accountData, significanceAlerts: v })
+                              }
                               helpText="Email me when a test reaches statistical significance"
                             />
                             <Select
@@ -559,12 +622,18 @@ function Profile() {
                                 { label: 'Weekly digest', value: 'weekly' },
                               ]}
                               value={accountData.notificationFrequency || 'immediate'}
-                              onChange={v => setAccountData({ ...accountData, notificationFrequency: v })}
+                              onChange={v =>
+                                setAccountData({ ...accountData, notificationFrequency: v })
+                              }
                               helpText="How often to batch email notifications"
                             />
                           </div>
                           <InlineStack align="end">
-                            <Button variant="primary" loading={saving} onClick={handleAccountUpdate}>
+                            <Button
+                              variant="primary"
+                              loading={saving}
+                              onClick={handleAccountUpdate}
+                            >
                               Save Changes
                             </Button>
                           </InlineStack>
@@ -581,7 +650,9 @@ function Profile() {
                     aria-labelledby="profile-tab-preferences"
                     className={`${styles.profileContent} ${styles.profilePanelLayout}`}
                   >
-                    <Card className={`${styles.profilePanelCard} ${styles.profilePanelCardFull} ${styles.quickLinksCard}`}>
+                    <Card
+                      className={`${styles.profilePanelCard} ${styles.profilePanelCardFull} ${styles.quickLinksCard}`}
+                    >
                       <Box padding="500">
                         <BlockStack gap="300">
                           <div className={styles.sectionHeader}>
@@ -589,11 +660,15 @@ function Profile() {
                               <SettingsIcon />
                             </div>
                             <div className={styles.sectionHeaderContent}>
-                              <Text variant="headingMd" as="h2">App Configuration</Text>
+                              <Text variant="headingMd" as="h2">
+                                App Configuration
+                              </Text>
                               <Text as="p" variant="bodySm" tone="subdued">
                                 Test defaults, webhooks, integrations, and theme are in{' '}
-                                <Link to={ROUTES.SETTINGS} className={styles.settingsLink}>Settings</Link>
-                                {' '}— General (test config, webhooks), Integrations, Appearance (theme).
+                                <Link to={ROUTES.SETTINGS} className={styles.settingsLink}>
+                                  Settings
+                                </Link>{' '}
+                                — General (test config, webhooks), Integrations, Appearance (theme).
                               </Text>
                             </div>
                           </div>
@@ -614,7 +689,9 @@ function Profile() {
                               <PaintBrushFlatIcon />
                             </div>
                             <div className={styles.sectionHeaderContent}>
-                              <Text variant="headingMd" as="h2">Appearance</Text>
+                              <Text variant="headingMd" as="h2">
+                                Appearance
+                              </Text>
                               <Text as="p" variant="bodySm" tone="subdued">
                                 Theme and display options. Also available in{' '}
                                 <Link to={ROUTES.SETTINGS} className={styles.settingsLink}>
@@ -655,7 +732,12 @@ function Profile() {
                                       value: i.toString(),
                                     }))}
                                     value={String(preferences.customThemeStart ?? 7)}
-                                    onChange={v => setPreferences(p => ({ ...p, customThemeStart: parseInt(v, 10) }))}
+                                    onChange={v =>
+                                      setPreferences(p => ({
+                                        ...p,
+                                        customThemeStart: parseInt(v, 10),
+                                      }))
+                                    }
                                   />
                                   <Select
                                     label="Dark Theme Start"
@@ -664,14 +746,21 @@ function Profile() {
                                       value: i.toString(),
                                     }))}
                                     value={String(preferences.customThemeEnd ?? 19)}
-                                    onChange={v => setPreferences(p => ({ ...p, customThemeEnd: parseInt(v, 10) }))}
+                                    onChange={v =>
+                                      setPreferences(p => ({
+                                        ...p,
+                                        customThemeEnd: parseInt(v, 10),
+                                      }))
+                                    }
                                   />
                                 </div>
                                 <Button
-                                  onClick={() => updateTheme('custom', {
-                                    start: preferences.customThemeStart ?? 7,
-                                    end: preferences.customThemeEnd ?? 19,
-                                  })}
+                                  onClick={() =>
+                                    updateTheme('custom', {
+                                      start: preferences.customThemeStart ?? 7,
+                                      end: preferences.customThemeEnd ?? 19,
+                                    })
+                                  }
                                 >
                                   Apply Custom Theme
                                 </Button>
@@ -690,7 +779,9 @@ function Profile() {
                               <SettingsIcon />
                             </div>
                             <div className={styles.sectionHeaderContent}>
-                              <Text variant="headingMd" as="h2">Dashboard & Editor</Text>
+                              <Text variant="headingMd" as="h2">
+                                Dashboard & Editor
+                              </Text>
                               <Text as="p" variant="bodySm" tone="subdued">
                                 Default views and editor behavior
                               </Text>
@@ -727,7 +818,9 @@ function Profile() {
                                 { label: 'All time', value: 'all' },
                               ]}
                               value={preferences.defaultAnalyticsDateRange || '30'}
-                              onChange={v => setPreferences(p => ({ ...p, defaultAnalyticsDateRange: v }))}
+                              onChange={v =>
+                                setPreferences(p => ({ ...p, defaultAnalyticsDateRange: v }))
+                              }
                               helpText="Default when opening Analytics"
                             />
                             <Select
@@ -737,7 +830,9 @@ function Profile() {
                                 { label: 'JSON', value: 'json' },
                               ]}
                               value={preferences.defaultExportFormat || 'csv'}
-                              onChange={v => setPreferences(p => ({ ...p, defaultExportFormat: v }))}
+                              onChange={v =>
+                                setPreferences(p => ({ ...p, defaultExportFormat: v }))
+                              }
                               helpText="Default format for data exports"
                             />
                             <Checkbox
@@ -760,7 +855,11 @@ function Profile() {
                             />
                           </div>
                           <InlineStack align="end">
-                            <Button variant="primary" loading={saving} onClick={handlePreferencesUpdate}>
+                            <Button
+                              variant="primary"
+                              loading={saving}
+                              onClick={handlePreferencesUpdate}
+                            >
                               Save Changes
                             </Button>
                           </InlineStack>

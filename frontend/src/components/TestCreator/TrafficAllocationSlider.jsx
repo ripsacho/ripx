@@ -5,7 +5,17 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Card, BlockStack, InlineStack, Text, Button, TextField, Modal, Tooltip, Icon } from '@shopify/polaris';
+import {
+  Card,
+  BlockStack,
+  InlineStack,
+  Text,
+  Button,
+  TextField,
+  Modal,
+  Tooltip,
+  Icon,
+} from '@shopify/polaris';
 import {
   ViewIcon,
   LinkIcon,
@@ -51,8 +61,7 @@ function TrafficAllocationSlider({
 
     const propAllocKey = variants.map(v => v.allocation ?? 0).join(',');
     const localAllocKey = localVariants.map(v => v.allocation ?? 0).join(',');
-    const needsSync =
-      variants.length !== localVariants.length || propAllocKey !== localAllocKey;
+    const needsSync = variants.length !== localVariants.length || propAllocKey !== localAllocKey;
     if (needsSync) {
       setLocalVariants(variants.map(v => ({ ...v, allocation: v.allocation ?? 0 })));
     }
@@ -319,18 +328,8 @@ function TrafficAllocationSlider({
 
   const content = (
     <div className={`${styles.wrapper} ${compact ? styles.wrapperCompact : ''}`}>
-      <Toast
-        message={errorMessage}
-        type="error"
-        onClose={clearErrorMessage}
-        duration={3000}
-      />
-      <Toast
-        message={copySuccess}
-        type="success"
-        onClose={clearCopySuccess}
-        duration={2500}
-      />
+      <Toast message={errorMessage} type="error" onClose={clearErrorMessage} duration={3000} />
+      <Toast message={copySuccess} type="success" onClose={clearCopySuccess} duration={2500} />
       {!compact && (
         <div className={styles.nonCompactHeader}>
           <Text variant="headingLg" as="h2">
@@ -404,7 +403,12 @@ function TrafficAllocationSlider({
                 onMouseDown={e => handleMouseDown(index, e)}
               >
                 {width > 8 && (
-                  <Text variant="bodyMd" fontWeight="semibold" as="span" className={styles.segmentLabel}>
+                  <Text
+                    variant="bodyMd"
+                    fontWeight="semibold"
+                    as="span"
+                    className={styles.segmentLabel}
+                  >
                     {variant.name}
                   </Text>
                 )}
@@ -432,193 +436,186 @@ function TrafficAllocationSlider({
           const color = COLORS[index % COLORS.length];
 
           return (
-            <div
-              key={index}
-              className={styles.variantCard}
-              style={{ '--variant-color': color }}
-            >
+            <div key={index} className={styles.variantCard} style={{ '--variant-color': color }}>
               <span className={styles.variantCardBadge} style={{ backgroundColor: color }}>
                 {index + 1}
               </span>
               <div className={styles.variantCardHeader}>
-                  <div className={styles.variantCardTitleRow}>
-                    <div
-                      className={styles.variantColorDot}
-                      style={{ backgroundColor: color }}
-                    />
-                    {editingVariantIndex === index ? (
-                      <div className={styles.variantNameEdit}>
-                        <input
-                          ref={nameInputRef}
-                          type="text"
-                          value={editingVariantName}
-                          onChange={e => setEditingVariantName(e.target.value)}
-                          onBlur={commitEditingName}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') commitEditingName();
-                            if (e.key === 'Escape') cancelEditingName();
-                          }}
-                          placeholder="Variant name"
-                          className={styles.variantNameInput}
-                          autoComplete="off"
-                        />
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        className={styles.variantNameDisplay}
-                        onClick={() => startEditingName(index)}
-                        title="Click to edit name"
-                      >
-                        <span
-                          className={`${styles.variantNameText} ${!variant.name?.trim() ? styles.placeholder : ''}`}
-                        >
-                          {variant.name || 'Unnamed variant'}
-                        </span>
-                        <span className={styles.variantNameEditHint} aria-hidden>
-                          ✎
-                        </span>
-                      </button>
-                    )}
-                  </div>
-                  <div className={styles.variantCardActions}>
-                    {onPreviewVariant && (
-                      <Tooltip content="Open variant in new tab" preferredPosition="above">
-                        <button
-                          type="button"
-                          className={`${styles.actionBtn} ${styles.actionBtnPreview}`}
-                          onClick={() => onPreviewVariant(variant, index)}
-                          aria-label="Preview variant"
-                        >
-                          <span className={styles.actionBtnIcon}>
-                            <Icon source={ViewIcon} />
-                          </span>
-                          <span className={styles.actionBtnLabel}>Preview</span>
-                        </button>
-                      </Tooltip>
-                    )}
-                    {getPreviewUrl && (
-                      <Tooltip content="Copy preview URL to clipboard" preferredPosition="above">
-                        <button
-                          type="button"
-                          className={`${styles.actionBtn} ${styles.actionBtnCopy}`}
-                          onClick={() => handleCopyPreviewLink(variant, index)}
-                          aria-label="Copy preview link"
-                        >
-                          <span className={styles.actionBtnIcon}>
-                            <Icon source={LinkIcon} />
-                          </span>
-                          <span className={styles.actionBtnLabel}>Copy link</span>
-                        </button>
-                      </Tooltip>
-                    )}
-                    {localVariants.length > 2 && index !== 0 && (
-                      <Tooltip content="Remove this variant" preferredPosition="above">
-                        <button
-                          type="button"
-                          className={`${styles.actionBtn} ${styles.actionBtnRemove}`}
-                          onClick={() => handleRemoveVariant(index)}
-                          aria-label="Remove variant"
-                        >
-                          <span className={styles.actionBtnIcon}>
-                            <Icon source={DeleteIcon} />
-                          </span>
-                          <span className={styles.actionBtnLabel}>Remove</span>
-                        </button>
-                      </Tooltip>
-                    )}
-                  </div>
-                </div>
-
-                <div className={styles.variantCardBody}>
-                  <div className={styles.allocationRingWrapper}>
-                    <div
-                      className={styles.allocationRing}
-                      style={{
-                        '--ring-progress': variant.allocation || 0,
-                        '--ring-color': color,
-                      }}
-                    >
-                      <div className={styles.allocationRingInner}>
-                        <span className={styles.allocationRingValue}>{variant.allocation || 0}</span>
-                        <span className={styles.allocationRingUnit}>%</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className={styles.variantCardInput}>
-                    <label className={styles.allocationLabel} htmlFor={`allocation-${index}`}>
-                      Allocation
-                    </label>
-                    <div className={styles.allocationInputWrapper}>
-                      <button
-                        type="button"
-                        className={styles.allocationStepBtn}
-                        onClick={() => handleAllocationStep(index, -5)}
-                        aria-label="Decrease allocation by 5"
-                      >
-                        <Icon source={MinusIcon} />
-                      </button>
+                <div className={styles.variantCardTitleRow}>
+                  <div className={styles.variantColorDot} style={{ backgroundColor: color }} />
+                  {editingVariantIndex === index ? (
+                    <div className={styles.variantNameEdit}>
                       <input
-                        id={`allocation-${index}`}
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={variant.allocation?.toString() || '0'}
-                        onChange={e => handleManualChange(index, e.target.value)}
-                        className={styles.allocationInput}
-                        aria-label={`Allocation percentage for ${variant.name || `Variant ${index + 1}`}`}
+                        ref={nameInputRef}
+                        type="text"
+                        value={editingVariantName}
+                        onChange={e => setEditingVariantName(e.target.value)}
+                        onBlur={commitEditingName}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') commitEditingName();
+                          if (e.key === 'Escape') cancelEditingName();
+                        }}
+                        placeholder="Variant name"
+                        className={styles.variantNameInput}
+                        autoComplete="off"
                       />
-                      <span className={styles.allocationSuffix}>%</span>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className={styles.variantNameDisplay}
+                      onClick={() => startEditingName(index)}
+                      title="Click to edit name"
+                    >
+                      <span
+                        className={`${styles.variantNameText} ${!variant.name?.trim() ? styles.placeholder : ''}`}
+                      >
+                        {variant.name || 'Unnamed variant'}
+                      </span>
+                      <span className={styles.variantNameEditHint} aria-hidden>
+                        ✎
+                      </span>
+                    </button>
+                  )}
+                </div>
+                <div className={styles.variantCardActions}>
+                  {onPreviewVariant && (
+                    <Tooltip content="Open variant in new tab" preferredPosition="above">
                       <button
                         type="button"
-                        className={styles.allocationStepBtn}
-                        onClick={() => handleAllocationStep(index, 5)}
-                        aria-label="Increase allocation by 5"
+                        className={`${styles.actionBtn} ${styles.actionBtnPreview}`}
+                        onClick={() => onPreviewVariant(variant, index)}
+                        aria-label="Preview variant"
                       >
-                        <Icon source={PlusIcon} />
+                        <span className={styles.actionBtnIcon}>
+                          <Icon source={ViewIcon} />
+                        </span>
+                        <span className={styles.actionBtnLabel}>Preview</span>
                       </button>
+                    </Tooltip>
+                  )}
+                  {getPreviewUrl && (
+                    <Tooltip content="Copy preview URL to clipboard" preferredPosition="above">
+                      <button
+                        type="button"
+                        className={`${styles.actionBtn} ${styles.actionBtnCopy}`}
+                        onClick={() => handleCopyPreviewLink(variant, index)}
+                        aria-label="Copy preview link"
+                      >
+                        <span className={styles.actionBtnIcon}>
+                          <Icon source={LinkIcon} />
+                        </span>
+                        <span className={styles.actionBtnLabel}>Copy link</span>
+                      </button>
+                    </Tooltip>
+                  )}
+                  {localVariants.length > 2 && index !== 0 && (
+                    <Tooltip content="Remove this variant" preferredPosition="above">
+                      <button
+                        type="button"
+                        className={`${styles.actionBtn} ${styles.actionBtnRemove}`}
+                        onClick={() => handleRemoveVariant(index)}
+                        aria-label="Remove variant"
+                      >
+                        <span className={styles.actionBtnIcon}>
+                          <Icon source={DeleteIcon} />
+                        </span>
+                        <span className={styles.actionBtnLabel}>Remove</span>
+                      </button>
+                    </Tooltip>
+                  )}
+                </div>
+              </div>
+
+              <div className={styles.variantCardBody}>
+                <div className={styles.allocationRingWrapper}>
+                  <div
+                    className={styles.allocationRing}
+                    style={{
+                      '--ring-progress': variant.allocation || 0,
+                      '--ring-color': color,
+                    }}
+                  >
+                    <div className={styles.allocationRingInner}>
+                      <span className={styles.allocationRingValue}>{variant.allocation || 0}</span>
+                      <span className={styles.allocationRingUnit}>%</span>
                     </div>
                   </div>
                 </div>
+                <div className={styles.variantCardInput}>
+                  <label className={styles.allocationLabel} htmlFor={`allocation-${index}`}>
+                    Allocation
+                  </label>
+                  <div className={styles.allocationInputWrapper}>
+                    <button
+                      type="button"
+                      className={styles.allocationStepBtn}
+                      onClick={() => handleAllocationStep(index, -5)}
+                      aria-label="Decrease allocation by 5"
+                    >
+                      <Icon source={MinusIcon} />
+                    </button>
+                    <input
+                      id={`allocation-${index}`}
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={variant.allocation?.toString() || '0'}
+                      onChange={e => handleManualChange(index, e.target.value)}
+                      className={styles.allocationInput}
+                      aria-label={`Allocation percentage for ${variant.name || `Variant ${index + 1}`}`}
+                    />
+                    <span className={styles.allocationSuffix}>%</span>
+                    <button
+                      type="button"
+                      className={styles.allocationStepBtn}
+                      onClick={() => handleAllocationStep(index, 5)}
+                      aria-label="Increase allocation by 5"
+                    >
+                      <Icon source={PlusIcon} />
+                    </button>
+                  </div>
+                </div>
+              </div>
               <div
                 className={styles.variantCardAllocationBar}
                 style={{ width: `${variant.allocation || 0}%`, backgroundColor: color }}
                 aria-hidden
               />
-              </div>
+            </div>
           );
         })}
       </div>
 
       {/* Add Variant Modal */}
       <Modal
-          open={addVariantModal}
-          onClose={() => setAddVariantModal(false)}
-          title="Add New Variant"
-          primaryAction={{
-            content: 'Add Variant',
-            onAction: handleAddVariant,
-            disabled: !newVariantName.trim(),
-          }}
-          secondaryActions={[
-            {
-              content: 'Cancel',
-              onAction: () => setAddVariantModal(false),
-            },
-          ]}
-        >
-          <Modal.Section>
-            <BlockStack gap="300">
-              <TextField
-                label="Variant Name"
-                value={newVariantName}
-                onChange={setNewVariantName}
-                placeholder="e.g., Variant B, Variant C"
-                required
-                helpText="Give your variant a descriptive name"
-              />
-            </BlockStack>
-          </Modal.Section>
+        open={addVariantModal}
+        onClose={() => setAddVariantModal(false)}
+        title="Add New Variant"
+        primaryAction={{
+          content: 'Add Variant',
+          onAction: handleAddVariant,
+          disabled: !newVariantName.trim(),
+        }}
+        secondaryActions={[
+          {
+            content: 'Cancel',
+            onAction: () => setAddVariantModal(false),
+          },
+        ]}
+      >
+        <Modal.Section>
+          <BlockStack gap="300">
+            <TextField
+              label="Variant Name"
+              value={newVariantName}
+              onChange={setNewVariantName}
+              placeholder="e.g., Variant B, Variant C"
+              required
+              helpText="Give your variant a descriptive name"
+            />
+          </BlockStack>
+        </Modal.Section>
       </Modal>
     </div>
   );

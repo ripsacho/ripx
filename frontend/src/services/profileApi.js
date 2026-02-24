@@ -29,11 +29,13 @@ export async function getProfile() {
     if (account) localStorage.setItem('ripx_account', JSON.stringify(account));
     if (preferences) localStorage.setItem('ripx_preferences', JSON.stringify(preferences));
 
-    return responseData || {
-      profile: {},
-      account: {},
-      preferences: {},
-    };
+    return (
+      responseData || {
+        profile: {},
+        account: {},
+        preferences: {},
+      }
+    );
   } catch (error) {
     if (import.meta.env.DEV && error?.response?.status < 500) {
       console.error('Error fetching profile:', error);

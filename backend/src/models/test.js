@@ -66,7 +66,7 @@ function normalizeVariantCode(variants = []) {
     return variants;
   }
 
-  return variants.map(variant => {
+  return variants.map((variant, index) => {
     if (!variant || typeof variant !== 'object') {
       return variant;
     }
@@ -83,6 +83,11 @@ function normalizeVariantCode(variants = []) {
 
     if (Object.keys(config).length > 0) {
       next.config = config;
+    }
+
+    // Ensure variant has id for analytics matching (templates may only have name)
+    if (next.id === null || next.id === undefined || String(next.id).trim() === '') {
+      next.id = next.name || `variant-${index}`;
     }
 
     return next;
@@ -188,11 +193,7 @@ class TestModel {
 
     if (guardrail_config !== undefined) {
       baseColumns.push('guardrail_config');
-      baseValues.push(
-        guardrail_config?.enabled
-          ? safeStringifyJSON(guardrail_config, '{}')
-          : null
-      );
+      baseValues.push(guardrail_config?.enabled ? safeStringifyJSON(guardrail_config, '{}') : null);
     }
 
     if (includeScheduling) {
@@ -363,7 +364,9 @@ class TestModel {
       const result = await query(sql, [shopDomain]);
       return result.rows.map(test => {
         const goal = safeParseJSON(test.goal, {}, 'goal', test.id);
-        const variants = normalizeVariantCode(safeParseJSON(test.variants, [], 'variants', test.id));
+        const variants = normalizeVariantCode(
+          safeParseJSON(test.variants, [], 'variants', test.id)
+        );
         const segments = safeParseJSON(test.segments, {}, 'segments', test.id);
         return { ...test, goal, variants, segments };
       });
@@ -383,12 +386,13 @@ class TestModel {
    * @returns {Promise<Array>} List of tests
    */
   async getTestsByShop(shopDomain, status = null) {
+    const normalized = (shopDomain || '').toString().toLowerCase().trim();
     let sql = `
       SELECT * FROM tests
-      WHERE shop_domain = $1
+      WHERE LOWER(TRIM(shop_domain)) = $1
     `;
 
-    const params = [shopDomain];
+    const params = [normalized || shopDomain];
 
     if (status) {
       sql += ' AND status = $2';
@@ -576,6 +580,22 @@ class TestModel {
     const result = await query(sql, [testId, shopDomain]);
     return result.rowCount > 0;
   }
+
+  /**
+   * Get test by ID only (for admin; no shop filter)
+   */
+  async getTestByIdForAdmin(testId) {
+    const sql = 'SELECT * FROM tests WHERE id = $1';
+    const result = await query(sql, [testId]);
+    if (result.rows.length === 0) {
+      return null;
+    }
+    const test = result.rows[0];
+    test.goal = safeParseJSON(test.goal, {}, 'goal', testId);
+    test.variants = normalizeVariantCode(safeParseJSON(test.variants, [], 'variants', testId));
+    test.segments = safeParseJSON(test.segments, {}, 'segments', testId);
+    return test;
+  }
 }
 
 // Export functions for convenience
@@ -584,6 +604,7 @@ const model = new TestModel();
 module.exports = {
   createTest: data => model.createTest(data),
   getTestById: (id, shop) => model.getTestById(id, shop),
+  getTestByIdForAdmin: id => model.getTestByIdForAdmin(id),
   getTestsByIds: (ids, shop) => model.getTestsByIds(ids, shop),
   getTestsByShop: (shop, status) => model.getTestsByShop(shop, status),
   getActiveTestsForStorefront: shop => model.getActiveTestsForStorefront(shop),

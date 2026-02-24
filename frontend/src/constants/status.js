@@ -42,10 +42,14 @@ export const TEST_TYPES = {
   OFFER: 'offer',
   THEME: 'theme',
   CHECKOUT: 'checkout',
+  COMBINATION: 'combination',
   ONSITE_EDIT: 'onsite-edit',
   SPLIT_URL: 'split-url',
   TEMPLATE: 'template',
 };
+
+/** Test type IDs allowed for standalone (non-Shopify) sites: onsite edit and split URL only */
+export const STANDALONE_TEST_TYPE_IDS = ['onsite-edit', 'split-url'];
 
 /** Human-readable labels for test types (incl. inferred from config) */
 export const TEST_TYPE_LABELS = {
@@ -56,6 +60,7 @@ export const TEST_TYPE_LABELS = {
   [TEST_TYPES.OFFER]: 'Offer',
   [TEST_TYPES.THEME]: 'Theme',
   [TEST_TYPES.CHECKOUT]: 'Checkout',
+  [TEST_TYPES.COMBINATION]: 'Combination',
   [TEST_TYPES.ONSITE_EDIT]: 'Onsite Edit',
   [TEST_TYPES.SPLIT_URL]: 'Split URL',
   [TEST_TYPES.TEMPLATE]: 'Template',
@@ -70,6 +75,7 @@ export const TEST_TYPE_ICONS = {
   [TEST_TYPES.OFFER]: '🎁',
   [TEST_TYPES.THEME]: '🎨',
   [TEST_TYPES.CHECKOUT]: '🛒',
+  [TEST_TYPES.COMBINATION]: '🔬',
   [TEST_TYPES.ONSITE_EDIT]: '✏️',
   [TEST_TYPES.SPLIT_URL]: '🔀',
   [TEST_TYPES.TEMPLATE]: '📄',

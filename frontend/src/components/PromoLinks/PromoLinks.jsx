@@ -24,7 +24,7 @@ import { setupDataTableButtonStyling } from '../../utils/dataTableStyles';
 import { PageShell } from '../Shared';
 import LoadingSkeleton from '../LoadingSkeleton/LoadingSkeleton';
 import Toast from '../Toast/Toast';
-import { apiGet, apiPost } from '../../services';
+import { apiGet, apiPost, unwrapData } from '../../services';
 import styles from './PromoLinks.module.css';
 
 function PromoLinks() {
@@ -68,7 +68,8 @@ function PromoLinks() {
       setLoading(true);
 
       const response = await apiGet(`/promo-links/test/${testId}`);
-      const promoLinksData = response.data?.promoLinks || response.data?.data?.promoLinks || [];
+      const data = unwrapData(response);
+      const promoLinksData = data?.promoLinks ?? [];
 
       setPromoLinks(promoLinksData);
       setError(null);
@@ -115,7 +116,7 @@ function PromoLinks() {
     }
   };
 
-  const copyToClipboard = async (url) => {
+  const copyToClipboard = async url => {
     if (!url) return;
     try {
       await navigator.clipboard.writeText(url);
@@ -185,7 +186,8 @@ function PromoLinks() {
                 Promo links for offer testing
               </Text>
               <Text variant="bodyMd" tone="subdued" as="p">
-                Create unique discount links per variant, share with customers, and track conversions.
+                Create unique discount links per variant, share with customers, and track
+                conversions.
               </Text>
             </div>
           </div>
@@ -206,7 +208,10 @@ function PromoLinks() {
                     onAction: () => setCreateModal(true),
                   }}
                 >
-                  <p>Create unique discount links for each variant to share with customers and track conversions.</p>
+                  <p>
+                    Create unique discount links for each variant to share with customers and track
+                    conversions.
+                  </p>
                 </EmptyState>
               ) : (
                 <DataTable

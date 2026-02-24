@@ -75,27 +75,26 @@ class NotificationService {
   /**
    * Create in-app notification
    *
-   * @param {string} shopDomain - Shop domain
-   * @param {Object} notification - Notification data
+   * @param {string} shopDomain - Shop domain (use '*' for system-wide)
+   * @param {Object} notification - Notification data (type, title, message, data?, scope?)
    * @returns {Promise<void>}
    */
   async createInAppNotification(shopDomain, notification) {
-    // Store notification in database for in-app display
     const { query } = require('../utils/database');
-
+    const scope = notification.scope === 'all' ? 'all' : 'shop';
     const sql = `
       INSERT INTO notifications (
-        shop_domain, type, title, message, data, read, created_at
+        shop_domain, type, title, message, data, read, scope, created_at
       )
-      VALUES ($1, $2, $3, $4, $5, false, NOW())
+      VALUES ($1, $2, $3, $4, $5, false, $6, NOW())
     `;
-
     await query(sql, [
       shopDomain,
       notification.type,
       notification.title,
       notification.message,
       JSON.stringify(notification.data || {}),
+      scope,
     ]);
   }
 }

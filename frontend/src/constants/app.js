@@ -20,6 +20,7 @@ export const STORAGE_KEYS = {
   ACCOUNT: 'ripx_account',
   SHOP_DOMAIN: 'shopDomain',
   CURRENT_STORE: 'ripx_current_store', // Multi-store: selected domain when account has multiple
+  ANNOUNCEMENT_DISMISSED: 'ripx_announcement_dismissed', // Dismissed announcement banner text
 };
 
 /** Intervals (ms) */

@@ -16,6 +16,7 @@ const {
   getTenantByAccountAndDomain,
   getFirstTenantForAccount,
 } = require('../models/account');
+const { getRoleAndStatus } = require('../models/user');
 
 /**
  * Verify HMAC signature for Shopify requests
@@ -106,6 +107,12 @@ async function authenticateShopify(req, res, next) {
         path: req.path,
       });
       return sendUnauthorized(res, 'Shop not authenticated');
+    }
+
+    const userStatus = await getRoleAndStatus(shop);
+    if (userStatus?.status === 'locked') {
+      logger.warn('Authentication rejected: user locked', { shop, path: req.path });
+      return res.status(403).json({ success: false, error: 'Account is locked. Contact support.' });
     }
 
     next();
@@ -211,6 +218,15 @@ async function authenticateApiKey(req, res, next) {
       req.tenantId = first.id;
     }
 
+    const userStatus = await getRoleAndStatus(req.shopDomain);
+    if (userStatus?.status === 'locked') {
+      logger.warn('Authentication rejected: user locked', {
+        shopDomain: req.shopDomain,
+        path: req.path,
+      });
+      return res.status(403).json({ success: false, error: 'Account is locked. Contact support.' });
+    }
+
     next();
   } catch (error) {
     logger.error('API key auth error', { error: error.message, path: req.path });
@@ -219,9 +235,37 @@ async function authenticateApiKey(req, res, next) {
 }
 
 /**
- * Multi-platform auth: try Shopify first, then API key
+ * Check for impersonation JWT (admin-issued short-lived token to act as another shop).
+ * Returns true if valid and req was set; false otherwise.
+ */
+function tryImpersonationToken(req, res, next) {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.replace(/^Bearer\s+/i, '').trim();
+  if (!token || !process.env.JWT_SECRET) {
+    return false;
+  }
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (decoded.ripxtype === 'impersonation' && decoded.impersonated_shop) {
+      req.shopDomain = decoded.impersonated_shop;
+      req.impersonation = true;
+      next();
+      return true;
+    }
+  } catch (_) {
+    // Not a valid JWT or expired; fall through to other auth
+  }
+  return false;
+}
+
+/**
+ * Multi-platform auth: impersonation JWT first, then Shopify, then API key
  */
 async function authenticate(req, res, next) {
+  if (tryImpersonationToken(req, res, next)) {
+    return;
+  }
+
   const shop = req.query.shop || req.headers['x-shopify-shop-domain'];
   const apiKey =
     req.headers['x-ripx-api-key'] ||

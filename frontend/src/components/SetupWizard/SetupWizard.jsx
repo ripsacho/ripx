@@ -183,7 +183,8 @@ function SetupWizard() {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <h1 className={styles.setupHeroTitle}>Standalone Site Setup</h1>
                 <p className={styles.setupHeroSubtitle}>
-                  Add the RipX script to your website in two simple steps. Works with any platform — WordPress, Webflow, custom HTML, etc.
+                  Add the RipX script to your website in two simple steps. Works with any platform —
+                  WordPress, Webflow, custom HTML, etc.
                 </p>
               </div>
               <InlineStack gap="200">
@@ -215,10 +216,13 @@ function SetupWizard() {
                           Step 1: Copy your script
                         </Text>
                         <Text variant="bodyMd" tone="subdued">
-                          Copy the script URL below. Your domain: <strong>{inst?.domain || '—'}</strong>
+                          Copy the script URL below. Your domain:{' '}
+                          <strong>{inst?.domain || '—'}</strong>
                         </Text>
                         {installationLoading ? (
-                          <Text variant="bodyMd" tone="subdued">Loading...</Text>
+                          <Text variant="bodyMd" tone="subdued">
+                            Loading...
+                          </Text>
                         ) : scriptUrl ? (
                           <BlockStack gap="200">
                             <div className={styles.snippetBlock}>
@@ -252,12 +256,21 @@ function SetupWizard() {
                           Step 2: Add to your site
                         </Text>
                         <List type="number">
-                          <List.Item>Paste the script tag into your site&apos;s <code>&lt;head&gt;</code> or before <code>&lt;/body&gt;</code></List.Item>
-                          <List.Item>Use the exact domain visitors see (e.g. example.com or www.example.com)</List.Item>
-                          <List.Item>Save and publish. The script will load automatically on page load.</List.Item>
+                          <List.Item>
+                            Paste the script tag into your site&apos;s <code>&lt;head&gt;</code> or
+                            before <code>&lt;/body&gt;</code>
+                          </List.Item>
+                          <List.Item>
+                            Use the exact domain visitors see (e.g. example.com or www.example.com)
+                          </List.Item>
+                          <List.Item>
+                            Save and publish. The script will load automatically on page load.
+                          </List.Item>
                         </List>
                         <Text variant="bodyMd" tone="subdued">
-                          Need the full snippet? Go to <a href={ROUTES.SETTINGS}>Settings → Installation</a> for the complete HTML.
+                          Need the full snippet? Go to{' '}
+                          <a href={ROUTES.SETTINGS}>Settings → Installation</a> for the complete
+                          HTML.
                         </Text>
                       </BlockStack>
                     </Card>
@@ -268,7 +281,8 @@ function SetupWizard() {
                           Done?
                         </Text>
                         <Text variant="bodyMd" tone="subdued">
-                          Once the script is on your site, create a test and start tracking. Visit the Dashboard to see results.
+                          Once the script is on your site, create a test and start tracking. Visit
+                          the Dashboard to see results.
                         </Text>
                         <Button url={ROUTES.DASHBOARD} variant="primary">
                           Go to Dashboard
@@ -329,338 +343,353 @@ function SetupWizard() {
             <Layout>
               <Layout.Section>
                 <BlockStack gap="400">
-            <Card sectioned className={styles.heroCard}>
-              <BlockStack gap="300">
-                <InlineStack align="space-between" blockAlign="center">
-                  <BlockStack gap="100">
-                    <Text variant="headingLg" as="h1">
-                      Connect your storefront in minutes
-                    </Text>
-                    <Text variant="bodyMd" tone="subdued">
-                      Follow the guided steps to enable App Proxy, App Embed, and verify script
-                      loading.
-                    </Text>
-                  </BlockStack>
-                  <div className={styles.heroBadge}>
-                    <Badge tone={progress === 100 ? 'success' : 'info'}>
-                      {completedSteps}/{totalSteps} completed
-                    </Badge>
-                  </div>
-                </InlineStack>
-                <ProgressBar progress={progress} tone={progress === 100 ? 'success' : 'primary'} />
-                <InlineStack align="space-between" blockAlign="center">
-                    <Text variant="bodySm" tone="subdued">
-                      Status auto-refreshes every 30s. Click Refresh to check now.
-                    </Text>
-                  <ButtonGroup>
-                    <Button onClick={checkSetupStatus} loading={checking}>
-                      Refresh status
-                    </Button>
-                    <Button
-                      primary
-                      onClick={() => copyToClipboard(proxyScriptUrl, 'Script URL')}
-                      disabled={!proxyScriptUrl}
-                    >
-                      Copy script URL
-                    </Button>
-                  </ButtonGroup>
-                </InlineStack>
-              </BlockStack>
-            </Card>
-
-            {error && (
-              <Banner tone="critical" title="Setup check failed">
-                <p>{error}</p>
-              </Banner>
-            )}
-            {allComplete && !error && (
-              <Banner tone="success" title="Setup complete">
-                <p>Your storefront is connected and the script is loading successfully.</p>
-              </Banner>
-            )}
-            {copiedMessage && (
-              <Banner tone="success">
-                <p>{copiedMessage}</p>
-              </Banner>
-            )}
-
-            <Card sectioned className={styles.statusCard}>
-              <BlockStack gap="300">
-                <InlineStack align="space-between" blockAlign="center">
-                  <Text variant="headingMd" as="h2">
-                    Live Status
-                  </Text>
-                  <Text variant="bodySm" tone="subdued">
-                    Proxy: {proxyStatusCode ?? 'N/A'} · Embed: {embedStatusCode ?? 'N/A'}
-                  </Text>
-                </InlineStack>
-                <InlineStack gap="600" blockAlign="center" wrap className={styles.statusBadges}>
-                  <InlineStack gap="200" blockAlign="center">
-                    <Text variant="bodyMd">App Proxy</Text>
-                    {proxyOk === undefined ? (
-                      <Badge tone="warning">Not checked</Badge>
-                    ) : (
-                      <Badge tone={proxyOk ? 'success' : 'critical'}>
-                        {proxyOk ? 'Connected' : 'Not connected'}
-                      </Badge>
-                    )}
-                  </InlineStack>
-                  <InlineStack gap="200" blockAlign="center">
-                    <Text variant="bodyMd">App Embed</Text>
-                    {embedDetected === undefined ? (
-                      <Badge tone="warning">Not checked</Badge>
-                    ) : embedBlockedByPassword ? (
-                      <Badge tone="warning">Blocked</Badge>
-                    ) : (
-                      <Badge tone={embedDetected ? 'success' : 'critical'}>
-                        {embedDetected ? 'Enabled' : 'Not enabled'}
-                      </Badge>
-                    )}
-                  </InlineStack>
-                </InlineStack>
-                <Divider />
-                <BlockStack gap="200">
-                  <InlineStack align="space-between" blockAlign="center">
-                    <Text variant="bodySm" tone="subdued">
-                      App URL
-                    </Text>
-                    <InlineStack gap="200" blockAlign="center">
-                      <Text variant="bodySm">{appUrl || 'Not set'}</Text>
-                      <Button
-                        size="slim"
-                        onClick={() => copyToClipboard(appUrl, 'App URL')}
-                        disabled={!appUrl}
-                      >
-                        Copy
-                      </Button>
-                    </InlineStack>
-                  </InlineStack>
-                  <InlineStack align="space-between" blockAlign="center">
-                    <Text variant="bodySm" tone="subdued">
-                      App Proxy target URL
-                    </Text>
-                    <InlineStack gap="200" blockAlign="center">
-                      <Text variant="bodySm">{proxyTargetUrl || 'Not set'}</Text>
-                      <Button
-                        size="slim"
-                        onClick={() => copyToClipboard(proxyTargetUrl, 'Proxy URL')}
-                        disabled={!proxyTargetUrl}
-                      >
-                        Copy
-                      </Button>
-                    </InlineStack>
-                  </InlineStack>
-                  <InlineStack align="space-between" blockAlign="center">
-                    <Text variant="bodySm" tone="subdued">
-                      Script URL
-                    </Text>
-                    <InlineStack gap="200" blockAlign="center">
-                      <Text variant="bodySm">{proxyScriptUrl || 'Missing shop domain'}</Text>
-                      <Button
-                        size="slim"
-                        onClick={() => copyToClipboard(proxyScriptUrl, 'Script URL')}
-                        disabled={!proxyScriptUrl}
-                      >
-                        Copy
-                      </Button>
-                    </InlineStack>
-                  </InlineStack>
-                </BlockStack>
-              </BlockStack>
-            </Card>
-
-            {embedBlockedByPassword && (
-              <Banner tone="warning" title="Storefront is password protected">
-                <p>
-                  Embed detection may show as not enabled until the store password is removed, or
-                  you temporarily disable the password while checking.
-                </p>
-              </Banner>
-            )}
-
-            <Card sectioned className={styles.stepsCard}>
-              <BlockStack gap="400">
-                <Text variant="headingMd" as="h2">
-                  Guided Steps
-                </Text>
-                <div className={styles.stepsGrid}>
-                  <Card sectioned className={styles.stepCard}>
-                    <BlockStack gap="200">
-                      <div className={styles.stepHeader}>
-                        <div className={styles.stepTitleGroup}>
-                          <div className={styles.stepIcon} aria-hidden="true">
-                            <StepIcon type="link" />
-                            <span className={styles.stepNumber}>1</span>
-                          </div>
-                          <Text variant="headingSm" as="h3">
-                            Confirm App URL
+                  <Card sectioned className={styles.heroCard}>
+                    <BlockStack gap="300">
+                      <InlineStack align="space-between" blockAlign="center">
+                        <BlockStack gap="100">
+                          <Text variant="headingLg" as="h1">
+                            Connect your storefront in minutes
                           </Text>
+                          <Text variant="bodyMd" tone="subdued">
+                            Follow the guided steps to enable App Proxy, App Embed, and verify
+                            script loading.
+                          </Text>
+                        </BlockStack>
+                        <div className={styles.heroBadge}>
+                          <Badge tone={progress === 100 ? 'success' : 'info'}>
+                            {completedSteps}/{totalSteps} completed
+                          </Badge>
                         </div>
-                        <Badge tone={appUrl ? 'success' : 'warning'}>
-                          {appUrl ? 'Done' : 'Needs action'}
-                        </Badge>
-                      </div>
-                      <Text variant="bodySm" tone="subdued">
-                        This should be your current dev tunnel or production domain.
-                      </Text>
-                      <InlineStack gap="200" blockAlign="center">
-                        <Text variant="bodySm">{appUrl || 'Not set'}</Text>
-                        <Button
-                          size="slim"
-                          onClick={() => copyToClipboard(appUrl, 'App URL')}
-                          disabled={!appUrl}
-                        >
-                          Copy
-                        </Button>
                       </InlineStack>
-                    </BlockStack>
-                  </Card>
-
-                  <Card sectioned className={styles.stepCard}>
-                    <BlockStack gap="200">
-                      <div className={styles.stepHeader}>
-                        <div className={styles.stepTitleGroup}>
-                          <div className={styles.stepIcon} aria-hidden="true">
-                            <StepIcon type="proxy" />
-                            <span className={styles.stepNumber}>2</span>
-                          </div>
-                          <Text variant="headingSm" as="h3">
-                            Configure App Proxy
-                          </Text>
-                        </div>
-                        <Badge tone={proxyTargetUrl ? 'success' : 'warning'}>
-                          {proxyTargetUrl ? 'Done' : 'Needs action'}
-                        </Badge>
-                      </div>
-                      <List type="bullet">
-                        <List.Item>Subpath prefix: apps</List.Item>
-                        <List.Item>Subpath: ripx</List.Item>
-                        <List.Item>Proxy URL: {proxyTargetUrl || 'Not set'}</List.Item>
-                      </List>
-                      <InlineStack gap="200" blockAlign="center">
-                        <Button
-                          size="slim"
-                          onClick={() => copyToClipboard(proxyTargetUrl, 'Proxy URL')}
-                          disabled={!proxyTargetUrl}
-                        >
-                          Copy proxy URL
-                        </Button>
-                      </InlineStack>
-                    </BlockStack>
-                  </Card>
-
-                  <Card sectioned className={styles.stepCard}>
-                    <BlockStack gap="200">
-                      <div className={styles.stepHeader}>
-                        <div className={styles.stepTitleGroup}>
-                          <div className={styles.stepIcon} aria-hidden="true">
-                            <StepIcon type="embed" />
-                            <span className={styles.stepNumber}>3</span>
-                          </div>
-                          <Text variant="headingSm" as="h3">
-                            Enable App Embed
-                          </Text>
-                        </div>
-                        <Badge tone={embedDetected ? 'success' : 'warning'}>
-                          {embedDetected ? 'Done' : 'Needs action'}
-                        </Badge>
-                      </div>
-                      <List type="bullet">
-                        <List.Item>Online Store → Themes → Customize</List.Item>
-                        <List.Item>App Embeds → Enable “RipX App Embed”</List.Item>
-                        <List.Item>Save the theme</List.Item>
-                      </List>
-                      {embedBlockedByPassword && (
+                      <ProgressBar
+                        progress={progress}
+                        tone={progress === 100 ? 'success' : 'primary'}
+                      />
+                      <InlineStack align="space-between" blockAlign="center">
                         <Text variant="bodySm" tone="subdued">
-                          Password protection can hide embed detection while testing.
+                          Status auto-refreshes every 30s. Click Refresh to check now.
                         </Text>
-                      )}
-                    </BlockStack>
-                  </Card>
-
-                  <Card sectioned className={styles.stepCard}>
-                    <BlockStack gap="200">
-                      <div className={styles.stepHeader}>
-                        <div className={styles.stepTitleGroup}>
-                          <div className={styles.stepIcon} aria-hidden="true">
-                            <StepIcon type="verify" />
-                            <span className={styles.stepNumber}>4</span>
-                          </div>
-                          <Text variant="headingSm" as="h3">
-                            Verify Script URL
-                          </Text>
-                        </div>
-                        <Badge tone={proxyOk ? 'success' : 'warning'}>
-                          {proxyOk ? 'Done' : 'Needs action'}
-                        </Badge>
-                      </div>
-                      <Text variant="bodySm" tone="subdued">
-                        This should return JavaScript (not 404).
-                      </Text>
-                      <InlineStack gap="200" blockAlign="center">
-                        <Text variant="bodySm">{proxyScriptUrl || 'Missing shop domain'}</Text>
-                        <Button
-                          size="slim"
-                          onClick={() => copyToClipboard(proxyScriptUrl, 'Script URL')}
-                          disabled={!proxyScriptUrl}
-                        >
-                          Copy
-                        </Button>
+                        <ButtonGroup>
+                          <Button onClick={checkSetupStatus} loading={checking}>
+                            Refresh status
+                          </Button>
+                          <Button
+                            primary
+                            onClick={() => copyToClipboard(proxyScriptUrl, 'Script URL')}
+                            disabled={!proxyScriptUrl}
+                          >
+                            Copy script URL
+                          </Button>
+                        </ButtonGroup>
                       </InlineStack>
                     </BlockStack>
                   </Card>
-                </div>
-              </BlockStack>
-            </Card>
 
-            <Divider />
+                  {error && (
+                    <Banner tone="critical" title="Setup check failed">
+                      <p>{error}</p>
+                    </Banner>
+                  )}
+                  {allComplete && !error && (
+                    <Banner tone="success" title="Setup complete">
+                      <p>Your storefront is connected and the script is loading successfully.</p>
+                    </Banner>
+                  )}
+                  {copiedMessage && (
+                    <Banner tone="success">
+                      <p>{copiedMessage}</p>
+                    </Banner>
+                  )}
 
-            <Card sectioned>
-              <BlockStack gap="200">
-                <Text variant="headingMd" as="h2">
-                  Troubleshooting
-                </Text>
-                <List type="bullet">
-                  <List.Item>
-                    404 on script URL means the App Proxy isn’t configured or saved yet.
-                  </List.Item>
-                  <List.Item>
-                    “App Embed not enabled” means the embed toggle is off in the theme editor.
-                  </List.Item>
-                  <List.Item>Password protected storefronts can hide embed detection.</List.Item>
-                </List>
-              </BlockStack>
-            </Card>
-          </BlockStack>
-        </Layout.Section>
-        <Layout.Section secondary>
-          <Card sectioned className={styles.railCard}>
-            <BlockStack gap="300">
-              <Text variant="headingSm" as="h2">
-                Progress
-              </Text>
-              <ProgressBar progress={progress} tone={progress === 100 ? 'success' : 'primary'} />
-              <div className={styles.railList}>
-                {stepItems.map(step => (
-                  <div key={step.id} className={styles.railItem}>
-                    <div className={styles.railDot}>{step.done ? '✓' : step.id}</div>
-                    <Text variant="bodySm">{step.label}</Text>
-                  </div>
-                ))}
-              </div>
-              <Divider />
-              <BlockStack gap="200">
-                <Text variant="bodySm" tone="subdued">
-                  Need help? Re-check your status anytime.
-                </Text>
-                <Button onClick={checkSetupStatus} loading={checking}>
-                  Refresh status
-                </Button>
-              </BlockStack>
-            </BlockStack>
-          </Card>
-        </Layout.Section>
-      </Layout>
+                  <Card sectioned className={styles.statusCard}>
+                    <BlockStack gap="300">
+                      <InlineStack align="space-between" blockAlign="center">
+                        <Text variant="headingMd" as="h2">
+                          Live Status
+                        </Text>
+                        <Text variant="bodySm" tone="subdued">
+                          Proxy: {proxyStatusCode ?? 'N/A'} · Embed: {embedStatusCode ?? 'N/A'}
+                        </Text>
+                      </InlineStack>
+                      <InlineStack
+                        gap="600"
+                        blockAlign="center"
+                        wrap
+                        className={styles.statusBadges}
+                      >
+                        <InlineStack gap="200" blockAlign="center">
+                          <Text variant="bodyMd">App Proxy</Text>
+                          {proxyOk === undefined ? (
+                            <Badge tone="warning">Not checked</Badge>
+                          ) : (
+                            <Badge tone={proxyOk ? 'success' : 'critical'}>
+                              {proxyOk ? 'Connected' : 'Not connected'}
+                            </Badge>
+                          )}
+                        </InlineStack>
+                        <InlineStack gap="200" blockAlign="center">
+                          <Text variant="bodyMd">App Embed</Text>
+                          {embedDetected === undefined ? (
+                            <Badge tone="warning">Not checked</Badge>
+                          ) : embedBlockedByPassword ? (
+                            <Badge tone="warning">Blocked</Badge>
+                          ) : (
+                            <Badge tone={embedDetected ? 'success' : 'critical'}>
+                              {embedDetected ? 'Enabled' : 'Not enabled'}
+                            </Badge>
+                          )}
+                        </InlineStack>
+                      </InlineStack>
+                      <Divider />
+                      <BlockStack gap="200">
+                        <InlineStack align="space-between" blockAlign="center">
+                          <Text variant="bodySm" tone="subdued">
+                            App URL
+                          </Text>
+                          <InlineStack gap="200" blockAlign="center">
+                            <Text variant="bodySm">{appUrl || 'Not set'}</Text>
+                            <Button
+                              size="slim"
+                              onClick={() => copyToClipboard(appUrl, 'App URL')}
+                              disabled={!appUrl}
+                            >
+                              Copy
+                            </Button>
+                          </InlineStack>
+                        </InlineStack>
+                        <InlineStack align="space-between" blockAlign="center">
+                          <Text variant="bodySm" tone="subdued">
+                            App Proxy target URL
+                          </Text>
+                          <InlineStack gap="200" blockAlign="center">
+                            <Text variant="bodySm">{proxyTargetUrl || 'Not set'}</Text>
+                            <Button
+                              size="slim"
+                              onClick={() => copyToClipboard(proxyTargetUrl, 'Proxy URL')}
+                              disabled={!proxyTargetUrl}
+                            >
+                              Copy
+                            </Button>
+                          </InlineStack>
+                        </InlineStack>
+                        <InlineStack align="space-between" blockAlign="center">
+                          <Text variant="bodySm" tone="subdued">
+                            Script URL
+                          </Text>
+                          <InlineStack gap="200" blockAlign="center">
+                            <Text variant="bodySm">{proxyScriptUrl || 'Missing shop domain'}</Text>
+                            <Button
+                              size="slim"
+                              onClick={() => copyToClipboard(proxyScriptUrl, 'Script URL')}
+                              disabled={!proxyScriptUrl}
+                            >
+                              Copy
+                            </Button>
+                          </InlineStack>
+                        </InlineStack>
+                      </BlockStack>
+                    </BlockStack>
+                  </Card>
+
+                  {embedBlockedByPassword && (
+                    <Banner tone="warning" title="Storefront is password protected">
+                      <p>
+                        Embed detection may show as not enabled until the store password is removed,
+                        or you temporarily disable the password while checking.
+                      </p>
+                    </Banner>
+                  )}
+
+                  <Card sectioned className={styles.stepsCard}>
+                    <BlockStack gap="400">
+                      <Text variant="headingMd" as="h2">
+                        Guided Steps
+                      </Text>
+                      <div className={styles.stepsGrid}>
+                        <Card sectioned className={styles.stepCard}>
+                          <BlockStack gap="200">
+                            <div className={styles.stepHeader}>
+                              <div className={styles.stepTitleGroup}>
+                                <div className={styles.stepIcon} aria-hidden="true">
+                                  <StepIcon type="link" />
+                                  <span className={styles.stepNumber}>1</span>
+                                </div>
+                                <Text variant="headingSm" as="h3">
+                                  Confirm App URL
+                                </Text>
+                              </div>
+                              <Badge tone={appUrl ? 'success' : 'warning'}>
+                                {appUrl ? 'Done' : 'Needs action'}
+                              </Badge>
+                            </div>
+                            <Text variant="bodySm" tone="subdued">
+                              This should be your current dev tunnel or production domain.
+                            </Text>
+                            <InlineStack gap="200" blockAlign="center">
+                              <Text variant="bodySm">{appUrl || 'Not set'}</Text>
+                              <Button
+                                size="slim"
+                                onClick={() => copyToClipboard(appUrl, 'App URL')}
+                                disabled={!appUrl}
+                              >
+                                Copy
+                              </Button>
+                            </InlineStack>
+                          </BlockStack>
+                        </Card>
+
+                        <Card sectioned className={styles.stepCard}>
+                          <BlockStack gap="200">
+                            <div className={styles.stepHeader}>
+                              <div className={styles.stepTitleGroup}>
+                                <div className={styles.stepIcon} aria-hidden="true">
+                                  <StepIcon type="proxy" />
+                                  <span className={styles.stepNumber}>2</span>
+                                </div>
+                                <Text variant="headingSm" as="h3">
+                                  Configure App Proxy
+                                </Text>
+                              </div>
+                              <Badge tone={proxyTargetUrl ? 'success' : 'warning'}>
+                                {proxyTargetUrl ? 'Done' : 'Needs action'}
+                              </Badge>
+                            </div>
+                            <List type="bullet">
+                              <List.Item>Subpath prefix: apps</List.Item>
+                              <List.Item>Subpath: ripx</List.Item>
+                              <List.Item>Proxy URL: {proxyTargetUrl || 'Not set'}</List.Item>
+                            </List>
+                            <InlineStack gap="200" blockAlign="center">
+                              <Button
+                                size="slim"
+                                onClick={() => copyToClipboard(proxyTargetUrl, 'Proxy URL')}
+                                disabled={!proxyTargetUrl}
+                              >
+                                Copy proxy URL
+                              </Button>
+                            </InlineStack>
+                          </BlockStack>
+                        </Card>
+
+                        <Card sectioned className={styles.stepCard}>
+                          <BlockStack gap="200">
+                            <div className={styles.stepHeader}>
+                              <div className={styles.stepTitleGroup}>
+                                <div className={styles.stepIcon} aria-hidden="true">
+                                  <StepIcon type="embed" />
+                                  <span className={styles.stepNumber}>3</span>
+                                </div>
+                                <Text variant="headingSm" as="h3">
+                                  Enable App Embed
+                                </Text>
+                              </div>
+                              <Badge tone={embedDetected ? 'success' : 'warning'}>
+                                {embedDetected ? 'Done' : 'Needs action'}
+                              </Badge>
+                            </div>
+                            <List type="bullet">
+                              <List.Item>Online Store → Themes → Customize</List.Item>
+                              <List.Item>App Embeds → Enable “RipX App Embed”</List.Item>
+                              <List.Item>Save the theme</List.Item>
+                            </List>
+                            {embedBlockedByPassword && (
+                              <Text variant="bodySm" tone="subdued">
+                                Password protection can hide embed detection while testing.
+                              </Text>
+                            )}
+                          </BlockStack>
+                        </Card>
+
+                        <Card sectioned className={styles.stepCard}>
+                          <BlockStack gap="200">
+                            <div className={styles.stepHeader}>
+                              <div className={styles.stepTitleGroup}>
+                                <div className={styles.stepIcon} aria-hidden="true">
+                                  <StepIcon type="verify" />
+                                  <span className={styles.stepNumber}>4</span>
+                                </div>
+                                <Text variant="headingSm" as="h3">
+                                  Verify Script URL
+                                </Text>
+                              </div>
+                              <Badge tone={proxyOk ? 'success' : 'warning'}>
+                                {proxyOk ? 'Done' : 'Needs action'}
+                              </Badge>
+                            </div>
+                            <Text variant="bodySm" tone="subdued">
+                              This should return JavaScript (not 404).
+                            </Text>
+                            <InlineStack gap="200" blockAlign="center">
+                              <Text variant="bodySm">
+                                {proxyScriptUrl || 'Missing shop domain'}
+                              </Text>
+                              <Button
+                                size="slim"
+                                onClick={() => copyToClipboard(proxyScriptUrl, 'Script URL')}
+                                disabled={!proxyScriptUrl}
+                              >
+                                Copy
+                              </Button>
+                            </InlineStack>
+                          </BlockStack>
+                        </Card>
+                      </div>
+                    </BlockStack>
+                  </Card>
+
+                  <Divider />
+
+                  <Card sectioned>
+                    <BlockStack gap="200">
+                      <Text variant="headingMd" as="h2">
+                        Troubleshooting
+                      </Text>
+                      <List type="bullet">
+                        <List.Item>
+                          404 on script URL means the App Proxy isn’t configured or saved yet.
+                        </List.Item>
+                        <List.Item>
+                          “App Embed not enabled” means the embed toggle is off in the theme editor.
+                        </List.Item>
+                        <List.Item>
+                          Password protected storefronts can hide embed detection.
+                        </List.Item>
+                      </List>
+                    </BlockStack>
+                  </Card>
+                </BlockStack>
+              </Layout.Section>
+              <Layout.Section secondary>
+                <Card sectioned className={styles.railCard}>
+                  <BlockStack gap="300">
+                    <Text variant="headingSm" as="h2">
+                      Progress
+                    </Text>
+                    <ProgressBar
+                      progress={progress}
+                      tone={progress === 100 ? 'success' : 'primary'}
+                    />
+                    <div className={styles.railList}>
+                      {stepItems.map(step => (
+                        <div key={step.id} className={styles.railItem}>
+                          <div className={styles.railDot}>{step.done ? '✓' : step.id}</div>
+                          <Text variant="bodySm">{step.label}</Text>
+                        </div>
+                      ))}
+                    </div>
+                    <Divider />
+                    <BlockStack gap="200">
+                      <Text variant="bodySm" tone="subdued">
+                        Need help? Re-check your status anytime.
+                      </Text>
+                      <Button onClick={checkSetupStatus} loading={checking}>
+                        Refresh status
+                      </Button>
+                    </BlockStack>
+                  </BlockStack>
+                </Card>
+              </Layout.Section>
+            </Layout>
           </div>
         </div>
       </Page>

@@ -21,6 +21,7 @@ const ROUTE_LABELS = {
   [ROUTES.SETTINGS]: 'Settings',
   [ROUTES.SETUP]: 'Setup',
   [ROUTES.PROFILE]: 'Profile',
+  [ROUTES.NOTIFICATIONS]: 'Notifications',
   [ROUTES.DOCS]: 'Documentation',
   '/tests/new': 'Create Test',
 };
@@ -36,7 +37,11 @@ function getBreadcrumb(pathname, search = '') {
   if (pathname.startsWith('/tests/') && pathname.includes('/analytics')) {
     return { parent: 'Tests', current: 'Analytics' };
   }
-  if (pathname.startsWith('/tests/') && !pathname.includes('/analytics') && pathname !== '/tests/new') {
+  if (
+    pathname.startsWith('/tests/') &&
+    !pathname.includes('/analytics') &&
+    pathname !== '/tests/new'
+  ) {
     const testId = pathname.split('/')[2];
     return { parent: 'Tests', current: testId ? 'Test Details' : 'Tests' };
   }
@@ -45,11 +50,35 @@ function getBreadcrumb(pathname, search = '') {
   if (pathname === ROUTES.SETTINGS) return { current: 'Settings' };
   if (pathname === ROUTES.SETUP) return { current: 'Setup Wizard' };
   if (pathname === ROUTES.PROFILE) return { current: 'Profile' };
+  if (pathname === ROUTES.NOTIFICATIONS) return { current: 'Notifications' };
   if (pathname === ROUTES.DOCS) return { current: 'Documentation' };
   if (pathname === ROUTES.CONNECT) return { current: 'Connect' };
+  if (pathname.startsWith(ROUTES.ADMIN)) {
+    if (pathname === ROUTES.ADMIN || pathname === ROUTES.ADMIN_OVERVIEW)
+      return { current: 'Admin' };
+    if (pathname === ROUTES.ADMIN_USERS) return { current: 'Admin · Users' };
+    if (pathname === ROUTES.ADMIN_DOMAINS) return { current: 'Admin · Domains' };
+    if (pathname === ROUTES.ADMIN_TESTS) return { current: 'Admin · Tests' };
+    if (pathname === ROUTES.ADMIN_AUDIT) return { current: 'Admin · Audit log' };
+    return { current: 'Admin' };
+  }
   // Unknown route (e.g. 404)
-  const knownPaths = [ROUTES.DASHBOARD, ROUTES.TESTS, ROUTES.CREATE_TEST, ROUTES.ANALYTICS, ROUTES.SETTINGS, ROUTES.SETUP, ROUTES.PROFILE, ROUTES.DOCS, ROUTES.CONNECT];
-  const isKnown = knownPaths.includes(pathname) || pathname.startsWith('/tests/');
+  const knownPaths = [
+    ROUTES.DASHBOARD,
+    ROUTES.TESTS,
+    ROUTES.CREATE_TEST,
+    ROUTES.ANALYTICS,
+    ROUTES.SETTINGS,
+    ROUTES.SETUP,
+    ROUTES.PROFILE,
+    ROUTES.NOTIFICATIONS,
+    ROUTES.DOCS,
+    ROUTES.CONNECT,
+  ];
+  const isKnown =
+    knownPaths.includes(pathname) ||
+    pathname.startsWith('/tests/') ||
+    pathname.startsWith(ROUTES.ADMIN);
   if (!isKnown) return { current: 'Page not found' };
   return { current: ROUTE_LABELS[pathname] || 'RipX' };
 }
@@ -69,8 +98,8 @@ function TopBar({
   const [unreadCount, setUnreadCount] = useState(0);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
 
-  const toggleUserMenu = useCallback(() => setUserMenuActive((a) => !a), []);
-  const toggleSettingsMenu = useCallback(() => setSettingsMenuActive((a) => !a), []);
+  const toggleUserMenu = useCallback(() => setUserMenuActive(a => !a), []);
+  const toggleSettingsMenu = useCallback(() => setSettingsMenuActive(a => !a), []);
 
   const breadcrumb = useMemo(
     () => getBreadcrumb(location.pathname, location.search),
@@ -96,13 +125,11 @@ function TopBar({
     if (notificationsActive) fetchNotifications();
   }, [notificationsActive, fetchNotifications]);
 
-  const handleMarkRead = useCallback(async (id) => {
+  const handleMarkRead = useCallback(async id => {
     try {
       await apiPut(`/notifications/${id}/read`);
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-      );
-      setUnreadCount((c) => Math.max(0, c - 1));
+      setNotifications(prev => prev.map(n => (n.id === id ? { ...n, read: true } : n)));
+      setUnreadCount(c => Math.max(0, c - 1));
     } catch {
       // ignore
     }
@@ -111,7 +138,7 @@ function TopBar({
   const handleMarkAllRead = useCallback(async () => {
     try {
       await apiPut('/notifications/read-all');
-      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
       setUnreadCount(0);
     } catch {
       // ignore
@@ -183,10 +210,7 @@ function TopBar({
   const effectiveLeft = sidebarCollapsed ? 80 : sidebarWidth;
 
   return (
-    <div
-      className={`top-bar ${styles.topBar}`}
-      style={{ '--topbar-left': `${effectiveLeft}px` }}
-    >
+    <div className={`top-bar ${styles.topBar}`} style={{ '--topbar-left': `${effectiveLeft}px` }}>
       <div className={styles.topBarLeft}>
         {showMobileToggle && (
           <button
@@ -231,12 +255,16 @@ function TopBar({
             activator={
               <button
                 type="button"
-                onClick={() => setNotificationsActive((a) => !a)}
+                onClick={() => setNotificationsActive(a => !a)}
                 aria-label="Notifications"
                 className={`${styles.iconBtn} ${notificationsActive ? styles.active : ''}`}
               >
                 <Icon source={NotificationIcon} />
-                {unreadCount > 0 && <span className={styles.notificationBadge} />}
+                {unreadCount > 0 && (
+                  <span className={styles.notificationBadge} aria-label={`${unreadCount} unread`}>
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
               </button>
             }
             onClose={() => setNotificationsActive(false)}
@@ -244,7 +272,7 @@ function TopBar({
             preferredPosition="below"
           >
             <div className={styles.notificationPopover}>
-              <BlockStack gap="300">
+              <div className={styles.notificationPopoverHeader}>
                 <InlineStack align="space-between" blockAlign="center">
                   <Text variant="headingMd" as="h2">
                     Notifications
@@ -255,6 +283,8 @@ function TopBar({
                     </Button>
                   )}
                 </InlineStack>
+              </div>
+              <div className={styles.notificationPopoverList}>
                 {notificationsLoading ? (
                   <Text variant="bodySm" tone="subdued">
                     Loading...
@@ -270,7 +300,7 @@ function TopBar({
                   </>
                 ) : (
                   <BlockStack gap="200">
-                    {notifications.map((n) => (
+                    {notifications.map(n => (
                       <div
                         key={n.id}
                         className={`${styles.notificationItem} ${!n.read ? styles.notificationItemUnread : ''}`}
@@ -287,11 +317,7 @@ function TopBar({
                           {new Date(n.createdAt).toLocaleDateString()}
                         </Text>
                         {!n.read && (
-                          <Button
-                            size="slim"
-                            variant="plain"
-                            onClick={() => handleMarkRead(n.id)}
-                          >
+                          <Button size="slim" variant="plain" onClick={() => handleMarkRead(n.id)}>
                             Mark read
                           </Button>
                         )}
@@ -299,7 +325,19 @@ function TopBar({
                     ))}
                   </BlockStack>
                 )}
-              </BlockStack>
+              </div>
+              <div className={styles.notificationPopoverFooter}>
+                <Button
+                  fullWidth
+                  variant="plain"
+                  onClick={() => {
+                    setNotificationsActive(false);
+                    navigate(ROUTES.NOTIFICATIONS);
+                  }}
+                >
+                  See all notifications
+                </Button>
+              </div>
             </div>
           </Popover>
 

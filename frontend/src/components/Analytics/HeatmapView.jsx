@@ -35,6 +35,9 @@ function HeatmapView({ testId, variants = [] }) {
   });
   const [clicks, setClicks] = useState([]);
   const [scrolls, setScrolls] = useState([]);
+  const [overlay, setOverlay] = useState(null);
+  const [screenshotUrl, setScreenshotUrl] = useState(null);
+  const [screenshotError, setScreenshotError] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -52,6 +55,9 @@ function HeatmapView({ testId, variants = [] }) {
         setPages(newPages);
         setClicks(data.clicks ?? []);
         setScrolls(data.scrolls ?? []);
+        setOverlay(data.overlay ?? null);
+        setScreenshotUrl(data.screenshotUrl ?? null);
+        setScreenshotError(false);
         if (!selectedPage && newPages.length > 0) {
           setSelectedPage(newPages[0]);
         } else if (selectedPage && newPages.length > 0 && !newPages.includes(selectedPage)) {
@@ -59,26 +65,33 @@ function HeatmapView({ testId, variants = [] }) {
         }
       })
       .catch(() => {
+        setPages([]);
         setClicks([]);
         setScrolls([]);
+        setOverlay(null);
+        setScreenshotUrl(null);
+        setScreenshotError(false);
       })
       .finally(() => setLoading(false));
   }, [testId, selectedPage, selectedVariant, dateRange]);
 
   const variantOptions = [
     { label: 'All variants', value: 'all' },
-    ...variants.map(v => ({ label: v.name, value: v.id })),
+    ...(variants || []).map((v, i) => ({
+      label: v.name || `Variant ${i + 1}`,
+      value: v.id || v.name || `v-${i}`,
+    })),
   ];
 
   const pageOptions = [
     { label: 'All pages', value: '' },
-    ...pages.map(p => ({ label: p.length > 60 ? p.substring(0, 57) + '...' : p, value: p })),
+    ...(pages || [])
+      .filter(p => p !== null && p !== undefined && String(p).trim() !== '')
+      .map(p => ({ label: p.length > 60 ? p.substring(0, 57) + '...' : p, value: p })),
   ];
 
   const filteredClicks =
-    selectedVariant === 'all'
-      ? clicks
-      : clicks.filter(c => c.variant_id === selectedVariant);
+    selectedVariant === 'all' ? clicks : clicks.filter(c => c.variant_id === selectedVariant);
   const aggregatedClicks = {};
   filteredClicks.forEach(c => {
     const key = `${c.x_bucket}-${c.y_bucket}`;
@@ -124,15 +137,72 @@ function HeatmapView({ testId, variants = [] }) {
       ) : clicks.length === 0 && scrolls.length === 0 ? (
         <div className={styles.heatmapEmpty}>
           <Text as="p" color="subdued">
-            No heatmap data yet. Clicks and scrolls are recorded as visitors interact with the
-            page.
+            No heatmap data yet. Clicks and scrolls are recorded as visitors interact with the page.
           </Text>
         </div>
       ) : (
         <div className={styles.heatmapContent}>
+          {overlay && overlay.points && overlay.points.length > 0 && (
+            <div className={styles.heatmapBlock}>
+              <h3 className={styles.heatmapBlockTitle}>Heatmap over page</h3>
+              <p className={styles.heatmapOverlayHint}>
+                {screenshotUrl
+                  ? 'Clicks normalized to reference viewport (1280×720).'
+                  : 'Click heatmap (normalized to 1280×720). To show on your page image, in Admin → Key-value store add key heatmap_screenshot.{your-shop-domain}.{page_path} (e.g. heatmap_screenshot.mystore.com._products_my-product) and set value to the screenshot image URL.'}
+              </p>
+              <div
+                className={styles.heatmapOverlayWrap}
+                style={{
+                  aspectRatio: `${overlay.referenceWidth || 1280} / ${overlay.referenceHeight || 720}`,
+                }}
+              >
+                {screenshotUrl && !screenshotError ? (
+                  <img
+                    src={screenshotUrl}
+                    alt="Page screenshot for click heatmap overlay"
+                    className={styles.heatmapOverlayImg}
+                    onError={() => setScreenshotError(true)}
+                  />
+                ) : (
+                  <div className={styles.heatmapOverlayPlaceholder} aria-hidden>
+                    <span>Page screenshot</span>
+                    <span className={styles.heatmapOverlayPlaceholderHint}>
+                      Add URL in Admin → Key-value store
+                    </span>
+                  </div>
+                )}
+                <div className={styles.heatmapOverlayCanvas}>
+                  {(() => {
+                    const maxCount = Math.max(...overlay.points.map(p => p.count), 1);
+                    return overlay.points.slice(0, 500).map((p, i) => {
+                      const intensity = Math.min(1, p.count / maxCount);
+                      const xPct = ((p.x / (overlay.referenceWidth || 1280)) * 100).toFixed(2);
+                      const yPct = ((p.y / (overlay.referenceHeight || 720)) * 100).toFixed(2);
+                      return (
+                        <div
+                          key={`${p.x}-${p.y}-${i}`}
+                          className={styles.heatmapOverlayPoint}
+                          style={{
+                            left: `${xPct}%`,
+                            top: `${yPct}%`,
+                            opacity: 0.3 + intensity * 0.7,
+                            transform: 'translate(-50%, -50%)',
+                          }}
+                          title={`${p.count} clicks`}
+                        />
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className={styles.heatmapGrid}>
             {clicks.length > 0 && (
-              <div className={`${styles.heatmapBlock} ${scrolls.length === 0 ? styles.heatmapGridSingle : ''}`}>
+              <div
+                className={`${styles.heatmapBlock} ${scrolls.length === 0 ? styles.heatmapGridSingle : ''}`}
+              >
                 <h3 className={styles.heatmapBlockTitle}>Click heatmap</h3>
                 <div
                   className={styles.heatmapClickGrid}
@@ -159,7 +229,9 @@ function HeatmapView({ testId, variants = [] }) {
             )}
 
             {scrolls.length > 0 && (
-              <div className={`${styles.heatmapBlock} ${clicks.length === 0 ? styles.heatmapGridSingle : ''}`}>
+              <div
+                className={`${styles.heatmapBlock} ${clicks.length === 0 ? styles.heatmapGridSingle : ''}`}
+              >
                 <h3 className={styles.heatmapBlockTitle}>Scroll depth</h3>
                 <div className={styles.heatmapScrollWrapper}>
                   {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90].map(bucket => {

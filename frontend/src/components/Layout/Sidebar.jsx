@@ -18,10 +18,11 @@ import {
   BookIcon,
   ConnectIcon,
   MagicIcon,
+  LockIcon,
 } from '@shopify/polaris-icons';
 import { ROUTES } from '../../constants';
 import { isStandaloneMode } from '../../services';
-import { useTests } from '../../hooks';
+import { useTests, useAdminMe } from '../../hooks';
 import { prefetchOnHover } from '../../utils/prefetch';
 
 const baseNavigationGroups = [
@@ -30,7 +31,12 @@ const baseNavigationGroups = [
     items: [
       { path: ROUTES.DASHBOARD, label: 'Dashboard', icon: ChartVerticalIcon },
       { path: ROUTES.TESTS, label: 'All Tests', icon: ClipboardChecklistIcon },
-      { path: ROUTES.TESTS_PERSONALIZATION, label: 'Personalization', icon: MagicIcon, badgeKey: 'personalization' },
+      {
+        path: ROUTES.TESTS_PERSONALIZATION,
+        label: 'Personalization',
+        icon: MagicIcon,
+        badgeKey: 'personalization',
+      },
       { path: ROUTES.CREATE_TEST, label: 'Create Test', icon: PlusIcon },
       { path: ROUTES.ANALYTICS, label: 'Analytics', icon: ChartLineIcon },
     ],
@@ -56,24 +62,39 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
   const { data: tests = [] } = useTests();
 
   const personalizationCount = useMemo(
-    () => tests.filter((t) => ['personalized', 'rollout'].includes(t.personalization_mode || '')).length,
+    () =>
+      tests.filter(t => ['personalized', 'rollout'].includes(t.personalization_mode || '')).length,
     [tests]
   );
 
+  const { isAdmin } = useAdminMe();
+
   const navigationGroups = useMemo(() => {
-    if (!isStandaloneMode()) return baseNavigationGroups;
-    return baseNavigationGroups.map((group) =>
-      group.label === 'Setup & Settings'
-        ? {
-            ...group,
-            items: [
-              ...group.items,
-              { path: ROUTES.CONNECT, label: 'Reconnect / API Key', icon: ConnectIcon },
-            ],
-          }
-        : group
-    );
-  }, []);
+    let groups = baseNavigationGroups;
+    if (isStandaloneMode()) {
+      groups = groups.map(group =>
+        group.label === 'Setup & Settings'
+          ? {
+              ...group,
+              items: [
+                ...group.items,
+                { path: ROUTES.CONNECT, label: 'Reconnect / API Key', icon: ConnectIcon },
+              ],
+            }
+          : group
+      );
+    }
+    if (isAdmin) {
+      groups = [
+        ...groups,
+        {
+          label: 'Platform',
+          items: [{ path: ROUTES.ADMIN, label: 'Admin', icon: LockIcon }],
+        },
+      ];
+    }
+    return groups;
+  }, [isAdmin]);
 
   const handleNavMouseEnter = useCallback(
     (item, el) => {
@@ -88,7 +109,7 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
     setHoverDrawer(null);
   }, []);
 
-  const allPaths = navigationGroups.flatMap((g) => g.items.map((i) => i.path));
+  const allPaths = navigationGroups.flatMap(g => g.items.map(i => i.path));
   const searchParams = new URLSearchParams(location.search || '');
   const viewParam = searchParams.get('view');
 
@@ -138,9 +159,15 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
               className="sidebar-brand"
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => e.key === 'Enter' && navigate(ROUTES.DASHBOARD)}
+              onKeyDown={e => e.key === 'Enter' && navigate(ROUTES.DASHBOARD)}
               aria-label="Go to Dashboard"
-              style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: 0 }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+                flex: 1,
+                minWidth: 0,
+              }}
             >
               {showLogo && (
                 <img
@@ -219,7 +246,7 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
               className="sidebar-brand sidebar-brand-icon"
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => e.key === 'Enter' && navigate(ROUTES.DASHBOARD)}
+              onKeyDown={e => e.key === 'Enter' && navigate(ROUTES.DASHBOARD)}
               aria-label="Go to Dashboard"
               style={{
                 opacity: showCollapseButton ? 0 : 1,
@@ -298,7 +325,7 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
       </div>
 
       {/* Navigation Items - Grouped */}
-      <div className="sidebar-nav">
+      <nav className="sidebar-nav" aria-label="Main navigation">
         {navigationGroups.map(group => (
           <div key={group.label} className="sidebar-nav-group">
             {!collapsed && (
@@ -312,7 +339,8 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
               {group.items.map(item => {
                 const active = isActive(item.path, item);
                 const IconComponent = item.icon;
-                const badgeCount = item.badgeKey === 'personalization' ? personalizationCount : null;
+                const badgeCount =
+                  item.badgeKey === 'personalization' ? personalizationCount : null;
                 const content = (
                   <>
                     <span className="sidebar-nav-icon">
@@ -328,9 +356,10 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
                         {item.label}
                       </Text>
                     )}
-                    {!collapsed && badgeCount !== null && badgeCount !== undefined && badgeCount > 0 && (
-                      <span className="sidebar-nav-badge">{badgeCount}</span>
-                    )}
+                    {!collapsed &&
+                      badgeCount !== null &&
+                      badgeCount !== undefined &&
+                      badgeCount > 0 && <span className="sidebar-nav-badge">{badgeCount}</span>}
                     {active && !collapsed && <span className="sidebar-nav-active-dot" />}
                   </>
                 );
@@ -343,6 +372,7 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
                     }}
                     onMouseEnter={() => prefetchOnHover(item.path)}
                     className={`sidebar-nav-item ${active ? 'active' : ''}`}
+                    aria-current={active ? 'page' : undefined}
                   >
                     {content}
                   </button>
@@ -376,7 +406,7 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
             </BlockStack>
           </div>
         ))}
-      </div>
+      </nav>
 
       {/* Footer - Compact version badge */}
       {!collapsed && (
