@@ -182,11 +182,13 @@ app.use(
         ],
         baseUri: ["'self'"],
         formAction: ["'self'"],
-        frameAncestors: ["'self'"],
+        // Allow embedding in Shopify Admin iframe (required for embedded app)
+        frameAncestors: ["'self'", 'https://admin.shopify.com', 'https://*.myshopify.com'],
         objectSrc: ["'none'"],
       },
     },
     crossOriginEmbedderPolicy: false, // Required for Shopify Polaris
+    frameguard: false, // Use CSP frame-ancestors only (allows Shopify Admin iframe)
   })
 );
 
