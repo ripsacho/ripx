@@ -95,14 +95,19 @@ router.get(
     });
 
     const oauthUrl = getAuthRedirectUrl(shop, state);
-    // Allow inline script for this redirect page only (CSP script-src 'self' blocks it otherwise)
+    // User must click: browsers block iframe from setting window.top.location without a user gesture
+    const hrefSafe = oauthUrl
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
     const appUrl = process.env.APP_URL || 'http://localhost:3000';
     const frameAncestors = `https://${shop} https://admin.shopify.com`;
     res.setHeader(
       'Content-Security-Policy',
       [
         "default-src 'self'",
-        "script-src 'self' 'unsafe-inline'",
+        "script-src 'self'",
         "script-src-attr 'none'",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "font-src 'self' https://fonts.gstatic.com",
@@ -114,11 +119,9 @@ router.get(
         "object-src 'none'",
       ].join('; ')
     );
-    // Embedded app: redirect in top window so OAuth (accounts.shopify.com) is not loaded in iframe
-    const scriptEnd = '</scr' + 'ipt>';
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(
-      `<!DOCTYPE html><html><head><title>Redirecting to Shopify…</title></head><body><p>Redirecting to Shopify…</p><script>var u=${JSON.stringify(oauthUrl)};if(window.self!==window.top){window.top.location.href=u}else{window.location.href=u}${scriptEnd}</body></html>`
+      `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect to Shopify</title><style>body{font-family:system-ui,sans-serif;max-width:360px;margin:48px auto;padding:24px;text-align:center}h1{font-size:1.25rem;margin:0 0 8px}a{display:inline-block;margin-top:16px;padding:12px 24px;background:#008060;color:#fff;text-decoration:none;border-radius:6px;font-weight:600}a:hover{background:#006e52}p{color:#6d7175;margin:0}</style></head><body><h1>Install RipX</h1><p>Click the button below to connect this store to RipX. You’ll be taken to Shopify to approve access.</p><a href="${hrefSafe}" target="_top">Connect to Shopify</a></body></html>`
     );
   })
 );
