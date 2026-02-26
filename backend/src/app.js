@@ -163,34 +163,42 @@ if (process.env.NODE_ENV === 'production') {
 
 // Security middleware
 // useDefaults: false to disable upgrade-insecure-requests (causes asset load failure over HTTP)
+// CSP is set in middleware below with dynamic frame-ancestors per Shopify requirement
 app.use(
   helmet({
-    contentSecurityPolicy: {
-      useDefaults: false,
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
-        scriptSrcAttr: ["'none'"],
-        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
-        fontSrc: ["'self'", 'https://fonts.gstatic.com'],
-        imgSrc: ["'self'", 'data:', 'https:'],
-        connectSrc: [
-          "'self'",
-          process.env.APP_URL || 'http://localhost:3000',
-          'https://*.myshopify.com',
-          'https://*.shopify.com',
-        ],
-        baseUri: ["'self'"],
-        formAction: ["'self'"],
-        // Allow embedding in Shopify Admin iframe (required for embedded app)
-        frameAncestors: ["'self'", 'https://admin.shopify.com', 'https://*.myshopify.com'],
-        objectSrc: ["'none'"],
-      },
-    },
+    contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false, // Required for Shopify Polaris
     frameguard: false, // Use CSP frame-ancestors only (allows Shopify Admin iframe)
   })
 );
+
+// CSP with dynamic frame-ancestors (Shopify: must be per-shop, not wildcard)
+// https://shopify.dev/docs/apps/build/security/set-up-iframe-protection
+const SHOP_DOMAIN_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/;
+app.use((req, res, next) => {
+  const raw = (req.query && req.query.shop) || req.get('x-shopify-shop-domain') || '';
+  const shop = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+  const validShop = shop && SHOP_DOMAIN_REGEX.test(shop);
+
+  const frameAncestors = validShop ? `https://${shop} https://admin.shopify.com` : "'self'";
+
+  const appUrl = process.env.APP_URL || 'http://localhost:3000';
+  const csp = [
+    "default-src 'self'",
+    "script-src 'self'",
+    "script-src-attr 'none'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data: https:",
+    `connect-src 'self' ${appUrl} https://*.myshopify.com https://*.shopify.com`,
+    "base-uri 'self'",
+    "form-action 'self'",
+    `frame-ancestors ${frameAncestors}`,
+    "object-src 'none'",
+  ].join('; ');
+  res.setHeader('Content-Security-Policy', csp);
+  next();
+});
 
 // CORS configuration
 const allowedOrigins = process.env.ALLOWED_ORIGINS
