@@ -9,6 +9,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const router = express.Router();
 const { query } = require('../utils/database');
+const { authenticate } = require('../middleware/auth');
 const { requireAdmin } = require('../middleware/requireAdmin');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const { sendSuccess } = require('../utils/response');
@@ -31,6 +32,24 @@ const abTestEngine = require('../services/abTestEngine');
 const auditLogService = require('../services/auditLogService');
 const timeSeriesService = require('../services/timeSeriesService');
 const validators = require('../utils/validators');
+
+/**
+ * GET /api/admin/me - Current user identity (any authenticated shop).
+ * Does not require admin role; returns role so UI can show/hide admin features.
+ */
+router.get(
+  '/me',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const user = await getRoleAndStatus(req.shopDomain);
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      adminId: req.shopDomain,
+      shopDomain: req.shopDomain || null,
+      role: user?.role ?? null,
+      status: user?.status ?? 'active',
+    });
+  })
+);
 
 router.use(requireAdmin);
 
@@ -78,25 +97,6 @@ router.post(
       token,
       expiresIn: IMPERSONATION_TOKEN_EXPIRY_SEC,
       impersonated_shop: shopDomain,
-    });
-  })
-);
-
-/**
- * GET /api/admin/me
- * Current admin identity (for UI guard)
- */
-router.get(
-  '/me',
-  asyncHandler(async (req, res) => {
-    const role =
-      req.adminId === 'admin-key'
-        ? 'superadmin'
-        : (await getRoleAndStatus(req.shopDomain))?.role || null;
-    return sendSuccess(res, HTTP_STATUS.OK, {
-      adminId: req.adminId,
-      shopDomain: req.shopDomain || null,
-      role: role || 'superadmin',
     });
   })
 );
