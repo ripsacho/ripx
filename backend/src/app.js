@@ -172,32 +172,18 @@ app.use(
   })
 );
 
-// CSP with dynamic frame-ancestors (Shopify: must be per-shop, not wildcard)
+// CSP with dynamic frame-ancestors (Shopify: must be per-shop when known)
 // https://shopify.dev/docs/apps/build/security/set-up-iframe-protection
 const SHOP_DOMAIN_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/;
-function isShopifyReferer(referer) {
-  if (!referer || typeof referer !== 'string') {return false;}
-  try {
-    const u = new URL(referer);
-    return u.origin === 'https://admin.shopify.com' || u.hostname.endsWith('.myshopify.com');
-  } catch {
-    return false;
-  }
-}
 app.use((req, res, next) => {
   const raw = (req.query && req.query.shop) || req.get('x-shopify-shop-domain') || '';
   const shop = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
   const validShop = shop && SHOP_DOMAIN_REGEX.test(shop);
 
-  let frameAncestors;
-  if (validShop) {
-    frameAncestors = `https://${shop} https://admin.shopify.com`;
-  } else if (isShopifyReferer(req.get('referer'))) {
-    // First iframe load sometimes has no ?shop=; allow embed when request is from Shopify Admin
-    frameAncestors = 'https://admin.shopify.com https://*.myshopify.com';
-  } else {
-    frameAncestors = "'self'";
-  }
+  // Per-shop when we have it; otherwise allow all Shopify (iframe often has no ?shop= or Referer on first load)
+  const frameAncestors = validShop
+    ? `https://${shop} https://admin.shopify.com`
+    : 'https://admin.shopify.com https://*.myshopify.com';
 
   const appUrl = process.env.APP_URL || 'http://localhost:3000';
   const csp = [
