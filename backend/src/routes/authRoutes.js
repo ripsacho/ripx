@@ -95,7 +95,26 @@ router.get(
     });
 
     const oauthUrl = getAuthRedirectUrl(shop, state);
-    // Embedded app: redirect in top window so OAuth (accounts.shopify.com) is not loaded in iframe (refused to connect)
+    // Allow inline script for this redirect page only (CSP script-src 'self' blocks it otherwise)
+    const appUrl = process.env.APP_URL || 'http://localhost:3000';
+    const frameAncestors = `https://${shop} https://admin.shopify.com`;
+    res.setHeader(
+      'Content-Security-Policy',
+      [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline'",
+        "script-src-attr 'none'",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' https://fonts.gstatic.com",
+        "img-src 'self' data: https:",
+        `connect-src 'self' ${appUrl} https://*.myshopify.com https://*.shopify.com`,
+        "base-uri 'self'",
+        "form-action 'self'",
+        `frame-ancestors ${frameAncestors}`,
+        "object-src 'none'",
+      ].join('; ')
+    );
+    // Embedded app: redirect in top window so OAuth (accounts.shopify.com) is not loaded in iframe
     const scriptEnd = '</scr' + 'ipt>';
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(
