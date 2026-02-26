@@ -22,8 +22,48 @@ function isValidShopDomain(shop) {
   return /^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/.test(shop);
 }
 
-function generateState() {
-  return crypto.randomBytes(16).toString('hex');
+const STATE_SEP = '|';
+
+function generateState(shop) {
+  const nonce = crypto.randomBytes(16).toString('hex');
+  const payload = nonce + STATE_SEP + shop;
+  const sig = crypto
+    .createHmac('sha256', process.env.SHOPIFY_API_SECRET || process.env.JWT_SECRET || '')
+    .update(payload)
+    .digest('hex');
+  const payloadB64 = Buffer.from(payload, 'utf8')
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+  return payloadB64 + '.' + sig;
+}
+
+function verifyState(state, shop) {
+  if (!state || !shop || !process.env.SHOPIFY_API_SECRET) {return null;}
+  const parts = state.split('.');
+  if (parts.length !== 2) {return null;}
+  let payload;
+  try {
+    const b64 = parts[0].replace(/-/g, '+').replace(/_/g, '/');
+    payload = Buffer.from(b64, 'base64').toString('utf8');
+  } catch {
+    return null;
+  }
+  const expectedSig = crypto
+    .createHmac('sha256', process.env.SHOPIFY_API_SECRET)
+    .update(payload)
+    .digest('hex');
+  if (
+    parts[1].length !== expectedSig.length ||
+    !crypto.timingSafeEqual(Buffer.from(parts[1], 'utf8'), Buffer.from(expectedSig, 'utf8'))
+  )
+    {return null;}
+  const idx = payload.indexOf(STATE_SEP);
+  if (idx === -1) {return null;}
+  const shopFromState = payload.slice(idx + 1);
+  if (shopFromState !== shop) {return null;}
+  return shopFromState;
 }
 
 function getAuthRedirectUrl(shop, state) {
@@ -77,20 +117,19 @@ router.get(
       return res.status(500).json({ success: false, error: 'OAuth configuration missing' });
     }
 
-    const state = generateState();
-    const isProduction = process.env.NODE_ENV === 'production';
+    // Signed state (no cookies): works when callback is opened in top window and cookies from iframe aren't sent
+    const state = generateState(shop);
 
     res.cookie('shopify_oauth_state', state, {
       httpOnly: true,
       sameSite: 'lax',
-      secure: isProduction,
+      secure: process.env.NODE_ENV === 'production',
       maxAge: 10 * 60 * 1000,
     });
-
     res.cookie('shopify_oauth_shop', shop, {
       httpOnly: true,
       sameSite: 'lax',
-      secure: isProduction,
+      secure: process.env.NODE_ENV === 'production',
       maxAge: 10 * 60 * 1000,
     });
 
@@ -133,15 +172,18 @@ router.get(
     const stateCookie = req.cookies.shopify_oauth_state;
     const shopCookie = req.cookies.shopify_oauth_shop;
 
-    if (!shop || !code || !state || !stateCookie || !shopCookie) {
+    if (!shop || !code || !state) {
       return res.status(400).json({ success: false, error: 'Missing OAuth parameters' });
     }
 
-    if (!isValidShopDomain(shop) || shop !== shopCookie) {
+    if (!isValidShopDomain(shop)) {
       return res.status(400).json({ success: false, error: 'Invalid shop domain' });
     }
 
-    if (state !== stateCookie) {
+    // Prefer signed state (works when cookies from iframe aren't sent on redirect)
+    const verifiedShop = verifyState(state, shop);
+    const cookieOk = stateCookie && shopCookie && shop === shopCookie && state === stateCookie;
+    if (!verifiedShop && !cookieOk) {
       return res.status(400).json({ success: false, error: 'Invalid OAuth state' });
     }
 
