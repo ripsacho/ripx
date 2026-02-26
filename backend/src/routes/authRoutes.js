@@ -94,7 +94,13 @@ router.get(
       maxAge: 10 * 60 * 1000,
     });
 
-    res.redirect(getAuthRedirectUrl(shop, state));
+    const oauthUrl = getAuthRedirectUrl(shop, state);
+    // Embedded app: redirect in top window so OAuth (accounts.shopify.com) is not loaded in iframe (refused to connect)
+    const scriptEnd = '</scr' + 'ipt>';
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(
+      `<!DOCTYPE html><html><head><title>Redirecting to Shopify…</title></head><body><p>Redirecting to Shopify…</p><script>var u=${JSON.stringify(oauthUrl)};if(window.self!==window.top){window.top.location.href=u}else{window.location.href=u}${scriptEnd}</body></html>`
+    );
   })
 );
 
