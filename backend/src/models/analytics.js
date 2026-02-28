@@ -103,6 +103,7 @@ class AnalyticsModel {
       if (country) {
         visitorWhere += ` AND ta.country = $${paramIndex}`;
         params.push(country);
+        paramIndex += 1;
       }
 
       const visitorsSql = `

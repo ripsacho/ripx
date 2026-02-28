@@ -204,9 +204,19 @@ async function authenticateApiKey(req, res, next) {
         req.tenantId = storeTenant.id;
       } else {
         const first = await getFirstTenantForAccount(account.id);
-        req.shopDomain = first?.domain;
-        req.platform = first?.platform;
-        req.tenantId = first?.id;
+        if (!first) {
+          logger.warn('API key auth: store not in account and no fallback tenant', {
+            store: storeHeader,
+            path: req.path,
+          });
+          return sendUnauthorized(
+            res,
+            'Store not found in account. Add the store or omit X-RipX-Store.'
+          );
+        }
+        req.shopDomain = first.domain;
+        req.platform = first.platform;
+        req.tenantId = first.id;
       }
     } else {
       const first = await getFirstTenantForAccount(account.id);
@@ -216,6 +226,14 @@ async function authenticateApiKey(req, res, next) {
       req.shopDomain = first.domain;
       req.platform = first.platform;
       req.tenantId = first.id;
+    }
+
+    if (!req.shopDomain) {
+      logger.warn('API key auth: no shop domain resolved', { path: req.path });
+      return sendUnauthorized(
+        res,
+        'Could not resolve store. Add a store to your account or provide X-RipX-Store.'
+      );
     }
 
     const userStatus = await getRoleAndStatus(req.shopDomain);
@@ -300,10 +318,12 @@ async function authenticate(req, res, next) {
     req.headers.authorization?.replace(/^Bearer\s+/i, '');
 
   if (shop && isShopifyDomain(shop)) {
-    return authenticateShopify(req, res, next);
+    const result = await authenticateShopify(req, res, next);
+    return result;
   }
   if (apiKey) {
-    return authenticateApiKey(req, res, next);
+    const result = await authenticateApiKey(req, res, next);
+    return result;
   }
 
   logger.warn('Authentication failed: No valid credentials', {
