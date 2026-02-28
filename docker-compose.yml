@@ -8,7 +8,7 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://shopify_ab_user:password@postgres:5432/shopify_ab_testing
+      - DATABASE_URL=postgresql://ripx:ripx@postgres:5432/ripx_db
       - REDIS_URL=redis://redis:6379
       - SHOPIFY_API_KEY=${SHOPIFY_API_KEY}
       - SHOPIFY_API_SECRET=${SHOPIFY_API_SECRET}
@@ -21,15 +21,15 @@ services:
       - ./backend:/app/backend
     restart: unless-stopped
 
-  # PostgreSQL Database
+  # PostgreSQL Database (align with .env.example: ripx_db)
   postgres:
     image: postgres:14-alpine
     ports:
       - "5432:5432"
     environment:
-      - POSTGRES_USER=shopify_ab_user
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=shopify_ab_testing
+      - POSTGRES_USER=ripx
+      - POSTGRES_PASSWORD=ripx
+      - POSTGRES_DB=ripx_db
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/migrations:/docker-entrypoint-initdb.d
