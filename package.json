@@ -31,7 +31,8 @@
     "audit": "npm audit && cd frontend && npm audit",
     "presentation": "npx @marp-team/marp-cli docs/presentation/PRESENTATION.md -o docs/presentation/PRESENTATION.html --allow-local-files",
     "presentation:pdf": "npx @marp-team/marp-cli docs/presentation/PRESENTATION.md -o docs/presentation/PRESENTATION.pdf --allow-local-files",
-    "speech:pdf": "npx @marp-team/marp-cli docs/presentation/SPEECH_DECK.md -o docs/presentation/SPEECH.pdf --allow-local-files --no-stdin"
+    "speech:pdf": "npx @marp-team/marp-cli docs/presentation/SPEECH_DECK.md -o docs/presentation/SPEECH.pdf --allow-local-files --no-stdin",
+    "sync:worktree-to-main": "node scripts/sync-worktree-to-main.js"
   },
   "keywords": [
     "ripx",

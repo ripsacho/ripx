@@ -344,11 +344,13 @@ router.post(
           .json({ success: false, error: 'Your registration was rejected. Contact support.' });
       }
       if (user.status === 'pending') {
-        return res.status(403).json({
-          success: false,
-          error:
-            'Your account is pending approval. You will receive an email when an administrator accepts your registration.',
-        });
+        return res
+          .status(403)
+          .json({
+            success: false,
+            error:
+              'Your account is pending approval. You will receive an email when an administrator accepts your registration.',
+          });
       }
     }
     const created = await emailVerificationService.createToken(normalizedEmail, 'login');
@@ -394,10 +396,12 @@ router.get(
     if (!isAdmin) {
       const user = await standaloneUser.getByEmail(normalizedEmail);
       if (!user || user.status !== 'accepted') {
-        return res.status(403).json({
-          success: false,
-          error: 'Your account is not yet approved. Contact an administrator.',
-        });
+        return res
+          .status(403)
+          .json({
+            success: false,
+            error: 'Your account is not yet approved. Contact an administrator.',
+          });
       }
     }
 
