@@ -6,6 +6,7 @@ export default defineConfig({
   server: {
     host: true,
     port: Number(process.env.VITE_PORT) || Number(process.env.FRONTEND_PORT) || 3001,
+    // allowedHosts: true for tunnels (e.g. Shopify). For local-only dev, use ['localhost', '.localhost', '127.0.0.1']
     allowedHosts: true,
     proxy: {
       '/api': {

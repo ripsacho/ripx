@@ -18,7 +18,7 @@ const WEBHOOK_EVENTS_RETENTION_DAYS = Math.max(
 async function purgeOldWebhookEvents() {
   try {
     const result = await query(
-      'DELETE FROM webhook_events WHERE received_at < NOW() - INTERVAL \'1 day\' * $1',
+      "DELETE FROM webhook_events WHERE received_at < NOW() - INTERVAL '1 day' * $1",
       [WEBHOOK_EVENTS_RETENTION_DAYS]
     );
     const count = result.rowCount || 0;

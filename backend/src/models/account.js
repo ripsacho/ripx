@@ -201,7 +201,9 @@ async function getAccountById(accountId) {
   const sql = 'SELECT id, name, api_key_prefix, created_at, updated_at FROM accounts WHERE id = $1';
   const result = await query(sql, [accountId]);
   const row = result.rows[0];
-  if (!row) {return null;}
+  if (!row) {
+    return null;
+  }
   const stores = await getStoresForAccount(row.id);
   return {
     id: row.id,

@@ -10,7 +10,7 @@ const jwt = require('jsonwebtoken');
 const router = express.Router();
 const { query } = require('../utils/database');
 const { authenticate } = require('../middleware/auth');
-const { requireAdmin } = require('../middleware/requireAdmin');
+const { requireAdmin, getEnvAdminDomains } = require('../middleware/requireAdmin');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const { sendSuccess } = require('../utils/response');
 const { HTTP_STATUS } = require('../constants');
@@ -32,21 +32,49 @@ const abTestEngine = require('../services/abTestEngine');
 const auditLogService = require('../services/auditLogService');
 const timeSeriesService = require('../services/timeSeriesService');
 const validators = require('../utils/validators');
+const standaloneUser = require('../models/standaloneUser');
+const emailService = require('../services/emailService');
 
 /**
  * GET /api/admin/me - Current user identity (any authenticated shop).
  * Does not require admin role; returns role so UI can show/hide admin features.
+ * Role: users.role, or RIPX_ADMIN_SHOP_DOMAINS, or 'admin' in development.
  */
 router.get(
   '/me',
   authenticate,
   asyncHandler(async (req, res) => {
-    const user = await getRoleAndStatus(req.shopDomain);
+    let role = null;
+    let status = 'active';
+    if (req.authType === 'email' && req.email) {
+      const adminEmails = (process.env.RIPX_ADMIN_EMAIL || '')
+        .split(',')
+        .map(e => e.trim().toLowerCase())
+        .filter(Boolean);
+      if (adminEmails.includes(req.email.trim().toLowerCase())) {
+        role = 'admin';
+      }
+    }
+    if (!role) {
+      const user = await getRoleAndStatus(req.shopDomain);
+      status = user?.status ?? 'active';
+      role = user?.role ?? null;
+      if (!role) {
+        const envAdmins = getEnvAdminDomains();
+        const normalized = (req.shopDomain || '').toLowerCase().trim();
+        if (envAdmins.length > 0 && envAdmins.includes(normalized)) {
+          role = 'admin';
+        }
+      }
+      if (!role && process.env.NODE_ENV === 'development') {
+        role = 'admin';
+      }
+    }
     return sendSuccess(res, HTTP_STATUS.OK, {
-      adminId: req.shopDomain,
+      adminId: req.shopDomain || req.email,
       shopDomain: req.shopDomain || null,
-      role: user?.role ?? null,
-      status: user?.status ?? 'active',
+      role,
+      status,
     });
   })
 );
@@ -98,6 +126,75 @@ router.post(
       expiresIn: IMPERSONATION_TOKEN_EXPIRY_SEC,
       impersonated_shop: shopDomain,
     });
+  })
+);
+
+/**
+ * GET /api/admin/pending-users
+ * List standalone users pending approval.
+ */
+router.get(
+  '/pending-users',
+  asyncHandler(async (req, res) => {
+    const pending = await standaloneUser.getPending();
+    return sendSuccess(res, HTTP_STATUS.OK, { users: pending });
+  })
+);
+
+/**
+ * POST /api/admin/accept-user/:id
+ * Accept a pending registration (standalone_users.id).
+ */
+router.post(
+  '/accept-user/:id',
+  asyncHandler(async (req, res) => {
+    const id = req.params.id;
+    const accepted = await standaloneUser.accept(id, req.adminId);
+    if (!accepted) {
+      return res.status(404).json({ success: false, error: 'User not found or not pending' });
+    }
+    return sendSuccess(res, HTTP_STATUS.OK, { message: 'User accepted' });
+  })
+);
+
+/**
+ * POST /api/admin/reject-user/:id
+ * Reject a pending registration.
+ */
+router.post(
+  '/reject-user/:id',
+  asyncHandler(async (req, res) => {
+    const id = req.params.id;
+    const rejected = await standaloneUser.reject(id, req.adminId);
+    if (!rejected) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+    return sendSuccess(res, HTTP_STATUS.OK, { message: 'User rejected' });
+  })
+);
+
+/**
+ * POST /api/admin/send-announcement
+ * Send announcement email to all accepted standalone users. Body: { subject, bodyHtml, bodyText }.
+ */
+router.post(
+  '/send-announcement',
+  asyncHandler(async (req, res) => {
+    const subject = req.body?.subject || 'Announcement from RipX';
+    const bodyHtml = req.body?.bodyHtml || req.body?.body || '';
+    const bodyText = req.body?.bodyText || '';
+    const emails = await standaloneUser.listAcceptedEmails();
+    if (emails.length === 0) {
+      return sendSuccess(res, HTTP_STATUS.OK, { sent: 0, message: 'No users to email' });
+    }
+    let sent = 0;
+    for (const to of emails) {
+      const ok = await emailService.sendAnnouncement(to, subject, bodyHtml, bodyText);
+      if (ok) {
+        sent++;
+      }
+    }
+    return sendSuccess(res, HTTP_STATUS.OK, { sent, total: emails.length });
   })
 );
 

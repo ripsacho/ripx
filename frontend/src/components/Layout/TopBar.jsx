@@ -6,12 +6,33 @@
 
 import React, { useState, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { InlineStack, Popover, ActionList, Text, BlockStack, Button, Icon } from '@shopify/polaris';
+import {
+  InlineStack,
+  Popover,
+  ActionList,
+  Text,
+  BlockStack,
+  Button,
+  Icon,
+  Tooltip,
+} from '@shopify/polaris';
 import { NotificationIcon, SettingsIcon, ProfileIcon } from '@shopify/polaris-icons';
 import { getShopDomain, apiGet, apiPut } from '../../services';
 import { ROUTES } from '../../constants';
 import StoreSwitcher from '../StoreSwitcher/StoreSwitcher';
 import styles from './TopBar.module.css';
+
+const OpenInNewTabIcon = () => (
+  <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path
+      d="M11 4H6a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-5m-5 0h4m0 0l-4-4m4 4L8 12"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
 
 const ROUTE_LABELS = {
   [ROUTES.DASHBOARD]: 'Dashboard',
@@ -208,6 +229,15 @@ function TopBar({
   ];
 
   const effectiveLeft = sidebarCollapsed ? 80 : sidebarWidth;
+  const isEmbeddedInShopify = typeof window !== 'undefined' && window.self !== window.top;
+  const openInNewTab = useCallback(() => {
+    const shop = getShopDomain();
+    const base = window.location.origin + window.location.pathname;
+    const params = new URLSearchParams(window.location.search);
+    if (shop && !params.has('shop')) params.set('shop', shop);
+    const query = params.toString();
+    window.open(query ? base + '?' + query : base, '_blank', 'noopener,noreferrer');
+  }, []);
 
   return (
     <div className={`top-bar ${styles.topBar}`} style={{ '--topbar-left': `${effectiveLeft}px` }}>
@@ -250,6 +280,18 @@ function TopBar({
       <div className={styles.topBarRight}>
         <StoreSwitcher />
         <div className={styles.actionGroup}>
+          {isEmbeddedInShopify && (
+            <Tooltip content="Open in new tab" preferredPosition="below">
+              <button
+                type="button"
+                onClick={openInNewTab}
+                aria-label="Open RipX in a new tab"
+                className={styles.iconBtn}
+              >
+                <OpenInNewTabIcon />
+              </button>
+            </Tooltip>
+          )}
           <Popover
             active={notificationsActive}
             activator={

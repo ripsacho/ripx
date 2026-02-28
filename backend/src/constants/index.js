@@ -93,9 +93,10 @@ const SUCCESS_MESSAGES = {
 };
 
 // Rate Limiting (env overrides for production tuning)
+// Default 400/15min so app load does not hit 429
 const RATE_LIMIT = {
   WINDOW_MS: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 15 * 60 * 1000, // 15 min default
-  MAX_REQUESTS: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 100,
+  MAX_REQUESTS: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 400,
 };
 
 // Pagination

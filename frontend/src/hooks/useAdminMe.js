@@ -14,7 +14,8 @@ export function useAdminMe(options = {}) {
       return res.data?.data ?? res.data;
     },
     retry: false,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
     ...options,
   });
 

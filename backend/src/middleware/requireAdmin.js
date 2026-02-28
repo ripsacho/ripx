@@ -24,6 +24,17 @@ function getEnvAdminDomains() {
     .filter(Boolean);
 }
 
+function getEnvAdminEmails() {
+  const raw = process.env.RIPX_ADMIN_EMAIL;
+  if (!raw || typeof raw !== 'string') {
+    return [];
+  }
+  return raw
+    .split(',')
+    .map(e => e.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 function getAdminIpAllowlist() {
   const raw = process.env.ADMIN_IP_ALLOWLIST;
   if (!raw || typeof raw !== 'string') {
@@ -72,6 +83,14 @@ function requireAdmin(req, res, next) {
       return sendUnauthorized(res, 'Admin access requires shop or admin API key');
     }
 
+    if (req.authType === 'email' && req.email) {
+      const adminEmails = getEnvAdminEmails();
+      if (adminEmails.length > 0 && adminEmails.includes(req.email.trim().toLowerCase())) {
+        req.adminId = req.email;
+        return next();
+      }
+    }
+
     const normalizedShop = shopDomain.toLowerCase().trim();
 
     // Local / dev: env list of admin shop domains (no DB role required)
@@ -84,6 +103,10 @@ function requireAdmin(req, res, next) {
     try {
       const user = await getRoleAndStatus(shopDomain);
       if (!user || !['admin', 'superadmin'].includes(user.role)) {
+        if (process.env.NODE_ENV === 'development') {
+          req.adminId = shopDomain;
+          return next();
+        }
         return res.status(403).json({ success: false, error: 'Admin access required' });
       }
       if (user.status !== 'active') {

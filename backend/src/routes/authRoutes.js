@@ -12,11 +12,30 @@ const { upsertShopSession } = require('../models/shopSession');
 const { upsertShopifyTenant } = require('../models/tenant');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const emailVerificationService = require('../services/emailVerificationService');
+const standaloneUser = require('../models/standaloneUser');
 const logger = require('../utils/logger');
 
 const router = express.Router();
 
 const EMAIL_SESSION_EXPIRY_DAYS = 30;
+const EMAIL_SESSION_EXPIRY_HOURS = 24;
+
+function getAdminEmails() {
+  const raw = process.env.RIPX_ADMIN_EMAIL;
+  if (!raw || typeof raw !== 'string') {
+    return [];
+  }
+  return raw
+    .split(',')
+    .map(e => e.trim().toLowerCase())
+    .filter(Boolean);
+}
+function isAdminEmail(email) {
+  if (!email) {
+    return false;
+  }
+  return getAdminEmails().includes(email.trim().toLowerCase());
+}
 
 function isValidShopDomain(shop) {
   return /^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/.test(shop);
@@ -40,9 +59,13 @@ function generateState(shop) {
 }
 
 function verifyState(state, shop) {
-  if (!state || !shop || !process.env.SHOPIFY_API_SECRET) {return null;}
+  if (!state || !shop || !process.env.SHOPIFY_API_SECRET) {
+    return null;
+  }
   const parts = state.split('.');
-  if (parts.length !== 2) {return null;}
+  if (parts.length !== 2) {
+    return null;
+  }
   let payload;
   try {
     const b64 = parts[0].replace(/-/g, '+').replace(/_/g, '/');
@@ -57,12 +80,17 @@ function verifyState(state, shop) {
   if (
     parts[1].length !== expectedSig.length ||
     !crypto.timingSafeEqual(Buffer.from(parts[1], 'utf8'), Buffer.from(expectedSig, 'utf8'))
-  )
-    {return null;}
+  ) {
+    return null;
+  }
   const idx = payload.indexOf(STATE_SEP);
-  if (idx === -1) {return null;}
+  if (idx === -1) {
+    return null;
+  }
   const shopFromState = payload.slice(idx + 1);
-  if (shopFromState !== shop) {return null;}
+  if (shopFromState !== shop) {
+    return null;
+  }
   return shopFromState;
 }
 
@@ -229,6 +257,68 @@ router.get(
 );
 
 /**
+ * POST /api/auth/register
+ * Register with email. Sends confirmation link; after confirm, admin must accept before login.
+ */
+router.post(
+  '/register',
+  asyncHandler(async (req, res) => {
+    const email = req.body?.email;
+    if (!emailVerificationService.isValidEmail(email)) {
+      return res.status(400).json({ success: false, error: 'Valid email is required' });
+    }
+    const existing = await standaloneUser.getByEmail(email);
+    if (existing && existing.status === 'accepted') {
+      return res.status(400).json({ success: false, error: 'Account already exists. Use login.' });
+    }
+    if (existing && existing.status === 'rejected') {
+      return res
+        .status(400)
+        .json({ success: false, error: 'Registration was rejected. Contact support.' });
+    }
+    await standaloneUser.create(email);
+    const created = await emailVerificationService.createToken(email, 'confirm_registration', 60);
+    if (!created) {
+      return res.status(500).json({ success: false, error: 'Could not create confirmation link' });
+    }
+    const baseUrl = (process.env.APP_URL || '').replace(/\/$/, '');
+    const link = baseUrl + '/api/auth/confirm-email?token=' + encodeURIComponent(created.token);
+    await emailVerificationService.sendVerificationEmail(email, link, 'confirm_registration');
+    res.json({
+      success: true,
+      message:
+        'Check your email to confirm your address. After that, an administrator must approve your account before you can sign in.',
+    });
+  })
+);
+
+/**
+ * GET /api/auth/confirm-email?token=...
+ * Confirm email from registration. Sets email_verified_at; user still needs admin acceptance.
+ */
+router.get(
+  '/confirm-email',
+  asyncHandler(async (req, res) => {
+    const token = req.query?.token;
+    if (!token) {
+      return res.status(400).json({ success: false, error: 'Token is required' });
+    }
+    const payload = await emailVerificationService.consumeToken(token);
+    if (!payload || payload.purpose !== 'confirm_registration') {
+      return res
+        .status(400)
+        .json({ success: false, error: 'Invalid or expired confirmation link' });
+    }
+    await standaloneUser.setEmailVerified(payload.email);
+    res.json({
+      success: true,
+      message:
+        'Email confirmed. Your account is pending approval. You will be able to sign in once an administrator accepts your registration.',
+    });
+  })
+);
+
+/**
  * POST /api/auth/send-login-link
  * Request a magic-link email for passwordless login (standalone / re-verify).
  * Body: { email }. Rate-limit in production (e.g. per email/IP).
@@ -237,20 +327,40 @@ router.post(
   '/send-login-link',
   asyncHandler(async (req, res) => {
     const email = req.body?.email;
+    const rememberMe = req.body?.remember_me === true || req.body?.remember_me === 'true';
     if (!emailVerificationService.isValidEmail(email)) {
       return res.status(400).json({ success: false, error: 'Valid email is required' });
     }
-
-    const created = await emailVerificationService.createToken(email, 'login');
+    const normalizedEmail = (email || '').trim().toLowerCase();
+    const isAdmin = isAdminEmail(normalizedEmail);
+    if (!isAdmin) {
+      const user = await standaloneUser.getByEmail(normalizedEmail);
+      if (!user) {
+        return res.status(400).json({ success: false, error: 'No account found. Register first.' });
+      }
+      if (user.status === 'rejected') {
+        return res
+          .status(403)
+          .json({ success: false, error: 'Your registration was rejected. Contact support.' });
+      }
+      if (user.status === 'pending') {
+        return res.status(403).json({
+          success: false,
+          error:
+            'Your account is pending approval. You will receive an email when an administrator accepts your registration.',
+        });
+      }
+    }
+    const created = await emailVerificationService.createToken(normalizedEmail, 'login');
     if (!created) {
       return res.status(500).json({ success: false, error: 'Could not create verification link' });
     }
-
     const baseUrl = (process.env.APP_URL || '').replace(/\/$/, '');
-    const link = `${baseUrl}/api/auth/verify-email?token=${encodeURIComponent(created.token)}`;
-
-    await emailVerificationService.sendVerificationEmail(email, link, 'login');
-
+    let link = baseUrl + '/api/auth/verify-email?token=' + encodeURIComponent(created.token);
+    if (rememberMe) {
+      link += '&remember_me=1';
+    }
+    await emailVerificationService.sendVerificationEmail(normalizedEmail, link, 'login');
     res.json({
       success: true,
       message: 'If an account exists for this email, you will receive a login link shortly.',
@@ -268,6 +378,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const token = req.query?.token;
     const redirectUri = req.query?.redirect_uri;
+    const rememberMe = req.query?.remember_me === '1' || req.query?.remember_me === 'true';
 
     if (!token) {
       return res.status(400).json({ success: false, error: 'Token is required' });
@@ -278,16 +389,30 @@ router.get(
       return res.status(400).json({ success: false, error: 'Invalid or expired link' });
     }
 
+    const normalizedEmail = (payload.email || '').trim().toLowerCase();
+    const isAdmin = isAdminEmail(normalizedEmail);
+    if (!isAdmin) {
+      const user = await standaloneUser.getByEmail(normalizedEmail);
+      if (!user || user.status !== 'accepted') {
+        return res.status(403).json({
+          success: false,
+          error: 'Your account is not yet approved. Contact an administrator.',
+        });
+      }
+    }
+
     const secret = process.env.JWT_SECRET;
     if (!secret) {
       logger.error('JWT_SECRET missing for email session');
       return res.status(500).json({ success: false, error: 'Server configuration error' });
     }
 
-    const expiresIn = `${EMAIL_SESSION_EXPIRY_DAYS}d`;
+    const expiresIn = rememberMe
+      ? EMAIL_SESSION_EXPIRY_DAYS + 'd'
+      : EMAIL_SESSION_EXPIRY_HOURS + 'h';
     const jwtPayload = {
       ripxtype: 'email_session',
-      email: payload.email,
+      email: normalizedEmail,
       purpose: payload.purpose,
     };
 
@@ -306,7 +431,7 @@ router.get(
       success: true,
       token: sessionToken,
       expiresIn,
-      email: payload.email,
+      email: normalizedEmail,
     });
   })
 );

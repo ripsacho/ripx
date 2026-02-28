@@ -227,8 +227,12 @@ router.get(
       clicks,
       scrolls,
     };
-    if (overlay) {heatmap.overlay = overlay;}
-    if (screenshotUrl) {heatmap.screenshotUrl = screenshotUrl;}
+    if (overlay) {
+      heatmap.overlay = overlay;
+    }
+    if (screenshotUrl) {
+      heatmap.screenshotUrl = screenshotUrl;
+    }
 
     res.json({
       success: true,

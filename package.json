@@ -47,7 +47,8 @@
   "author": "",
   "license": "MIT",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
   },
   "repository": {
     "type": "git",
@@ -73,6 +74,7 @@
     "express-session": "^1.19.0",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^8.0.1",
     "pg": "^8.18.0",
     "redis": "^4.6.10",
     "swagger-jsdoc": "^6.2.8",

@@ -12,7 +12,7 @@ const logger = require('../utils/logger');
 
 const TOKEN_BYTES = 32;
 const DEFAULT_EXPIRY_MINUTES = 15;
-const PURPOSES = ['login', 'reverify', 'api_key_reissue'];
+const PURPOSES = ['login', 'reverify', 'api_key_reissue', 'confirm_registration'];
 
 function hashToken(token) {
   return crypto.createHash('sha256').update(token, 'utf8').digest('hex');
@@ -103,10 +103,11 @@ async function consumeToken(plainToken) {
  * Stub: send magic-link email. Replace with SendGrid/Resend/SES when configured.
  * When RIPX_EMAIL_VERIFICATION_STUB is true or no provider is set, log only.
  */
-async function sendVerificationEmail(email, link, purpose) {
-  const stub = process.env.RIPX_EMAIL_VERIFICATION_STUB !== 'false';
-  if (stub || !process.env.SENDGRID_API_KEY) {
-    await Promise.resolve();
+const emailService = require('./emailService');
+
+function sendVerificationEmail(email, link, purpose) {
+  const stub = process.env.RIPX_EMAIL_VERIFICATION_STUB === 'true';
+  if (stub) {
     logger.info('Email verification (stub)', {
       email: email?.substring(0, 5) + '…',
       purpose,
@@ -114,9 +115,13 @@ async function sendVerificationEmail(email, link, purpose) {
     });
     return true;
   }
-
-  // TODO: integrate SendGrid/Resend/SES
-  logger.info('Email verification (no provider)', { email: email?.substring(0, 5) + '…', purpose });
+  if (emailService.isConfigured()) {
+    if (purpose === 'confirm_registration') {
+      return emailService.sendConfirmationLink(email, link, 60);
+    }
+    return emailService.sendLoginLink(email, link, 15);
+  }
+  logger.info('Email verification (no SMTP)', { email: email?.substring(0, 5) + '…', purpose });
   return true;
 }
 

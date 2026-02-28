@@ -259,10 +259,37 @@ function tryImpersonationToken(req, res, next) {
 }
 
 /**
+ * Check for email session JWT (passwordless login). Sets req.shopDomain = email, req.authType = 'email'.
+ */
+function tryEmailSessionToken(req, res, next) {
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.replace(/^Bearer\s+/i, '').trim();
+  if (!token || !process.env.JWT_SECRET) {
+    return false;
+  }
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (decoded.ripxtype === 'email_session' && decoded.email) {
+      req.shopDomain = decoded.email;
+      req.authType = 'email';
+      req.email = decoded.email;
+      next();
+      return true;
+    }
+  } catch (_) {
+    /* invalid or expired */
+  }
+  return false;
+}
+
+/**
  * Multi-platform auth: impersonation JWT first, then Shopify, then API key
  */
 async function authenticate(req, res, next) {
   if (tryImpersonationToken(req, res, next)) {
+    return;
+  }
+  if (tryEmailSessionToken(req, res, next)) {
     return;
   }
 

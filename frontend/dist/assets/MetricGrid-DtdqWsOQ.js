@@ -1,1 +1,0 @@
-import{j as r}from"./query-vendor-C85DweHi.js";import"./react-vendor-UP4he7MZ.js";function e({children:e,className:s=""}){return r.jsx("div",{className:`grid-responsive ${s}`.trim(),children:e})}export{e as M};

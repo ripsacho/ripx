@@ -380,8 +380,12 @@ router.put(
           customCss: customCss || undefined,
           customJs: customJs || undefined,
         };
-        if (!nextConfig.customCss) {delete nextConfig.customCss;}
-        if (!nextConfig.customJs) {delete nextConfig.customJs;}
+        if (!nextConfig.customCss) {
+          delete nextConfig.customCss;
+        }
+        if (!nextConfig.customJs) {
+          delete nextConfig.customJs;
+        }
         return {
           ...existingVariant,
           code: codeValue,
@@ -718,7 +722,9 @@ router.post(
       logger.info('Personalization applied', { testId: id, shopDomain });
       return sendSuccess(res, HTTP_STATUS.OK, { test }, 'Winner applied to 100% of traffic');
     } catch (err) {
-      if (err.message?.includes('not found')) {return sendNotFound(res, 'Test');}
+      if (err.message?.includes('not found')) {
+        return sendNotFound(res, 'Test');
+      }
       if (err.message?.includes('stopped') || err.message?.includes('No winner')) {
         return sendValidationError(res, [err.message]);
       }
@@ -753,7 +759,9 @@ router.post(
       logger.info('Rollout started', { testId: id, shopDomain });
       return sendSuccess(res, HTTP_STATUS.OK, { test }, 'Rollout started');
     } catch (err) {
-      if (err.message?.includes('not found')) {return sendNotFound(res, 'Test');}
+      if (err.message?.includes('not found')) {
+        return sendNotFound(res, 'Test');
+      }
       if (err.message?.includes('stopped') || err.message?.includes('No winner')) {
         return sendValidationError(res, [err.message]);
       }
@@ -783,7 +791,9 @@ router.post(
       logger.info('Personalization disabled', { testId: id, shopDomain });
       return sendSuccess(res, HTTP_STATUS.OK, { test }, 'Personalization disabled');
     } catch (err) {
-      if (err.message?.includes('not found')) {return sendNotFound(res, 'Test');}
+      if (err.message?.includes('not found')) {
+        return sendNotFound(res, 'Test');
+      }
       throw err;
     }
   })
