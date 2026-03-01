@@ -24,6 +24,7 @@ import styles from './DomainList.module.css';
 import {
   apiMeGet,
   apiMePost,
+  apiMeDelete,
   apiGet,
   getAccountApiKey,
   setAccountApiKey,
@@ -46,6 +47,8 @@ function DomainList() {
   const [apiKeyValue, setApiKeyValue] = useState('');
   const [apiKeyError, setApiKeyError] = useState(null);
   const [regenerateConfirmOpen, setRegenerateConfirmOpen] = useState(false);
+  const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
+  const [domainToRemove, setDomainToRemove] = useState(null);
 
   const useEmailDomains = !!getEmailToken();
 
@@ -110,6 +113,23 @@ function DomainList() {
     },
     onError: err => {
       setAddError(err.response?.data?.error || err.message || 'Failed to add domain');
+    },
+  });
+
+  const removeDomainMutation = useMutation({
+    mutationFn: async ({ tenantId }) => {
+      const res = await apiMeDelete(`/me/domains/${encodeURIComponent(tenantId)}`);
+      return res.data;
+    },
+    onSuccess: (_data, { domain: domainName }) => {
+      if (domainName) setDomainKey(domainName, null);
+      queryClient.invalidateQueries({ queryKey: ['me', 'domains'] });
+      setRemoveConfirmOpen(false);
+      setDomainToRemove(null);
+    },
+    onError: () => {
+      setRemoveConfirmOpen(false);
+      setDomainToRemove(null);
     },
   });
 
@@ -229,6 +249,18 @@ function DomainList() {
               Connect with API key
             </button>
           ),
+          <button
+            key={`remove-${d.id}`}
+            type="button"
+            className={styles.removeDomainBtn}
+            onClick={() => {
+              setDomainToRemove({ id: d.id, domain: d.domain });
+              setRemoveConfirmOpen(true);
+            }}
+            title={`Remove ${d.domain} from your list`}
+          >
+            Remove
+          </button>,
         ];
       })
     : domains.map(d => [
@@ -451,12 +483,20 @@ function DomainList() {
                   <DataTable
                     columnContentTypes={
                       useEmailDomains
-                        ? ['text', 'text', 'text', 'text', 'text', 'text']
+                        ? ['text', 'text', 'text', 'text', 'text', 'text', 'text']
                         : ['text', 'text', 'text']
                     }
                     headings={
                       useEmailDomains
-                        ? ['Domain', 'Platform', 'Connection', 'Permitted users', 'Role', 'Actions']
+                        ? [
+                            'Domain',
+                            'Platform',
+                            'Connection',
+                            'Permitted users',
+                            'Role',
+                            'Actions',
+                            'Remove',
+                          ]
                         : ['Domain', 'Platform', 'Actions']
                     }
                     rows={rows}
@@ -534,6 +574,46 @@ function DomainList() {
               helpText="Keys start with sk_ and are shown once when you add a domain"
             />
           </div>
+        </Modal.Section>
+      </Modal>
+
+      <Modal
+        open={removeConfirmOpen}
+        onClose={() => {
+          if (!removeDomainMutation.isPending) {
+            setRemoveConfirmOpen(false);
+            setDomainToRemove(null);
+          }
+        }}
+        title="Remove domain"
+        primaryAction={{
+          content: 'Remove domain',
+          destructive: true,
+          onAction: () => {
+            if (domainToRemove)
+              removeDomainMutation.mutate({
+                tenantId: domainToRemove.id,
+                domain: domainToRemove.domain,
+              });
+          },
+          loading: removeDomainMutation.isPending,
+        }}
+        secondaryActions={[
+          {
+            content: 'Cancel',
+            onAction: () => {
+              setRemoveConfirmOpen(false);
+              setDomainToRemove(null);
+            },
+          },
+        ]}
+      >
+        <Modal.Section>
+          <p className={styles.modalHint}>
+            {domainToRemove
+              ? `Remove ${domainToRemove.domain} from your list? It will no longer appear here. You can add it again later.`
+              : ''}
+          </p>
         </Modal.Section>
       </Modal>
 

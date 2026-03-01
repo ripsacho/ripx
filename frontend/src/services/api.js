@@ -359,6 +359,23 @@ export function apiMePost(endpoint, data, config = {}) {
   });
 }
 
+export function apiMeDelete(endpoint, config = {}) {
+  const token = getEmailToken();
+  if (!token) {
+    return Promise.reject(new Error('Email session required'));
+  }
+  const url = `${API_BASE_URL}${endpoint}`;
+  return apiClient({
+    method: 'DELETE',
+    url,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...config.headers,
+    },
+    ...config,
+  });
+}
+
 /**
  * Make API request with shop domain or API key
  *

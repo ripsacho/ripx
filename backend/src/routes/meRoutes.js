@@ -1,9 +1,10 @@
 /**
  * Me Routes – current user (email session) scoped APIs
  *
- * GET  /api/me/domains  – list domains the user can access (with permitted users)
- * POST /api/me/domains  – add a domain (create tenant under user's account, return API key if new account)
- * POST /api/me/account/regenerate-api-key – regenerate account API key (invalidates previous key; returns new key once)
+ * GET    /api/me/domains       – list domains the user can access (with permitted users)
+ * POST   /api/me/domains       – add a domain (create tenant under user's account, return API key if new account)
+ * DELETE /api/me/domains/:id   – remove a domain from current user (revoke access, unlink tenant from account)
+ * POST   /api/me/account/regenerate-api-key – regenerate account API key (invalidates previous key; returns new key once)
  *
  * Requires: authenticate (email session) + requireEmailSession
  */
@@ -147,6 +148,55 @@ router.post(
     }
 
     return sendSuccess(res, HTTP_STATUS.CREATED, payload);
+  })
+);
+
+/**
+ * DELETE /api/me/domains/:id
+ * Remove a domain from the current user: revoke user_domain_access and set tenant.account_id to NULL
+ * so the domain no longer appears in "my domains" and becomes unassigned.
+ */
+router.delete(
+  '/domains/:id',
+  asyncHandler(async (req, res) => {
+    const email = (req.email || req.shopDomain || '').trim().toLowerCase();
+    if (!email) {
+      return sendError(res, HTTP_STATUS.UNAUTHORIZED, 'Email session required');
+    }
+
+    const tenantId = req.params.id;
+    if (!tenantId) {
+      return sendError(res, HTTP_STATUS.BAD_REQUEST, 'Domain id required');
+    }
+
+    const user = await userModel.getByEmail(email);
+    if (!user) {
+      return sendError(res, HTTP_STATUS.FORBIDDEN, 'User not found');
+    }
+    if (!isUserStatusAllowedForSession(user.status)) {
+      return sendError(res, HTTP_STATUS.FORBIDDEN, 'Account not approved or restricted.');
+    }
+
+    const hasAccess = await userDomainAccess.hasAccess(user.id, tenantId, user.account_id);
+    if (!hasAccess) {
+      return sendError(res, HTTP_STATUS.NOT_FOUND, 'Domain not found or access denied');
+    }
+
+    await userDomainAccess.removeAccess(user.id, tenantId);
+    await query('UPDATE tenants SET account_id = NULL, updated_at = NOW() WHERE id = $1', [
+      tenantId,
+    ]);
+
+    auditLogService.logAuthAction(req, {
+      action: 'remove_domain',
+      actorId: email,
+      entityId: tenantId,
+      changes: {},
+    });
+
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      message: 'Domain removed from your list.',
+    });
   })
 );
 
