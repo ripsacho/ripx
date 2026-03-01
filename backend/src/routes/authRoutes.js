@@ -376,7 +376,14 @@ router.post(
       }
       const stub = process.env.RIPX_EMAIL_VERIFICATION_STUB === 'true';
       if (!stub && emailService.isConfigured()) {
-        await emailService.sendLoginCode(normalizedEmail, otpResult.code);
+        const sent = await emailService.sendLoginCode(normalizedEmail, otpResult.code);
+        if (!sent) {
+          return res.status(503).json({
+            success: false,
+            error:
+              "We couldn't send the login code email. Please try again later or contact support if the problem continues.",
+          });
+        }
       } else {
         logger.info('Login OTP (stub)', {
           email: normalizedEmail?.substring(0, 5) + '…',
@@ -420,7 +427,18 @@ router.post(
       if (rememberMe) {
         link += '&remember_me=1';
       }
-      await emailVerificationService.sendVerificationEmail(normalizedEmail, link, 'login');
+      const linkSent = await emailVerificationService.sendVerificationEmail(
+        normalizedEmail,
+        link,
+        'login'
+      );
+      if (linkSent === false) {
+        return res.status(503).json({
+          success: false,
+          error:
+            "We couldn't send the login link email. Please try again later or contact support.",
+        });
+      }
       auditLogService.logAuthAction(req, { action: 'login_link_sent' });
       return res.json({
         success: true,

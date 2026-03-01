@@ -37,12 +37,19 @@ function getTransporter() {
   if (!isConfigured()) {
     return null;
   }
-  const port = parseInt(process.env.SMTP_PORT || process.env.MAIL_PORT || '25', 10);
+  const host = process.env.SMTP_HOST || process.env.MAIL_HOST;
+  const port = parseInt(process.env.SMTP_PORT || process.env.MAIL_PORT || '587', 10);
   const secure = process.env.SMTP_SECURE === 'true' || port === 465;
+  // Port 587: use STARTTLS (common for AWS SES, Gmail, etc.). Port 25 often needs STARTTLS too.
+  const useTls = port === 587 || port === 25;
+  const connectionTimeout = parseInt(process.env.SMTP_CONNECTION_TIMEOUT_MS || '15000', 10);
   transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || process.env.MAIL_HOST,
+    host,
     port,
     secure,
+    requireTLS: useTls && !secure,
+    connectionTimeout,
+    greetingTimeout: connectionTimeout,
     auth: {
       user: process.env.SMTP_USER || process.env.MAIL_USER,
       pass: process.env.SMTP_PASS || process.env.MAIL_PASS,
@@ -92,6 +99,35 @@ async function sendMail(options) {
       to: to?.substring(0, 6) + '…',
       subject: subject?.substring(0, 40),
       error: err.message,
+      code: err.code,
+      response: err.response ? String(err.response).slice(0, 120) : undefined,
+    });
+    return false;
+  }
+}
+
+/**
+ * Verify SMTP connection (e.g. on startup or health check).
+ * Logs result; does not throw.
+ * @returns {Promise<boolean>} true if verified, false otherwise
+ */
+async function verifyConnection() {
+  const transport = getTransporter();
+  if (!transport) {
+    return false;
+  }
+  try {
+    await transport.verify();
+    logger.info('SMTP connection verified', {
+      host: process.env.SMTP_HOST || process.env.MAIL_HOST,
+      port: parseInt(process.env.SMTP_PORT || process.env.MAIL_PORT || '587', 10),
+    });
+    return true;
+  } catch (err) {
+    logger.error('SMTP verification failed', {
+      error: err.message,
+      code: err.code,
+      response: err.response ? String(err.response).slice(0, 200) : undefined,
     });
     return false;
   }
@@ -287,6 +323,7 @@ function sendAcceptanceEmail(to) {
 
 module.exports = {
   isConfigured,
+  verifyConnection,
   sendMail,
   sendLoginLink,
   sendLoginCode,

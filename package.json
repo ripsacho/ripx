@@ -16,6 +16,7 @@
     "migrate": "cd backend && node migrations/run.js",
     "migrate:mark-applied": "cd backend && node migrations/mark-applied.js",
     "ensure-superadmin": "node backend/scripts/ensureSuperAdmin.js",
+    "deploy:server": "bash scripts/deploy-production.sh",
     "seed:dummy": "node backend/scripts/seed-dummy-data.js",
     "test": "npm run test:backend && npm run test:frontend",
     "test:backend": "cd backend && jest",

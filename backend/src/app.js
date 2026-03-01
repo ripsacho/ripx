@@ -62,10 +62,11 @@ try {
 let sessionMiddleware = null;
 try {
   const session = require('express-session');
-  const { createSessionStore } = require('./config/sessionStore');
-  const sessionStore = createSessionStore();
-  sessionMiddleware = session({
-    store: sessionStore || undefined,
+  const { createSessionStore, createSessionStoreAsync } = require('./config/sessionStore');
+  const redisUrl = process.env.REDIS_URL;
+  const useRedisSession = isProduction && redisUrl;
+
+  const sessionOptions = {
     secret: process.env.SESSION_SECRET || process.env.JWT_SECRET,
     resave: false,
     saveUninitialized: false,
@@ -74,7 +75,29 @@ try {
       httpOnly: true,
       maxAge: 24 * 60 * 60 * 1000,
     },
-  });
+  };
+
+  if (useRedisSession) {
+    const sessionStorePromise = createSessionStoreAsync();
+    let cachedSessionMiddleware = null;
+    sessionStorePromise
+      .then(store => {
+        cachedSessionMiddleware = session({ ...sessionOptions, store: store || undefined });
+        return cachedSessionMiddleware;
+      })
+      .catch(err => {
+        logger.error('Session store init failed, requests will wait or fail', {
+          error: err.message,
+        });
+      });
+    sessionMiddleware = (req, res, next) => {
+      if (cachedSessionMiddleware) {return cachedSessionMiddleware(req, res, next);}
+      sessionStorePromise.then(mw => (mw ? mw(req, res, next) : next())).catch(next);
+    };
+  } else {
+    const sessionStore = createSessionStore();
+    sessionMiddleware = session({ ...sessionOptions, store: sessionStore || undefined });
+  }
 } catch (err) {
   if (isProduction) {
     logger.error('express-session not available; using in-memory session fallback', {
@@ -277,13 +300,15 @@ app.use(
 );
 
 // Body parsing middleware (1MB limit to prevent DoS; webhooks use raw for HMAC)
+const skipBodyParse = req => req.originalUrl?.startsWith('/api/webhooks');
 app.use((req, res, next) => {
-  if (req.originalUrl.startsWith('/api/webhooks')) {
-    return next();
-  }
+  if (skipBodyParse(req)) {return next();}
   return bodyParser.json({ limit: process.env.BODY_LIMIT || '1mb' })(req, res, next);
 });
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use((req, res, next) => {
+  if (skipBodyParse(req)) {return next();}
+  return bodyParser.urlencoded({ extended: true })(req, res, next);
+});
 app.use(cookieParser());
 
 // Session middleware (memory fallback; Redis when REDIS_URL is set)
@@ -317,7 +342,7 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
   skip: req =>
     req.path === '/health' ||
-    req.originalUrl === '/api/health' ||
+    req.originalUrl?.startsWith('/api/health') ||
     req.originalUrl?.startsWith('/api/track') ||
     req.originalUrl?.startsWith('/api/webhooks') ||
     req.originalUrl?.startsWith('/api/admin') ||
@@ -528,6 +553,11 @@ const server = app.listen(PORT, () => {
     environment: process.env.NODE_ENV || 'development',
     version: APP_VERSION,
   });
+  // Optional: verify SMTP connection in background (logs success or failure)
+  const emailService = require('./services/emailService');
+  if (emailService.isConfigured()) {
+    emailService.verifyConnection().catch(() => {});
+  }
 });
 
 // Graceful shutdown for server
