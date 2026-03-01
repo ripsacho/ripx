@@ -264,9 +264,9 @@ async function authenticateApiKey(req, res, next) {
 
 /**
  * Check for impersonation JWT (admin-issued short-lived token to act as another shop).
- * Returns true if valid and req was set; false otherwise.
+ * Sets req and returns true if valid; false otherwise. Does not call next() — caller must.
  */
-function tryImpersonationToken(req, res, next) {
+function tryImpersonationToken(req) {
   const authHeader = req.headers.authorization;
   const token = authHeader?.replace(/^Bearer\s+/i, '').trim();
   if (!token || !process.env.JWT_SECRET) {
@@ -277,7 +277,6 @@ function tryImpersonationToken(req, res, next) {
     if (decoded.ripxtype === 'impersonation' && decoded.impersonated_shop) {
       req.shopDomain = decoded.impersonated_shop;
       req.impersonation = true;
-      next();
       return true;
     }
   } catch (_) {
@@ -288,8 +287,9 @@ function tryImpersonationToken(req, res, next) {
 
 /**
  * Check for email session JWT (passwordless login). Sets req.shopDomain = email, req.authType = 'email'.
+ * Returns true if valid; false otherwise. Does not call next() — caller must.
  */
-function tryEmailSessionToken(req, res, next) {
+function tryEmailSessionToken(req) {
   const authHeader = req.headers.authorization;
   const token = authHeader && authHeader.replace(/^Bearer\s+/i, '').trim();
   if (!token || !process.env.JWT_SECRET) {
@@ -301,7 +301,6 @@ function tryEmailSessionToken(req, res, next) {
       req.shopDomain = decoded.email;
       req.authType = 'email';
       req.email = decoded.email;
-      next();
       return true;
     }
   } catch (_) {
@@ -312,15 +311,14 @@ function tryEmailSessionToken(req, res, next) {
 
 /**
  * Multi-platform auth: impersonation JWT first, then Shopify, then API key.
- * Returns a promise from async paths; do not await so that next() hands off
- * control without the caller continuing after next() (Express middleware chain).
+ * Sync paths: caller invokes next() once. Async paths: awaited so req is set before next().
  */
-function authenticate(req, res, next) {
-  if (tryImpersonationToken(req, res, next)) {
-    return;
+async function authenticate(req, res, next) {
+  if (tryImpersonationToken(req)) {
+    return next();
   }
-  if (tryEmailSessionToken(req, res, next)) {
-    return;
+  if (tryEmailSessionToken(req)) {
+    return next();
   }
 
   const shop = req.query.shop || req.headers['x-shopify-shop-domain'];
@@ -330,10 +328,20 @@ function authenticate(req, res, next) {
     req.headers.authorization?.replace(/^Bearer\s+/i, '');
 
   if (shop && isShopifyDomain(shop)) {
-    return authenticateShopify(req, res, next).catch(next);
+    try {
+      await authenticateShopify(req, res, next);
+    } catch (err) {
+      next(err);
+    }
+    return;
   }
   if (apiKey) {
-    return authenticateApiKey(req, res, next).catch(next);
+    try {
+      await authenticateApiKey(req, res, next);
+    } catch (err) {
+      next(err);
+    }
+    return;
   }
 
   logger.warn('Authentication failed: No valid credentials', {

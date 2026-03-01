@@ -21,32 +21,42 @@ require('dotenv').config();
 const APP_VERSION = process.env.APP_VERSION || '1.0.0';
 const startTime = Date.now();
 
-// Start background job processors (Bull)
+// Start background job processors (Bull). Require Redis; log at error in production so failures are visible.
+const isProduction = process.env.NODE_ENV === 'production';
+function logProcessorFailure(message, err) {
+  const payload = { error: err?.message || err };
+  if (isProduction) {
+    logger.error(message, payload);
+  } else {
+    logger.warn(message, payload);
+  }
+}
+
 try {
   require('./jobs/scheduledTestsProcessor');
   require('./jobs/archiveProcessor');
   try {
     require('./jobs/guardrailProcessor').startGuardrailProcessor();
   } catch (e) {
-    logger.warn('Guardrail processor not started', { error: e.message });
+    logProcessorFailure('Guardrail processor not started', e);
   }
   try {
     require('./jobs/autoStopProcessor').startAutoStopProcessor();
   } catch (e) {
-    logger.warn('Auto-stop processor not started', { error: e.message });
+    logProcessorFailure('Auto-stop processor not started', e);
   }
   try {
     require('./jobs/significanceAlertProcessor').startSignificanceAlertProcessor();
   } catch (e) {
-    logger.warn('Significance alert processor not started', { error: e.message });
+    logProcessorFailure('Significance alert processor not started', e);
   }
   try {
     require('./jobs/productSyncProcessor').startProductSyncProcessor();
   } catch (e) {
-    logger.warn('Product sync processor not started', { error: e.message });
+    logProcessorFailure('Product sync processor not started', e);
   }
 } catch (err) {
-  logger.warn('Job processors not started (Redis?)', { error: err.message });
+  logProcessorFailure('Job processors not started (Redis?)', err);
 }
 
 let sessionMiddleware = null;
@@ -66,7 +76,15 @@ try {
     },
   });
 } catch (err) {
-  logger.warn('express-session not available, skipping session middleware', { error: err.message });
+  if (isProduction) {
+    logger.error('express-session not available; using in-memory session fallback', {
+      error: err.message,
+    });
+  } else {
+    logger.warn('express-session not available, skipping session middleware', {
+      error: err.message,
+    });
+  }
 }
 const testRoutes = require('./routes/testRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
@@ -289,7 +307,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// Rate limiting - general API (skip track, health; track has its own higher limit)
+// Rate limiting: general /api/ limiter runs first; skip paths that have their own limiters
+// below so those requests are only counted by the path-specific limiter (admin, track, auth).
 const apiLimiter = rateLimit({
   windowMs: RATE_LIMIT.WINDOW_MS,
   max: RATE_LIMIT.MAX_REQUESTS,
@@ -301,11 +320,11 @@ const apiLimiter = rateLimit({
     req.originalUrl === '/api/health' ||
     req.originalUrl?.startsWith('/api/track') ||
     req.originalUrl?.startsWith('/api/webhooks') ||
-    req.originalUrl?.startsWith('/api/admin'),
+    req.originalUrl?.startsWith('/api/admin') ||
+    req.originalUrl?.startsWith('/api/auth'),
 });
 app.use('/api/', apiLimiter);
 
-// Admin panel: separate rate limit (Phase 2) so admin has its own bucket and can be stricter
 const adminLimiter = rateLimit({
   windowMs: RATE_LIMIT.WINDOW_MS,
   max: parseInt(process.env.RATE_LIMIT_ADMIN_MAX, 10) || 120,
@@ -315,7 +334,6 @@ const adminLimiter = rateLimit({
 });
 app.use('/api/admin', adminLimiter);
 
-// Track endpoint: higher limit for storefront traffic (public, high volume)
 const trackLimiter = rateLimit({
   windowMs: RATE_LIMIT.WINDOW_MS,
   max: parseInt(process.env.RATE_LIMIT_TRACK_MAX, 10) || 2000,
@@ -325,10 +343,9 @@ const trackLimiter = rateLimit({
 });
 app.use('/api/track', trackLimiter);
 
-// Auth endpoints: stricter rate limit (register, send-login-link) to prevent abuse
 const authLimiter = rateLimit({
   windowMs: RATE_LIMIT.WINDOW_MS,
-  max: parseInt(process.env.RATE_LIMIT_AUTH_MAX, 10) || 30, // 30/15min per IP for auth
+  max: parseInt(process.env.RATE_LIMIT_AUTH_MAX, 10) || 30,
   message: 'Too many auth attempts, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
