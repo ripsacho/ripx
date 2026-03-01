@@ -16,7 +16,6 @@ import {
   ClipboardChecklistIcon,
   ListBulletedIcon,
   ChevronLeftIcon,
-  ChevronRightIcon,
   ArrowUpIcon,
   KeyIcon,
   ClockIcon,
@@ -24,8 +23,10 @@ import {
   LinkIcon,
   ChartVerticalIcon,
 } from '@shopify/polaris-icons';
-import { ROUTES } from '../../constants';
+import { ROUTES, APP_META } from '../../constants';
 import styles from './Admin.module.css';
+
+const ADMIN_TITLE_SUFFIX = `Admin · ${APP_META.NAME}`;
 
 const adminNav = [
   { path: ROUTES.ADMIN_OVERVIEW, label: 'Overview', icon: HomeIcon },
@@ -101,8 +102,20 @@ function AdminLayout({ children }) {
   const section = pathToSection[location.pathname] || 'Admin';
   const [collapsed, setCollapsed] = useState(false);
   const [hoverDrawer, setHoverDrawer] = useState(null); // { label, top, height }
+  const [showBackToTop, setShowBackToTop] = useState(false);
 
   const healthUrl = `${import.meta.env.VITE_API_URL || ''}/api/health`;
+
+  const SCROLL_THRESHOLD = 280;
+
+  useEffect(() => {
+    const onScroll = () => {
+      setShowBackToTop(window.scrollY > SCROLL_THRESHOLD);
+    };
+    onScroll(); // initial check
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   const handleNavMouseEnter = useCallback((item, ev) => {
     if (!ev?.currentTarget) return;
@@ -128,53 +141,100 @@ function AdminLayout({ children }) {
     return () => document.body.classList.remove('admin-page');
   }, []);
 
+  useEffect(() => {
+    const section = pathToSection[location.pathname] || 'Admin';
+    const title =
+      section === 'Overview' ? ADMIN_TITLE_SUFFIX : `${section} · ${ADMIN_TITLE_SUFFIX}`;
+    const prev = document.title;
+    document.title = title;
+    return () => {
+      document.title = prev;
+    };
+  }, [location.pathname]);
+
   return (
     <>
       <div className={`${styles.adminLayout} ${collapsed ? styles.adminSidebarCollapsed : ''}`}>
         <aside className={`${styles.adminSidebar} ${collapsed ? styles.collapsed : ''}`}>
           <div className={styles.adminSidebarHeader}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '0.5rem',
-                width: '100%',
-              }}
-            >
+            <div className={styles.adminSidebarHeaderRow}>
               {!collapsed && (
+                <button
+                  type="button"
+                  className={styles.adminSidebarBrand}
+                  onClick={() => navigate(ROUTES.ADMIN_OVERVIEW)}
+                  aria-label="RipX Admin home"
+                >
+                  <img
+                    src="/logo.svg"
+                    alt=""
+                    className={styles.adminSidebarLogo}
+                    width={36}
+                    height={36}
+                  />
+                  <div className={styles.adminSidebarBrandText}>
+                    <span className={styles.adminSidebarAppName}>RipX</span>
+                    <Text
+                      as="p"
+                      variant="bodySm"
+                      tone="subdued"
+                      className={styles.adminSidebarSubtitle}
+                    >
+                      Admin
+                    </Text>
+                  </div>
+                </button>
+              )}
+              {collapsed && (
                 <>
-                  <Text as="h2" variant="headingMd" className={styles.adminSidebarTitle}>
-                    Admin
-                  </Text>
                   <button
                     type="button"
-                    onClick={() => setCollapsed(true)}
-                    className={styles.adminCollapseBtn}
-                    aria-label="Collapse sidebar"
-                    title="Collapse sidebar"
+                    className={styles.adminSidebarLogoCollapsedBtn}
+                    onClick={() => navigate(ROUTES.ADMIN_OVERVIEW)}
+                    aria-label="RipX Admin home"
                   >
-                    <Icon source={ChevronRightIcon} tone="base" />
+                    <img
+                      src="/logo.svg"
+                      alt="RipX"
+                      className={styles.adminSidebarLogoCollapsed}
+                      width={32}
+                      height={32}
+                    />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCollapsed(false)}
+                    className={styles.adminExpandBtnCollapsed}
+                    aria-label="Expand sidebar"
+                    title="Expand sidebar"
+                  >
+                    <svg
+                      className={styles.adminExpandBtnCollapsedSvg}
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                    >
+                      <path d="M9 6l6 6-6 6" />
+                    </svg>
                   </button>
                 </>
               )}
-              {collapsed && (
+              {!collapsed && (
                 <button
                   type="button"
-                  onClick={() => setCollapsed(false)}
+                  onClick={() => setCollapsed(true)}
                   className={styles.adminCollapseBtn}
-                  aria-label="Expand sidebar"
-                  title="Expand sidebar"
+                  aria-label="Collapse sidebar"
+                  title="Collapse sidebar"
                 >
                   <Icon source={ChevronLeftIcon} tone="base" />
                 </button>
               )}
             </div>
-            {!collapsed && (
-              <Text as="p" variant="bodySm" tone="subdued" className={styles.adminSidebarSubtitle}>
-                Control panel
-              </Text>
-            )}
           </div>
           <nav className={styles.adminNav} aria-label="Admin navigation">
             {adminNav.map(item => {
@@ -206,28 +266,6 @@ function AdminLayout({ children }) {
           </nav>
           <div className={styles.adminSidebarFooter}>
             {!collapsed && <div className={styles.adminSidebarFooterBrand}>RipX Admin</div>}
-            <div className={styles.adminSidebarFooterActions}>
-              <button
-                type="button"
-                className={styles.adminBackToTop}
-                onClick={handleBackToTop}
-                title="Scroll to top"
-                aria-label="Scroll to top"
-              >
-                <Icon source={ArrowUpIcon} tone="base" />
-                {!collapsed && <span>Back to top</span>}
-              </button>
-              <button
-                type="button"
-                className={styles.adminBackToApp}
-                onClick={() => navigate(ROUTES.DASHBOARD)}
-                title="Go to dashboard"
-                aria-label="Back to app"
-              >
-                <Icon source={HomeIcon} tone="base" />
-                {!collapsed && <span>Back to app</span>}
-              </button>
-            </div>
           </div>
         </aside>
         <main className={styles.adminContent}>
@@ -279,6 +317,26 @@ function AdminLayout({ children }) {
             }}
           >
             {hoverDrawer.label}
+          </div>,
+          document.body
+        )}
+      {showBackToTop &&
+        createPortal(
+          <div className={styles.adminFloatingBackToTopWrap}>
+            <span className={styles.adminFloatingBackToTopLabel} aria-hidden="true">
+              Back to top
+            </span>
+            <button
+              type="button"
+              className={styles.adminFloatingBackToTop}
+              onClick={handleBackToTop}
+              title="Scroll to top"
+              aria-label="Scroll to top"
+            >
+              <span className={styles.adminFloatingBackToTopIcon}>
+                <Icon source={ArrowUpIcon} tone="base" />
+              </span>
+            </button>
           </div>,
           document.body
         )}

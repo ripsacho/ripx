@@ -7,10 +7,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Page, Card, BlockStack, Text, Select, TextField, Button, Banner } from '@shopify/polaris';
+import { Card, BlockStack, Text, Select, TextField, Button, Banner } from '@shopify/polaris';
 import { apiGet, apiPut } from '../../services';
 import { PageShell } from '../Shared';
 import Toast from '../Toast/Toast';
+import AdminPageLayout from './AdminPageLayout';
+import styles from './Admin.module.css';
 
 const MODE_OFF = '';
 const MODE_GLOBAL = 'global';
@@ -78,8 +80,8 @@ export default function AdminMaintenance() {
   const isActive = !!currentValue;
 
   return (
-    <PageShell title="Maintenance mode" backUrl="/admin">
-      <Page title="Maintenance mode" fullWidth>
+    <PageShell className={`${styles.adminPage} ${styles.adminPageWithHero}`}>
+      <AdminPageLayout>
         <BlockStack gap="400">
           {isActive && (
             <Banner tone="warning" title="Maintenance is on">
@@ -127,7 +129,7 @@ export default function AdminMaintenance() {
             </BlockStack>
           </Card>
         </BlockStack>
-      </Page>
+      </AdminPageLayout>
       {toast.message && (
         <Toast
           message={toast.message}

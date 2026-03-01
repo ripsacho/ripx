@@ -21,6 +21,11 @@ export const ROUTES = {
   NOTIFICATIONS: '/notifications',
   DOCS: '/docs',
 
+  // Email session (standalone user): domain list and auth callback
+  DOMAINS: '/domains',
+  AUTH_CALLBACK: '/auth/callback',
+  AUTH_CONFIRM_RESULT: '/auth/confirm-result',
+
   // Admin panel
   ADMIN: '/admin',
   ADMIN_OVERVIEW: '/admin',
@@ -64,6 +69,19 @@ export const ROUTES = {
   PROFILE_ACCOUNT: '/profile?tab=account',
   PROFILE_PREFERENCES: '/profile?tab=preferences',
 };
+
+/** Paths that are "main app" (dashboard, tests, etc.) – used for redirecting to domain list when user must choose a store first */
+export const MAIN_APP_PATHS = [
+  ROUTES.DASHBOARD,
+  ROUTES.TESTS,
+  ROUTES.CREATE_TEST,
+  ROUTES.ANALYTICS,
+  ROUTES.SETUP,
+  ROUTES.SETTINGS,
+  ROUTES.PROFILE,
+  ROUTES.NOTIFICATIONS,
+  ROUTES.DOCS,
+];
 
 /** Path patterns for React Router Route components */
 export const ROUTE_PATTERNS = {

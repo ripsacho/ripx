@@ -7,7 +7,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Page,
   Card,
   FormLayout,
   TextField,
@@ -21,6 +20,7 @@ import {
 import { apiGet, apiPut } from '../../services';
 import { PageShell } from '../Shared';
 import Toast from '../Toast/Toast';
+import AdminPageLayout from './AdminPageLayout';
 import styles from './Admin.module.css';
 
 export default function AdminConsentScript() {
@@ -84,12 +84,8 @@ export default function AdminConsentScript() {
   }, [data, isLoading, scope, currentConfig.consentRequired, currentConfig.scriptVersion]);
 
   return (
-    <PageShell className={styles.adminPage}>
-      <Page
-        title="Consent & script"
-        subtitle="Global or per-domain consent_required and script_version (KV)."
-        backAction={{ content: 'Admin', url: '/admin' }}
-      >
+    <PageShell className={`${styles.adminPage} ${styles.adminPageWithHero}`}>
+      <AdminPageLayout>
         <BlockStack gap="400">
           <Banner tone="info">
             Keys: consent_script.consent_required, consent_script.script_version (global);
@@ -151,7 +147,7 @@ export default function AdminConsentScript() {
             </BlockStack>
           </Card>
         </BlockStack>
-      </Page>
+      </AdminPageLayout>
       {toast.message && (
         <Toast
           message={toast.message}

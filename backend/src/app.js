@@ -82,6 +82,8 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const tenantRoutes = require('./routes/tenantRoutes');
 const accountRoutes = require('./routes/accountRoutes');
 const authRoutes = require('./routes/authRoutes');
+const meRoutes = require('./routes/meRoutes');
+const { requireEmailSession } = require('./middleware/requireEmailSession');
 const adminRoutes = require('./routes/adminRoutes');
 const apiDocsRoutes = require('./routes/apiDocsRoutes');
 const { errorHandler } = require('./middleware/errorHandler');
@@ -323,19 +325,40 @@ const trackLimiter = rateLimit({
 });
 app.use('/api/track', trackLimiter);
 
+// Auth endpoints: stricter rate limit (register, send-login-link) to prevent abuse
+const authLimiter = rateLimit({
+  windowMs: RATE_LIMIT.WINDOW_MS,
+  max: parseInt(process.env.RATE_LIMIT_AUTH_MAX, 10) || 30, // 30/15min per IP for auth
+  message: 'Too many auth attempts, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/auth', authLimiter);
+
 // API docs (Swagger UI at /api-docs)
 app.use('/api-docs', apiDocsRoutes);
 
+// Set when SIGTERM/SIGINT received so health returns 503 during drain (load balancers stop sending traffic)
+let isShuttingDown = false;
+
 // Health check endpoints (unauthenticated, for monitoring)
 const healthHandler = async (req, res) => {
+  if (isShuttingDown) {
+    res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
+      status: 'shutting_down',
+      checks: { db: 'skipped', redis: 'skipped' },
+      timestamp: new Date().toISOString(),
+    });
+    return;
+  }
   let dbStatus = 'unknown';
   let redisStatus = 'skipped';
   let maintenanceValue = null;
   let maintenanceMessage = null;
   let announcementBanner = null;
   try {
-    const { query } = require('./utils/database');
-    await query('SELECT 1');
+    const { ping, query } = require('./utils/database');
+    await ping();
     dbStatus = 'ok';
     const { getMaintenanceMode } = require('./utils/maintenanceMode');
     maintenanceValue = await getMaintenanceMode();
@@ -419,10 +442,9 @@ app.get('/api/config/legal', async (req, res) => {
   }
 });
 
-// API Routes
-if (process.env.RIPX_STANDALONE_ONLY !== 'true') {
-  app.use('/api/auth', authRoutes);
-}
+// API Routes (auth always mounted for standalone email login/register)
+app.use('/api/auth', authRoutes);
+app.use('/api/me', authenticate, requireEmailSession, meRoutes);
 app.use('/api/tenants', tenantRoutes); // Tenant registration (standalone)
 app.use('/api/account', authenticate, accountRoutes); // Multi-store: list/add stores
 app.use('/api/dashboard', authenticate, require('./routes/dashboardRoutes'));
@@ -493,6 +515,10 @@ const server = app.listen(PORT, () => {
 
 // Graceful shutdown for server
 const gracefulShutdown = signal => {
+  if (isShuttingDown) {
+    return;
+  }
+  isShuttingDown = true;
   logger.info(`${signal} received, shutting down gracefully`);
 
   server.close(() => {

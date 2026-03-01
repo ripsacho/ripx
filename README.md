@@ -12,6 +12,7 @@ RipX is an A/B testing platform for Shopify and standalone e-commerce sites. Tes
 npm run install:all
 cp .env.example .env
 npm run dev:db && npm run migrate
+# If the DB already had migrations applied before tracking: npm run migrate:mark-applied (once)
 npm run dev
 ```
 

@@ -9,8 +9,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Popover, ActionList, Text, BlockStack, Icon } from '@shopify/polaris';
 import { StoreIcon } from '@shopify/polaris-icons';
-import { apiGet } from '../../services';
-import { STORAGE_KEYS, ROUTES } from '../../constants';
+import { apiGet, setCurrentStore as persistCurrentStore } from '../../services';
+import { ROUTES } from '../../constants';
 import styles from './StoreSwitcher.module.css';
 
 function StoreSwitcher() {
@@ -57,12 +57,7 @@ function StoreSwitcher() {
         setActive(false);
         return;
       }
-      try {
-        window.localStorage.setItem(STORAGE_KEYS.CURRENT_STORE, domain);
-        window.localStorage.setItem(STORAGE_KEYS.SHOP_DOMAIN, domain);
-      } catch {
-        // ignore
-      }
+      persistCurrentStore(domain);
       setActive(false);
       window.location.reload();
     },

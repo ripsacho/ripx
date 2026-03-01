@@ -43,6 +43,29 @@ async function createAccount(name = 'My Account') {
 }
 
 /**
+ * Regenerate API key for an account. Old key is invalidated. Returns new plain key (shown once).
+ */
+async function regenerateApiKey(accountId) {
+  if (!accountId) {
+    return null;
+  }
+  const apiKey = generateApiKey();
+  const apiKeyHash = hashApiKey(apiKey);
+  const apiKeyPrefix = apiKey.substring(0, 12);
+
+  const result = await query(
+    `UPDATE accounts SET api_key_hash = $2, api_key_prefix = $3, updated_at = NOW()
+     WHERE id = $1 RETURNING id`,
+    [accountId, apiKeyHash, apiKeyPrefix]
+  );
+  if (result.rowCount === 0) {
+    return null;
+  }
+  logger.info('API key regenerated', { accountId });
+  return apiKey;
+}
+
+/**
  * Get account by API key
  */
 async function getAccountByApiKey(apiKey) {
@@ -224,6 +247,7 @@ module.exports = {
   hashApiKey,
   generateApiKey,
   createAccount,
+  regenerateApiKey,
   getAccountByApiKey,
   getStoresForAccount,
   addStoreToAccount,

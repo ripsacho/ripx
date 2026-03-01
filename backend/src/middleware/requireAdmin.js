@@ -3,15 +3,20 @@
  *
  * Protects /api/admin/* routes. Allows access if:
  * 0. (Optional) Client IP is in ADMIN_IP_ALLOWLIST when set.
- * 1. X-Admin-API-Key header matches ADMIN_API_KEY env, or
+ * 1. X-Admin-API-Key header matches ADMIN_API_KEY env (treated as superadmin), or
  * 2. (Local) req.shopDomain is in RIPX_ADMIN_SHOP_DOMAINS (comma-separated), or
  * 3. Authenticated user has users.role in ['admin','superadmin'] and status active.
- * Sets req.adminId for audit (shop_domain or 'admin-key').
+ * Sets req.adminId for audit and req.adminRole for permission checks (admin | superadmin).
+ * Dev bypass: only when ALLOW_DEV_ADMIN_BYPASS=true (no DB role required in development).
  */
 
 const { authenticate } = require('./auth');
 const { getRoleAndStatus } = require('../models/user');
 const { sendUnauthorized } = require('../utils/response');
+const { isPlatformAdmin, PLATFORM_ROLES } = require('../constants');
+const { getPermissionsForRole, hasPermission, isValidPermission } = require('../permissions');
+const auditLogService = require('../services/auditLogService');
+const logger = require('../utils/logger');
 
 function getEnvAdminDomains() {
   const raw = process.env.RIPX_ADMIN_SHOP_DOMAINS;
@@ -70,6 +75,7 @@ function requireAdmin(req, res, next) {
 
   if (process.env.ADMIN_API_KEY && adminKey && adminKey === process.env.ADMIN_API_KEY) {
     req.adminId = 'admin-key';
+    req.adminRole = PLATFORM_ROLES.SUPERADMIN; // API key has full access
     return next();
   }
 
@@ -87,6 +93,7 @@ function requireAdmin(req, res, next) {
       const adminEmails = getEnvAdminEmails();
       if (adminEmails.length > 0 && adminEmails.includes(req.email.trim().toLowerCase())) {
         req.adminId = req.email;
+        req.adminRole = PLATFORM_ROLES.ADMIN; // env list grants admin; use DB if you need superadmin
         return next();
       }
     }
@@ -97,14 +104,18 @@ function requireAdmin(req, res, next) {
     const envAdmins = getEnvAdminDomains();
     if (envAdmins.length > 0 && envAdmins.includes(normalizedShop)) {
       req.adminId = shopDomain;
+      req.adminRole = PLATFORM_ROLES.ADMIN;
       return next();
     }
 
     try {
       const user = await getRoleAndStatus(shopDomain);
-      if (!user || !['admin', 'superadmin'].includes(user.role)) {
-        if (process.env.NODE_ENV === 'development') {
+      if (!user || !isPlatformAdmin(user.role)) {
+        const allowDevBypass =
+          process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_ADMIN_BYPASS === 'true';
+        if (allowDevBypass) {
           req.adminId = shopDomain;
+          req.adminRole = PLATFORM_ROLES.ADMIN;
           return next();
         }
         return res.status(403).json({ success: false, error: 'Admin access required' });
@@ -113,6 +124,7 @@ function requireAdmin(req, res, next) {
         return res.status(403).json({ success: false, error: 'Account is locked or suspended' });
       }
       req.adminId = shopDomain;
+      req.adminRole = (user.role || PLATFORM_ROLES.ADMIN).toLowerCase();
       next();
     } catch (e) {
       next(e);
@@ -120,4 +132,65 @@ function requireAdmin(req, res, next) {
   });
 }
 
-module.exports = { requireAdmin, getEnvAdminDomains };
+/**
+ * Require superadmin for sensitive actions (e.g. set user role, impersonate).
+ * Must be used after requireAdmin. ADMIN_API_KEY is treated as superadmin.
+ * @deprecated Prefer requirePermission(permission) for explicit, auditable checks.
+ */
+function requireSuperadmin(req, res, next) {
+  const role = (req.adminRole || '').toLowerCase();
+  if (role === PLATFORM_ROLES.SUPERADMIN) {
+    return next();
+  }
+  return res.status(403).json({
+    success: false,
+    error: 'This action requires superadmin role',
+  });
+}
+
+/**
+ * Require a specific admin permission. Use after requireAdmin.
+ * On deny: logs permission_denied to audit_log (actor, permission, path) then returns 403.
+ * Logs a warning if permission is not in the registry (typo guard).
+ * @param {string} permission - e.g. PERMISSIONS.USERS_SET_ROLE, PERMISSIONS.IMPERSONATE
+ */
+function requirePermission(permission) {
+  return (req, res, next) => {
+    if (!isValidPermission(permission)) {
+      logger.warn('requirePermission called with unknown permission', {
+        permission,
+        path: req.path,
+      });
+    }
+    const role = (req.adminRole || '').toLowerCase();
+    if (hasPermission(role, permission)) {
+      return next();
+    }
+    auditLogService
+      .logAdminAction(req, {
+        entityType: 'admin',
+        entityId: null,
+        action: 'permission_denied',
+        changes: {
+          requiredPermission: permission,
+          path: req.path,
+          method: req.method,
+          role: role || null,
+        },
+      })
+      .catch(err => logger.error('Audit log permission_denied failed', { error: err.message }));
+    return res.status(403).json({
+      success: false,
+      error: 'Insufficient permission',
+      requiredPermission: permission,
+    });
+  };
+}
+
+module.exports = {
+  requireAdmin,
+  requireSuperadmin,
+  requirePermission,
+  getEnvAdminDomains,
+  getPermissionsForRole,
+};

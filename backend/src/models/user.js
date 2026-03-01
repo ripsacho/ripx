@@ -1,11 +1,13 @@
 /**
  * User Model
  *
- * Database operations for user profile, account, and preferences
+ * Email-only identity: users are identified by email. Resolution by domain (store context)
+ * is via tenant -> account_id -> user. Database operations for profile, account, preferences.
  */
 
 const { query } = require('../utils/database');
 const logger = require('../utils/logger');
+const { getTenantByDomain } = require('./tenant');
 
 /**
  * Safely parse JSON with error handling
@@ -29,26 +31,78 @@ function safeParseJSON(jsonString, defaultValue) {
 
 class UserModel {
   /**
-   * Get user profile by shop domain
-   *
-   * @param {string} shopDomain - Shop domain
-   * @returns {Promise<Object|null>} User profile or null
+   * Get user by email (primary identity). Used for email session and /me.
+   */
+  async getByEmail(email) {
+    if (!email || typeof email !== 'string') {
+      return null;
+    }
+    const e = email.trim().toLowerCase();
+    if (!e) {
+      return null;
+    }
+    try {
+      const result = await query(
+        `SELECT id, email, status, account_id, profile, account, preferences, role, created_at, updated_at
+         FROM users WHERE LOWER(TRIM(email)) = $1`,
+        [e]
+      );
+      return result.rows[0] || null;
+    } catch (err) {
+      if (err.message && err.message.includes('does not exist')) {
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Get user by account ID (for resolving user from tenant/domain context).
+   */
+  async getByAccountId(accountId) {
+    if (!accountId) {
+      return null;
+    }
+    try {
+      const result = await query(
+        `SELECT id, email, status, account_id, profile, account, preferences, role, created_at, updated_at
+         FROM users WHERE account_id = $1`,
+        [accountId]
+      );
+      return result.rows[0] || null;
+    } catch (err) {
+      if (err.message && err.message.includes('does not exist')) {
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Get user by domain (store context): tenant by domain -> user by tenant.account_id.
+   * Returns null if no tenant or tenant has no account_id.
+   */
+  async getByDomain(domain) {
+    if (!domain) {
+      return null;
+    }
+    const tenant = await getTenantByDomain(domain);
+    if (!tenant || !tenant.account_id) {
+      return null;
+    }
+    return this.getByAccountId(tenant.account_id);
+  }
+
+  /**
+   * Get user profile by domain (store context). Resolves user via tenant -> account -> user.
    */
   async getProfile(shopDomain) {
     try {
-      const sql = `
-        SELECT profile, account, preferences, created_at, updated_at
-        FROM users
-        WHERE shop_domain = $1
-      `;
-
-      const result = await query(sql, [shopDomain]);
-
-      if (result.rows.length === 0) {
+      const user = await this.getByDomain(shopDomain);
+      if (!user) {
         return null;
       }
 
-      const user = result.rows[0];
       return {
         profile: safeParseJSON(user.profile, {}),
         account: safeParseJSON(user.account, {}),
@@ -64,9 +118,7 @@ class UserModel {
         updatedAt: user.updated_at,
       };
     } catch (error) {
-      // If table doesn't exist, return null (will trigger defaults in route)
       if (error.message && error.message.includes('does not exist')) {
-        // Only log once per session to avoid spam
         if (!this._tableMissingLogged) {
           logger.warn(
             'Users table does not exist. Using defaults. Run migrations to create table.',
@@ -81,74 +133,28 @@ class UserModel {
   }
 
   /**
-   * Create or update user profile
-   *
-   * @param {string} shopDomain - Shop domain
-   * @param {Object} profileData - Profile data
-   * @returns {Promise<Object>} Updated profile
+   * Create or update user profile by domain. User must already be linked (tenant has account_id).
+   * If no user for domain, returns null (caller should prompt login / "Add this store").
    */
   async upsertProfile(shopDomain, profileData) {
     try {
-      // Check if user exists
-      const existing = await this.getProfile(shopDomain);
-
-      if (existing) {
-        // Update existing user
-        const sql = `
-          UPDATE users
-          SET profile = $1, updated_at = NOW()
-          WHERE shop_domain = $2
-          RETURNING profile, updated_at
-        `;
-
-        const result = await query(sql, [JSON.stringify(profileData), shopDomain]);
-
-        return {
-          profile: safeParseJSON(result.rows[0].profile, {}),
-          updatedAt: result.rows[0].updated_at,
-        };
-      } else {
-        // Create new user
-        const sql = `
-          INSERT INTO users (shop_domain, profile, account, preferences, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, NOW(), NOW())
-          RETURNING profile, updated_at
-        `;
-
-        const defaultAccount = {
-          shopDomain,
-          plan: 'Professional',
-          billingEmail: '',
-          apiKey: '',
-          twoFactorEnabled: false,
-          emailNotifications: true,
-          pushNotifications: true,
-          weeklyReports: true,
-        };
-
-        const defaultPreferences = {
-          theme: 'light',
-          dashboardView: 'grid',
-          defaultTestType: 'price',
-          autoSave: true,
-          showTooltips: true,
-          compactMode: false,
-        };
-
-        const result = await query(sql, [
-          shopDomain,
-          JSON.stringify(profileData),
-          JSON.stringify(defaultAccount),
-          JSON.stringify(defaultPreferences),
-        ]);
-
-        return {
-          profile: safeParseJSON(result.rows[0].profile, {}),
-          updatedAt: result.rows[0].updated_at,
-        };
+      const user = await this.getByDomain(shopDomain);
+      if (!user) {
+        return null;
       }
+
+      const result = await query(
+        'UPDATE users SET profile = $1, updated_at = NOW() WHERE id = $2 RETURNING profile, updated_at',
+        [JSON.stringify(profileData), user.id]
+      );
+      if (result.rows.length === 0) {
+        return null;
+      }
+      return {
+        profile: safeParseJSON(result.rows[0].profile, {}),
+        updatedAt: result.rows[0].updated_at,
+      };
     } catch (error) {
-      // If table doesn't exist, throw error to be handled by route
       if (error.message && error.message.includes('does not exist')) {
         logger.warn('Users table does not exist', { shopDomain });
         throw new Error('Users table does not exist. Please run migrations.');
@@ -158,49 +164,27 @@ class UserModel {
   }
 
   /**
-   * Update user account settings
-   *
-   * @param {string} shopDomain - Shop domain
-   * @param {Object} accountData - Account data
-   * @returns {Promise<Object>} Updated account
+   * Update user account (JSON) by domain. User must be linked to domain.
    */
   async updateAccount(shopDomain, accountData) {
     try {
-      // Check if user exists, create if not
-      const existing = await this.getProfile(shopDomain);
-
-      if (!existing) {
-        // Create user with defaults
-        await this.upsertProfile(shopDomain, {
-          firstName: '',
-          lastName: '',
-          email: '',
-          phone: '',
-          jobTitle: '',
-          company: shopDomain,
-          bio: '',
-          timezone: 'UTC',
-          language: 'en',
-          dateFormat: 'MM/DD/YYYY',
-          timeFormat: '12h',
-        });
+      const user = await this.getByDomain(shopDomain);
+      if (!user) {
+        return null;
       }
 
-      const sql = `
-        UPDATE users
-        SET account = $1, updated_at = NOW()
-        WHERE shop_domain = $2
-        RETURNING account, updated_at
-      `;
-
-      const result = await query(sql, [JSON.stringify(accountData), shopDomain]);
-
+      const result = await query(
+        'UPDATE users SET account = $1, updated_at = NOW() WHERE id = $2 RETURNING account, updated_at',
+        [JSON.stringify(accountData), user.id]
+      );
+      if (result.rows.length === 0) {
+        return null;
+      }
       return {
         account: safeParseJSON(result.rows[0].account, {}),
         updatedAt: result.rows[0].updated_at,
       };
     } catch (error) {
-      // If table doesn't exist, throw error to be handled by route
       if (error.message && error.message.includes('does not exist')) {
         logger.warn('Users table does not exist', { shopDomain });
         throw new Error('Users table does not exist. Please run migrations.');
@@ -210,49 +194,27 @@ class UserModel {
   }
 
   /**
-   * Update user preferences
-   *
-   * @param {string} shopDomain - Shop domain
-   * @param {Object} preferences - Preferences data
-   * @returns {Promise<Object>} Updated preferences
+   * Update user preferences by domain. User must be linked to domain.
    */
   async updatePreferences(shopDomain, preferences) {
     try {
-      // Check if user exists, create if not
-      const existing = await this.getProfile(shopDomain);
-
-      if (!existing) {
-        // Create user with defaults
-        await this.upsertProfile(shopDomain, {
-          firstName: '',
-          lastName: '',
-          email: '',
-          phone: '',
-          jobTitle: '',
-          company: shopDomain,
-          bio: '',
-          timezone: 'UTC',
-          language: 'en',
-          dateFormat: 'MM/DD/YYYY',
-          timeFormat: '12h',
-        });
+      const user = await this.getByDomain(shopDomain);
+      if (!user) {
+        return null;
       }
 
-      const sql = `
-        UPDATE users
-        SET preferences = $1, updated_at = NOW()
-        WHERE shop_domain = $2
-        RETURNING preferences, updated_at
-      `;
-
-      const result = await query(sql, [JSON.stringify(preferences), shopDomain]);
-
+      const result = await query(
+        'UPDATE users SET preferences = $1, updated_at = NOW() WHERE id = $2 RETURNING preferences, updated_at',
+        [JSON.stringify(preferences), user.id]
+      );
+      if (result.rows.length === 0) {
+        return null;
+      }
       return {
         preferences: safeParseJSON(result.rows[0].preferences, {}),
         updatedAt: result.rows[0].updated_at,
       };
     } catch (error) {
-      // If table doesn't exist, throw error to be handled by route
       if (error.message && error.message.includes('does not exist')) {
         logger.warn('Users table does not exist', { shopDomain });
         throw new Error('Users table does not exist. Please run migrations.');
@@ -262,21 +224,22 @@ class UserModel {
   }
 
   /**
-   * Get user role and status by shop domain (for admin check)
-   *
-   * @param {string} shopDomain - Shop domain
-   * @returns {Promise<{ role: string|null, status: string }|null>}
+   * Get user role and status by domain or email (email-only identity: both use same resolution).
+   * If identifier contains '@', resolve by email; otherwise by domain (tenant -> account -> user).
    */
-  async getRoleAndStatus(shopDomain) {
+  async getRoleAndStatus(identifier) {
     try {
-      const sql =
-        "SELECT role, COALESCE(status, 'active') AS status FROM users WHERE shop_domain = $1";
-      const result = await query(sql, [shopDomain]);
-      if (result.rows.length === 0) {
+      const user =
+        identifier && String(identifier).includes('@')
+          ? await this.getByEmail(identifier)
+          : await this.getByDomain(identifier);
+      if (!user) {
         return null;
       }
-      const row = result.rows[0];
-      return { role: row.role, status: row.status };
+      return {
+        role: user.role ?? null,
+        status: user.status ?? 'active',
+      };
     } catch (err) {
       if (err.message && err.message.includes('does not exist')) {
         return null;
@@ -286,22 +249,32 @@ class UserModel {
   }
 
   /**
-   * Set user status (active | locked | suspended)
+   * Set user status (active | locked | suspended) by domain.
    */
   async setStatus(shopDomain, status) {
-    const sql =
-      'UPDATE users SET status = $1, updated_at = NOW() WHERE shop_domain = $2 RETURNING shop_domain';
-    const result = await query(sql, [status, shopDomain]);
+    const user = await this.getByDomain(shopDomain);
+    if (!user) {
+      return false;
+    }
+    const result = await query(
+      'UPDATE users SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING id',
+      [status, user.id]
+    );
     return result.rows.length > 0;
   }
 
   /**
-   * Set user role (for admin assignment)
+   * Set user role by domain (admin assignment).
    */
   async setRole(shopDomain, role) {
-    const sql =
-      'UPDATE users SET role = $1, updated_at = NOW() WHERE shop_domain = $2 RETURNING shop_domain';
-    const result = await query(sql, [role, shopDomain]);
+    const user = await this.getByDomain(shopDomain);
+    if (!user) {
+      return false;
+    }
+    const result = await query(
+      'UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2 RETURNING id',
+      [role, user.id]
+    );
     return result.rows.length > 0;
   }
 }
@@ -311,6 +284,9 @@ const userModel = new UserModel();
 
 // Export individual functions for convenience
 module.exports = {
+  getByEmail: email => userModel.getByEmail(email),
+  getByAccountId: accountId => userModel.getByAccountId(accountId),
+  getByDomain: domain => userModel.getByDomain(domain),
   getProfile: shopDomain => userModel.getProfile(shopDomain),
   upsertProfile: (shopDomain, profileData) => userModel.upsertProfile(shopDomain, profileData),
   updateAccount: (shopDomain, accountData) => userModel.updateAccount(shopDomain, accountData),

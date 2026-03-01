@@ -67,6 +67,38 @@ const DEFAULTS = {
   MAX_VARIANTS: 10,
 };
 
+// User status: allowed for session and /me vs blocked
+const USER_STATUS = {
+  ALLOWED_FOR_SESSION: ['accepted', 'active'],
+  BLOCKED: ['locked', 'suspended'],
+};
+function isUserStatusAllowedForSession(status) {
+  return status && USER_STATUS.ALLOWED_FOR_SESSION.includes(status);
+}
+function isUserStatusBlocked(status) {
+  return status && USER_STATUS.BLOCKED.includes(status);
+}
+
+// Platform admin roles (users.role) – who can access /api/admin
+const PLATFORM_ROLES = {
+  ADMIN: 'admin',
+  SUPERADMIN: 'superadmin',
+};
+const PLATFORM_ROLE_VALUES = Object.values(PLATFORM_ROLES);
+
+function isPlatformAdmin(role) {
+  return role && typeof role === 'string' && PLATFORM_ROLE_VALUES.includes(role.toLowerCase());
+}
+
+function isSuperadmin(role) {
+  return role && String(role).toLowerCase() === PLATFORM_ROLES.SUPERADMIN;
+}
+
+// Domain-level roles (user_domain_access.role) – per-tenant access
+const DOMAIN_ROLES = ['owner', 'member', 'viewer'];
+const DOMAIN_ROLE_WRITE = ['owner', 'member']; // can create/edit/delete tests, settings
+const DOMAIN_ROLE_READ_ONLY = ['viewer'];
+
 // Error Messages
 const ERROR_MESSAGES = {
   TEST_NOT_FOUND: 'Test not found',
@@ -108,6 +140,16 @@ const PAGINATION = {
 
 module.exports = {
   HTTP_STATUS,
+  USER_STATUS,
+  isUserStatusAllowedForSession,
+  isUserStatusBlocked,
+  PLATFORM_ROLES,
+  PLATFORM_ROLE_VALUES,
+  isPlatformAdmin,
+  isSuperadmin,
+  DOMAIN_ROLES,
+  DOMAIN_ROLE_WRITE,
+  DOMAIN_ROLE_READ_ONLY,
   TEST_STATUS,
   TEST_TYPES,
   TARGET_TYPES,

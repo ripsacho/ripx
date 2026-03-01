@@ -6,10 +6,11 @@
 
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Page, Card, FormLayout, TextField, Button, Text, BlockStack } from '@shopify/polaris';
+import { Card, FormLayout, TextField, Button, Text, BlockStack } from '@shopify/polaris';
 import { apiGet, apiPut } from '../../services';
 import { PageShell } from '../Shared';
 import Toast from '../Toast/Toast';
+import AdminPageLayout from './AdminPageLayout';
 import styles from './Admin.module.css';
 
 export default function AdminLegal() {
@@ -50,12 +51,8 @@ export default function AdminLegal() {
     });
   };
   return (
-    <PageShell className={styles.adminPage}>
-      <Page
-        title="Terms & Privacy"
-        subtitle="URLs shown in the app and Connect page footer."
-        backAction={{ content: 'Admin', url: '/admin' }}
-      >
+    <PageShell className={`${styles.adminPage} ${styles.adminPageWithHero}`}>
+      <AdminPageLayout>
         <Card>
           <BlockStack gap="400">
             {isLoading ? (
@@ -87,7 +84,7 @@ export default function AdminLegal() {
             )}
           </BlockStack>
         </Card>
-      </Page>
+      </AdminPageLayout>
       {toast.message && (
         <Toast
           message={toast.message}

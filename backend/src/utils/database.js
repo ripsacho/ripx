@@ -9,6 +9,17 @@ const { Pool } = require('pg');
 
 let pool = null;
 
+function getPoolMax() {
+  const env = process.env.DATABASE_POOL_MAX;
+  if (env !== null && env !== undefined && env !== '') {
+    const n = parseInt(env, 10);
+    if (!Number.isNaN(n) && n >= 1) {
+      return Math.min(n, 100);
+    }
+  }
+  return process.env.NODE_ENV === 'production' ? 20 : 10;
+}
+
 /**
  * Initialize database connection
  */
@@ -28,10 +39,9 @@ function initDatabase() {
     pool = new Pool({
       connectionString: process.env.DATABASE_URL,
       ssl: sslConfig,
-      // Connection pool settings for production
-      max: process.env.NODE_ENV === 'production' ? 20 : 10,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 2000,
+      max: getPoolMax(),
+      idleTimeoutMillis: parseInt(process.env.DATABASE_POOL_IDLE_TIMEOUT_MS, 10) || 30000,
+      connectionTimeoutMillis: parseInt(process.env.DATABASE_POOL_CONNECT_TIMEOUT_MS, 10) || 2000,
     });
 
     pool.on('error', err => {
@@ -75,12 +85,16 @@ async function query(sql, params = []) {
     const result = await pool.query(sql, params);
     const duration = Date.now() - startTime;
 
-    // Log slow queries in development
-    if (process.env.NODE_ENV === 'development' && duration > 1000) {
+    const slowMs = parseInt(process.env.SLOW_QUERY_MS, 10) || 1000;
+    const logSlowInProd = process.env.SLOW_QUERY_LOG_PROD === 'true';
+    const shouldLog =
+      duration > slowMs && (process.env.NODE_ENV === 'development' || logSlowInProd);
+    if (shouldLog) {
       const logger = require('./logger');
       logger.warn('Slow query detected', {
         duration: `${duration}ms`,
-        sql: sql.substring(0, 100),
+        thresholdMs: slowMs,
+        sql: sql.substring(0, 200),
       });
     }
 
@@ -118,7 +132,7 @@ async function closeDatabase() {
 }
 
 /**
- * Get a database client for transactions
+ * Get a database client for transactions (caller must release with client.release())
  *
  * @returns {Promise<Object>} Database client
  */
@@ -129,6 +143,37 @@ async function getClient() {
   return pool.connect();
 }
 
+/**
+ * Run a function inside a transaction (auto commit/rollback and release client).
+ *
+ * @param {Function} fn - async (client) => { ... } where client has client.query(), client.release()
+ * @returns {Promise<*>} Result of fn
+ */
+async function withTransaction(fn) {
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Ping the database (for health checks). Resolves on success, rejects on failure.
+ */
+async function ping() {
+  const result = await query('SELECT 1 AS ok');
+  if (result.rows?.[0]?.ok !== 1) {
+    throw new Error('Database ping failed');
+  }
+}
+
 // Initialize on module load
 initDatabase();
 
@@ -137,4 +182,6 @@ module.exports = {
   getClient,
   initDatabase,
   closeDatabase,
+  withTransaction,
+  ping,
 };

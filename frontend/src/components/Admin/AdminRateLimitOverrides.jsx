@@ -6,10 +6,11 @@
 
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Page, Card, DataTable, Text, BlockStack, TextField, EmptyState } from '@shopify/polaris';
+import { Card, DataTable, Text, BlockStack, TextField, EmptyState } from '@shopify/polaris';
 import { RefreshIcon } from '@shopify/polaris-icons';
 import { apiGet } from '../../services';
 import { PageShell } from '../Shared';
+import AdminPageLayout from './AdminPageLayout';
 import styles from './Admin.module.css';
 
 export default function AdminRateLimitOverrides() {
@@ -37,11 +38,8 @@ export default function AdminRateLimitOverrides() {
     o.updatedAt ? new Date(o.updatedAt).toLocaleString() : '—',
   ]);
   return (
-    <PageShell className={styles.adminPage}>
-      <Page
-        title="Rate limit overrides"
-        subtitle="Per-domain track_max and api_max (key_value_store). Apply via backend when supported."
-        backAction={{ content: 'Admin', url: '/admin' }}
+    <PageShell className={`${styles.adminPage} ${styles.adminPageWithHero}`}>
+      <AdminPageLayout
         primaryAction={{
           content: 'Refresh',
           icon: RefreshIcon,
@@ -85,7 +83,7 @@ export default function AdminRateLimitOverrides() {
             )}
           </BlockStack>
         </Card>
-      </Page>
+      </AdminPageLayout>
     </PageShell>
   );
 }

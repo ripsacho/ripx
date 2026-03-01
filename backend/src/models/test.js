@@ -1,11 +1,13 @@
 /**
  * Test Model
  *
- * Database operations for AB tests
+ * Database operations for AB tests. Uses shop_domain for compatibility;
+ * tenant_id (FK to tenants) is set when possible for referential integrity.
  */
 
 const { query } = require('../utils/database');
 const logger = require('../utils/logger');
+const { getTenantByDomain } = require('./tenant');
 
 /**
  * Safely parse JSON with error handling
@@ -181,6 +183,11 @@ class TestModel {
       safeStringifyJSON(variants, '[]'),
     ];
 
+    if (testData.tenant_id) {
+      baseColumns.push('tenant_id');
+      baseValues.push(testData.tenant_id);
+    }
+
     if (segments !== undefined) {
       baseColumns.push('segments');
       baseValues.push(safeStringifyJSON(segments || {}, '{}'));
@@ -253,10 +260,15 @@ class TestModel {
         throw new Error('type is required');
       }
 
-      // Check if scheduling columns exist
-      const hasSchedulingColumns = await checkSchedulingColumns();
+      // Resolve tenant_id for referential integrity (tests.tenant_id FK to tenants)
+      if (!testData.tenant_id && testData.shop_domain) {
+        const tenant = await getTenantByDomain(testData.shop_domain);
+        if (tenant) {
+          testData.tenant_id = tenant.id;
+        }
+      }
 
-      // Build query based on column availability
+      const hasSchedulingColumns = await checkSchedulingColumns();
       const { sql, params } = this._buildInsertQuery(testData, hasSchedulingColumns);
 
       const result = await query(sql, params);

@@ -17,6 +17,7 @@ const {
   getFirstTenantForAccount,
 } = require('../models/account');
 const { getRoleAndStatus } = require('../models/user');
+const { isUserStatusBlocked } = require('../constants');
 
 /**
  * Verify HMAC signature for Shopify requests
@@ -110,9 +111,15 @@ async function authenticateShopify(req, res, next) {
     }
 
     const userStatus = await getRoleAndStatus(shop);
-    if (userStatus?.status === 'locked') {
-      logger.warn('Authentication rejected: user locked', { shop, path: req.path });
-      return res.status(403).json({ success: false, error: 'Account is locked. Contact support.' });
+    if (isUserStatusBlocked(userStatus?.status)) {
+      logger.warn('Authentication rejected: account restricted', {
+        shop,
+        status: userStatus?.status,
+        path: req.path,
+      });
+      return res
+        .status(403)
+        .json({ success: false, error: 'Account is locked or suspended. Contact support.' });
     }
 
     next();
@@ -237,12 +244,15 @@ async function authenticateApiKey(req, res, next) {
     }
 
     const userStatus = await getRoleAndStatus(req.shopDomain);
-    if (userStatus?.status === 'locked') {
-      logger.warn('Authentication rejected: user locked', {
+    if (isUserStatusBlocked(userStatus?.status)) {
+      logger.warn('Authentication rejected: account restricted', {
         shopDomain: req.shopDomain,
+        status: userStatus?.status,
         path: req.path,
       });
-      return res.status(403).json({ success: false, error: 'Account is locked. Contact support.' });
+      return res
+        .status(403)
+        .json({ success: false, error: 'Account is locked or suspended. Contact support.' });
     }
 
     next();
@@ -301,9 +311,11 @@ function tryEmailSessionToken(req, res, next) {
 }
 
 /**
- * Multi-platform auth: impersonation JWT first, then Shopify, then API key
+ * Multi-platform auth: impersonation JWT first, then Shopify, then API key.
+ * Returns a promise from async paths; do not await so that next() hands off
+ * control without the caller continuing after next() (Express middleware chain).
  */
-async function authenticate(req, res, next) {
+function authenticate(req, res, next) {
   if (tryImpersonationToken(req, res, next)) {
     return;
   }
@@ -318,12 +330,10 @@ async function authenticate(req, res, next) {
     req.headers.authorization?.replace(/^Bearer\s+/i, '');
 
   if (shop && isShopifyDomain(shop)) {
-    const result = await authenticateShopify(req, res, next);
-    return result;
+    return authenticateShopify(req, res, next).catch(next);
   }
   if (apiKey) {
-    const result = await authenticateApiKey(req, res, next);
-    return result;
+    return authenticateApiKey(req, res, next).catch(next);
   }
 
   logger.warn('Authentication failed: No valid credentials', {

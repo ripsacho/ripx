@@ -6,10 +6,11 @@
 
 import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Page, Card, DataTable, BlockStack, Text, Checkbox, Banner } from '@shopify/polaris';
+import { Card, DataTable, BlockStack, Text, Checkbox, Banner } from '@shopify/polaris';
 import { apiGet, apiPut } from '../../services';
 import { PageShell } from '../Shared';
 import Toast from '../Toast/Toast';
+import AdminPageLayout from './AdminPageLayout';
 import styles from './Admin.module.css';
 
 const KNOWN_FLAGS = [
@@ -96,12 +97,8 @@ export default function AdminFeatureFlags() {
   ]);
 
   return (
-    <PageShell className={styles.adminPage}>
-      <Page
-        title="Feature flags"
-        subtitle="Global flags stored in key-value store (flag.*). Toggle to enable or disable features."
-        backAction={{ content: 'Admin', url: '/admin' }}
-      >
+    <PageShell className={`${styles.adminPage} ${styles.adminPageWithHero}`}>
+      <AdminPageLayout>
         <BlockStack gap="400">
           <Banner tone="info">
             These flags are stored as key_value_store keys. The app and backend read them to enable
@@ -136,7 +133,7 @@ export default function AdminFeatureFlags() {
             </BlockStack>
           </Card>
         </BlockStack>
-      </Page>
+      </AdminPageLayout>
       {toast.message && (
         <Toast
           message={toast.message}

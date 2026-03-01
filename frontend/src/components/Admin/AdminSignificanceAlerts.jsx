@@ -7,7 +7,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Page,
   Card,
   DataTable,
   Button,
@@ -21,6 +20,7 @@ import { RefreshIcon } from '@shopify/polaris-icons';
 import { apiGet, apiDelete } from '../../services';
 import { PageShell } from '../Shared';
 import Toast from '../Toast/Toast';
+import AdminPageLayout from './AdminPageLayout';
 import styles from './Admin.module.css';
 
 export default function AdminSignificanceAlerts() {
@@ -75,11 +75,8 @@ export default function AdminSignificanceAlerts() {
     </Button>,
   ]);
   return (
-    <PageShell className={styles.adminPage}>
-      <Page
-        title="Significance alerts"
-        subtitle="Tests that reached significance (notification sent). Reset to allow re-trigger."
-        backAction={{ content: 'Admin', url: '/admin' }}
+    <PageShell className={`${styles.adminPage} ${styles.adminPageWithHero}`}>
+      <AdminPageLayout
         primaryAction={{
           content: 'Refresh',
           icon: RefreshIcon,
@@ -120,7 +117,7 @@ export default function AdminSignificanceAlerts() {
             )}
           </BlockStack>
         </Card>
-      </Page>
+      </AdminPageLayout>
       {resetTarget && (
         <Modal
           open

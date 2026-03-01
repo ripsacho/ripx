@@ -15,6 +15,9 @@ export const BREAKPOINTS = {
 /** LocalStorage keys - single source of truth */
 export const STORAGE_KEYS = {
   API_KEY: 'ripx_api_key',
+  EMAIL_TOKEN: 'ripx_email_token', // JWT from magic-link login (standalone user)
+  DOMAIN_KEYS: 'ripx_domain_keys', // JSON: { [domain]: apiKey } when added via POST /api/me/domains
+  ACCOUNT_API_KEY: 'ripx_account_api_key', // API key for email user's account (set when first domain added)
   PREFERENCES: 'ripx_preferences',
   PROFILE: 'ripx_profile',
   ACCOUNT: 'ripx_account',
@@ -26,6 +29,12 @@ export const STORAGE_KEYS = {
 /** Intervals (ms) */
 export const INTERVALS = {
   THEME_CHECK: 60_000, // 1 minute - check for auto/custom theme changes
+  /** Session validation: interval between checks when user is logged in */
+  SESSION_CHECK: 5 * 60 * 1000, // 5 minutes
+  /** Session validation: delay before first check (avoids duplicate with initial /admin/me) */
+  SESSION_CHECK_INITIAL_DELAY: 25 * 1000, // 25 seconds
+  /** Min ms between visibility-triggered session checks (debounce tab focus) */
+  SESSION_CHECK_VISIBILITY_DEBOUNCE: 2000,
 };
 
 /** App metadata */

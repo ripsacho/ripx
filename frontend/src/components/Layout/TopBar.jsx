@@ -19,6 +19,7 @@ import {
 import { NotificationIcon, SettingsIcon, ProfileIcon } from '@shopify/polaris-icons';
 import { getShopDomain, apiGet, apiPut } from '../../services';
 import { ROUTES } from '../../constants';
+import { useAdminMe } from '../../hooks';
 import StoreSwitcher from '../StoreSwitcher/StoreSwitcher';
 import styles from './TopBar.module.css';
 
@@ -74,6 +75,7 @@ function getBreadcrumb(pathname, search = '') {
   if (pathname === ROUTES.NOTIFICATIONS) return { current: 'Notifications' };
   if (pathname === ROUTES.DOCS) return { current: 'Documentation' };
   if (pathname === ROUTES.CONNECT) return { current: 'Connect' };
+  if (pathname === ROUTES.DOMAINS) return { current: 'My domains' };
   if (pathname.startsWith(ROUTES.ADMIN)) {
     if (pathname === ROUTES.ADMIN || pathname === ROUTES.ADMIN_OVERVIEW)
       return { current: 'Admin' };
@@ -95,6 +97,7 @@ function getBreadcrumb(pathname, search = '') {
     ROUTES.NOTIFICATIONS,
     ROUTES.DOCS,
     ROUTES.CONNECT,
+    ROUTES.DOMAINS,
   ];
   const isKnown =
     knownPaths.includes(pathname) ||
@@ -104,6 +107,18 @@ function getBreadcrumb(pathname, search = '') {
   return { current: ROUTE_LABELS[pathname] || 'RipX' };
 }
 
+const LockIcon = () => (
+  <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path
+      d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2z"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 function TopBar({
   sidebarWidth = 280,
   sidebarCollapsed = false,
@@ -112,6 +127,7 @@ function TopBar({
 }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { isAdmin, isLoading } = useAdminMe();
   const [userMenuActive, setUserMenuActive] = useState(false);
   const [settingsMenuActive, setSettingsMenuActive] = useState(false);
   const [notificationsActive, setNotificationsActive] = useState(false);
@@ -279,6 +295,20 @@ function TopBar({
 
       <div className={styles.topBarRight}>
         <StoreSwitcher />
+        {!isLoading && isAdmin && (
+          <Tooltip content="Admin panel" preferredPosition="below">
+            <button
+              type="button"
+              onClick={() => navigate(ROUTES.ADMIN)}
+              aria-label="Open admin panel"
+              className={styles.adminEntryBtn}
+              title="Admin panel"
+            >
+              <LockIcon />
+              <span className={styles.adminEntryLabel}>Admin</span>
+            </button>
+          </Tooltip>
+        )}
         <div className={styles.actionGroup}>
           {isEmbeddedInShopify && (
             <Tooltip content="Open in new tab" preferredPosition="below">

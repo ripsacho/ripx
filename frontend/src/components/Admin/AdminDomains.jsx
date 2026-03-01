@@ -7,7 +7,6 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Page,
   Card,
   DataTable,
   Button,
@@ -23,13 +22,14 @@ import {
   Divider,
   Link,
 } from '@shopify/polaris';
-import { RefreshIcon, ViewIcon } from '@shopify/polaris-icons';
+import { RefreshIcon, ViewIcon, ExternalIcon } from '@shopify/polaris-icons';
 import { useNavigate } from 'react-router-dom';
-import { apiGet, apiPut } from '../../services';
+import { apiGet, apiPut, apiPost } from '../../services';
 import Toast from '../Toast/Toast';
 import { PageShell } from '../Shared';
 import LoadingSkeleton from '../LoadingSkeleton/LoadingSkeleton';
 import { ROUTES } from '../../constants';
+import AdminPageLayout from './AdminPageLayout';
 import styles from './Admin.module.css';
 
 const STATUS_OPTIONS = [
@@ -45,6 +45,7 @@ export default function AdminDomains() {
   const [domainSearch, setDomainSearch] = useState('');
   const [toast, setToast] = useState({ message: null, type: 'success' });
   const [detailDomain, setDetailDomain] = useState(null);
+  const [connectLinkLoading, setConnectLinkLoading] = useState(null); // domain being loaded
 
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['admin', 'domains'],
@@ -101,6 +102,33 @@ export default function AdminDomains() {
   const openDetail = domain => setDetailDomain(domain);
   const closeDetail = () => setDetailDomain(null);
 
+  const handleOpenApp = async (domain, newWindow = true) => {
+    setConnectLinkLoading(domain);
+    try {
+      const res = await apiPost(`/admin/domains/${encodeURIComponent(domain)}/connect-link`);
+      const data = res.data?.data ?? res.data;
+      const url = data?.url;
+      if (url && newWindow) {
+        window.open(url, '_blank', 'noopener,noreferrer');
+        setToast({
+          message: 'Opened app in new window. API key is set automatically.',
+          type: 'success',
+        });
+      } else if (url) {
+        window.location.href = url;
+      } else {
+        setToast({ message: 'Could not get connect link', type: 'error' });
+      }
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.error || err?.message || 'Failed to get connect link',
+        type: 'error',
+      });
+    } finally {
+      setConnectLinkLoading(null);
+    }
+  };
+
   const rows = filteredDomains.map(d => [
     d.domain,
     d.platform,
@@ -120,6 +148,20 @@ export default function AdminDomains() {
         accessibilityLabel="View domain details"
       >
         View
+      </Button>
+      <Button
+        size="slim"
+        icon={ExternalIcon}
+        onClick={() => handleOpenApp(d.domain, true)}
+        loading={connectLinkLoading === d.domain}
+        disabled={d.status === 'suspended'}
+        accessibilityLabel={
+          d.status === 'suspended'
+            ? 'Domain is suspended; unsuspend first to open app'
+            : 'Open app in new window (API key set automatically)'
+        }
+      >
+        Open app
       </Button>
       {d.status === 'suspended' ? (
         <Button
@@ -141,11 +183,8 @@ export default function AdminDomains() {
   ]);
 
   return (
-    <PageShell className={styles.adminPage}>
-      <Page
-        title="Domains"
-        subtitle="Tenant domains and status. View details, suspend or unsuspend access."
-        backAction={{ content: 'Admin', url: '/admin' }}
+    <PageShell className={`${styles.adminPage} ${styles.adminPageWithHero}`}>
+      <AdminPageLayout
         primaryAction={{
           content: 'Refresh',
           icon: RefreshIcon,
@@ -157,8 +196,10 @@ export default function AdminDomains() {
           <BlockStack gap="300">
             <section className={styles.adminMainSection} aria-label="Page context">
               <Text as="p" variant="bodySm" tone="subdued" className={styles.adminPageDescription}>
-                Filter by status or search by domain. Use View for details, or Suspend/Unsuspend to
-                control access.
+                Filter by status or search by domain. Use View for details. Open app opens the main
+                app in a new window with a one-time link (API key set automatically; generates a new
+                key for that account). Disabled for suspended domains. Suspend/Unsuspend to control
+                access.
               </Text>
             </section>
             <div className={styles.adminToolbar}>
@@ -213,7 +254,7 @@ export default function AdminDomains() {
             )}
           </BlockStack>
         </Card>
-      </Page>
+      </AdminPageLayout>
       {detailDomain && (
         <Modal
           open
@@ -233,6 +274,17 @@ export default function AdminDomains() {
             },
           }}
           secondaryActions={[
+            {
+              content: 'Connect app',
+              onAction: () => {
+                handleOpenApp(detailDomain, true);
+              },
+              disabled: domainDetail?.status === 'suspended',
+              helpText:
+                domainDetail?.status === 'suspended'
+                  ? 'Unsuspend domain first'
+                  : 'Opens app in new window; API key is set automatically',
+            },
             {
               content: 'View tests',
               onAction: () => {

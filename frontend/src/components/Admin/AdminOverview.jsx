@@ -5,15 +5,16 @@
  * Uses same MetricCard + grid as Dashboard for consistent UI.
  */
 
-import React from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Page, BlockStack, Text, InlineStack, Button, Badge } from '@shopify/polaris';
+import { BlockStack, Text, Badge } from '@shopify/polaris';
 import { RefreshIcon } from '@shopify/polaris-icons';
 import { apiGet, getShopDomain, getApiKey } from '../../services';
 import { PageShell } from '../Shared';
 import { MetricCard, MetricGrid } from '../Shared';
 import { ROUTES } from '../../constants';
+import AdminPageLayout from './AdminPageLayout';
 import styles from './Admin.module.css';
 
 const STAT_LINKS = {
@@ -27,6 +28,61 @@ const STAT_LINKS = {
 
 export default function AdminOverview() {
   const navigate = useNavigate();
+  const quickActionsRef = useRef(null);
+  const quickActionsScrollRef = useRef({ isDragging: false, startX: 0, startScrollLeft: 0 });
+  const quickActionsDidDragRef = useRef(false);
+
+  const onQuickActionsMouseDown = useCallback(e => {
+    if (!quickActionsRef.current || e.button !== 0) return;
+    if (e.target.closest('a') || e.target.closest('button')) return;
+    quickActionsDidDragRef.current = false;
+    quickActionsScrollRef.current = {
+      isDragging: true,
+      startX: e.clientX,
+      startScrollLeft: quickActionsRef.current.scrollLeft,
+    };
+  }, []);
+
+  const onQuickActionsMouseMove = useCallback(e => {
+    const ref = quickActionsScrollRef.current;
+    if (!ref.isDragging || !quickActionsRef.current) return;
+    quickActionsDidDragRef.current = true;
+    const dx = ref.startX - e.clientX;
+    quickActionsRef.current.scrollLeft = ref.startScrollLeft + dx;
+  }, []);
+
+  const onQuickActionsMouseUp = useCallback(() => {
+    quickActionsScrollRef.current.isDragging = false;
+  }, []);
+
+  useEffect(() => {
+    const onMove = e => {
+      if (quickActionsScrollRef.current.isDragging) onQuickActionsMouseMove(e);
+    };
+    const onUp = () => {
+      if (quickActionsScrollRef.current.isDragging) onQuickActionsMouseUp();
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [onQuickActionsMouseMove, onQuickActionsMouseUp]);
+
+  useEffect(() => {
+    const el = quickActionsRef.current;
+    if (!el) return;
+    const onWheel = e => {
+      if (e.deltaY !== 0) {
+        el.scrollLeft += e.deltaY;
+        e.preventDefault();
+      }
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
   const {
     data: stats,
     isLoading,
@@ -110,11 +166,8 @@ export default function AdminOverview() {
   };
 
   return (
-    <PageShell className={styles.adminPage}>
-      <Page
-        title="Admin overview"
-        subtitle="Platform-wide metrics and quick actions. Click a stat to open the list."
-        backAction={{ content: 'App', url: '/' }}
+    <PageShell className={`${styles.adminPage} ${styles.adminPageWithHero}`}>
+      <AdminPageLayout
         primaryAction={{
           content: 'Refresh',
           icon: RefreshIcon,
@@ -178,35 +231,57 @@ export default function AdminOverview() {
               Quick actions
             </Text>
           </div>
-          <div className={styles.adminSystemRow}>
-            <InlineStack gap="300" wrap blockAlign="center">
+          <div className={styles.adminQuickActionsWrap}>
+            <span className={styles.adminQuickActionsLabel}>Jump to</span>
+            <div
+              ref={quickActionsRef}
+              className={styles.adminQuickActionsList}
+              aria-label="Quick actions (scroll or drag horizontally)"
+              onMouseDown={onQuickActionsMouseDown}
+            >
               {!healthLoading && health && (
-                <Badge tone={health.status === 'ok' ? 'success' : 'critical'}>
-                  System {health.status === 'ok' ? 'OK' : 'Degraded'}
-                  {health.checks?.db && ` · DB ${health.checks.db}`}
-                  {health.checks?.redis &&
-                    health.checks.redis !== 'skipped' &&
-                    ` · Redis ${health.checks.redis}`}
-                </Badge>
+                <span className={styles.adminQuickActionItem}>
+                  <Badge tone={health.status === 'ok' ? 'success' : 'critical'}>
+                    System {health.status === 'ok' ? 'OK' : 'Degraded'}
+                    {health.checks?.db && ` · DB ${health.checks.db}`}
+                    {health.checks?.redis &&
+                      health.checks.redis !== 'skipped' &&
+                      ` · Redis ${health.checks.redis}`}
+                  </Badge>
+                </span>
               )}
-              <a
-                href={healthUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={styles.adminHealthLink}
-              >
-                System health (DB, Redis)
-              </a>
-              <Button variant="plain" onClick={() => navigate(ROUTES.ADMIN_AUDIT)}>
-                Audit log
-              </Button>
-              <Button variant="plain" onClick={handleExportAuditCsv}>
-                Export audit CSV
-              </Button>
-            </InlineStack>
+              <span className={styles.adminQuickActionItem}>
+                <a
+                  href={healthUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={styles.adminQuickActionLink}
+                >
+                  System health
+                </a>
+              </span>
+              <span className={styles.adminQuickActionItem}>
+                <button
+                  type="button"
+                  className={styles.adminQuickActionBtn}
+                  onClick={() => navigate(ROUTES.ADMIN_AUDIT)}
+                >
+                  Audit log
+                </button>
+              </span>
+              <span className={styles.adminQuickActionItem}>
+                <button
+                  type="button"
+                  className={styles.adminQuickActionBtn}
+                  onClick={handleExportAuditCsv}
+                >
+                  Export audit CSV
+                </button>
+              </span>
+            </div>
           </div>
         </BlockStack>
-      </Page>
+      </AdminPageLayout>
     </PageShell>
   );
 }

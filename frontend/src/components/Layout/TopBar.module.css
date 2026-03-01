@@ -102,8 +102,48 @@
 .topBarRight {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.5rem;
   flex-shrink: 0;
+}
+
+/* Admin entry - visible only for admin/superadmin */
+.adminEntryBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid rgba(6, 182, 212, 0.35);
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.08), rgba(139, 92, 246, 0.05));
+  color: var(--futuristic-cyan);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.adminEntryBtn:hover {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.14), rgba(139, 92, 246, 0.08));
+  border-color: rgba(6, 182, 212, 0.5);
+  color: var(--futuristic-cyan);
+}
+
+.adminEntryBtn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.adminEntryLabel {
+  letter-spacing: 0.02em;
+}
+
+[data-theme='dark'] .adminEntryBtn {
+  border-color: rgba(6, 182, 212, 0.4);
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.12), rgba(139, 92, 246, 0.06));
+}
+
+[data-theme='dark'] .adminEntryBtn:hover {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.18), rgba(139, 92, 246, 0.1));
 }
 
 /* Open in new tab button - spacing before store switcher */

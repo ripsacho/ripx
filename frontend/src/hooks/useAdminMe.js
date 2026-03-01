@@ -1,10 +1,13 @@
 /**
- * useAdminMe – check if current user has admin access
- * Calls GET /api/admin/me; if 403/401, user is not admin.
+ * useAdminMe – platform admin identity and permissions (single source of truth from API).
+ *
+ * GET /admin/me returns role and permissions[]. Use can(permission) to gate UI;
+ * backend always enforces. Prefer can(ADMIN_PERMISSIONS.X) over isSuperadmin for clarity.
  */
 
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '../services';
+import { isPlatformAdmin, isSuperadmin } from '../constants/roles';
 
 export function useAdminMe(options = {}) {
   const { data, isLoading, isError, error } = useQuery({
@@ -19,10 +22,23 @@ export function useAdminMe(options = {}) {
     ...options,
   });
 
-  const isAdmin = !isError && !!data?.role;
+  const role = data?.role;
+  const permissions = Array.isArray(data?.permissions) ? data.permissions : [];
+  const isAdmin = !isError && isPlatformAdmin(role);
+  const superadmin = !isError && isSuperadmin(role);
+
+  /** Check if current user has a given permission (from API). Use for UI only; backend enforces. */
+  function can(permission) {
+    return permission && permissions.includes(permission);
+  }
+
   return {
     data,
+    role: role || null,
+    permissions,
+    can,
     isAdmin,
+    isSuperadmin: superadmin,
     isLoading,
     isError,
     error,

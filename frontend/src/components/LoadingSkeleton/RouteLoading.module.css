@@ -1,0 +1,130 @@
+/**
+ * RouteLoading – loading UI for route transitions
+ */
+
+.wrapper {
+  position: relative;
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-primary);
+}
+
+.wrapper.fullScreen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  min-height: 100vh;
+  background: var(--bg-primary);
+}
+
+/* Top progress bar – indeterminate */
+.progressBar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--futuristic-cyan),
+    var(--futuristic-violet),
+    var(--futuristic-cyan)
+  );
+  background-size: 200% 100%;
+  animation: routeLoadingBar 1.4s ease-in-out infinite;
+  transform-origin: left;
+}
+
+@keyframes routeLoadingBar {
+  0% {
+    transform: scaleX(0);
+    transform-origin: left;
+  }
+  45% {
+    transform: scaleX(1);
+    transform-origin: left;
+  }
+  55% {
+    transform: scaleX(1);
+    transform-origin: right;
+  }
+  100% {
+    transform: scaleX(0);
+    transform-origin: right;
+  }
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 2rem;
+}
+
+.logoWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
+  background: linear-gradient(
+    135deg,
+    rgba(6, 182, 212, 0.12) 0%,
+    rgba(139, 92, 246, 0.08) 100%
+  );
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  box-shadow: 0 4px 20px rgba(6, 182, 212, 0.12);
+}
+
+.logo {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 8px rgba(6, 182, 212, 0.25));
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(6, 182, 212, 0.2);
+  border-top-color: var(--futuristic-cyan);
+  border-radius: 50%;
+  animation: routeLoadingSpin 0.85s linear infinite;
+}
+
+@keyframes routeLoadingSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.message {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+
+.fullScreen .message {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+[data-theme='dark'] .logoWrap {
+  background: linear-gradient(
+    135deg,
+    rgba(6, 182, 212, 0.18) 0%,
+    rgba(139, 92, 246, 0.12) 100%
+  );
+  border-color: rgba(6, 182, 212, 0.28);
+}
+
+[data-theme='dark'] .spinner {
+  border-color: rgba(6, 182, 212, 0.25);
+  border-top-color: var(--futuristic-cyan);
+}

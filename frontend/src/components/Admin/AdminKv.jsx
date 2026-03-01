@@ -7,7 +7,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Page,
   Card,
   DataTable,
   Button,
@@ -23,6 +22,7 @@ import { RefreshIcon } from '@shopify/polaris-icons';
 import { apiGet, apiPut, apiDelete } from '../../services';
 import { PageShell } from '../Shared';
 import Toast from '../Toast/Toast';
+import AdminPageLayout from './AdminPageLayout';
 import styles from './Admin.module.css';
 
 export default function AdminKv() {
@@ -114,23 +114,15 @@ export default function AdminKv() {
   ]);
 
   return (
-    <PageShell className={styles.adminPage}>
-      <Page
-        title="Key-value store"
-        subtitle="Feature flags, config (e.g. maintenance message, script_version). List, edit, or delete keys."
-        backAction={{ content: 'Admin', url: '/admin' }}
+    <PageShell className={`${styles.adminPage} ${styles.adminPageWithHero}`}>
+      <AdminPageLayout
         primaryAction={{
           content: 'Refresh',
           icon: RefreshIcon,
           onAction: () => refetch(),
           loading: isFetching,
         }}
-        secondaryActions={[
-          {
-            content: 'Add key',
-            onAction: openEdit,
-          },
-        ]}
+        secondaryActions={[{ content: 'Add key', onAction: openEdit }]}
       >
         <Card>
           <BlockStack gap="300">
@@ -187,7 +179,7 @@ export default function AdminKv() {
             )}
           </BlockStack>
         </Card>
-      </Page>
+      </AdminPageLayout>
 
       {editKey !== null && (
         <Modal

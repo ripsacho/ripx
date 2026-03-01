@@ -6,19 +6,11 @@
 
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import {
-  Page,
-  Card,
-  DataTable,
-  Button,
-  Text,
-  BlockStack,
-  Modal,
-  EmptyState,
-} from '@shopify/polaris';
+import { Card, DataTable, Button, Text, BlockStack, Modal, EmptyState } from '@shopify/polaris';
 import { RefreshIcon } from '@shopify/polaris-icons';
 import { apiGet } from '../../services';
 import { PageShell } from '../Shared';
+import AdminPageLayout from './AdminPageLayout';
 import styles from './Admin.module.css';
 
 export default function AdminAccounts() {
@@ -49,11 +41,8 @@ export default function AdminAccounts() {
     </Button>,
   ]);
   return (
-    <PageShell className={styles.adminPage}>
-      <Page
-        title="Accounts"
-        subtitle="Multi-store accounts (API key–based)."
-        backAction={{ content: 'Admin', url: '/admin' }}
+    <PageShell className={`${styles.adminPage} ${styles.adminPageWithHero}`}>
+      <AdminPageLayout
         primaryAction={{
           content: 'Refresh',
           icon: RefreshIcon,
@@ -87,7 +76,7 @@ export default function AdminAccounts() {
             )}
           </BlockStack>
         </Card>
-      </Page>
+      </AdminPageLayout>
       {detailId && (
         <Modal
           open

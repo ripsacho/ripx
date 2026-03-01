@@ -7,7 +7,6 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Page,
   Card,
   DataTable,
   Text,
@@ -20,6 +19,7 @@ import {
 import { RefreshIcon } from '@shopify/polaris-icons';
 import { apiGet } from '../../services';
 import { PageShell } from '../Shared';
+import AdminPageLayout from './AdminPageLayout';
 import styles from './Admin.module.css';
 
 const HEALTH_OPTIONS = [
@@ -73,11 +73,8 @@ export default function AdminTestHealth() {
     Array.isArray(t.issues) && t.issues.length > 0 ? t.issues.slice(0, 2).join('; ') : '—',
   ]);
   return (
-    <PageShell className={styles.adminPage}>
-      <Page
-        title="Test health"
-        subtitle="Health score and issues per test (sample size, SRM, allocation, duration)."
-        backAction={{ content: 'Admin', url: '/admin' }}
+    <PageShell className={`${styles.adminPage} ${styles.adminPageWithHero}`}>
+      <AdminPageLayout
         primaryAction={{
           content: 'Refresh',
           icon: RefreshIcon,
@@ -127,7 +124,7 @@ export default function AdminTestHealth() {
             )}
           </BlockStack>
         </Card>
-      </Page>
+      </AdminPageLayout>
     </PageShell>
   );
 }

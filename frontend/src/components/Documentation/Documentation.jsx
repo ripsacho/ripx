@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Page, BlockStack, Text, Box, Divider, TextField, Icon, Button } from '@shopify/polaris';
 import {
   BookIcon,
@@ -29,9 +29,12 @@ import {
   SearchIcon,
   ArrowUpIcon,
   ClipboardIcon,
+  HomeIcon,
+  ListBulletedIcon,
 } from '@shopify/polaris-icons';
 import pageShell from '../Shared/PageShell.module.css';
 import styles from './Documentation.module.css';
+import { ROUTES } from '../../constants';
 import {
   CodeBlock,
   StepList,
@@ -1002,7 +1005,10 @@ npm run dev`}
 
 const READING_TIME_MIN = 18;
 
+const QUICK_JUMP_SECTIONS = SECTIONS.slice(0, 9);
+
 function Documentation() {
+  const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -1017,6 +1023,9 @@ function Documentation() {
   const activeCollapsedRef = useRef(null);
   const commandInputRef = useRef(null);
   const commandResultsRef = useRef(null);
+  const quickJumpListRef = useRef(null);
+  const quickJumpScrollRef = useRef({ isDragging: false, startX: 0, startScrollLeft: 0 });
+  const quickJumpDidDragRef = useRef(false);
 
   const filteredSections = useMemo(() => {
     if (!searchQuery.trim()) return SECTIONS;
@@ -1066,6 +1075,68 @@ function Documentation() {
   const scrollToTop = useCallback(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     setActiveSection('overview');
+  }, []);
+
+  const handleQuickJumpMouseDown = useCallback(e => {
+    if (!quickJumpListRef.current || e.button !== 0) return;
+    quickJumpDidDragRef.current = false;
+    quickJumpScrollRef.current = {
+      isDragging: true,
+      startX: e.clientX,
+      startScrollLeft: quickJumpListRef.current.scrollLeft,
+    };
+  }, []);
+
+  const handleQuickJumpMouseMove = useCallback(e => {
+    const ref = quickJumpScrollRef.current;
+    if (!ref.isDragging || !quickJumpListRef.current) return;
+    quickJumpDidDragRef.current = true;
+    const dx = ref.startX - e.clientX;
+    quickJumpListRef.current.scrollLeft = ref.startScrollLeft + dx;
+  }, []);
+
+  const handleQuickJumpMouseUp = useCallback(() => {
+    quickJumpScrollRef.current.isDragging = false;
+  }, []);
+
+  const handleQuickJumpClick = useCallback(
+    (e, id) => {
+      if (quickJumpDidDragRef.current) {
+        e.preventDefault();
+        quickJumpDidDragRef.current = false;
+        return;
+      }
+      scrollToSection(id);
+    },
+    [scrollToSection]
+  );
+
+  useEffect(() => {
+    const onMove = e => {
+      if (quickJumpScrollRef.current.isDragging) handleQuickJumpMouseMove(e);
+    };
+    const onUp = () => {
+      if (quickJumpScrollRef.current.isDragging) handleQuickJumpMouseUp();
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [handleQuickJumpMouseMove, handleQuickJumpMouseUp]);
+
+  useEffect(() => {
+    const el = quickJumpListRef.current;
+    if (!el) return;
+    const onWheel = e => {
+      if (e.deltaY !== 0) {
+        el.scrollLeft += e.deltaY;
+        e.preventDefault();
+      }
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
   }, []);
 
   // Initial hash on mount
@@ -1146,10 +1217,10 @@ function Documentation() {
       entries => {
         const intersecting = entries
           .filter(e => e.isIntersecting)
-          .map(e => ({
-            id: e.target.id?.replace('doc-section-', ''),
-            boundTop: e.boundingClientRect.top,
-          }))
+          .map(e => {
+            const id = e.target.id ? e.target.id.replace('doc-section-', '') : '';
+            return { id, boundTop: e.boundingClientRect.top };
+          })
           .filter(x => x.id);
         if (intersecting.length > 0) {
           const topmost = intersecting.reduce((a, b) => (a.boundTop < b.boundTop ? a : b));
@@ -1269,38 +1340,83 @@ function Documentation() {
         </button>
       )}
       <Page title="" subtitle="">
+        <header className={styles.docsTopBar} aria-label="Documentation header">
+          <span className={styles.docsTopBarTitle}>
+            <span className={styles.docsTopBarTitleIcon}>
+              <Icon source={BookIcon} tone="base" />
+            </span>
+            Documentation
+          </span>
+          <button
+            type="button"
+            onClick={() => navigate(ROUTES.DASHBOARD)}
+            className={styles.docsTopBarMainApp}
+            aria-label="Go to dashboard"
+            title="Back to dashboard"
+          >
+            <span className={styles.docsTopBarMainAppIcon}>
+              <Icon source={HomeIcon} tone="base" />
+            </span>
+            <span className={styles.docsTopBarMainAppLabel}>Dashboard</span>
+          </button>
+        </header>
         <div className={styles.docsHero}>
-          <h1 className={styles.docsHeroTitle}>RipX Documentation</h1>
-          <p className={styles.docsHeroSubtitle}>
-            Enterprise-grade A/B testing for Shopify and standalone sites. Setup, run, and analyze
-            experiments with statistical rigor.
-          </p>
-          <div className={styles.docsHeroMeta}>
-            <span className={styles.docsHeroBadge}>v1.0.0</span>
-            <span className={styles.docsHeroBadge}>8 Test Types</span>
-            <span className={styles.docsHeroBadge}>Multi-Variant</span>
-            <span className={styles.docsHeroBadge}>GA4 & BigQuery</span>
-            <span className={styles.docsHeroBadge}>Heatmap & Funnel</span>
-            <span className={styles.docsHeroBadge}>{READING_TIME_MIN} min read</span>
+          <div className={styles.docsHeroRow}>
+            <div className={styles.docsHeroMain}>
+              <h1 className={styles.docsHeroTitle}>RipX Documentation</h1>
+              <p className={styles.docsHeroSubtitle}>
+                Enterprise-grade A/B testing for Shopify and standalone sites. Setup, run, and
+                analyze experiments with statistical rigor.
+              </p>
+            </div>
+            <div className={styles.docsHeroMeta}>
+              <span className={styles.docsHeroBadge}>v1.0.0</span>
+              <span className={styles.docsHeroBadge}>8 Test Types</span>
+              <span className={styles.docsHeroBadge}>Multi-Variant</span>
+              <span className={styles.docsHeroBadge}>GA4 & BigQuery</span>
+              <span className={styles.docsHeroBadge}>{READING_TIME_MIN} min read</span>
+              <span className={styles.docsHeroHint}>
+                <kbd className={styles.kbd}>⌘K</kbd> / <kbd className={styles.kbd}>Ctrl+K</kbd> to
+                search
+              </span>
+            </div>
           </div>
-          <p className={styles.docsHeroHint}>
-            Press <kbd className={styles.kbd}>⌘K</kbd> or <kbd className={styles.kbd}>Ctrl+K</kbd>{' '}
-            to search and jump
-          </p>
         </div>
 
-        <div className={styles.docsQuickJump}>
-          {SECTIONS.slice(0, 9).map(s => (
-            <button
-              key={s.id}
-              type="button"
-              className={styles.docsQuickJumpBtn}
-              onClick={() => scrollToSection(s.id)}
+        <div className={styles.docsQuickJumpWrap}>
+          <div className={styles.docsQuickJumpHeader}>
+            <span className={styles.docsQuickJumpLabel}>
+              <span className={styles.docsQuickJumpLabelIcon} aria-hidden>
+                <Icon source={ListBulletedIcon} tone="base" />
+              </span>
+              Quick jump
+            </span>
+            <span className={styles.docsQuickJumpHint}>Drag to scroll</span>
+          </div>
+          <div className={styles.docsQuickJumpListOuter}>
+            <ul
+              ref={quickJumpListRef}
+              className={styles.docsQuickJumpList}
+              aria-label="Quick navigation (scroll or drag horizontally)"
+              onMouseDown={handleQuickJumpMouseDown}
             >
-              <Icon source={s.icon} />
-              {s.title}
-            </button>
-          ))}
+              {QUICK_JUMP_SECTIONS.map(s => (
+                <li key={s.id} className={styles.docsQuickJumpItem}>
+                  <button
+                    type="button"
+                    className={`${styles.docsQuickJumpBtn} ${activeSection === s.id ? styles.docsQuickJumpBtnActive : ''}`}
+                    onClick={e => handleQuickJumpClick(e, s.id)}
+                    aria-current={activeSection === s.id ? 'true' : undefined}
+                  >
+                    <span className={styles.docsQuickJumpBtnIcon}>
+                      <Icon source={s.icon} tone="base" />
+                    </span>
+                    <span className={styles.docsQuickJumpBtnText}>{s.title}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
 
         {hoveredSection && drawerPosition && sidebarCollapsed && (

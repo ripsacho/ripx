@@ -6,11 +6,12 @@
 
 import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Page, Card, Button, Text, BlockStack } from '@shopify/polaris';
+import { Card, Button, Text, BlockStack } from '@shopify/polaris';
 import { RefreshIcon } from '@shopify/polaris-icons';
 import { apiGet, apiPost } from '../../services';
 import { PageShell } from '../Shared';
 import Toast from '../Toast/Toast';
+import AdminPageLayout from './AdminPageLayout';
 import styles from './Admin.module.css';
 
 export default function AdminAggregation() {
@@ -45,11 +46,8 @@ export default function AdminAggregation() {
   });
   const lastRun = data?.lastRun ?? null;
   return (
-    <PageShell className={styles.adminPage}>
-      <Page
-        title="Analytics aggregation"
-        subtitle="Daily analytics aggregation (time-series). View last run and trigger manually."
-        backAction={{ content: 'Admin', url: '/admin' }}
+    <PageShell className={`${styles.adminPage} ${styles.adminPageWithHero}`}>
+      <AdminPageLayout
         primaryAction={{
           content: 'Refresh',
           icon: RefreshIcon,
@@ -80,7 +78,7 @@ export default function AdminAggregation() {
             )}
           </BlockStack>
         </Card>
-      </Page>
+      </AdminPageLayout>
       {toast.message && (
         <Toast
           message={toast.message}

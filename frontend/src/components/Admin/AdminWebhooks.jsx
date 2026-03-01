@@ -6,10 +6,11 @@
 
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Page, Card, DataTable, Text, BlockStack, TextField, EmptyState } from '@shopify/polaris';
+import { Card, DataTable, Text, BlockStack, TextField, EmptyState } from '@shopify/polaris';
 import { RefreshIcon } from '@shopify/polaris-icons';
 import { apiGet } from '../../services';
 import { PageShell } from '../Shared';
+import AdminPageLayout from './AdminPageLayout';
 import styles from './Admin.module.css';
 
 export default function AdminWebhooks() {
@@ -31,11 +32,8 @@ export default function AdminWebhooks() {
     w.updatedAt ? new Date(w.updatedAt).toLocaleString() : '—',
   ]);
   return (
-    <PageShell className={styles.adminPage}>
-      <Page
-        title="Outbound webhooks"
-        subtitle="Per-shop webhook URL (masked) and events. Override via Settings in app or admin API."
-        backAction={{ content: 'Admin', url: '/admin' }}
+    <PageShell className={`${styles.adminPage} ${styles.adminPageWithHero}`}>
+      <AdminPageLayout
         primaryAction={{
           content: 'Refresh',
           icon: RefreshIcon,
@@ -76,7 +74,7 @@ export default function AdminWebhooks() {
             )}
           </BlockStack>
         </Card>
-      </Page>
+      </AdminPageLayout>
     </PageShell>
   );
 }

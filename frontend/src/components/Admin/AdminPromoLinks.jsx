@@ -7,7 +7,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Page,
   Card,
   DataTable,
   Button,
@@ -23,6 +22,7 @@ import { RefreshIcon } from '@shopify/polaris-icons';
 import { apiGet, apiPost } from '../../services';
 import { PageShell } from '../Shared';
 import Toast from '../Toast/Toast';
+import AdminPageLayout from './AdminPageLayout';
 import styles from './Admin.module.css';
 
 export default function AdminPromoLinks() {
@@ -107,11 +107,8 @@ export default function AdminPromoLinks() {
   ]);
 
   return (
-    <PageShell className={styles.adminPage}>
-      <Page
-        title="Promo links"
-        subtitle="List and revoke promo links by test or domain. Revoking by domain removes all links for that shop."
-        backAction={{ content: 'Admin', url: '/admin' }}
+    <PageShell className={`${styles.adminPage} ${styles.adminPageWithHero}`}>
+      <AdminPageLayout
         primaryAction={{
           content: 'Refresh',
           icon: RefreshIcon,
@@ -207,7 +204,7 @@ export default function AdminPromoLinks() {
             )}
           </BlockStack>
         </Card>
-      </Page>
+      </AdminPageLayout>
 
       {revokeModal && (
         <Modal

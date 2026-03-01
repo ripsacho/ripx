@@ -7,10 +7,12 @@
 
 import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Page, Card, BlockStack, Text, TextField, Button } from '@shopify/polaris';
+import { Card, BlockStack, Text, TextField, Button } from '@shopify/polaris';
 import { apiGet, apiPut } from '../../services';
 import { PageShell } from '../Shared';
 import Toast from '../Toast/Toast';
+import AdminPageLayout from './AdminPageLayout';
+import styles from './Admin.module.css';
 
 export default function AdminAnnouncementBanner() {
   const queryClient = useQueryClient();
@@ -60,8 +62,8 @@ export default function AdminAnnouncementBanner() {
   const hasValue = (data?.value ?? value).toString().trim() !== '';
 
   return (
-    <PageShell title="Announcement banner" backUrl="/admin">
-      <Page title="Announcement banner" fullWidth>
+    <PageShell className={`${styles.adminPage} ${styles.adminPageWithHero}`}>
+      <AdminPageLayout>
         <BlockStack gap="400">
           <Card>
             <BlockStack gap="400">
@@ -91,7 +93,7 @@ export default function AdminAnnouncementBanner() {
             </BlockStack>
           </Card>
         </BlockStack>
-      </Page>
+      </AdminPageLayout>
       {toast.message && (
         <Toast
           message={toast.message}

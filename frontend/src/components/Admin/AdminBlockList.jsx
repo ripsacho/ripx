@@ -8,7 +8,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Page,
   Card,
   DataTable,
   Button,
@@ -22,6 +21,7 @@ import { RefreshIcon } from '@shopify/polaris-icons';
 import { apiGet, apiPut, apiDelete } from '../../services';
 import { PageShell } from '../Shared';
 import Toast from '../Toast/Toast';
+import AdminPageLayout from './AdminPageLayout';
 import styles from './Admin.module.css';
 
 const BLOCK_PREFIX = 'block_list.';
@@ -105,11 +105,8 @@ export default function AdminBlockList() {
   };
 
   return (
-    <PageShell className={styles.adminPage}>
-      <Page
-        title="Block list"
-        subtitle="Blocked domains get 403 on track and script. Key format: block_list.&lt;domain&gt;."
-        backAction={{ content: 'Admin', url: '/admin' }}
+    <PageShell className={`${styles.adminPage} ${styles.adminPageWithHero}`}>
+      <AdminPageLayout
         primaryAction={{
           content: 'Refresh',
           icon: RefreshIcon,
@@ -150,7 +147,7 @@ export default function AdminBlockList() {
             )}
           </BlockStack>
         </Card>
-      </Page>
+      </AdminPageLayout>
 
       {addOpen && (
         <Modal

@@ -18,6 +18,15 @@ const apiClient = axios.create({
   },
 });
 
+/** Optional ref for React Query client: when set, 403 with requiredPermission invalidates ['admin','me'] so UI refreshes permissions */
+let queryClientRef = null;
+export function setQueryClientForPermissionInvalidation(queryClient) {
+  queryClientRef = queryClient;
+}
+
+/** Guard so we only redirect once when multiple 401s occur (e.g. session check + other requests) */
+let isRedirectingToLogin = false;
+
 // Request interceptor: add correlation ID for distributed tracing
 apiClient.interceptors.request.use(config => {
   if (!config.headers['X-Request-ID']) {
@@ -49,14 +58,31 @@ apiClient.interceptors.response.use(
     }
 
     if (error.response?.status === 401) {
+      if (isRedirectingToLogin) return Promise.reject(error);
       const shopDomain = getShopDomain();
       const apiKey = getApiKey();
       const path = window.location.pathname;
-      if (shopDomain && !apiKey && !path.startsWith('/api/auth')) {
-        window.location.href = `/api/auth?shop=${encodeURIComponent(shopDomain)}`;
-      } else if (apiKey && !path.startsWith('/connect')) {
+      const emailToken = getEmailToken();
+      const onPublicAuthPage =
+        path.startsWith(ROUTES.CONNECT) || path.startsWith(ROUTES.AUTH_CALLBACK);
+      // Email session or API key: clear and send to login (single entry is email)
+      if ((apiKey || emailToken) && !onPublicAuthPage) {
+        isRedirectingToLogin = true;
+        clearAuthStorage();
         window.location.href = ROUTES.CONNECT;
+      } else if (shopDomain && !apiKey && !emailToken && !path.startsWith('/api/auth')) {
+        // Shop in URL but no session: redirect to Shopify OAuth only when not using email login
+        isRedirectingToLogin = true;
+        window.location.href = `/api/auth?shop=${encodeURIComponent(shopDomain)}`;
       }
+    }
+
+    if (
+      error.response?.status === 403 &&
+      error.response?.data?.requiredPermission &&
+      queryClientRef
+    ) {
+      queryClientRef.invalidateQueries({ queryKey: ['admin', 'me'] });
     }
 
     return Promise.reject(error);
@@ -64,7 +90,20 @@ apiClient.interceptors.response.use(
 );
 
 /**
- * Get shop domain from URL or environment
+ * Get value for app credentials: sessionStorage first (tab-scoped, e.g. admin "Open app" window), then localStorage.
+ * Keeps admin panel tab isolated from credentials set in another tab when opening a user's app.
+ */
+function getAppCred(key) {
+  try {
+    return window.sessionStorage?.getItem(key) || window.localStorage?.getItem(key) || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get shop domain from URL or environment.
+ * Reads sessionStorage first so "Open app" window credentials don't leak to admin panel tab.
  */
 export function getShopDomain() {
   const urlParams = new URLSearchParams(window.location.search);
@@ -84,14 +123,14 @@ export function getShopDomain() {
   let storedShop = null;
 
   try {
-    storedShop = window.localStorage.getItem(STORAGE_KEYS.SHOP_DOMAIN);
+    storedShop = getAppCred(STORAGE_KEYS.SHOP_DOMAIN);
   } catch (error) {
     storedShop = null;
   }
 
   let currentStore = null;
   try {
-    currentStore = window.localStorage.getItem(STORAGE_KEYS.CURRENT_STORE);
+    currentStore = getAppCred(STORAGE_KEYS.CURRENT_STORE);
   } catch {
     currentStore = null;
   }
@@ -107,7 +146,9 @@ export function getShopDomain() {
 
   if (resolvedShop) {
     try {
-      if (resolvedShop !== storedShop) {
+      const fromSession = window.sessionStorage?.getItem(STORAGE_KEYS.SHOP_DOMAIN);
+      const fromLocal = window.localStorage?.getItem(STORAGE_KEYS.SHOP_DOMAIN);
+      if (resolvedShop !== fromLocal && !fromSession) {
         window.localStorage.setItem(STORAGE_KEYS.SHOP_DOMAIN, resolvedShop);
       }
     } catch (error) {
@@ -119,15 +160,141 @@ export function getShopDomain() {
 }
 
 /**
- * Get API key for standalone mode (from env or localStorage)
+ * Get API key for standalone mode (env, then sessionStorage, then localStorage).
+ * sessionStorage is used when app is opened via admin "Open app" so the admin panel tab is unaffected.
  */
 export function getApiKey() {
   try {
-    return (
-      import.meta.env.VITE_RIPX_API_KEY || window.localStorage.getItem(STORAGE_KEYS.API_KEY) || null
-    );
+    return import.meta.env.VITE_RIPX_API_KEY || getAppCred(STORAGE_KEYS.API_KEY) || null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Email session (JWT from magic-link login). Used for /api/me/* and domain list.
+ */
+export function getEmailToken() {
+  try {
+    return window.localStorage.getItem(STORAGE_KEYS.EMAIL_TOKEN) || null;
+  } catch {
+    return null;
+  }
+}
+
+export function setEmailToken(token) {
+  try {
+    if (token) {
+      window.localStorage.setItem(STORAGE_KEYS.EMAIL_TOKEN, token);
+    } else {
+      window.localStorage.removeItem(STORAGE_KEYS.EMAIL_TOKEN);
+    }
+  } catch (_) {
+    // ignore storage errors
+  }
+}
+
+/**
+ * Stored API keys per domain (when user adds domain via POST /api/me/domains).
+ * Used by "Open" on domain list. Format: { [domain]: apiKey }.
+ */
+export function getDomainKeys() {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEYS.DOMAIN_KEYS);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function setDomainKey(domain, apiKey) {
+  try {
+    const keys = getDomainKeys();
+    if (apiKey) {
+      keys[domain] = apiKey;
+    } else {
+      delete keys[domain];
+    }
+    window.localStorage.setItem(STORAGE_KEYS.DOMAIN_KEYS, JSON.stringify(keys));
+  } catch (_) {
+    // ignore storage errors
+  }
+}
+
+/** Account API key (returned when email user adds first domain); used for Open. */
+export function getAccountApiKey() {
+  try {
+    return window.localStorage.getItem(STORAGE_KEYS.ACCOUNT_API_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+export function setAccountApiKey(apiKey) {
+  try {
+    if (apiKey) {
+      window.localStorage.setItem(STORAGE_KEYS.ACCOUNT_API_KEY, apiKey);
+    } else {
+      window.localStorage.removeItem(STORAGE_KEYS.ACCOUNT_API_KEY);
+    }
+  } catch (_) {
+    // ignore storage errors
+  }
+}
+
+/**
+ * Clear only store selection (SHOP_DOMAIN, CURRENT_STORE) from both storages.
+ * Use after login when sending user to domain list so no store is pre-selected.
+ */
+export function clearStoreSelection() {
+  try {
+    for (const key of [STORAGE_KEYS.SHOP_DOMAIN, STORAGE_KEYS.CURRENT_STORE]) {
+      window.sessionStorage?.removeItem(key);
+      window.localStorage?.removeItem(key);
+    }
+  } catch (_) {
+    // ignore
+  }
+}
+
+/**
+ * Set current store for this tab; updates both sessionStorage and localStorage
+ * so store switcher works in "Open app" tabs (session-only) and normal tabs.
+ */
+export function setCurrentStore(domain) {
+  const value = typeof domain === 'string' ? domain.trim() : '';
+  if (!value) return;
+  try {
+    for (const storage of [window.sessionStorage, window.localStorage]) {
+      if (storage) {
+        storage.setItem(STORAGE_KEYS.CURRENT_STORE, value);
+        storage.setItem(STORAGE_KEYS.SHOP_DOMAIN, value);
+      }
+    }
+  } catch (_) {
+    // ignore
+  }
+}
+
+/**
+ * Clear all auth-related storage (e.g. on 401 redirect to login).
+ * Clears both sessionStorage and localStorage for app credentials so admin panel and user app stay isolated.
+ */
+export function clearAuthStorage() {
+  try {
+    setEmailToken(null);
+    setAccountApiKey(null);
+    for (const key of [
+      STORAGE_KEYS.API_KEY,
+      STORAGE_KEYS.SHOP_DOMAIN,
+      STORAGE_KEYS.CURRENT_STORE,
+    ]) {
+      window.sessionStorage?.removeItem(key);
+      window.localStorage?.removeItem(key);
+    }
+    window.localStorage?.removeItem(STORAGE_KEYS.DOMAIN_KEYS);
+  } catch (_) {
+    // ignore
   }
 }
 
@@ -136,6 +303,60 @@ export function getApiKey() {
  */
 export function isStandaloneMode() {
   return !!getApiKey();
+}
+
+/**
+ * Check if we have email session (no shop/API key yet)
+ */
+export function hasEmailSession() {
+  return !!getEmailToken();
+}
+
+/**
+ * Has any auth: shop, API key, or email session
+ */
+export function hasCredentials() {
+  return !!getShopDomain() || !!getApiKey() || !!getEmailToken();
+}
+
+/**
+ * Request with Bearer token (for /api/me/* when logged in via email)
+ */
+export function apiMeGet(endpoint, config = {}) {
+  const token = getEmailToken();
+  if (!token) {
+    return Promise.reject(new Error('Email session required'));
+  }
+  const url = `${API_BASE_URL}${endpoint}`;
+  return apiClient({
+    method: 'GET',
+    url,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      ...config.headers,
+    },
+    ...config,
+  });
+}
+
+export function apiMePost(endpoint, data, config = {}) {
+  const token = getEmailToken();
+  if (!token) {
+    return Promise.reject(new Error('Email session required'));
+  }
+  const url = `${API_BASE_URL}${endpoint}`;
+  return apiClient({
+    method: 'POST',
+    url,
+    data: data || {},
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      ...config.headers,
+    },
+    ...config,
+  });
 }
 
 /**
@@ -152,17 +373,27 @@ export function apiRequest(method, endpoint, data = null, config = {}) {
   const apiKey = getApiKey();
   const url = `${API_BASE_URL}${endpoint}`;
 
-  if (!shopDomain && !apiKey) {
+  const emailToken = getEmailToken();
+  const allowedWithoutShopOrKey =
+    emailToken && (endpoint.startsWith('/admin/') || endpoint.startsWith('/me/'));
+  if (!shopDomain && !apiKey && !allowedWithoutShopOrKey) {
     throw new Error('Missing credentials. Open from Shopify Admin or set API key.');
   }
 
   // Extract params and headers from config to avoid conflicts
   const { params: configParams = {}, headers: configHeaders = {}, ...restConfig } = config;
 
+  const useEmailSession =
+    getEmailToken() && (endpoint.startsWith('/admin/') || endpoint.startsWith('/me/'));
+
   const requestConfig = {
     method,
     url,
-    params: shopDomain ? { shop: shopDomain, ...configParams } : configParams,
+    params: useEmailSession
+      ? configParams
+      : shopDomain
+        ? { shop: shopDomain, ...configParams }
+        : configParams,
     headers: {
       'Content-Type': 'application/json',
       ...configHeaders,
@@ -170,19 +401,20 @@ export function apiRequest(method, endpoint, data = null, config = {}) {
     ...restConfig,
   };
 
-  if (apiKey) {
+  if (useEmailSession) {
+    requestConfig.headers['Authorization'] = `Bearer ${getEmailToken()}`;
+  } else if (apiKey) {
     requestConfig.headers['X-RipX-API-Key'] = apiKey;
     const currentStore =
       shopDomain ||
       (typeof window !== 'undefined' &&
-        (window.localStorage?.getItem(STORAGE_KEYS.CURRENT_STORE) ||
-          window.localStorage?.getItem(STORAGE_KEYS.SHOP_DOMAIN)));
+        (getAppCred(STORAGE_KEYS.CURRENT_STORE) || getAppCred(STORAGE_KEYS.SHOP_DOMAIN)));
     if (currentStore) {
       requestConfig.headers['X-RipX-Store'] = currentStore;
     }
   }
 
-  if (shopDomain) {
+  if (!useEmailSession && shopDomain) {
     requestConfig.headers['X-Shopify-Shop-Domain'] = shopDomain;
   }
 

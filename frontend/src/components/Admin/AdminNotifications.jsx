@@ -7,7 +7,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Page,
   Card,
   DataTable,
   Button,
@@ -22,6 +21,7 @@ import { RefreshIcon } from '@shopify/polaris-icons';
 import { apiGet, apiPost, apiDelete } from '../../services';
 import { PageShell } from '../Shared';
 import Toast from '../Toast/Toast';
+import AdminPageLayout from './AdminPageLayout';
 import styles from './Admin.module.css';
 
 const SCOPE_OPTIONS = [
@@ -124,11 +124,8 @@ export default function AdminNotifications() {
   };
 
   return (
-    <PageShell className={styles.adminPage}>
-      <Page
-        title="Notifications"
-        subtitle="System-wide and per-shop notifications. Create announcement (all users) or per domain."
-        backAction={{ content: 'Admin', url: '/admin' }}
+    <PageShell className={`${styles.adminPage} ${styles.adminPageWithHero}`}>
+      <AdminPageLayout
         primaryAction={{
           content: 'Refresh',
           icon: RefreshIcon,
@@ -171,7 +168,7 @@ export default function AdminNotifications() {
             )}
           </BlockStack>
         </Card>
-      </Page>
+      </AdminPageLayout>
 
       {createOpen && (
         <Modal

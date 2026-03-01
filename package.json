@@ -14,6 +14,8 @@
     "build:frontend": "cd frontend && npm run build",
     "start": "node backend/src/app.js",
     "migrate": "cd backend && node migrations/run.js",
+    "migrate:mark-applied": "cd backend && node migrations/mark-applied.js",
+    "ensure-superadmin": "node backend/scripts/ensureSuperAdmin.js",
     "seed:dummy": "node backend/scripts/seed-dummy-data.js",
     "test": "npm run test:backend && npm run test:frontend",
     "test:backend": "cd backend && jest",

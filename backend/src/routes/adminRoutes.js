@@ -10,24 +10,39 @@ const jwt = require('jsonwebtoken');
 const router = express.Router();
 const { query } = require('../utils/database');
 const { authenticate } = require('../middleware/auth');
-const { requireAdmin, getEnvAdminDomains } = require('../middleware/requireAdmin');
+const {
+  requireAdmin,
+  requirePermission,
+  getEnvAdminDomains,
+  getPermissionsForRole,
+} = require('../middleware/requireAdmin');
+const { sensitiveAdminLimiter } = require('../middleware/sensitiveAdminLimiter');
+const { PERMISSIONS } = require('../permissions');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const { sendSuccess } = require('../utils/response');
-const { HTTP_STATUS } = require('../constants');
+const { HTTP_STATUS, PLATFORM_ROLE_VALUES } = require('../constants');
 const {
+  getByDomain,
+  getByEmail,
   getRoleAndStatus,
   setStatus: setUserStatus,
-  setRole: _setUserRole,
-  getProfile,
+  setRole: setUserRole,
 } = require('../models/user');
 const {
   listTenants,
   getTenantByDomain,
   setTenantStatus,
   normalizeDomain,
+  isShopifyDomain,
 } = require('../models/tenant');
 const { getTestByIdForAdmin } = require('../models/test');
-const { listAccounts, getAccountById } = require('../models/account');
+const {
+  listAccounts,
+  getAccountById,
+  regenerateApiKey,
+  createAccount,
+} = require('../models/account');
+const crypto = require('crypto');
 const abTestEngine = require('../services/abTestEngine');
 const auditLogService = require('../services/auditLogService');
 const timeSeriesService = require('../services/timeSeriesService');
@@ -66,15 +81,14 @@ router.get(
           role = 'admin';
         }
       }
-      if (!role && process.env.NODE_ENV === 'development') {
-        role = 'admin';
-      }
     }
+    const permissions = getPermissionsForRole(role);
     return sendSuccess(res, HTTP_STATUS.OK, {
       adminId: req.shopDomain || req.email,
       shopDomain: req.shopDomain || null,
       role,
       status,
+      permissions: role ? permissions : [],
     });
   })
 );
@@ -86,9 +100,12 @@ const IMPERSONATION_TOKEN_EXPIRY_SEC = 15 * 60; // 15 minutes
 /**
  * POST /api/admin/impersonate
  * Issue a short-lived JWT to act as another shop (support debugging). Body: { shop_domain }. Audited.
+ * Requires permission admin:impersonate (superadmin or ADMIN_API_KEY). Stricter rate limit applies.
  */
 router.post(
   '/impersonate',
+  sensitiveAdminLimiter,
+  requirePermission(PERMISSIONS.IMPERSONATE),
   asyncHandler(async (req, res) => {
     const shopDomain =
       normalizeDomain(req.body?.shop_domain) ||
@@ -97,10 +114,8 @@ router.post(
       return res.status(400).json({ success: false, error: 'shop_domain is required' });
     }
     const tenant = await getTenantByDomain(shopDomain);
-    const userRow = await query('SELECT shop_domain FROM users WHERE shop_domain = $1', [
-      shopDomain,
-    ]);
-    if (!tenant && userRow.rows.length === 0) {
+    const user = await getByDomain(shopDomain);
+    if (!tenant && !user) {
       return res.status(404).json({ success: false, error: 'Domain or user not found' });
     }
     const secret = process.env.JWT_SECRET;
@@ -142,33 +157,73 @@ router.get(
 );
 
 /**
+ * GET /api/admin/standalone-users
+ * List all standalone (email) users with optional status filter and pagination.
+ * Query: status=pending|accepted|rejected, limit, offset, q (search email).
+ */
+router.get(
+  '/standalone-users',
+  asyncHandler(async (req, res) => {
+    const { status, limit, offset, q } = req.query;
+    const result = await standaloneUser.listAll({
+      status: status || undefined,
+      limit,
+      offset,
+      q,
+    });
+    return sendSuccess(res, HTTP_STATUS.OK, result);
+  })
+);
+
+/**
  * POST /api/admin/accept-user/:id
- * Accept a pending registration (standalone_users.id).
+ * Accept a pending registration (standalone_users.id). Sends acceptance email and audits.
  */
 router.post(
   '/accept-user/:id',
   asyncHandler(async (req, res) => {
     const id = req.params.id;
+    const userBefore = await standaloneUser.getById(id);
     const accepted = await standaloneUser.accept(id, req.adminId);
     if (!accepted) {
       return res.status(404).json({ success: false, error: 'User not found or not pending' });
     }
+    await standaloneUser.ensureAccountForUser(id);
+    if (userBefore?.email) {
+      const logger = require('../utils/logger');
+      emailService.sendAcceptanceEmail(userBefore.email).catch(err => {
+        logger.error('Acceptance email failed', { error: err.message });
+      });
+    }
+    await auditLogService.logAdminAction(req, {
+      entityType: 'auth',
+      entityId: id,
+      action: 'accept_user',
+      changes: { email: userBefore?.email ? `${userBefore.email.substring(0, 3)}***` : null },
+    });
     return sendSuccess(res, HTTP_STATUS.OK, { message: 'User accepted' });
   })
 );
 
 /**
  * POST /api/admin/reject-user/:id
- * Reject a pending registration.
+ * Reject a pending registration. Audited.
  */
 router.post(
   '/reject-user/:id',
   asyncHandler(async (req, res) => {
     const id = req.params.id;
+    const userBefore = await standaloneUser.getById(id);
     const rejected = await standaloneUser.reject(id, req.adminId);
     if (!rejected) {
       return res.status(404).json({ success: false, error: 'User not found' });
     }
+    await auditLogService.logAdminAction(req, {
+      entityType: 'auth',
+      entityId: id,
+      action: 'reject_user',
+      changes: { email: userBefore?.email ? `${userBefore.email.substring(0, 3)}***` : null },
+    });
     return sendSuccess(res, HTTP_STATUS.OK, { message: 'User rejected' });
   })
 );
@@ -228,6 +283,55 @@ router.get(
 );
 
 /**
+ * GET /api/admin/user-detail-by-email?email=...
+ * User detail by email (for email/standalone list). Returns same shape as /users/:shopDomain including domains.
+ * Separate path to avoid any conflict with /users/:shopDomain.
+ */
+router.get(
+  '/user-detail-by-email',
+  asyncHandler(async (req, res) => {
+    const raw = (req.query.email || '').trim();
+    const email = raw.toLowerCase();
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ success: false, error: 'Valid email required' });
+    }
+    const user = await getByEmail(email);
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+    let domains = [];
+    if (user.account_id) {
+      const domainsRes = await query(
+        `SELECT id, domain, platform, domain_verified_at, created_at
+         FROM tenants WHERE account_id = $1 ORDER BY created_at ASC`,
+        [user.account_id]
+      );
+      domains = domainsRes.rows.map(r => ({
+        id: r.id,
+        domain: r.domain,
+        platform: r.platform || 'standalone',
+        domainType: r.platform === 'shopify' ? 'Shopify' : 'Standalone',
+        verifiedAt: r.domain_verified_at,
+        createdAt: r.created_at,
+      }));
+    }
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      id: email,
+      shopDomain: null,
+      email: user.email,
+      profile: user.profile || {},
+      account: user.account || {},
+      preferences: user.preferences || {},
+      role: user.role,
+      status: user.status || 'active',
+      domains,
+      createdAt: user.created_at,
+      updatedAt: user.updated_at,
+    });
+  })
+);
+
+/**
  * GET /api/admin/users
  * List all users (paginated, optional status and search)
  */
@@ -238,36 +342,35 @@ router.get(
     const limitNum = Math.min(parseInt(limit, 10) || 50, 200);
     const offsetNum = Math.max(0, parseInt(offset, 10) || 0);
 
-    const conditions = [];
+    const conditions = ["t.platform = 'shopify'", 't.account_id = u.account_id'];
     const params = [];
     let idx = 1;
     if (statusFilter) {
-      conditions.push(`COALESCE(status, 'active') = $${idx}`);
+      conditions.push(`COALESCE(u.status, 'active') = $${idx}`);
       params.push(statusFilter);
       idx++;
     }
     if (search && String(search).trim()) {
       const term = `%${String(search).trim().replace(/%/g, '\\%')}%`;
       conditions.push(
-        `(LOWER(shop_domain) LIKE LOWER($${idx}) OR LOWER(profile->>'email') LIKE LOWER($${idx}) OR LOWER(profile->>'firstName') LIKE LOWER($${idx}) OR LOWER(profile->>'lastName') LIKE LOWER($${idx}))`
+        `(LOWER(u.email) LIKE LOWER($${idx}) OR LOWER(t.domain) LIKE LOWER($${idx}) OR LOWER(u.profile->>'firstName') LIKE LOWER($${idx}) OR LOWER(u.profile->>'lastName') LIKE LOWER($${idx}))`
       );
       params.push(term);
       idx++;
     }
-    const where = conditions.length ? ` WHERE ${conditions.join(' AND ')}` : '';
-    const countSql = `SELECT COUNT(*)::int AS c FROM users${where}`;
+    const where = ` WHERE ${conditions.join(' AND ')}`;
+    const countSql = `SELECT COUNT(DISTINCT u.id)::int AS c FROM users u INNER JOIN tenants t ON t.account_id = u.account_id ${where}`;
     const countRes = await query(countSql, params);
     const total = countRes.rows[0]?.c ?? 0;
 
     const sql = `
-      SELECT id, shop_domain, role, COALESCE(status, 'active') AS status,
-             created_at, updated_at,
-             profile->>'email' AS email,
-             profile->>'firstName' AS first_name,
-             profile->>'lastName' AS last_name
-      FROM users
-      ${where}
-      ORDER BY updated_at DESC
+      SELECT DISTINCT ON (u.id) u.id, u.email, u.role, COALESCE(u.status, 'active') AS status,
+             u.created_at, u.updated_at, t.domain AS shop_domain,
+             u.profile->>'firstName' AS first_name, u.profile->>'lastName' AS last_name,
+             (SELECT COUNT(*)::int FROM tenants t2 WHERE t2.account_id = u.account_id) AS domain_count
+      FROM users u
+      INNER JOIN tenants t ON t.account_id = u.account_id ${where}
+      ORDER BY u.id, t.created_at ASC
       LIMIT $${idx} OFFSET $${idx + 1}
     `;
     params.push(limitNum, offsetNum);
@@ -280,6 +383,7 @@ router.get(
       lastName: r.last_name,
       role: r.role,
       status: r.status,
+      domainCount: r.domain_count ?? 0,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     }));
@@ -295,34 +399,37 @@ router.get(
 
 /**
  * GET /api/admin/users/export
- * Export users list as CSV (must be before /users/:shopDomain)
+ * Export users list as CSV (must be before /users/:shopDomain).
+ * Requires permission admin:users:export.
  */
 router.get(
   '/users/export',
+  requirePermission(PERMISSIONS.USERS_EXPORT),
   asyncHandler(async (req, res) => {
     const { status: statusFilter, q: search } = req.query;
-    const conditions = [];
+    const conditions = ["t.platform = 'shopify'", 't.account_id = u.account_id'];
     const params = [];
     let idx = 1;
     if (statusFilter) {
-      conditions.push(`COALESCE(status, 'active') = $${idx}`);
+      conditions.push(`COALESCE(u.status, 'active') = $${idx}`);
       params.push(statusFilter);
       idx++;
     }
     if (search && String(search).trim()) {
       const term = `%${String(search).trim().replace(/%/g, '\\%')}%`;
       conditions.push(
-        `(LOWER(shop_domain) LIKE LOWER($${idx}) OR LOWER(profile->>'email') LIKE LOWER($${idx}) OR LOWER(profile->>'firstName') LIKE LOWER($${idx}) OR LOWER(profile->>'lastName') LIKE LOWER($${idx}))`
+        `(LOWER(u.email) LIKE LOWER($${idx}) OR LOWER(t.domain) LIKE LOWER($${idx}) OR LOWER(u.profile->>'firstName') LIKE LOWER($${idx}) OR LOWER(u.profile->>'lastName') LIKE LOWER($${idx}))`
       );
       params.push(term);
       idx++;
     }
-    const where = conditions.length ? ` WHERE ${conditions.join(' AND ')}` : '';
+    const where = ` WHERE ${conditions.join(' AND ')}`;
     const sql = `
-      SELECT shop_domain, profile->>'email' AS email, profile->>'firstName' AS first_name, profile->>'lastName' AS last_name,
-             role, COALESCE(status, 'active') AS status, created_at, updated_at
-      FROM users ${where}
-      ORDER BY updated_at DESC
+      SELECT DISTINCT ON (u.id) t.domain AS shop_domain, u.email, u.profile->>'firstName' AS first_name, u.profile->>'lastName' AS last_name,
+             u.role, COALESCE(u.status, 'active') AS status, u.created_at, u.updated_at
+      FROM users u
+      INNER JOIN tenants t ON t.account_id = u.account_id ${where}
+      ORDER BY u.id, t.created_at ASC
       LIMIT 10000
     `;
     const result = await query(sql, params);
@@ -357,34 +464,46 @@ router.get(
 
 /**
  * GET /api/admin/users/:shopDomain
- * User detail
+ * User detail including all domains (tenants) for this user's account.
  */
 router.get(
   '/users/:shopDomain',
   asyncHandler(async (req, res) => {
     const shopDomain = normalizeDomain(req.params.shopDomain) || req.params.shopDomain;
-    const profile = await getProfile(shopDomain);
-    const roleStatus = await getRoleAndStatus(shopDomain);
-
-    if (!profile && !roleStatus) {
+    const user = await getByDomain(shopDomain);
+    if (!user) {
       return res.status(404).json({ success: false, error: 'User not found' });
     }
 
-    const sql =
-      "SELECT id, shop_domain, role, COALESCE(status, 'active') AS status, profile, account, preferences, created_at, updated_at FROM users WHERE shop_domain = $1";
-    const result = await query(sql, [shopDomain]);
-    const row = result.rows[0];
+    let domains = [];
+    if (user.account_id) {
+      const domainsRes = await query(
+        `SELECT id, domain, platform, domain_verified_at, created_at
+         FROM tenants WHERE account_id = $1 ORDER BY created_at ASC`,
+        [user.account_id]
+      );
+      domains = domainsRes.rows.map(r => ({
+        id: r.id,
+        domain: r.domain,
+        platform: r.platform || 'standalone',
+        domainType: r.platform === 'shopify' ? 'Shopify' : 'Standalone',
+        verifiedAt: r.domain_verified_at,
+        createdAt: r.created_at,
+      }));
+    }
 
     return sendSuccess(res, HTTP_STATUS.OK, {
-      id: row?.shop_domain,
-      shopDomain: row?.shop_domain,
-      profile: row?.profile || {},
-      account: row?.account || {},
-      preferences: row?.preferences || {},
-      role: row?.role,
-      status: row?.status || 'active',
-      createdAt: row?.created_at,
-      updatedAt: row?.updated_at,
+      id: shopDomain,
+      shopDomain,
+      email: user.email,
+      profile: user.profile || {},
+      account: user.account || {},
+      preferences: user.preferences || {},
+      role: user.role,
+      status: user.status || 'active',
+      domains,
+      createdAt: user.created_at,
+      updatedAt: user.updated_at,
     });
   })
 );
@@ -392,30 +511,47 @@ router.get(
 /**
  * GET /api/admin/users/:shopDomain/export
  * Phase 3: GDPR-style data export for the user (profile, domains, tests metadata). JSON only.
+ * Requires permission admin:users:export.
  */
 router.get(
   '/users/:shopDomain/export',
+  requirePermission(PERMISSIONS.USERS_EXPORT),
   asyncHandler(async (req, res) => {
     const shopDomain = normalizeDomain(req.params.shopDomain) || req.params.shopDomain;
-    const userRow = await query(
-      "SELECT shop_domain, role, COALESCE(status, 'active') AS status, profile, account, preferences, created_at, updated_at FROM users WHERE shop_domain = $1",
-      [shopDomain]
-    );
-    if (userRow.rows.length === 0) {
+    const u = await getByDomain(shopDomain);
+    if (!u) {
       return res.status(404).json({ success: false, error: 'User not found' });
     }
-    const u = userRow.rows[0];
-    const domains = await query(
-      'SELECT domain, platform, created_at FROM tenants WHERE LOWER(TRIM(domain)) = LOWER(TRIM($1))',
-      [shopDomain]
-    );
-    const tests = await query(
-      'SELECT id, name, type, status, created_at, updated_at, started_at, stopped_at FROM tests WHERE LOWER(TRIM(shop_domain)) = LOWER(TRIM($1)) ORDER BY updated_at DESC',
-      [shopDomain]
-    );
+    let domains = [];
+    if (u.account_id) {
+      const domainsRes = await query(
+        'SELECT domain, platform, domain_verified_at, created_at FROM tenants WHERE account_id = $1 ORDER BY created_at ASC',
+        [u.account_id]
+      );
+      domains = domainsRes.rows.map(r => ({
+        domain: r.domain,
+        platform: r.platform,
+        domainType: r.platform === 'shopify' ? 'Shopify' : 'Standalone',
+        verifiedAt: r.domain_verified_at,
+        createdAt: r.created_at,
+      }));
+    }
+    let testsRes = { rows: [] };
+    if (u.account_id) {
+      testsRes = await query(
+        'SELECT id, name, type, status, created_at, updated_at, started_at, stopped_at FROM tests t WHERE t.shop_domain IN (SELECT domain FROM tenants WHERE account_id = $1) ORDER BY t.updated_at DESC',
+        [u.account_id]
+      );
+    } else {
+      testsRes = await query(
+        'SELECT id, name, type, status, created_at, updated_at, started_at, stopped_at FROM tests WHERE LOWER(TRIM(shop_domain)) = LOWER(TRIM($1)) ORDER BY updated_at DESC',
+        [shopDomain]
+      );
+    }
     const payload = {
       exportedAt: new Date().toISOString(),
-      shopDomain: u.shop_domain,
+      shopDomain,
+      email: u.email,
       profile: u.profile || {},
       account: u.account || {},
       preferences: u.preferences || {},
@@ -423,12 +559,8 @@ router.get(
       status: u.status,
       createdAt: u.created_at,
       updatedAt: u.updated_at,
-      domains: domains.rows.map(r => ({
-        domain: r.domain,
-        platform: r.platform,
-        createdAt: r.created_at,
-      })),
-      tests: tests.rows.map(t => ({
+      domains,
+      tests: testsRes.rows.map(t => ({
         id: t.id,
         name: t.name,
         type: t.type,
@@ -451,9 +583,11 @@ router.get(
 
 /**
  * PUT /api/admin/users/:shopDomain/lock
+ * Requires permission admin:users:lock.
  */
 router.put(
   '/users/:shopDomain/lock',
+  requirePermission(PERMISSIONS.USERS_LOCK),
   asyncHandler(async (req, res) => {
     const shopDomain = normalizeDomain(req.params.shopDomain) || req.params.shopDomain;
     const ok = await setUserStatus(shopDomain, 'locked');
@@ -474,9 +608,11 @@ router.put(
 
 /**
  * PUT /api/admin/users/:shopDomain/unlock
+ * Requires permission admin:users:lock.
  */
 router.put(
   '/users/:shopDomain/unlock',
+  requirePermission(PERMISSIONS.USERS_LOCK),
   asyncHandler(async (req, res) => {
     const shopDomain = normalizeDomain(req.params.shopDomain) || req.params.shopDomain;
     const ok = await setUserStatus(shopDomain, 'active');
@@ -498,21 +634,22 @@ router.put(
 /**
  * PUT /api/admin/users/:shopDomain/role
  * Body: { role: 'admin' | 'superadmin' | null }
+ * Requires permission admin:users:set_role (superadmin or ADMIN_API_KEY). Stricter rate limit applies.
  */
 router.put(
   '/users/:shopDomain/role',
+  sensitiveAdminLimiter,
+  requirePermission(PERMISSIONS.USERS_SET_ROLE),
   asyncHandler(async (req, res) => {
     const shopDomain = normalizeDomain(req.params.shopDomain) || req.params.shopDomain;
     const { role } = req.body || {};
     const newRole = role === null || role === '' ? null : role;
-    if (newRole !== null && !['admin', 'superadmin'].includes(newRole)) {
+    if (newRole !== null && !PLATFORM_ROLE_VALUES.includes(newRole)) {
       return res.status(400).json({ success: false, error: 'Invalid role' });
     }
 
-    const sql =
-      'UPDATE users SET role = $1, updated_at = NOW() WHERE shop_domain = $2 RETURNING shop_domain';
-    const result = await query(sql, [newRole, shopDomain]);
-    if (result.rows.length === 0) {
+    const updated = await setUserRole(shopDomain, newRole);
+    if (!updated) {
       return res.status(404).json({ success: false, error: 'User not found' });
     }
 
@@ -671,6 +808,100 @@ router.put(
 );
 
 /**
+ * POST /api/admin/domains/:domain/connect-link
+ * Create a one-time link that opens the app with API key pre-set (no paste required).
+ * Rotates the account API key and returns a URL; when opened, the app exchanges the token for the key and redirects to dashboard.
+ */
+router.post(
+  '/domains/:domain/connect-link',
+  asyncHandler(async (req, res) => {
+    const domain = normalizeDomain(req.params.domain) || req.params.domain;
+    const tenant = await getTenantByDomain(domain);
+    if (!tenant) {
+      return res.status(404).json({ success: false, error: 'Domain not found' });
+    }
+    if ((tenant.status || 'active') === 'suspended') {
+      return res.status(400).json({
+        success: false,
+        error: 'Domain is suspended. Unsuspend the domain first to open the app.',
+      });
+    }
+
+    const baseUrl = (process.env.FRONTEND_URL || process.env.APP_URL || '').replace(/\/$/, '');
+    if (!baseUrl || !baseUrl.startsWith('http')) {
+      return res.status(500).json({
+        success: false,
+        error:
+          'Server misconfiguration: set FRONTEND_URL or APP_URL to the app base URL (e.g. https://app.example.com).',
+      });
+    }
+
+    // Shopify domain: return Shopify OAuth URL so the user authenticates with the store
+    const isShopify = tenant.platform === 'shopify' || isShopifyDomain(tenant.domain || '');
+    if (isShopify) {
+      const url = `${baseUrl}/api/auth?shop=${encodeURIComponent(tenant.domain)}`;
+      await auditLogService.logAdminAction(req, {
+        entityType: 'tenant',
+        entityId: domain,
+        action: 'admin_connect_link',
+        changes: { domain: tenant.domain, type: 'shopify_auth' },
+      });
+      return sendSuccess(res, HTTP_STATUS.OK, { url, expiresIn: null, type: 'shopify_auth' });
+    }
+
+    let apiKey;
+
+    if (tenant.account_id) {
+      apiKey = await regenerateApiKey(tenant.account_id);
+    } else {
+      // Tenant has no account (e.g. legacy Shopify tenant): create account and link tenant
+      const { account: newAccount, apiKey: newKey } = await createAccount(
+        `Account for ${tenant.domain}`
+      );
+      if (!newAccount?.id || !newKey) {
+        return res
+          .status(500)
+          .json({ success: false, error: 'Could not create account for domain' });
+      }
+      const updateResult = await query(
+        'UPDATE tenants SET account_id = $1, updated_at = NOW() WHERE id = $2 RETURNING id',
+        [newAccount.id, tenant.id]
+      );
+      if (updateResult.rowCount === 0) {
+        return res.status(500).json({ success: false, error: 'Could not link domain to account' });
+      }
+      apiKey = newKey;
+    }
+
+    if (!apiKey) {
+      return res.status(500).json({ success: false, error: 'Could not generate connect link' });
+    }
+    const token = crypto.randomUUID();
+    const payload = {
+      apiKey,
+      domain: tenant.domain,
+      expiresAt: Date.now() + 5 * 60 * 1000,
+    };
+    const kvKey = `connect_${token}`;
+    await query(
+      `INSERT INTO key_value_store (key, value, updated_at) VALUES ($1, $2, NOW())
+       ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()`,
+      [kvKey, JSON.stringify(payload)]
+    );
+    const url = `${baseUrl}/?connect_token=${encodeURIComponent(token)}`;
+
+    await auditLogService.logAdminAction(req, {
+      entityType: 'tenant',
+      entityId: domain,
+      action: 'admin_connect_link',
+      changes: { domain: tenant.domain },
+    });
+
+    return sendSuccess(res, HTTP_STATUS.OK, { url, expiresIn: 300 });
+  })
+);
+
+/**
  * GET /api/admin/tests
  * List all tests (paginated, filterable)
  */
@@ -794,9 +1025,19 @@ router.put(
 router.get(
   '/audit-log/export',
   asyncHandler(async (req, res) => {
-    const { actor_id: actorId, shop_domain: shopDomain, limit = 5000 } = req.query;
+    const {
+      actor_id: actorId,
+      shop_domain: shopDomain,
+      tenant_id: tenantId,
+      limit = 5000,
+    } = req.query;
+    if (tenantId && !validators.isValidUUID(tenantId)) {
+      return res
+        .status(400)
+        .json({ success: false, error: 'Invalid tenant_id (must be a valid UUID)' });
+    }
     let sql = `
-      SELECT id, shop_domain, entity_type, entity_id, action, user_id,
+      SELECT id, shop_domain, tenant_id, entity_type, entity_id, action, user_id,
              actor_type, actor_id, ip_address, changes, created_at
       FROM audit_log
       WHERE 1=1
@@ -813,6 +1054,11 @@ router.get(
       params.push(shopDomain);
       idx++;
     }
+    if (tenantId) {
+      sql += ` AND tenant_id = $${idx}`;
+      params.push(tenantId);
+      idx++;
+    }
     sql += ` ORDER BY created_at DESC LIMIT $${idx}`;
     params.push(Math.min(parseInt(limit, 10) || 5000, 10000));
 
@@ -820,6 +1066,7 @@ router.get(
     const headers = [
       'created_at',
       'shop_domain',
+      'tenant_id',
       'entity_type',
       'entity_id',
       'action',
@@ -852,7 +1099,7 @@ router.get(
 
 /**
  * GET /api/admin/audit-log
- * List admin and tenant audit entries (optional filters: entity_type, shop_domain, actor_id)
+ * List admin and tenant audit entries (optional filters: entity_type, shop_domain, tenant_id, actor_id)
  */
 router.get(
   '/audit-log',
@@ -860,12 +1107,18 @@ router.get(
     const {
       actor_id: actorId,
       shop_domain: shopDomain,
+      tenant_id: tenantId,
       entity_type: entityType,
       limit = 100,
       offset = 0,
     } = req.query;
+    if (tenantId && !validators.isValidUUID(tenantId)) {
+      return res
+        .status(400)
+        .json({ success: false, error: 'Invalid tenant_id (must be a valid UUID)' });
+    }
     let sql = `
-      SELECT id, shop_domain, entity_type, entity_id, action, user_id,
+      SELECT id, shop_domain, tenant_id, entity_type, entity_id, action, user_id,
              actor_type, actor_id, ip_address, changes, created_at
       FROM audit_log
       WHERE 1=1
@@ -882,18 +1135,26 @@ router.get(
       params.push(shopDomain);
       idx++;
     }
+    if (tenantId) {
+      sql += ` AND tenant_id = $${idx}`;
+      params.push(tenantId);
+      idx++;
+    }
     if (entityType && String(entityType).trim()) {
       sql += ` AND entity_type = $${idx}`;
       params.push(String(entityType).trim());
       idx++;
     }
+    const limitNum = Math.min(Math.max(1, parseInt(limit, 10) || 100), 500);
+    const offsetNum = Math.max(0, parseInt(offset, 10) || 0);
     sql += ` ORDER BY created_at DESC LIMIT $${idx} OFFSET $${idx + 1}`;
-    params.push(parseInt(limit, 10) || 100, parseInt(offset, 10) || 0);
+    params.push(limitNum, offsetNum);
 
     const result = await query(sql, params);
     const list = result.rows.map(r => ({
       id: r.id,
       shopDomain: r.shop_domain,
+      tenantId: r.tenant_id,
       entityType: r.entity_type,
       entityId: r.entity_id,
       action: r.action,
@@ -905,8 +1166,6 @@ router.get(
       createdAt: r.created_at,
     }));
 
-    const limitNum = parseInt(limit, 10) || 100;
-    const offsetNum = parseInt(offset, 10) || 0;
     let countSql = 'SELECT COUNT(*)::int AS c FROM audit_log WHERE 1=1';
     const countParams = [];
     let ci = 1;
@@ -918,6 +1177,11 @@ router.get(
     if (shopDomain) {
       countSql += ` AND shop_domain = $${ci}`;
       countParams.push(shopDomain);
+      ci++;
+    }
+    if (tenantId) {
+      countSql += ` AND tenant_id = $${ci}`;
+      countParams.push(tenantId);
       ci++;
     }
     if (entityType && String(entityType).trim()) {

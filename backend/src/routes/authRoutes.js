@@ -12,10 +12,16 @@ const { upsertShopSession } = require('../models/shopSession');
 const { upsertShopifyTenant } = require('../models/tenant');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const emailVerificationService = require('../services/emailVerificationService');
+const loginOtpService = require('../services/loginOtpService');
+const userModel = require('../models/user');
 const standaloneUser = require('../models/standaloneUser');
+const emailService = require('../services/emailService');
+const auditLogService = require('../services/auditLogService');
+const { isUserStatusBlocked, isUserStatusAllowedForSession } = require('../constants');
 const logger = require('../utils/logger');
 
 const router = express.Router();
+const { query } = require('../utils/database');
 
 const EMAIL_SESSION_EXPIRY_DAYS = 30;
 const EMAIL_SESSION_EXPIRY_HOURS = 24;
@@ -267,7 +273,7 @@ router.post(
     if (!emailVerificationService.isValidEmail(email)) {
       return res.status(400).json({ success: false, error: 'Valid email is required' });
     }
-    const existing = await standaloneUser.getByEmail(email);
+    const existing = await userModel.getByEmail(email);
     if (existing && existing.status === 'accepted') {
       return res.status(400).json({ success: false, error: 'Account already exists. Use login.' });
     }
@@ -284,6 +290,10 @@ router.post(
     const baseUrl = (process.env.APP_URL || '').replace(/\/$/, '');
     const link = baseUrl + '/api/auth/confirm-email?token=' + encodeURIComponent(created.token);
     await emailVerificationService.sendVerificationEmail(email, link, 'confirm_registration');
+    auditLogService.logAuthAction(req, {
+      action: 'register',
+      actorId: `${(email || '').substring(0, 3)}***`,
+    });
     res.json({
       success: true,
       message:
@@ -295,33 +305,50 @@ router.post(
 /**
  * GET /api/auth/confirm-email?token=...
  * Confirm email from registration. Sets email_verified_at; user still needs admin acceptance.
+ * Redirects to frontend /auth/confirm-result with status=success|error for a proper UI.
  */
 router.get(
   '/confirm-email',
   asyncHandler(async (req, res) => {
     const token = req.query?.token;
+    const frontendUrl = (process.env.FRONTEND_URL || process.env.APP_URL || '').replace(/\/$/, '');
+    const confirmResultPath = '/auth/confirm-result';
+
+    const redirectToResult = (status, message) => {
+      if (frontendUrl) {
+        const params = new URLSearchParams({ status });
+        if (message) {
+          params.set('message', message);
+        }
+        return res.redirect(302, `${frontendUrl}${confirmResultPath}?${params.toString()}`);
+      }
+      return res.status(status === 'success' ? 200 : 400).json({
+        success: status === 'success',
+        message:
+          message || (status === 'success' ? 'Email confirmed.' : 'Invalid or expired link.'),
+      });
+    };
+
     if (!token) {
-      return res.status(400).json({ success: false, error: 'Token is required' });
+      return redirectToResult('error', 'Token is required');
     }
     const payload = await emailVerificationService.consumeToken(token);
     if (!payload || payload.purpose !== 'confirm_registration') {
-      return res
-        .status(400)
-        .json({ success: false, error: 'Invalid or expired confirmation link' });
+      return redirectToResult('error', 'Invalid or expired confirmation link');
     }
     await standaloneUser.setEmailVerified(payload.email);
-    res.json({
-      success: true,
-      message:
-        'Email confirmed. Your account is pending approval. You will be able to sign in once an administrator accepts your registration.',
+    auditLogService.logAuthAction(req, {
+      action: 'confirm_email',
+      actorId: `${(payload.email || '').substring(0, 3)}***`,
     });
+    return redirectToResult('success', 'Email confirmed. Your account is pending approval.');
   })
 );
 
 /**
  * POST /api/auth/send-login-link
- * Request a magic-link email for passwordless login (standalone / re-verify).
- * Body: { email }. Rate-limit in production (e.g. per email/IP).
+ * Accepted users (including bootstrap super admin): 6-digit OTP (codes only).
+ * Other admins in RIPX_ADMIN_EMAIL (not yet in DB as accepted): magic link.
  */
 router.post(
   '/send-login-link',
@@ -332,38 +359,164 @@ router.post(
       return res.status(400).json({ success: false, error: 'Valid email is required' });
     }
     const normalizedEmail = (email || '').trim().toLowerCase();
+    const user = await userModel.getByEmail(normalizedEmail);
+
+    if (user?.status === 'accepted') {
+      // Accepted user (including bootstrap super admin): always use 6-digit OTP (codes only)
+      const otpResult = await loginOtpService.createCode(normalizedEmail);
+      if (otpResult?.rateLimited) {
+        return res.status(429).json({
+          success: false,
+          error: `Too many code requests. Try again in ${otpResult.retryAfterMinutes} minutes.`,
+          retryAfterMinutes: otpResult.retryAfterMinutes,
+        });
+      }
+      if (!otpResult?.code) {
+        return res.status(500).json({ success: false, error: 'Could not create login code' });
+      }
+      const stub = process.env.RIPX_EMAIL_VERIFICATION_STUB === 'true';
+      if (!stub && emailService.isConfigured()) {
+        await emailService.sendLoginCode(normalizedEmail, otpResult.code);
+      } else {
+        logger.info('Login OTP (stub)', {
+          email: normalizedEmail?.substring(0, 5) + '…',
+          code: otpResult.code,
+        });
+      }
+      auditLogService.logAuthAction(req, { action: 'login_otp_sent' });
+      return res.json({
+        success: true,
+        method: 'otp',
+        message: 'Check your email for a 6-digit code. It expires in 1 minute.',
+        expiresInSeconds: 60,
+      });
+    }
+
+    if (user?.status === 'rejected') {
+      return res
+        .status(403)
+        .json({ success: false, error: 'Your registration was rejected. Contact support.' });
+    }
+    if (user?.status === 'pending') {
+      return res.status(403).json({
+        success: false,
+        error:
+          'Your account is pending approval. You will receive an email when an administrator accepts your registration.',
+      });
+    }
+    if (!user && isAdminEmail(normalizedEmail)) {
+      // In RIPX_ADMIN_EMAIL but no DB row yet: magic link
+      const created = await emailVerificationService.createToken(normalizedEmail, 'login');
+      if (!created) {
+        return res
+          .status(500)
+          .json({ success: false, error: 'Could not create verification link' });
+      }
+      const frontendUrl = (process.env.FRONTEND_URL || process.env.APP_URL || '').replace(
+        /\/$/,
+        ''
+      );
+      let link = frontendUrl + '/auth/callback?token=' + encodeURIComponent(created.token);
+      if (rememberMe) {
+        link += '&remember_me=1';
+      }
+      await emailVerificationService.sendVerificationEmail(normalizedEmail, link, 'login');
+      auditLogService.logAuthAction(req, { action: 'login_link_sent' });
+      return res.json({
+        success: true,
+        message: 'If an account exists for this email, you will receive a login link shortly.',
+      });
+    }
+
+    if (!user) {
+      return res.status(400).json({ success: false, error: 'No account found. Register first.' });
+    }
+
+    return res
+      .status(403)
+      .json({ success: false, error: 'Your account is not approved. Contact support.' });
+  })
+);
+
+/**
+ * POST /api/auth/verify-login-code
+ * Body: { email, code }. Verify 6-digit OTP and issue session JWT for accepted users.
+ */
+router.post(
+  '/verify-login-code',
+  asyncHandler(async (req, res) => {
+    const email = req.body?.email;
+    const code = req.body?.code;
+    if (!emailVerificationService.isValidEmail(email)) {
+      return res.status(400).json({ success: false, error: 'Valid email is required' });
+    }
+    const normalizedEmail = (email || '').trim().toLowerCase();
+    const payload = await loginOtpService.consumeCode(normalizedEmail, code);
+    if (!payload) {
+      return res
+        .status(400)
+        .json({ success: false, error: 'Invalid or expired code. Request a new code.' });
+    }
     const isAdmin = isAdminEmail(normalizedEmail);
     if (!isAdmin) {
-      const user = await standaloneUser.getByEmail(normalizedEmail);
+      const user = await userModel.getByEmail(normalizedEmail);
       if (!user) {
-        return res.status(400).json({ success: false, error: 'No account found. Register first.' });
-      }
-      if (user.status === 'rejected') {
+        auditLogService.logAuthAction(req, {
+          action: 'login_rejected',
+          actorId: normalizedEmail,
+          changes: { reason: 'account_not_found' },
+        });
         return res
           .status(403)
-          .json({ success: false, error: 'Your registration was rejected. Contact support.' });
+          .json({ success: false, error: 'Account not found. Contact support.' });
       }
-      if (user.status === 'pending') {
+      if (isUserStatusBlocked(user.status)) {
+        auditLogService.logAuthAction(req, {
+          action: 'login_rejected',
+          actorId: normalizedEmail,
+          changes: { reason: 'account_locked_or_suspended', status: user.status },
+        });
         return res.status(403).json({
           success: false,
-          error:
-            'Your account is pending approval. You will receive an email when an administrator accepts your registration.',
+          error: 'Account is locked or suspended. Contact support.',
+        });
+      }
+      if (!isUserStatusAllowedForSession(user.status)) {
+        auditLogService.logAuthAction(req, {
+          action: 'login_rejected',
+          actorId: normalizedEmail,
+          changes: { reason: 'account_not_approved', status: user.status },
+        });
+        return res.status(403).json({
+          success: false,
+          error: 'Your account is not yet approved. Contact an administrator.',
         });
       }
     }
-    const created = await emailVerificationService.createToken(normalizedEmail, 'login');
-    if (!created) {
-      return res.status(500).json({ success: false, error: 'Could not create verification link' });
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      logger.error('JWT_SECRET missing for email session');
+      return res.status(500).json({ success: false, error: 'Server configuration error' });
     }
-    const baseUrl = (process.env.APP_URL || '').replace(/\/$/, '');
-    let link = baseUrl + '/api/auth/verify-email?token=' + encodeURIComponent(created.token);
-    if (rememberMe) {
-      link += '&remember_me=1';
-    }
-    await emailVerificationService.sendVerificationEmail(normalizedEmail, link, 'login');
+    const rememberMe = req.body?.remember_me === true || req.body?.remember_me === 'true';
+    const expiresIn = rememberMe
+      ? EMAIL_SESSION_EXPIRY_DAYS + 'd'
+      : EMAIL_SESSION_EXPIRY_HOURS + 'h';
+    const jwtPayload = {
+      ripxtype: 'email_session',
+      email: payload.email,
+      purpose: 'login',
+    };
+    const sessionToken = jwt.sign(jwtPayload, secret, {
+      algorithm: 'HS256',
+      expiresIn,
+    });
+    auditLogService.logAuthAction(req, { action: 'login_success', actorId: payload.email });
     res.json({
       success: true,
-      message: 'If an account exists for this email, you will receive a login link shortly.',
+      token: sessionToken,
+      expiresIn,
+      email: payload.email,
     });
   })
 );
@@ -392,8 +545,34 @@ router.get(
     const normalizedEmail = (payload.email || '').trim().toLowerCase();
     const isAdmin = isAdminEmail(normalizedEmail);
     if (!isAdmin) {
-      const user = await standaloneUser.getByEmail(normalizedEmail);
-      if (!user || user.status !== 'accepted') {
+      const user = await userModel.getByEmail(normalizedEmail);
+      if (!user) {
+        auditLogService.logAuthAction(req, {
+          action: 'login_rejected',
+          actorId: normalizedEmail,
+          changes: { reason: 'account_not_found' },
+        });
+        return res
+          .status(403)
+          .json({ success: false, error: 'Account not found. Contact support.' });
+      }
+      if (isUserStatusBlocked(user.status)) {
+        auditLogService.logAuthAction(req, {
+          action: 'login_rejected',
+          actorId: normalizedEmail,
+          changes: { reason: 'account_locked_or_suspended', status: user.status },
+        });
+        return res.status(403).json({
+          success: false,
+          error: 'Account is locked or suspended. Contact support.',
+        });
+      }
+      if (!isUserStatusAllowedForSession(user.status)) {
+        auditLogService.logAuthAction(req, {
+          action: 'login_rejected',
+          actorId: normalizedEmail,
+          changes: { reason: 'account_not_approved', status: user.status },
+        });
         return res.status(403).json({
           success: false,
           error: 'Your account is not yet approved. Contact an administrator.',
@@ -427,11 +606,49 @@ router.get(
       return res.redirect(url.toString());
     }
 
+    auditLogService.logAuthAction(req, { action: 'login_success', actorId: normalizedEmail });
     res.json({
       success: true,
       token: sessionToken,
       expiresIn,
       email: normalizedEmail,
+    });
+  })
+);
+
+/**
+ * POST /api/auth/connect-token
+ * Exchange a one-time connect token (from admin connect-link) for apiKey and domain.
+ * Public; token is single-use and short-lived.
+ */
+router.post(
+  '/connect-token',
+  asyncHandler(async (req, res) => {
+    const token = (req.body?.connect_token || req.query?.connect_token || '').trim();
+    if (!token || !/^[0-9a-f-]{36}$/i.test(token)) {
+      return res.status(400).json({ success: false, error: 'Invalid or missing connect token' });
+    }
+    const kvKey = `connect_${token}`;
+    const result = await query('SELECT value FROM key_value_store WHERE key = $1', [kvKey]);
+    const row = result.rows[0];
+    if (!row || !row.value) {
+      return res.status(400).json({ success: false, error: 'Token not found or already used' });
+    }
+    let payload;
+    try {
+      payload = JSON.parse(row.value);
+    } catch {
+      return res.status(400).json({ success: false, error: 'Invalid token data' });
+    }
+    if (payload.expiresAt && Date.now() > payload.expiresAt) {
+      await query('DELETE FROM key_value_store WHERE key = $1', [kvKey]);
+      return res.status(400).json({ success: false, error: 'Token expired' });
+    }
+    await query('DELETE FROM key_value_store WHERE key = $1', [kvKey]);
+    res.json({
+      success: true,
+      apiKey: payload.apiKey,
+      domain: payload.domain,
     });
   })
 );

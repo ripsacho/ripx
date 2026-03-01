@@ -7,7 +7,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Page,
   Card,
   DataTable,
   Button,
@@ -22,6 +21,7 @@ import { RefreshIcon } from '@shopify/polaris-icons';
 import { apiGet, apiDelete, unwrapData } from '../../services';
 import { PageShell } from '../Shared';
 import Toast from '../Toast/Toast';
+import AdminPageLayout from './AdminPageLayout';
 import styles from './Admin.module.css';
 
 export default function AdminClientErrors() {
@@ -77,11 +77,8 @@ export default function AdminClientErrors() {
   ]);
 
   return (
-    <PageShell className={styles.adminPage}>
-      <Page
-        title="Client errors"
-        subtitle="Storefront errors reported via POST /api/track/client-error. Dismiss when acknowledged."
-        backAction={{ content: 'Admin', url: '/admin' }}
+    <PageShell className={`${styles.adminPage} ${styles.adminPageWithHero}`}>
+      <AdminPageLayout
         primaryAction={{
           content: 'Refresh',
           icon: RefreshIcon,
@@ -122,7 +119,7 @@ export default function AdminClientErrors() {
             )}
           </BlockStack>
         </Card>
-      </Page>
+      </AdminPageLayout>
       {detail && (
         <Modal open onClose={() => setDetail(null)} title="Client error details" size="large">
           <Modal.Section>

@@ -1,1 +1,0 @@
-import{j as r}from"./query-vendor-Dh6f5-op.js";import"./polaris-vendor-BqgHOgyC.js";function s({children:s,className:e=""}){return r.jsx("div",{className:`grid-responsive ${e}`.trim(),children:s})}export{s as M};

@@ -1,0 +1,903 @@
+/* My Domains page – smart layout, top bar, hero, cards */
+
+.domainsPage {
+  --domains-card-radius: 16px;
+  --domains-card-border: 1px solid rgba(6, 182, 212, 0.14);
+  min-height: 100vh;
+  background: var(--bg-primary);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Hide default Page header only (not first child – when title is empty, first child can be content) */
+.domainsPage :global(.Polaris-Page__Header) {
+  display: none !important;
+}
+
+.domainsPage :global(.Polaris-Page__Content) {
+  padding-top: 0;
+  margin-top: 0;
+}
+
+/* Empty state: Page and content grow to fill viewport so message can be centered */
+.domainsPageEmpty :global(.Polaris-Page) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.domainsPageEmpty :global(.Polaris-Page__Content) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Custom header: top bar + hero */
+.domainsHeader {
+  position: relative;
+  background: linear-gradient(
+    170deg,
+    rgba(255, 255, 255, 0.97) 0%,
+    rgba(248, 250, 252, 0.94) 40%,
+    rgba(6, 182, 212, 0.05) 100%
+  );
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-secondary);
+  box-shadow: 0 2px 20px rgba(6, 182, 212, 0.06);
+}
+
+[data-theme='dark'] .domainsHeader {
+  background: linear-gradient(
+    170deg,
+    rgba(22, 22, 22, 0.97) 0%,
+    rgba(15, 15, 15, 0.95) 40%,
+    rgba(6, 182, 212, 0.08) 100%
+  );
+  border-bottom-color: rgba(6, 182, 212, 0.15);
+  box-shadow: 0 2px 24px rgba(0, 0, 0, 0.2);
+}
+
+.domainsHeader::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
+  opacity: 0.85;
+}
+
+.domainsTopBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.5rem;
+  flex-wrap: wrap;
+}
+
+.domainsTopBarTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.domainsLogo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 8px rgba(6, 182, 212, 0.25));
+}
+
+.domainsTopBarActions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.domainsActionPrimary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, var(--futuristic-cyan), #0891b2);
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(6, 182, 212, 0.35);
+  transition: box-shadow 0.2s ease, transform 0.15s ease;
+}
+
+.domainsActionPrimary:hover {
+  box-shadow: 0 4px 14px rgba(6, 182, 212, 0.45);
+  transform: translateY(-1px);
+}
+
+.domainsActionPrimary:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 6px rgba(6, 182, 212, 0.3);
+}
+
+.domainsActionPrimary:focus-visible {
+  outline: 2px solid var(--futuristic-cyan);
+  outline-offset: 2px;
+}
+
+.domainsActionPrimary :global(svg) {
+  width: 18px;
+  height: 18px;
+}
+
+.domainsActionSecondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--futuristic-cyan);
+  background: transparent;
+  border: 1px solid rgba(6, 182, 212, 0.35);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.domainsActionSecondary:hover {
+  background: rgba(6, 182, 212, 0.08);
+  border-color: rgba(6, 182, 212, 0.5);
+}
+
+.domainsActionSecondary:focus-visible {
+  outline: 2px solid var(--futuristic-cyan);
+  outline-offset: 2px;
+}
+
+.domainsActionSecondary :global(svg) {
+  width: 16px;
+  height: 16px;
+}
+
+.domainsActionSignOut {
+  padding: 0.45rem 0.85rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.domainsActionSignOut:focus-visible {
+  outline: 2px solid var(--text-secondary);
+  outline-offset: 2px;
+}
+
+.domainsActionSignOut:hover {
+  color: var(--text-primary);
+  background: rgba(0, 0, 0, 0.05);
+}
+
+[data-theme='dark'] .domainsActionSignOut:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.domainsHero {
+  padding: 0.875rem 1.5rem 1.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem 1.5rem;
+}
+
+.domainsHeroText {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  max-width: 42rem;
+  flex: 1 1 auto;
+}
+
+.domainsHeroStat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.12), rgba(139, 92, 246, 0.08));
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  border-radius: 999px;
+  font-size: 0.8125rem;
+}
+
+.domainsHeroStatValue {
+  font-weight: 700;
+  color: var(--futuristic-cyan);
+  letter-spacing: -0.02em;
+}
+
+.domainsHeroStatLabel {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .domainsHeroStat {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.15), rgba(139, 92, 246, 0.1));
+  border-color: rgba(6, 182, 212, 0.25);
+}
+
+.domainsContent {
+  padding: 1.5rem 1.25rem 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Empty state: content area fills remaining viewport and centers the message */
+.domainsPageEmpty .domainsContent {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.domainsPageEmpty .domainsContent :global(.Polaris-BlockStack) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.emptyStateFill {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 280px;
+  padding: 1.5rem;
+}
+
+.domainsContent :global(.Polaris-BlockStack) {
+  gap: 1.25rem;
+}
+
+/* Banners – card-style container */
+.bannerWrap {
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--border-secondary);
+  box-shadow: 0 1px 8px rgba(6, 182, 212, 0.06);
+}
+
+[data-theme='dark'] .bannerWrap {
+  box-shadow: 0 1px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Table section – title + badge */
+.tableSection {
+  margin-top: 0.25rem;
+}
+
+.tableSectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  padding-left: 0.125rem;
+}
+
+.tableSectionTitle {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.tableSectionBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--futuristic-cyan);
+  background: rgba(6, 182, 212, 0.12);
+  border-radius: 999px;
+}
+
+[data-theme='dark'] .tableSectionBadge {
+  background: rgba(6, 182, 212, 0.2);
+}
+
+.legalWrap {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border-secondary);
+}
+
+.legalWrap :global(.Polaris-Text),
+.legalWrap :global(p) {
+  font-size: 0.8125rem !important;
+  color: var(--text-tertiary) !important;
+}
+
+/* Main section – no domains */
+.mainEmptySection {
+  margin-top: 0.5rem;
+  padding: 2.5rem 1.5rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--domains-card-radius);
+  box-shadow: 0 2px 16px rgba(6, 182, 212, 0.08), inset 0 1px 0 0 rgba(255, 255, 255, 0.5);
+  position: relative;
+  overflow: hidden;
+}
+
+.mainEmptySection::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
+  opacity: 0.8;
+}
+
+[data-theme='dark'] .mainEmptySection {
+  border-color: rgba(6, 182, 212, 0.2);
+  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.25), inset 0 1px 0 0 rgba(255, 255, 255, 0.03);
+}
+
+.mainEmptyMessage {
+  text-align: center;
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.mainEmptyIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 1.5rem;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.18), rgba(139, 92, 246, 0.12));
+  color: var(--futuristic-cyan);
+  box-shadow: 0 4px 20px rgba(6, 182, 212, 0.15);
+  animation: domainsEmptyIcon 0.5s ease-out;
+}
+
+.mainEmptyIcon :global(svg) {
+  width: 36px;
+  height: 36px;
+}
+
+.mainEmptyHeading {
+  margin: 0 0 0.5rem;
+  font-size: 1.375rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+}
+
+.mainEmptyText {
+  margin: 0 0 1.5rem;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.mainEmptyActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.mainEmptyCta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1.35rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, var(--futuristic-cyan), #0891b2);
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  box-shadow: 0 2px 12px rgba(6, 182, 212, 0.35);
+  transition: box-shadow 0.2s ease, transform 0.15s ease;
+}
+
+.mainEmptyCta:hover {
+  box-shadow: 0 4px 16px rgba(6, 182, 212, 0.45);
+  transform: translateY(-1px);
+}
+
+.mainEmptyCta:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 8px rgba(6, 182, 212, 0.3);
+}
+
+.mainEmptyCta:focus-visible {
+  outline: 2px solid var(--futuristic-cyan);
+  outline-offset: 2px;
+}
+
+.mainEmptyCta :global(svg) {
+  width: 20px;
+  height: 20px;
+}
+
+.mainEmptySecondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--futuristic-cyan);
+  background: transparent;
+  border: 1px solid rgba(6, 182, 212, 0.35);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.mainEmptySecondary:hover {
+  background: rgba(6, 182, 212, 0.08);
+  border-color: rgba(6, 182, 212, 0.5);
+}
+
+.mainEmptySecondary:focus-visible {
+  outline: 2px solid var(--futuristic-cyan);
+  outline-offset: 2px;
+}
+
+.mainEmptySecondary :global(svg) {
+  width: 18px;
+  height: 18px;
+}
+
+@media (max-width: 480px) {
+  .mainEmptySection {
+    padding: 2rem 1rem;
+  }
+
+  .mainEmptyActions {
+    flex-direction: column;
+  }
+
+  .mainEmptyCta,
+  .mainEmptySecondary {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Main cards */
+.domainsCard {
+  border-radius: var(--domains-card-radius);
+  border: var(--domains-card-border);
+  box-shadow: 0 2px 16px rgba(6, 182, 212, 0.08), inset 0 1px 0 0 rgba(255, 255, 255, 0.5);
+  overflow: hidden;
+  position: relative;
+}
+
+.domainsCard::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
+  opacity: 0.8;
+}
+
+[data-theme='dark'] .domainsCard {
+  border-color: rgba(6, 182, 212, 0.2);
+  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.25), inset 0 1px 0 0 rgba(255, 255, 255, 0.03);
+}
+
+.domainsCard :global(.Polaris-Card) {
+  border-radius: var(--domains-card-radius);
+  border: none;
+  box-shadow: none;
+}
+
+.emptyStateCard {
+  padding: 3rem 2rem;
+  text-align: center;
+}
+
+/* Custom empty state */
+.emptyState {
+  padding: 2rem 1.5rem;
+  text-align: center;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.emptyStateIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 1.5rem;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.18), rgba(139, 92, 246, 0.12));
+  color: var(--futuristic-cyan);
+  box-shadow: 0 4px 20px rgba(6, 182, 212, 0.15);
+  animation: domainsEmptyIcon 0.5s ease-out;
+}
+
+@keyframes domainsEmptyIcon {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.emptyStateIcon :global(svg) {
+  width: 36px;
+  height: 36px;
+}
+
+.emptyStateHeading {
+  margin: 0 0 0.5rem;
+  font-size: 1.375rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+}
+
+.emptyStateText {
+  margin: 0 0 1.5rem;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.emptyStateActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.emptyStateCta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.25rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, var(--futuristic-cyan), #0891b2);
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  box-shadow: 0 2px 12px rgba(6, 182, 212, 0.35);
+  transition: box-shadow 0.2s ease, transform 0.15s ease;
+}
+
+.emptyStateCta:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 8px rgba(6, 182, 212, 0.3);
+}
+
+.emptyStateCta:hover {
+  box-shadow: 0 4px 16px rgba(6, 182, 212, 0.45);
+  transform: translateY(-1px);
+}
+
+.emptyStateCta:focus-visible {
+  outline: 2px solid var(--futuristic-cyan);
+  outline-offset: 2px;
+}
+
+.emptyStateCta :global(svg) {
+  width: 18px;
+  height: 18px;
+}
+
+.emptyStateSecondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--futuristic-cyan);
+  background: transparent;
+  border: 1px solid rgba(6, 182, 212, 0.35);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.emptyStateSecondary:hover {
+  background: rgba(6, 182, 212, 0.08);
+  border-color: rgba(6, 182, 212, 0.5);
+}
+
+.emptyStateSecondary:focus-visible {
+  outline: 2px solid var(--futuristic-cyan);
+  outline-offset: 2px;
+}
+
+.emptyStateSecondary :global(svg) {
+  width: 18px;
+  height: 18px;
+}
+
+.loadingCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 3rem 2rem;
+}
+
+.loadingCard :global(.Polaris-Spinner) {
+  margin: 0;
+}
+
+.tableCard {
+  padding: 0;
+}
+
+.tableCard :global(.Polaris-DataTable) {
+  margin: 0;
+}
+
+.tableCard :global(.Polaris-DataTable__Table) {
+  border-radius: 0 0 var(--domains-card-radius) var(--domains-card-radius);
+}
+
+.domainsPage :global(.Polaris-DataTable__Cell--firstColumn) {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.domainsPage :global(.Polaris-DataTable__Row:hover) {
+  background: rgba(6, 182, 212, 0.04);
+}
+
+[data-theme='dark'] .domainsPage :global(.Polaris-DataTable__Row:hover) {
+  background: rgba(6, 182, 212, 0.08);
+}
+
+.domainsPage :global(.Polaris-Banner) {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border-secondary);
+}
+
+.domainsPage .openDomainBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, var(--futuristic-cyan), #0891b2);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, transform 0.1s ease;
+}
+
+.domainsPage .openDomainBtn:hover {
+  box-shadow: 0 2px 10px rgba(6, 182, 212, 0.4);
+  transform: translateY(-1px);
+}
+
+.domainsPage .openDomainBtn:active {
+  transform: translateY(0);
+}
+
+.domainsPage .openDomainBtn:focus-visible {
+  outline: 2px solid var(--futuristic-cyan);
+  outline-offset: 2px;
+}
+
+/* Action when user has domain access but no API key in this browser (e.g. added domain on another device) */
+.connectKeyHintBtn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--futuristic-cyan);
+  background: transparent;
+  border: 1px solid rgba(6, 182, 212, 0.35);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.connectKeyHintBtn:hover {
+  background: rgba(6, 182, 212, 0.08);
+  border-color: rgba(6, 182, 212, 0.5);
+}
+
+.connectKeyHintBtn:focus-visible {
+  outline: 2px solid var(--futuristic-cyan);
+  outline-offset: 2px;
+}
+
+.noKeyHint {
+  font-size: 0.8125rem !important;
+  color: var(--text-tertiary) !important;
+}
+
+/* Modal content – clearer sections and spacing */
+.modalSectionInner {
+  padding: 0.25rem 0;
+}
+
+.modalSectionInner p {
+  margin: 0 0 1rem 0;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.modalSectionInner :global(.Polaris-TextField) {
+  margin-top: 0.5rem;
+}
+
+.modalHint {
+  padding: 0.875rem 1rem;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.08), rgba(139, 92, 246, 0.05));
+  border-left: 4px solid var(--futuristic-cyan);
+  border-radius: 0 12px 12px 0;
+  margin-bottom: 1.25rem;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .modalHint {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.12), rgba(139, 92, 246, 0.08));
+}
+
+.modalActions {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(6, 182, 212, 0.1);
+}
+
+[data-theme='dark'] .modalActions {
+  border-top-color: rgba(6, 182, 212, 0.15);
+}
+
+/* Modal styling – override Polaris modal for consistency */
+.domainsPage :global(.Polaris-Modal-Dialog) {
+  border-radius: 20px;
+  box-shadow: 0 24px 48px rgba(6, 182, 212, 0.12);
+}
+
+[data-theme='dark'] .domainsPage :global(.Polaris-Modal-Dialog) {
+  box-shadow: 0 24px 56px rgba(0, 0, 0, 0.4);
+}
+
+.domainsPage :global(.Polaris-Modal-Header) {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border-secondary);
+}
+
+.domainsPage :global(.Polaris-Modal-Header__Title) {
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .domainsTopBar {
+    padding: 0.625rem 1rem;
+    gap: 0.75rem;
+  }
+
+  .domainsTopBarTitle span {
+    font-size: 1rem;
+  }
+
+  .domainsLogo {
+    width: 28px;
+    height: 28px;
+  }
+
+  .domainsTopBarActions {
+    width: 100%;
+    justify-content: flex-end;
+    gap: 0.4rem;
+  }
+
+  .domainsActionPrimary,
+  .domainsActionSecondary {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.8125rem;
+  }
+
+  .domainsHero {
+    padding: 0.625rem 1rem 1rem;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .domainsHeroText {
+    font-size: 0.875rem;
+  }
+
+  .domainsContent {
+    padding: 1rem 0.75rem 1.5rem;
+  }
+
+  .tableSectionHeader {
+    margin-bottom: 0.5rem;
+  }
+
+  .tableSectionTitle {
+    font-size: 0.9375rem;
+  }
+
+  .emptyStateCard {
+    padding: 2rem 1.25rem;
+  }
+
+  .emptyState {
+    padding: 1.5rem 1rem;
+  }
+
+  .emptyStateIcon {
+    width: 60px;
+    height: 60px;
+  }
+
+  .emptyStateIcon :global(svg) {
+    width: 28px;
+    height: 28px;
+  }
+
+  .emptyStateHeading {
+    font-size: 1.2rem;
+  }
+
+  .legalWrap {
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+  }
+}
+

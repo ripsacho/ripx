@@ -1,11 +1,13 @@
 /**
  * Audit Log Service
  *
- * Records who changed what for compliance and debugging
+ * Records who changed what for compliance and debugging.
+ * For tenant-scoped rows (shop_domain not __admin__/__auth__), resolves and stores tenant_id for consistent filtering.
  */
 
 const { query } = require('../utils/database');
 const logger = require('../utils/logger');
+const { getTenantByDomain } = require('../models/tenant');
 
 async function log(
   shopDomain,
@@ -25,6 +27,17 @@ async function log(
       userId || null,
       changes ? JSON.stringify(changes) : null,
     ];
+    if (shopDomain && shopDomain !== '__admin__' && shopDomain !== '__auth__') {
+      try {
+        const tenant = await getTenantByDomain(shopDomain);
+        if (tenant && tenant.id) {
+          columns.push('tenant_id');
+          values.push(tenant.id);
+        }
+      } catch (e) {
+        logger.warn('Audit log: could not resolve tenant_id', { shopDomain, error: e.message });
+      }
+    }
     if (hasActor) {
       if (actorType !== null && actorType !== undefined) {
         columns.push('actor_type');
@@ -64,4 +77,22 @@ function logAdminAction(req, { entityType, entityId, action, changes }) {
   });
 }
 
-module.exports = { log, logAdminAction };
+/**
+ * Log auth-related events (registration, confirm, login, accept/reject user)
+ */
+function logAuthAction(reqOrIp, { action, actorId, entityId, changes }) {
+  const ip =
+    typeof reqOrIp === 'string' ? reqOrIp : reqOrIp?.ip || reqOrIp?.connection?.remoteAddress;
+  return log('__auth__', {
+    entityType: 'auth',
+    entityId: entityId || null,
+    action: action || 'unknown',
+    userId: actorId || null,
+    changes: changes || null,
+    actorType: 'system',
+    actorId: actorId || 'anonymous',
+    ipAddress: ip,
+  });
+}
+
+module.exports = { log, logAdminAction, logAuthAction };

@@ -1,254 +1,813 @@
-/* Wrapper: apply project page header styling (gradient underline) */
-.connectPageWrapper :global(.Polaris-Page__Header) {
-  padding-bottom: var(--spacing-sm, 0.5rem);
-  border-bottom: 1px solid var(--border-secondary);
-  margin-bottom: var(--spacing-md, 1rem);
-  position: relative;
+/* ========== Page wrapper ========== */
+.authPageWrapper :global(.Polaris-Page__Header) {
+  padding-bottom: 0;
+  margin-bottom: 0;
+  border: none;
+  display: none;
 }
 
-.connectPageWrapper :global(.Polaris-Page__Header)::after {
-  content: '';
-  position: absolute;
-  bottom: -1px;
-  left: 0;
-  height: 2px;
-  width: 48px;
-  background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
-  border-radius: 2px;
+.authPageWrapper :global(.Polaris-Page__Header)::after {
+  display: none;
 }
 
-/* Connect page - standalone/non-Shopify onboarding */
-.connectPage {
-  min-height: calc(100vh - 80px);
+.authPageWrapper :global(.Polaris-Page) {
+  max-width: none;
+  padding: 0;
+}
+
+.authPageWrapper :global(.Polaris-Page__Content) {
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* ========== Root layout: two panels ========== */
+.connectRoot {
   display: flex;
-  flex-direction: column;
-  padding: 1.5rem 1rem 2.5rem;
-  max-width: 640px;
-  margin: 0 auto;
+  min-height: 100vh;
+  width: 100%;
+  position: relative;
+  background: var(--bg-primary, #f8fafc);
 }
 
-@media (min-width: 600px) {
-  .connectPage {
-    padding: 2rem 1.5rem 3rem;
+[data-theme='dark'] .connectRoot {
+  background: var(--bg-primary);
+}
+
+/* ========== Hero panel (left, desktop only) ========== */
+.connectHero {
+  display: none;
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+  padding: 2.5rem 3rem 2.5rem;
+  flex-direction: column;
+  justify-content: center;
+}
+
+@media (min-width: 960px) {
+  .connectHero {
+    display: flex;
+    max-width: 52%;
   }
 }
 
-.connectHero {
-  text-align: center;
-  margin-bottom: 2rem;
-  padding: 2rem 1.5rem;
+.heroGradient {
+  position: absolute;
+  inset: 0;
   background: linear-gradient(
-    165deg,
-    rgba(6, 182, 212, 0.08) 0%,
-    rgba(139, 92, 246, 0.05) 50%,
-    rgba(6, 182, 212, 0.04) 100%
+    155deg,
+    #0c1222 0%,
+    #0f172a 25%,
+    #1e3a4a 55%,
+    #0e7490 85%,
+    #06b6d4 100%
   );
-  border: 1px solid rgba(6, 182, 212, 0.18);
-  border-radius: 20px;
-  position: relative;
-  overflow: hidden;
+  opacity: 0.98;
 }
 
-.connectHero::before {
+.heroGradient::before {
   content: '';
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   height: 4px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    var(--futuristic-cyan),
-    var(--futuristic-violet),
-    transparent
-  );
+  background: linear-gradient(90deg, #06b6d4, #a78bfa);
   opacity: 0.9;
 }
 
-.connectHeroTitle {
-  margin: 0;
-  font-size: 1.75rem;
-  font-weight: 800;
-  letter-spacing: -0.04em;
-  color: var(--text-primary);
+[data-theme='dark'] .heroGradient {
+  background: linear-gradient(
+    155deg,
+    #020617 0%,
+    #0f172a 28%,
+    #134e4e 58%,
+    #0e7490 88%,
+    #06b6d4 100%
+  );
+  opacity: 0.99;
 }
 
-.connectHeroSubtitle {
-  margin: 0.5rem 0 0;
-  font-size: 0.9375rem;
-  color: var(--text-secondary);
-  line-height: 1.6;
-  max-width: 480px;
-  margin-left: auto;
-  margin-right: auto;
+.heroGrid {
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(rgba(6, 182, 212, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(6, 182, 212, 0.07) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  opacity: 0.9;
 }
 
-.connectHeroBadgeRow {
+.heroContent {
+  position: relative;
+  z-index: 1;
+  max-width: 400px;
+  animation: heroFadeIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes heroFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.heroBrand {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem 1rem;
-  margin-top: 1rem;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 0;
 }
 
-.connectBadge {
-  display: inline-block;
-  padding: 0.25rem 0.75rem;
-  font-size: 0.75rem;
+.heroBrandText {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+}
+
+.heroLogo {
+  width: 58px;
+  height: 58px;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 16px rgba(6, 182, 212, 0.45));
+  flex-shrink: 0;
+}
+
+.heroName {
+  font-size: 2.1rem;
+  font-weight: 800;
+  letter-spacing: -0.045em;
+  color: #fff;
+  text-shadow: 0 2px 24px rgba(6, 182, 212, 0.35);
+  line-height: 1.1;
+}
+
+.heroTagline {
+  font-size: 0.6875rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--futuristic-cyan);
-  background: rgba(6, 182, 212, 0.12);
-  border: 1px solid rgba(6, 182, 212, 0.3);
-  border-radius: 999px;
-}
-
-.connectNeedHelp {
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--futuristic-cyan);
-  text-decoration: none;
-}
-
-.connectNeedHelp:hover {
-  text-decoration: underline;
-}
-
-.connectNeedHelp:focus-visible {
-  outline: 2px solid var(--futuristic-cyan);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-
-/* Card matches project design: gradient bar, border, hover (same as PageShell/Admin) */
-.connectCard {
-  position: relative;
-  border: 1px solid rgba(6, 182, 212, 0.18);
-  border-radius: var(--radius-lg, 16px);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.02);
-  overflow: hidden;
-  transition: transform var(--transition-smooth, 0.2s ease), box-shadow 0.2s ease, border-color 0.2s ease;
-}
-
-.connectCard::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
-  opacity: 0.6;
-}
-
-.connectCard:hover {
-  border-color: rgba(6, 182, 212, 0.35);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.06);
-}
-
-.connectCardHeader {
-  padding: 1.25rem 1.5rem;
-  background: linear-gradient(
-    180deg,
-    rgba(6, 182, 212, 0.06) 0%,
-    transparent 100%
-  );
-  border-bottom: 1px solid rgba(6, 182, 212, 0.12);
-}
-
-.connectNextSteps {
-  margin-top: 2rem;
-  padding: 1.5rem;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, var(--bg-tertiary) 100%);
-  border-radius: var(--radius-lg, 16px);
-  border: 1px solid rgba(6, 182, 212, 0.18);
-  position: relative;
-  overflow: hidden;
-}
-
-.connectNextSteps::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
-  opacity: 0.5;
-}
-
-[data-theme='dark'] .connectNextSteps {
-  background: linear-gradient(180deg, rgba(26, 26, 26, 0.8) 0%, rgba(18, 18, 18, 0.6) 100%);
-  border-color: rgba(255, 255, 255, 0.08);
-}
-
-.connectNextStepsTitle {
-  margin: 0 0 0.5rem;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.connectNextStepsText {
+  letter-spacing: 0.22em;
+  color: rgba(255, 255, 255, 0.7);
   margin: 0;
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  line-height: 1.55;
 }
 
-.connectNextStepsText a {
-  color: var(--futuristic-cyan);
-  text-decoration: none;
+.heroTaglineBelow {
+  margin-top: 2.5rem;
+  margin-bottom: 0;
 }
 
-.connectNextStepsText a:hover {
-  text-decoration: underline;
+.heroTitle {
+  font-size: clamp(2rem, 4vw, 2.65rem);
+  font-weight: 700;
+  line-height: 1.22;
+  letter-spacing: -0.035em;
+  color: #fff;
+  margin: 0 0 1rem 0;
 }
 
-.connectNextStepsList {
-  margin: 0.5rem 0 0;
-  padding-left: 1.25rem;
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  line-height: 1.7;
+.heroTitleAccent {
+  background: linear-gradient(135deg, #67e8f9, #c4b5fd);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
-.connectNextStepsList li {
-  margin-bottom: 0.35rem;
+.heroSub {
+  font-size: 1rem;
+  line-height: 1.65;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 0 0 2rem 0;
 }
 
-.connectNextStepsList a {
-  color: var(--futuristic-cyan);
-  text-decoration: none;
+.heroList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.9375rem;
+  color: rgba(255, 255, 255, 0.88);
+  line-height: 1.65;
 }
 
-.connectNextStepsList a:hover {
-  text-decoration: underline;
+.heroList li {
+  position: relative;
+  padding-left: 1.6rem;
+  margin-bottom: 0.85rem;
 }
 
-.connectCurrentBanner {
+.heroList li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.5em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #06b6d4, #a78bfa);
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.5);
+}
+
+/* ========== Main panel (form) ========== */
+.connectMain {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  margin-bottom: 1rem;
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.08) 0%, rgba(139, 92, 246, 0.05) 100%);
-  border: 1px solid rgba(6, 182, 212, 0.2);
-  border-radius: var(--radius-md, 12px);
-  font-size: 0.875rem;
+  justify-content: center;
+  padding: 1.25rem 1rem 0;
+  overflow-y: auto;
+  background: var(--bg-primary, #f8fafc);
+  position: relative;
 }
 
-.connectCurrentBannerLabel {
+@media (min-width: 600px) {
+  .connectMain {
+    padding: 1.5rem 1.75rem 0;
+  }
+}
+
+.connectMain::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 75% 65% at 95% 40%,
+    rgba(6, 182, 212, 0.08),
+    transparent 55%
+  );
+  pointer-events: none;
+}
+
+[data-theme='dark'] .connectMain::before {
+  background: radial-gradient(
+    ellipse 75% 65% at 95% 40%,
+    rgba(6, 182, 212, 0.1),
+    transparent 55%
+  );
+}
+
+.connectInner {
+  width: 100%;
+  max-width: 440px;
+  position: relative;
+  z-index: 1;
+  animation: connectInnerIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes connectInnerIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ========== Mobile header (brand) ========== */
+.authHeader {
+  text-align: center;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border-secondary, rgba(6, 182, 212, 0.14));
+}
+
+@media (min-width: 960px) {
+  .authHeader {
+    display: none;
+  }
+}
+
+.authBrand {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.85rem;
+  text-align: left;
+}
+
+.authBrandText {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+}
+
+.authLogoImg {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 8px rgba(6, 182, 212, 0.2));
+}
+
+.authBrandName {
+  font-size: 1.85rem;
+  font-weight: 800;
+  letter-spacing: -0.045em;
+  background: linear-gradient(135deg, var(--futuristic-cyan), var(--futuristic-violet));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.authTagline {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--text-tertiary, var(--text-secondary));
+  margin: 0;
+}
+
+.authLink {
+  display: inline-block;
+  margin-top: 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--futuristic-cyan);
+  text-decoration: none;
+  padding: 0.45rem 0.9rem;
+  border-radius: 10px;
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  background: rgba(6, 182, 212, 0.06);
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.authLink:hover {
+  background: rgba(6, 182, 212, 0.12);
+  border-color: rgba(6, 182, 212, 0.45);
+}
+
+.authLink:focus-visible {
+  outline: 2px solid var(--futuristic-cyan);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+/* ========== Form card ========== */
+.authCard {
+  position: relative;
+  width: 100%;
+  background: var(--bg-secondary, #fff);
+  border-radius: 20px;
+  border: 1px solid var(--border-secondary, rgba(6, 182, 212, 0.18));
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.04),
+    0 4px 16px -4px rgba(0, 0, 0, 0.06),
+    0 20px 48px -12px rgba(6, 182, 212, 0.12);
+  overflow: hidden;
+  transition: box-shadow 0.28s ease, border-color 0.28s ease;
+}
+
+@media (min-width: 600px) {
+  .authCard {
+    border-radius: 22px;
+  }
+}
+
+.authCard:hover {
+  border-color: rgba(6, 182, 212, 0.28);
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.06),
+    0 8px 24px -6px rgba(0, 0, 0, 0.08),
+    0 24px 52px -12px rgba(6, 182, 212, 0.18);
+}
+
+.authCard:focus-within {
+  border-color: rgba(6, 182, 212, 0.35);
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.1),
+    0 8px 28px -6px rgba(0, 0, 0, 0.08),
+    0 28px 56px -12px rgba(6, 182, 212, 0.22);
+}
+
+.authCard::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
+  opacity: 0.9;
+  border-radius: 20px 20px 0 0;
+}
+
+@media (min-width: 600px) {
+  .authCard::before {
+    border-radius: 22px 22px 0 0;
+  }
+}
+
+[data-theme='dark'] .authCard {
+  background: var(--bg-tertiary);
+  border-color: rgba(6, 182, 212, 0.22);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.15),
+    0 20px 48px -12px rgba(0, 0, 0, 0.45);
+}
+
+[data-theme='dark'] .authCard:hover {
+  border-color: rgba(6, 182, 212, 0.32);
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.08),
+    0 24px 56px -12px rgba(6, 182, 212, 0.2);
+}
+
+.authCardInner {
+  padding: 0;
+}
+
+/* ========== Tabs ========== */
+.authTabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  position: relative;
+  margin: 1.5rem 1.5rem 0;
+  padding: 6px;
+  background: var(--bg-tertiary, rgba(6, 182, 212, 0.04));
+  border-radius: 14px;
+  border: 1px solid rgba(6, 182, 212, 0.1);
+}
+
+[data-theme='dark'] .authTabs {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(6, 182, 212, 0.18);
+}
+
+.authTab {
+  position: relative;
+  z-index: 1;
+  padding: 1rem 1.25rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: color 0.22s ease;
+}
+
+.authTab:hover {
+  color: var(--text-primary);
+}
+
+.authTabActive {
+  color: var(--text-primary);
+}
+
+.authTabIndicator {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: calc(50% - 6px);
+  height: calc(100% - 12px);
+  background: var(--bg-secondary, #fff);
+  border-radius: 10px;
+  border: 1px solid rgba(6, 182, 212, 0.28);
+  box-shadow:
+    0 2px 10px rgba(0, 0, 0, 0.06),
+    0 0 0 1px rgba(6, 182, 212, 0.08);
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 0;
+}
+
+[data-theme='dark'] .authTabIndicator {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(6, 182, 212, 0.35);
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.35);
+}
+
+/* ========== Card body ========== */
+.authCardBody {
+  padding: 1.5rem 1.5rem 0.75rem;
+  min-height: 320px;
+  position: relative;
+}
+
+.authPanelWrapper {
+  position: relative;
+  width: 100%;
+}
+
+.authPanel {
+  transition: opacity 0.25s ease-out, transform 0.25s ease-out;
+}
+
+.authPanelActive {
+  opacity: 1;
+  transform: translateY(0);
+  position: relative;
+  z-index: 1;
+}
+
+.authPanelInactive {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  z-index: 0;
+}
+
+@keyframes authPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.authPanelHint {
+  margin: 0 0 1.25rem 0;
+  padding: 1rem 1.15rem;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.08), rgba(139, 92, 246, 0.05));
+  border-left: 4px solid var(--futuristic-cyan);
+  border-radius: 0 12px 12px 0;
+  transition: background 0.2s ease;
+}
+
+.authPanelHint:hover {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(139, 92, 246, 0.07));
+}
+
+[data-theme='dark'] .authPanelHint {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.12), rgba(139, 92, 246, 0.08));
+  border-left-color: var(--futuristic-cyan);
+}
+
+.authForm :global(.Polaris-TextField) {
+  margin-bottom: 0.5rem;
+}
+
+.authForm :global(.Polaris-TextField__Input:focus-within) {
+  border-color: var(--futuristic-cyan);
+  box-shadow: 0 0 0 1px var(--futuristic-cyan);
+}
+
+.authForm :global(.Polaris-TextField__Input input:focus),
+.authForm :global(.Polaris-TextField__Input input:focus-visible) {
+  outline: none;
+}
+
+.authForm :global(.Polaris-Checkbox__Input:focus-visible) {
+  outline: 2px solid var(--futuristic-cyan);
+  outline-offset: 2px;
+}
+
+/* Primary button – gradient */
+.authFormActions :global(button) {
+  background: linear-gradient(135deg, var(--futuristic-cyan), #0891b2) !important;
+  border: none !important;
+  color: #fff !important;
+  font-weight: 600 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 16px rgba(6, 182, 212, 0.38) !important;
+  transition: box-shadow 0.22s ease, transform 0.18s ease !important;
+}
+
+.authFormActions :global(button:hover) {
+  background: linear-gradient(135deg, #0891b2, var(--futuristic-cyan)) !important;
+  box-shadow: 0 6px 22px rgba(6, 182, 212, 0.48) !important;
+  transform: translateY(-1px);
+}
+
+.authFormActions :global(button:focus-visible) {
+  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--futuristic-cyan) !important;
+}
+
+.authFormActions :global(button:active) {
+  transform: scale(0.98) translateY(0);
+}
+
+/* ========== Card footer ========== */
+.authCardFooter {
+  padding: 1.25rem 1.5rem 1.5rem;
+  border-top: 1px solid var(--border-secondary, rgba(6, 182, 212, 0.1));
+  text-align: center;
+  background: var(--bg-tertiary, rgba(0, 0, 0, 0.02));
+}
+
+[data-theme='dark'] .authCardFooter {
+  background: rgba(0, 0, 0, 0.15);
+  border-top-color: rgba(6, 182, 212, 0.14);
+}
+
+.authSwitch {
+  display: inline-block;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-radius: 10px;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.authSwitch:hover {
+  color: var(--futuristic-cyan);
+  background: rgba(6, 182, 212, 0.08);
+}
+
+.authSwitch:focus-visible {
+  outline: 2px solid var(--futuristic-cyan);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+.authSwitchAccent {
+  font-weight: 600;
+  color: var(--futuristic-cyan);
+}
+
+.authSwitch:hover .authSwitchAccent {
+  text-decoration: underline;
+}
+
+/* ========== Page footer ========== */
+.authFooter {
+  margin-top: 1.5rem;
+  padding: 1rem 0.5rem 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  text-align: center;
+  line-height: 1.6;
+  border-top: 1px solid var(--border-secondary, rgba(6, 182, 212, 0.1));
+}
+
+/* Legal footer (Terms/Privacy) – no bottom space on Connect */
+.connectInner footer {
+  margin-top: 1rem !important;
+  padding-top: 0.75rem !important;
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+/* Ensure connect root and inner add no bottom gap */
+.connectRoot {
+  padding-bottom: 0;
+}
+
+.connectInner {
+  padding-bottom: 0;
+}
+
+.authFooter strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* ========== OTP step ========== */
+.otpHeader {
+  padding: 1rem 1.5rem 0;
+}
+
+.otpBack {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.4rem 0.6rem;
+  margin: -0.2rem 0 0 -0.2rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.otpBack:hover {
+  color: var(--futuristic-cyan);
+  background: rgba(6, 182, 212, 0.08);
+  border-color: rgba(6, 182, 212, 0.2);
+}
+
+.otpBack:focus-visible {
+  outline: 2px solid var(--futuristic-cyan);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+.otpPanel {
+  width: 100%;
+}
+
+.otpSentTo {
+  margin: 0 0 1.25rem 0;
+  padding: 0.85rem 1rem;
+  font-size: 0.9375rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.06), rgba(139, 92, 246, 0.04));
+  border-radius: 10px;
+  border: 1px solid rgba(6, 182, 212, 0.1);
+}
+
+.otpSentTo strong {
+  color: var(--futuristic-cyan);
+  font-weight: 600;
+}
+
+.otpInputWrap {
+  margin-bottom: 0.5rem;
+}
+
+.otpInputLabel {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.6rem;
+}
+
+.otpBoxes {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-bottom: 0;
+}
+
+.otpBox {
+  width: 2.75rem;
+  height: 3.25rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+  text-align: center;
+  border: 2px solid var(--border-secondary, rgba(6, 182, 212, 0.2));
+  border-radius: 12px;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.otpBox:focus {
+  outline: none;
+  border-color: var(--futuristic-cyan);
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.2);
+}
+
+.otpBox::placeholder {
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+[data-theme='dark'] .otpBox {
+  background: var(--bg-secondary);
+  border-color: rgba(6, 182, 212, 0.25);
+}
+
+[data-theme='dark'] .otpBox:focus {
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.25);
+}
+
+.otpTimer {
+  margin-top: 0.85rem;
+  font-size: 0.8125rem;
+}
+
+.otpTimerText {
   color: var(--text-secondary);
 }
 
-.connectCurrentBannerKey {
-  font-family: ui-monospace, monospace;
-  color: var(--text-primary);
-  letter-spacing: 0.02em;
+.otpTimerExpired {
+  color: var(--text-tertiary, var(--text-secondary));
+  font-style: italic;
+}
+
+.otpResend {
+  margin-top: 0.85rem;
+  text-align: center;
+}
+
+.otpResend :global(.Polaris-Button) {
+  color: var(--futuristic-cyan);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.otpFooterHint {
+  margin: 0;
+  padding: 0 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--text-tertiary, var(--text-secondary));
+  text-align: center;
+  line-height: 1.5;
 }

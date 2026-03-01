@@ -6,10 +6,11 @@
 
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Page, Card, DataTable, Text, BlockStack, TextField, EmptyState } from '@shopify/polaris';
+import { Card, DataTable, Text, BlockStack, TextField, EmptyState } from '@shopify/polaris';
 import { RefreshIcon } from '@shopify/polaris-icons';
 import { apiGet } from '../../services';
 import { PageShell } from '../Shared';
+import AdminPageLayout from './AdminPageLayout';
 import styles from './Admin.module.css';
 
 export default function AdminConflicts() {
@@ -33,11 +34,8 @@ export default function AdminConflicts() {
     `${c.targetType || 'any'}${c.targetId ? `: ${c.targetId}` : ''}`,
   ]);
   return (
-    <PageShell className={styles.adminPage}>
-      <Page
-        title="Conflict detection"
-        subtitle="Running tests that overlap on the same target (same domain, same target type/id)."
-        backAction={{ content: 'Admin', url: '/admin' }}
+    <PageShell className={`${styles.adminPage} ${styles.adminPageWithHero}`}>
+      <AdminPageLayout
         primaryAction={{
           content: 'Refresh',
           icon: RefreshIcon,
@@ -78,7 +76,7 @@ export default function AdminConflicts() {
             )}
           </BlockStack>
         </Card>
-      </Page>
+      </AdminPageLayout>
     </PageShell>
   );
 }

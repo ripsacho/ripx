@@ -5,10 +5,19 @@
  * Uses React.lazy for route-based code splitting and optimized initial load.
  */
 
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { AppProvider, Banner } from '@shopify/polaris';
 import '@shopify/polaris/build/esm/styles.css';
-import { BrowserRouter, Routes, Route, useParams, Outlet } from 'react-router-dom';
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  useParams,
+  Outlet,
+  Navigate,
+  useSearchParams,
+  useNavigate,
+} from 'react-router-dom';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { initializeTheme } from './utils/theme';
 
@@ -26,14 +35,118 @@ const queryClient = new QueryClient({
     },
   },
 });
+setQueryClientForPermissionInvalidation(queryClient);
 
 import { Sidebar, TopBar } from './components/Layout';
 import AuthGuard from './components/Connect/AuthGuard';
 import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
-import { PageSkeleton } from './components/LoadingSkeleton/PageSkeleton';
+import { RouteLoading } from './components/LoadingSkeleton/RouteLoading';
 import { useLocation } from 'react-router-dom';
-import { ROUTES, ROUTE_PATTERNS, BREAKPOINTS, STORAGE_KEYS, INTERVALS } from './constants';
-import { getShopDomain, getApiKey } from './services';
+import {
+  ROUTES,
+  ROUTE_PATTERNS,
+  MAIN_APP_PATHS,
+  BREAKPOINTS,
+  STORAGE_KEYS,
+  INTERVALS,
+} from './constants';
+import {
+  getShopDomain,
+  getApiKey,
+  getEmailToken,
+  hasEmailSession,
+  setQueryClientForPermissionInvalidation,
+  apiPostPublic,
+} from './services';
+import { useSessionCheck } from './hooks';
+
+/** When URL has connect_token (admin "Open app"), exchange it and redirect to dashboard. Runs before auth redirect so token is not lost. */
+function ConnectTokenExchange({ connectToken }) {
+  const navigate = useNavigate();
+  const [, setSearchParams] = useSearchParams();
+  const [status, setStatus] = useState('loading'); // 'loading' | 'error'
+  const [errorMessage, setErrorMessage] = useState('');
+  const doneRef = useRef(false);
+
+  useEffect(() => {
+    if (!connectToken || doneRef.current) return;
+    doneRef.current = true;
+    (async () => {
+      try {
+        const res = await apiPostPublic(
+          '/auth/connect-token',
+          { connect_token: connectToken },
+          { timeout: 15000 }
+        );
+        const raw = res.data && typeof res.data === 'object' ? res.data : {};
+        const data = raw.data && typeof raw.data === 'object' ? raw.data : raw;
+        const apiKey = data?.apiKey;
+        const domain = data?.domain;
+        if (!apiKey || !domain) {
+          setErrorMessage(raw?.error || 'Invalid or expired link. Request a new one from Admin.');
+          setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            next.delete('connect_token');
+            return next;
+          });
+          setStatus('error');
+          return;
+        }
+        try {
+          window.sessionStorage.setItem(STORAGE_KEYS.API_KEY, apiKey);
+          window.sessionStorage.setItem(STORAGE_KEYS.SHOP_DOMAIN, domain);
+          window.sessionStorage.setItem(STORAGE_KEYS.CURRENT_STORE, domain);
+        } catch (_) {
+          /* ignore storage errors */
+        }
+        setSearchParams(prev => {
+          const next = new URLSearchParams(prev);
+          next.delete('connect_token');
+          return next;
+        });
+        navigate(ROUTES.DASHBOARD, { replace: true });
+      } catch (err) {
+        setErrorMessage(
+          err?.response?.data?.error ||
+            err?.message ||
+            'Invalid or expired link. Request a new one from Admin.'
+        );
+        setSearchParams(prev => {
+          const next = new URLSearchParams(prev);
+          next.delete('connect_token');
+          return next;
+        });
+        setStatus('error');
+      }
+    })();
+  }, [connectToken, navigate, setSearchParams]);
+
+  if (status === 'error') {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: '100vh',
+          padding: 24,
+          textAlign: 'center',
+        }}
+      >
+        <p style={{ marginBottom: 16, color: 'var(--p-color-text-critical)' }}>{errorMessage}</p>
+        <button
+          type="button"
+          onClick={() => navigate(ROUTES.CONNECT)}
+          style={{ padding: '8px 16px' }}
+        >
+          Go to sign in
+        </button>
+      </div>
+    );
+  }
+  return <RouteLoading message="Opening app…" fullScreen />;
+}
 
 // Lazy-loaded route components for code splitting
 const Connect = lazy(() => import('./components/Connect/Connect'));
@@ -85,6 +198,17 @@ const AdminLegal = lazy(() => import('./components/Admin/AdminLegal'));
 const AdminMaintenance = lazy(() => import('./components/Admin/AdminMaintenance'));
 const AdminAnnouncementBanner = lazy(() => import('./components/Admin/AdminAnnouncementBanner'));
 const AdminUsageExport = lazy(() => import('./components/Admin/AdminUsageExport'));
+const DomainList = lazy(() => import('./components/Domains/DomainList'));
+const AuthCallback = lazy(() => import('./components/Auth/AuthCallback'));
+const AuthConfirmResult = lazy(() => import('./components/Auth/AuthConfirmResult'));
+
+// Redirect email-only users from Dashboard to Domain list
+function EmailSessionRedirect({ children }) {
+  if (hasEmailSession() && !getApiKey() && !getShopDomain()) {
+    return <Navigate to={ROUTES.DOMAINS} replace />;
+  }
+  return children;
+}
 
 // Wrapper component to get testId from route params
 function ExportWrapper() {
@@ -140,10 +264,6 @@ function AppContent() {
     return () => window.removeEventListener('resize', updateLayout);
   }, []);
 
-  const isConnectWithoutAuth =
-    location.pathname === ROUTES.CONNECT && !getShopDomain() && !getApiKey();
-  const showAppChrome = !isConnectWithoutAuth;
-
   const { data: health } = useQuery({
     queryKey: ['health'],
     queryFn: async () => {
@@ -162,6 +282,20 @@ function AppContent() {
       return '';
     }
   });
+
+  const [searchParams] = useSearchParams();
+  const connectToken = searchParams.get('connect_token');
+
+  const hasCreds = getShopDomain() || getApiKey() || hasEmailSession();
+  const isAdminRoute = location.pathname.startsWith(ROUTES.ADMIN);
+  const isDocsRoute = location.pathname === ROUTES.DOCS;
+  const isDomainsRoute = location.pathname === ROUTES.DOMAINS;
+  const publicPaths = [ROUTES.CONNECT, ROUTES.AUTH_CALLBACK, ROUTES.AUTH_CONFIRM_RESULT];
+  const isPublicPath = publicPaths.includes(location.pathname);
+  /* Auth pages (Connect, callback, confirm) render full-page without sidebar/topbar */
+  const showAppChrome =
+    hasCreds && !isPublicPath && !isAdminRoute && !isDocsRoute && !isDomainsRoute;
+
   const announcementBanner = health?.announcementBanner;
   const showAnnouncement =
     announcementBanner &&
@@ -178,6 +312,38 @@ function AppContent() {
       }
     }
   };
+
+  // Periodically validate session; on 401 the API interceptor redirects to login (must run unconditionally for consistent hook order)
+  useSessionCheck(hasCreds && !isPublicPath && !connectToken);
+
+  if (connectToken) {
+    return <ConnectTokenExchange connectToken={connectToken} />;
+  }
+
+  if (!hasCreds && !isPublicPath) {
+    return <Navigate to={ROUTES.CONNECT} replace />;
+  }
+
+  // Email-only users (session but no API key/shop) must use domain list first; redirect from any main-app route
+  const emailOnlyNoKey =
+    hasCreds &&
+    hasEmailSession() &&
+    !getApiKey() &&
+    !getShopDomain() &&
+    !isAdminRoute &&
+    !isDomainsRoute;
+  const isMainAppRoute =
+    MAIN_APP_PATHS.includes(location.pathname) || /^\/tests\/[^/]+/.test(location.pathname);
+  if (emailOnlyNoKey && isMainAppRoute) {
+    return <Navigate to={ROUTES.DOMAINS} replace />;
+  }
+
+  // Shopify / shop-only: show login panel first if not on Connect; then after sign-in they can open the app from domain list
+  const shopOnlyNoEmail =
+    getShopDomain() && !getEmailToken() && !getApiKey() && !isAdminRoute && !isDomainsRoute;
+  if (shopOnlyNoEmail && isMainAppRoute && !isPublicPath) {
+    return <Navigate to={{ pathname: ROUTES.CONNECT, search: location.search }} replace />;
+  }
 
   return (
     <div
@@ -247,7 +413,7 @@ function AppContent() {
         )}
         <main
           id="main-content"
-          className={`main-content-wrapper${[ROUTES.DASHBOARD, ROUTES.SETTINGS, ROUTES.PROFILE, ROUTES.NOTIFICATIONS, ROUTES.SETUP, ROUTES.CREATE_TEST, ROUTES.TESTS, ROUTES.ANALYTICS, ROUTES.DOCS].includes(location.pathname) || /^\/tests\/[^/]+\/analytics$/.test(location.pathname) ? ' main-content-wrapper--full-width' : ''}`}
+          className={`main-content-wrapper${[ROUTES.DASHBOARD, ROUTES.SETTINGS, ROUTES.PROFILE, ROUTES.NOTIFICATIONS, ROUTES.SETUP, ROUTES.CREATE_TEST, ROUTES.TESTS, ROUTES.ANALYTICS].includes(location.pathname) || /^\/tests\/[^/]+\/analytics$/.test(location.pathname) ? ' main-content-wrapper--full-width' : ''}${[ROUTES.CONNECT, ROUTES.AUTH_CALLBACK, ROUTES.AUTH_CONFIRM_RESULT].includes(location.pathname) ? ' main-content-wrapper--auth' : ''}${isAdminRoute ? ' main-content-wrapper--admin' : ''}${isDocsRoute ? ' main-content-wrapper--docs' : ''}${isDomainsRoute ? ' main-content-wrapper--domains' : ''}`}
           tabIndex={-1}
         >
           <ErrorBoundary resetKeys={[location.pathname]}>
@@ -255,17 +421,45 @@ function AppContent() {
               <Route
                 path={ROUTES.CONNECT}
                 element={
-                  <Suspense fallback={<PageSkeleton variant="default" />}>
+                  <Suspense fallback={<RouteLoading />}>
                     <Connect />
+                  </Suspense>
+                }
+              />
+              <Route
+                path={ROUTES.AUTH_CALLBACK}
+                element={
+                  <Suspense fallback={<RouteLoading />}>
+                    <AuthCallback />
+                  </Suspense>
+                }
+              />
+              <Route
+                path={ROUTES.AUTH_CONFIRM_RESULT}
+                element={
+                  <Suspense fallback={<RouteLoading />}>
+                    <AuthConfirmResult />
+                  </Suspense>
+                }
+              />
+              <Route
+                path={ROUTES.DOMAINS}
+                element={
+                  <Suspense fallback={<RouteLoading />}>
+                    <AuthGuard>
+                      <DomainList />
+                    </AuthGuard>
                   </Suspense>
                 }
               />
               <Route
                 path={ROUTES.DASHBOARD}
                 element={
-                  <Suspense fallback={<PageSkeleton variant="dashboard" />}>
+                  <Suspense fallback={<RouteLoading message="Loading dashboard…" />}>
                     <AuthGuard>
-                      <Dashboard />
+                      <EmailSessionRedirect>
+                        <Dashboard />
+                      </EmailSessionRedirect>
                     </AuthGuard>
                   </Suspense>
                 }
@@ -273,7 +467,7 @@ function AppContent() {
               <Route
                 path={ROUTES.TESTS}
                 element={
-                  <Suspense fallback={<PageSkeleton variant="testList" />}>
+                  <Suspense fallback={<RouteLoading message="Loading…" />}>
                     <AuthGuard>
                       <TestList />
                     </AuthGuard>
@@ -283,7 +477,7 @@ function AppContent() {
               <Route
                 path={ROUTES.CREATE_TEST}
                 element={
-                  <Suspense fallback={<PageSkeleton variant="testList" />}>
+                  <Suspense fallback={<RouteLoading message="Loading…" />}>
                     <AuthGuard>
                       <TestCreator />
                     </AuthGuard>
@@ -293,7 +487,7 @@ function AppContent() {
               <Route
                 path={ROUTE_PATTERNS.TEST_DETAIL}
                 element={
-                  <Suspense fallback={<PageSkeleton variant="default" />}>
+                  <Suspense fallback={<RouteLoading />}>
                     <AuthGuard>
                       <TestDetail />
                     </AuthGuard>
@@ -303,7 +497,7 @@ function AppContent() {
               <Route
                 path={ROUTE_PATTERNS.TEST_EDITOR}
                 element={
-                  <Suspense fallback={<PageSkeleton variant="default" />}>
+                  <Suspense fallback={<RouteLoading />}>
                     <AuthGuard>
                       <TestEditor />
                     </AuthGuard>
@@ -313,7 +507,7 @@ function AppContent() {
               <Route
                 path={ROUTE_PATTERNS.TEST_ANALYTICS}
                 element={
-                  <Suspense fallback={<PageSkeleton variant="analytics" />}>
+                  <Suspense fallback={<RouteLoading message="Loading analytics…" />}>
                     <AuthGuard>
                       <Analytics />
                     </AuthGuard>
@@ -323,7 +517,7 @@ function AppContent() {
               <Route
                 path={ROUTE_PATTERNS.TEST_EXPORT}
                 element={
-                  <Suspense fallback={<PageSkeleton variant="default" />}>
+                  <Suspense fallback={<RouteLoading />}>
                     <AuthGuard>
                       <ExportWrapper />
                     </AuthGuard>
@@ -333,7 +527,7 @@ function AppContent() {
               <Route
                 path={ROUTE_PATTERNS.TEST_PROMO_LINKS}
                 element={
-                  <Suspense fallback={<PageSkeleton variant="testList" />}>
+                  <Suspense fallback={<RouteLoading message="Loading…" />}>
                     <AuthGuard>
                       <PromoLinksWrapper />
                     </AuthGuard>
@@ -343,7 +537,7 @@ function AppContent() {
               <Route
                 path={ROUTES.ANALYTICS}
                 element={
-                  <Suspense fallback={<PageSkeleton variant="analytics" />}>
+                  <Suspense fallback={<RouteLoading message="Loading analytics…" />}>
                     <AuthGuard>
                       <AnalyticsOverview />
                     </AuthGuard>
@@ -353,7 +547,7 @@ function AppContent() {
               <Route
                 path={ROUTES.SETUP}
                 element={
-                  <Suspense fallback={<PageSkeleton variant="default" />}>
+                  <Suspense fallback={<RouteLoading />}>
                     <AuthGuard>
                       <SetupWizard />
                     </AuthGuard>
@@ -363,7 +557,7 @@ function AppContent() {
               <Route
                 path={ROUTES.SETTINGS}
                 element={
-                  <Suspense fallback={<PageSkeleton variant="default" />}>
+                  <Suspense fallback={<RouteLoading />}>
                     <AuthGuard>
                       <Settings />
                     </AuthGuard>
@@ -373,7 +567,7 @@ function AppContent() {
               <Route
                 path={ROUTES.DOCS}
                 element={
-                  <Suspense fallback={<PageSkeleton variant="default" />}>
+                  <Suspense fallback={<RouteLoading />}>
                     <AuthGuard>
                       <Documentation />
                     </AuthGuard>
@@ -383,7 +577,7 @@ function AppContent() {
               <Route
                 path={ROUTES.PROFILE}
                 element={
-                  <Suspense fallback={<PageSkeleton variant="default" />}>
+                  <Suspense fallback={<RouteLoading />}>
                     <AuthGuard>
                       <Profile />
                     </AuthGuard>
@@ -393,7 +587,7 @@ function AppContent() {
               <Route
                 path={ROUTES.NOTIFICATIONS}
                 element={
-                  <Suspense fallback={<PageSkeleton variant="default" />}>
+                  <Suspense fallback={<RouteLoading />}>
                     <AuthGuard>
                       <Notifications />
                     </AuthGuard>
@@ -403,7 +597,7 @@ function AppContent() {
               <Route
                 path={ROUTES.ADMIN}
                 element={
-                  <Suspense fallback={<PageSkeleton variant="default" />}>
+                  <Suspense fallback={<RouteLoading />}>
                     <AdminGuard>
                       <AdminLayout>
                         <Outlet />
@@ -445,7 +639,7 @@ function AppContent() {
               <Route
                 path="*"
                 element={
-                  <Suspense fallback={<PageSkeleton variant="default" />}>
+                  <Suspense fallback={<RouteLoading />}>
                     <AuthGuard>
                       <NotFound />
                     </AuthGuard>

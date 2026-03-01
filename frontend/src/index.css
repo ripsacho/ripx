@@ -344,6 +344,36 @@ textarea:focus-visible {
   padding-right: 0;
 }
 
+/* Connect / auth pages - no padding, full bleed, no bottom gap */
+.main-content-wrapper--auth {
+  padding: 0 !important;
+  min-height: 100vh;
+}
+
+/* Admin panel - no padding, full bleed so AdminLayout controls its own spacing */
+.main-content-wrapper--admin {
+  padding: 0 !important;
+  min-height: 100vh;
+}
+
+/* Documentation - no padding, full bleed so Documentation page controls its own layout */
+.main-content-wrapper--docs {
+  padding: 0 !important;
+  min-height: 100vh;
+}
+
+/* My domains - no sidebar/topbar; full-width content for regular users */
+.main-content-wrapper--domains {
+  padding: 0 !important;
+  min-height: 100vh;
+}
+
+.main-content-wrapper--auth .Polaris-Page,
+.main-content-wrapper--auth .Polaris-Page__Content {
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
 [data-theme="dark"] .main-content-wrapper {
   background: linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-tertiary) 40%, var(--bg-primary) 100%);
 }
@@ -402,6 +432,18 @@ textarea:focus-visible {
   .main-content-wrapper--full-width {
     padding-left: 0;
     padding-right: 0;
+  }
+
+  .main-content-wrapper--admin {
+    padding: 0 !important;
+  }
+
+  .main-content-wrapper--docs {
+    padding: 0 !important;
+  }
+
+  .main-content-wrapper--domains {
+    padding: 0 !important;
   }
 
   .main-content-wrapper.sidebar-collapsed {
@@ -3161,6 +3203,24 @@ div[class*="Polaris-Modal"] {
   z-index: 1100 !important;
 }
 
+/* Modal container: center dialog on viewport when not on admin page (e.g. Connect, Domains) */
+body:not(.admin-page) .Polaris-Modal-DialogContainer,
+body:not(.admin-page) div[class*="Polaris-Modal"][class*="Container"] {
+  position: fixed !important;
+  inset: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+body:not(.admin-page) .Polaris-Modal-Dialog,
+body:not(.admin-page) div[class*="Polaris-Modal"] [class*="Dialog"] {
+  margin: auto !important;
+  position: relative !important;
+}
+
 /* Modal overlay/backdrop - project look: subtle cyan tint + blur */
 [class*="Polaris-Modal"][class*="Backdrop"],
 [class*="Modal"][class*="Backdrop"] {
@@ -3266,9 +3326,53 @@ body.admin-page div[class*="Polaris-Modal"][class*="Container"] {
   justify-content: center !important;
 }
 
+/* User-detail modal: full viewport overlay so it centers on whole screen, not just main section */
+body.admin-page .Polaris-Modal-DialogContainer:has([data-modal="user-detail"]),
+body.admin-page div[class*="Polaris-Modal"][class*="Container"]:has([data-modal="user-detail"]) {
+  left: 0 !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  max-width: none !important;
+  padding: 1rem !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+}
+
 body.admin-page .Polaris-Modal-Dialog,
 body.admin-page div[class*="Polaris-Modal"] [class*="Dialog"] {
   margin: auto !important;
+}
+
+/* User-detail modal: wider dialog (not thin), balanced proportions */
+body.admin-page .Polaris-Modal-Dialog:has([data-modal="user-detail"]),
+body.admin-page div[class*="Polaris-Modal"] [class*="Dialog"]:has([data-modal="user-detail"]) {
+  width: 100% !important;
+  max-width: min(1120px, calc(100vw - 2rem)) !important;
+  min-width: 400px !important;
+  height: auto !important;
+  min-height: 360px !important;
+  max-height: min(88vh, 800px) !important;
+  margin: auto !important;
+  border-radius: 14px !important;
+  box-shadow: 0 28px 60px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(6, 182, 212, 0.12) !important;
+}
+
+[data-theme="dark"] body.admin-page .Polaris-Modal-Dialog:has([data-modal="user-detail"]),
+[data-theme="dark"] body.admin-page div[class*="Polaris-Modal"] [class*="Dialog"]:has([data-modal="user-detail"]) {
+  box-shadow: 0 28px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
+}
+
+/* User-detail modal: remove extra padding so content isn't wrapped in huge whitespace */
+body.admin-page .Polaris-Modal-Dialog:has([data-modal="user-detail"]) .Polaris-Modal__Body,
+body.admin-page .Polaris-Modal-Dialog:has([data-modal="user-detail"]) div[class*="Modal__Body"] {
+  padding: 0 !important;
+}
+body.admin-page .Polaris-Modal-Dialog:has([data-modal="user-detail"]) .Polaris-Modal__Section,
+body.admin-page .Polaris-Modal-Dialog:has([data-modal="user-detail"]) div[class*="Modal__Section"] {
+  padding: 0 !important;
 }
 
 @media (max-width: 900px) {

@@ -8,7 +8,6 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Page,
   Card,
   DataTable,
   Button,
@@ -27,6 +26,7 @@ import { ROUTES } from '../../constants';
 import Toast from '../Toast/Toast';
 import { PageShell } from '../Shared';
 import LoadingSkeleton from '../LoadingSkeleton/LoadingSkeleton';
+import AdminPageLayout from './AdminPageLayout';
 import styles from './Admin.module.css';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100];
@@ -125,11 +125,8 @@ export default function AdminTests() {
   ]);
 
   return (
-    <PageShell className={styles.adminPage}>
-      <Page
-        title="Tests"
-        subtitle="All tests across domains. Filter by status, type, or domain; view or stop tests."
-        backAction={{ content: 'Admin', url: '/admin' }}
+    <PageShell className={`${styles.adminPage} ${styles.adminPageWithHero}`}>
+      <AdminPageLayout
         primaryAction={{
           content: 'Refresh',
           icon: RefreshIcon,
@@ -245,7 +242,7 @@ export default function AdminTests() {
             )}
           </BlockStack>
         </Card>
-      </Page>
+      </AdminPageLayout>
       {toast.message && (
         <Toast
           message={toast.message}

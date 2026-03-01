@@ -9,3 +9,4 @@ export * from './routes';
 export * from './status';
 export * from './colors';
 export * from './layout';
+export * from './roles';

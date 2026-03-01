@@ -8,7 +8,6 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Page,
   Card,
   DataTable,
   Button,
@@ -23,6 +22,7 @@ import { RefreshIcon } from '@shopify/polaris-icons';
 import { apiGet, getShopDomain, getApiKey } from '../../services';
 import { PageShell } from '../Shared';
 import Toast from '../Toast/Toast';
+import AdminPageLayout from './AdminPageLayout';
 import styles from './Admin.module.css';
 
 export default function AdminUsageExport() {
@@ -89,11 +89,8 @@ export default function AdminUsageExport() {
   ]);
 
   return (
-    <PageShell className={styles.adminPage}>
-      <Page
-        title="Usage export"
-        subtitle="Export usage by domain: visitors, events, conversions, revenue, and test count for a date range. For billing or support."
-        backAction={{ content: 'Admin', url: '/admin' }}
+    <PageShell className={`${styles.adminPage} ${styles.adminPageWithHero}`}>
+      <AdminPageLayout
         primaryAction={{
           content: 'Refresh',
           icon: RefreshIcon,
@@ -175,7 +172,7 @@ export default function AdminUsageExport() {
             )}
           </BlockStack>
         </Card>
-      </Page>
+      </AdminPageLayout>
       {toast.message && (
         <Toast
           message={toast.message}

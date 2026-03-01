@@ -18,11 +18,10 @@ import {
   BookIcon,
   ConnectIcon,
   MagicIcon,
-  LockIcon,
 } from '@shopify/polaris-icons';
 import { ROUTES } from '../../constants';
-import { isStandaloneMode } from '../../services';
-import { useTests, useAdminMe } from '../../hooks';
+import { hasEmailSession, getApiKey, getShopDomain } from '../../services';
+import { useTests } from '../../hooks';
 import { prefetchOnHover } from '../../utils/prefetch';
 
 const baseNavigationGroups = [
@@ -67,34 +66,20 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
     [tests]
   );
 
-  const { isAdmin } = useAdminMe();
+  const emailOnly = hasEmailSession() && !getApiKey() && !getShopDomain();
 
   const navigationGroups = useMemo(() => {
-    let groups = baseNavigationGroups;
-    if (isStandaloneMode()) {
-      groups = groups.map(group =>
-        group.label === 'Setup & Settings'
-          ? {
-              ...group,
-              items: [
-                ...group.items,
-                { path: ROUTES.CONNECT, label: 'Reconnect / API Key', icon: ConnectIcon },
-              ],
-            }
-          : group
-      );
-    }
-    if (isAdmin) {
-      groups = [
-        ...groups,
+    if (emailOnly) {
+      return [
         {
-          label: 'Platform',
-          items: [{ path: ROUTES.ADMIN, label: 'Admin', icon: LockIcon }],
+          label: 'Account',
+          items: [{ path: ROUTES.DOMAINS, label: 'My domains', icon: ConnectIcon }],
         },
       ];
     }
-    return groups;
-  }, [isAdmin]);
+    /* Connect/Sign in is a full-page auth route – not shown in sidebar to avoid opening it inside app layout */
+    return baseNavigationGroups;
+  }, [emailOnly]);
 
   const handleNavMouseEnter = useCallback(
     (item, el) => {
