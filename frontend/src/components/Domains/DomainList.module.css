@@ -756,13 +756,21 @@
   outline-offset: 2px;
 }
 
+/* Actions cell: Open + Remove side by side */
+.domainActionsCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 .domainsPage .removeDomainBtn {
   display: inline-flex;
   align-items: center;
   padding: 0.25rem 0.5rem;
   font-size: 0.8125rem;
   font-weight: 500;
-  color: var(--text-secondary, #6b7280);
+  color: #b91c1c;
   background: transparent;
   border: none;
   border-radius: 6px;

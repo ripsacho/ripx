@@ -235,32 +235,33 @@ function DomainList() {
           d.connection || '—',
           (d.permittedUsers || []).map(u => u.email).join(', ') || '—',
           d.myRole || '—',
-          keyForDomain ? (
-            <button type="button" className={styles.openDomainBtn} onClick={() => handleOpen(d)}>
-              Open
-            </button>
-          ) : (
+          <span key={`actions-${d.id}`} className={styles.domainActionsCell}>
+            {keyForDomain ? (
+              <button type="button" className={styles.openDomainBtn} onClick={() => handleOpen(d)}>
+                Open
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={styles.connectKeyHintBtn}
+                onClick={() => setApiKeyModalOpen(true)}
+                title="Paste your API key to open this domain"
+              >
+                Connect with API key
+              </button>
+            )}
             <button
               type="button"
-              className={styles.connectKeyHintBtn}
-              onClick={() => setApiKeyModalOpen(true)}
-              title="Paste your API key to open this domain"
+              className={styles.removeDomainBtn}
+              onClick={() => {
+                setDomainToRemove({ id: d.id, domain: d.domain });
+                setRemoveConfirmOpen(true);
+              }}
+              title={`Remove ${d.domain} from your list`}
             >
-              Connect with API key
+              Remove
             </button>
-          ),
-          <button
-            key={`remove-${d.id}`}
-            type="button"
-            className={styles.removeDomainBtn}
-            onClick={() => {
-              setDomainToRemove({ id: d.id, domain: d.domain });
-              setRemoveConfirmOpen(true);
-            }}
-            title={`Remove ${d.domain} from your list`}
-          >
-            Remove
-          </button>,
+          </span>,
         ];
       })
     : domains.map(d => [
@@ -483,20 +484,12 @@ function DomainList() {
                   <DataTable
                     columnContentTypes={
                       useEmailDomains
-                        ? ['text', 'text', 'text', 'text', 'text', 'text', 'text']
+                        ? ['text', 'text', 'text', 'text', 'text', 'text']
                         : ['text', 'text', 'text']
                     }
                     headings={
                       useEmailDomains
-                        ? [
-                            'Domain',
-                            'Platform',
-                            'Connection',
-                            'Permitted users',
-                            'Role',
-                            'Actions',
-                            'Remove',
-                          ]
+                        ? ['Domain', 'Platform', 'Connection', 'Permitted users', 'Role', 'Actions']
                         : ['Domain', 'Platform', 'Actions']
                     }
                     rows={rows}
