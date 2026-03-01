@@ -117,11 +117,11 @@ app.set('trust proxy', 1);
 
 // Validate required environment variables
 function validateEnvironment() {
+  const isStandaloneOnly = String(process.env.RIPX_STANDALONE_ONLY || '').toLowerCase() === 'true';
   const required = ['DATABASE_URL', 'JWT_SECRET', 'APP_URL'];
-  const shopifyRequired = !process.env.RIPX_STANDALONE_ONLY;
-  const requiredAll = shopifyRequired
-    ? [...required, 'SHOPIFY_API_KEY', 'SHOPIFY_API_SECRET', 'SHOPIFY_SCOPES']
-    : required;
+  const requiredAll = isStandaloneOnly
+    ? required
+    : [...required, 'SHOPIFY_API_KEY', 'SHOPIFY_API_SECRET', 'SHOPIFY_SCOPES'];
 
   const missing = requiredAll.filter(key => !process.env[key]);
 
@@ -134,7 +134,7 @@ function validateEnvironment() {
     process.exit(1);
   }
 
-  if (process.env.RIPX_STANDALONE_ONLY === 'true') {
+  if (isStandaloneOnly) {
     logger.info('Running in standalone-only mode (Shopify disabled)');
   } else if (!process.env.SHOPIFY_API_KEY) {
     logger.warn('Shopify not configured; only standalone sites will work');
