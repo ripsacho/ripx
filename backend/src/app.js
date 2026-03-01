@@ -86,9 +86,8 @@ try {
         return cachedSessionMiddleware;
       })
       .catch(err => {
-        logger.error('Session store init failed, requests will wait or fail', {
-          error: err.message,
-        });
+        logger.error('Session store init failed, using memory fallback', { error: err.message });
+        cachedSessionMiddleware = session({ ...sessionOptions, store: undefined });
       });
     sessionMiddleware = (req, res, next) => {
       if (cachedSessionMiddleware) {return cachedSessionMiddleware(req, res, next);}
@@ -302,11 +301,15 @@ app.use(
 // Body parsing middleware (1MB limit to prevent DoS; webhooks use raw for HMAC)
 const skipBodyParse = req => req.originalUrl?.startsWith('/api/webhooks');
 app.use((req, res, next) => {
-  if (skipBodyParse(req)) {return next();}
+  if (skipBodyParse(req)) {
+    return next();
+  }
   return bodyParser.json({ limit: process.env.BODY_LIMIT || '1mb' })(req, res, next);
 });
 app.use((req, res, next) => {
-  if (skipBodyParse(req)) {return next();}
+  if (skipBodyParse(req)) {
+    return next();
+  }
   return bodyParser.urlencoded({ extended: true })(req, res, next);
 });
 app.use(cookieParser());

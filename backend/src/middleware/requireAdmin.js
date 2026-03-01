@@ -120,7 +120,9 @@ function requireAdmin(req, res, next) {
         }
         return res.status(403).json({ success: false, error: 'Admin access required' });
       }
-      if (user.status !== 'active') {
+      // Shopify users use status 'active'; email/standalone users use 'accepted'. Both are allowed for admin.
+      const allowedStatuses = ['active', 'accepted'];
+      if (!user.status || !allowedStatuses.includes(user.status)) {
         return res.status(403).json({ success: false, error: 'Account is locked or suspended' });
       }
       req.adminId = shopDomain;
