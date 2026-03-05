@@ -27,12 +27,27 @@ function buildRuntimeConfig(shop, tests, req) {
     apiUrl: `${appUrl}/api`,
     shopDomain: shop,
     version: SCRIPT_VERSION,
-    activeTests: (tests || []).map(test => ({
-      id: test.id,
-      type: test.type,
-      targetType: test.target_type,
-      targetId: test.target_id || null,
-    })),
+    activeTests: (tests || []).map(test => {
+      const ids =
+        test.target_ids && Array.isArray(test.target_ids)
+          ? test.target_ids.filter(Boolean)
+          : test.target_id
+            ? [test.target_id]
+            : [];
+      const segments = test.segments || {};
+      const jsTargeting = segments.js_targeting;
+      return {
+        id: test.id,
+        type: test.type,
+        targetType: test.target_type,
+        targetId: test.target_id || null,
+        targetIds: ids.length > 0 ? ids : null,
+        jsTargeting:
+          jsTargeting?.enabled && jsTargeting?.code
+            ? { enabled: true, code: jsTargeting.code }
+            : null,
+      };
+    }),
   };
 }
 

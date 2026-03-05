@@ -21,7 +21,8 @@ import {
 } from '@shopify/polaris';
 import { ArrowLeftIcon } from '@shopify/polaris-icons';
 import { PageShell } from '../Shared';
-import { apiGet, apiPut, unwrapData } from '../../services';
+import { apiGet, apiPut, unwrapData, getShopDomain, getPreviewDomain } from '../../services';
+import { buildPreviewUrl, resolvePreviewBaseUrl } from '../../utils/previewUrl';
 import { ROUTES } from '../../constants';
 import Toast from '../Toast/Toast';
 import styles from './TestEditor.module.css';
@@ -38,6 +39,7 @@ export default function TestEditor() {
   const [customCssByVariant, setCustomCssByVariant] = useState({});
   const [customJsByVariant, setCustomJsByVariant] = useState({});
   const [toast, setToast] = useState({ message: null, type: 'success' });
+  const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!id || id === 'undefined') {
@@ -97,6 +99,7 @@ export default function TestEditor() {
       }));
       await apiPut(`/tests/${id}/variants/codes`, { variants: variantsPayload });
       setToast({ message: 'Variant code saved', type: 'success' });
+      setPreviewRefreshKey(k => k + 1);
     } catch (err) {
       setToast({
         message: err?.response?.data?.error || err?.message || 'Failed to save',
@@ -124,13 +127,60 @@ export default function TestEditor() {
     setPreviewLoadState('error');
   }, []);
 
+  const currentVariant = test?.variants?.[safeIndex];
+  const effectiveBaseUrl = resolvePreviewBaseUrl({
+    variantUrl: currentVariant?.config?.url,
+    overrideUrl:
+      (previewUrl && previewUrl.trim()) ||
+      (test?.segments?.visual_editor_preview_url ?? '').trim() ||
+      null,
+    domain: test?.shop_domain || getPreviewDomain() || getShopDomain() || undefined,
+    path: '/',
+  });
+  const previewIframeSrc =
+    effectiveBaseUrl && id && currentVariant
+      ? buildPreviewUrl({
+          baseUrl: effectiveBaseUrl,
+          testId: id,
+          variantId: currentVariant.id || currentVariant.name || `variant-${safeIndex + 1}`,
+          variantName: currentVariant.name || `Variant ${safeIndex + 1}`,
+          visualEditor: false,
+        }) || ''
+      : '';
+
   useEffect(() => {
-    if (!previewUrl) {
+    if (!previewIframeSrc) {
       setPreviewLoadState(null);
       return;
     }
     setPreviewLoadState('loading');
-  }, [previewUrl]);
+  }, [previewIframeSrc]);
+
+  useEffect(() => {
+    if (previewLoadState !== 'loading') return;
+    const t = setTimeout(() => {
+      setPreviewLoadState(prev => (prev === 'loading' ? 'error' : prev));
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [previewLoadState]);
+
+  useEffect(() => {
+    function handleMessage(event) {
+      if (event.data?.type === 'ripx-visual-selector' && typeof event.data.selector === 'string') {
+        const sel = event.data.selector.trim();
+        if (sel && navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(sel).then(
+            () => setToast({ message: `Selector copied: ${sel}`, type: 'success' }),
+            () => setToast({ message: `Selector: ${sel}`, type: 'info' })
+          );
+        } else {
+          setToast({ message: `Selector: ${sel}`, type: 'info' });
+        }
+      }
+    }
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
 
   if (loading || !test) {
     return (
@@ -144,7 +194,6 @@ export default function TestEditor() {
     );
   }
 
-  const currentVariant = variants[safeIndex];
   const tabs = variants.map((v, i) => ({
     id: String(i),
     content: v.name || `Variant ${i + 1}`,
@@ -177,9 +226,11 @@ export default function TestEditor() {
                       label="Preview URL"
                       value={previewUrl}
                       onChange={setPreviewUrl}
-                      placeholder="https://your-store.com/products/..."
+                      placeholder={
+                        effectiveBaseUrl || 'https://your-site.com/ or full URL to preview'
+                      }
                       autoComplete="url"
-                      helpText="Storefront URL to preview. Leave empty to only edit code."
+                      helpText="Base URL of the page to preview. Leave empty to use the test’s default. Preview shows the selected variant’s saved code; save to see changes."
                     />
                     <Box
                       paddingBlockStart="200"
@@ -188,28 +239,66 @@ export default function TestEditor() {
                       borderRadius="200"
                       className={styles.previewBox}
                     >
-                      {previewUrl ? (
+                      {previewIframeSrc ? (
                         <>
+                          <div className={styles.previewToolbar}>
+                            <a
+                              href={
+                                previewIframeSrc.includes('?')
+                                  ? previewIframeSrc + '&ab_visual_picker=1'
+                                  : previewIframeSrc + '?ab_visual_picker=1'
+                              }
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={styles.previewOpenEditorBtn}
+                              aria-label="Open visual editor on your page"
+                            >
+                              Open visual editor
+                            </a>
+                            <span className={styles.previewToolbarHint}>
+                              Opens your page in a new tab. Click any element to select it—selector
+                              copies to clipboard.
+                            </span>
+                            <button
+                              type="button"
+                              className={styles.previewCopyLink}
+                              onClick={() => {
+                                try {
+                                  navigator.clipboard.writeText(previewIframeSrc).then(
+                                    () => setToast({ message: 'Link copied', type: 'success' }),
+                                    () => setToast({ message: 'Could not copy', type: 'critical' })
+                                  );
+                                } catch (_) {
+                                  setToast({ message: 'Could not copy', type: 'critical' });
+                                }
+                              }}
+                            >
+                              Copy link
+                            </button>
+                          </div>
                           <iframe
-                            title="Preview"
-                            src={previewUrl}
+                            key={`preview-${previewRefreshKey}-${safeIndex}`}
+                            title={`Preview: ${currentVariant?.name || `Variant ${safeIndex + 1}`}`}
+                            src={previewIframeSrc}
                             className={styles.previewIframe}
-                            sandbox="allow-scripts allow-same-origin"
+                            sandbox="allow-scripts allow-same-origin allow-forms"
                             onLoad={handlePreviewLoad}
                             onError={handlePreviewError}
                           />
                           {previewLoadState === 'loaded' && (
                             <div className={styles.previewBadge}>
                               <Text as="span" variant="bodySm" tone="success">
-                                Preview loaded
+                                {currentVariant?.name || `Variant ${safeIndex + 1}`} — preview
+                                loaded
                               </Text>
                             </div>
                           )}
                           {previewLoadState === 'error' && (
-                            <div className={styles.previewError}>
-                              <Text as="p" tone="critical">
-                                This page cannot be embedded (blocked by the site). You can still
-                                edit and save code.
+                            <div className={styles.previewError} role="alert">
+                              <Text as="p" tone="subdued" variant="bodySm">
+                                This page can&apos;t be embedded. Use{' '}
+                                <strong>Open visual editor</strong> above to edit on your page in a
+                                new tab.
                               </Text>
                             </div>
                           )}
@@ -217,10 +306,13 @@ export default function TestEditor() {
                       ) : (
                         <div className={styles.previewPlaceholder}>
                           <Text as="p" color="subdued">
-                            Enter a preview URL above to load the target page.
+                            {effectiveBaseUrl
+                              ? 'Select a variant and ensure the storefront loads the RipX script to see preview.'
+                              : 'Enter a preview URL above or use a test that has a store/shop domain. The page must load the RipX script.'}
                           </Text>
                           <Text as="p" variant="bodySm" color="subdued">
-                            Or edit CSS/JS in the panel and save — changes apply on the storefront.
+                            Preview shows the selected variant’s saved CSS/JS. Save your edits to
+                            update the preview.
                           </Text>
                         </div>
                       )}

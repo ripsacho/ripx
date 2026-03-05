@@ -19,7 +19,7 @@ import {
   Banner,
 } from '@shopify/polaris';
 import { RefreshIcon } from '@shopify/polaris-icons';
-import { apiGet, getShopDomain, getApiKey } from '../../services';
+import { apiGet, getShopDomain, getApiKey, getApiBaseUrl } from '../../services';
 import { PageShell } from '../Shared';
 import LoadingSkeleton from '../LoadingSkeleton/LoadingSkeleton';
 import AdminPageLayout from './AdminPageLayout';
@@ -114,7 +114,7 @@ export default function AdminAudit() {
 
   const exportTenantId = tenantIdFilter.trim() || tenantDomainFilter || '';
   const handleExportCsv = () => {
-    const baseUrl = import.meta.env.VITE_API_URL || '/api';
+    const baseUrl = getApiBaseUrl();
     const exportParams = new URLSearchParams({ limit: '5000' });
     if (entityFilter) exportParams.set('entity_type', entityFilter);
     if (shopFilter.trim()) exportParams.set('shop_domain', shopFilter.trim());

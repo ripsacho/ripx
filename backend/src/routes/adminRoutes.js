@@ -20,10 +20,11 @@ const { sensitiveAdminLimiter } = require('../middleware/sensitiveAdminLimiter')
 const { PERMISSIONS } = require('../permissions');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const { sendSuccess } = require('../utils/response');
-const { HTTP_STATUS, PLATFORM_ROLE_VALUES } = require('../constants');
+const { HTTP_STATUS, PLATFORM_ROLE_VALUES, PLATFORM_ROLES } = require('../constants');
 const {
   getByDomain,
   getByEmail,
+  getByAccountId,
   getRoleAndStatus,
   setStatus: setUserStatus,
   setRole: setUserRole,
@@ -49,6 +50,8 @@ const timeSeriesService = require('../services/timeSeriesService');
 const validators = require('../utils/validators');
 const standaloneUser = require('../models/standaloneUser');
 const emailService = require('../services/emailService');
+const mailProcessService = require('../services/mailProcessService');
+const userDomainAccess = require('../models/userDomainAccess');
 
 /**
  * GET /api/admin/me - Current user identity (any authenticated shop).
@@ -183,6 +186,9 @@ router.post(
   '/accept-user/:id',
   asyncHandler(async (req, res) => {
     const id = req.params.id;
+    if (!id || !validators.isValidUUID(id)) {
+      return res.status(400).json({ success: false, error: 'Invalid user ID' });
+    }
     const userBefore = await standaloneUser.getById(id);
     const accepted = await standaloneUser.accept(id, req.adminId);
     if (!accepted) {
@@ -213,6 +219,9 @@ router.post(
   '/reject-user/:id',
   asyncHandler(async (req, res) => {
     const id = req.params.id;
+    if (!id || !validators.isValidUUID(id)) {
+      return res.status(400).json({ success: false, error: 'Invalid user ID' });
+    }
     const userBefore = await standaloneUser.getById(id);
     const rejected = await standaloneUser.reject(id, req.adminId);
     if (!rejected) {
@@ -299,12 +308,14 @@ router.get(
     if (!user) {
       return res.status(404).json({ success: false, error: 'User not found' });
     }
+    const tenantIds = await userDomainAccess.getTenantIdsForUser(user.id, user.account_id);
     let domains = [];
-    if (user.account_id) {
+    if (tenantIds.length > 0) {
+      const placeholders = tenantIds.map((_, i) => `$${i + 1}`).join(',');
       const domainsRes = await query(
         `SELECT id, domain, platform, domain_verified_at, created_at
-         FROM tenants WHERE account_id = $1 ORDER BY created_at ASC`,
-        [user.account_id]
+         FROM tenants WHERE id IN (${placeholders}) ORDER BY domain ASC`,
+        tenantIds
       );
       domains = domainsRes.rows.map(r => ({
         id: r.id,
@@ -475,12 +486,14 @@ router.get(
       return res.status(404).json({ success: false, error: 'User not found' });
     }
 
+    const tenantIds = await userDomainAccess.getTenantIdsForUser(user.id, user.account_id);
     let domains = [];
-    if (user.account_id) {
+    if (tenantIds.length > 0) {
+      const placeholders = tenantIds.map((_, i) => `$${i + 1}`).join(',');
       const domainsRes = await query(
         `SELECT id, domain, platform, domain_verified_at, created_at
-         FROM tenants WHERE account_id = $1 ORDER BY created_at ASC`,
-        [user.account_id]
+         FROM tenants WHERE id IN (${placeholders}) ORDER BY domain ASC`,
+        tenantIds
       );
       domains = domainsRes.rows.map(r => ({
         id: r.id,
@@ -633,7 +646,7 @@ router.put(
 
 /**
  * PUT /api/admin/users/:shopDomain/role
- * Body: { role: 'admin' | 'superadmin' | null }
+ * Body: { role: 'collaborator' | 'admin' | 'superadmin' | null }
  * Requires permission admin:users:set_role (superadmin or ADMIN_API_KEY). Stricter rate limit applies.
  */
 router.put(
@@ -646,6 +659,22 @@ router.put(
     const newRole = role === null || role === '' ? null : role;
     if (newRole !== null && !PLATFORM_ROLE_VALUES.includes(newRole)) {
       return res.status(400).json({ success: false, error: 'Invalid role' });
+    }
+    // Users cannot change their own role
+    const currentId = (req.adminId || req.email || req.shopDomain || '')
+      .toString()
+      .trim()
+      .toLowerCase();
+    const targetId = (shopDomain || '').toString().trim().toLowerCase();
+    if (currentId && targetId && currentId === targetId) {
+      return res.status(403).json({ success: false, error: 'You cannot change your own role' });
+    }
+    // Only superadmin can assign or change to superadmin
+    const isSuperadmin = (req.adminRole || '').toLowerCase() === PLATFORM_ROLES.SUPERADMIN;
+    if (newRole === PLATFORM_ROLES.SUPERADMIN && !isSuperadmin) {
+      return res
+        .status(403)
+        .json({ success: false, error: 'Only a superadmin can assign the superadmin role' });
     }
 
     const updated = await setUserRole(shopDomain, newRole);
@@ -740,7 +769,7 @@ router.get(
       return res.status(404).json({ success: false, error: 'Domain not found' });
     }
 
-    const [testsRes, eventsRes] = await Promise.all([
+    const [testsRes, eventsRes, permittedUsers] = await Promise.all([
       query(
         'SELECT id, name, type, status, created_at FROM tests WHERE LOWER(TRIM(shop_domain)) = LOWER(TRIM($1)) ORDER BY updated_at DESC LIMIT 20',
         [domain]
@@ -749,6 +778,7 @@ router.get(
         'SELECT COUNT(*)::bigint AS c, COALESCE(SUM(event_value), 0)::float AS revenue FROM events WHERE LOWER(TRIM(shop_domain)) = LOWER(TRIM($1))',
         [domain]
       ),
+      userDomainAccess.getUsersForTenant(tenant.id),
     ]);
 
     return sendSuccess(res, HTTP_STATUS.OK, {
@@ -757,6 +787,106 @@ router.get(
       recentTests: testsRes.rows,
       totalEvents: parseInt(eventsRes.rows[0]?.c, 10) || 0,
       totalRevenue: parseFloat(eventsRes.rows[0]?.revenue) || 0,
+      permittedUsers: permittedUsers || [],
+    });
+  })
+);
+
+/**
+ * GET /api/admin/domains/:domain/users
+ * List users with access to this domain (permitted users).
+ */
+router.get(
+  '/domains/:domain/users',
+  asyncHandler(async (req, res) => {
+    const domain = normalizeDomain(req.params.domain) || req.params.domain;
+    const tenant = await getTenantByDomain(domain);
+    if (!tenant) {
+      return res.status(404).json({ success: false, error: 'Domain not found' });
+    }
+    const users = await userDomainAccess.getUsersForTenant(tenant.id);
+    return sendSuccess(res, HTTP_STATUS.OK, { users });
+  })
+);
+
+/**
+ * POST /api/admin/domains/:domain/users
+ * Add a user to this domain by email. Body: { email, role?: 'owner'|'member'|'viewer' }
+ */
+router.post(
+  '/domains/:domain/users',
+  asyncHandler(async (req, res) => {
+    const domain = normalizeDomain(req.params.domain) || req.params.domain;
+    const tenant = await getTenantByDomain(domain);
+    if (!tenant) {
+      return res.status(404).json({ success: false, error: 'Domain not found' });
+    }
+    const email = (req.body?.email || '').trim().toLowerCase();
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'Email is required' });
+    }
+    const role = userDomainAccess.ROLES.includes(req.body?.role) ? req.body.role : 'member';
+    const user = await getByEmail(email);
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found with that email' });
+    }
+    if (user.status && !['active', 'accepted'].includes(user.status)) {
+      return res.status(400).json({
+        success: false,
+        error: 'User must be accepted or active to be added to a domain',
+      });
+    }
+    const added = await userDomainAccess.addAccess(user.id, tenant.id, role);
+    if (!added) {
+      return res.status(500).json({ success: false, error: 'Failed to add user' });
+    }
+    await auditLogService.logAdminAction(req, {
+      entityType: 'tenant',
+      entityId: domain,
+      action: 'add_domain_user',
+      changes: { email, role },
+    });
+    return sendSuccess(res, HTTP_STATUS.CREATED, {
+      success: true,
+      message: 'User added to domain',
+      user: { email, role },
+    });
+  })
+);
+
+/**
+ * DELETE /api/admin/domains/:domain/users
+ * Remove a user from this domain. Body: { email } or query: email=
+ */
+router.delete(
+  '/domains/:domain/users',
+  asyncHandler(async (req, res) => {
+    const domain = normalizeDomain(req.params.domain) || req.params.domain;
+    const tenant = await getTenantByDomain(domain);
+    if (!tenant) {
+      return res.status(404).json({ success: false, error: 'Domain not found' });
+    }
+    const email = (req.body?.email || req.query?.email || '').trim().toLowerCase();
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'Email is required' });
+    }
+    const user = await getByEmail(email);
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+    const removed = await userDomainAccess.removeAccess(user.id, tenant.id);
+    if (!removed) {
+      return res.status(404).json({ success: false, error: 'User was not linked to this domain' });
+    }
+    await auditLogService.logAdminAction(req, {
+      entityType: 'tenant',
+      entityId: domain,
+      action: 'remove_domain_user',
+      changes: { email },
+    });
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      success: true,
+      message: 'User removed from domain',
     });
   })
 );
@@ -804,6 +934,38 @@ router.put(
     });
 
     return sendSuccess(res, HTTP_STATUS.OK, { success: true });
+  })
+);
+
+/**
+ * DELETE /api/admin/domains/:domain
+ * Permanently remove a domain (tenant). Unlinks from account, removes user_domain_access, then deletes the tenant.
+ * Cascades: tests for this tenant are deleted; events/assignments/audit tenant_id set to null.
+ */
+router.delete(
+  '/domains/:domain',
+  asyncHandler(async (req, res) => {
+    const domain = normalizeDomain(req.params.domain) || req.params.domain;
+    const tenant = await getTenantByDomain(domain);
+    if (!tenant) {
+      return res.status(404).json({ success: false, error: 'Domain not found' });
+    }
+
+    const tenantId = tenant.id;
+    await query('DELETE FROM user_domain_access WHERE tenant_id = $1', [tenantId]);
+    await query('DELETE FROM tenants WHERE id = $1', [tenantId]);
+
+    await auditLogService.logAdminAction(req, {
+      entityType: 'tenant',
+      entityId: domain,
+      action: 'delete_domain',
+      changes: { domain, tenantId },
+    });
+
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      success: true,
+      message: 'Domain removed permanently.',
+    });
   })
 );
 
@@ -889,6 +1051,34 @@ router.post(
       [kvKey, JSON.stringify(payload)]
     );
     const url = `${baseUrl}/?connect_token=${encodeURIComponent(token)}`;
+
+    // Send API key to the user's email when key is generated (account owner or first user with domain access)
+    let toEmail = null;
+    const accountOwner = await getByAccountId(tenant.account_id);
+    if (accountOwner?.email) {
+      toEmail = accountOwner.email.trim().toLowerCase();
+    }
+    if (!toEmail) {
+      const permitted = await userDomainAccess.getUsersForTenant(tenant.id);
+      toEmail =
+        permitted.length > 0 && permitted[0].email ? permitted[0].email.trim().toLowerCase() : null;
+    }
+    if (toEmail) {
+      try {
+        await emailService.sendDomainApiKeyEmail(toEmail, {
+          domain: tenant.domain,
+          apiKey,
+          reason: 'api_key_regenerated',
+        });
+      } catch (err) {
+        const logger = require('../utils/logger');
+        logger.error('Admin connect-link: failed to send API key email', {
+          error: err.message,
+          to: toEmail.substring(0, 6) + '…',
+          domain: tenant.domain,
+        });
+      }
+    }
 
     await auditLogService.logAdminAction(req, {
       entityType: 'tenant',
@@ -2360,6 +2550,97 @@ router.delete(
       });
     }
     return sendSuccess(res, HTTP_STATUS.OK, { deleted: result.rowCount > 0, key });
+  })
+);
+
+/**
+ * GET /api/admin/mail-processes
+ * List all email sending processes with enabled state and optional template overrides.
+ */
+router.get(
+  '/mail-processes',
+  asyncHandler(async (req, res) => {
+    const list = await mailProcessService.listProcesses();
+    return sendSuccess(res, HTTP_STATUS.OK, { processes: list });
+  })
+);
+
+/**
+ * GET /api/admin/mail-processes/:key/default
+ * Get default template (subject, bodyHtml, bodyText) for "Load default" in editor.
+ */
+router.get(
+  '/mail-processes/:key/default',
+  asyncHandler((req, res) => {
+    const key = req.params.key;
+    if (!mailProcessService.getDefinitions()[key]) {
+      return res.status(404).json({ success: false, error: 'Unknown mail process' });
+    }
+    const defaultTemplate = mailProcessService.getDefaultTemplate(key);
+    return sendSuccess(res, HTTP_STATUS.OK, { defaultTemplate });
+  })
+);
+
+/**
+ * GET /api/admin/mail-processes/:key
+ * Get one mail process config (for editing templates).
+ */
+router.get(
+  '/mail-processes/:key',
+  asyncHandler(async (req, res) => {
+    const key = req.params.key;
+    if (!mailProcessService.getDefinitions()[key]) {
+      return res.status(404).json({ success: false, error: 'Unknown mail process' });
+    }
+    const config = await mailProcessService.getConfig(key);
+    return sendSuccess(res, HTTP_STATUS.OK, { process: config });
+  })
+);
+
+/**
+ * PUT /api/admin/mail-processes/:key
+ * Update mail process: enabled and/or template (subject, bodyHtml, bodyText). Body: { enabled?, subject?, bodyHtml?, bodyText? }. Audited.
+ */
+router.put(
+  '/mail-processes/:key',
+  asyncHandler(async (req, res) => {
+    const key = req.params.key;
+    if (!mailProcessService.getDefinitions()[key]) {
+      return res.status(404).json({ success: false, error: 'Unknown mail process' });
+    }
+    const { enabled, subject, bodyHtml, bodyText } = req.body || {};
+    const updates = {};
+    if (enabled !== undefined) {
+      updates.enabled = Boolean(enabled);
+    }
+    if (subject !== undefined) {
+      updates.subject = String(subject);
+    }
+    if (bodyHtml !== undefined) {
+      updates.bodyHtml = String(bodyHtml);
+    }
+    if (bodyText !== undefined) {
+      updates.bodyText = String(bodyText);
+    }
+    let updated;
+    try {
+      updated = await mailProcessService.setConfig(key, updates);
+    } catch (err) {
+      if (
+        err.message &&
+        (err.message.includes('must be at most') || err.message.includes('at most'))
+      ) {
+        return res.status(400).json({ success: false, error: err.message });
+      }
+      throw err;
+    }
+    await auditLogService.logAdminAction(req, {
+      entityType: 'mail_process',
+      entityId: key,
+      action: 'update',
+      changes: { key, enabled: updated.enabled },
+    });
+    return sendSuccess(res, HTTP_STATUS.OK, { process: updated });
   })
 );
 

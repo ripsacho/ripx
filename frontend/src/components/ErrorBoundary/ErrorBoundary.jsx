@@ -9,6 +9,7 @@
 import React from 'react';
 import { Page, Card, Button, BlockStack, Text, InlineStack } from '@shopify/polaris';
 import { ROUTES } from '../../constants';
+import { getApiBaseUrl } from '../../services';
 import styles from './ErrorBoundary.module.css';
 
 class ErrorBoundary extends React.Component {
@@ -47,7 +48,7 @@ class ErrorBoundary extends React.Component {
     // Report to backend for centralized logging; Sentry when SENTRY_DSN is set
     if (!import.meta.env.DEV) {
       try {
-        const baseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '') || '/api';
+        const baseUrl = getApiBaseUrl();
         fetch(`${baseUrl}/track/client-error`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

@@ -8,7 +8,21 @@ import axios from 'axios';
 import { STORAGE_KEYS, ROUTES } from '../constants';
 
 // Use VITE_API_URL when set; otherwise /api for same-origin (works with proxy in dev and when served from same host)
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+const API_BASE_URL = (() => {
+  const b = typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL;
+  const url = (b && String(b).trim()) || '/api';
+  return url.replace(/\/+$/, '') || '/api';
+})();
+
+/** Public: API root URL (no trailing slash). Use for fetch/links when not using apiClient. */
+export function getApiBaseUrl() {
+  return API_BASE_URL;
+}
+
+/** Public: full URL for health check (GET). */
+export function getHealthUrl() {
+  return API_BASE_URL + '/health';
+}
 
 // Create axios instance with default config
 const apiClient = axios.create({
@@ -77,12 +91,12 @@ apiClient.interceptors.response.use(
       }
     }
 
-    if (
-      error.response?.status === 403 &&
-      error.response?.data?.requiredPermission &&
-      queryClientRef
-    ) {
-      queryClientRef.invalidateQueries({ queryKey: ['admin', 'me'] });
+    if (error.response?.status === 403 && queryClientRef) {
+      const url = String(error.config?.url || '');
+      const isAdminRoute = url.includes('/admin/') && !url.includes('/admin/me');
+      if (error.response?.data?.requiredPermission || isAdminRoute) {
+        queryClientRef.invalidateQueries({ queryKey: ['admin', 'me'] });
+      }
     }
 
     return Promise.reject(error);
@@ -157,6 +171,22 @@ export function getShopDomain() {
   }
 
   return resolvedShop;
+}
+
+/**
+ * Domain to use for preview URL (Visual Editor, etc.).
+ * Shopify: shop domain. Standalone: currently selected domain (CURRENT_STORE) if set.
+ */
+export function getPreviewDomain() {
+  const shop = getShopDomain();
+  if (shop && String(shop).trim()) return shop.trim();
+  try {
+    const current = getAppCred(STORAGE_KEYS.CURRENT_STORE);
+    if (current && String(current).trim()) return current.trim();
+  } catch {
+    // ignore
+  }
+  return null;
 }
 
 /**

@@ -8,9 +8,16 @@
 import React, { useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { BlockStack, Text, Badge } from '@shopify/polaris';
+import { BlockStack, Text, Badge, Banner, Spinner } from '@shopify/polaris';
 import { RefreshIcon } from '@shopify/polaris-icons';
-import { apiGet, getShopDomain, getApiKey } from '../../services';
+import {
+  apiGet,
+  getShopDomain,
+  getApiKey,
+  unwrapData,
+  getHealthUrl,
+  getApiBaseUrl,
+} from '../../services';
 import { PageShell } from '../Shared';
 import { MetricCard, MetricGrid } from '../Shared';
 import { ROUTES } from '../../constants';
@@ -87,21 +94,27 @@ export default function AdminOverview() {
     data: stats,
     isLoading,
     isFetching,
+    isError: statsError,
+    error: statsErrorDetail,
     refetch,
     dataUpdatedAt,
   } = useQuery({
     queryKey: ['admin', 'stats'],
     queryFn: async () => {
       const res = await apiGet('/admin/stats');
-      return res.data?.data ?? res.data;
+      return unwrapData(res) ?? res?.data ?? {};
+    },
+    retry: (failureCount, error) => {
+      const status = error?.response?.status;
+      if (status === 403 || status === 401) return false;
+      return failureCount < 2;
     },
   });
 
   const { data: health, isLoading: healthLoading } = useQuery({
     queryKey: ['admin', 'health'],
     queryFn: async () => {
-      const base = import.meta.env.VITE_API_URL || '';
-      const res = await fetch(`${base}/api/health`, { credentials: 'include' });
+      const res = await fetch(getHealthUrl(), { credentials: 'include' });
       if (!res.ok) return { status: 'degraded', checks: {} };
       return res.json();
     },
@@ -140,9 +153,9 @@ export default function AdminOverview() {
       })
     : null;
 
-  const healthUrl = `${import.meta.env.VITE_API_URL || ''}/api/health`;
+  const healthUrl = getHealthUrl();
   const handleExportAuditCsv = () => {
-    const baseUrl = import.meta.env.VITE_API_URL || '/api';
+    const baseUrl = getApiBaseUrl();
     const url = `${baseUrl}/admin/audit-log/export?limit=5000`;
     const shop = getShopDomain();
     const apiKey = getApiKey();
@@ -165,6 +178,11 @@ export default function AdminOverview() {
       .catch(() => {});
   };
 
+  const statsMessage =
+    statsErrorDetail?.response?.data?.error ||
+    statsErrorDetail?.message ||
+    'Could not load platform stats.';
+
   return (
     <PageShell className={`${styles.adminPage} ${styles.adminPageWithHero}`}>
       <AdminPageLayout
@@ -176,6 +194,11 @@ export default function AdminOverview() {
         }}
       >
         <BlockStack gap="400">
+          {statsError && (
+            <Banner tone="warning" onDismiss={() => {}}>
+              {statsMessage} Metrics below may show zero. Click Refresh to retry.
+            </Banner>
+          )}
           <section className={styles.adminMainSection} aria-label="Overview summary">
             <Text as="p" variant="bodyMd" tone="subdued" className={styles.adminPageDescription}>
               Manage users, domains, tests, and audit log from the sidebar. Click a metric card to
@@ -193,11 +216,12 @@ export default function AdminOverview() {
             </Text>
           </div>
           {isLoading ? (
-            <MetricGrid>
-              {[1, 2, 3, 4, 5, 6].map(i => (
-                <MetricCard key={i} title="—" value="—" />
-              ))}
-            </MetricGrid>
+            <div className={styles.adminOverviewLoading}>
+              <Spinner size="large" />
+              <Text as="p" variant="bodySm" tone="subdued">
+                Loading platform metrics…
+              </Text>
+            </div>
           ) : (
             <MetricGrid>
               {items.map(({ label, value, link, format }) => {

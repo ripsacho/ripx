@@ -22,15 +22,25 @@ import {
   Divider,
   Link,
 } from '@shopify/polaris';
-import { RefreshIcon, ViewIcon, ExternalIcon } from '@shopify/polaris-icons';
+import {
+  RefreshIcon,
+  ExternalIcon,
+  ViewIcon,
+  DeleteIcon,
+  PauseCircleIcon,
+  PlayCircleIcon,
+} from '@shopify/polaris-icons';
 import { useNavigate } from 'react-router-dom';
-import { apiGet, apiPut, apiPost } from '../../services';
+import { apiGet, apiPut, apiPost, apiDelete } from '../../services';
 import Toast from '../Toast/Toast';
 import { PageShell } from '../Shared';
 import LoadingSkeleton from '../LoadingSkeleton/LoadingSkeleton';
 import { ROUTES } from '../../constants';
+import { DOMAIN_ROLES } from '../../constants/roles';
 import AdminPageLayout from './AdminPageLayout';
 import styles from './Admin.module.css';
+
+const DOMAIN_ROLE_OPTIONS = DOMAIN_ROLES.map(r => ({ label: r, value: r }));
 
 const STATUS_OPTIONS = [
   { label: 'All statuses', value: '' },
@@ -46,6 +56,10 @@ export default function AdminDomains() {
   const [toast, setToast] = useState({ message: null, type: 'success' });
   const [detailDomain, setDetailDomain] = useState(null);
   const [connectLinkLoading, setConnectLinkLoading] = useState(null); // domain being loaded
+  const [deleteConfirmDomain, setDeleteConfirmDomain] = useState(null);
+  const [addUserEmail, setAddUserEmail] = useState('');
+  const [addUserRole, setAddUserRole] = useState('member');
+  const [removeUserConfirm, setRemoveUserConfirm] = useState(null); // { domain, email }
 
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['admin', 'domains'],
@@ -99,6 +113,64 @@ export default function AdminDomains() {
     },
   });
 
+  const deleteDomainMutation = useMutation({
+    mutationFn: async domain => {
+      await apiDelete(`/admin/domains/${encodeURIComponent(domain)}`);
+    },
+    onSuccess: (_, domain) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'domains'] });
+      setDeleteConfirmDomain(null);
+      setToast({ message: `Domain ${domain} removed permanently.`, type: 'success' });
+    },
+    onError: err => {
+      setToast({
+        message: err?.response?.data?.error || err?.message || 'Delete failed',
+        type: 'error',
+      });
+      setDeleteConfirmDomain(null);
+    },
+  });
+
+  const addDomainUserMutation = useMutation({
+    mutationFn: async ({ domain, email, role }) => {
+      await apiPost(`/admin/domains/${encodeURIComponent(domain)}/users`, { email, role });
+    },
+    onSuccess: (_, { domain }) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'domains'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'domains', domain] });
+      setAddUserEmail('');
+      setAddUserRole('member');
+      setToast({ message: 'User added to domain', type: 'success' });
+    },
+    onError: err => {
+      setToast({
+        message: err?.response?.data?.error || err?.message || 'Add user failed',
+        type: 'error',
+      });
+    },
+  });
+
+  const removeDomainUserMutation = useMutation({
+    mutationFn: async ({ domain, email }) => {
+      await apiDelete(
+        `/admin/domains/${encodeURIComponent(domain)}/users?email=${encodeURIComponent(email)}`
+      );
+    },
+    onSuccess: (_, { domain }) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'domains'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'domains', domain] });
+      setRemoveUserConfirm(null);
+      setToast({ message: 'User removed from domain', type: 'success' });
+    },
+    onError: err => {
+      setToast({
+        message: err?.response?.data?.error || err?.message || 'Remove failed',
+        type: 'error',
+      });
+      setRemoveUserConfirm(null);
+    },
+  });
+
   const openDetail = domain => setDetailDomain(domain);
   const closeDetail = () => setDetailDomain(null);
 
@@ -130,7 +202,15 @@ export default function AdminDomains() {
   };
 
   const rows = filteredDomains.map(d => [
-    d.domain,
+    <button
+      key={`domain-${d.domain}`}
+      type="button"
+      className={styles.adminListLink}
+      onClick={() => openDetail(d.domain)}
+      style={{ textAlign: 'left', width: '100%' }}
+    >
+      {d.domain}
+    </button>,
     d.platform,
     d.status === 'suspended' ? (
       <Badge tone="critical">Suspended</Badge>
@@ -139,47 +219,63 @@ export default function AdminDomains() {
     ),
     d.testsCount,
     new Date(d.updatedAt).toLocaleDateString(),
-    <InlineStack key={`actions-${d.domain}`} gap="200">
-      <Button
-        size="slim"
-        variant="plain"
-        icon={ViewIcon}
-        onClick={() => openDetail(d.domain)}
-        accessibilityLabel="View domain details"
-      >
-        View
-      </Button>
-      <Button
-        size="slim"
-        icon={ExternalIcon}
-        onClick={() => handleOpenApp(d.domain, true)}
-        loading={connectLinkLoading === d.domain}
-        disabled={d.status === 'suspended'}
-        accessibilityLabel={
-          d.status === 'suspended'
-            ? 'Domain is suspended; unsuspend first to open app'
-            : 'Open app in new window (API key set automatically)'
-        }
-      >
-        Open app
-      </Button>
-      {d.status === 'suspended' ? (
+    <div key={`actions-${d.domain}`} className={styles.adminListActionsWrap}>
+      <div className={styles.adminListActions}>
         <Button
           size="slim"
-          onClick={() => suspendMutation.mutate({ domain: d.domain, action: 'unsuspend' })}
+          variant="plain"
+          icon={ViewIcon}
+          onClick={() => openDetail(d.domain)}
+          accessibilityLabel="View domain details"
         >
-          Unsuspend
+          Details
         </Button>
-      ) : (
+        <Button
+          size="slim"
+          variant="primary"
+          icon={ExternalIcon}
+          onClick={() => handleOpenApp(d.domain, true)}
+          loading={connectLinkLoading === d.domain}
+          disabled={d.status === 'suspended'}
+          accessibilityLabel={
+            d.status === 'suspended'
+              ? 'Domain is suspended; unsuspend first to open app'
+              : 'Open app in new window (API key set automatically)'
+          }
+        >
+          Open app
+        </Button>
+        {d.status === 'suspended' ? (
+          <Button
+            size="slim"
+            icon={PlayCircleIcon}
+            onClick={() => suspendMutation.mutate({ domain: d.domain, action: 'unsuspend' })}
+          >
+            Unsuspend
+          </Button>
+        ) : (
+          <Button
+            size="slim"
+            tone="critical"
+            variant="plain"
+            icon={PauseCircleIcon}
+            onClick={() => suspendMutation.mutate({ domain: d.domain, action: 'suspend' })}
+          >
+            Suspend
+          </Button>
+        )}
         <Button
           size="slim"
           tone="critical"
-          onClick={() => suspendMutation.mutate({ domain: d.domain, action: 'suspend' })}
+          variant="plain"
+          icon={DeleteIcon}
+          onClick={() => setDeleteConfirmDomain(d.domain)}
+          accessibilityLabel={`Delete domain ${d.domain}`}
         >
-          Suspend
+          Delete
         </Button>
-      )}
-    </InlineStack>,
+      </div>
+    </div>,
   ]);
 
   return (
@@ -197,12 +293,12 @@ export default function AdminDomains() {
             <section className={styles.adminMainSection} aria-label="Page context">
               <Text as="p" variant="bodySm" tone="subdued" className={styles.adminPageDescription}>
                 Filter by status or search by domain. Use View for details. Open app opens the main
-                app in a new window with a one-time link (API key set automatically; generates a new
-                key for that account). Disabled for suspended domains. Suspend/Unsuspend to control
-                access.
+                app in a new window with a one-time link (API key set automatically).
+                Suspend/Unsuspend to control access. Delete removes the domain and all its tests
+                permanently.
               </Text>
             </section>
-            <div className={styles.adminToolbar}>
+            <div className={styles.adminListToolbar}>
               <Box minWidth="140px">
                 <Select
                   label="Status"
@@ -211,13 +307,15 @@ export default function AdminDomains() {
                   onChange={setStatusFilter}
                 />
               </Box>
-              <TextField
-                label="Domain"
-                value={domainSearch}
-                onChange={setDomainSearch}
-                placeholder="Filter by domain"
-                autoComplete="off"
-              />
+              <Box minWidth="220px">
+                <TextField
+                  label="Search domain"
+                  value={domainSearch}
+                  onChange={setDomainSearch}
+                  placeholder="Filter by domain name"
+                  autoComplete="off"
+                />
+              </Box>
             </div>
             {isLoading ? (
               <div className={styles.adminTableWrap}>
@@ -374,12 +472,150 @@ export default function AdminDomains() {
                     </Text>
                   )}
                 </BlockStack>
+                <Divider />
+                <BlockStack gap="200">
+                  <Text as="h3" variant="headingSm">
+                    Users with access
+                  </Text>
+                  {(domainDetail.permittedUsers || []).length > 0 ? (
+                    <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                      {(domainDetail.permittedUsers || []).map((u, idx) => (
+                        <li key={u.email ?? idx} style={{ marginBottom: '0.5rem' }}>
+                          <InlineStack gap="200" blockAlign="center" wrap>
+                            <Text as="span" variant="bodyMd">
+                              {u.email || '—'}
+                            </Text>
+                            <Badge tone="info">{u.role || 'member'}</Badge>
+                            <Button
+                              size="slim"
+                              tone="critical"
+                              variant="plain"
+                              onClick={() =>
+                                setRemoveUserConfirm({ domain: detailDomain, email: u.email })
+                              }
+                              disabled={removeDomainUserMutation.isPending}
+                            >
+                              Remove
+                            </Button>
+                          </InlineStack>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      No users linked to this domain yet.
+                    </Text>
+                  )}
+                  <BlockStack gap="200">
+                    <Text as="span" variant="bodySm" tone="subdued">
+                      Add user by email (user must already be registered and accepted)
+                    </Text>
+                    <InlineStack gap="200" wrap>
+                      <div style={{ minWidth: 200 }}>
+                        <TextField
+                          label="Email"
+                          labelHidden
+                          value={addUserEmail}
+                          onChange={setAddUserEmail}
+                          placeholder="user@example.com"
+                          autoComplete="off"
+                        />
+                      </div>
+                      <div style={{ minWidth: 120 }}>
+                        <Select
+                          label="Role"
+                          labelHidden
+                          options={DOMAIN_ROLE_OPTIONS}
+                          value={addUserRole}
+                          onChange={setAddUserRole}
+                        />
+                      </div>
+                      <Button
+                        variant="primary"
+                        size="slim"
+                        onClick={() => {
+                          const email = addUserEmail.trim().toLowerCase();
+                          if (!email) return;
+                          addDomainUserMutation.mutate({
+                            domain: detailDomain,
+                            email,
+                            role: addUserRole,
+                          });
+                        }}
+                        loading={addDomainUserMutation.isPending}
+                        disabled={!addUserEmail.trim()}
+                      >
+                        Add user
+                      </Button>
+                    </InlineStack>
+                  </BlockStack>
+                </BlockStack>
               </BlockStack>
             ) : (
               <Text as="p" tone="subdued">
                 Could not load domain details.
               </Text>
             )}
+          </Modal.Section>
+        </Modal>
+      )}
+      {removeUserConfirm && (
+        <Modal
+          open
+          onClose={() => !removeDomainUserMutation.isPending && setRemoveUserConfirm(null)}
+          title="Remove user from domain"
+          primaryAction={{
+            content: 'Remove',
+            destructive: true,
+            onAction: () =>
+              removeDomainUserMutation.mutate({
+                domain: removeUserConfirm.domain,
+                email: removeUserConfirm.email,
+              }),
+            loading: removeDomainUserMutation.isPending,
+          }}
+          secondaryActions={[
+            {
+              content: 'Cancel',
+              onAction: () => setRemoveUserConfirm(null),
+              disabled: removeDomainUserMutation.isPending,
+            },
+          ]}
+        >
+          <Modal.Section>
+            <Text as="p" variant="bodyMd">
+              Remove <strong>{removeUserConfirm.email}</strong> from domain{' '}
+              <strong>{removeUserConfirm.domain}</strong>? They will lose access to this domain.
+            </Text>
+          </Modal.Section>
+        </Modal>
+      )}
+      {deleteConfirmDomain && (
+        <Modal
+          open
+          onClose={() => !deleteDomainMutation.isPending && setDeleteConfirmDomain(null)}
+          title="Delete domain"
+          primaryAction={{
+            content: 'Delete permanently',
+            destructive: true,
+            onAction: () => deleteDomainMutation.mutate(deleteConfirmDomain),
+            loading: deleteDomainMutation.isPending,
+          }}
+          secondaryActions={[
+            {
+              content: 'Cancel',
+              onAction: () => setDeleteConfirmDomain(null),
+              disabled: deleteDomainMutation.isPending,
+            },
+          ]}
+        >
+          <Modal.Section>
+            <BlockStack gap="200">
+              <Text as="p" variant="bodyMd">
+                Permanently remove <strong>{deleteConfirmDomain}</strong>? This will delete the
+                domain and all its tests and assignments. This cannot be undone.
+              </Text>
+            </BlockStack>
           </Modal.Section>
         </Modal>
       )}

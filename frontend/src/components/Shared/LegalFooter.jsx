@@ -6,11 +6,10 @@
 
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-
-const API_BASE = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) || '';
+import { getApiBaseUrl } from '../../services/api';
 
 function fetchLegal() {
-  const url = API_BASE ? `${API_BASE.replace(/\/$/, '')}/api/config/legal` : '/api/config/legal';
+  const url = `${getApiBaseUrl()}/config/legal`;
   return fetch(url)
     .then(r => (r.ok ? r.json() : Promise.resolve({ data: {} })))
     .then(res => res.data || res)

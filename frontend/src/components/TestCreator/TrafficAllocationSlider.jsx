@@ -5,22 +5,10 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import {
-  Card,
-  BlockStack,
-  InlineStack,
-  Text,
-  Button,
-  TextField,
-  Modal,
-  Tooltip,
-  Icon,
-} from '@shopify/polaris';
+import { Card, InlineStack, Text, Button, Tooltip, Icon } from '@shopify/polaris';
 import {
   ViewIcon,
   LinkIcon,
-  DeleteIcon,
-  MinusIcon,
   PlusIcon,
   DragHandleIcon,
   EditIcon,
@@ -41,9 +29,6 @@ function TrafficAllocationSlider({
 }) {
   const [localVariants, setLocalVariants] = useState(variants || []);
   const [draggingIndex, setDraggingIndex] = useState(null);
-  const [dragStartX, setDragStartX] = useState(0);
-  const [addVariantModal, setAddVariantModal] = useState(false);
-  const [newVariantName, setNewVariantName] = useState('');
   const [errorMessage, setErrorMessage] = useState(null);
   const [copySuccess, setCopySuccess] = useState(null);
   const [editingVariantIndex, setEditingVariantIndex] = useState(null);
@@ -51,13 +36,27 @@ function TrafficAllocationSlider({
   const sliderRef = useRef(null);
   const lastEmittedRef = useRef(null);
   const nameInputRef = useRef(null);
+  /** After add/remove we wait for parent to pass updated variants; don't overwrite with stale props */
+  const pendingCountRef = useRef(null);
+  /** Refs for smooth drag: avoid stale closure and enable RAF throttling */
+  const dragStateRef = useRef({ index: null, lastClientX: 0 });
+  const rafIdRef = useRef(null);
 
   // Sync local state with props when variants change externally (e.g. initial load, template change)
-  // Skip sync when we just emitted an update to avoid overwriting user changes
-  // Compare by allocation + count only (not name) so renames don't trigger overwrite
+  // Skip sync when we just did add/remove and parent hasn't updated yet (avoids undoing add/remove)
+  // Skip when we just emitted allocation/rename to avoid overwriting user changes
   useEffect(() => {
     if (!variants || variants.length === 0) return;
     if (lastEmittedRef.current && variants === lastEmittedRef.current) return;
+
+    // We're waiting for parent to reflect an add or remove; don't overwrite until props match
+    if (pendingCountRef.current !== null) {
+      if (variants.length === pendingCountRef.current) {
+        pendingCountRef.current = null;
+        setLocalVariants(variants.map(v => ({ ...v, allocation: v.allocation ?? 0 })));
+      }
+      return;
+    }
 
     const propAllocKey = variants.map(v => v.allocation ?? 0).join(',');
     const localAllocKey = localVariants.map(v => v.allocation ?? 0).join(',');
@@ -114,54 +113,84 @@ function TrafficAllocationSlider({
     setLocalVariants(updated);
   };
 
-  const handleMouseDown = (index, e) => {
+  const applyDragDelta = useCallback((index, deltaPercent) => {
+    setLocalVariants(prev => {
+      const updated = prev.map(v => ({ ...v, allocation: v.allocation || 0 }));
+      const currentAllocation = updated[index].allocation || 0;
+      const newAllocation = Math.max(0, Math.min(100, currentAllocation + deltaPercent));
+      const diff = newAllocation - currentAllocation;
+      const otherVariants = updated.filter((_, i) => i !== index);
+      const otherTotal = otherVariants.reduce((sum, v) => sum + (v.allocation || 0), 0);
+
+      if (otherTotal > 0) {
+        otherVariants.forEach((v, i) => {
+          const originalIndex = i < index ? i : i + 1;
+          const adjustment = (v.allocation / otherTotal) * -diff;
+          updated[originalIndex].allocation = Math.max(
+            0,
+            Math.min(100, updated[originalIndex].allocation + adjustment)
+          );
+        });
+      }
+      updated[index].allocation = Math.round(newAllocation);
+      return normalizeAllocations(updated);
+    });
+  }, []);
+
+  const handlePointerDown = useCallback((index, e) => {
     e.preventDefault();
+    if (e.button !== undefined && e.button !== 0) return;
+    const clientX = e.clientX ?? e.touches?.[0]?.pageX ?? 0;
+    dragStateRef.current = { index, lastClientX: clientX };
     setDraggingIndex(index);
-    setDragStartX(e.clientX);
-  };
+    try {
+      const track = sliderRef.current;
+      if (track && e.pointerId !== undefined && e.pointerId !== null) {
+        track.setPointerCapture(e.pointerId);
+      }
+    } catch {
+      // ignore pointer capture errors
+    }
+  }, []);
 
-  const handleMouseMove = useCallback(
+  const handlePointerMove = useCallback(
     e => {
-      if (draggingIndex === null) return;
+      const { index, lastClientX } = dragStateRef.current;
+      if (index === null) return;
 
-      const deltaX = e.clientX - dragStartX;
+      const clientX = e.clientX ?? e.touches?.[0]?.pageX ?? 0;
+      const deltaX = clientX - lastClientX;
+      dragStateRef.current.lastClientX = clientX;
+
       const sliderWidth = sliderRef.current?.offsetWidth || 400;
       const deltaPercent = (deltaX / sliderWidth) * 100;
+      if (Math.abs(deltaPercent) < 0.01) return;
 
-      setLocalVariants(prev => {
-        const updated = [...prev];
-        const currentAllocation = updated[draggingIndex].allocation || 0;
-        const newAllocation = Math.max(0, Math.min(100, currentAllocation + deltaPercent));
-
-        // Calculate how much to adjust other variants
-        const diff = newAllocation - currentAllocation;
-        const otherVariants = updated.filter((_, i) => i !== draggingIndex);
-        const otherTotal = otherVariants.reduce((sum, v) => sum + (v.allocation || 0), 0);
-
-        if (otherTotal > 0) {
-          otherVariants.forEach((v, i) => {
-            const originalIndex = i < draggingIndex ? i : i + 1;
-            const adjustment = (v.allocation / otherTotal) * -diff;
-            updated[originalIndex].allocation = Math.max(
-              0,
-              Math.min(100, updated[originalIndex].allocation + adjustment)
-            );
-          });
-        }
-
-        updated[draggingIndex].allocation = Math.round(newAllocation);
-
-        // Normalize to ensure total is 100%
-        const normalized = normalizeAllocations(updated);
-        return normalized;
+      if (rafIdRef.current !== null && rafIdRef.current !== undefined) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
+      rafIdRef.current = requestAnimationFrame(() => {
+        rafIdRef.current = null;
+        applyDragDelta(index, deltaPercent);
       });
-
-      setDragStartX(e.clientX);
     },
-    [draggingIndex, dragStartX]
+    [applyDragDelta]
   );
 
-  const handleMouseUp = useCallback(() => {
+  const handlePointerUp = useCallback(e => {
+    if (rafIdRef.current !== null && rafIdRef.current !== undefined) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+    try {
+      const track = sliderRef.current;
+      if (track && e?.pointerId !== undefined && e?.pointerId !== null) {
+        track.releasePointerCapture(e.pointerId);
+      }
+    } catch {
+      // ignore pointer release errors
+    }
+    dragStateRef.current = { index: null, lastClientX: 0 };
     setDraggingIndex(null);
   }, []);
 
@@ -183,15 +212,24 @@ function TrafficAllocationSlider({
   }, [localVariants, onChange]);
 
   useEffect(() => {
-    if (draggingIndex !== null) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-      return () => {
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-      };
-    }
-  }, [draggingIndex, handleMouseMove, handleMouseUp]);
+    if (draggingIndex === null) return;
+    const onMove = e => {
+      e.preventDefault();
+      handlePointerMove(e);
+    };
+    const onUp = e => {
+      e.preventDefault();
+      handlePointerUp(e);
+    };
+    document.addEventListener('pointermove', onMove, { capture: true, passive: false });
+    document.addEventListener('pointerup', onUp, { capture: true });
+    document.addEventListener('pointercancel', onUp, { capture: true });
+    return () => {
+      document.removeEventListener('pointermove', onMove, { capture: true });
+      document.removeEventListener('pointerup', onUp, { capture: true });
+      document.removeEventListener('pointercancel', onUp, { capture: true });
+    };
+  }, [draggingIndex, handlePointerMove, handlePointerUp]);
 
   useEffect(() => {
     if (editingVariantIndex !== null && nameInputRef.current) {
@@ -200,22 +238,25 @@ function TrafficAllocationSlider({
     }
   }, [editingVariantIndex]);
 
-  const handleAddVariant = () => {
-    if (!newVariantName.trim()) return;
+  /** Next default name: Variant A, Variant B, Variant C, ... (based on current count) */
+  const getDefaultVariantName = () => {
+    const letter = String.fromCharCode(65 + localVariants.length);
+    return `Variant ${letter}`;
+  };
 
+  const handleAddVariant = () => {
+    const defaultName = getDefaultVariantName();
     const newVariant = {
-      name: newVariantName,
+      name: defaultName,
       allocation: 0,
       config: {},
     };
 
-    // Redistribute allocations
     const redistribution = Math.floor(100 / (localVariants.length + 1));
     const updated = localVariants.map(v => ({
       ...v,
       allocation: redistribution,
     }));
-
     updated.push({
       ...newVariant,
       allocation: 100 - redistribution * localVariants.length,
@@ -223,10 +264,10 @@ function TrafficAllocationSlider({
 
     const normalized = normalizeAllocations(updated);
     setLocalVariants(normalized);
-    if (onAddVariant) onAddVariant(newVariant);
-
-    setNewVariantName('');
-    setAddVariantModal(false);
+    if (onAddVariant) {
+      pendingCountRef.current = normalized.length;
+      onAddVariant(newVariant);
+    }
   };
 
   const handleRemoveVariant = index => {
@@ -256,7 +297,10 @@ function TrafficAllocationSlider({
 
     const normalized = normalizeAllocations(updated);
     setLocalVariants(normalized);
-    if (onRemoveVariant) onRemoveVariant(index);
+    if (onRemoveVariant) {
+      pendingCountRef.current = normalized.length;
+      onRemoveVariant(index);
+    }
   };
 
   const handleManualChange = (index, value) => {
@@ -275,6 +319,16 @@ function TrafficAllocationSlider({
     updated[index].allocation = Math.max(0, Math.min(100, Math.round(current + delta)));
     const normalized = normalizeAllocations(updated);
     setLocalVariants(normalized);
+  };
+
+  const handleAllocationKeyDown = (index, e) => {
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      handleAllocationStep(index, 1);
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      handleAllocationStep(index, -1);
+    }
   };
 
   const _handleRenameVariant = (index, newName) => {
@@ -337,7 +391,7 @@ function TrafficAllocationSlider({
           </Text>
           <InlineStack gap="300">
             <Button onClick={handleEqualSplit}>Split Equally</Button>
-            <Button onClick={() => setAddVariantModal(true)}>Add Variant</Button>
+            <Button onClick={handleAddVariant}>Add Variant</Button>
           </InlineStack>
         </div>
       )}
@@ -351,7 +405,7 @@ function TrafficAllocationSlider({
             <span className={styles.toolbarDivider} aria-hidden />
             <span className={styles.toolbarHint}>
               <Icon source={EditIcon} />
-              Enter values for precision
+              Use ± buttons or type for precision
             </span>
           </div>
           <div className={styles.toolbarActions}>
@@ -362,7 +416,7 @@ function TrafficAllocationSlider({
             <button
               type="button"
               className={`${styles.toolbarBtn} ${styles.toolbarBtnPrimary}`}
-              onClick={() => setAddVariantModal(true)}
+              onClick={handleAddVariant}
             >
               <Icon source={PlusIcon} />
               Add Variant
@@ -371,78 +425,137 @@ function TrafficAllocationSlider({
         </div>
       )}
 
-      {/* Slider */}
-      <div className={styles.sliderWrapper}>
-        <div
-          ref={sliderRef}
-          className={`${styles.sliderTrack} ${draggingIndex !== null ? styles.dragging : ''}`}
-        >
-          {localVariants.map((variant, index) => {
-            const width = variant.allocation || 0;
-            const left = localVariants
-              .slice(0, index)
-              .reduce((sum, v) => sum + (v.allocation || 0), 0);
-            const color = COLORS[index % COLORS.length];
-
+      {/* Traffic split – bar + legend layout */}
+      <div className={styles.sliderSection} role="group" aria-label="Traffic allocation">
+        <div className={styles.sliderSectionHeader}>
+          <span className={styles.sliderSectionTitle}>Traffic split</span>
+          {(() => {
+            const total = localVariants.reduce((s, v) => s + (v.allocation || 0), 0);
+            const isOk = total === 100;
+            const isWarn = total > 0 && total < 100;
             return (
-              <div
-                key={index}
-                className={`${styles.segment} ${draggingIndex === index ? styles.dragging : ''}`}
-                style={{
-                  left: `${left}%`,
-                  width: `${width}%`,
-                  background: `linear-gradient(135deg, ${color} 0%, ${color}dd 100%)`,
-                  boxShadow:
-                    draggingIndex === index
-                      ? `0 8px 24px ${color}44`
-                      : '0 1px 3px rgba(0,0,0,0.08)',
-                  zIndex: draggingIndex === index ? 10 : 1,
-                  borderRightColor:
-                    index < localVariants.length - 1 ? 'rgba(255,255,255,0.6)' : 'transparent',
-                }}
-                onMouseDown={e => handleMouseDown(index, e)}
+              <span
+                className={`${styles.sliderSectionTotal} ${isOk ? styles.sliderSectionTotalOk : ''} ${isWarn ? styles.sliderSectionTotalWarn : ''}`}
+                title={
+                  isOk
+                    ? 'Allocation complete'
+                    : isWarn
+                      ? 'Total should be 100%'
+                      : 'Allocation total'
+                }
               >
-                {width > 8 && (
-                  <Text
-                    variant="bodyMd"
-                    fontWeight="semibold"
-                    as="span"
-                    className={styles.segmentLabel}
-                  >
-                    {variant.name}
-                  </Text>
-                )}
-
-                {index < localVariants.length - 1 && (
-                  <div
-                    className={styles.handle}
-                    onMouseDown={e => {
-                      e.stopPropagation();
-                      handleMouseDown(index, e);
-                    }}
-                  >
-                    <div className={styles.handleBar} />
-                  </div>
-                )}
-              </div>
+                Total: {total}%
+              </span>
             );
-          })}
+          })()}
+        </div>
+        <div className={styles.sliderBarCard}>
+          <div className={styles.sliderBarWrap}>
+            <span className={styles.sliderScaleLabel} aria-hidden>
+              0
+            </span>
+            <div className={styles.sliderWrapper}>
+              <div
+                ref={sliderRef}
+                className={`${styles.sliderTrack} ${draggingIndex !== null ? styles.trackDragging : ''}`}
+                role="presentation"
+              >
+                {localVariants.map((variant, index) => {
+                  const width = variant.allocation || 0;
+                  const left = localVariants
+                    .slice(0, index)
+                    .reduce((sum, v) => sum + (v.allocation || 0), 0);
+                  const color = COLORS[index % COLORS.length];
+                  const isFirst = index === 0;
+                  const isLast = index === localVariants.length - 1;
+
+                  return (
+                    <div
+                      key={index}
+                      className={`${styles.segment} ${draggingIndex === index ? styles.segmentDragging : ''} ${isFirst ? styles.segmentFirst : ''} ${isLast ? styles.segmentLast : ''}`}
+                      style={{
+                        left: `${left}%`,
+                        width: `${width}%`,
+                        '--segment-color': color,
+                        zIndex: draggingIndex === index ? 10 : 1,
+                      }}
+                      onPointerDown={e => handlePointerDown(index, e)}
+                    >
+                      <span className={styles.segmentContent}>
+                        {width >= 8 && <span className={styles.segmentPercent}>{width}%</span>}
+                      </span>
+                      {index < localVariants.length - 1 && (
+                        <div
+                          className={styles.handle}
+                          role="slider"
+                          aria-label={`Divider between ${variant.name || `Variant ${index + 1}`} and ${localVariants[index + 1]?.name || `Variant ${index + 2}`}. Drag or use arrow keys to adjust.`}
+                          aria-valuenow={width}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          tabIndex={0}
+                          onPointerDown={e => {
+                            e.stopPropagation();
+                            handlePointerDown(index, e);
+                          }}
+                          onKeyDown={e => {
+                            if (e.key === 'ArrowLeft') {
+                              e.preventDefault();
+                              handleAllocationStep(index, -1);
+                            } else if (e.key === 'ArrowRight') {
+                              e.preventDefault();
+                              handleAllocationStep(index, 1);
+                            }
+                          }}
+                        >
+                          <span className={styles.handleGrip} aria-hidden />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <span className={styles.sliderScaleLabel} aria-hidden>
+              100
+            </span>
+          </div>
+          <p className={styles.sliderHint}>Drag dividers or use arrow keys on focus to adjust</p>
+          <div className={styles.sliderLegend}>
+            {localVariants.map((variant, index) => {
+              const color = COLORS[index % COLORS.length];
+              const pct = variant.allocation ?? 0;
+              return (
+                <div
+                  key={index}
+                  className={styles.sliderLegendItem}
+                  style={{ '--legend-color': color }}
+                >
+                  <span className={styles.sliderLegendBadge}>{index + 1}</span>
+                  <span className={styles.sliderLegendDot} />
+                  <span className={styles.sliderLegendName}>
+                    {variant.name || `Variant ${index + 1}`}
+                  </span>
+                  <span className={styles.sliderLegendPct}>{pct}%</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
-      {/* Variant Cards */}
+      {/* Variant cards */}
       <div className={styles.variantCards}>
         {localVariants.map((variant, index) => {
           const color = COLORS[index % COLORS.length];
 
           return (
             <div key={index} className={styles.variantCard} style={{ '--variant-color': color }}>
-              <span className={styles.variantCardBadge} style={{ backgroundColor: color }}>
-                {index + 1}
-              </span>
-              <div className={styles.variantCardHeader}>
-                <div className={styles.variantCardTitleRow}>
-                  <div className={styles.variantColorDot} style={{ backgroundColor: color }} />
+              <div className={styles.variantCardAccent} style={{ backgroundColor: color }} />
+              <div className={styles.variantCardInner}>
+                <div className={styles.variantCardHead}>
+                  <span className={styles.variantCardBadge} style={{ backgroundColor: color }}>
+                    {index + 1}
+                  </span>
                   {editingVariantIndex === index ? (
                     <div className={styles.variantNameEdit}>
                       <input
@@ -473,87 +586,44 @@ function TrafficAllocationSlider({
                         {variant.name || 'Unnamed variant'}
                       </span>
                       <span className={styles.variantNameEditHint} aria-hidden>
-                        ✎
+                        Edit
                       </span>
                     </button>
                   )}
-                </div>
-                <div className={styles.variantCardActions}>
-                  {onPreviewVariant && (
-                    <Tooltip content="Open variant in new tab" preferredPosition="above">
-                      <button
-                        type="button"
-                        className={`${styles.actionBtn} ${styles.actionBtnPreview}`}
-                        onClick={() => onPreviewVariant(variant, index)}
-                        aria-label="Preview variant"
-                      >
-                        <span className={styles.actionBtnIcon}>
-                          <Icon source={ViewIcon} />
-                        </span>
-                        <span className={styles.actionBtnLabel}>Preview</span>
-                      </button>
-                    </Tooltip>
-                  )}
-                  {getPreviewUrl && (
-                    <Tooltip content="Copy preview URL to clipboard" preferredPosition="above">
-                      <button
-                        type="button"
-                        className={`${styles.actionBtn} ${styles.actionBtnCopy}`}
-                        onClick={() => handleCopyPreviewLink(variant, index)}
-                        aria-label="Copy preview link"
-                      >
-                        <span className={styles.actionBtnIcon}>
-                          <Icon source={LinkIcon} />
-                        </span>
-                        <span className={styles.actionBtnLabel}>Copy link</span>
-                      </button>
-                    </Tooltip>
-                  )}
                   {localVariants.length > 2 && index !== 0 && (
-                    <Tooltip content="Remove this variant" preferredPosition="above">
+                    <Tooltip content="Remove variant" preferredPosition="below">
                       <button
                         type="button"
-                        className={`${styles.actionBtn} ${styles.actionBtnRemove}`}
+                        className={styles.variantCardRemoveBtn}
                         onClick={() => handleRemoveVariant(index)}
                         aria-label="Remove variant"
                       >
-                        <span className={styles.actionBtnIcon}>
-                          <Icon source={DeleteIcon} />
-                        </span>
-                        <span className={styles.actionBtnLabel}>Remove</span>
+                        ×
                       </button>
                     </Tooltip>
                   )}
                 </div>
-              </div>
-
-              <div className={styles.variantCardBody}>
-                <div className={styles.allocationRingWrapper}>
-                  <div
-                    className={styles.allocationRing}
-                    style={{
-                      '--ring-progress': variant.allocation || 0,
-                      '--ring-color': color,
-                    }}
-                  >
-                    <div className={styles.allocationRingInner}>
-                      <span className={styles.allocationRingValue}>{variant.allocation || 0}</span>
-                      <span className={styles.allocationRingUnit}>%</span>
-                    </div>
-                  </div>
-                </div>
-                <div className={styles.variantCardInput}>
-                  <label className={styles.allocationLabel} htmlFor={`allocation-${index}`}>
-                    Allocation
+                <div className={styles.variantCardTraffic}>
+                  <label className={styles.trafficLabel} htmlFor={`allocation-${index}`}>
+                    Traffic
                   </label>
-                  <div className={styles.allocationInputWrapper}>
+                  <div className={styles.trafficControl}>
                     <button
                       type="button"
-                      className={styles.allocationStepBtn}
+                      className={styles.stepperBtn}
                       onClick={() => handleAllocationStep(index, -5)}
-                      aria-label="Decrease allocation by 5"
+                      aria-label="Decrease by 5"
+                      title="−5%"
                     >
-                      <Icon source={MinusIcon} />
+                      −5
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.stepperBtn}
+                      onClick={() => handleAllocationStep(index, -1)}
+                      aria-label="Decrease by 1"
+                    >
+                      −
                     </button>
                     <input
                       id={`allocation-${index}`}
@@ -562,61 +632,67 @@ function TrafficAllocationSlider({
                       max={100}
                       value={variant.allocation?.toString() || '0'}
                       onChange={e => handleManualChange(index, e.target.value)}
-                      className={styles.allocationInput}
-                      aria-label={`Allocation percentage for ${variant.name || `Variant ${index + 1}`}`}
+                      onKeyDown={e => handleAllocationKeyDown(index, e)}
+                      className={styles.stepperInput}
+                      aria-label={`Traffic % for ${variant.name || `Variant ${index + 1}`}. Arrow keys: ±1%.`}
                     />
-                    <span className={styles.allocationSuffix}>%</span>
+                    <span className={styles.trafficUnit}>%</span>
                     <button
                       type="button"
-                      className={styles.allocationStepBtn}
-                      onClick={() => handleAllocationStep(index, 5)}
-                      aria-label="Increase allocation by 5"
+                      className={styles.stepperBtn}
+                      onClick={() => handleAllocationStep(index, 1)}
+                      aria-label="Increase by 1"
                     >
-                      <Icon source={PlusIcon} />
+                      +
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.stepperBtn}
+                      onClick={() => handleAllocationStep(index, 5)}
+                      aria-label="Increase by 5"
+                      title="+5%"
+                    >
+                      +5
                     </button>
                   </div>
                 </div>
+                <div className={styles.variantCardActions}>
+                  {onPreviewVariant && (
+                    <Tooltip content="Open in new tab" preferredPosition="above">
+                      <button
+                        type="button"
+                        className={`${styles.cardActionBtn} ${styles.cardActionBtnPrimary}`}
+                        onClick={() => onPreviewVariant(variant, index)}
+                        aria-label="Preview variant"
+                      >
+                        <span className={styles.cardActionBtnIcon} aria-hidden>
+                          <Icon source={ViewIcon} />
+                        </span>
+                        <span className={styles.cardActionBtnLabel}>Preview</span>
+                      </button>
+                    </Tooltip>
+                  )}
+                  {getPreviewUrl && (
+                    <Tooltip content="Copy URL" preferredPosition="above">
+                      <button
+                        type="button"
+                        className={styles.cardActionBtn}
+                        onClick={() => handleCopyPreviewLink(variant, index)}
+                        aria-label="Copy preview link"
+                      >
+                        <span className={styles.cardActionBtnIcon} aria-hidden>
+                          <Icon source={LinkIcon} />
+                        </span>
+                        <span className={styles.cardActionBtnLabel}>Copy link</span>
+                      </button>
+                    </Tooltip>
+                  )}
+                </div>
               </div>
-              <div
-                className={styles.variantCardAllocationBar}
-                style={{ width: `${variant.allocation || 0}%`, backgroundColor: color }}
-                aria-hidden
-              />
             </div>
           );
         })}
       </div>
-
-      {/* Add Variant Modal */}
-      <Modal
-        open={addVariantModal}
-        onClose={() => setAddVariantModal(false)}
-        title="Add New Variant"
-        primaryAction={{
-          content: 'Add Variant',
-          onAction: handleAddVariant,
-          disabled: !newVariantName.trim(),
-        }}
-        secondaryActions={[
-          {
-            content: 'Cancel',
-            onAction: () => setAddVariantModal(false),
-          },
-        ]}
-      >
-        <Modal.Section>
-          <BlockStack gap="300">
-            <TextField
-              label="Variant Name"
-              value={newVariantName}
-              onChange={setNewVariantName}
-              placeholder="e.g., Variant B, Variant C"
-              required
-              helpText="Give your variant a descriptive name"
-            />
-          </BlockStack>
-        </Modal.Section>
-      </Modal>
     </div>
   );
 

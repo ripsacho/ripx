@@ -11,6 +11,19 @@ const { sendError } = require('../utils/response');
 const { getLastExportTime } = require('../jobs/bigQueryExport');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const integrationConfig = require('../services/integrationConfigService');
+const { getTenantByDomain } = require('../models/tenant');
+const userModel = require('../models/user');
+const userDomainAccess = require('../models/userDomainAccess');
+
+function escapeHtmlAttr(str) {
+  if (typeof str !== 'string') {return '';}
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
 
 /**
  * GET /api/settings
@@ -189,31 +202,83 @@ router.put(
 
 /**
  * GET /api/settings/installation
- * Installation snippets and script URLs for Shopify or standalone
+ * Installation snippets and script URLs for Shopify or standalone.
+ * Optional query: domain=example.com (for email session, to show installation for a specific domain).
+ * Returns scriptVerified: true when the script has been detected on the site (domain_verified_at set).
  */
 router.get('/installation', async (req, res, next) => {
   try {
-    const shopDomain = req.shopDomain;
-    if (!shopDomain) {
-      return sendError(res, 401, 'Shop domain or tenant required');
+    let shopDomain = req.shopDomain || (req.query.domain && String(req.query.domain).trim()) || '';
+    // Email session: req.shopDomain is the user's email; resolve domain from query or first from DB
+    if (req.authType === 'email' && req.email && (shopDomain.includes('@') || !shopDomain)) {
+      const user = await userModel.getByEmail(req.email);
+      if (!user) {
+        return sendError(res, 401, 'User not found');
+      }
+      const tenantIds = await userDomainAccess.getTenantIdsForUser(user.id, user.account_id);
+      if (tenantIds.length === 0) {
+        return sendError(res, 400, 'Add a domain in My domains first, then open Setup wizard.');
+      }
+      const tenantsResult = await query(
+        'SELECT domain FROM tenants WHERE id = ANY($1::uuid[]) ORDER BY created_at ASC',
+        [tenantIds]
+      );
+      const allowedDomains = tenantsResult.rows.map(r => r.domain.toLowerCase());
+      const domainFromQuery =
+        req.query.domain &&
+        String(req.query.domain)
+          .trim()
+          .toLowerCase()
+          .replace(/^https?:\/\//, '')
+          .split('/')[0];
+      if (domainFromQuery && allowedDomains.includes(domainFromQuery)) {
+        shopDomain = domainFromQuery;
+      } else {
+        shopDomain = tenantsResult.rows[0]?.domain || '';
+      }
+    }
+    if (!shopDomain || shopDomain.includes('@')) {
+      return sendError(
+        res,
+        401,
+        'Shop domain or tenant required. Add a domain in My domains, or open a domain first.'
+      );
     }
 
     const appUrl = (process.env.APP_URL || '').replace(/\/$/, '');
     const isShopify = /\.myshopify\.com$/.test(shopDomain);
+    const SCRIPT_VERSION = '1';
 
     let scriptUrl;
     let snippetHtml;
     let platform;
     let instructions;
 
+    // Origin for resource hints (preconnect/dns-prefetch) to reduce script load latency
+    const scriptOrigin = appUrl
+      ? (function () {
+          try {
+            const u = new URL(appUrl);
+            return u.origin || '';
+          } catch (_) {
+            return '';
+          }
+        })()
+      : '';
+
     if (isShopify) {
       platform = 'shopify';
-      // App Proxy URL (recommended) or direct API URL
-      scriptUrl = `https://${shopDomain}/apps/ripx/script.js?v=1`;
-      const directUrl = `${appUrl}/api/track/script.js?shop=${shopDomain}`;
-      snippetHtml = `<!-- RipX A/B Testing - Shopify (App Proxy recommended) -->
-<script src="${scriptUrl}"></script>
-<!-- Or direct: <script src="${directUrl}"></script> -->`;
+      scriptUrl = `https://${shopDomain}/apps/ripx/script.js?v=${SCRIPT_VERSION}`;
+      const directUrl = `${appUrl}/api/track/script.js?shop=${encodeURIComponent(shopDomain)}&v=${SCRIPT_VERSION}`;
+      const resourceHints = scriptOrigin
+        ? `<!-- Optional: early connection to API origin (~100–300ms saved) -->
+<link rel="preconnect" href="${escapeHtmlAttr(scriptOrigin)}" crossorigin>
+<link rel="dns-prefetch" href="${escapeHtmlAttr(scriptOrigin)}">
+`
+        : '';
+      snippetHtml = `<!-- RipX A/B Testing - Shopify. Place in <head> for earliest execution. -->
+${resourceHints}<script src="${scriptUrl}" defer crossorigin="anonymous" fetchpriority="low"></script>
+<!-- Alternative (direct API): <script src="${directUrl}" defer crossorigin="anonymous" fetchpriority="low"></script> -->`;
       instructions = {
         method: 'App Proxy + App Embed (recommended)',
         steps: [
@@ -222,22 +287,31 @@ router.get('/installation', async (req, res, next) => {
           'Script loads automatically at /apps/ripx/script.js',
         ],
         altMethod: 'Direct script',
-        altSnippet: `<script src="${directUrl}"></script>`,
+        altSnippet: `<script src="${directUrl}" defer crossorigin="anonymous" fetchpriority="low"></script>`,
       };
     } else {
       platform = 'standalone';
-      scriptUrl = `${appUrl}/api/track/script.js?site=${encodeURIComponent(shopDomain)}`;
-      snippetHtml = `<!-- RipX A/B Testing - Standalone -->
-<script src="${scriptUrl}"></script>`;
+      scriptUrl = `${appUrl}/api/track/script.js?site=${encodeURIComponent(shopDomain)}&v=${SCRIPT_VERSION}`;
+      const resourceHints = scriptOrigin
+        ? `<!-- Optional: early connection to API origin (~100–300ms saved) -->
+<link rel="preconnect" href="${escapeHtmlAttr(scriptOrigin)}" crossorigin>
+<link rel="dns-prefetch" href="${escapeHtmlAttr(scriptOrigin)}">
+`
+        : '';
+      snippetHtml = `<!-- RipX A/B Testing - Standalone. Place in <head>; defer avoids blocking page load. -->
+${resourceHints}<script src="${scriptUrl}" defer crossorigin="anonymous" fetchpriority="low" data-ripx-domain="${escapeHtmlAttr(shopDomain)}"></script>`;
       instructions = {
         method: 'Add to your site',
         steps: [
-          "Add the script tag to your site's <head> or before </body>",
-          `Ensure your domain "${shopDomain}" is registered (POST /api/tenants/standalone)`,
+          "Add the script tag to your site's <head> (recommended) or before </body>",
+          `Ensure your domain "${shopDomain}" is registered (add it in My domains if needed)`,
           'Use the same domain visitors see (no www vs non-www mismatch)',
         ],
       };
     }
+
+    const tenant = await getTenantByDomain(shopDomain);
+    const scriptVerified = !!(tenant && tenant.domain_verified_at);
 
     res.json({
       success: true,
@@ -248,6 +322,7 @@ router.get('/installation', async (req, res, next) => {
         scriptUrl,
         snippetHtml,
         instructions,
+        scriptVerified,
       },
     });
   } catch (error) {

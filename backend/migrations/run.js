@@ -1,8 +1,10 @@
 /**
  * Database Migration Runner
  *
- * Runs SQL migrations in order. Tracks applied migrations in schema_migrations
- * so already-applied files are skipped on re-run (safe for repeated deploys).
+ * Runs only .sql files in this directory, in numeric order. Tracks applied
+ * migrations in schema_migrations so already-applied files are skipped
+ * (safe for repeated deploys). Any .js files here are legacy one-off scripts
+ * and are not run by this runner.
  */
 /* eslint-disable no-console */
 
@@ -31,7 +33,9 @@ async function runMigrations() {
     .sort((a, b) => {
       const numA = parseInt(a.match(/^(\d+)/)?.[1] || '0', 10);
       const numB = parseInt(b.match(/^(\d+)/)?.[1] || '0', 10);
-      if (numA !== numB) {return numA - numB;}
+      if (numA !== numB) {
+        return numA - numB;
+      }
       return a.localeCompare(b);
     });
 

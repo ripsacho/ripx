@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "copy:storefront": "node -e \"require('fs').copyFileSync(require('path').join(__dirname,'..','shopify','storefront-script.js'), require('path').join(__dirname,'public','ripx-storefront.js'))\"",
+    "predev": "npm run copy:storefront",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",

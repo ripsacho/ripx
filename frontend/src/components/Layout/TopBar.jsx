@@ -127,7 +127,8 @@ function TopBar({
 }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAdmin, isLoading } = useAdminMe();
+  const { isAdmin, isLoading, role } = useAdminMe();
+  const showAdminEntry = Boolean(!isLoading && isAdmin && role);
   const [userMenuActive, setUserMenuActive] = useState(false);
   const [settingsMenuActive, setSettingsMenuActive] = useState(false);
   const [notificationsActive, setNotificationsActive] = useState(false);
@@ -295,7 +296,7 @@ function TopBar({
 
       <div className={styles.topBarRight}>
         <StoreSwitcher />
-        {!isLoading && isAdmin && (
+        {showAdminEntry && (
           <Tooltip content="Admin panel" preferredPosition="below">
             <button
               type="button"

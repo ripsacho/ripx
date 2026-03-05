@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Page,
   Card,
@@ -22,6 +22,7 @@ import {
   Box,
   Select,
   Icon,
+  Banner,
 } from '@shopify/polaris';
 import {
   ChartVerticalIcon,
@@ -97,6 +98,24 @@ const CONFIDENCE_QUICK = [
   { label: '99%', value: 0.99 },
 ];
 
+/** Default settings values - single source for initial state and validation */
+const DEFAULT_SETTINGS = {
+  minSampleSize: 100,
+  confidenceLevel: 0.95,
+  autoStopEnabled: true,
+  outboundWebhookUrl: '',
+  outboundWebhookEvents: ['test_complete', 'significance'],
+};
+
+/** Default integration form state */
+const DEFAULT_INTEGRATION_CONFIG = {
+  ga4MeasurementId: '',
+  ga4ApiSecret: '',
+  bigqueryProjectId: '',
+  bigqueryDataset: 'ripx_analytics',
+  bigqueryCredentials: '',
+};
+
 /** Theme options - single source of truth for Appearance tab */
 const THEME_OPTIONS = [
   { value: 'light', label: 'Light', preview: 'light' },
@@ -104,6 +123,8 @@ const THEME_OPTIONS = [
   { value: 'auto', label: 'Auto (by time of day)', preview: 'auto' },
   { value: 'custom', label: 'Custom schedule', preview: 'auto' },
 ];
+
+const THEME_VALUES = THEME_OPTIONS.map(o => o.value);
 
 /** Format ISO date to relative time (e.g. "2 hours ago") */
 function formatRelativeTime(iso) {
@@ -130,40 +151,68 @@ const TAB_CONFIG = [
   { id: 'presets', label: 'Targeting Presets', icon: TargetIcon },
 ];
 
+const TAB_IDS = TAB_CONFIG.map(t => t.id);
+
+function tabIndexFromSearchParams(searchParams) {
+  const tab = searchParams.get('tab');
+  const i = TAB_IDS.indexOf(tab);
+  return i >= 0 ? i : 0;
+}
+
 function Settings() {
-  const [selectedTab, setSelectedTab] = useState(0);
-  const [settings, setSettings] = useState({
-    minSampleSize: 100,
-    confidenceLevel: 0.95,
-    autoStopEnabled: true,
-    outboundWebhookUrl: '',
-    outboundWebhookEvents: ['test_complete', 'significance'],
-  });
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedTab, setSelectedTabState] = useState(() => tabIndexFromSearchParams(searchParams));
+
+  const setSelectedTab = useCallback(
+    index => {
+      const i = Math.max(0, Math.min(index, TAB_CONFIG.length - 1));
+      setSelectedTabState(i);
+      const id = TAB_IDS[i];
+      setSearchParams(
+        prev => {
+          const next = new URLSearchParams(prev);
+          if (id === 'installation') next.delete('tab');
+          else next.set('tab', id);
+          return next;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
+
+  useEffect(() => {
+    const index = tabIndexFromSearchParams(searchParams);
+    setSelectedTabState(index);
+  }, [searchParams]);
+  const [settings, setSettings] = useState({ ...DEFAULT_SETTINGS });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
+  const [settingsLoadError, setSettingsLoadError] = useState(false);
   const [targetingPresets, setTargetingPresets] = useState([]);
+  const [presetsLoading, setPresetsLoading] = useState(true);
   const [deletePresetId, setDeletePresetId] = useState(null);
   const [integrations, setIntegrations] = useState(null);
-  const [integrationConfig, setIntegrationConfig] = useState({
-    ga4MeasurementId: '',
-    ga4ApiSecret: '',
-    bigqueryProjectId: '',
-    bigqueryDataset: 'ripx_analytics',
-    bigqueryCredentials: '',
-  });
+  const [integrationsError, setIntegrationsError] = useState(false);
+  const [integrationConfig, setIntegrationConfig] = useState({ ...DEFAULT_INTEGRATION_CONFIG });
   const [integrationsRefreshing, setIntegrationsRefreshing] = useState(false);
   const [integrationsSaving, setIntegrationsSaving] = useState(false);
   const [bigQueryExporting, setBigQueryExporting] = useState(false);
   const [installation, setInstallation] = useState(null);
+  const [installationLoading, setInstallationLoading] = useState(true);
+  const [installationError, setInstallationError] = useState(false);
   const [copiedSnippet, setCopiedSnippet] = useState(false);
   const [theme, setTheme] = useState(() => {
     const saved = getSavedTheme();
-    return ['light', 'dark', 'auto', 'custom'].includes(saved) ? saved : 'light';
+    return THEME_VALUES.includes(saved) ? saved : THEME_OPTIONS[0].value;
   });
   const [webhookError, setWebhookError] = useState(null);
+  const [presetApplyingKey, setPresetApplyingKey] = useState(null);
+  const [deletePresetLoading, setDeletePresetLoading] = useState(false);
 
   const fetchSettings = useCallback(async () => {
+    setSettingsLoadError(false);
     try {
       setLoading(true);
       const response = await apiGet('/settings');
@@ -171,14 +220,18 @@ function Settings() {
       const data = raw?.settings ?? raw;
       if (data) {
         setSettings({
-          minSampleSize: data.minSampleSize ?? 100,
-          confidenceLevel: data.confidenceLevel ?? 0.95,
+          minSampleSize: data.minSampleSize ?? DEFAULT_SETTINGS.minSampleSize,
+          confidenceLevel: data.confidenceLevel ?? DEFAULT_SETTINGS.confidenceLevel,
           autoStopEnabled: data.autoStopEnabled !== false,
-          outboundWebhookUrl: data.outboundWebhookUrl ?? '',
-          outboundWebhookEvents: data.outboundWebhookEvents ?? ['test_complete', 'significance'],
+          outboundWebhookUrl: data.outboundWebhookUrl ?? DEFAULT_SETTINGS.outboundWebhookUrl,
+          outboundWebhookEvents:
+            Array.isArray(data.outboundWebhookEvents) && data.outboundWebhookEvents.length > 0
+              ? data.outboundWebhookEvents
+              : DEFAULT_SETTINGS.outboundWebhookEvents,
         });
       }
     } catch (err) {
+      setSettingsLoadError(true);
       if (import.meta.env.DEV) {
         console.error('Error fetching settings:', err);
       }
@@ -188,15 +241,19 @@ function Settings() {
   }, []);
 
   const fetchPresets = useCallback(async () => {
+    setPresetsLoading(true);
     try {
       const res = await apiGet('/targeting-presets');
       setTargetingPresets(unwrapData(res)?.presets ?? []);
     } catch {
       setTargetingPresets([]);
+    } finally {
+      setPresetsLoading(false);
     }
   }, []);
 
   const fetchIntegrations = useCallback(async () => {
+    setIntegrationsError(false);
     try {
       const res = await apiGet('/settings/integrations');
       const data = unwrapData(res);
@@ -206,26 +263,37 @@ function Settings() {
           ga4MeasurementId: data.config.ga4MeasurementId || '',
           ga4ApiSecret: data.config.ga4ApiSecret || '',
           bigqueryProjectId: data.config.bigqueryProjectId || '',
-          bigqueryDataset: data.config.bigqueryDataset || 'ripx_analytics',
+          bigqueryDataset:
+            data.config.bigqueryDataset || DEFAULT_INTEGRATION_CONFIG.bigqueryDataset,
           bigqueryCredentials: data.config.bigqueryCredentials || '',
         });
       }
     } catch {
       setIntegrations(null);
+      setIntegrationConfig({ ...DEFAULT_INTEGRATION_CONFIG });
+      setIntegrationsError(true);
     }
   }, []);
 
   const fetchInstallation = useCallback(async () => {
+    setInstallationLoading(true);
+    setInstallationError(false);
     try {
       const res = await apiGet('/settings/installation');
-      setInstallation(unwrapData(res)?.installation ?? null);
+      const data = unwrapData(res)?.installation ?? null;
+      setInstallation(data);
+      if (!data) setInstallationError(true);
     } catch {
       setInstallation(null);
+      setInstallationError(true);
+    } finally {
+      setInstallationLoading(false);
     }
   }, []);
 
   const handleRefreshIntegrations = useCallback(async () => {
     setIntegrationsRefreshing(true);
+    setIntegrationsError(false);
     try {
       await fetchIntegrations();
       setMessage('Integration status refreshed');
@@ -332,8 +400,14 @@ function Settings() {
         return;
       }
     }
-    const minSize = Math.max(10, Math.min(10000, parseInt(settings.minSampleSize, 10) || 100));
-    const conf = Math.max(0.8, Math.min(0.99, parseFloat(settings.confidenceLevel) || 0.95));
+    const minSize = Math.max(
+      10,
+      Math.min(10000, parseInt(settings.minSampleSize, 10) || DEFAULT_SETTINGS.minSampleSize)
+    );
+    const conf = Math.max(
+      0.8,
+      Math.min(0.99, parseFloat(settings.confidenceLevel) || DEFAULT_SETTINGS.confidenceLevel)
+    );
     const payload = {
       ...settings,
       minSampleSize: minSize,
@@ -342,7 +416,7 @@ function Settings() {
       outboundWebhookEvents:
         Array.isArray(settings.outboundWebhookEvents) && settings.outboundWebhookEvents.length > 0
           ? settings.outboundWebhookEvents
-          : ['test_complete', 'significance'],
+          : DEFAULT_SETTINGS.outboundWebhookEvents,
     };
     setSaving(true);
     setMessage(null);
@@ -358,7 +432,7 @@ function Settings() {
   };
 
   const handleThemeChange = value => {
-    const valid = ['light', 'dark', 'auto', 'custom'].includes(value) ? value : 'light';
+    const valid = THEME_VALUES.includes(value) ? value : THEME_OPTIONS[0].value;
     setTheme(valid);
     if (valid !== 'custom') {
       updateTheme(valid);
@@ -415,12 +489,33 @@ function Settings() {
               </div>
             </div>
 
-            <nav className={styles.settingsTabBar} role="tablist" aria-label="Settings sections">
+            <nav
+              className={styles.settingsTabBar}
+              role="tablist"
+              aria-label="Settings sections"
+              onKeyDown={e => {
+                const count = TAB_CONFIG.length;
+                if (e.key === 'ArrowLeft' && selectedTab > 0) {
+                  e.preventDefault();
+                  setSelectedTab(selectedTab - 1);
+                } else if (e.key === 'ArrowRight' && selectedTab < count - 1) {
+                  e.preventDefault();
+                  setSelectedTab(selectedTab + 1);
+                } else if (e.key === 'Home') {
+                  e.preventDefault();
+                  setSelectedTab(0);
+                } else if (e.key === 'End') {
+                  e.preventDefault();
+                  setSelectedTab(count - 1);
+                }
+              }}
+            >
               {TAB_CONFIG.map((tab, i) => (
                 <button
                   key={tab.id}
                   type="button"
                   role="tab"
+                  tabIndex={selectedTab === i ? 0 : -1}
                   aria-selected={selectedTab === i}
                   aria-controls={`settings-panel-${tab.id}`}
                   id={`settings-tab-${tab.id}`}
@@ -434,20 +529,34 @@ function Settings() {
                 </button>
               ))}
             </nav>
+
+            {settingsLoadError && (
+              <Banner
+                tone="critical"
+                onDismiss={() => setSettingsLoadError(false)}
+                action={{ content: 'Retry', onAction: () => fetchSettings() }}
+              >
+                Couldn&apos;t load settings. Check your connection and try again. You can still use
+                Installation, Integrations, and other tabs.
+              </Banner>
+            )}
           </div>
 
-          <div className={styles.settingsBody}>
+          <main id="settings-main" className={styles.settingsBody} aria-label="Settings content">
             <BlockStack gap={CONTENT_GAP}>
               {loading ? (
                 <div className={styles.settingsLoadingSkeleton}>
-                  <div
-                    className={styles.loadingBlock}
-                    style={{ height: 80, marginBottom: '1.5rem' }}
-                  />
-                  <div className={styles.loadingBlock} style={{ height: 280 }} />
+                  <div className={styles.loadingSkeletonCard} />
+                  <div className={styles.loadingSkeletonCard} style={{ height: 200 }} />
+                  <div className={styles.loadingSkeletonCard} style={{ height: 160 }} />
                 </div>
               ) : (
-                <div className={styles.settingsPanels}>
+                <div
+                  className={styles.settingsPanels}
+                  role="region"
+                  aria-live="polite"
+                  aria-label="Settings panel"
+                >
                   {selectedTab === 0 && (
                     <div
                       id="settings-panel-installation"
@@ -472,23 +581,78 @@ function Settings() {
                                 >
                                   Storefront Snippet
                                 </Text>
-                                <span className={styles.snippetPlatformBadge}>
-                                  {installation?.platform === 'shopify' ? 'Shopify' : 'Standalone'}
-                                </span>
+                                {installation && (
+                                  <div className={styles.snippetBadges}>
+                                    <span className={styles.snippetPlatformBadge}>
+                                      {installation.platform === 'shopify'
+                                        ? 'Shopify'
+                                        : 'Standalone'}
+                                    </span>
+                                    {installation.scriptVerified && (
+                                      <span
+                                        className={styles.snippetVerifiedBadge}
+                                        title="Script detected on your site"
+                                      >
+                                        Script detected
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
                                 <Text
                                   as="p"
                                   variant="bodySm"
                                   tone="subdued"
                                   className={styles.snippetSectionDesc}
                                 >
-                                  {installation?.platform === 'shopify'
-                                    ? 'Copy the snippet below. For guided setup, use the Setup Wizard.'
-                                    : "Add this script to your site's <head> — one copy, done."}
+                                  {installationLoading
+                                    ? 'Loading your installation details…'
+                                    : installationError || !installation
+                                      ? 'Get your snippet and setup steps from the Setup Wizard below.'
+                                      : installation.platform === 'shopify'
+                                        ? 'Copy the snippet below. For guided setup, use the Setup Wizard.'
+                                        : "Add this script to your site's <head> — one copy, done."}
                                 </Text>
                               </div>
                             </div>
 
-                            {installation ? (
+                            {installationLoading ? (
+                              <div className={styles.installationSkeleton}>
+                                <div
+                                  className={styles.loadingBlock}
+                                  style={{ height: 48, marginBottom: '1rem' }}
+                                />
+                                <div className={styles.loadingBlock} style={{ height: 140 }} />
+                                <div
+                                  className={styles.loadingBlock}
+                                  style={{ height: 32, marginTop: '1.5rem' }}
+                                />
+                                <div
+                                  className={styles.loadingBlock}
+                                  style={{ height: 40, marginTop: '0.5rem' }}
+                                />
+                              </div>
+                            ) : installationError || !installation ? (
+                              <div className={styles.installationEmpty}>
+                                <div className={styles.installationEmptyIcon}>
+                                  <CodeIcon />
+                                </div>
+                                <Text as="p" variant="bodyMd" tone="subdued">
+                                  {installationError
+                                    ? "We couldn't load the installation snippet. Use the Setup Wizard to get your script and steps, or retry if you just added a domain."
+                                    : 'Get your storefront snippet and setup steps from the Setup Wizard.'}
+                                </Text>
+                                <div className={styles.installationEmptyActions}>
+                                  {installationError && (
+                                    <Button size="slim" onClick={() => fetchInstallation()}>
+                                      Retry
+                                    </Button>
+                                  )}
+                                  <Link to={ROUTES.SETUP} className={styles.installationEmptyCta}>
+                                    Open Setup Wizard
+                                  </Link>
+                                </div>
+                              </div>
+                            ) : (
                               <div className={styles.snippetSection}>
                                 <div className={styles.snippetBlock}>
                                   <div className={styles.snippetBlockHeader}>
@@ -548,8 +712,6 @@ function Settings() {
                                   </div>
                                 </div>
                               </div>
-                            ) : (
-                              <div className={styles.loadingBlock} />
                             )}
                           </BlockStack>
                         </Box>
@@ -657,7 +819,8 @@ function Settings() {
                                   </Text>
                                   <Text as="p" variant="bodySm" tone="subdued">
                                     Connected via API key. To use a different key, go to{' '}
-                                    <Link to="/connect">Connect</Link> or clear storage and reload.
+                                    <Link to={ROUTES.CONNECT}>Connect</Link> or clear storage and
+                                    reload.
                                   </Text>
                                 </div>
                               </div>
@@ -690,8 +853,10 @@ function Settings() {
                                   <button
                                     key={key}
                                     type="button"
+                                    disabled={presetApplyingKey !== null}
                                     className={`${styles.presetCard} ${key === 'recommended' ? styles.presetCardRecommended : ''}`}
                                     onClick={async () => {
+                                      setPresetApplyingKey(key);
                                       const next = {
                                         ...settings,
                                         minSampleSize: preset.minSampleSize,
@@ -699,146 +864,152 @@ function Settings() {
                                         autoStopEnabled: preset.autoStopEnabled,
                                       };
                                       setSettings(next);
-                                      setMessage(`Applying "${preset.label}"...`);
+                                      setMessage(`Applying "${preset.label}"…`);
                                       try {
                                         await apiPut('/settings', next);
                                         setMessage(`"${preset.label}" preset saved`);
                                       } catch (err) {
                                         setMessage(err?.response?.data?.error || 'Failed to save');
+                                      } finally {
+                                        setPresetApplyingKey(null);
                                       }
                                     }}
                                   >
-                                    <span className={styles.presetCardLabel}>{preset.label}</span>
-                                    <span className={styles.presetCardDesc}>
-                                      {preset.description}
-                                    </span>
-                                    <span className={styles.presetCardMeta}>
-                                      {preset.minSampleSize} visitors ·{' '}
-                                      {Math.round(preset.confidenceLevel * 100)}% confidence
-                                    </span>
+                                    {presetApplyingKey === key ? (
+                                      <span className={styles.presetCardLoading}>Applying…</span>
+                                    ) : (
+                                      <>
+                                        <span className={styles.presetCardLabel}>
+                                          {preset.label}
+                                        </span>
+                                        <span className={styles.presetCardDesc}>
+                                          {preset.description}
+                                        </span>
+                                        <span className={styles.presetCardMeta}>
+                                          {preset.minSampleSize} visitors ·{' '}
+                                          {Math.round(preset.confidenceLevel * 100)}% confidence
+                                        </span>
+                                      </>
+                                    )}
                                   </button>
                                 ))}
                               </div>
                             </div>
 
-                            {loading ? (
-                              <div className={styles.loadingBlock} />
-                            ) : (
-                              <div className={styles.testConfigCustom}>
-                                <span className={styles.configSubsection}>Customize</span>
-                                <div className={styles.configFieldGroups}>
-                                  <div className={styles.configFieldGroup}>
-                                    <Text
-                                      variant="bodySm"
-                                      fontWeight="semibold"
-                                      as="span"
-                                      className={styles.configFieldLabel}
-                                    >
-                                      Minimum Sample Size
-                                    </Text>
-                                    <div className={styles.configQuickSelect}>
-                                      {SAMPLE_SIZE_QUICK.map(n => (
-                                        <Button
-                                          key={n}
-                                          size="slim"
-                                          pressed={settings.minSampleSize === n}
-                                          onClick={() =>
-                                            setSettings({ ...settings, minSampleSize: n })
-                                          }
-                                        >
-                                          {n}
-                                        </Button>
-                                      ))}
-                                    </div>
-                                    <div className={styles.configTextField}>
-                                      <TextField
-                                        label="Or enter custom (10–10,000)"
-                                        type="number"
-                                        value={String(settings.minSampleSize ?? 100)}
-                                        onChange={value => {
-                                          const num = parseInt(
-                                            String(value).replace(/\D/g, ''),
-                                            10
-                                          );
-                                          setSettings({
-                                            ...settings,
-                                            minSampleSize: Number.isFinite(num)
-                                              ? Math.max(10, Math.min(10000, num))
-                                              : 100,
-                                          });
-                                        }}
-                                        helpText="Minimum visitors before showing results"
-                                        min={10}
-                                        max={10000}
-                                        autoComplete="off"
-                                      />
-                                    </div>
+                            <div className={styles.testConfigCustom}>
+                              <span className={styles.configSubsection}>Customize</span>
+                              <div className={styles.configFieldGroups}>
+                                <div className={styles.configFieldGroup}>
+                                  <Text
+                                    variant="bodySm"
+                                    fontWeight="semibold"
+                                    as="span"
+                                    className={styles.configFieldLabel}
+                                  >
+                                    Minimum Sample Size
+                                  </Text>
+                                  <div className={styles.configQuickSelect}>
+                                    {SAMPLE_SIZE_QUICK.map(n => (
+                                      <Button
+                                        key={n}
+                                        size="slim"
+                                        pressed={settings.minSampleSize === n}
+                                        onClick={() =>
+                                          setSettings({ ...settings, minSampleSize: n })
+                                        }
+                                      >
+                                        {n}
+                                      </Button>
+                                    ))}
                                   </div>
-
-                                  <div className={styles.configFieldGroup}>
-                                    <Text
-                                      variant="bodySm"
-                                      fontWeight="semibold"
-                                      as="span"
-                                      className={styles.configFieldLabel}
-                                    >
-                                      Confidence Level
-                                    </Text>
-                                    <div className={styles.configQuickSelect}>
-                                      {CONFIDENCE_QUICK.map(({ label, value }) => (
-                                        <Button
-                                          key={value}
-                                          size="slim"
-                                          pressed={
-                                            Math.abs(Number(settings.confidenceLevel) - value) <
-                                            0.001
-                                          }
-                                          onClick={() =>
-                                            setSettings({ ...settings, confidenceLevel: value })
-                                          }
-                                        >
-                                          {label}
-                                        </Button>
-                                      ))}
-                                    </div>
-                                    <div className={styles.configTextField}>
-                                      <TextField
-                                        label="Or enter custom (0.8–0.99)"
-                                        type="number"
-                                        value={String(settings.confidenceLevel ?? 0.95)}
-                                        onChange={value => {
-                                          const num = parseFloat(
-                                            String(value).replace(/[^\d.]/g, '')
-                                          );
-                                          setSettings({
-                                            ...settings,
-                                            confidenceLevel: Number.isFinite(num)
-                                              ? Math.max(0.8, Math.min(0.99, num))
-                                              : 0.95,
-                                          });
-                                        }}
-                                        helpText="Higher = more conservative, waits for stronger evidence"
-                                        min={0.8}
-                                        max={1}
-                                        step={0.01}
-                                        autoComplete="off"
-                                      />
-                                    </div>
-                                  </div>
-
-                                  <div className={styles.configAutoStop}>
-                                    <Checkbox
-                                      label="Auto-stop when winner is clear"
-                                      helpText="Automatically stop tests when statistical significance is reached — recommended for most users"
-                                      checked={settings.autoStopEnabled}
-                                      onChange={checked =>
-                                        setSettings({ ...settings, autoStopEnabled: checked })
-                                      }
+                                  <div className={styles.configTextField}>
+                                    <TextField
+                                      label="Or enter custom (10–10,000)"
+                                      type="number"
+                                      value={String(
+                                        settings.minSampleSize ?? DEFAULT_SETTINGS.minSampleSize
+                                      )}
+                                      onChange={value => {
+                                        const num = parseInt(String(value).replace(/\D/g, ''), 10);
+                                        setSettings({
+                                          ...settings,
+                                          minSampleSize: Number.isFinite(num)
+                                            ? Math.max(10, Math.min(10000, num))
+                                            : DEFAULT_SETTINGS.minSampleSize,
+                                        });
+                                      }}
+                                      helpText="Minimum visitors before showing results"
+                                      min={10}
+                                      max={10000}
+                                      autoComplete="off"
                                     />
                                   </div>
                                 </div>
+
+                                <div className={styles.configFieldGroup}>
+                                  <Text
+                                    variant="bodySm"
+                                    fontWeight="semibold"
+                                    as="span"
+                                    className={styles.configFieldLabel}
+                                  >
+                                    Confidence Level
+                                  </Text>
+                                  <div className={styles.configQuickSelect}>
+                                    {CONFIDENCE_QUICK.map(({ label, value }) => (
+                                      <Button
+                                        key={value}
+                                        size="slim"
+                                        pressed={
+                                          Math.abs(Number(settings.confidenceLevel) - value) < 0.001
+                                        }
+                                        onClick={() =>
+                                          setSettings({ ...settings, confidenceLevel: value })
+                                        }
+                                      >
+                                        {label}
+                                      </Button>
+                                    ))}
+                                  </div>
+                                  <div className={styles.configTextField}>
+                                    <TextField
+                                      label="Or enter custom (0.8–0.99)"
+                                      type="number"
+                                      value={String(
+                                        settings.confidenceLevel ?? DEFAULT_SETTINGS.confidenceLevel
+                                      )}
+                                      onChange={value => {
+                                        const num = parseFloat(
+                                          String(value).replace(/[^\d.]/g, '')
+                                        );
+                                        setSettings({
+                                          ...settings,
+                                          confidenceLevel: Number.isFinite(num)
+                                            ? Math.max(0.8, Math.min(0.99, num))
+                                            : DEFAULT_SETTINGS.confidenceLevel,
+                                        });
+                                      }}
+                                      helpText="Higher = more conservative, waits for stronger evidence"
+                                      min={0.8}
+                                      max={1}
+                                      step={0.01}
+                                      autoComplete="off"
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className={styles.configAutoStop}>
+                                  <Checkbox
+                                    label="Auto-stop when winner is clear"
+                                    helpText="Automatically stop tests when statistical significance is reached — recommended for most users"
+                                    checked={settings.autoStopEnabled}
+                                    onChange={checked =>
+                                      setSettings({ ...settings, autoStopEnabled: checked })
+                                    }
+                                  />
+                                </div>
                               </div>
-                            )}
+                            </div>
                           </BlockStack>
                         </Box>
                       </Card>
@@ -856,7 +1027,8 @@ function Settings() {
                                 </Text>
                                 <Text as="p" variant="bodySm" tone="subdued">
                                   Send events to your server when tests complete or reach
-                                  significance.
+                                  significance. The button below saves both webhook settings and
+                                  test defaults (sample size, confidence, auto-stop).
                                 </Text>
                               </div>
                             </div>
@@ -883,7 +1055,7 @@ function Settings() {
                                       ...settings,
                                       outboundWebhookEvents: selected.length
                                         ? selected
-                                        : ['test_complete', 'significance'],
+                                        : DEFAULT_SETTINGS.outboundWebhookEvents,
                                     })
                                   }
                                   allowMultiple
@@ -941,6 +1113,17 @@ function Settings() {
                       aria-labelledby="settings-tab-integrations"
                       className={`${styles.settingsContent} ${styles.settingsPanelLayout} ${styles.settingsPanelIntegrations}`}
                     >
+                      {integrationsError && (
+                        <div className={styles.settingsPanelBannerWrap}>
+                          <Banner
+                            tone="critical"
+                            onDismiss={() => setIntegrationsError(false)}
+                            action={{ content: 'Retry', onAction: () => fetchIntegrations() }}
+                          >
+                            Couldn&apos;t load integration status. Check your connection and retry.
+                          </Banner>
+                        </div>
+                      )}
                       <Card
                         className={`${styles.settingsPanelCard} ${styles.settingsPanelCardFull} ${styles.integrationsHeaderCard}`}
                       >
@@ -1171,7 +1354,7 @@ function Settings() {
                         })}
                       </div>
                       <Card
-                        className={`${styles.settingsPanelCard} ${styles.settingsPanelCardFull}`}
+                        className={`${styles.settingsPanelCard} ${styles.settingsPanelCardFull} ${styles.integrationsSaveCard}`}
                       >
                         <Box padding="400">
                           <InlineStack align="end" gap="300">
@@ -1195,9 +1378,11 @@ function Settings() {
                       aria-labelledby="settings-tab-appearance"
                       className={`${styles.settingsContent} ${styles.settingsPanelLayout} ${styles.settingsPanelAppearance}`}
                     >
-                      <Card className={`${styles.settingsPanelCard}`}>
-                        <Box padding="400">
-                          <BlockStack gap={CONTENT_GAP}>
+                      <Card
+                        className={`${styles.settingsPanelCard} ${styles.settingsPanelCardFull}`}
+                      >
+                        <Box padding="500">
+                          <BlockStack gap="400">
                             <div className={styles.sectionHeader}>
                               <div className={styles.sectionHeaderIcon}>
                                 <PaintBrushFlatIcon />
@@ -1207,8 +1392,8 @@ function Settings() {
                                   Theme
                                 </Text>
                                 <Text as="p" variant="bodySm" tone="subdued">
-                                  Choose how the app looks. Auto switches by time of day. For custom
-                                  schedule, see{' '}
+                                  Choose how the app looks. Auto switches by time of day. For a
+                                  custom schedule (e.g. dark after 7pm), use{' '}
                                   <Link
                                     to={`${ROUTES.PROFILE}?tab=preferences`}
                                     className={styles.setupWizardLink}
@@ -1227,6 +1412,8 @@ function Settings() {
                                     type="button"
                                     className={`${styles.themePreviewCard} ${theme === opt.value ? styles.themePreviewCardActive : ''}`}
                                     onClick={() => handleThemeChange(opt.value)}
+                                    aria-pressed={theme === opt.value}
+                                    aria-label={`Theme: ${opt.label}`}
                                   >
                                     <div
                                       className={`${styles.themePreviewSwatch} ${styles[`themePreviewSwatch_${opt.preview}`]}`}
@@ -1235,37 +1422,23 @@ function Settings() {
                                   </button>
                                 ))}
                               </div>
-                            </div>
-                          </BlockStack>
-                        </Box>
-                      </Card>
-                      <Card className={`${styles.settingsPanelCard}`}>
-                        <Box padding="400">
-                          <BlockStack gap={CONTENT_GAP}>
-                            <div className={styles.sectionHeader}>
-                              <div className={styles.sectionHeaderIcon}>
-                                <PaintBrushFlatIcon />
-                              </div>
-                              <div className={styles.sectionHeaderContent}>
-                                <Text variant="headingMd" as="h2">
-                                  Select theme
+                              <div className={styles.themeSelectFallback}>
+                                <Text as="span" variant="bodySm" tone="subdued">
+                                  Or choose from dropdown:
                                 </Text>
-                                <Text as="p" variant="bodySm" tone="subdued">
-                                  Or choose from the dropdown below.
-                                </Text>
+                                <div className={styles.themeSelectWrap}>
+                                  <Select
+                                    label="Theme"
+                                    labelHidden
+                                    options={THEME_OPTIONS.map(({ value, label }) => ({
+                                      value,
+                                      label,
+                                    }))}
+                                    value={theme}
+                                    onChange={handleThemeChange}
+                                  />
+                                </div>
                               </div>
-                            </div>
-                            <div className={styles.panelCardBody}>
-                              <Select
-                                label="Theme"
-                                labelHidden
-                                options={THEME_OPTIONS.map(({ value, label }) => ({
-                                  value,
-                                  label,
-                                }))}
-                                value={theme}
-                                onChange={handleThemeChange}
-                              />
                             </div>
                           </BlockStack>
                         </Box>
@@ -1300,7 +1473,15 @@ function Settings() {
                               </div>
                             </div>
                             <div className={styles.panelCardBody}>
-                              {targetingPresets.length > 0 ? (
+                              {presetsLoading ? (
+                                <div className={styles.presetsLoading}>
+                                  <div
+                                    className={styles.loadingBlock}
+                                    style={{ height: 56, marginBottom: '0.75rem' }}
+                                  />
+                                  <div className={styles.loadingBlock} style={{ height: 56 }} />
+                                </div>
+                              ) : targetingPresets.length > 0 ? (
                                 <div className={styles.presetsGrid}>
                                   {targetingPresets.map(p => (
                                     <div key={p.id} className={styles.presetCardItem}>
@@ -1327,8 +1508,12 @@ function Settings() {
                                     <TargetIcon />
                                   </div>
                                   <p className={styles.presetsEmptyText}>
-                                    No presets yet. Save targeting as a preset when creating a test.
+                                    No targeting presets yet. Create a test and save your targeting
+                                    as a preset in the Test Wizard to reuse it later.
                                   </p>
+                                  <Link to={ROUTES.CREATE_TEST} className={styles.presetsEmptyCta}>
+                                    Create a test
+                                  </Link>
                                 </div>
                               )}
                             </div>
@@ -1339,7 +1524,7 @@ function Settings() {
                   )}
                 </div>
               )}
-              <Card>
+              <Card className={styles.aboutCard}>
                 <Box padding="400">
                   <div className={styles.aboutSection}>
                     <div className={styles.aboutTitleRow}>
@@ -1352,35 +1537,45 @@ function Settings() {
                       run, and analyze experiments with statistical rigor.
                     </p>
                     <Link to={ROUTES.DOCS} className={styles.aboutDocsLink}>
-                      View full documentation →
+                      View documentation
                     </Link>
                   </div>
                 </Box>
               </Card>
             </BlockStack>
-          </div>
+          </main>
         </div>
       </Page>
 
       <Modal
         open={!!deletePresetId}
-        onClose={() => setDeletePresetId(null)}
+        onClose={() => !deletePresetLoading && setDeletePresetId(null)}
         title="Delete preset?"
         primaryAction={{
           content: 'Delete',
           destructive: true,
+          loading: deletePresetLoading,
           onAction: async () => {
             if (!deletePresetId) return;
+            setDeletePresetLoading(true);
             try {
               await apiDelete(`/targeting-presets/${deletePresetId}`);
               setTargetingPresets(prev => prev.filter(p => p.id !== deletePresetId));
               setDeletePresetId(null);
             } catch (err) {
               setMessage(err?.response?.data?.error || 'Failed to delete');
+            } finally {
+              setDeletePresetLoading(false);
             }
           },
         }}
-        secondaryActions={[{ content: 'Cancel', onAction: () => setDeletePresetId(null) }]}
+        secondaryActions={[
+          {
+            content: 'Cancel',
+            onAction: () => setDeletePresetId(null),
+            disabled: deletePresetLoading,
+          },
+        ]}
       />
     </PageShell>
   );

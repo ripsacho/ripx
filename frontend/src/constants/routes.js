@@ -56,6 +56,7 @@ export const ROUTES = {
   ADMIN_LEGAL: '/admin/legal',
   ADMIN_MAINTENANCE: '/admin/maintenance',
   ADMIN_ANNOUNCEMENT_BANNER: '/admin/announcement-banner',
+  ADMIN_MAIL_PROCESSES: '/admin/mail-processes',
   ADMIN_USAGE_EXPORT: '/admin/usage-export',
 
   // Dynamic routes (for navigation)

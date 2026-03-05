@@ -3,11 +3,15 @@
  *
  * Sends transactional email via SMTP (e.g. AWS SES).
  * Configure via: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM.
- * If not configured, sendMail no-ops and returns success (caller can stub).
+ * If not configured, sendMail no-ops and returns true (stub mode).
+ *
+ * sendMail(options) returns Promise<boolean>: true if sent (or stubbed), false on failure.
+ * Callers should handle false (e.g. retry, show user message); it does not throw.
  */
 
 const nodemailer = require('nodemailer');
 const logger = require('../utils/logger');
+const mailProcessService = require('./mailProcessService');
 
 const FROM = process.env.SMTP_FROM || process.env.MAIL_FROM || 'abtesting-noreply@echologyx.com';
 
@@ -58,6 +62,10 @@ function getTransporter() {
   return transporter;
 }
 
+/**
+ * @param {{ to?: string, subject?: string, text?: string, html?: string, replyTo?: string }} options
+ * @returns {Promise<boolean>} true if sent or stubbed, false on validation or SMTP failure
+ */
 async function sendMail(options) {
   const { to, subject, text, html, replyTo } = options || {};
   if (!to || !subject) {
@@ -165,6 +173,9 @@ function wrapEmailLayout(title, bodyHtml, options = {}) {
     .divider { height: 1px; background: #e5e7eb; margin: 20px 0; }
     ul { margin: 0 0 16px; padding-left: 20px; }
     li { margin-bottom: 6px; }
+    .api-key-box { background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 10px; padding: 16px 20px; margin: 16px 0; font-family: 'SF Mono', Monaco, 'Courier New', monospace; font-size: 14px; font-weight: 600; color: ${BRAND.textColor}; word-break: break-all; letter-spacing: 0.02em; }
+    .api-key-label { font-size: 12px; font-weight: 600; color: ${BRAND.textMuted}; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+    code { font-family: 'SF Mono', Monaco, 'Courier New', monospace; font-size: 13px; background: #f1f5f9; padding: 2px 6px; border-radius: 4px; color: ${BRAND.textColor}; }
   </style>
 </head>
 <body>
@@ -186,93 +197,111 @@ function wrapEmailLayout(title, bodyHtml, options = {}) {
 </html>`;
 }
 
-function sendLoginLink(to, link, expiresInMinutes) {
-  const min = expiresInMinutes || 15;
-  const subject = 'Your RipX sign-in link';
-  const bodyHtml = `
-    <p><strong>Sign in to RipX</strong></p>
-    <p>Click the button below to sign in. This link is valid for <strong>${min} minutes</strong> and can only be used once.</p>
-    <p><a href="${link}" class="btn">Sign in to RipX</a></p>
-    <p class="muted">If the button doesn't work, copy and paste this link into your browser:</p>
-    <p class="muted" style="word-break: break-all; font-size: 13px;">${link}</p>
-    <div class="divider"></div>
-    <p class="muted">If you didn't request this email, you can safely ignore it. No one will be signed in without access to this link.</p>
-  `;
-  const text =
-    'Sign in to RipX\n\n' +
-    `Use this link to sign in. It expires in ${min} minutes and can only be used once.\n\n` +
-    link +
-    '\n\nIf you did not request this, you can ignore this email.';
-  return sendMail({
-    to,
-    subject,
-    text,
-    html: wrapEmailLayout(subject, bodyHtml, {
-      preheader: `Sign in to RipX. Link expires in ${min} minutes.`,
-    }),
-  });
-}
-
-function sendConfirmationLink(to, link, expiresInMinutes) {
+async function sendConfirmationLink(to, link, expiresInMinutes) {
+  if (!(await mailProcessService.isEnabled('confirmation_link'))) {
+    logger.info('Email process confirmation_link is disabled; skipping send', {
+      to: to?.substring(0, 6) + '…',
+    });
+    return true;
+  }
   const min = expiresInMinutes || 60;
-  const subject = 'Confirm your RipX account';
-  const bodyHtml = `
-    <p><strong>Confirm your email address</strong></p>
-    <p>Thanks for registering with RipX. Please confirm your email by clicking the button below. This link expires in <strong>${min} minutes</strong>.</p>
-    <p><a href="${link}" class="btn">Confirm my email</a></p>
-    <p class="muted">If the button doesn't work, copy and paste this link into your browser:</p>
-    <p class="muted" style="word-break: break-all; font-size: 13px;">${link}</p>
-    <div class="divider"></div>
-    <p><strong>What happens next?</strong></p>
-    <ul>
-      <li>After you confirm, your account will be reviewed by an administrator.</li>
-      <li>You'll receive an email when your account is approved.</li>
-      <li>Then you can sign in using the same email and request a login link.</li>
-    </ul>
-    <p class="muted">If you didn't create an account with RipX, you can safely ignore this email.</p>
-  `;
-  const text =
-    'Confirm your RipX account\n\n' +
-    `Please confirm your email by clicking the link below. It expires in ${min} minutes.\n\n` +
-    link +
-    '\n\nAfter confirmation, your account will be reviewed by an administrator. You will receive an email when approved.';
-  return sendMail({
-    to,
-    subject,
-    text,
-    html: wrapEmailLayout(subject, bodyHtml, {
-      preheader: 'Confirm your email to complete RipX registration.',
-    }),
+  const t = await mailProcessService.getTemplateForSend('confirmation_link', {
+    link,
+    minutes: min,
   });
+  if (!t.subject || (!t.bodyHtml && !t.bodyText)) {
+    logger.warn('confirmation_link template empty; send skipped');
+    return false;
+  }
+  const html = t.bodyHtml
+    ? wrapEmailLayout(t.subject, t.bodyHtml, {
+        preheader: 'Confirm your email to complete RipX registration.',
+      })
+    : undefined;
+  const text =
+    t.bodyText ||
+    (t.bodyHtml
+      ? t.bodyHtml
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+      : '');
+  return sendMail({ to, subject: t.subject, text, html });
 }
 
 /**
  * Send 6-digit login code email (for accepted users).
+ * If mail process "login_code" is disabled, skips send and returns true so the flow does not get stuck.
  */
-function sendLoginCode(to, code) {
-  const subject = 'Your RipX sign-in code';
-  const bodyHtml = `
-    <p><strong>Sign in to RipX</strong></p>
-    <p>Your one-time sign-in code is:</p>
-    <p style="font-size: 28px; font-weight: 700; letter-spacing: 0.2em; color: ${BRAND.primaryColor}; margin: 16px 0;">${String(code)}</p>
-    <p class="muted">This code expires in <strong>1 minute</strong> and can only be used once.</p>
-    <div class="divider"></div>
-    <p class="muted">If you didn't request this code, you can safely ignore this email.</p>
-  `;
+async function sendLoginCode(to, code) {
+  if (!(await mailProcessService.isEnabled('login_code'))) {
+    logger.info('Email process login_code is disabled; skipping send', {
+      to: to?.substring(0, 6) + '…',
+    });
+    return true;
+  }
+  const t = await mailProcessService.getTemplateForSend('login_code', { code });
+  if (!t.subject || (!t.bodyHtml && !t.bodyText)) {
+    logger.warn('login_code template empty; send skipped');
+    return false;
+  }
+  const html = t.bodyHtml
+    ? wrapEmailLayout(t.subject, t.bodyHtml, { preheader: `Your RipX sign-in code: ${code}` })
+    : undefined;
   const text =
-    'Sign in to RipX\n\n' +
-    `Your one-time sign-in code is: ${code}\n\n` +
-    'This code expires in 1 minute and can only be used once.\n\n' +
-    "If you didn't request this code, you can safely ignore this email.";
-  return sendMail({
-    to,
-    subject,
-    text,
-    html: wrapEmailLayout(subject, bodyHtml, { preheader: `Your RipX sign-in code: ${code}` }),
-  });
+    t.bodyText ||
+    (t.bodyHtml
+      ? t.bodyHtml
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+      : '');
+  return sendMail({ to, subject: t.subject, text, html });
 }
 
-function sendAnnouncement(to, subject, bodyHtml, bodyText) {
+/**
+ * Send one-time login link. If mail process "login_link" is disabled, skips send and returns true.
+ */
+async function sendLoginLink(to, link, min) {
+  if (!(await mailProcessService.isEnabled('login_link'))) {
+    logger.info('Email process login_link is disabled; skipping send', {
+      to: to?.substring(0, 6) + '…',
+    });
+    return true;
+  }
+  return sendLoginLinkImpl(to, link, min);
+}
+
+async function sendLoginLinkImpl(to, link, min) {
+  const minutes = min ?? 15;
+  const t = await mailProcessService.getTemplateForSend('login_link', { link, minutes });
+  if (!t.subject || (!t.bodyHtml && !t.bodyText)) {
+    logger.warn('login_link template empty; send skipped');
+    return false;
+  }
+  const html = t.bodyHtml
+    ? wrapEmailLayout(t.subject, t.bodyHtml, {
+        preheader: `Sign in to RipX. Link expires in ${minutes} minutes.`,
+      })
+    : undefined;
+  const text =
+    t.bodyText ||
+    (t.bodyHtml
+      ? t.bodyHtml
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+      : '');
+  return sendMail({ to, subject: t.subject, text, html });
+}
+
+async function sendAnnouncement(to, subject, bodyHtml, bodyText) {
+  if (!(await mailProcessService.isEnabled('announcement'))) {
+    logger.info('Email process announcement is disabled; skipping send', {
+      to: to?.substring(0, 6) + '…',
+    });
+    return true;
+  }
   const text =
     bodyText ||
     (bodyHtml
@@ -290,35 +319,203 @@ function sendAnnouncement(to, subject, bodyHtml, bodyText) {
 }
 
 /**
- * Send acceptance email when admin approves a standalone user registration
+ * Send acceptance email when admin approves a standalone user registration.
+ * If mail process "acceptance" is disabled, skips send and returns true.
  */
-function sendAcceptanceEmail(to) {
+async function sendAcceptanceEmail(to) {
+  if (!(await mailProcessService.isEnabled('acceptance'))) {
+    logger.info('Email process acceptance is disabled; skipping send', {
+      to: to?.substring(0, 6) + '…',
+    });
+    return true;
+  }
   const appUrl = (process.env.FRONTEND_URL || process.env.APP_URL || '').replace(/\/$/, '');
   const signInUrl = appUrl ? `${appUrl}/connect` : '';
-  const subject = 'Your RipX account has been approved';
-  const bodyHtml = `
-    <p><strong>You're all set!</strong></p>
-    <p>Your RipX account has been approved. You can now sign in and start managing your domains and A/B tests.</p>
-    ${signInUrl ? `<p><a href="${signInUrl}" class="btn">Sign in to RipX</a></p>` : ''}
-    <div class="divider"></div>
-    <p><strong>How to sign in</strong></p>
-    <ul>
-      <li>Go to the sign-in page and enter the email address you registered with.</li>
-      <li>Click "Send login link" — we'll email you a one-time link.</li>
-      <li>Click the link in the email to sign in. No password needed.</li>
-    </ul>
-    <p class="muted">If you have any questions, contact your administrator.</p>
-  `;
+  const t = await mailProcessService.getTemplateForSend('acceptance', { signInUrl });
+  if (!t.subject || (!t.bodyHtml && !t.bodyText)) {
+    logger.warn('acceptance template empty; send skipped');
+    return false;
+  }
+  const html = t.bodyHtml
+    ? wrapEmailLayout(t.subject, t.bodyHtml, { preheader: 'You can now sign in to RipX.' })
+    : undefined;
   const text =
-    'Your RipX account has been approved.\n\n' +
-    'You can now sign in. Use the email address you registered with and request a login link from the sign-in page.\n\n' +
-    (signInUrl ? `Sign in at: ${signInUrl}\n\n` : '');
-  return sendMail({
+    t.bodyText ||
+    (t.bodyHtml
+      ? t.bodyHtml
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+      : '');
+  return sendMail({ to, subject: t.subject, text, html });
+}
+
+/**
+ * Send API key to user's email (domain added or key regenerated).
+ * @param {string} to - Recipient email
+ * @param {Object} options - { domain?, apiKey, reason: 'domain_added' | 'api_key_regenerated' }
+ * @returns {Promise<boolean>}
+ */
+async function sendDomainApiKeyEmail(to, options) {
+  const { domain, apiKey, reason = 'domain_added' } = options || {};
+  if (!to || !apiKey) {
+    logger.warn('sendDomainApiKeyEmail skipped: missing to or apiKey', {
+      hasTo: !!to,
+      hasApiKey: !!apiKey,
+    });
+    return false;
+  }
+  if (!(await mailProcessService.isEnabled('domain_api_key'))) {
+    logger.info('Email process domain_api_key is disabled; skipping send', {
+      to: to.substring(0, 6) + '…',
+      domain: domain || null,
+    });
+    return true;
+  }
+  const appUrl = (process.env.FRONTEND_URL || process.env.APP_URL || '').replace(/\/$/, '');
+  const dashboardUrl = appUrl ? `${appUrl}/dashboard` : '';
+  const isRegenerated = reason === 'api_key_regenerated';
+  const subjectOverride = isRegenerated
+    ? 'Your RipX API key has been updated'
+    : domain
+      ? `Your RipX API key for ${domain}`
+      : 'Your RipX API key';
+
+  const config = await mailProcessService.getConfig('domain_api_key');
+  const useCustomTemplate = Boolean(config.bodyHtml && config.bodyHtml.trim());
+
+  let subject;
+  let bodyHtml;
+  let bodyText;
+  if (useCustomTemplate) {
+    const t = await mailProcessService.getTemplateForSend(
+      'domain_api_key',
+      { domain: domain || '', apiKey },
+      { subjectOverride }
+    );
+    subject = t.subject || subjectOverride;
+    bodyHtml = t.bodyHtml;
+    bodyText = t.bodyText;
+  } else {
+    subject = subjectOverride;
+    const keyBlock = `
+    <p class="api-key-label">API key (store securely — shown only once)</p>
+    <div class="api-key-box">${String(apiKey).replace(/</g, '&lt;')}</div>
+    <p class="muted">Use this key in the <strong>X-RipX-API-Key</strong> header when connecting your site to RipX.</p>
+  `;
+    if (isRegenerated) {
+      bodyHtml = `
+      <p><strong>Your API key has been regenerated</strong></p>
+      <p>The previous key no longer works. Use the new key below for all domains in your account.</p>
+      ${keyBlock}
+      <div class="divider"></div>
+      <p><strong>What to do next</strong></p>
+      <ul>
+        <li>Update your site or app to use the new key in the <code>X-RipX-API-Key</code> header.</li>
+        <li>If you use the RipX dashboard, sign in again; your session will use the new key.</li>
+      </ul>
+      ${dashboardUrl ? `<p><a href="${dashboardUrl}" class="btn">Open RipX Dashboard</a></p>` : ''}
+      <p class="muted">If you didn't request this change, contact support and secure your account.</p>
+    `;
+      bodyText =
+        'Your RipX API key has been regenerated.\n\nAPI key (store securely — shown only once):\n' +
+        apiKey +
+        '\n\n' +
+        (dashboardUrl ? `Dashboard: ${dashboardUrl}\n\n` : '');
+    } else {
+      bodyHtml = `
+      <p><strong>Domain added successfully</strong></p>
+      ${domain ? `<p>Your domain <strong>${String(domain).replace(/</g, '&lt;')}</strong> has been added to your RipX account.</p>` : '<p>A new domain has been added to your RipX account.</p>'}
+      <p>Use the API key below to connect your site to RipX. This key works for all domains in your account.</p>
+      ${keyBlock}
+      <div class="divider"></div>
+      <p><strong>What to do next</strong></p>
+      <ul>
+        <li>Add the RipX script to your site and set the <code>X-RipX-API-Key</code> header to this key.</li>
+        <li>Or open the RipX dashboard and connect using this key when prompted.</li>
+      </ul>
+      ${dashboardUrl ? `<p><a href="${dashboardUrl}" class="btn">Open RipX Dashboard</a></p>` : ''}
+      <p class="muted">Keep this email secure. Anyone with this key can manage tests for your domains.</p>
+    `;
+      bodyText =
+        `Your RipX API key${domain ? ` for ${domain}` : ''}.\n\nAPI key (store securely):\n${apiKey}\n\n` +
+        (dashboardUrl ? `Dashboard: ${dashboardUrl}\n\n` : '');
+    }
+  }
+
+  const text =
+    bodyText ||
+    (bodyHtml
+      ? bodyHtml
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+      : '');
+  const sent = await sendMail({
     to,
     subject,
     text,
-    html: wrapEmailLayout(subject, bodyHtml, { preheader: 'You can now sign in to RipX.' }),
+    html: bodyHtml
+      ? wrapEmailLayout(subject, bodyHtml, {
+          preheader: isRegenerated ? 'Your new API key is inside.' : 'Your API key is inside.',
+        })
+      : undefined,
   });
+  if (!sent) {
+    logger.warn('API key email was not sent (check SMTP config or logs above)', {
+      to: to.substring(0, 6) + '…',
+    });
+  }
+  return sent;
+}
+
+/**
+ * Send "domain added" notification when no API key is issued (existing account).
+ * @param {string} to - Recipient email
+ * @param {string} domain - Domain that was added
+ * @returns {Promise<boolean>}
+ */
+async function sendDomainAddedNotification(to, domain) {
+  if (!to || !domain) {
+    return false;
+  }
+  if (!(await mailProcessService.isEnabled('domain_added_notification'))) {
+    logger.info('Email process domain_added_notification is disabled; skipping send', {
+      to: to.substring(0, 6) + '…',
+      domain,
+    });
+    return true;
+  }
+  const appUrl = (process.env.FRONTEND_URL || process.env.APP_URL || '').replace(/\/$/, '');
+  const dashboardUrl = appUrl ? `${appUrl}/dashboard` : '';
+  const settingsUrl = appUrl ? `${appUrl}/settings` : '';
+  const subjectOverride = `Domain ${domain} added to your RipX account`;
+
+  const t = await mailProcessService.getTemplateForSend(
+    'domain_added_notification',
+    { domain, dashboardUrl, settingsUrl },
+    { subjectOverride }
+  );
+  if (!t.subject || (!t.bodyHtml && !t.bodyText)) {
+    logger.warn('domain_added_notification template empty; send skipped');
+    return false;
+  }
+  const html = t.bodyHtml
+    ? wrapEmailLayout(t.subject, t.bodyHtml, { preheader: `Domain ${domain} added.` })
+    : undefined;
+  const text =
+    t.bodyText ||
+    (t.bodyHtml
+      ? t.bodyHtml
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+      : '');
+  logger.info('Sending domain-added notification (no key)', {
+    to: to.substring(0, 6) + '…',
+    domain,
+  });
+  return sendMail({ to, subject: t.subject, text, html });
 }
 
 module.exports = {
@@ -330,5 +527,7 @@ module.exports = {
   sendConfirmationLink,
   sendAcceptanceEmail,
   sendAnnouncement,
+  sendDomainApiKeyEmail,
+  sendDomainAddedNotification,
   FROM,
 };

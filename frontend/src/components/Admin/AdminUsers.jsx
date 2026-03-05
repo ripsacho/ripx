@@ -20,8 +20,14 @@ import {
   EmptyState,
   Modal,
 } from '@shopify/polaris';
-import { RefreshIcon, ViewIcon } from '@shopify/polaris-icons';
-import { apiGet, apiPut, apiPost, getShopDomain, getApiKey } from '../../services';
+import {
+  RefreshIcon,
+  ViewIcon,
+  CheckCircleIcon,
+  XCircleIcon,
+  LockIcon,
+} from '@shopify/polaris-icons';
+import { apiGet, apiPut, apiPost, getShopDomain, getApiKey, getApiBaseUrl } from '../../services';
 import { useAdminMe } from '../../hooks';
 import { ADMIN_PERMISSIONS } from '../../constants/roles';
 import Toast from '../Toast/Toast';
@@ -49,6 +55,7 @@ const STORE_STATUS_OPTIONS = [
 
 const ROLE_OPTIONS = [
   { label: 'No admin role', value: '' },
+  { label: 'Collaborator (view only)', value: 'collaborator' },
   { label: 'Admin', value: 'admin' },
   { label: 'Superadmin', value: 'superadmin' },
 ];
@@ -75,8 +82,16 @@ function UserDetailModalContent({
   impersonateLoading,
   canExportUser,
   canImpersonate,
+  canSetRole,
+  onSaveRole,
+  roleSaving,
+  roleOptions,
   styles,
 }) {
+  const [editingRole, setEditingRole] = React.useState(userDetail?.role ?? '');
+  React.useEffect(() => {
+    setEditingRole(userDetail?.role ?? '');
+  }, [userDetail?.role]);
   const domains = Array.isArray(userDetail.domains) ? userDetail.domains : [];
   const domainCount = domains.length;
   const profileSummary =
@@ -110,6 +125,31 @@ function UserDetailModalContent({
           )}
         </div>
       </header>
+
+      {canSetRole && roleOptions && (
+        <section className={styles.adminUserModalSectionCard}>
+          <h3 className={styles.adminUserModalSectionTitle}>Platform role</h3>
+          <InlineStack gap="300" blockAlign="end">
+            <div style={{ minWidth: 160 }}>
+              <Select
+                label="Role"
+                labelInline
+                options={roleOptions}
+                value={editingRole}
+                onChange={setEditingRole}
+              />
+            </div>
+            <Button
+              variant="primary"
+              size="slim"
+              loading={roleSaving}
+              onClick={() => onSaveRole(editingRole || null)}
+            >
+              Save role
+            </Button>
+          </InlineStack>
+        </section>
+      )}
 
       <div className={styles.adminUserModalBodyInner}>
         <section className={styles.adminUserModalSectionCard}>
@@ -211,7 +251,7 @@ function UserDetailModalContent({
               variant="secondary"
               size="slim"
               onClick={() => {
-                const baseUrl = import.meta.env.VITE_API_URL || '/api';
+                const baseUrl = getApiBaseUrl();
                 const url = `${baseUrl}/admin/users/${encodeURIComponent(detailUser)}/export`;
                 const shop = getShopDomain();
                 const apiKey = getApiKey();
@@ -319,7 +359,17 @@ export default function AdminUsers() {
   const [impersonateResult, setImpersonateResult] = useState(null);
   const [impersonateLoading, setImpersonateLoading] = useState(false);
 
-  const { can } = useAdminMe();
+  const { can, isSuperadmin, data: adminMeData } = useAdminMe();
+  const currentUserIdentifier = (adminMeData?.adminId || '').toString().trim().toLowerCase();
+  const roleOptionsForSetRole = isSuperadmin
+    ? ROLE_OPTIONS
+    : ROLE_OPTIONS.filter(o => o.value !== 'superadmin');
+  const isCurrentUser = identifier =>
+    !!(
+      identifier &&
+      currentUserIdentifier &&
+      currentUserIdentifier === (identifier || '').toString().trim().toLowerCase()
+    );
 
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['admin', 'users', page, pageSize, statusFilter, search],
@@ -471,7 +521,7 @@ export default function AdminUsers() {
   const statusOptions = listView === 'email' ? EMAIL_STATUS_OPTIONS : STORE_STATUS_OPTIONS;
 
   const handleExportCsv = () => {
-    const baseUrl = import.meta.env.VITE_API_URL || '/api';
+    const baseUrl = getApiBaseUrl();
     const params = new URLSearchParams();
     if (statusFilter) params.set('status', statusFilter);
     if (search) params.set('q', search);
@@ -507,6 +557,11 @@ export default function AdminUsers() {
           ) : (
             <Badge tone="success">Accepted</Badge>
           ),
+          u.role ? (
+            <Badge tone={u.role === 'superadmin' ? 'attention' : 'info'}>{u.role}</Badge>
+          ) : (
+            '—'
+          ),
           u.emailVerifiedAt ? (
             <Badge tone="success">Yes</Badge>
           ) : (
@@ -515,36 +570,54 @@ export default function AdminUsers() {
           u.acceptedAt ? new Date(u.acceptedAt).toLocaleDateString() : '—',
           u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—',
           <Button
-            key={`domains-${u.id}-${u.email}`}
+            key={`view-${u.id}`}
             size="slim"
             variant="plain"
+            icon={ViewIcon}
             onClick={() => setDetailUser(u.email || '')}
             accessibilityLabel="View domains"
           >
             View
           </Button>,
-          <InlineStack key={`actions-${u.id}`} gap="200" wrap>
-            {u.status === 'pending' && (
-              <>
+          <div key={`actions-${u.id}`} className={styles.adminListActionsWrap}>
+            <div className={styles.adminListActions}>
+              {can(ADMIN_PERMISSIONS.USERS_SET_ROLE) && !isCurrentUser(u.email) && (
                 <Button
                   size="slim"
-                  variant="primary"
-                  onClick={() => acceptMutation.mutate(u.id)}
-                  loading={acceptMutation.isPending && acceptMutation.variables === u.id}
+                  variant="plain"
+                  onClick={() => {
+                    setRoleModalUser({ identifier: u.email, email: u.email });
+                    setRoleModalValue(u.role || '');
+                    setRoleModalOpen(true);
+                  }}
                 >
-                  Accept
+                  Set role
                 </Button>
-                <Button
-                  size="slim"
-                  tone="critical"
-                  onClick={() => rejectMutation.mutate(u.id)}
-                  loading={rejectMutation.isPending && rejectMutation.variables === u.id}
-                >
-                  Reject
-                </Button>
-              </>
-            )}
-          </InlineStack>,
+              )}
+              {u.status === 'pending' && (
+                <>
+                  <Button
+                    size="slim"
+                    variant="primary"
+                    icon={CheckCircleIcon}
+                    onClick={() => acceptMutation.mutate(u.id)}
+                    loading={acceptMutation.isPending && acceptMutation.variables === u.id}
+                  >
+                    Accept
+                  </Button>
+                  <Button
+                    size="slim"
+                    tone="critical"
+                    icon={XCircleIcon}
+                    onClick={() => rejectMutation.mutate(u.id)}
+                    loading={rejectMutation.isPending && rejectMutation.variables === u.id}
+                  >
+                    Reject
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>,
         ])
       : users.map(u => [
           u.shopDomain,
@@ -558,56 +631,65 @@ export default function AdminUsers() {
           ),
           new Date(u.createdAt).toLocaleDateString(),
           <Button
-            key={`domains-${u.shopDomain}`}
+            key={`view-${u.shopDomain}`}
             size="slim"
             variant="plain"
+            icon={ViewIcon}
             onClick={() => setDetailUser(u.shopDomain)}
             accessibilityLabel="View domains"
           >
             View {(u.domainCount ?? 0) > 0 ? `(${u.domainCount})` : ''}
           </Button>,
-          <InlineStack key={`actions-${u.shopDomain}`} gap="200" wrap>
-            <Button
-              size="slim"
-              variant="plain"
-              icon={ViewIcon}
-              onClick={() => setDetailUser(u.shopDomain)}
-              accessibilityLabel="View user details"
-            >
-              View
-            </Button>
-            {can(ADMIN_PERMISSIONS.USERS_SET_ROLE) && (
+          <div key={`actions-${u.shopDomain}`} className={styles.adminListActionsWrap}>
+            <div className={styles.adminListActions}>
               <Button
                 size="slim"
-                onClick={() => {
-                  setRoleModalUser(u);
-                  setRoleModalValue(u.role || '');
-                  setRoleModalOpen(true);
-                }}
+                variant="plain"
+                icon={ViewIcon}
+                onClick={() => setDetailUser(u.shopDomain)}
+                accessibilityLabel="View user details"
               >
-                Set role
+                Details
               </Button>
-            )}
-            {can(ADMIN_PERMISSIONS.USERS_LOCK) &&
-              (u.status === 'locked' ? (
+              {can(ADMIN_PERMISSIONS.USERS_SET_ROLE) && !isCurrentUser(u.shopDomain) && (
                 <Button
                   size="slim"
-                  onClick={() =>
-                    lockMutation.mutate({ shopDomain: u.shopDomain, action: 'unlock' })
-                  }
+                  variant="plain"
+                  onClick={() => {
+                    setRoleModalUser(u);
+                    setRoleModalValue(u.role || '');
+                    setRoleModalOpen(true);
+                  }}
                 >
-                  Unlock
+                  Set role
                 </Button>
-              ) : (
-                <Button
-                  size="slim"
-                  tone="critical"
-                  onClick={() => lockMutation.mutate({ shopDomain: u.shopDomain, action: 'lock' })}
-                >
-                  Lock
-                </Button>
-              ))}
-          </InlineStack>,
+              )}
+              {can(ADMIN_PERMISSIONS.USERS_LOCK) &&
+                (u.status === 'locked' ? (
+                  <Button
+                    size="slim"
+                    icon={LockIcon}
+                    onClick={() =>
+                      lockMutation.mutate({ shopDomain: u.shopDomain, action: 'unlock' })
+                    }
+                  >
+                    Unlock
+                  </Button>
+                ) : (
+                  <Button
+                    size="slim"
+                    tone="critical"
+                    icon={LockIcon}
+                    variant="plain"
+                    onClick={() =>
+                      lockMutation.mutate({ shopDomain: u.shopDomain, action: 'lock' })
+                    }
+                  >
+                    Lock
+                  </Button>
+                ))}
+            </div>
+          </div>,
         ]);
 
   const applySearch = () => {
@@ -659,24 +741,32 @@ export default function AdminUsers() {
                           <Badge tone="attention">Pending</Badge>
                         ),
                         p.created_at ? new Date(p.created_at).toLocaleString() : '—',
-                        <InlineStack key={p.id} gap="200" wrap>
-                          <Button
-                            size="slim"
-                            variant="primary"
-                            onClick={() => acceptMutation.mutate(p.id)}
-                            loading={acceptMutation.isPending && acceptMutation.variables === p.id}
-                          >
-                            Accept
-                          </Button>
-                          <Button
-                            size="slim"
-                            tone="critical"
-                            onClick={() => rejectMutation.mutate(p.id)}
-                            loading={rejectMutation.isPending && rejectMutation.variables === p.id}
-                          >
-                            Reject
-                          </Button>
-                        </InlineStack>,
+                        <div key={p.id} className={styles.adminListActionsWrap}>
+                          <div className={styles.adminListActions}>
+                            <Button
+                              size="slim"
+                              variant="primary"
+                              icon={CheckCircleIcon}
+                              onClick={() => acceptMutation.mutate(p.id)}
+                              loading={
+                                acceptMutation.isPending && acceptMutation.variables === p.id
+                              }
+                            >
+                              Accept
+                            </Button>
+                            <Button
+                              size="slim"
+                              tone="critical"
+                              icon={XCircleIcon}
+                              onClick={() => rejectMutation.mutate(p.id)}
+                              loading={
+                                rejectMutation.isPending && rejectMutation.variables === p.id
+                              }
+                            >
+                              Reject
+                            </Button>
+                          </div>
+                        </div>,
                       ])}
                     />
                   </div>
@@ -694,66 +784,64 @@ export default function AdminUsers() {
                   className={styles.adminPageDescription}
                 >
                   {listView === 'email'
-                    ? 'Email (standalone) users. Filter by status: Pending, Accepted, or Rejected. Accept or reject pending from the table or the card above.'
-                    : 'Store (Shopify) users. Filter by status or search by domain or email. Use Set role, Lock, or Unlock from the table.'}
+                    ? 'Email (standalone) users. Role column shows platform permission (Collaborator = view only, Admin = full user management). Use Set role to assign Collaborator or Admin; only superadmins can assign Superadmin.'
+                    : 'Store (Shopify) users. Filter by status or search by domain or email. Use Set role to assign Collaborator or Admin, or Lock/Unlock from the table.'}
                 </Text>
               </section>
-              <div className={styles.adminUsersToolbar}>
-                <div className={styles.adminUsersToolbarFilters}>
-                  <Box minWidth="160px">
-                    <Select
-                      label="List"
-                      options={USER_LIST_VIEW}
-                      value={listView}
-                      onChange={v => {
-                        setListView(v);
-                        setStatusFilter('');
-                        setPage(0);
-                      }}
-                    />
-                  </Box>
-                  <Box minWidth="140px">
-                    <Select
-                      label="Status"
-                      options={statusOptions}
-                      value={statusFilter}
-                      onChange={v => {
-                        setStatusFilter(v);
-                        setPage(0);
-                      }}
-                    />
-                  </Box>
-                  <Box minWidth="100px">
-                    <Select
-                      label="Page size"
-                      options={PAGE_SIZE_OPTIONS.map(n => ({ label: String(n), value: String(n) }))}
-                      value={String(pageSize)}
-                      onChange={v => {
-                        setPageSize(parseInt(v, 10));
-                        setPage(0);
-                      }}
-                    />
-                  </Box>
-                  <Box minWidth="200px">
-                    <TextField
-                      label="Search"
-                      value={searchInput}
-                      onChange={setSearchInput}
-                      placeholder={listView === 'email' ? 'Email' : 'Domain or email'}
-                      autoComplete="off"
-                      onBlur={applySearch}
-                      clearButton
-                      onClearButtonClick={() => {
-                        setSearchInput('');
-                        setSearch('');
-                      }}
-                    />
-                  </Box>
-                  <Box paddingBlockStart="400">
-                    <Button variant="primary" onClick={applySearch}>
-                      Apply
-                    </Button>
-                  </Box>
+              <div className={styles.adminListToolbar}>
+                <Box minWidth="140px">
+                  <Select
+                    label="List"
+                    options={USER_LIST_VIEW}
+                    value={listView}
+                    onChange={v => {
+                      setListView(v);
+                      setStatusFilter('');
+                      setPage(0);
+                    }}
+                  />
+                </Box>
+                <Box minWidth="130px">
+                  <Select
+                    label="Status"
+                    options={statusOptions}
+                    value={statusFilter}
+                    onChange={v => {
+                      setStatusFilter(v);
+                      setPage(0);
+                    }}
+                  />
+                </Box>
+                <Box minWidth="90px">
+                  <Select
+                    label="Page size"
+                    options={PAGE_SIZE_OPTIONS.map(n => ({ label: String(n), value: String(n) }))}
+                    value={String(pageSize)}
+                    onChange={v => {
+                      setPageSize(parseInt(v, 10));
+                      setPage(0);
+                    }}
+                  />
+                </Box>
+                <Box minWidth="180px">
+                  <TextField
+                    label="Search"
+                    value={searchInput}
+                    onChange={setSearchInput}
+                    placeholder={listView === 'email' ? 'Email' : 'Domain or email'}
+                    autoComplete="off"
+                    onBlur={applySearch}
+                    clearButton
+                    onClearButtonClick={() => {
+                      setSearchInput('');
+                      setSearch('');
+                    }}
+                  />
+                </Box>
+                <div className={styles.adminListToolbarActions}>
+                  <Button variant="primary" size="slim" onClick={applySearch}>
+                    Apply filters
+                  </Button>
                 </div>
               </div>
               {isLoadingList ? (
@@ -792,7 +880,7 @@ export default function AdminUsers() {
                     <DataTable
                       columnContentTypes={
                         listView === 'email'
-                          ? ['text', 'text', 'text', 'text', 'text', 'text', 'text']
+                          ? ['text', 'text', 'text', 'text', 'text', 'text', 'text', 'text']
                           : ['text', 'text', 'text', 'text', 'text', 'text', 'text', 'text']
                       }
                       headings={
@@ -800,6 +888,7 @@ export default function AdminUsers() {
                           ? [
                               'Email',
                               'Status',
+                              'Role',
                               'Email verified',
                               'Accepted at',
                               'Created',
@@ -821,13 +910,13 @@ export default function AdminUsers() {
                     />
                   </div>
                   {totalPages > 1 && (
-                    <div className={styles.adminUsersPagination}>
+                    <div className={styles.adminListPagination}>
                       <Button disabled={page === 0} onClick={() => setPage(p => p - 1)} size="slim">
                         Previous
                       </Button>
-                      <Text as="span" variant="bodySm" tone="subdued">
+                      <span className={styles.adminListPaginationInfo}>
                         Page {page + 1} of {totalPages} · {total} total
-                      </Text>
+                      </span>
                       <Button
                         disabled={page >= totalPages - 1}
                         onClick={() => setPage(p => p + 1)}
@@ -874,6 +963,12 @@ export default function AdminUsers() {
                   impersonateLoading={impersonateLoading}
                   canExportUser={can(ADMIN_PERMISSIONS.USERS_EXPORT)}
                   canImpersonate={can(ADMIN_PERMISSIONS.IMPERSONATE)}
+                  canSetRole={can(ADMIN_PERMISSIONS.USERS_SET_ROLE) && !isCurrentUser(detailUser)}
+                  onSaveRole={role =>
+                    roleMutation.mutate({ shopDomain: detailUser, role: role || null })
+                  }
+                  roleSaving={roleMutation.isPending}
+                  roleOptions={roleOptionsForSetRole}
                   styles={styles}
                 />
               ) : (
@@ -901,10 +996,12 @@ export default function AdminUsers() {
         >
           <Modal.Section>
             <BlockStack gap="400">
-              <div className={styles.adminModalRoleUserCard}>{roleModalUser.shopDomain}</div>
+              <div className={styles.adminModalRoleUserCard}>
+                {roleModalUser.identifier ?? roleModalUser.shopDomain ?? roleModalUser.email}
+              </div>
               <Select
                 label="Role"
-                options={ROLE_OPTIONS}
+                options={roleOptionsForSetRole}
                 value={roleModalValue}
                 onChange={setRoleModalValue}
               />
@@ -913,7 +1010,8 @@ export default function AdminUsers() {
                   variant="primary"
                   onClick={() =>
                     roleMutation.mutate({
-                      shopDomain: roleModalUser.shopDomain,
+                      shopDomain:
+                        roleModalUser.identifier ?? roleModalUser.shopDomain ?? roleModalUser.email,
                       role: roleModalValue || null,
                     })
                   }

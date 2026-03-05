@@ -8,6 +8,7 @@ const express = require('express');
 const router = express.Router();
 const { asyncHandler } = require('../middleware/asyncHandler');
 const shopifyService = require('../services/shopifyService');
+const logger = require('../utils/logger');
 
 async function checkAppProxyStatus(shopDomain) {
   const url = `https://${shopDomain}/apps/ripx/script.js?v=1`;
@@ -108,18 +109,52 @@ router.get(
     }
 
     let list;
-    if (type === 'products') {
-      list = await shopifyService.listProducts(shopDomain, accessToken, searchQuery, first);
-    } else if (type === 'collections') {
-      list = await shopifyService.listCollections(shopDomain, accessToken, searchQuery, first);
-    } else {
-      list = await shopifyService.listPages(shopDomain, accessToken, searchQuery, first);
+    const handleListError = (err, resourceLabel) => {
+      const msg = (err && err.message) || String(err);
+      const isAccessDenied =
+        /access denied|scope|permission|403/i.test(msg) ||
+        (err.response && err.response.status === 403);
+      if (isAccessDenied) {
+        logger.warn(`Store ${resourceLabel} list failed (missing scope?).`, {
+          shopDomain,
+          error: msg,
+        });
+        return [];
+      }
+      throw err;
+    };
+
+    try {
+      if (type === 'products') {
+        list = await shopifyService.listProducts(shopDomain, accessToken, searchQuery, first);
+      } else if (type === 'collections') {
+        list = await shopifyService.listCollections(shopDomain, accessToken, searchQuery, first);
+      } else {
+        try {
+          list = await shopifyService.listPages(shopDomain, accessToken, searchQuery, first);
+        } catch (err) {
+          list = handleListError(err, 'pages');
+          if (list.length === 0) {
+            logger.warn('Add read_online_store_pages to SHOPIFY_SCOPES and reinstall the app.', {
+              shopDomain,
+            });
+          }
+        }
+      }
+    } catch (err) {
+      if (type === 'products') {
+        list = handleListError(err, 'products');
+      } else if (type === 'collections') {
+        list = handleListError(err, 'collections');
+      } else {
+        throw err;
+      }
     }
 
     res.json({
       success: true,
       type: rawType,
-      resources: list,
+      resources: Array.isArray(list) ? list : [],
     });
   })
 );

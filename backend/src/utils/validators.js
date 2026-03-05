@@ -32,23 +32,77 @@ class Validators {
   }
 
   /**
-   * Validate standalone website domain (e.g. example.com, www.example.com)
+   * Validate standalone website domain (e.g. example.com, www.example.com).
+   * Hostname rules: labels 1–63 chars, [a-z0-9] and hyphen, no leading/trailing hyphen per label, TLD 2+ letters.
    *
    * @param {string} domain - Domain to validate
    * @returns {boolean} Is valid
    */
   isValidDomain(domain) {
+    const result = this.validateDomainForInput(domain);
+    return result.valid;
+  }
+
+  /**
+   * Validate domain and return normalized value and user-facing error message.
+   *
+   * @param {string} domain - Raw domain input
+   * @returns {{ valid: boolean, normalized?: string, error?: string }}
+   */
+  validateDomainForInput(domain) {
     if (!domain || typeof domain !== 'string') {
-      return false;
+      return { valid: false, error: 'Domain is required' };
     }
     const trimmed = domain
       .trim()
+      .toLowerCase()
       .replace(/^https?:\/\//, '')
-      .split('/')[0];
-    if (!trimmed || trimmed.length > 253) {
-      return false;
+      .split('/')[0]
+      .replace(/\s/g, '');
+    if (!trimmed) {
+      return { valid: false, error: 'Enter a valid domain (e.g. example.com or www.example.com)' };
     }
-    return /^[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}$/.test(trimmed);
+    if (trimmed.length > 253) {
+      return { valid: false, error: 'Domain is too long' };
+    }
+    // Must have at least one dot and a TLD of 2+ letters
+    if (!/\./.test(trimmed)) {
+      return { valid: false, error: 'Domain must include a TLD (e.g. example.com)' };
+    }
+    const labels = trimmed.split('.');
+    for (let i = 0; i < labels.length; i++) {
+      const label = labels[i];
+      if (label.length === 0) {
+        return { valid: false, error: 'Domain cannot have empty parts' };
+      }
+      if (label.length > 63) {
+        return { valid: false, error: 'Domain part is too long' };
+      }
+      if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(label) && label.length !== 1) {
+        return {
+          valid: false,
+          error:
+            'Domain can only contain letters, numbers, and hyphens; hyphens cannot start or end a part',
+        };
+      }
+      if (label.length === 1 && !/^[a-z0-9]$/.test(label)) {
+        return { valid: false, error: 'Invalid domain format' };
+      }
+    }
+    const tld = labels[labels.length - 1];
+    if (!/^[a-z]{2,}$/.test(tld)) {
+      return { valid: false, error: 'Domain must end with a valid TLD (e.g. .com, .io)' };
+    }
+    if (trimmed === 'localhost' || trimmed.endsWith('.localhost')) {
+      return { valid: false, error: 'Use your real domain (e.g. example.com), not localhost' };
+    }
+    if (trimmed.endsWith('.local')) {
+      return {
+        valid: false,
+        error: 'Use your public domain (e.g. example.com), not .local addresses',
+      };
+    }
+    return { valid: true, normalized: trimmed };
   }
 
   /**

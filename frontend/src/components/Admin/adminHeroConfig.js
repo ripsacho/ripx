@@ -14,6 +14,7 @@ import {
   FlagIcon,
   LinkIcon,
   ChartVerticalIcon,
+  EmailIcon,
 } from '@shopify/polaris-icons';
 
 export const ADMIN_HERO_CONFIG = {
@@ -157,6 +158,11 @@ export const ADMIN_HERO_CONFIG = {
     title: 'Announcement banner',
     subtitle: 'Global announcement banner text and visibility.',
     icon: FlagIcon,
+  },
+  [ROUTES.ADMIN_MAIL_PROCESSES]: {
+    title: 'Email delivery',
+    subtitle: 'Control which transactional emails are sent and customize their templates.',
+    icon: EmailIcon,
   },
   [ROUTES.ADMIN_USAGE_EXPORT]: {
     title: 'Usage export',

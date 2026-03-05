@@ -78,7 +78,9 @@ module.exports = {
         '**/analytics.js',
         '**/abTestEngine.js',
         '**/combinationTestService.js',
-        '**/database.js'
+        '**/database.js',
+        '**/emailVerificationService.js',
+        '**/mailProcessService.js'
       ],
       rules: { 'require-await': 'off' }
     }

@@ -139,6 +139,37 @@ function normalizeSegments(segments) {
     result.traffic_ramp_percent = !Number.isNaN(n) && n >= 0 && n <= 100 ? n : null;
   }
 
+  // Visual editor: preview URL and element selector (persisted for Config step)
+  if (
+    typeof segments.visual_editor_preview_url === 'string' &&
+    segments.visual_editor_preview_url.trim()
+  ) {
+    result.visual_editor_preview_url = segments.visual_editor_preview_url.trim();
+  }
+  if (
+    typeof segments.visual_editor_selector === 'string' &&
+    segments.visual_editor_selector.trim()
+  ) {
+    result.visual_editor_selector = segments.visual_editor_selector.trim();
+  }
+
+  const MAX_VISUAL_EDITOR_RULES = 5;
+  const POSITIONS = ['after', 'before', 'afterbegin', 'beforeend'];
+  if (Array.isArray(segments.visual_editor_rules) && segments.visual_editor_rules.length > 0) {
+    result.visual_editor_rules = segments.visual_editor_rules
+      .slice(0, MAX_VISUAL_EDITOR_RULES)
+      .map(r =>
+        r && typeof r === 'object'
+          ? {
+              selector: typeof r.selector === 'string' ? r.selector.trim() : '',
+              css: typeof r.css === 'string' ? r.css.trim() : '',
+              js: typeof r.js === 'string' ? r.js.trim() : '',
+              position: POSITIONS.includes(r.position) ? r.position : 'after',
+            }
+          : { selector: '', css: '', js: '', position: 'after' }
+      );
+  }
+
   return result;
 }
 

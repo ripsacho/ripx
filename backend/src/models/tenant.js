@@ -189,6 +189,28 @@ async function listTenants() {
   return result.rows;
 }
 
+/**
+ * Set domain_verified_at for a tenant (when storefront script pings on load).
+ * Idempotent; safe to call multiple times.
+ *
+ * @param {string} domain - Normalized domain
+ * @returns {Promise<boolean>} True if tenant was updated
+ */
+async function setDomainVerifiedAt(domain) {
+  const normalized = normalizeDomain(domain);
+  if (!normalized) {
+    return false;
+  }
+  const sql = `
+    UPDATE tenants
+    SET domain_verified_at = COALESCE(domain_verified_at, NOW()), updated_at = NOW()
+    WHERE domain = $1
+    RETURNING id
+  `;
+  const result = await query(sql, [normalized]);
+  return result.rows.length > 0;
+}
+
 module.exports = {
   normalizeDomain,
   isShopifyDomain,
@@ -199,5 +221,6 @@ module.exports = {
   tenantExists,
   setTenantStatus,
   listTenants,
+  setDomainVerifiedAt,
   hashApiKey,
 };

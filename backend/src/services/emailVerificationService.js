@@ -100,12 +100,16 @@ async function consumeToken(plainToken) {
 }
 
 /**
- * Stub: send magic-link email. Replace with SendGrid/Resend/SES when configured.
- * When RIPX_EMAIL_VERIFICATION_STUB is true or no provider is set, log only.
+ * Send magic-link or confirmation email. When RIPX_EMAIL_VERIFICATION_STUB is true
+ * or no provider is set, logs only and returns true. On send failure or throw, returns false.
+ * @param {string} email - Recipient email
+ * @param {string} link - One-time verification link
+ * @param {string} purpose - 'confirm_registration' | 'login' (from PURPOSES)
+ * @returns {Promise<boolean>} true if sent or skipped (stub/no SMTP), false on failure
  */
 const emailService = require('./emailService');
 
-function sendVerificationEmail(email, link, purpose) {
+async function sendVerificationEmail(email, link, purpose) {
   const stub = process.env.RIPX_EMAIL_VERIFICATION_STUB === 'true';
   if (stub) {
     logger.info('Email verification (stub)', {
@@ -116,10 +120,19 @@ function sendVerificationEmail(email, link, purpose) {
     return true;
   }
   if (emailService.isConfigured()) {
-    if (purpose === 'confirm_registration') {
-      return emailService.sendConfirmationLink(email, link, 60);
+    try {
+      if (purpose === 'confirm_registration') {
+        return await emailService.sendConfirmationLink(email, link, 60);
+      }
+      return await emailService.sendLoginLink(email, link, 15);
+    } catch (err) {
+      logger.error('Send verification email failed', {
+        email: email?.substring(0, 6) + '…',
+        purpose,
+        error: err.message,
+      });
+      return false;
     }
-    return emailService.sendLoginLink(email, link, 15);
   }
   logger.info('Email verification (no SMTP)', { email: email?.substring(0, 5) + '…', purpose });
   return true;

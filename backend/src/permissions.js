@@ -41,10 +41,12 @@ const SENSITIVE_PERMISSIONS = Object.freeze(
     .map(([perm]) => perm)
 );
 
-// Role → permissions (superadmin inherits admin + extra)
+// Role → permissions: collaborator (view only), admin (user mgmt), superadmin (full)
 const ROLE_PERMISSIONS = Object.freeze({
+  [PLATFORM_ROLES.COLLABORATOR]: [PERMISSIONS.ADMIN_VIEW],
   [PLATFORM_ROLES.ADMIN]: [
     PERMISSIONS.ADMIN_VIEW,
+    PERMISSIONS.USERS_SET_ROLE,
     PERMISSIONS.USERS_LOCK,
     PERMISSIONS.USERS_EXPORT,
   ],

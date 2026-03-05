@@ -81,6 +81,7 @@ function isUserStatusBlocked(status) {
 
 // Platform admin roles (users.role) – who can access /api/admin
 const PLATFORM_ROLES = {
+  COLLABORATOR: 'collaborator',
   ADMIN: 'admin',
   SUPERADMIN: 'superadmin',
 };

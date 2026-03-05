@@ -221,7 +221,7 @@ async function listAll(opts = {}) {
     const total = countRes.rows[0]?.c ?? 0;
 
     const sql = `
-      SELECT id, email, status, email_verified_at, accepted_at, accepted_by, account_id, primary_domain_id, primary_domain, created_at, updated_at
+      SELECT id, email, role, status, email_verified_at, accepted_at, accepted_by, account_id, primary_domain_id, primary_domain, created_at, updated_at
       FROM ${USERS_TABLE}
       ${where}
       ORDER BY created_at DESC
@@ -232,6 +232,7 @@ async function listAll(opts = {}) {
     const users = result.rows.map(r => ({
       id: r.id,
       email: r.email,
+      role: r.role || null,
       status: r.status,
       emailVerifiedAt: r.email_verified_at,
       acceptedAt: r.accepted_at,

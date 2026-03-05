@@ -13,7 +13,12 @@ const validators = require('../utils/validators');
 const { trackEvent } = require('../models/analytics');
 const { getActiveTestsForStorefront, getTestById } = require('../models/test');
 const abTestEngine = require('../services/abTestEngine');
-const { tenantExists, getTenantByDomain, normalizeDomain } = require('../models/tenant');
+const {
+  tenantExists,
+  getTenantByDomain,
+  normalizeDomain,
+  setDomainVerifiedAt,
+} = require('../models/tenant');
 const { insertHeatmapEventsBatch } = require('../models/heatmap');
 const {
   getMaintenanceMode,
@@ -74,6 +79,28 @@ async function resolveTenantDomain(shop, site) {
   return exists ? normalized : null;
 }
 
+/**
+ * Derive pathname from current_url for URL targeting.
+ * Homepage and path-based url_patterns (e.g. ^/$|^/index) expect a path, not a full URL.
+ * Standalone and Shopify send full URL; we normalize to pathname for reliable matching.
+ */
+function getPathnameFromUrl(currentUrl) {
+  if (!currentUrl || typeof currentUrl !== 'string') {
+    return '';
+  }
+  const s = currentUrl.trim();
+  if (!s) {
+    return '';
+  }
+  try {
+    const url = new URL(s, 'https://standalone.local');
+    const pathname = url.pathname || '/';
+    return pathname === '' ? '/' : pathname;
+  } catch {
+    return s.startsWith('/') ? s : `/${s}`;
+  }
+}
+
 /** Returns true if tenant is suspended or blocked (admin) */
 function isTenantSuspendedOrBlocked(tenant) {
   const s = tenant?.status;
@@ -121,6 +148,36 @@ router.use(blockListCheck);
 router.use(maintenanceCheck);
 
 /**
+ * GET /api/track/ping
+ * Called by the storefront script when it loads on a page. Sets domain_verified_at for the tenant.
+ * Query: shop (Shopify) or site (standalone).
+ */
+router.get(
+  '/ping',
+  asyncHandler(async (req, res) => {
+    const shop = req.query.shop;
+    const site = req.query.site;
+    const domain = await resolveTenantDomain(shop, site);
+    if (!domain) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing or invalid shop/site. Use ?shop=xxx.myshopify.com or ?site=example.com',
+      });
+    }
+    const tenant = await getTenantByDomain(domain);
+    if (!tenant) {
+      return res.status(404).json({ success: false, error: 'Domain not registered' });
+    }
+    if (isTenantSuspendedOrBlocked(tenant)) {
+      return res.status(403).json({ success: false, error: 'Access suspended' });
+    }
+    await setDomainVerifiedAt(domain);
+    res.set('Cache-Control', 'no-store');
+    return res.status(200).json({ success: true, verified: true });
+  })
+);
+
+/**
  * GET /api/track/script.js
  * Serve storefront script with runtime configuration
  * Query: shop (Shopify) or site (standalone)
@@ -131,30 +188,229 @@ router.get(
     const shop = req.query.shop;
     const site = req.query.site;
 
-    const domain = await resolveTenantDomain(shop, site);
-    if (!domain) {
-      return res
-        .status(400)
-        .send('Invalid shop or site. Use ?shop=xxx.myshopify.com or ?site=example.com');
+    const isPreviewTest =
+      (shop && String(shop).toLowerCase() === 'preview-test') ||
+      (site && String(site).toLowerCase() === 'preview-test');
+    let domain;
+    let runtimeConfig;
+
+    if (isPreviewTest) {
+      domain = 'preview-test';
+      const appUrl = process.env.APP_URL || req.protocol + '://' + req.get('host');
+      runtimeConfig = {
+        apiUrl: appUrl.replace(/\/+$/, '') + '/api',
+        shopDomain: 'preview-test',
+        version: SCRIPT_VERSION,
+        consentRequired: process.env.RIPX_CONSENT_REQUIRED === 'true',
+        activeTests: [],
+      };
+    } else {
+      domain = await resolveTenantDomain(shop, site);
+      if (!domain) {
+        return res
+          .status(400)
+          .send('Invalid shop or site. Use ?shop=xxx.myshopify.com or ?site=example.com');
+      }
+
+      const tenant = await getTenantByDomain(domain);
+      if (tenant && isTenantSuspendedOrBlocked(tenant)) {
+        return res
+          .status(403)
+          .json({ success: false, error: 'Access suspended. Contact support.' });
+      }
+
+      const tests = await getActiveTestsForStorefront(domain);
+      runtimeConfig = buildRuntimeConfig(domain, tests, req);
     }
 
-    const tenant = await getTenantByDomain(domain);
-    if (tenant && isTenantSuspendedOrBlocked(tenant)) {
-      return res.status(403).json({ success: false, error: 'Access suspended. Contact support.' });
-    }
-
-    const tests = await getActiveTestsForStorefront(domain);
-    const runtimeConfig = buildRuntimeConfig(domain, tests, req);
     const scriptPath = getStorefrontScriptPath();
     const scriptContents = fs.readFileSync(scriptPath, 'utf8');
 
     const version = req.query.v || SCRIPT_VERSION;
     const cacheSeconds = version ? 31536000 : 300;
+    const cacheControl = version
+      ? `public, max-age=${cacheSeconds}, immutable`
+      : `public, max-age=${cacheSeconds}`;
 
-    res.set('Content-Type', 'application/javascript');
+    res.set('Content-Type', 'application/javascript; charset=utf-8');
+    res.set('X-Content-Type-Options', 'nosniff');
     res.set('X-Script-Version', version);
-    res.set('Cache-Control', `public, max-age=${cacheSeconds}`);
+    res.set('Cache-Control', cacheControl);
     res.send(`window.AB_TEST_RUNTIME_CONFIG=${JSON.stringify(runtimeConfig)};\n${scriptContents}`);
+  })
+);
+
+const PREVIEW_FALLBACK_HTML =
+  '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><script>try{window.parent.postMessage({type:"ripx-preview-error"},"*");}catch(e){}</script><p>Loading preview…</p></body></html>';
+
+function sendPreviewFallback(res) {
+  res
+    .status(200)
+    .set('Content-Type', 'text/html; charset=utf-8')
+    .set('Cache-Control', 'no-store')
+    .send(PREVIEW_FALLBACK_HTML);
+}
+
+/**
+ * GET /api/track/preview-test-page
+ * Minimal test page for the visual editor: simple HTML + script loaded via URL (same as real domain).
+ * Script is loaded from /api/track/script.js?site=preview-test (config + script in one response).
+ */
+router.get(
+  '/preview-test-page',
+  asyncHandler((req, res) => {
+    const bodyContent = [
+      '<nav class="preview-test-nav">',
+      '  <a href="#home">Home</a>',
+      '  <a href="#about">About</a>',
+      '  <a href="#contact">Contact</a>',
+      '</nav>',
+      '<header class="preview-test-header">',
+      '  <h1 id="hero">RipX Visual Editor Test Page</h1>',
+      '  <p class="preview-test-lead">Click any element below to capture its selector in the editor. Script loads from a separate URL like on a real site.</p>',
+      '</header>',
+      '<main class="preview-test-main">',
+      '  <section class="preview-test-card" data-section="feature">',
+      '    <h2>Sample Section</h2>',
+      '    <p>This is a card. Click the heading, paragraph, or buttons to select them.</p>',
+      '    <div class="preview-test-actions">',
+      '      <button type="button" class="preview-test-btn preview-test-btn--primary">Primary action</button>',
+      '      <button type="button" class="preview-test-btn">Secondary</button>',
+      '    </div>',
+      '  </section>',
+      '  <section class="preview-test-card">',
+      '    <h2>Another Section</h2>',
+      '    <p>More content for testing element selection.</p>',
+      '  </section>',
+      '</main>',
+      '<footer class="preview-test-footer" data-id="footer">RipX preview test page</footer>',
+    ].join('\n');
+    const styles =
+      'body{font-family:system-ui,-apple-system,sans-serif;margin:0;padding:1.5rem;max-width:42rem;margin-left:auto;margin-right:auto;color:#1f2937;line-height:1.6;}' +
+      '.preview-test-nav{display:flex;gap:1rem;margin-bottom:1.5rem;padding-bottom:1rem;border-bottom:1px solid #e5e7eb;}' +
+      '.preview-test-nav a{color:#4f46e5;text-decoration:none;font-weight:500;}' +
+      '.preview-test-nav a:hover{text-decoration:underline;}' +
+      '.preview-test-header{margin-bottom:1.5rem;}' +
+      '.preview-test-header h1{font-size:1.5rem;font-weight:600;margin:0 0 0.5rem 0;color:#111827;}' +
+      '.preview-test-lead{margin:0;font-size:0.9375rem;color:#6b7280;}' +
+      '.preview-test-main{display:flex;flex-direction:column;gap:1rem;}' +
+      '.preview-test-card{padding:1.25rem;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;}' +
+      '.preview-test-card h2{font-size:1.125rem;font-weight:600;margin:0 0 0.5rem 0;color:#374151;}' +
+      '.preview-test-card p{margin:0 0 0.75rem 0;font-size:0.875rem;color:#4b5563;}' +
+      '.preview-test-actions{display:flex;gap:0.5rem;flex-wrap:wrap;}' +
+      '.preview-test-btn{padding:0.5rem 1rem;font-size:0.875rem;font-weight:500;border-radius:6px;cursor:pointer;border:1px solid #d1d5db;background:#fff;color:#374151;}' +
+      '.preview-test-btn:hover{background:#f3f4f6;}' +
+      '.preview-test-btn--primary{background:#4f46e5;color:#fff;border-color:#4f46e5;}' +
+      '.preview-test-btn--primary:hover{background:#4338ca;}' +
+      '.preview-test-footer{margin-top:2rem;padding-top:1rem;border-top:1px solid #e5e7eb;font-size:0.8125rem;color:#9ca3af;}';
+    const scriptUrl = '/api/track/script.js?site=preview-test';
+    const html =
+      '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+      '<title>RipX – Preview test page</title>' +
+      '<script src="' +
+      scriptUrl +
+      '"></script>' +
+      '<style>' +
+      styles +
+      '</style></head><body>' +
+      bodyContent +
+      '</body></html>';
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.set('Cache-Control', 'no-store');
+    res.send(html);
+  })
+);
+
+/**
+ * GET /api/track/preview-document
+ * Proxies a store page and injects the RipX storefront script so element selection works in the iframe.
+ * On any error we return 200 with fallback HTML so the parent always receives postMessage and can switch to direct URL.
+ * Query: url (required, full store page URL), plus any ab_preview* params (passed through in response).
+ */
+router.get(
+  '/preview-document',
+  asyncHandler(async (req, res) => {
+    const rawUrl = (req.query.url || '').toString().trim();
+    if (!rawUrl) {
+      sendPreviewFallback(res);
+      return;
+    }
+    let parsed;
+    try {
+      parsed = new URL(rawUrl);
+    } catch {
+      sendPreviewFallback(res);
+      return;
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      sendPreviewFallback(res);
+      return;
+    }
+    const timeoutMs = 15000;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const fetchRes = await fetch(rawUrl, {
+        signal: controller.signal,
+        redirect: 'follow',
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+      });
+      clearTimeout(timeoutId);
+      if (!fetchRes.ok) {
+        logger.warn('Preview document: upstream not ok', { url: rawUrl, status: fetchRes.status });
+        sendPreviewFallback(res);
+        return;
+      }
+      const contentType = (fetchRes.headers.get('content-type') || '').toLowerCase();
+      if (!contentType.includes('text/html')) {
+        sendPreviewFallback(res);
+        return;
+      }
+      let html = await fetchRes.text();
+      const origin = `${parsed.protocol}//${parsed.host}`;
+      const hostname = parsed.hostname || parsed.host;
+      const appUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+      const baseTag = `<base href="${origin}/">`;
+      const runtimeConfig = {
+        apiUrl: `${appUrl.replace(/\/+$/, '')}/api`,
+        shopDomain: hostname,
+        activeTests: [],
+      };
+      let scriptContent;
+      try {
+        scriptContent = fs.readFileSync(getStorefrontScriptPath(), 'utf8');
+        scriptContent = scriptContent.replace(/<\/script>/gi, '<\\/script>');
+      } catch (e) {
+        logger.warn('Preview document: could not read storefront script', { error: e.message });
+        sendPreviewFallback(res);
+        return;
+      }
+      const injectScript =
+        `<script>window.AB_TEST_RUNTIME_CONFIG=${JSON.stringify(runtimeConfig)};</script>` +
+        (scriptContent ? `<script>${scriptContent}</script>` : '');
+      if (html.includes('</head>')) {
+        html = html.replace('</head>', `${baseTag}\n${injectScript}\n</head>`);
+      } else if (html.includes('<body')) {
+        html = html.replace(/(<body[^>]*>)/i, `$1\n${baseTag}\n${injectScript}\n`);
+      } else {
+        html = baseTag + '\n' + injectScript + '\n' + html;
+      }
+      res.set('Content-Type', 'text/html; charset=utf-8');
+      res.set('Cache-Control', 'no-store');
+      res.send(html);
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') {
+        logger.warn('Preview document: request timed out', { url: rawUrl });
+      } else {
+        logger.warn('Preview document fetch failed', { url: rawUrl, error: err.message });
+      }
+      sendPreviewFallback(res);
+    }
   })
 );
 
@@ -375,6 +631,11 @@ router.get(
     }
     if (current_url) {
       context.current_url = current_url;
+      context.current_pathname = getPathnameFromUrl(current_url);
+    }
+    if (req.query.current_pathname && typeof req.query.current_pathname === 'string') {
+      context.current_pathname =
+        (req.query.current_pathname || '').trim() || context.current_pathname;
     }
     if (session_count !== undefined && session_count !== null && session_count !== '') {
       context.session_count = Number(session_count);
@@ -486,6 +747,11 @@ router.get(
     }
     if (current_url) {
       context.current_url = current_url;
+      context.current_pathname = getPathnameFromUrl(current_url);
+    }
+    if (req.query.current_pathname && typeof req.query.current_pathname === 'string') {
+      context.current_pathname =
+        (req.query.current_pathname || '').trim() || context.current_pathname;
     }
     if (session_count !== undefined && session_count !== null && session_count !== '') {
       context.session_count = Number(session_count);

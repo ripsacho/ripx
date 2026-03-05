@@ -20,7 +20,10 @@ const standaloneUser = require('../models/standaloneUser');
 const account = require('../models/account');
 const userDomainAccess = require('../models/userDomainAccess');
 const auditLogService = require('../services/auditLogService');
-const { isShopifyDomain, normalizeDomain } = require('../models/tenant');
+const emailService = require('../services/emailService');
+const logger = require('../utils/logger');
+const validators = require('../utils/validators');
+const { isShopifyDomain } = require('../models/tenant');
 const { isUserStatusAllowedForSession } = require('../constants');
 
 /**
@@ -106,20 +109,26 @@ router.post(
     }
 
     const { domain } = req.body || {};
-    const normalized = normalizeDomain(domain);
-    if (!normalized) {
-      return sendError(res, HTTP_STATUS.BAD_REQUEST, 'Valid domain is required');
+    const validation = validators.validateDomainForInput(domain);
+    if (!validation.valid) {
+      return sendError(res, HTTP_STATUS.BAD_REQUEST, validation.error || 'Invalid domain');
     }
-    if (normalized.length > 253) {
-      return sendError(res, HTTP_STATUS.BAD_REQUEST, 'Domain too long');
-    }
+    const normalized = validation.normalized;
     if (isShopifyDomain(normalized)) {
       return sendError(res, HTTP_STATUS.BAD_REQUEST, 'Use Shopify OAuth for Shopify stores');
     }
 
-    const existing = await query('SELECT id FROM tenants WHERE domain = $1', [normalized]);
+    const existing = await query('SELECT id, account_id FROM tenants WHERE domain = $1', [
+      normalized,
+    ]);
     if (existing.rows.length > 0) {
-      return sendError(res, HTTP_STATUS.CONFLICT, 'Domain already registered');
+      const tenantAccountId = existing.rows[0].account_id;
+      const userAccountId = user.account_id;
+      const message =
+        userAccountId && tenantAccountId && tenantAccountId === userAccountId
+          ? 'This domain is already in your account.'
+          : 'Domain already registered';
+      return sendError(res, HTTP_STATUS.CONFLICT, message);
     }
 
     const { accountId, apiKey } = await standaloneUser.ensureAccountForUser(user.id);
@@ -141,10 +150,42 @@ router.post(
       domain: { id: tenant.id, domain: tenant.domain, platform: tenant.platform },
       message: `Domain ${tenant.domain} added. Use your account API key to connect.`,
     };
+    const toEmail = (user.email || email || '').trim().toLowerCase();
     if (apiKey) {
       payload.apiKey = apiKey;
       payload.message =
-        'Store your API key securely. It will not be shown again. Use it in the X-RipX-API-Key header.';
+        'Store your API key securely. It will not be shown again. Use it in the X-RipX-API-Key header. A copy has been sent to your email.';
+      if (!toEmail) {
+        logger.warn('API key generated but no user email to send to', { domain: tenant.domain });
+      } else {
+        try {
+          const sent = await emailService.sendDomainApiKeyEmail(toEmail, {
+            domain: tenant.domain,
+            apiKey,
+            reason: 'domain_added',
+          });
+          if (!sent) {
+            logger.warn('Domain added but API key email was not sent', {
+              to: toEmail.substring(0, 6) + '…',
+              domain: tenant.domain,
+            });
+          }
+        } catch (err) {
+          logger.error('Failed to send API key email', {
+            error: err.message,
+            to: toEmail.substring(0, 6) + '…',
+          });
+        }
+      }
+    } else if (toEmail) {
+      try {
+        await emailService.sendDomainAddedNotification(toEmail, tenant.domain);
+      } catch (err) {
+        logger.error('Failed to send domain-added notification', {
+          error: err.message,
+          to: toEmail.substring(0, 6) + '…',
+        });
+      }
     }
 
     return sendSuccess(res, HTTP_STATUS.CREATED, payload);
@@ -239,10 +280,34 @@ router.post(
       changes: {},
     });
 
+    const toEmail = (user.email || email || '').trim().toLowerCase();
+    if (!toEmail) {
+      logger.warn('API key regenerated but no user email to send to', {
+        accountId: user.account_id,
+      });
+    } else {
+      try {
+        const sent = await emailService.sendDomainApiKeyEmail(toEmail, {
+          apiKey,
+          reason: 'api_key_regenerated',
+        });
+        if (!sent) {
+          logger.warn('Regenerate API key: email was not sent', {
+            to: toEmail.substring(0, 6) + '…',
+          });
+        }
+      } catch (err) {
+        logger.error('Failed to send regenerate API key email', {
+          error: err.message,
+          to: toEmail.substring(0, 6) + '…',
+        });
+      }
+    }
+
     return sendSuccess(res, HTTP_STATUS.OK, {
       apiKey,
       message:
-        'Store your new API key securely. The previous key no longer works. Use it in the X-RipX-API-Key header.',
+        'Store your new API key securely. The previous key no longer works. Use it in the X-RipX-API-Key header. A copy has been sent to your email.',
     });
   })
 );

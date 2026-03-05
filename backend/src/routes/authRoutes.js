@@ -289,7 +289,18 @@ router.post(
     }
     const baseUrl = (process.env.APP_URL || '').replace(/\/$/, '');
     const link = baseUrl + '/api/auth/confirm-email?token=' + encodeURIComponent(created.token);
-    await emailVerificationService.sendVerificationEmail(email, link, 'confirm_registration');
+    const emailSent = await emailVerificationService.sendVerificationEmail(
+      email,
+      link,
+      'confirm_registration'
+    );
+    if (!emailSent) {
+      return res.status(503).json({
+        success: false,
+        error:
+          "We couldn't send the confirmation email. Please try again later or contact support.",
+      });
+    }
     auditLogService.logAuthAction(req, {
       action: 'register',
       actorId: `${(email || '').substring(0, 3)}***`,

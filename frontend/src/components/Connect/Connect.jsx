@@ -7,7 +7,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Page, FormLayout, TextField, Button, Box, Checkbox } from '@shopify/polaris';
 import { PageShell, LegalFooter } from '../Shared';
-import { ROUTES } from '../../constants';
+import { ROUTES, isPlatformAdmin } from '../../constants';
 import {
   hasEmailSession,
   apiPostPublic,
@@ -184,8 +184,8 @@ function Connect() {
       try {
         const meRes = await apiGet('/admin/me');
         const me = meRes.data?.data ?? meRes.data;
-        const role = (me?.role || '').toLowerCase();
-        if (role === 'admin' || role === 'superadmin') {
+        const role = me?.role ?? null;
+        if (isPlatformAdmin(role)) {
           target = ROUTES.ADMIN;
         }
       } catch (_) {

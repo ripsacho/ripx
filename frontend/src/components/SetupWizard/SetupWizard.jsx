@@ -139,6 +139,14 @@ function SetupWizard() {
     return () => clearInterval(interval);
   }, [standalone, allComplete, checkSetupStatus]);
 
+  /** Auto-refresh installation every 15s when standalone and script not yet detected */
+  useEffect(() => {
+    if (!standalone || !installation || installation.scriptVerified) return;
+    const interval = setInterval(fetchInstallation, 15000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only re-run when scriptVerified or standalone changes
+  }, [standalone, installation?.scriptVerified, fetchInstallation]);
+
   const copyToClipboard = async (value, label) => {
     if (!value) return;
     try {
@@ -166,11 +174,12 @@ function SetupWizard() {
     }
   };
 
-  /** Standalone setup UI — copy script, add to site */
+  /** Standalone setup UI — copy script, add to site, verify script detected */
   if (standalone) {
     const inst = installation;
     const scriptUrl = inst?.scriptUrl || '';
     const snippetHtml = inst?.snippetHtml || '';
+    const scriptVerified = !!inst?.scriptVerified;
 
     return (
       <PageShell className={styles.setupPage}>
@@ -183,12 +192,16 @@ function SetupWizard() {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <h1 className={styles.setupHeroTitle}>Standalone Site Setup</h1>
                 <p className={styles.setupHeroSubtitle}>
-                  Add the RipX script to your website in two simple steps. Works with any platform —
+                  Add the RipX script to your website and verify it loads. Works with any platform —
                   WordPress, Webflow, custom HTML, etc.
                 </p>
               </div>
               <InlineStack gap="200">
-                <Badge tone="info">Standalone</Badge>
+                {scriptVerified ? (
+                  <Badge tone="success">Script detected</Badge>
+                ) : (
+                  <Badge tone="attention">Script not detected yet</Badge>
+                )}
                 <Button onClick={fetchInstallation} loading={installationLoading} size="slim">
                   Refresh
                 </Button>
@@ -197,8 +210,34 @@ function SetupWizard() {
 
             <div className={styles.setupBody}>
               {error && (
-                <Banner tone="critical" title="Error" onDismiss={() => setError(null)}>
-                  <p>{error}</p>
+                <>
+                  {error.includes('Add a domain') ||
+                  (error.includes('domain') && error.includes('first')) ? (
+                    <Banner
+                      tone="info"
+                      title="Add a domain first"
+                      action={{ content: 'Go to My domains', url: ROUTES.DOMAINS }}
+                      onDismiss={() => setError(null)}
+                    >
+                      <p>
+                        Add at least one domain in My domains, then return to Setup to get your
+                        script and verify it.
+                      </p>
+                    </Banner>
+                  ) : (
+                    <Banner tone="critical" title="Error" onDismiss={() => setError(null)}>
+                      <p>{error}</p>
+                    </Banner>
+                  )}
+                </>
+              )}
+              {scriptVerified && (
+                <Banner tone="success" title="Script detected on your site">
+                  <p>
+                    RipX has detected the script loading on{' '}
+                    <strong>{inst?.domain || 'your domain'}</strong>. You can create tests and start
+                    tracking from the Dashboard.
+                  </p>
                 </Banner>
               )}
               {copiedMessage && (
@@ -207,14 +246,39 @@ function SetupWizard() {
                 </Banner>
               )}
 
+              {/* Step progress: 1 — 2 — 3 */}
+              <div className={styles.standaloneStepProgress} aria-label="Setup progress">
+                <div className={styles.standaloneStepProgressTrack}>
+                  <span className={`${styles.stepPill} ${styles.stepPillDone}`}>1</span>
+                  <span className={styles.stepPillConnector} />
+                  <span className={`${styles.stepPill} ${styles.stepPillDone}`}>2</span>
+                  <span className={styles.stepPillConnector} />
+                  <span
+                    className={
+                      scriptVerified
+                        ? `${styles.stepPill} ${styles.stepPillDone}`
+                        : `${styles.stepPill} ${styles.stepPillActive}`
+                    }
+                  >
+                    3
+                  </span>
+                </div>
+                <p className={styles.standaloneStepProgressLabel}>
+                  {scriptVerified ? 'Setup complete' : 'Copy script → Add to site → Verify'}
+                </p>
+              </div>
+
               <Layout>
                 <Layout.Section>
-                  <BlockStack gap="400">
-                    <Card sectioned className={styles.heroCard}>
+                  <BlockStack gap="500">
+                    <Card sectioned className={`${styles.heroCard} ${styles.standaloneStepCard}`}>
                       <BlockStack gap="300">
-                        <Text variant="headingLg" as="h2">
-                          Step 1: Copy your script
-                        </Text>
+                        <div className={styles.standaloneStepHeader}>
+                          <span className={styles.stepNumberPill}>1</span>
+                          <Text variant="headingLg" as="h2">
+                            Copy your script
+                          </Text>
+                        </div>
                         <Text variant="bodyMd" tone="subdued">
                           Copy the script URL below. Your domain:{' '}
                           <strong>{inst?.domain || '—'}</strong>
@@ -224,9 +288,17 @@ function SetupWizard() {
                             Loading...
                           </Text>
                         ) : scriptUrl ? (
-                          <BlockStack gap="200">
+                          <BlockStack gap="300">
                             <div className={styles.snippetBlock}>
                               <code className={styles.snippetCode}>{scriptUrl}</code>
+                              <Button
+                                variant="plain"
+                                size="slim"
+                                onClick={() => copyToClipboardStandalone(scriptUrl, 'Script URL')}
+                                className={styles.snippetCopyBtn}
+                              >
+                                Copy
+                              </Button>
                             </div>
                             <InlineStack gap="200">
                               <Button
@@ -250,11 +322,14 @@ function SetupWizard() {
                       </BlockStack>
                     </Card>
 
-                    <Card sectioned>
+                    <Card sectioned className={styles.standaloneStepCard}>
                       <BlockStack gap="300">
-                        <Text variant="headingLg" as="h2">
-                          Step 2: Add to your site
-                        </Text>
+                        <div className={styles.standaloneStepHeader}>
+                          <span className={styles.stepNumberPill}>2</span>
+                          <Text variant="headingLg" as="h2">
+                            Add to your site
+                          </Text>
+                        </div>
                         <List type="number">
                           <List.Item>
                             Paste the script tag into your site&apos;s <code>&lt;head&gt;</code> or
@@ -269,26 +344,88 @@ function SetupWizard() {
                         </List>
                         <Text variant="bodyMd" tone="subdued">
                           Need the full snippet? Go to{' '}
-                          <a href={ROUTES.SETTINGS}>Settings → Installation</a> for the complete
-                          HTML.
+                          <a href={ROUTES.SETTINGS} className={styles.setupLink}>
+                            Settings → Installation
+                          </a>{' '}
+                          for the complete HTML.
                         </Text>
                       </BlockStack>
                     </Card>
 
-                    <Card sectioned>
-                      <BlockStack gap="200">
-                        <Text variant="headingMd" as="h3">
-                          Done?
-                        </Text>
-                        <Text variant="bodyMd" tone="subdued">
-                          Once the script is on your site, create a test and start tracking. Visit
-                          the Dashboard to see results.
-                        </Text>
-                        <Button url={ROUTES.DASHBOARD} variant="primary">
-                          Go to Dashboard
-                        </Button>
+                    <Card
+                      sectioned
+                      className={
+                        scriptVerified
+                          ? `${styles.scriptVerifiedCard} ${styles.standaloneStepCard}`
+                          : `${styles.standaloneStepCard} ${styles.standaloneStepCardWaiting}`
+                      }
+                    >
+                      <BlockStack gap="300">
+                        <div className={styles.standaloneStepHeader}>
+                          <span
+                            className={`${styles.stepNumberPill} ${scriptVerified ? styles.stepNumberPillSuccess : ''}`}
+                          >
+                            3
+                          </span>
+                          <InlineStack gap="200" blockAlign="center" wrap>
+                            <Text variant="headingLg" as="h2">
+                              Verify script on your site
+                            </Text>
+                            <span aria-live="polite" aria-atomic="true">
+                              {scriptVerified ? (
+                                <Badge tone="success">Detected</Badge>
+                              ) : (
+                                <Badge tone="attention">Waiting</Badge>
+                              )}
+                            </span>
+                          </InlineStack>
+                        </div>
+                        {scriptVerified ? (
+                          <>
+                            <Text variant="bodyMd" tone="success">
+                              The RipX script has been detected on <strong>{inst?.domain}</strong>.
+                              Setup is complete.
+                            </Text>
+                            <Button url={ROUTES.DASHBOARD} variant="primary">
+                              Go to Dashboard
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Text variant="bodyMd" tone="subdued">
+                              After adding the script to your site, load a page on your domain. We
+                              will detect the script and show a green status here. This may take a
+                              few seconds after the page loads.
+                            </Text>
+                            <InlineStack gap="200">
+                              <Button onClick={fetchInstallation} loading={installationLoading}>
+                                Check again
+                              </Button>
+                              <Text variant="bodySm" tone="subdued">
+                                Status auto-refreshes every 15 seconds until detected.
+                              </Text>
+                            </InlineStack>
+                          </>
+                        )}
                       </BlockStack>
                     </Card>
+
+                    {scriptVerified && (
+                      <Card sectioned className={styles.nextStepsCard}>
+                        <BlockStack gap="300">
+                          <Text variant="headingMd" as="h3">
+                            Next steps
+                          </Text>
+                          <Text variant="bodyMd" tone="subdued">
+                            Create a test and start tracking. Visit the Dashboard to see results and
+                            analytics.
+                          </Text>
+                          <Button url={ROUTES.DASHBOARD} variant="primary" size="large">
+                            Go to Dashboard
+                          </Button>
+                        </BlockStack>
+                      </Card>
+                    )}
                   </BlockStack>
                 </Layout.Section>
                 <Layout.Section secondary>
@@ -304,6 +441,15 @@ function SetupWizard() {
                         <Text variant="bodySm" tone="subdued">
                           Platform: Standalone (non-Shopify)
                         </Text>
+                        {scriptVerified ? (
+                          <Text variant="bodySm" tone="success">
+                            Script: Detected on site
+                          </Text>
+                        ) : (
+                          <Text variant="bodySm" tone="subdued">
+                            Script: Not detected yet
+                          </Text>
+                        )}
                       </BlockStack>
                       <Divider />
                       <Button url={ROUTES.SETTINGS} size="slim">

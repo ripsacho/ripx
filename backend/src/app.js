@@ -21,7 +21,8 @@ require('dotenv').config();
 const APP_VERSION = process.env.APP_VERSION || '1.0.0';
 const startTime = Date.now();
 
-// Start background job processors (Bull). Require Redis; log at error in production so failures are visible.
+// Background job processors (Bull): scheduled tests, archive, guardrail, auto-stop, significance alerts, product sync.
+// Require REDIS_URL; without it processors fail to start and features that depend on them are disabled.
 const isProduction = process.env.NODE_ENV === 'production';
 function logProcessorFailure(message, err) {
   const payload = { error: err?.message || err };
@@ -66,8 +67,14 @@ try {
   const redisUrl = process.env.REDIS_URL;
   const useRedisSession = isProduction && redisUrl;
 
+  const sessionSecret = process.env.SESSION_SECRET || process.env.JWT_SECRET;
+  if (isProduction && !process.env.SESSION_SECRET) {
+    logger.warn(
+      'SESSION_SECRET not set; using JWT_SECRET for session signing. Set SESSION_SECRET in production for better security.'
+    );
+  }
   const sessionOptions = {
-    secret: process.env.SESSION_SECRET || process.env.JWT_SECRET,
+    secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -90,7 +97,9 @@ try {
         cachedSessionMiddleware = session({ ...sessionOptions, store: undefined });
       });
     sessionMiddleware = (req, res, next) => {
-      if (cachedSessionMiddleware) {return cachedSessionMiddleware(req, res, next);}
+      if (cachedSessionMiddleware) {
+        return cachedSessionMiddleware(req, res, next);
+      }
       sessionStorePromise.then(mw => (mw ? mw(req, res, next) : next())).catch(next);
     };
   } else {
@@ -127,6 +136,7 @@ const { requireEmailSession } = require('./middleware/requireEmailSession');
 const adminRoutes = require('./routes/adminRoutes');
 const apiDocsRoutes = require('./routes/apiDocsRoutes');
 const { errorHandler } = require('./middleware/errorHandler');
+const { asyncHandler } = require('./middleware/asyncHandler');
 const { requestIdMiddleware } = require('./middleware/requestId');
 const { authenticate, authenticateShopify } = require('./middleware/auth');
 const { RATE_LIMIT, HTTP_STATUS } = require('./constants');
@@ -380,6 +390,16 @@ const authLimiter = rateLimit({
 });
 app.use('/api/auth', authLimiter);
 
+// Stricter limit for client-error reporting (unauthenticated); reduces abuse risk
+const clientErrorLimiter = rateLimit({
+  windowMs: RATE_LIMIT.WINDOW_MS,
+  max: parseInt(process.env.RATE_LIMIT_CLIENT_ERROR_MAX, 10) || 100,
+  message: 'Too many error reports, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/track/client-error', clientErrorLimiter);
+
 // API docs (Swagger UI at /api-docs)
 app.use('/api-docs', apiDocsRoutes);
 
@@ -407,6 +427,7 @@ const healthHandler = async (req, res) => {
     dbStatus = 'ok';
     const { getMaintenanceMode } = require('./utils/maintenanceMode');
     maintenanceValue = await getMaintenanceMode();
+    // key_value_store may not exist on very old DBs; catch keeps health responding with dbStatus 'error'
     const kv = await query(
       "SELECT key, value FROM key_value_store WHERE key IN ('config.announcement_banner', 'config.maintenance_message')"
     );
@@ -459,12 +480,13 @@ const healthHandler = async (req, res) => {
   }
   res.json(payload);
 };
-app.get('/health', healthHandler);
-app.get('/api/health', healthHandler);
+app.get('/health', asyncHandler(healthHandler));
+app.get('/api/health', asyncHandler(healthHandler));
 
 // Public config (Terms/Privacy URLs for app footer)
-app.get('/api/config/legal', async (req, res) => {
-  try {
+app.get(
+  '/api/config/legal',
+  asyncHandler(async (req, res) => {
     const { query } = require('./utils/database');
     const kv = await query(
       "SELECT key, value FROM key_value_store WHERE key IN ('config.terms_url', 'config.privacy_url')"
@@ -482,10 +504,8 @@ app.get('/api/config/legal', async (req, res) => {
           ? String(privacyUrl).trim()
           : null,
     });
-  } catch (err) {
-    res.status(500).json({ success: false, error: 'Failed to load config' });
-  }
-});
+  })
+);
 
 // API Routes (auth always mounted for standalone email login/register)
 app.use('/api/auth', authRoutes);

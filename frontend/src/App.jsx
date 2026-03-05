@@ -57,6 +57,7 @@ import {
   hasEmailSession,
   setQueryClientForPermissionInvalidation,
   apiPostPublic,
+  getHealthUrl,
 } from './services';
 import { useSessionCheck } from './hooks';
 
@@ -197,6 +198,7 @@ const AdminAggregation = lazy(() => import('./components/Admin/AdminAggregation'
 const AdminLegal = lazy(() => import('./components/Admin/AdminLegal'));
 const AdminMaintenance = lazy(() => import('./components/Admin/AdminMaintenance'));
 const AdminAnnouncementBanner = lazy(() => import('./components/Admin/AdminAnnouncementBanner'));
+const AdminMailProcesses = lazy(() => import('./components/Admin/AdminMailProcesses'));
 const AdminUsageExport = lazy(() => import('./components/Admin/AdminUsageExport'));
 const DomainList = lazy(() => import('./components/Domains/DomainList'));
 const AuthCallback = lazy(() => import('./components/Auth/AuthCallback'));
@@ -267,8 +269,7 @@ function AppContent() {
   const { data: health } = useQuery({
     queryKey: ['health'],
     queryFn: async () => {
-      const base = import.meta.env.VITE_API_URL || '';
-      const res = await fetch(`${base}/api/health`, { credentials: 'include' });
+      const res = await fetch(getHealthUrl(), { credentials: 'include' });
       if (!res.ok) return {};
       return res.json();
     },
@@ -594,6 +595,7 @@ function AppContent() {
                   </Suspense>
                 }
               />
+              {/* Admin routes: AdminGuard enforces platform admin role; non-admins are redirected */}
               <Route
                 path={ROUTES.ADMIN}
                 element={
@@ -634,6 +636,7 @@ function AppContent() {
                 <Route path="legal" element={<AdminLegal />} />
                 <Route path="maintenance" element={<AdminMaintenance />} />
                 <Route path="announcement-banner" element={<AdminAnnouncementBanner />} />
+                <Route path="mail-processes" element={<AdminMailProcesses />} />
                 <Route path="usage-export" element={<AdminUsageExport />} />
               </Route>
               <Route

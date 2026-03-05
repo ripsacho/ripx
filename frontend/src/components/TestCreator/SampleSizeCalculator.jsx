@@ -6,12 +6,13 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, TextField, BlockStack, Text, InlineStack } from '@shopify/polaris';
+import { Card, TextField } from '@shopify/polaris';
+import styles from './SampleSizeCalculator.module.css';
 
 const MDE_PRESETS = [5, 10, 15, 20, 30, 50];
 const BASELINE_PRESETS = [0.5, 1, 2, 3, 5, 10, 15, 20];
 const CONFIDENCE_PRESETS = [90, 95, 99];
-const POWER_PRESETS = [80, 90];
+const POWER_PRESETS = [80, 90, 95];
 
 const Z_SCORES = { 0.9: 1.645, 0.95: 1.96, 0.99: 2.576 };
 const POWER_Z = { 0.8: 0.84, 0.9: 1.28, 0.95: 1.645 };
@@ -163,21 +164,30 @@ function SampleSizeCalculator({ onCalculate, embedded, initialValues = {}, class
     return () => clearTimeout(timer);
   }, [mode, baselineRate, sampleSizePerVariant, confidenceLevel, power, calculateMDE]);
 
+  const preset = (value, current, setter, label) => (
+    <button
+      key={value}
+      type="button"
+      className={`${styles.preset} ${current === String(value) ? styles.presetActive : ''}`}
+      onClick={() => setter(String(value))}
+      aria-pressed={current === String(value)}
+      aria-label={`${label}: ${value}%`}
+    >
+      {value}%
+    </button>
+  );
+
   const formContent = (
-    <BlockStack gap="400">
-      {!embedded && (
-        <>
-          <Text variant="headingMd" as="h2">
-            Sample Size Calculator
-          </Text>
-          <Text variant="bodySm" color="subdued" as="p">
-            Calculate the minimum number of visitors needed for statistically significant results.
-            Results update automatically as you type.
-          </Text>
-          <div className="sample-size-mode-toggle" role="group" aria-label="Calculator mode">
+    <div className={styles.root}>
+      {embedded && (
+        <div className={styles.embeddedIntro}>
+          <p className={styles.embeddedIntroText}>
+            Estimate visitors needed for significance. Results update as you change inputs.
+          </p>
+          <div className={styles.modeToggle} role="group" aria-label="Calculator mode">
             <button
               type="button"
-              className={`sample-size-mode-btn ${mode === 'sample' ? 'sample-size-mode-btn-active' : ''}`}
+              className={`${styles.modeBtn} ${mode === 'sample' ? styles.modeBtnActive : ''}`}
               onClick={() => setMode('sample')}
               aria-pressed={mode === 'sample'}
             >
@@ -185,7 +195,35 @@ function SampleSizeCalculator({ onCalculate, embedded, initialValues = {}, class
             </button>
             <button
               type="button"
-              className={`sample-size-mode-btn ${mode === 'mde' ? 'sample-size-mode-btn-active' : ''}`}
+              className={`${styles.modeBtn} ${mode === 'mde' ? styles.modeBtnActive : ''}`}
+              onClick={() => setMode('mde')}
+              aria-pressed={mode === 'mde'}
+            >
+              MDE from sample size
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!embedded && (
+        <>
+          <h2 className={styles.standaloneTitle}>Sample Size Calculator</h2>
+          <p className={styles.standaloneSubtitle}>
+            Calculate the minimum number of visitors needed for statistically significant results.
+            Results update automatically as you type.
+          </p>
+          <div className={styles.modeToggle} role="group" aria-label="Calculator mode">
+            <button
+              type="button"
+              className={`${styles.modeBtn} ${mode === 'sample' ? styles.modeBtnActive : ''}`}
+              onClick={() => setMode('sample')}
+              aria-pressed={mode === 'sample'}
+            >
+              Sample size
+            </button>
+            <button
+              type="button"
+              className={`${styles.modeBtn} ${mode === 'mde' ? styles.modeBtnActive : ''}`}
               onClick={() => setMode('mde')}
               aria-pressed={mode === 'mde'}
             >
@@ -195,24 +233,13 @@ function SampleSizeCalculator({ onCalculate, embedded, initialValues = {}, class
         </>
       )}
 
-      <div className={embedded ? 'sample-size-inputs-grid' : ''}>
-        <BlockStack gap="300">
-          <div>
-            <Text variant="bodyMd" fontWeight="medium" as="p" tone="subdued">
-              Baseline conversion rate
-            </Text>
-            <div className="sample-size-presets-row">
-              {BASELINE_PRESETS.map(v => (
-                <button
-                  key={v}
-                  type="button"
-                  className={`sample-size-preset ${baselineRate === String(v) ? 'sample-size-preset-active' : ''}`}
-                  onClick={() => setBaselineRate(String(v))}
-                >
-                  {v}%
-                </button>
-              ))}
-            </div>
+      <div className={embedded ? styles.inputsGrid : styles.inputsStack}>
+        <div className={styles.section}>
+          <p className={styles.sectionLabel}>Baseline conversion rate</p>
+          <div className={styles.presetRow}>
+            {BASELINE_PRESETS.map(v => preset(v, baselineRate, setBaselineRate, 'Baseline'))}
+          </div>
+          <div className={styles.inputWrap}>
             <TextField
               label=""
               labelHidden
@@ -224,24 +251,15 @@ function SampleSizeCalculator({ onCalculate, embedded, initialValues = {}, class
               max={100}
             />
           </div>
+        </div>
 
-          {mode === 'sample' && (
-            <div>
-              <Text variant="bodyMd" fontWeight="medium" as="p" tone="subdued">
-                Minimum detectable effect (MDE)
-              </Text>
-              <div className="sample-size-presets-row">
-                {MDE_PRESETS.map(v => (
-                  <button
-                    key={v}
-                    type="button"
-                    className={`sample-size-preset ${minimumEffect === String(v) ? 'sample-size-preset-active' : ''}`}
-                    onClick={() => setMinimumEffect(String(v))}
-                  >
-                    {v}%
-                  </button>
-                ))}
-              </div>
+        {mode === 'sample' && (
+          <div className={styles.section}>
+            <p className={styles.sectionLabel}>Minimum detectable effect (MDE)</p>
+            <div className={styles.presetRow}>
+              {MDE_PRESETS.map(v => preset(v, minimumEffect, setMinimumEffect, 'MDE'))}
+            </div>
+            <div className={styles.inputWrap}>
               <TextField
                 label=""
                 labelHidden
@@ -249,41 +267,38 @@ function SampleSizeCalculator({ onCalculate, embedded, initialValues = {}, class
                 value={minimumEffect}
                 onChange={setMinimumEffect}
                 suffix="%"
-                helpText="Smallest lift you want to detect (e.g., 20% = 2% → 2.4%)"
+                helpText="Smallest lift to detect (e.g., 20% = 2% → 2.4%)"
                 min={1}
                 max={100}
               />
             </div>
-          )}
+          </div>
+        )}
 
-          {mode === 'mde' && (
-            <TextField
-              label="Sample size per variant"
-              type="number"
-              value={sampleSizePerVariant}
-              onChange={setSampleSizePerVariant}
-              helpText="Number of visitors per variant (e.g., 1000)"
-              min={10}
-              max={10000000}
-            />
-          )}
-
-          <div>
-            <Text variant="bodyMd" fontWeight="medium" as="p" tone="subdued">
-              Confidence Level (%)
-            </Text>
-            <div className="sample-size-presets-row">
-              {CONFIDENCE_PRESETS.map(v => (
-                <button
-                  key={v}
-                  type="button"
-                  className={`sample-size-preset ${confidenceLevel === String(v) ? 'sample-size-preset-active' : ''}`}
-                  onClick={() => setConfidenceLevel(String(v))}
-                >
-                  {v}%
-                </button>
-              ))}
+        {mode === 'mde' && (
+          <div className={`${styles.section} ${embedded ? styles.inputsGridFullWidth : ''}`}>
+            <div className={styles.inputWrap}>
+              <TextField
+                label="Sample size per variant"
+                type="number"
+                value={sampleSizePerVariant}
+                onChange={setSampleSizePerVariant}
+                helpText="Visitors per variant (e.g., 1000)"
+                min={10}
+                max={10000000}
+              />
             </div>
+          </div>
+        )}
+
+        <div className={styles.section}>
+          <p className={styles.sectionLabel}>Confidence level</p>
+          <div className={styles.presetRow}>
+            {CONFIDENCE_PRESETS.map(v =>
+              preset(v, confidenceLevel, setConfidenceLevel, 'Confidence')
+            )}
+          </div>
+          <div className={styles.inputWrap}>
             <TextField
               label=""
               labelHidden
@@ -291,28 +306,19 @@ function SampleSizeCalculator({ onCalculate, embedded, initialValues = {}, class
               value={confidenceLevel}
               onChange={setConfidenceLevel}
               suffix="%"
-              helpText="Statistical confidence (typically 95%)"
+              helpText="Typically 95%"
               min={90}
               max={99}
             />
           </div>
+        </div>
 
-          <div>
-            <Text variant="bodyMd" fontWeight="medium" as="p" tone="subdued">
-              Statistical Power (%)
-            </Text>
-            <div className="sample-size-presets-row">
-              {POWER_PRESETS.map(v => (
-                <button
-                  key={v}
-                  type="button"
-                  className={`sample-size-preset ${power === String(v) ? 'sample-size-preset-active' : ''}`}
-                  onClick={() => setPower(String(v))}
-                >
-                  {v}%
-                </button>
-              ))}
-            </div>
+        <div className={styles.section}>
+          <p className={styles.sectionLabel}>Statistical power</p>
+          <div className={styles.presetRow}>
+            {POWER_PRESETS.map(v => preset(v, power, setPower, 'Power'))}
+          </div>
+          <div className={styles.inputWrap}>
             <TextField
               label=""
               labelHidden
@@ -320,106 +326,94 @@ function SampleSizeCalculator({ onCalculate, embedded, initialValues = {}, class
               value={power}
               onChange={setPower}
               suffix="%"
-              helpText="Probability of detecting a real effect (typically 80%)"
+              helpText="Typically 80%"
               min={70}
               max={95}
             />
           </div>
+        </div>
 
-          {mode === 'sample' && (
-            <TextField
-              label="Daily visitors (for duration estimate)"
-              type="number"
-              value={dailyVisitors}
-              onChange={setDailyVisitors}
-              helpText="Approximate visitors per day to your test pages"
-              min={10}
-              max={1000000}
-            />
-          )}
-        </BlockStack>
+        {mode === 'sample' && (
+          <div className={`${styles.section} ${embedded ? styles.inputsGridFullWidth : ''}`}>
+            <div className={styles.inputWrap}>
+              <TextField
+                label="Daily visitors (for duration)"
+                type="number"
+                value={dailyVisitors}
+                onChange={setDailyVisitors}
+                helpText="Approximate visitors per day to test pages"
+                min={10}
+                max={1000000}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {mode === 'sample' && result && (
-        <div className={embedded ? 'sample-size-result' : ''}>
-          <Card sectioned>
-            <BlockStack gap="200">
-              <Text variant="headingMd" as="h3">
-                Required Sample Size
-              </Text>
-              <BlockStack gap="100">
-                <InlineStack align="space-between">
-                  <Text variant="bodyMd" as="p">
-                    Per Variant:
-                  </Text>
-                  <Text variant="bodyMd" fontWeight="semibold" as="p">
-                    {result.perVariant.toLocaleString()} visitors
-                  </Text>
-                </InlineStack>
-                <InlineStack align="space-between">
-                  <Text variant="bodyMd" as="p">
-                    Total (Both Variants):
-                  </Text>
-                  <Text variant="bodyMd" fontWeight="semibold" as="p">
-                    {result.total.toLocaleString()} visitors
-                  </Text>
-                </InlineStack>
-                <InlineStack align="space-between">
-                  <Text variant="bodyMd" as="p">
-                    Estimated Duration:
-                  </Text>
-                  <Text variant="bodyMd" fontWeight="semibold" as="p">
-                    {formatDuration(result.estimatedDays)} (at{' '}
-                    {result.dailyVisitors?.toLocaleString() || 100}/day)
-                  </Text>
-                </InlineStack>
-              </BlockStack>
-              <Text variant="bodySm" color="subdued" as="p" style={{ marginTop: '1rem' }}>
-                💡 Tip: Run tests for at least 1-2 weeks to account for weekly patterns
-              </Text>
-            </BlockStack>
-          </Card>
+        <div className={styles.resultCard}>
+          <div className={styles.resultInner}>
+            <h3 className={styles.resultTitle}>Required sample size</h3>
+            <div className={styles.resultRows}>
+              <div className={styles.resultRow}>
+                <span className={styles.resultLabel}>Per variant</span>
+                <span className={styles.resultValue}>
+                  {result.perVariant.toLocaleString()} visitors
+                </span>
+              </div>
+              <div className={styles.resultRow}>
+                <span className={styles.resultLabel}>Total (both variants)</span>
+                <span className={styles.resultValue}>{result.total.toLocaleString()} visitors</span>
+              </div>
+              <div className={styles.resultRow}>
+                <span className={styles.resultLabel}>Estimated duration</span>
+                <span className={styles.resultValue}>
+                  {formatDuration(result.estimatedDays)} at{' '}
+                  {result.dailyVisitors?.toLocaleString() || 100}/day
+                </span>
+              </div>
+            </div>
+            <p className={styles.resultTip}>
+              Tip: Run tests at least 1–2 weeks to account for weekly patterns.
+            </p>
+          </div>
         </div>
       )}
 
       {mode === 'mde' && mdeResult && (
-        <div className={embedded ? 'sample-size-result' : ''}>
-          <Card sectioned>
-            <BlockStack gap="200">
-              <Text variant="headingMd" as="h3">
-                Detectable Effect
-              </Text>
-              <BlockStack gap="100">
-                <InlineStack align="space-between">
-                  <Text variant="bodyMd" as="p">
-                    Minimum detectable effect:
-                  </Text>
-                  <Text variant="bodyMd" fontWeight="semibold" as="p">
-                    {mdeResult.mdePercent}%
-                  </Text>
-                </InlineStack>
-                <Text variant="bodySm" color="subdued" as="p">
-                  With {sampleSizePerVariant} visitors per variant at {baselineRate}% baseline, you
-                  can detect a lift of {mdeResult.mdePercent}% or more (e.g., {baselineRate}% →{' '}
-                  {(parseFloat(baselineRate) * (1 + mdeResult.mdePercent / 100)).toFixed(2)}%).
-                </Text>
-              </BlockStack>
-            </BlockStack>
-          </Card>
+        <div className={styles.resultCard}>
+          <div className={styles.resultInner}>
+            <h3 className={styles.resultTitle}>Detectable effect</h3>
+            <div className={styles.resultRows}>
+              <div className={styles.resultRow}>
+                <span className={styles.resultLabel}>Minimum detectable effect</span>
+                <span className={styles.resultValue}>{mdeResult.mdePercent}%</span>
+              </div>
+            </div>
+            <p className={styles.resultExplanation}>
+              With {sampleSizePerVariant} visitors per variant at {baselineRate}% baseline, you can
+              detect a lift of {mdeResult.mdePercent}% or more (e.g., {baselineRate}% →{' '}
+              {(parseFloat(baselineRate) * (1 + mdeResult.mdePercent / 100)).toFixed(2)}%).
+            </p>
+          </div>
         </div>
       )}
-    </BlockStack>
+    </div>
   );
 
   if (embedded) {
     return (
-      <div className={className || 'sample-size-calculator-embedded'} data-embedded="true">
+      <div className={className || undefined} data-embedded="true">
         {formContent}
       </div>
     );
   }
 
-  return <Card>{formContent}</Card>;
+  return (
+    <Card>
+      <div className={styles.standaloneCard}>{formContent}</div>
+    </Card>
+  );
 }
 
 export default SampleSizeCalculator;

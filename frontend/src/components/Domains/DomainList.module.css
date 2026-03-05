@@ -241,9 +241,10 @@
 }
 
 .domainsContent {
-  padding: 1.5rem 1.25rem 2rem;
+  padding: 1.75rem 1.5rem 2.25rem;
   max-width: 1200px;
   margin: 0 auto;
+  box-sizing: border-box;
 }
 
 /* Empty state: content area fills remaining viewport and centers the message */
@@ -288,20 +289,20 @@
 
 /* Table section – title + badge */
 .tableSection {
-  margin-top: 0.25rem;
+  margin-top: 0.75rem;
 }
 
 .tableSectionHeader {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-  padding-left: 0.125rem;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+  padding: 0.5rem 0 0.25rem;
 }
 
 .tableSectionTitle {
   margin: 0;
-  font-size: 1rem;
+  font-size: 1.125rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--text-primary);
@@ -311,18 +312,20 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 1.5rem;
-  height: 1.5rem;
-  padding: 0 0.4rem;
-  font-size: 0.75rem;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  padding: 0 0.5rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: var(--futuristic-cyan);
-  background: rgba(6, 182, 212, 0.12);
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.14), rgba(139, 92, 246, 0.08));
+  border: 1px solid rgba(6, 182, 212, 0.25);
   border-radius: 999px;
 }
 
 [data-theme='dark'] .tableSectionBadge {
-  background: rgba(6, 182, 212, 0.2);
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.22), rgba(139, 92, 246, 0.12));
+  border-color: rgba(6, 182, 212, 0.35);
 }
 
 .legalWrap {
@@ -673,6 +676,12 @@
 
 .tableCard {
   padding: 0;
+  box-shadow: 0 4px 20px rgba(6, 182, 212, 0.06);
+  transition: box-shadow 0.2s ease;
+}
+
+.tableCard:hover {
+  box-shadow: 0 6px 24px rgba(6, 182, 212, 0.1);
 }
 
 .tableCard :global(.Polaris-DataTable) {
@@ -681,19 +690,42 @@
 
 .tableCard :global(.Polaris-DataTable__Table) {
   border-radius: 0 0 var(--domains-card-radius) var(--domains-card-radius);
+  border-collapse: collapse;
+}
+
+.domainsPage :global(.Polaris-DataTable__Cell),
+.domainsPage :global(.Polaris-DataTable__HeadingCell) {
+  padding: 0.75rem 1rem;
+  vertical-align: middle;
 }
 
 .domainsPage :global(.Polaris-DataTable__Cell--firstColumn) {
   font-weight: 600;
   color: var(--text-primary);
+  font-size: 0.9375rem;
+}
+
+.domainsPage :global(.Polaris-DataTable__HeadingCell) {
+  font-weight: 600;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.domainsPage :global(.Polaris-DataTable__Cell:last-child) {
+  text-align: right;
+  padding-right: 1.25rem;
+}
+
+.domainsPage :global(.Polaris-DataTable__Row) {
+  transition: background 0.15s ease;
 }
 
 .domainsPage :global(.Polaris-DataTable__Row:hover) {
-  background: rgba(6, 182, 212, 0.04);
+  background: linear-gradient(90deg, rgba(6, 182, 212, 0.06) 0%, rgba(6, 182, 212, 0.02) 100%);
 }
 
 [data-theme='dark'] .domainsPage :global(.Polaris-DataTable__Row:hover) {
-  background: rgba(6, 182, 212, 0.08);
+  background: linear-gradient(90deg, rgba(6, 182, 212, 0.1) 0%, rgba(6, 182, 212, 0.04) 100%);
 }
 
 .domainsPage :global(.Polaris-Banner) {
@@ -706,24 +738,26 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.35rem 0.85rem;
-  font-size: 0.8125rem;
+  padding: 0.45rem 1rem;
+  font-size: 0.875rem;
   font-weight: 600;
   color: #fff;
   background: linear-gradient(135deg, var(--futuristic-cyan), #0891b2);
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
-  transition: box-shadow 0.2s ease, transform 0.1s ease;
+  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.3);
+  transition: box-shadow 0.2s ease, transform 0.15s ease;
 }
 
 .domainsPage .openDomainBtn:hover {
-  box-shadow: 0 2px 10px rgba(6, 182, 212, 0.4);
+  box-shadow: 0 4px 14px rgba(6, 182, 212, 0.4);
   transform: translateY(-1px);
 }
 
 .domainsPage .openDomainBtn:active {
   transform: translateY(0);
+  box-shadow: 0 1px 6px rgba(6, 182, 212, 0.25);
 }
 
 .domainsPage .openDomainBtn:focus-visible {
@@ -735,20 +769,22 @@
 .connectKeyHintBtn {
   display: inline-flex;
   align-items: center;
-  padding: 0.35rem 0.75rem;
+  gap: 0.35rem;
+  padding: 0.4rem 0.9rem;
   font-size: 0.8125rem;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--futuristic-cyan);
   background: transparent;
-  border: 1px solid rgba(6, 182, 212, 0.35);
+  border: 1px solid rgba(6, 182, 212, 0.4);
   border-radius: 8px;
   cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease;
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .connectKeyHintBtn:hover {
   background: rgba(6, 182, 212, 0.08);
-  border-color: rgba(6, 182, 212, 0.5);
+  border-color: rgba(6, 182, 212, 0.55);
+  box-shadow: 0 1px 6px rgba(6, 182, 212, 0.15);
 }
 
 .connectKeyHintBtn:focus-visible {
@@ -758,28 +794,61 @@
 
 /* Actions cell: Open + Remove side by side */
 .domainActionsCell {
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 0.5rem;
   flex-wrap: wrap;
+  padding: 0.5rem 0;
+}
+
+.domainActionsWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 0.75rem;
+  min-height: 2.5rem;
+  box-sizing: border-box;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.05) 0%, rgba(139, 92, 246, 0.02) 100%);
+  border: 1px solid var(--border-secondary);
+  border-radius: 10px;
+}
+
+.domainActionsWrap .openDomainBtn,
+.domainActionsWrap .connectKeyHintBtn,
+.domainActionsWrap .removeDomainBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.domainActionsWrap .openDomainBtn :global(.Polaris-Icon),
+.domainActionsWrap .connectKeyHintBtn :global(.Polaris-Icon),
+.domainActionsWrap .removeDomainBtn :global(.Polaris-Icon) {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
 }
 
 .domainsPage .removeDomainBtn {
   display: inline-flex;
   align-items: center;
-  padding: 0.25rem 0.5rem;
+  padding: 0.3rem 0.6rem;
   font-size: 0.8125rem;
   font-weight: 500;
-  color: #b91c1c;
+  color: var(--text-secondary);
   background: transparent;
-  border: none;
+  border: 1px solid var(--border-secondary);
   border-radius: 6px;
   cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 }
 
 .domainsPage .removeDomainBtn:hover {
   color: #dc2626;
-  background: rgba(220, 38, 38, 0.08);
+  background: rgba(220, 38, 38, 0.06);
+  border-color: rgba(220, 38, 38, 0.3);
 }
 
 .domainsPage .removeDomainBtn:focus-visible {
@@ -806,6 +875,61 @@
 
 .modalSectionInner :global(.Polaris-TextField) {
   margin-top: 0.5rem;
+}
+
+/* Add domain modal – intro block with icon */
+.addModalIntro {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.06) 0%, rgba(139, 92, 246, 0.03) 100%);
+  border: 1px solid rgba(6, 182, 212, 0.15);
+  border-radius: 12px;
+  margin-bottom: 0.25rem;
+}
+
+[data-theme='dark'] .addModalIntro {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%);
+  border-color: rgba(6, 182, 212, 0.2);
+}
+
+.addModalIconWrap {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(139, 92, 246, 0.12));
+  color: var(--futuristic-cyan);
+}
+
+.addModalIconWrap :global(svg) {
+  width: 24px;
+  height: 24px;
+}
+
+.addModalDescription {
+  flex: 1;
+  min-width: 0;
+}
+
+.addModalDescription p {
+  margin: 0;
+}
+
+.addModalDescription p + p {
+  margin-top: 0.35rem;
+}
+
+.addDomainFieldWrap {
+  margin-top: 0.5rem;
+}
+
+.addDomainFieldWrap :global(.Polaris-TextField) {
+  margin-top: 0;
 }
 
 .modalHint {

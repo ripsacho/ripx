@@ -28,7 +28,7 @@ If you use **Shopify** (not standalone-only):
 
 - `SHOPIFY_API_KEY`
 - `SHOPIFY_API_SECRET`
-- `SHOPIFY_SCOPES` (e.g. `read_products,write_products,read_orders`)
+- `SHOPIFY_SCOPES` (e.g. `read_products,write_products,read_orders,read_online_store_pages` — include `read_online_store_pages` so the targeting selector can list store pages)
 
 If **standalone-only** (no Shopify):
 

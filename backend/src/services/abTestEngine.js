@@ -17,6 +17,24 @@ const {
 const { getTestById, getTestsByIds } = require('../models/test');
 const personalizationService = require('./personalizationService');
 
+/** Derive pathname from URL for path-based url_pattern matching (homepage, etc.) */
+function getPathnameFromUrl(currentUrl) {
+  if (!currentUrl || typeof currentUrl !== 'string') {
+    return '';
+  }
+  const s = String(currentUrl).trim();
+  if (!s) {
+    return '';
+  }
+  try {
+    const url = new URL(s, 'https://standalone.local');
+    const pathname = url.pathname || '/';
+    return pathname === '' ? '/' : pathname;
+  } catch {
+    return s.startsWith('/') ? s : `/${s}`;
+  }
+}
+
 class ABTestEngine {
   /**
    * Check if test should serve variants (running OR personalized/rollout)
@@ -455,28 +473,47 @@ class ABTestEngine {
       }
     }
 
+    // Resolve URL string for matching: use pathname when pattern is path-based (^/ or /...) for reliable homepage/path targeting
+    const currentUrl = context.current_url ? String(context.current_url) : '';
+    const currentPathname =
+      context.current_pathname !== null &&
+      context.current_pathname !== undefined &&
+      String(context.current_pathname).trim() !== ''
+        ? String(context.current_pathname).trim()
+        : currentUrl
+          ? getPathnameFromUrl(currentUrl)
+          : '';
+    const urlForPathMatch = currentPathname || currentUrl;
+    const urlForFullMatch = currentUrl;
+
     // Page rules: multiple include/exclude URL patterns with match_type
+    // Best practice: path-like patterns (starting with / or ^/) match against pathname for reliable targeting on standalone and Shopify (avoids query/hash splitting)
     const pageRules = segments.page_rules;
-    if (Array.isArray(pageRules) && pageRules.length > 0 && context.current_url) {
-      const url = String(context.current_url);
+    if (Array.isArray(pageRules) && pageRules.length > 0 && (currentUrl || urlForPathMatch)) {
       const matchUrl = rule => {
-        const pattern = rule.pattern || '';
+        const pattern = (rule.pattern || '').trim();
         const matchType = rule.match_type || 'regex';
+        const isPathPattern = pattern.startsWith('/') || /^\^?\//.test(pattern);
+        const urlToTest = isPathPattern ? urlForPathMatch : urlForFullMatch;
+        if (!urlToTest) {
+          return false;
+        }
         switch (matchType) {
           case 'contains':
-            return url.includes(pattern);
+            return urlToTest.includes(pattern);
           case 'starts_with':
-            return url.startsWith(pattern);
+            return urlToTest.startsWith(pattern);
           case 'ends_with':
-            return url.endsWith(pattern);
+            return urlToTest.endsWith(pattern);
           case 'equals':
-            return url === pattern;
+            return urlToTest === pattern;
           case 'regex':
           default:
             try {
-              return new RegExp(pattern).test(url);
+              const reUrl = isPathPattern ? urlForPathMatch : urlForFullMatch;
+              return new RegExp(pattern).test(reUrl || '');
             } catch {
-              return url.includes(pattern);
+              return (urlForFullMatch || '').includes(pattern);
             }
         }
       };
@@ -494,12 +531,16 @@ class ABTestEngine {
         }
       }
     } else {
-      // Legacy: single url_pattern
+      // Legacy: single url_pattern — test against pathname so ^/$|^/index matches homepage reliably (standalone + Shopify)
       const urlPattern = segments.url_pattern;
-      if (urlPattern && urlPattern.trim() && context.current_url) {
+      if (urlPattern && urlPattern.trim()) {
+        const urlToTest = urlForPathMatch || urlForFullMatch;
+        if (!urlToTest) {
+          return false;
+        }
         try {
           const re = new RegExp(urlPattern.trim());
-          if (!re.test(String(context.current_url))) {
+          if (!re.test(urlToTest)) {
             return false;
           }
         } catch {

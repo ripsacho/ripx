@@ -4,9 +4,10 @@
  */
 
 /** Platform admin roles (users.role) – access to /api/admin */
-export const PLATFORM_ADMIN_ROLES = ['admin', 'superadmin'];
+export const PLATFORM_ADMIN_ROLES = ['collaborator', 'admin', 'superadmin'];
 
 export const PLATFORM_ROLES = {
+  COLLABORATOR: 'collaborator',
   ADMIN: 'admin',
   SUPERADMIN: 'superadmin',
 };

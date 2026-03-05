@@ -380,7 +380,16 @@ class TestModel {
           safeParseJSON(test.variants, [], 'variants', test.id)
         );
         const segments = safeParseJSON(test.segments, {}, 'segments', test.id);
-        return { ...test, goal, variants, segments };
+        const targetIds = Array.isArray(test.target_ids)
+          ? test.target_ids
+          : safeParseJSON(test.target_ids, null, 'target_ids', test.id);
+        return {
+          ...test,
+          goal,
+          variants,
+          segments,
+          target_ids: Array.isArray(targetIds) && targetIds.length > 0 ? targetIds : null,
+        };
       });
     } catch (err) {
       if (err.message?.includes('personalization_mode')) {

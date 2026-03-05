@@ -1,12 +1,11 @@
 /**
  * AdminHero
  *
- * Single shared hero for admin pages: back button, icon, title, subtitle, and actions.
+ * Shared hero for admin pages: icon, title, subtitle, and actions. No back button.
  * Use with Page without title/subtitle/backAction/primaryAction/secondaryActions to avoid duplicate headers.
  */
 
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Icon, Button } from '@shopify/polaris';
 import styles from './Admin.module.css';
 
@@ -14,28 +13,13 @@ export default function AdminHero({
   title,
   subtitle,
   icon: IconSource,
-  backLabel,
-  backUrl,
   primaryAction,
   secondaryActions = [],
 }) {
-  const navigate = useNavigate();
-
   return (
     <section className={styles.adminHero} aria-label={title}>
       <div className={styles.adminHeroInner}>
         <div className={styles.adminHeroMain}>
-          <button
-            type="button"
-            className={styles.adminHeroBack}
-            onClick={() => (backUrl ? navigate(backUrl) : navigate(-1))}
-            aria-label={backLabel || 'Go back'}
-          >
-            <span className={styles.adminHeroBackArrow} aria-hidden>
-              ←
-            </span>
-            <span className={styles.adminHeroBackLabel}>{backLabel || 'Back'}</span>
-          </button>
           <div className={styles.adminHeroRow}>
             <div className={styles.adminHeroIcon}>
               {IconSource && <Icon source={IconSource} tone="base" />}

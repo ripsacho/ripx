@@ -1,8 +1,8 @@
 /**
  * Database Utility
  *
- * Database connection and query helpers
- * Supports both PostgreSQL and MongoDB
+ * Database connection and query helpers. Uses PostgreSQL (DATABASE_URL).
+ * MongoDB is not implemented; remove MONGODB_URI branch if present.
  */
 
 const { Pool } = require('pg');
@@ -48,16 +48,10 @@ function initDatabase() {
       const logger = require('./logger');
       logger.error('Unexpected error on idle database client', { error: err });
     });
-  } else if (process.env.MONGODB_URI) {
-    // MongoDB would be initialized here
-    // const mongoose = require('mongoose');
-    // mongoose.connect(process.env.MONGODB_URI);
   } else {
-    // Provide helpful error message
     const logger = require('./logger');
-    logger.error('DATABASE_URL environment variable is not set!', {
-      message: 'Please set DATABASE_URL in your .env file.',
-      example: 'DATABASE_URL=postgresql://username:password@localhost:5432/shopify_ab_testing',
+    logger.error('DATABASE_URL environment variable is not set', {
+      message: 'Set DATABASE_URL in .env (e.g. postgresql://user:pass@host:5432/ripx_db).',
     });
   }
 }

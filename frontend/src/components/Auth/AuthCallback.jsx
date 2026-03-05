@@ -7,10 +7,10 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams, Navigate } from 'react-router-dom';
 import { Page, Spinner, Text, BlockStack } from '@shopify/polaris';
 import { PageShell } from '../Shared';
-import { ROUTES } from '../../constants';
+import { ROUTES, isPlatformAdmin } from '../../constants';
 import { setEmailToken, apiGet, clearStoreSelection } from '../../services';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+import { getApiBaseUrl } from '../../services/api';
 
 function AuthCallback() {
   const [searchParams] = useSearchParams();
@@ -30,7 +30,7 @@ function AuthCallback() {
     async function run() {
       try {
         const rememberMe = searchParams.get('remember_me') === '1';
-        const verifyUrl = `${API_BASE_URL}/auth/verify-email?token=${encodeURIComponent(token)}${rememberMe ? '&remember_me=1' : ''}`;
+        const verifyUrl = `${getApiBaseUrl()}/auth/verify-email?token=${encodeURIComponent(token)}${rememberMe ? '&remember_me=1' : ''}`;
         const res = await fetch(verifyUrl, {
           method: 'GET',
           credentials: 'include',
@@ -53,7 +53,7 @@ function AuthCallback() {
           const meRes = await apiGet('/admin/me');
           const me = meRes.data?.data ?? meRes.data;
           if (cancelled) return;
-          if (me?.role === 'admin') {
+          if (isPlatformAdmin(me?.role)) {
             window.location.replace(ROUTES.ADMIN);
           } else {
             window.location.replace(ROUTES.DOMAINS);

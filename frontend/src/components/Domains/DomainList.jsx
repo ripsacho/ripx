@@ -4,6 +4,66 @@
  */
 
 import React, { useState, useEffect } from 'react';
+
+/** Client-side domain validation (aligned with backend). Returns { valid, normalized, error }. */
+function validateDomainInput(domain) {
+  if (!domain || typeof domain !== 'string') {
+    return { valid: false, error: 'Enter a domain (e.g. example.com or www.example.com)' };
+  }
+  const trimmed = domain
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .split('/')[0]
+    .replace(/\s/g, '');
+  if (!trimmed) {
+    return { valid: false, error: 'Enter a valid domain (e.g. example.com or www.example.com)' };
+  }
+  if (trimmed.length > 253) {
+    return { valid: false, error: 'Domain is too long' };
+  }
+  if (!/\./.test(trimmed)) {
+    return { valid: false, error: 'Domain must include a TLD (e.g. example.com)' };
+  }
+  const labels = trimmed.split('.');
+  for (let i = 0; i < labels.length; i++) {
+    const label = labels[i];
+    if (label.length === 0) {
+      return { valid: false, error: 'Domain cannot have empty parts' };
+    }
+    if (label.length > 63) {
+      return { valid: false, error: 'Domain part is too long' };
+    }
+    if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(label) && label.length !== 1) {
+      return {
+        valid: false,
+        error:
+          'Domain can only contain letters, numbers, and hyphens; hyphens cannot start or end a part',
+      };
+    }
+    if (label.length === 1 && !/^[a-z0-9]$/.test(label)) {
+      return { valid: false, error: 'Invalid domain format' };
+    }
+  }
+  const tld = labels[labels.length - 1];
+  if (!/^[a-z]{2,}$/.test(tld)) {
+    return { valid: false, error: 'Domain must end with a valid TLD (e.g. .com, .io)' };
+  }
+  if (/\.myshopify\.com$/i.test(trimmed)) {
+    return { valid: false, error: 'Use Shopify to connect Shopify stores' };
+  }
+  if (trimmed === 'localhost' || trimmed.endsWith('.localhost')) {
+    return { valid: false, error: 'Use your real domain (e.g. example.com), not localhost' };
+  }
+  if (trimmed.endsWith('.local')) {
+    return {
+      valid: false,
+      error: 'Use your public domain (e.g. example.com), not .local addresses',
+    };
+  }
+  return { valid: true, normalized: trimmed };
+}
+
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Page,
@@ -16,8 +76,16 @@ import {
   Banner,
   Spinner,
   Icon,
+  Tooltip,
 } from '@shopify/polaris';
-import { PlusIcon, ClipboardIcon, LinkIcon, GlobeIcon } from '@shopify/polaris-icons';
+import {
+  PlusIcon,
+  ClipboardIcon,
+  LinkIcon,
+  GlobeIcon,
+  ExternalIcon,
+  DeleteIcon,
+} from '@shopify/polaris-icons';
 import { PageShell, LegalFooter } from '../Shared';
 import { ROUTES, STORAGE_KEYS } from '../../constants';
 import styles from './DomainList.module.css';
@@ -175,17 +243,13 @@ function DomainList() {
   };
 
   const handleAddSubmit = () => {
-    const trimmed = newDomain
-      .trim()
-      .toLowerCase()
-      .replace(/^https?:\/\//, '')
-      .split('/')[0];
-    if (!trimmed) {
-      setAddError('Enter a domain (e.g. example.com)');
+    const validation = validateDomainInput(newDomain);
+    if (!validation.valid) {
+      setAddError(validation.error);
       return;
     }
     setAddError(null);
-    addMutation.mutate(trimmed);
+    addMutation.mutate(validation.normalized);
   };
 
   const handleConnectWithApiKey = () => {
@@ -226,6 +290,13 @@ function DomainList() {
     };
   }, [useEmailDomains]);
 
+  // Clear add error when opening Add domain modal so previous errors don't persist
+  useEffect(() => {
+    if (addModalOpen) {
+      setAddError(null);
+    }
+  }, [addModalOpen]);
+
   const rows = useEmailDomains
     ? domains.map(d => {
         const keyForDomain = accountKey || domainKeys[d.domain];
@@ -236,45 +307,61 @@ function DomainList() {
           (d.permittedUsers || []).map(u => u.email).join(', ') || '—',
           d.myRole || '—',
           <span key={`actions-${d.id}`} className={styles.domainActionsCell}>
-            {keyForDomain ? (
-              <button type="button" className={styles.openDomainBtn} onClick={() => handleOpen(d)}>
-                Open
-              </button>
-            ) : (
-              <button
-                type="button"
-                className={styles.connectKeyHintBtn}
-                onClick={() => setApiKeyModalOpen(true)}
-                title="Paste your API key to open this domain"
-              >
-                Connect with API key
-              </button>
-            )}
-            <button
-              type="button"
-              className={styles.removeDomainBtn}
-              onClick={() => {
-                setDomainToRemove({ id: d.id, domain: d.domain });
-                setRemoveConfirmOpen(true);
-              }}
-              title={`Remove ${d.domain} from your list`}
-            >
-              Remove
-            </button>
+            <div className={styles.domainActionsWrap}>
+              {keyForDomain ? (
+                <button
+                  type="button"
+                  className={styles.openDomainBtn}
+                  onClick={() => handleOpen(d)}
+                  aria-label={`Open ${d.domain}`}
+                >
+                  <Icon source={ExternalIcon} />
+                  <span>Open</span>
+                </button>
+              ) : (
+                <Tooltip content="Paste your API key to open this domain">
+                  <button
+                    type="button"
+                    className={styles.connectKeyHintBtn}
+                    onClick={() => setApiKeyModalOpen(true)}
+                  >
+                    <Icon source={LinkIcon} />
+                    <span>Connect with API key</span>
+                  </button>
+                </Tooltip>
+              )}
+              <Tooltip content={`Remove ${d.domain} from your list`}>
+                <button
+                  type="button"
+                  className={styles.removeDomainBtn}
+                  onClick={() => {
+                    setDomainToRemove({ id: d.id, domain: d.domain });
+                    setRemoveConfirmOpen(true);
+                  }}
+                  aria-label={`Remove ${d.domain}`}
+                >
+                  <Icon source={DeleteIcon} />
+                  <span>Remove</span>
+                </button>
+              </Tooltip>
+            </div>
           </span>,
         ];
       })
     : domains.map(d => [
         d.domain,
         d.platform || 'standalone',
-        <button
-          key={`open-${d.domain}`}
-          type="button"
-          className={styles.openDomainBtn}
-          onClick={() => handleOpenApp(d.domain)}
-        >
-          Open app
-        </button>,
+        <div key={`open-${d.domain}`} className={styles.domainActionsWrap}>
+          <button
+            type="button"
+            className={styles.openDomainBtn}
+            onClick={() => handleOpenApp(d.domain)}
+            aria-label={`Open app for ${d.domain}`}
+          >
+            <Icon source={ExternalIcon} />
+            <span>Open app</span>
+          </button>
+        </div>,
       ]);
 
   const isEmpty = domains.length === 0 && !isLoading && !error;
@@ -516,24 +603,45 @@ function DomainList() {
           content: 'Add domain',
           onAction: handleAddSubmit,
           loading: addMutation.isPending,
+          disabled: !newDomain.trim(),
         }}
       >
         <Modal.Section>
-          <div className={styles.modalSectionInner}>
-            <p className={styles.modalHint}>
-              Enter your website domain (e.g. example.com). You’ll receive an API key to install on
-              that site so you can run A/B tests.
-            </p>
-            <TextField
-              label="Domain"
-              value={newDomain}
-              onChange={setNewDomain}
-              placeholder="example.com"
-              autoComplete="off"
-              error={addError}
-              helpText="Use the domain only, without https:// or path"
-            />
-          </div>
+          <BlockStack gap="500">
+            <div className={styles.addModalIntro}>
+              <div className={styles.addModalIconWrap} aria-hidden>
+                <Icon source={GlobeIcon} />
+              </div>
+              <div className={styles.addModalDescription}>
+                <Text as="p" variant="bodyMd" fontWeight="medium">
+                  Connect a website to RipX
+                </Text>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Enter your website domain. Only valid domains are accepted. You will receive an
+                  API key by email to install on that site.
+                </Text>
+              </div>
+            </div>
+            <div className={styles.addDomainFieldWrap}>
+              <TextField
+                label="Domain"
+                value={newDomain}
+                onChange={value => {
+                  setNewDomain(value);
+                  if (addError) setAddError(null);
+                }}
+                placeholder="example.com or www.mystore.com"
+                autoComplete="url"
+                error={addError}
+                helpText="Use the domain only (no https:// or path). Must be a valid hostname with a TLD."
+              />
+            </div>
+            {addError && (
+              <Banner tone="critical" onDismiss={() => setAddError(null)}>
+                {addError}
+              </Banner>
+            )}
+          </BlockStack>
         </Modal.Section>
       </Modal>
 

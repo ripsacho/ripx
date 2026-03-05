@@ -19,7 +19,7 @@ import {
   EmptyState,
 } from '@shopify/polaris';
 import { RefreshIcon } from '@shopify/polaris-icons';
-import { apiGet, getShopDomain, getApiKey } from '../../services';
+import { apiGet, getShopDomain, getApiKey, getApiBaseUrl } from '../../services';
 import { PageShell } from '../Shared';
 import Toast from '../Toast/Toast';
 import AdminPageLayout from './AdminPageLayout';
@@ -52,7 +52,7 @@ export default function AdminUsageExport() {
   };
 
   const handleExportCsv = () => {
-    const baseUrl = import.meta.env.VITE_API_URL || '/api';
+    const baseUrl = getApiBaseUrl();
     const params = new URLSearchParams({ format: 'csv' });
     if (appliedRange.start) params.set('start_date', appliedRange.start);
     if (appliedRange.end) params.set('end_date', appliedRange.end);

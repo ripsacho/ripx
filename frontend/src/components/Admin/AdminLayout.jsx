@@ -22,8 +22,10 @@ import {
   FlagIcon,
   LinkIcon,
   ChartVerticalIcon,
+  EmailIcon,
 } from '@shopify/polaris-icons';
 import { ROUTES, APP_META } from '../../constants';
+import { getHealthUrl } from '../../services/api';
 import styles from './Admin.module.css';
 
 const ADMIN_TITLE_SUFFIX = `Admin · ${APP_META.NAME}`;
@@ -61,6 +63,7 @@ const adminNav = [
   { path: ROUTES.ADMIN_LEGAL, label: 'Terms & Privacy', icon: KeyIcon },
   { path: ROUTES.ADMIN_MAINTENANCE, label: 'Maintenance', icon: ClockIcon },
   { path: ROUTES.ADMIN_ANNOUNCEMENT_BANNER, label: 'Announcement banner', icon: FlagIcon },
+  { path: ROUTES.ADMIN_MAIL_PROCESSES, label: 'Email delivery', icon: EmailIcon },
   { path: ROUTES.ADMIN_USAGE_EXPORT, label: 'Usage export', icon: ChartVerticalIcon },
 ];
 
@@ -93,6 +96,7 @@ const pathToSection = {
   [ROUTES.ADMIN_LEGAL]: 'Terms & Privacy',
   [ROUTES.ADMIN_MAINTENANCE]: 'Maintenance',
   [ROUTES.ADMIN_ANNOUNCEMENT_BANNER]: 'Announcement banner',
+  [ROUTES.ADMIN_MAIL_PROCESSES]: 'Email delivery',
   [ROUTES.ADMIN_USAGE_EXPORT]: 'Usage export',
 };
 
@@ -103,9 +107,7 @@ function AdminLayout({ children }) {
   const [collapsed, setCollapsed] = useState(false);
   const [hoverDrawer, setHoverDrawer] = useState(null); // { label, top, height }
   const [showBackToTop, setShowBackToTop] = useState(false);
-
-  const healthUrl = `${import.meta.env.VITE_API_URL || ''}/api/health`;
-
+  const healthUrl = getHealthUrl();
   const SCROLL_THRESHOLD = 280;
 
   useEffect(() => {

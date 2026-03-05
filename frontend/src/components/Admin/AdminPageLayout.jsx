@@ -5,10 +5,9 @@
  * to avoid duplicate titles. Uses pathname to look up title, subtitle, icon from adminHeroConfig.
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Page } from '@shopify/polaris';
-import { ROUTES } from '../../constants';
 import AdminHero from './AdminHero';
 import { ADMIN_HERO_CONFIG } from './adminHeroConfig';
 
@@ -20,18 +19,18 @@ export default function AdminPageLayout({ children, primaryAction, secondaryActi
     icon: null,
   };
 
-  const isOverview = pathname === ROUTES.ADMIN_OVERVIEW || pathname === ROUTES.ADMIN;
-  const backLabel = isOverview ? 'App' : 'Admin';
-  const backUrl = isOverview ? '/' : ROUTES.ADMIN;
+  useEffect(() => {
+    if (config.title) {
+      document.title = `${config.title} – Admin`;
+    }
+  }, [config.title]);
 
   return (
-    <Page title={config.title}>
+    <Page title="">
       <AdminHero
         title={config.title}
         subtitle={config.subtitle}
         icon={config.icon}
-        backLabel={backLabel}
-        backUrl={backUrl}
         primaryAction={primaryAction}
         secondaryActions={secondaryActions}
       />

@@ -264,10 +264,13 @@ class UserModel {
   }
 
   /**
-   * Set user role by domain (admin assignment).
+   * Set user role by identifier (email or domain). For email users pass email; for store pass domain.
    */
-  async setRole(shopDomain, role) {
-    const user = await this.getByDomain(shopDomain);
+  async setRole(identifier, role) {
+    const user =
+      identifier && String(identifier).includes('@')
+        ? await this.getByEmail(identifier)
+        : await this.getByDomain(identifier);
     if (!user) {
       return false;
     }

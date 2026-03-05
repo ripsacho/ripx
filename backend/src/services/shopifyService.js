@@ -167,11 +167,15 @@ class ShopifyService {
         variables: { first, query: searchQuery || null },
       });
       const edges = response.data?.products?.edges || [];
-      return edges.map(e => ({
+      const list = edges.map(e => ({
         id: e.node.id,
         title: e.node.title || '(Untitled)',
         handle: e.node.handle || '',
       }));
+      list.sort((a, b) =>
+        (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' })
+      );
+      return list;
     } catch (error) {
       logger.error('Error listing products', { error: error.message, shopDomain });
       throw error;
@@ -209,11 +213,15 @@ class ShopifyService {
         variables: { first, query: searchQuery || null },
       });
       const edges = response.data?.collections?.edges || [];
-      return edges.map(e => ({
+      const list = edges.map(e => ({
         id: e.node.id,
         title: e.node.title || '(Untitled)',
         handle: e.node.handle || '',
       }));
+      list.sort((a, b) =>
+        (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' })
+      );
+      return list;
     } catch (error) {
       logger.error('Error listing collections', { error: error.message, shopDomain });
       throw error;
@@ -251,11 +259,15 @@ class ShopifyService {
         variables: { first, query: searchQuery || null },
       });
       const edges = response.data?.pages?.edges || [];
-      return edges.map(e => ({
+      const list = edges.map(e => ({
         id: e.node.id,
         title: e.node.title || '(Untitled)',
         handle: e.node.handle || '',
       }));
+      list.sort((a, b) =>
+        (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' })
+      );
+      return list;
     } catch (error) {
       logger.error('Error listing pages', { error: error.message, shopDomain });
       throw error;

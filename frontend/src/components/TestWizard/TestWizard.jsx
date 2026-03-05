@@ -48,6 +48,7 @@ import {
   MobileIcon,
   DataTableIcon,
   XIcon,
+  ViewIcon,
 } from '@shopify/polaris-icons';
 import { Icon } from '@shopify/polaris';
 import { TooltipWrapper } from '../Shared';
@@ -56,7 +57,11 @@ import TrafficAllocationSlider from '../TestCreator/TrafficAllocationSlider';
 import Toast from '../Toast/Toast';
 import styles from './TargetingSection.module.css';
 import stepStyles from './WizardSteps.module.css';
-import { getShopDomain, apiGet, apiPost, isStandaloneMode } from '../../services';
+import { getShopDomain, getPreviewDomain, apiGet, apiPost, isStandaloneMode } from '../../services';
+import {
+  buildPreviewUrl as buildPreviewUrlUtil,
+  resolvePreviewBaseUrl,
+} from '../../utils/previewUrl';
 import { inferTemplateKeyFromVariants } from '../../utils/testType';
 import { STANDALONE_TEST_TYPE_IDS } from '../../constants';
 
@@ -279,6 +284,11 @@ const TEST_TYPE_CATEGORIES = {
   },
 };
 
+/** URL pattern for homepage on Shopify: root and /index */
+const HOMEPAGE_URL_PATTERN_SHOPIFY = '^/$|^/index';
+/** URL pattern for standalone sites: root, /index, /index.html, /index.php, /default.html (reliable across hosts) */
+const HOMEPAGE_URL_PATTERN_STANDALONE = '^/$|^/index(\\.html|\\.php)?$|^/default\\.html$';
+
 const DEFAULT_FORM_DATA = {
   name: '',
   description: '',
@@ -310,6 +320,13 @@ const DEFAULT_FORM_DATA = {
     device_rules: [],
     audience_rules: [],
     js_targeting: { enabled: false, code: '' },
+    visual_editor_rules: [
+      { selector: '', css: '', js: '', position: 'after' },
+      { selector: '', css: '', js: '', position: 'after' },
+      { selector: '', css: '', js: '', position: 'after' },
+      { selector: '', css: '', js: '', position: 'after' },
+      { selector: '', css: '', js: '', position: 'after' },
+    ],
   },
   holdout_percent: 0,
   scheduled_start_at: '',
@@ -356,9 +373,36 @@ function TestWizard({
   const [savePresetModalOpen, setSavePresetModalOpen] = useState(false);
   const [savePresetAsFullTemplate, setSavePresetAsFullTemplate] = useState(false);
   const [sampleSizeExpanded, setSampleSizeExpanded] = useState(false);
-  const [visualEditorExpanded, setVisualEditorExpanded] = useState(false);
-  const [visualEditorPreviewUrl, setVisualEditorPreviewUrl] = useState('');
-  const [visualEditorSelector, setVisualEditorSelector] = useState('');
+  const [configEditorMode, setConfigEditorMode] = useState('code'); // 'visual' | 'code'
+  const [visualEditorDirty, setVisualEditorDirty] = useState(false);
+  const [codeEditorDirty, setCodeEditorDirty] = useState(false);
+  useEffect(() => {
+    if (!isDirty) {
+      setVisualEditorDirty(false);
+      setCodeEditorDirty(false);
+    }
+  }, [isDirty]);
+  const [visualPreviewLoadState, setVisualPreviewLoadState] = useState('idle'); // 'idle' | 'loading' | 'loaded' | 'error'
+  const [visualPreviewVariantIndex, setVisualPreviewVariantIndex] = useState(0);
+  const [visualPreviewToast, setVisualPreviewToast] = useState(null);
+  const [visualSnippetPanelExpanded, setVisualSnippetPanelExpanded] = useState(false);
+  const [visualSnippetActiveElementIndex, setVisualSnippetActiveElementIndex] = useState(0); // which element (rule index 0–4) is shown in the snippet panel
+  const [visualRuleActiveTab, setVisualRuleActiveTab] = useState({}); // { ruleIndex: 'selector'|'css'|'js' }
+  const [changingSelectorIndex, setChangingSelectorIndex] = useState(null); // when set, next click in preview replaces this slot
+  const visualSnippetPanelRef = useRef(null);
+  const visualSnippetBackdropRef = useRef(null);
+  const formDataRef = useRef(formData);
+  const visualPreviewVariantIndexRef = useRef(visualPreviewVariantIndex);
+  const changingSelectorIndexRef = useRef(changingSelectorIndex);
+  useEffect(() => {
+    formDataRef.current = formData;
+  }, [formData]);
+  useEffect(() => {
+    visualPreviewVariantIndexRef.current = visualPreviewVariantIndex;
+  }, [visualPreviewVariantIndex]);
+  useEffect(() => {
+    changingSelectorIndexRef.current = changingSelectorIndex;
+  }, [changingSelectorIndex]);
   const [savePresetName, setSavePresetName] = useState('');
   const [loadedPresetId, setLoadedPresetId] = useState('');
   const [placementSection, setPlacementSection] = useState('page'); // 'page' | 'device' | 'audience' | 'holdout' | 'advanced'
@@ -692,12 +736,66 @@ function TestWizard({
             ? [...initialData.goal.secondary]
             : [],
         },
-        variants: (initialData.variants || DEFAULT_FORM_DATA.variants).map(variant => ({
-          ...variant,
-          allocation: variant.allocation ?? 0,
-          config: variant.config && typeof variant.config === 'object' ? { ...variant.config } : {},
-        })),
-        segments: { ...DEFAULT_FORM_DATA.segments, ...(initialData.segments || {}) },
+        variants: (initialData.variants || DEFAULT_FORM_DATA.variants).map((variant, vIdx) => {
+          const config =
+            variant.config && typeof variant.config === 'object' ? { ...variant.config } : {};
+          const veRules = Array.isArray(config.visual_editor_rules)
+            ? Array.from(
+                { length: 5 },
+                (_, i) =>
+                  config.visual_editor_rules[i] || {
+                    selector: '',
+                    css: '',
+                    js: '',
+                    position: 'after',
+                  }
+              )
+            : Array.from({ length: 5 }, () => ({
+                selector: '',
+                css: '',
+                js: '',
+                position: 'after',
+              }));
+          if (
+            vIdx === 0 &&
+            Array.isArray(initialData.segments?.visual_editor_rules) &&
+            initialData.segments.visual_editor_rules.length > 0
+          ) {
+            for (let i = 0; i < 5; i++) {
+              const r = initialData.segments.visual_editor_rules[i];
+              if (r && typeof r === 'object')
+                veRules[i] = {
+                  selector: String(r.selector || '').trim(),
+                  css: String(r.css || '').trim(),
+                  js: String(r.js || '').trim(),
+                  position: ['after', 'before', 'afterbegin', 'beforeend'].includes(r.position)
+                    ? r.position
+                    : 'after',
+                };
+            }
+          }
+          return {
+            ...variant,
+            allocation: variant.allocation ?? 0,
+            config: { ...config, visual_editor_rules: veRules },
+          };
+        }),
+        segments: (() => {
+          const seg = { ...DEFAULT_FORM_DATA.segments, ...(initialData.segments || {}) };
+          if (Array.isArray(initialData.segments?.visual_editor_rules)) {
+            seg.visual_editor_rules = Array.from(
+              { length: 5 },
+              (_, i) =>
+                initialData.segments.visual_editor_rules[i] || {
+                  selector: '',
+                  css: '',
+                  js: '',
+                  position: 'after',
+                }
+            );
+          }
+          return seg;
+        })(),
         holdout_percent: initialData.holdout_percent ?? DEFAULT_FORM_DATA.holdout_percent,
         guardrail_config: initialData.guardrail_config ?? DEFAULT_FORM_DATA.guardrail_config,
         scheduled_start_at: initialData.scheduled_start_at || '',
@@ -850,6 +948,30 @@ function TestWizard({
         code: data.segments.js_targeting.code.trim(),
       };
     }
+    const veUrl = (data.segments?.visual_editor_preview_url ?? '').trim();
+    const veSel = (data.segments?.visual_editor_selector ?? '').trim();
+    if (veUrl) normalizedSegments.visual_editor_preview_url = veUrl;
+    if (veSel) normalizedSegments.visual_editor_selector = veSel;
+    const veRulesSource = Array.isArray(data.variants?.[0]?.config?.visual_editor_rules)
+      ? data.variants[0].config.visual_editor_rules
+      : data.segments?.visual_editor_rules;
+    if (Array.isArray(veRulesSource) && veRulesSource.length > 0) {
+      normalizedSegments.visual_editor_rules = veRulesSource
+        .slice(0, 5)
+        .map(r =>
+          r && typeof r === 'object'
+            ? {
+                selector: String(r.selector || '').trim(),
+                css: String(r.css || '').trim(),
+                js: String(r.js || '').trim(),
+                position: ['after', 'before', 'afterbegin', 'beforeend'].includes(r.position)
+                  ? r.position
+                  : 'after',
+              }
+            : null
+        )
+        .filter(Boolean);
+    }
 
     const templateKey =
       selectedTemplate ||
@@ -857,6 +979,7 @@ function TestWizard({
       inferTemplateKeyFromVariants(data.variants, data.type);
 
     const goal = {
+      type: data.goal?.type || 'conversion',
       ...(data.goal || {}),
       template_key: templateKey || undefined,
       secondary: Array.isArray(data.goal?.secondary) ? data.goal.secondary : [],
@@ -900,6 +1023,162 @@ function TestWizard({
       clearTimeout(autosaveTimeoutRef.current);
     }
   }, [initialData]);
+
+  // Map target type / url_pattern to the actual path for preview URL (homepage regex → /, etc.)
+  const getPreviewPathForTarget = useCallback((urlPattern, targetType) => {
+    const p = (urlPattern ?? '').trim();
+    if (
+      targetType === 'homepage' ||
+      p === HOMEPAGE_URL_PATTERN_SHOPIFY ||
+      p === HOMEPAGE_URL_PATTERN_STANDALONE
+    )
+      return '/';
+    if (targetType === 'all' && !p) return '/';
+    if (p === '/cart' || p === '/checkout' || p === '/products/' || p === '/collections/') return p;
+    if (p.startsWith('/') && !/[\]^$|*+?()[]/.test(p)) return p;
+    return '/';
+  }, []);
+
+  // Set visual preview loading when switching to visual tab or when preview URL changes
+  useEffect(() => {
+    if (configEditorMode !== 'visual') {
+      setVisualPreviewLoadState('idle');
+      return;
+    }
+    const pathForPreview = getPreviewPathForTarget(
+      formData.segments?.url_pattern,
+      formData.target_type || initialData?.target_type
+    );
+    const domainForPreview = initialData?.shop_domain || getPreviewDomain() || getShopDomain();
+    const resolved = resolvePreviewBaseUrl({
+      variantUrl: null,
+      overrideUrl: (formData.segments?.visual_editor_preview_url ?? '').trim() || null,
+      domain: domainForPreview || undefined,
+      path: pathForPreview,
+    });
+    setVisualPreviewLoadState(resolved ? 'loading' : 'idle');
+  }, [
+    configEditorMode,
+    formData.segments?.visual_editor_preview_url,
+    formData.segments?.url_pattern,
+    formData.target_type,
+    initialData?.shop_domain,
+    initialData?.target_type,
+    getPreviewPathForTarget,
+  ]);
+
+  // Timeout fallback when iframe is blocked (e.g. X-Frame-Options) and onLoad never fires
+  useEffect(() => {
+    if (visualPreviewLoadState !== 'loading') return;
+    const t = setTimeout(() => {
+      setVisualPreviewLoadState(prev => (prev === 'loading' ? 'error' : prev));
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [visualPreviewLoadState]);
+
+  // Keep visual preview variant index in range when variants list changes
+  useEffect(() => {
+    const n = (formData.variants ?? []).length;
+    if (n > 0 && visualPreviewVariantIndex >= n) {
+      setVisualPreviewVariantIndex(Math.max(0, n - 1));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- clamp index when variant count changes; formData.variants identity would cause extra runs
+  }, [formData.variants?.length, visualPreviewVariantIndex]);
+
+  // Clear "change selector" mode when switching preview variant so we don't replace the wrong variant's element
+  useEffect(() => {
+    setChangingSelectorIndex(null);
+  }, [visualPreviewVariantIndex]);
+
+  // Listen for selector from visual editor iframe (variant-specific, max 5 per variant, or replace when changing)
+  useEffect(() => {
+    function handleMessage(event) {
+      if (event.data?.type !== 'ripx-visual-selector' || typeof event.data.selector !== 'string')
+        return;
+      const sel = event.data.selector.trim();
+      if (!sel) return;
+
+      const form = formDataRef.current;
+      const variantIndex = Math.min(
+        Math.max(0, visualPreviewVariantIndexRef.current),
+        (form.variants?.length || 1) - 1
+      );
+      const variant = form.variants?.[variantIndex];
+      const rules = Array.from(
+        { length: 5 },
+        (_, i) =>
+          (variant?.config?.visual_editor_rules || [])[i] || {
+            selector: '',
+            css: '',
+            js: '',
+            position: 'after',
+          }
+      );
+      const selectedCount = rules.filter(r => (r.selector || '').trim()).length;
+      const changeIdx = changingSelectorIndexRef.current;
+
+      if (changeIdx !== null && changeIdx >= 0 && changeIdx < 5) {
+        setFormData(prev => {
+          const variants = [...(prev.variants || [])];
+          const v = variants[variantIndex];
+          const config = { ...(v?.config || {}) };
+          const nextRules = Array.from(
+            { length: 5 },
+            (_, i) => rules[i] || { selector: '', css: '', js: '', position: 'after' }
+          );
+          nextRules[changeIdx] = { ...nextRules[changeIdx], selector: sel };
+          config.visual_editor_rules = nextRules;
+          variants[variantIndex] = { ...v, config };
+          return { ...prev, variants };
+        });
+        setChangingSelectorIndex(null);
+        setIsDirty(true);
+        setVisualEditorDirty(true);
+        setVisualSnippetPanelExpanded(true);
+        setVisualSnippetActiveElementIndex(changeIdx);
+        setVisualPreviewToast({ message: 'Selector updated', type: 'success' });
+        setTimeout(() => setVisualPreviewToast(null), 2000);
+        return;
+      }
+
+      if (selectedCount >= 5) {
+        setVisualPreviewToast({
+          message: 'Maximum 5 elements per variant. Remove an element to add another.',
+          type: 'critical',
+        });
+        setTimeout(() => setVisualPreviewToast(null), 4000);
+        return;
+      }
+
+      const firstEmpty = rules.findIndex(r => !(r.selector || '').trim());
+      const idx = firstEmpty >= 0 ? firstEmpty : 0;
+
+      setFormData(prev => {
+        const variants = [...(prev.variants || [])];
+        const v = variants[variantIndex];
+        const config = { ...(v?.config || {}) };
+        const nextRules = Array.from(
+          { length: 5 },
+          (_, i) => rules[i] || { selector: '', css: '', js: '', position: 'after' }
+        );
+        nextRules[idx] = { ...nextRules[idx], selector: sel };
+        config.visual_editor_rules = nextRules;
+        variants[variantIndex] = { ...v, config };
+        return { ...prev, variants };
+      });
+      setIsDirty(true);
+      setVisualEditorDirty(true);
+      setVisualSnippetPanelExpanded(true);
+      setVisualSnippetActiveElementIndex(idx);
+      setVisualPreviewToast({
+        message: 'Element selected — snippet panel opened',
+        type: 'success',
+      });
+      setTimeout(() => setVisualPreviewToast(null), 2500);
+    }
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
 
   const validateCSS = css => {
     const errors = [];
@@ -1081,7 +1360,7 @@ function TestWizard({
     let urlPattern = '';
     if (templateKey === 'template' || templateKey === 'theme') {
       targetType = 'homepage';
-      urlPattern = '^/$|^/index';
+      urlPattern = isStandalone ? HOMEPAGE_URL_PATTERN_STANDALONE : HOMEPAGE_URL_PATTERN_SHOPIFY;
     } else if (templateKey === 'checkout') {
       targetType = 'checkout';
       urlPattern = '/checkout';
@@ -1138,6 +1417,7 @@ function TestWizard({
     if (showTemplateStep && initialTemplate) {
       handleTemplateSelect(initialTemplate);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once when step/template available; handleTemplateSelect is stable
   }, [showTemplateStep, initialTemplate]);
 
   const handleNext = () => {
@@ -1366,6 +1646,16 @@ function TestWizard({
       if (!formData.goal?.metric) {
         errors.push('Select a success metric (Revenue, Conversion, or AOV).');
       }
+      const cogs = formData.goal?.cogs;
+      if (cogs?.enabled) {
+        const cogsVal = Number(cogs.value);
+        if (cogs.type === 'percentage' && (Number.isNaN(cogsVal) || cogsVal < 0 || cogsVal > 100)) {
+          errors.push('COGS percentage must be between 0 and 100.');
+        }
+        if (cogs.type === 'fixed_per_order' && (Number.isNaN(cogsVal) || cogsVal < 0)) {
+          errors.push('COGS per order must be 0 or greater.');
+        }
+      }
     }
     if (stepId === targetingStepId) {
       const targetType = formData.target_type || initialData?.target_type;
@@ -1376,18 +1666,16 @@ function TestWizard({
         (Array.isArray(formData.target_ids) && formData.target_ids.length > 0) ||
         (initialData?.target_id && initialData.target_id.trim()) ||
         (Array.isArray(initialData?.target_ids) && initialData.target_ids.length > 0);
-      if (!hasCustomScope && (!targetType || targetType === '')) {
-        errors.push('Select where this test should run (scope).');
-      } else if (
-        !hasCustomScope &&
+      const needsTargetId =
+        targetType &&
+        targetType !== '' &&
         targetType !== 'all' &&
         targetType !== 'homepage' &&
         targetType !== 'cart' &&
         targetType !== 'checkout' &&
         targetType !== 'all-products' &&
-        targetType !== 'all-collections' &&
-        !hasTargetId
-      ) {
+        targetType !== 'all-collections';
+      if (!hasCustomScope && needsTargetId && !hasTargetId) {
         errors.push('Target ID is required for the selected target type.');
       }
       const holdoutValue = Number(formData.holdout_percent);
@@ -1423,6 +1711,16 @@ function TestWizard({
       if (!formData.goal?.metric && !initialData?.goal?.metric) {
         errors.push('Select a success metric in the Goal & Metrics step.');
       }
+      const cogsReview = formData.goal?.cogs;
+      if (cogsReview?.enabled) {
+        const v = Number(cogsReview.value);
+        if (cogsReview.type === 'percentage' && (Number.isNaN(v) || v < 0 || v > 100)) {
+          errors.push('COGS percentage must be between 0 and 100.');
+        }
+        if (cogsReview.type === 'fixed_per_order' && (Number.isNaN(v) || v < 0)) {
+          errors.push('COGS per order must be 0 or greater.');
+        }
+      }
       const totalAllocation = (formData.variants || []).reduce(
         (s, v) => s + (v.allocation || 0),
         0
@@ -1438,22 +1736,21 @@ function TestWizard({
         (Array.isArray(formData.target_ids) && formData.target_ids.length > 0) ||
         (initialData?.target_id && initialData?.target_id.trim()) ||
         (Array.isArray(initialData?.target_ids) && initialData?.target_ids.length > 0);
-      if (!hasCustomScope && (!targetType || targetType === '')) {
-        errors.push('Select where this test should run (scope) in the Targeting step.');
-      } else if (
-        !hasCustomScope &&
+      const needsTargetIdReview =
+        targetType &&
+        targetType !== '' &&
         !['all', 'homepage', 'cart', 'checkout', 'all-products', 'all-collections'].includes(
           targetType
-        ) &&
-        !hasTargetId
-      ) {
-        errors.push('Target ID is required for the selected target type.');
+        );
+      if (!hasCustomScope && needsTargetIdReview && !hasTargetId) {
+        errors.push('Target ID is required for the selected scope in the Targeting step.');
       }
     }
     return errors;
   };
 
   const handleVariantCodeChange = (type, value) => {
+    setCodeEditorDirty(true);
     setVariantCodesData(prev => {
       const updated = [...prev];
       if (updated[selectedVariantIndex]) {
@@ -1490,28 +1787,33 @@ function TestWizard({
 
   const buildPreviewUrl = (variant, index) => {
     if (mode !== 'edit' || !initialData?.id) return null;
-    const shopDomain = getShopDomain();
-    if (!shopDomain) return null;
-    const fallbackUrl = `https://${shopDomain}/`;
-    const baseUrl = variant?.config?.url || fallbackUrl;
-    let previewUrl;
-    try {
-      previewUrl = new URL(baseUrl);
-    } catch {
-      previewUrl = new URL(fallbackUrl);
-    }
+    const domain = initialData?.shop_domain || getPreviewDomain() || getShopDomain();
+    const baseUrl = resolvePreviewBaseUrl({
+      variantUrl: variant?.config?.url,
+      overrideUrl: null,
+      domain: domain || undefined,
+      path: '/',
+    });
+    if (!baseUrl) return null;
     const variantId = variant?.id || variant?.name || `variant-${index + 1}`;
-    previewUrl.searchParams.set('ab_preview', '1');
-    previewUrl.searchParams.set('ab_preview_test', initialData.id);
-    previewUrl.searchParams.set('ab_preview_variant', variantId);
-    previewUrl.searchParams.set('ab_preview_variant_name', variant?.name || `Variant ${index + 1}`);
-    return previewUrl.toString();
+    const variantName = variant?.name || `Variant ${index + 1}`;
+    return buildPreviewUrlUtil({
+      baseUrl,
+      testId: initialData.id,
+      variantId,
+      variantName,
+      visualEditor: false,
+    });
   };
 
   const handlePreviewVariant = (variant, index) => {
     const url = buildPreviewUrl(variant, index);
     if (!url) {
-      setError('Missing shop domain. Open the app from Shopify Admin to preview.');
+      setError(
+        isStandalone
+          ? 'Add a site domain for this test (or a variant URL) to preview. You can set it in test settings or when connecting your site.'
+          : 'Missing shop domain. Open the app from Shopify Admin to preview.'
+      );
       return;
     }
     window.open(url, '_blank', 'noopener');
@@ -1866,43 +2168,56 @@ function TestWizard({
             }}
             onAddVariant={newVariant => {
               setIsDirty(true);
-              const current = formData.variants || [];
-              const equalAlloc = Math.floor(100 / (current.length + 1));
-              const remainder = 100 - equalAlloc * (current.length + 1);
-              const updated = current.map((v, i) => ({
-                ...v,
-                allocation: equalAlloc + (i < remainder ? 1 : 0),
-              }));
-              updated.push({
-                ...newVariant,
-                config: newVariant.config || {},
-                allocation: equalAlloc + (current.length < remainder ? 1 : 0),
+              setFormData(prev => {
+                const current = prev.variants || [];
+                const equalAlloc = Math.floor(100 / (current.length + 1));
+                const remainder = 100 - equalAlloc * (current.length + 1);
+                const updated = current.map((v, i) => ({
+                  ...v,
+                  allocation: equalAlloc + (i < remainder ? 1 : 0),
+                }));
+                updated.push({
+                  ...newVariant,
+                  config: {
+                    ...(newVariant.config || {}),
+                    visual_editor_rules: Array.from({ length: 5 }, () => ({
+                      selector: '',
+                      css: '',
+                      js: '',
+                      position: 'after',
+                    })),
+                  },
+                  allocation: equalAlloc + (current.length < remainder ? 1 : 0),
+                });
+                return { ...prev, variants: updated };
               });
-              setFormData(prev => ({ ...prev, variants: updated }));
             }}
             onRemoveVariant={index => {
-              if ((formData.variants || []).length <= 2) return;
+              let nextLength = 0;
+              setFormData(prev => {
+                const current = prev.variants || [];
+                if (current.length <= 2) return prev;
+                const next = [...current];
+                const removed = next.splice(index, 1)[0];
+                const removedAlloc = removed?.allocation || 0;
+                const otherTotal = next.reduce((s, v) => s + (v.allocation || 0), 0);
+                const updated =
+                  otherTotal > 0
+                    ? next.map(v => ({
+                        ...v,
+                        allocation: Math.round(
+                          (v.allocation || 0) + ((v.allocation || 0) / otherTotal) * removedAlloc
+                        ),
+                      }))
+                    : next.map((v, i) => ({
+                        ...v,
+                        allocation: Math.floor(100 / next.length) + (i < 100 % next.length ? 1 : 0),
+                      }));
+                nextLength = updated.length;
+                return { ...prev, variants: updated };
+              });
               setIsDirty(true);
-              const current = [...(formData.variants || [])];
-              const removed = current.splice(index, 1)[0];
-              const removedAlloc = removed?.allocation || 0;
-              const otherTotal = current.reduce((s, v) => s + (v.allocation || 0), 0);
-              const updated =
-                otherTotal > 0
-                  ? current.map(v => ({
-                      ...v,
-                      allocation: Math.round(
-                        (v.allocation || 0) + ((v.allocation || 0) / otherTotal) * removedAlloc
-                      ),
-                    }))
-                  : current.map((v, i) => ({
-                      ...v,
-                      allocation:
-                        Math.floor(100 / current.length) + (i < 100 % current.length ? 1 : 0),
-                    }));
-              setFormData(prev => ({ ...prev, variants: updated }));
-              if (selectedVariantIndex >= updated.length)
-                setSelectedVariantIndex(Math.max(0, updated.length - 1));
+              if (nextLength > 0) setSelectedVariantIndex(prev => Math.min(prev, nextLength - 1));
             }}
             onPreviewVariant={mode === 'edit' && initialData?.id ? handlePreviewVariant : undefined}
             getPreviewUrl={mode === 'edit' && initialData?.id ? buildPreviewUrl : undefined}
@@ -2062,20 +2377,21 @@ function TestWizard({
                           {(() => {
                             const pr = formData.segments?.page_rules || [];
                             const p = formData.segments?.url_pattern ?? '';
-                            const presets = ['/products/', '/collections/', '/cart', '^/$|^/index'];
                             const pageLabel =
                               pr.length > 0
                                 ? `${pr.length} rule${pr.length > 1 ? 's' : ''}`
                                 : !p || p === ' '
                                   ? 'All pages'
-                                  : presets.includes(p)
-                                    ? {
-                                        '/products/': 'Products',
-                                        '/collections/': 'Collections',
-                                        '/cart': 'Cart',
-                                        '^/$|^/index': 'Homepage',
-                                      }[p] || 'Custom'
-                                    : 'Custom';
+                                  : p === HOMEPAGE_URL_PATTERN_SHOPIFY ||
+                                      p === HOMEPAGE_URL_PATTERN_STANDALONE
+                                    ? 'Homepage'
+                                    : p === '/products/'
+                                      ? 'Products'
+                                      : p === '/collections/'
+                                        ? 'Collections'
+                                        : p === '/cart'
+                                          ? 'Cart'
+                                          : 'Custom';
                             const dev = formData.segments?.device || 'all';
                             const cust = formData.segments?.customer || 'all';
                             const countries = formData.segments?.countries || [];
@@ -2111,117 +2427,119 @@ function TestWizard({
                             className={styles.placementPanel}
                             id="targeting-scope"
                           >
-                            <div className={styles.placementQuickPresetsStrip}>
-                              <div className={styles.placementQuickPresetsStripHead}>
-                                <span className={styles.placementQuickPresetsStripLabel}>
-                                  <Icon source={FilterIcon} />
-                                  <span className={styles.placementQuickPresetsStripTitle}>
-                                    Combos
+                            {!isStandalone && (
+                              <div className={styles.placementQuickPresetsStrip}>
+                                <div className={styles.placementQuickPresetsStripHead}>
+                                  <span className={styles.placementQuickPresetsStripLabel}>
+                                    <Icon source={FilterIcon} />
+                                    <span className={styles.placementQuickPresetsStripTitle}>
+                                      Combos
+                                    </span>
                                   </span>
-                                </span>
-                              </div>
-                              <div className={styles.placementQuickPresetsStripChips}>
-                                {[
-                                  {
-                                    label: 'Product + Mobile',
-                                    url: '/products/',
-                                    device: 'mobile',
-                                    customer: 'all',
-                                    tooltip: 'Products + Mobile',
-                                  },
-                                  {
-                                    label: 'Cart + New',
-                                    url: '/cart',
-                                    device: 'all',
-                                    customer: 'new',
-                                    tooltip: 'Cart + New visitors',
-                                  },
-                                  {
-                                    label: 'Homepage + All',
-                                    url: '^/$|^/index',
-                                    device: 'all',
-                                    customer: 'all',
-                                    tooltip: 'Homepage + All',
-                                  },
-                                  {
-                                    label: 'Reset',
-                                    url: '',
-                                    device: 'all',
-                                    customer: 'all',
-                                    tooltip: 'Reset to defaults',
-                                  },
-                                ].map(({ label, url, device, customer, tooltip }) => {
-                                  const s = formData.segments || {};
-                                  const p = s.url_pattern ?? '';
-                                  const pr = s.page_rules || [];
-                                  const isAllPages =
-                                    pr.length === 0 && (!p || p === '' || p === ' ');
-                                  const urlMatches =
-                                    url === '' ? isAllPages : p === url && pr.length === 0;
-                                  const noAdvancedRules =
-                                    (s.device_rules || []).length +
-                                      (s.audience_rules || []).length ===
-                                    0;
-                                  const matches =
-                                    urlMatches &&
-                                    (s.device ?? 'all') === device &&
-                                    (s.customer ?? 'all') === customer &&
-                                    noAdvancedRules;
-                                  return (
-                                    <TooltipWrapper
-                                      key={label}
-                                      content={tooltip}
-                                      accessibilityLabel={label}
-                                    >
-                                      <button
-                                        type="button"
-                                        className={`${styles.quickPresetChip} ${matches ? styles.quickPresetChipActive : ''}`}
-                                        onClick={() => {
-                                          setCustomUrlModeActive(false);
-                                          const targetFromUrl =
-                                            url === '/products/'
-                                              ? 'all-products'
-                                              : url === '/collections/'
-                                                ? 'all-collections'
-                                                : url === '/cart'
-                                                  ? 'cart'
-                                                  : url === '/checkout'
-                                                    ? 'checkout'
-                                                    : url === '^/$|^/index'
-                                                      ? 'homepage'
-                                                      : null;
-                                          setFormData(prev => ({
-                                            ...prev,
-                                            ...(targetFromUrl !== null &&
-                                              targetFromUrl !== undefined && {
-                                                target_type: targetFromUrl,
-                                              }),
-                                            segments: {
-                                              ...prev.segments,
-                                              url_pattern: url === '' ? '' : url,
-                                              page_rules: [],
-                                              device,
-                                              customer,
-                                              device_rules: [],
-                                              audience_rules: [],
-                                            },
-                                          }));
-                                        }}
+                                </div>
+                                <div className={styles.placementQuickPresetsStripChips}>
+                                  {[
+                                    {
+                                      label: 'Product + Mobile',
+                                      url: '/products/',
+                                      device: 'mobile',
+                                      customer: 'all',
+                                      tooltip: 'Products + Mobile',
+                                    },
+                                    {
+                                      label: 'Cart + New',
+                                      url: '/cart',
+                                      device: 'all',
+                                      customer: 'new',
+                                      tooltip: 'Cart + New visitors',
+                                    },
+                                    {
+                                      label: 'Homepage + All',
+                                      url: '^/$|^/index',
+                                      device: 'all',
+                                      customer: 'all',
+                                      tooltip: 'Homepage + All',
+                                    },
+                                    {
+                                      label: 'Reset',
+                                      url: '',
+                                      device: 'all',
+                                      customer: 'all',
+                                      tooltip: 'Reset to defaults',
+                                    },
+                                  ].map(({ label, url, device, customer, tooltip }) => {
+                                    const s = formData.segments || {};
+                                    const p = s.url_pattern ?? '';
+                                    const pr = s.page_rules || [];
+                                    const isAllPages =
+                                      pr.length === 0 && (!p || p === '' || p === ' ');
+                                    const urlMatches =
+                                      url === '' ? isAllPages : p === url && pr.length === 0;
+                                    const noAdvancedRules =
+                                      (s.device_rules || []).length +
+                                        (s.audience_rules || []).length ===
+                                      0;
+                                    const matches =
+                                      urlMatches &&
+                                      (s.device ?? 'all') === device &&
+                                      (s.customer ?? 'all') === customer &&
+                                      noAdvancedRules;
+                                    return (
+                                      <TooltipWrapper
+                                        key={label}
+                                        content={tooltip}
+                                        accessibilityLabel={label}
                                       >
-                                        {label}
-                                      </button>
-                                    </TooltipWrapper>
-                                  );
-                                })}
+                                        <button
+                                          type="button"
+                                          className={`${styles.quickPresetChip} ${matches ? styles.quickPresetChipActive : ''}`}
+                                          onClick={() => {
+                                            setCustomUrlModeActive(false);
+                                            const targetFromUrl =
+                                              url === '/products/'
+                                                ? 'all-products'
+                                                : url === '/collections/'
+                                                  ? 'all-collections'
+                                                  : url === '/cart'
+                                                    ? 'cart'
+                                                    : url === '/checkout'
+                                                      ? 'checkout'
+                                                      : url === '^/$|^/index'
+                                                        ? 'homepage'
+                                                        : null;
+                                            setFormData(prev => ({
+                                              ...prev,
+                                              ...(targetFromUrl !== null &&
+                                                targetFromUrl !== undefined && {
+                                                  target_type: targetFromUrl,
+                                                }),
+                                              segments: {
+                                                ...prev.segments,
+                                                url_pattern: url === '' ? '' : url,
+                                                page_rules: [],
+                                                device,
+                                                customer,
+                                                device_rules: [],
+                                                audience_rules: [],
+                                              },
+                                            }));
+                                          }}
+                                        >
+                                          {label}
+                                        </button>
+                                      </TooltipWrapper>
+                                    );
+                                  })}
+                                </div>
                               </div>
-                            </div>
+                            )}
                             <div
                               className={`${styles.panelSection} ${styles.panelSectionPageTargeting}`}
                             >
                               <span className={styles.panelSectionTitle}>
                                 Where should this test run?
                                 <TooltipWrapper
-                                  content="Select a scope to define where the test appears. No default—choose explicitly for best results."
+                                  content="By default the test runs on all pages. Optionally select a scope to limit where it appears (e.g. product pages only)."
                                   accessibilityLabel="Scope help"
                                 >
                                   <span className={styles.panelSectionInfoIcon} aria-hidden="true">
@@ -2231,7 +2549,7 @@ function TestWizard({
                               </span>
                               <p className={styles.panelSectionHint}>
                                 {!formData.target_type || formData.target_type === ''
-                                  ? 'Select a scope below. This determines which pages or entities will show your test.'
+                                  ? 'Your test runs on all pages by default. You can click Next without choosing a scope, or select one below to limit where the test runs.'
                                   : 'Scope selected. Click another option to change.'}
                               </p>
                               {(!formData.target_type || formData.target_type === '') && (
@@ -2247,24 +2565,21 @@ function TestWizard({
                               <div className={styles.scopeSelectGrid}>
                                 {[
                                   {
-                                    label: 'All pages',
-                                    desc: 'Site-wide',
-                                    scope: 'all',
-                                    target_type: 'all',
-                                    url_pattern: '',
-                                    needsId: false,
-                                    icon: PageIcon,
-                                    tooltip: 'Every page',
-                                  },
-                                  {
                                     label: 'Homepage',
-                                    desc: 'Landing page only',
+                                    desc: isStandalone
+                                      ? 'Root path (/, /index, /index.html, etc.)'
+                                      : 'Landing page only',
                                     scope: 'homepage',
                                     target_type: 'homepage',
-                                    url_pattern: '^/$|^/index',
+                                    url_pattern: isStandalone
+                                      ? HOMEPAGE_URL_PATTERN_STANDALONE
+                                      : HOMEPAGE_URL_PATTERN_SHOPIFY,
                                     needsId: false,
                                     icon: HomeIcon,
-                                    tooltip: 'Homepage',
+                                    tooltip: isStandalone
+                                      ? 'Runs on site root and common index paths (/, /index, /index.html, /index.php, /default.html)'
+                                      : 'Homepage',
+                                    standalone: true,
                                   },
                                   {
                                     label: 'Cart',
@@ -2275,6 +2590,7 @@ function TestWizard({
                                     needsId: false,
                                     icon: CartIcon,
                                     tooltip: 'Cart page',
+                                    standalone: false,
                                   },
                                   {
                                     label: 'Checkout',
@@ -2285,6 +2601,7 @@ function TestWizard({
                                     needsId: false,
                                     icon: CreditCardIcon,
                                     tooltip: 'Checkout',
+                                    standalone: false,
                                   },
                                   {
                                     label: 'All products',
@@ -2295,6 +2612,7 @@ function TestWizard({
                                     needsId: false,
                                     icon: ProductIcon,
                                     tooltip: 'All product pages',
+                                    standalone: false,
                                   },
                                   {
                                     label: 'All collections',
@@ -2305,6 +2623,7 @@ function TestWizard({
                                     needsId: false,
                                     icon: CollectionIcon,
                                     tooltip: 'All collection pages',
+                                    standalone: false,
                                   },
                                   {
                                     label: 'Product(s)',
@@ -2315,6 +2634,7 @@ function TestWizard({
                                     needsId: true,
                                     icon: ProductIcon,
                                     tooltip: 'Select product(s) from your store',
+                                    standalone: false,
                                   },
                                   {
                                     label: 'Collection(s)',
@@ -2325,6 +2645,7 @@ function TestWizard({
                                     needsId: true,
                                     icon: CollectionIcon,
                                     tooltip: 'Select collection(s) from your store',
+                                    standalone: false,
                                   },
                                   {
                                     label: 'Page(s)',
@@ -2335,6 +2656,7 @@ function TestWizard({
                                     needsId: true,
                                     icon: PageIcon,
                                     tooltip: 'Select page(s) from your store',
+                                    standalone: false,
                                   },
                                   {
                                     label: 'Custom URL',
@@ -2345,59 +2667,67 @@ function TestWizard({
                                     needsId: false,
                                     icon: CodeIcon,
                                     tooltip: 'Custom URL or regex',
+                                    standalone: true,
                                   },
-                                ].map(
-                                  ({
-                                    label,
-                                    desc,
-                                    scope,
-                                    target_type: tt,
-                                    url_pattern: up,
-                                    needsId,
-                                    icon: ChipIcon,
-                                    tooltip,
-                                  }) => {
-                                    const p = formData.segments?.url_pattern ?? '';
-                                    const pr = formData.segments?.page_rules || [];
-                                    const t = formData.target_type;
-                                    const isCustom =
-                                      scope === '__custom__' &&
-                                      (customUrlModeActive || pr.length > 0);
-                                    const active =
-                                      scope === '__custom__'
-                                        ? isCustom
-                                        : t === tt &&
-                                          (needsId
-                                            ? true
-                                            : up !== null && up !== undefined && up !== ''
-                                              ? p === up
-                                              : !p && pr.length === 0);
-                                    return (
-                                      <button
-                                        key={scope || 'all'}
-                                        type="button"
-                                        title={tooltip}
-                                        className={`${styles.scopeCard} ${active ? styles.scopeCardActive : ''}`}
-                                        onClick={e => {
-                                          e.preventDefault();
-                                          e.stopPropagation();
-                                          handleScopeSelect(scope, tt, up, needsId);
-                                        }}
-                                        onPointerDown={e => e.stopPropagation()}
-                                        aria-pressed={active}
-                                        aria-label={label}
-                                      >
-                                        <span className={styles.scopeCardIcon}>
-                                          <Icon source={ChipIcon} />
-                                        </span>
-                                        <span className={styles.scopeCardLabel}>{label}</span>
-                                        {desc && (
-                                          <span className={styles.scopeCardDesc}>{desc}</span>
-                                        )}
-                                      </button>
-                                    );
-                                  }
-                                )}
+                                ]
+                                  .filter(opt => !isStandalone || opt.standalone)
+                                  .map(
+                                    ({
+                                      label,
+                                      desc,
+                                      scope,
+                                      target_type: tt,
+                                      url_pattern: up,
+                                      needsId,
+                                      icon: ChipIcon,
+                                      tooltip,
+                                    }) => {
+                                      const p = formData.segments?.url_pattern ?? '';
+                                      const pr = formData.segments?.page_rules || [];
+                                      const t = formData.target_type;
+                                      const isCustom =
+                                        scope === '__custom__' &&
+                                        (customUrlModeActive || pr.length > 0);
+                                      const isHomepagePattern =
+                                        p === HOMEPAGE_URL_PATTERN_SHOPIFY ||
+                                        p === HOMEPAGE_URL_PATTERN_STANDALONE;
+                                      const active =
+                                        scope === '__custom__'
+                                          ? isCustom
+                                          : t === tt &&
+                                            (needsId
+                                              ? true
+                                              : tt === 'homepage'
+                                                ? isHomepagePattern
+                                                : up !== null && up !== undefined && up !== ''
+                                                  ? p === up
+                                                  : !p && pr.length === 0);
+                                      return (
+                                        <button
+                                          key={scope || 'all'}
+                                          type="button"
+                                          title={tooltip}
+                                          className={`${styles.scopeCard} ${active ? styles.scopeCardActive : ''}`}
+                                          onClick={e => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            handleScopeSelect(scope, tt, up, needsId);
+                                          }}
+                                          onPointerDown={e => e.stopPropagation()}
+                                          aria-pressed={active}
+                                          aria-label={label}
+                                        >
+                                          <span className={styles.scopeCardIcon}>
+                                            <Icon source={ChipIcon} />
+                                          </span>
+                                          <span className={styles.scopeCardLabel}>{label}</span>
+                                          {desc && (
+                                            <span className={styles.scopeCardDesc}>{desc}</span>
+                                          )}
+                                        </button>
+                                      );
+                                    }
+                                  )}
                               </div>
                               {['product', 'collection', 'page'].includes(formData.target_type) && (
                                 <div className={styles.panelSection} style={{ marginTop: '1rem' }}>
@@ -2510,7 +2840,9 @@ function TestWizard({
                                             <Text as="p" variant="bodySm" tone="subdued">
                                               {storeResourceSearch
                                                 ? 'No matches. Try a different search.'
-                                                : 'No items in your store yet, or the list is still loading.'}
+                                                : formData.target_type === 'page'
+                                                  ? 'No pages found. If your store has pages, the app may need "read online store pages" permission—reinstall the app from your Shopify admin to grant it.'
+                                                  : 'No items in your store yet, or the list is still loading.'}
                                             </Text>
                                           </div>
                                         ) : (
@@ -2686,7 +3018,11 @@ function TestWizard({
                                         <span className={styles.panelSectionTitle}>
                                           Custom URL rules
                                           <TooltipWrapper
-                                            content="Include = show test on matching pages. Exclude = hide on matching pages. Multiple includes = ANY match. Multiple excludes = hide if ANY match."
+                                            content={
+                                              isStandalone
+                                                ? 'Rules match the page path (e.g. /blog), not the full URL. Use paths starting with / for reliable targeting. Include = show on matching pages; Exclude = hide on matching pages.'
+                                                : 'Include = show test on matching pages. Exclude = hide on matching pages. Multiple includes = ANY match. Multiple excludes = hide if ANY match.'
+                                            }
                                             accessibilityLabel="Custom URL help"
                                           >
                                             <span
@@ -2698,8 +3034,9 @@ function TestWizard({
                                           </TooltipWrapper>
                                         </span>
                                         <p className={styles.panelSectionHint}>
-                                          Define where your test runs using URL patterns. Include
-                                          rules target pages; exclude rules hide them.
+                                          {isStandalone
+                                            ? 'Define where your test runs using page paths (e.g. /blog, /pricing). Rules match the path only, not query or hash.'
+                                            : 'Define where your test runs using URL patterns. Include rules target pages; exclude rules hide them.'}
                                         </p>
                                       </div>
                                     </div>
@@ -2708,8 +3045,9 @@ function TestWizard({
                                         How it works
                                       </span>
                                       <span className={styles.customUrlLogicText}>
-                                        Include: show test when URL matches any include rule.
-                                        Exclude: hide test when URL matches any exclude rule.
+                                        {isStandalone
+                                          ? 'Include: show test when page path matches any include rule. Exclude: hide when path matches any exclude rule. Path = part after domain (e.g. /blog).'
+                                          : 'Include: show test when URL matches any include rule. Exclude: hide test when URL matches any exclude rule.'}
                                       </span>
                                     </div>
                                     {(formData.segments?.page_rules || []).length === 0 ? (
@@ -2718,55 +3056,64 @@ function TestWizard({
                                           No URL rules yet
                                         </p>
                                         <p className={styles.customUrlEmptyDesc}>
-                                          Add rules to target or exclude specific pages. Or use
-                                          quick-add examples below.
+                                          {isStandalone
+                                            ? 'Add rules using page paths (e.g. /blog, /pricing) or regex. Click Add rule below and enter your path or pattern.'
+                                            : 'Add rules to target or exclude specific pages. Or use quick-add examples below.'}
                                         </p>
                                         <div className={styles.customUrlQuickAdd}>
-                                          {[
-                                            {
-                                              label: 'Product pages',
-                                              pattern: '/products/',
-                                              match_type: 'starts_with',
-                                              type: 'include',
-                                            },
-                                            {
-                                              label: 'Sale collection',
-                                              pattern: '/collections/sale',
-                                              match_type: 'contains',
-                                              type: 'include',
-                                            },
-                                            {
-                                              label: 'Exclude checkout',
-                                              pattern: '/checkout',
-                                              match_type: 'starts_with',
-                                              type: 'exclude',
-                                            },
-                                          ].map(q => (
-                                            <button
-                                              key={q.label}
-                                              type="button"
-                                              className={styles.customUrlQuickAddChip}
-                                              onClick={() => {
-                                                setIsDirty(true);
-                                                setFormData(prev => ({
-                                                  ...prev,
-                                                  segments: {
-                                                    ...prev.segments,
-                                                    page_rules: [
-                                                      ...(prev.segments?.page_rules || []),
-                                                      {
-                                                        type: q.type,
-                                                        pattern: q.pattern,
-                                                        match_type: q.match_type,
-                                                      },
-                                                    ],
-                                                  },
-                                                }));
-                                              }}
-                                            >
-                                              {q.label}
-                                            </button>
-                                          ))}
+                                          {!isStandalone &&
+                                            [
+                                              {
+                                                label: 'Product pages',
+                                                pattern: '/products/',
+                                                match_type: 'starts_with',
+                                                type: 'include',
+                                              },
+                                              {
+                                                label: 'Sale collection',
+                                                pattern: '/collections/sale',
+                                                match_type: 'contains',
+                                                type: 'include',
+                                              },
+                                              {
+                                                label: 'Exclude checkout',
+                                                pattern: '/checkout',
+                                                match_type: 'starts_with',
+                                                type: 'exclude',
+                                              },
+                                            ].map(q => (
+                                              <button
+                                                key={q.label}
+                                                type="button"
+                                                className={styles.customUrlQuickAddChip}
+                                                onClick={() => {
+                                                  setIsDirty(true);
+                                                  setFormData(prev => ({
+                                                    ...prev,
+                                                    segments: {
+                                                      ...prev.segments,
+                                                      page_rules: [
+                                                        ...(prev.segments?.page_rules || []),
+                                                        {
+                                                          type: q.type,
+                                                          pattern: q.pattern,
+                                                          match_type: q.match_type,
+                                                        },
+                                                      ],
+                                                    },
+                                                  }));
+                                                }}
+                                              >
+                                                {q.label}
+                                              </button>
+                                            ))}
+                                          {isStandalone && (
+                                            <p className={styles.customUrlEmptyDesc}>
+                                              Use &quot;Add rule&quot; below to define path or regex
+                                              rules. No fixed presets — enter any path (e.g. /blog,
+                                              /pricing) or regex.
+                                            </p>
+                                          )}
                                         </div>
                                       </div>
                                     ) : null}
@@ -2781,27 +3128,41 @@ function TestWizard({
                                       </div>
                                     ) : null}
                                     {(formData.segments?.page_rules || []).map((rule, idx) => {
-                                      const presets = [
-                                        '/products/',
-                                        '/collections/',
-                                        '/cart',
-                                        '^/$|^/index',
-                                        '',
-                                      ];
-                                      const matchTypeOptions = [
-                                        { label: 'Contains', value: 'contains' },
-                                        { label: 'Starts with', value: 'starts_with' },
-                                        { label: 'Ends with', value: 'ends_with' },
-                                        { label: 'Equals', value: 'equals' },
-                                        { label: 'Regex', value: 'regex' },
-                                      ];
-                                      const presetMatchTypes = {
-                                        '': 'regex',
-                                        '/products/': 'starts_with',
-                                        '/collections/': 'starts_with',
-                                        '/cart': 'equals',
-                                        '^/$|^/index': 'regex',
-                                      };
+                                      const presets = !isStandalone
+                                        ? [
+                                            '/products/',
+                                            '/collections/',
+                                            '/cart',
+                                            HOMEPAGE_URL_PATTERN_SHOPIFY,
+                                            HOMEPAGE_URL_PATTERN_STANDALONE,
+                                            '',
+                                          ]
+                                        : [];
+                                      const matchTypeOptions = isStandalone
+                                        ? [
+                                            { label: 'Path contains', value: 'contains' },
+                                            { label: 'Path starts with', value: 'starts_with' },
+                                            { label: 'Path ends with', value: 'ends_with' },
+                                            { label: 'Path equals', value: 'equals' },
+                                            { label: 'Regex', value: 'regex' },
+                                          ]
+                                        : [
+                                            { label: 'Contains', value: 'contains' },
+                                            { label: 'Starts with', value: 'starts_with' },
+                                            { label: 'Ends with', value: 'ends_with' },
+                                            { label: 'Equals', value: 'equals' },
+                                            { label: 'Regex', value: 'regex' },
+                                          ];
+                                      const presetMatchTypes = !isStandalone
+                                        ? {
+                                            '': 'regex',
+                                            '/products/': 'starts_with',
+                                            '/collections/': 'starts_with',
+                                            '/cart': 'equals',
+                                            [HOMEPAGE_URL_PATTERN_SHOPIFY]: 'regex',
+                                            [HOMEPAGE_URL_PATTERN_STANDALONE]: 'regex',
+                                          }
+                                        : {};
                                       return (
                                         <div key={idx} className={styles.customRuleRow}>
                                           <span className={styles.customRuleNumber} aria-hidden>
@@ -2859,59 +3220,67 @@ function TestWizard({
                                               Exclude
                                             </button>
                                           </div>
-                                          <Select
-                                            label=""
-                                            labelHidden
-                                            options={[
-                                              { label: 'All pages', value: '' },
-                                              { label: 'Product pages', value: '/products/' },
-                                              { label: 'Collection pages', value: '/collections/' },
-                                              { label: 'Cart', value: '/cart' },
-                                              { label: 'Homepage', value: '^/$|^/index' },
-                                              { label: 'Custom URL…', value: '__custom__' },
-                                            ]}
-                                            value={
-                                              presets.includes(rule.pattern || '')
-                                                ? rule.pattern || ''
-                                                : rule.pattern === ' ' || rule.pattern
-                                                  ? '__custom__'
-                                                  : ''
-                                            }
-                                            onChange={v => {
-                                              setIsDirty(true);
-                                              const newPattern =
-                                                v === '__custom__'
-                                                  ? presets.includes(rule.pattern || '') ||
-                                                    rule.pattern === ' '
-                                                    ? ' '
-                                                    : rule.pattern || ' '
-                                                  : v;
-                                              const newMatchType =
-                                                v === '__custom__'
-                                                  ? rule.match_type || 'contains'
-                                                  : presetMatchTypes[v] || 'regex';
-                                              setFormData(prev => ({
-                                                ...prev,
-                                                segments: {
-                                                  ...prev.segments,
-                                                  page_rules: [
-                                                    ...(prev.segments?.page_rules || []).slice(
-                                                      0,
-                                                      idx
-                                                    ),
-                                                    {
-                                                      ...rule,
-                                                      pattern: newPattern,
-                                                      match_type: newMatchType,
-                                                    },
-                                                    ...(prev.segments?.page_rules || []).slice(
-                                                      idx + 1
-                                                    ),
-                                                  ],
+                                          {!isStandalone && (
+                                            <Select
+                                              label=""
+                                              labelHidden
+                                              options={[
+                                                { label: 'All pages', value: '' },
+                                                { label: 'Product pages', value: '/products/' },
+                                                {
+                                                  label: 'Collection pages',
+                                                  value: '/collections/',
                                                 },
-                                              }));
-                                            }}
-                                          />
+                                                { label: 'Cart', value: '/cart' },
+                                                {
+                                                  label: 'Homepage',
+                                                  value: HOMEPAGE_URL_PATTERN_SHOPIFY,
+                                                },
+                                                { label: 'Custom URL…', value: '__custom__' },
+                                              ]}
+                                              value={
+                                                presets.includes(rule.pattern || '')
+                                                  ? rule.pattern || ''
+                                                  : rule.pattern === ' ' || rule.pattern
+                                                    ? '__custom__'
+                                                    : ''
+                                              }
+                                              onChange={v => {
+                                                setIsDirty(true);
+                                                const newPattern =
+                                                  v === '__custom__'
+                                                    ? presets.includes(rule.pattern || '') ||
+                                                      rule.pattern === ' '
+                                                      ? ' '
+                                                      : rule.pattern || ' '
+                                                    : v;
+                                                const newMatchType =
+                                                  v === '__custom__'
+                                                    ? rule.match_type || 'contains'
+                                                    : presetMatchTypes[v] || 'regex';
+                                                setFormData(prev => ({
+                                                  ...prev,
+                                                  segments: {
+                                                    ...prev.segments,
+                                                    page_rules: [
+                                                      ...(prev.segments?.page_rules || []).slice(
+                                                        0,
+                                                        idx
+                                                      ),
+                                                      {
+                                                        ...rule,
+                                                        pattern: newPattern,
+                                                        match_type: newMatchType,
+                                                      },
+                                                      ...(prev.segments?.page_rules || []).slice(
+                                                        idx + 1
+                                                      ),
+                                                    ],
+                                                  },
+                                                }));
+                                              }}
+                                            />
+                                          )}
                                           <div className={styles.matchTypeSelect}>
                                             <Select
                                               label=""
@@ -2919,9 +3288,11 @@ function TestWizard({
                                               options={matchTypeOptions}
                                               value={
                                                 rule.match_type ||
-                                                (presets.includes(rule.pattern || '')
-                                                  ? presetMatchTypes[rule.pattern] || 'regex'
-                                                  : 'contains')
+                                                (isStandalone
+                                                  ? 'starts_with'
+                                                  : presets.includes(rule.pattern || '')
+                                                    ? presetMatchTypes[rule.pattern]
+                                                    : 'contains')
                                               }
                                               onChange={v => {
                                                 setIsDirty(true);
@@ -2946,7 +3317,7 @@ function TestWizard({
                                           </div>
                                           <div className={styles.customUrlInputWrap}>
                                             <TextField
-                                              label="URL pattern"
+                                              label={isStandalone ? 'Path or regex' : 'URL pattern'}
                                               labelHidden
                                               value={rule.pattern === ' ' ? '' : rule.pattern || ''}
                                               onChange={v => {
@@ -2969,23 +3340,31 @@ function TestWizard({
                                                 }));
                                               }}
                                               placeholder={
-                                                (rule.match_type || 'contains') === 'regex'
-                                                  ? 'e.g. ^/products/.* or /collections/sale'
-                                                  : (rule.match_type || 'contains') === 'contains'
-                                                    ? 'e.g. /products/ or sale'
-                                                    : (rule.match_type || 'contains') ===
-                                                        'starts_with'
-                                                      ? 'e.g. /products/ or /collections/'
+                                                isStandalone
+                                                  ? (rule.match_type || 'starts_with') === 'regex'
+                                                    ? 'e.g. ^/blog, ^/en/.*'
+                                                    : 'e.g. /blog, /pricing, /docs'
+                                                  : (rule.match_type || 'contains') === 'regex'
+                                                    ? 'e.g. ^/products/.* or /collections/sale'
+                                                    : (rule.match_type || 'contains') === 'contains'
+                                                      ? 'e.g. /products/ or sale'
                                                       : (rule.match_type || 'contains') ===
-                                                          'ends_with'
-                                                        ? 'e.g. .html or /checkout'
-                                                        : 'e.g. /cart or /pages/about'
+                                                          'starts_with'
+                                                        ? 'e.g. /products/ or /collections/'
+                                                        : (rule.match_type || 'contains') ===
+                                                            'ends_with'
+                                                          ? 'e.g. .html or /checkout'
+                                                          : 'e.g. /cart or /pages/about'
                                               }
                                               autoComplete="off"
                                               helpText={
-                                                (rule.match_type || 'contains') === 'regex'
-                                                  ? 'JavaScript regex. Use ^ for start, $ for end.'
-                                                  : null
+                                                (rule.match_type || 'starts_with') === 'regex' &&
+                                                isStandalone
+                                                  ? 'JavaScript regex. Path-based patterns (e.g. starting with /) match the page path only.'
+                                                  : (rule.match_type || 'contains') === 'regex' &&
+                                                      !isStandalone
+                                                    ? 'JavaScript regex. Use ^ for start, $ for end.'
+                                                    : null
                                               }
                                             />
                                           </div>
@@ -3024,7 +3403,9 @@ function TestWizard({
                                               {
                                                 type: 'include',
                                                 pattern: ' ',
-                                                match_type: 'contains',
+                                                match_type: isStandalone
+                                                  ? 'starts_with'
+                                                  : 'contains',
                                               },
                                             ],
                                           },
@@ -3589,8 +3970,8 @@ function TestWizard({
                             <span className={styles.targetingPanelStep}>Step 2 of 2</span>
                             <h4 className={styles.targetingPanelTitle}>Holdout (control group)</h4>
                             <p className={styles.targetingPanelHint}>
-                              Reserve visitors who never see the test for a true control. Use{' '}
-                              <kbd className={styles.panelKbd}>1</kbd>–
+                              Reserve a percentage of visitors who never see any variant for a true
+                              control. Use <kbd className={styles.panelKbd}>1</kbd>–
                               <kbd className={styles.panelKbd}>4</kbd> or arrow keys to switch
                               sections.
                             </p>
@@ -3602,130 +3983,137 @@ function TestWizard({
                             )}
                           </div>
                           <div className={styles.targetingPanelBody}>
-                            <div className={styles.holdoutRecommendedBanner}>
-                              <span className={styles.holdoutRecommendedText}>
-                                Recommended: Product pages + 10% holdout
+                            <div className={styles.holdoutInstruction}>
+                              <Icon source={LockIcon} />
+                              <span>
+                                Choose what percentage of traffic stays in the control group (no
+                                variant). 10% is recommended for most tests.
                               </span>
-                              <button
-                                type="button"
-                                className={styles.holdoutRecommendedBtn}
-                                onClick={() => {
-                                  setCustomUrlModeActive(false);
-                                  setFormData(prev => ({
-                                    ...prev,
-                                    target_type: 'all-products',
-                                    target_id: '',
-                                    target_ids: null,
-                                    segments: {
-                                      ...prev.segments,
-                                      url_pattern: '/products/',
-                                      page_rules: [],
-                                      device: 'all',
-                                      customer: 'all',
-                                    },
-                                    holdout_percent: 10,
-                                  }));
-                                }}
-                              >
-                                Apply recommended
-                              </button>
                             </div>
-                            <div className={styles.holdoutLayoutGrid}>
-                              <div className={styles.holdoutBlock}>
-                                <div className={styles.holdoutHeaderRow}>
-                                  <label className={styles.holdoutSliderLabel}>
-                                    Holdout percentage
-                                    <TooltipWrapper
-                                      content="Control group. 10% recommended."
-                                      accessibilityLabel="Holdout percentage help"
+                            <div className={styles.holdoutCard}>
+                              <div className={styles.holdoutCardHeader}>
+                                <label className={styles.holdoutSliderLabel}>
+                                  Control group size
+                                  <TooltipWrapper
+                                    content="Visitors in the control group never see any test variant. 10% gives a solid baseline."
+                                    accessibilityLabel="Holdout percentage help"
+                                  >
+                                    <span
+                                      className={styles.panelSectionInfoIcon}
+                                      aria-hidden="true"
                                     >
-                                      <span
-                                        className={styles.panelSectionInfoIcon}
-                                        aria-hidden="true"
+                                      <Icon source={InfoIcon} />
+                                    </span>
+                                  </TooltipWrapper>
+                                </label>
+                                <div className={styles.holdoutQuickPresets}>
+                                  {[
+                                    { pct: 0, label: '0%', tooltip: 'No holdout' },
+                                    {
+                                      pct: 10,
+                                      label: '10%',
+                                      recommended: true,
+                                      tooltip: 'Recommended',
+                                    },
+                                    { pct: 25, label: '25%', tooltip: 'Larger control' },
+                                    { pct: 50, label: '50%', tooltip: 'Max holdout' },
+                                  ].map(({ pct, label, recommended, tooltip }) => (
+                                    <TooltipWrapper
+                                      key={pct}
+                                      content={tooltip}
+                                      accessibilityLabel={`Holdout ${label}`}
+                                    >
+                                      <button
+                                        type="button"
+                                        className={`${styles.holdoutPresetBtn} ${Number(holdoutValue) === pct ? styles.holdoutPresetBtnActive : ''}`}
+                                        onClick={() =>
+                                          setFormData(prev => ({ ...prev, holdout_percent: pct }))
+                                        }
                                       >
-                                        <Icon source={InfoIcon} />
-                                      </span>
+                                        {label}
+                                        {recommended && (
+                                          <span className={styles.holdoutPresetRecommended}>
+                                            Best
+                                          </span>
+                                        )}
+                                      </button>
                                     </TooltipWrapper>
-                                  </label>
-                                  <div className={styles.holdoutQuickPresets}>
-                                    {[
-                                      { pct: 0, label: '0%', tooltip: 'No holdout' },
-                                      {
-                                        pct: 10,
-                                        label: '10%',
-                                        recommended: true,
-                                        tooltip: 'Recommended',
-                                      },
-                                      { pct: 25, label: '25%', tooltip: 'Larger control' },
-                                      { pct: 50, label: '50%', tooltip: 'Max holdout' },
-                                    ].map(({ pct, label, recommended, tooltip }) => (
-                                      <TooltipWrapper
-                                        key={pct}
-                                        content={tooltip}
-                                        accessibilityLabel={`Holdout ${label}`}
-                                      >
-                                        <button
-                                          type="button"
-                                          className={`${styles.holdoutPresetBtn} ${Number(holdoutValue) === pct ? styles.holdoutPresetBtnActive : ''}`}
-                                          onClick={() =>
-                                            setFormData(prev => ({ ...prev, holdout_percent: pct }))
-                                          }
-                                        >
-                                          {label}
-                                          {recommended && (
-                                            <span className={styles.holdoutPresetRecommended}>
-                                              Best
-                                            </span>
-                                          )}
-                                        </button>
-                                      </TooltipWrapper>
-                                    ))}
-                                  </div>
+                                  ))}
                                 </div>
-                                <div className={styles.holdoutSliderRow}>
-                                  <div className={styles.holdoutValueInput}>
-                                    <input
-                                      type="number"
-                                      className={styles.holdoutNumberInput}
-                                      min={0}
-                                      max={50}
-                                      value={holdoutValue ?? ''}
-                                      onChange={e =>
-                                        setFormData(prev => ({
-                                          ...prev,
-                                          holdout_percent: e.target.value,
-                                        }))
-                                      }
-                                      aria-label="Holdout percentage"
-                                    />
-                                    <span className={styles.holdoutPercentSuffix}>%</span>
-                                  </div>
+                              </div>
+                              <div className={styles.holdoutCardBody}>
+                                <div className={styles.holdoutValueInput}>
                                   <input
-                                    type="range"
-                                    className={styles.holdoutSlider}
+                                    type="number"
+                                    className={styles.holdoutNumberInput}
                                     min={0}
                                     max={50}
-                                    value={Math.min(50, Math.max(0, Number(holdoutValue) || 0))}
+                                    value={holdoutValue ?? ''}
                                     onChange={e =>
                                       setFormData(prev => ({
                                         ...prev,
                                         holdout_percent: e.target.value,
                                       }))
                                     }
-                                    aria-label="Holdout percentage slider"
+                                    aria-label="Holdout percentage"
                                   />
+                                  <span className={styles.holdoutPercentSuffix}>%</span>
                                 </div>
+                                <input
+                                  type="range"
+                                  className={styles.holdoutSlider}
+                                  min={0}
+                                  max={50}
+                                  value={Math.min(50, Math.max(0, Number(holdoutValue) || 0))}
+                                  onChange={e =>
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      holdout_percent: e.target.value,
+                                    }))
+                                  }
+                                  aria-label="Holdout percentage slider"
+                                />
                                 <div className={styles.holdoutSliderLabels}>
                                   <span>0%</span>
                                   <span>25%</span>
                                   <span>50%</span>
                                 </div>
-                                <p className={styles.holdoutHelpText}>
-                                  Visitors in the control group never see any variant. 10% is
-                                  recommended for most tests.
-                                </p>
                               </div>
+                              <p className={styles.holdoutHelpText}>
+                                Visitors in the control group never see any variant. Leave at 0% to
+                                run without a control.
+                              </p>
                             </div>
+                            {!isStandalone && (
+                              <div className={styles.holdoutRecommendedBanner}>
+                                <span className={styles.holdoutRecommendedText}>
+                                  Quick apply: Product pages + 10% holdout
+                                </span>
+                                <button
+                                  type="button"
+                                  className={styles.holdoutRecommendedBtn}
+                                  onClick={() => {
+                                    setCustomUrlModeActive(false);
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      target_type: 'all-products',
+                                      target_id: '',
+                                      target_ids: null,
+                                      segments: {
+                                        ...prev.segments,
+                                        url_pattern: '/products/',
+                                        page_rules: [],
+                                        device: 'all',
+                                        customer: 'all',
+                                      },
+                                      holdout_percent: 10,
+                                    }));
+                                  }}
+                                >
+                                  Apply recommended
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -3742,7 +4130,9 @@ function TestWizard({
                             <span className={styles.targetingPanelStep}>
                               {isStandalone ? 'Step 3 of 3' : 'Step 5 of 5'}
                             </span>
-                            <h4 className={styles.targetingPanelTitle}>Advanced options</h4>
+                            <h4 className={styles.targetingPanelTitle}>
+                              Advanced targeting & safety
+                            </h4>
                             <p className={styles.targetingPanelHint}>
                               Safety, traffic, presets, and custom rules. Use{' '}
                               <kbd className={styles.panelKbd}>1</kbd>–
@@ -3751,11 +4141,16 @@ function TestWizard({
                             </p>
                           </div>
                           <div className={styles.targetingPanelBody}>
+                            <div className={styles.advancedInstruction}>
+                              <Icon source={CodeIcon} />
+                              <span>
+                                Optional: guardrails, data quality, traffic limits, saved presets,
+                                and JavaScript targeting. Expand a section below to configure.
+                              </span>
+                            </div>
                             <div className={styles.advancedContent}>
                               <div className={styles.advancedToolbar}>
-                                <span className={styles.advancedToolbarLabel}>
-                                  Advanced targeting & safety
-                                </span>
+                                <span className={styles.advancedToolbarLabel}>Sections</span>
                                 <div className={styles.advancedToolbarActions}>
                                   <button
                                     type="button"
@@ -4530,12 +4925,12 @@ function TestWizard({
               </p>
             </div>
           </div>
-          <div className={styles.goalBestPractice}>
+          <div className={styles.goalInstruction}>
             <Icon source={ChartLineIcon} />
             <span>
               {formData.goal?.metric
-                ? 'Metric selected. Configure conversion window and analysis below, then click Next.'
-                : 'Choose your primary metric and conversion settings. Revenue, conversion rate, and AOV are the most common.'}
+                ? 'Metric selected. Set conversion window and optional secondary events below, then click Next.'
+                : 'Choose your primary success metric (Revenue, Conversion, or AOV). Configure the conversion window and optional events as needed.'}
             </span>
           </div>
           <div className={styles.goalSummaryCompact}>
@@ -4558,7 +4953,7 @@ function TestWizard({
           <div className={styles.goalFormWrapper}>
             <FormLayout>
               <div className={styles.goalSectionGroup}>
-                <h4 className={styles.goalSectionGroupTitle}>Primary metrics</h4>
+                <h4 className={styles.goalSectionGroupTitle}>Primary metric</h4>
                 <div className={styles.formSection} id="targeting-metric">
                   <h4 className={styles.formSectionTitle}>Success metric</h4>
                   <p className={styles.formSectionHint}>
@@ -4652,6 +5047,8 @@ function TestWizard({
                               : 'COGS $ per order'
                           }
                           type="number"
+                          min={formData.goal?.cogs?.type === 'percentage' ? 0 : undefined}
+                          max={formData.goal?.cogs?.type === 'percentage' ? 100 : undefined}
                           value={String(formData.goal?.cogs?.value ?? 30)}
                           onChange={value =>
                             setFormData({
@@ -4666,6 +5063,11 @@ function TestWizard({
                             })
                           }
                           autoComplete="off"
+                          helpText={
+                            formData.goal?.cogs?.type === 'percentage'
+                              ? '0–100. Revenue minus this % is profit.'
+                              : 'Fixed amount subtracted per conversion.'
+                          }
                         />
                       </InlineStack>
                     )}
@@ -4738,10 +5140,52 @@ function TestWizard({
                     </Button>
                   </InlineStack>
                   {(formData.goal?.secondary || []).length > 0 && (
-                    <Text variant="bodySm" color="subdued" as="p">
-                      Selected:{' '}
-                      {(formData.goal?.secondary || []).map(s => s?.event_name || s).join(', ')}
-                    </Text>
+                    <BlockStack gap="200">
+                      <Text variant="bodySm" fontWeight="semibold" as="p">
+                        Selected events
+                      </Text>
+                      <div className={styles.secondaryEventList}>
+                        {(formData.goal?.secondary || []).map((s, idx) => {
+                          const name = s?.event_name || s;
+                          const agg = s?.aggregation || 'count';
+                          return (
+                            <InlineStack
+                              key={`${name}-${idx}`}
+                              gap="200"
+                              blockAlign="center"
+                              wrap={false}
+                            >
+                              <span className={styles.secondaryEventName}>
+                                {String(name).replace(/_/g, ' ')}
+                              </span>
+                              <Select
+                                label="Aggregation"
+                                labelHidden
+                                options={[
+                                  { label: 'Count', value: 'count' },
+                                  { label: 'Sum (value)', value: 'sum' },
+                                ]}
+                                value={agg}
+                                onChange={value => {
+                                  const next = [...(formData.goal?.secondary || [])];
+                                  next[idx] = {
+                                    ...(typeof next[idx] === 'object'
+                                      ? next[idx]
+                                      : { event_name: next[idx] }),
+                                    event_name: name,
+                                    aggregation: value,
+                                  };
+                                  setFormData({
+                                    ...formData,
+                                    goal: { ...(formData.goal || {}), secondary: next },
+                                  });
+                                }}
+                              />
+                            </InlineStack>
+                          );
+                        })}
+                      </div>
+                    </BlockStack>
                   )}
                 </div>
               </div>
@@ -4757,7 +5201,7 @@ function TestWizard({
                   role="group"
                   aria-label="Conversion window"
                 >
-                  {[7, 14, 30].map(days => {
+                  {[1, 3, 7, 14, 30].map(days => {
                     const isActive = (formData.goal?.conversion_window_days ?? 30) === days;
                     return (
                       <button
@@ -4788,8 +5232,16 @@ function TestWizard({
                       goal: { ...(formData.goal || {}), conversion_url: value },
                     })
                   }
-                  placeholder="/checkout, /thank-you, or leave empty for any"
-                  helpText="Restrict conversion counting to specific URL(s). Comma-separated for multiple."
+                  placeholder={
+                    isStandalone
+                      ? '/thank-you, /order-complete, or leave empty for any'
+                      : '/checkout, /thank-you, or leave empty for any'
+                  }
+                  helpText={
+                    isStandalone
+                      ? 'Restrict conversions to visits that reached these path(s). Comma-separated for multiple.'
+                      : 'Restrict conversion counting to specific URL(s). Comma-separated for multiple.'
+                  }
                   autoComplete="off"
                 />
               </div>
@@ -4889,6 +5341,7 @@ function TestWizard({
                   >
                     <div className={styles.sampleSizeInline}>
                       <SampleSizeCalculator
+                        key={`sample-${formData.goal?.significance_level ?? 0.95}-${formData.goal?.statistical_power ?? 0.8}`}
                         embedded
                         className={styles.sampleSizeCalculator}
                         initialValues={{
@@ -4912,6 +5365,9 @@ function TestWizard({
                         ? 'Hide sample size calculator'
                         : 'Calculate sample size & duration'}
                     </Button>
+                    <Text variant="bodySm" tone="subdued" as="p" style={{ marginTop: '6px' }}>
+                      Uses the confidence level and statistical power above for estimates.
+                    </Text>
                   </div>
                 </div>
               </div>
@@ -5214,373 +5670,855 @@ function TestWizard({
                 )}
               </InlineStack>
 
-              <BlockStack gap="300">
-                <div>
-                  <Button
-                    variant="plain"
-                    icon={CodeIcon}
-                    onClick={() => setVisualEditorExpanded(!visualEditorExpanded)}
-                    accessibilityLabel={
-                      visualEditorExpanded ? 'Collapse Visual Editor' : 'Expand Visual Editor'
+              <div className="config-editor-tabs-wrap">
+                <div
+                  className="config-editor-tabs"
+                  role="tablist"
+                  aria-label="Configuration editor mode"
+                  onKeyDown={e => {
+                    if (e.key === 'ArrowLeft' || e.key === 'Home') {
+                      e.preventDefault();
+                      setConfigEditorMode('visual');
+                    } else if (e.key === 'ArrowRight' || e.key === 'End') {
+                      e.preventDefault();
+                      setConfigEditorMode('code');
                     }
-                    ariaExpanded={visualEditorExpanded}
-                  >
-                    {visualEditorExpanded ? 'Hide Visual Editor' : 'Visual Editor'}
-                  </Button>
-                </div>
-                <Collapsible
-                  id="variant-config-visual-editor"
-                  open={visualEditorExpanded}
-                  transition={{ duration: '200ms', timingFunction: 'ease' }}
+                  }}
                 >
-                  <div className="variant-visual-editor-content">
-                    <BlockStack gap="400">
-                      <div className="variant-visual-editor-default-page">
-                        <Text as="span" variant="bodySm" fontWeight="semibold">
-                          Default target page
-                        </Text>
-                        <Text
-                          as="p"
-                          variant="bodySm"
-                          color="subdued"
-                          style={{ marginTop: '0.25rem' }}
-                        >
-                          {(formData.segments?.url_pattern ?? '').trim()
-                            ? formData.segments.url_pattern
-                            : (formData.segments?.page_rules?.length ?? 0) > 0
-                              ? 'Page rules (from Targeting step)'
-                              : 'All pages'}
-                        </Text>
-                      </div>
-                      <TextField
-                        label="Preview URL (optional)"
-                        value={visualEditorPreviewUrl}
-                        onChange={setVisualEditorPreviewUrl}
-                        placeholder={
-                          getShopDomain()
-                            ? `https://${getShopDomain()}${(formData.segments?.url_pattern ?? '').trim() || '/'}`
-                            : 'https://your-store.com/...'
-                        }
-                        helpText="Paste a full storefront URL to preview. Leave empty to use the default target page above when available."
-                        autoComplete="url"
-                      />
-                      <TextField
-                        label="Element selector (optional)"
-                        value={visualEditorSelector}
-                        onChange={setVisualEditorSelector}
-                        placeholder="e.g. .product-title, #add-to-cart"
-                        helpText="CSS selector for the element your variant will change. Use browser DevTools to find selectors on your live page."
-                      />
-                      {(() => {
-                        const shop = getShopDomain();
-                        const hasOverride = (visualEditorPreviewUrl || '').trim().length > 0;
-                        const defaultUrl =
-                          shop && shop.trim()
-                            ? `https://${shop}${(formData.segments?.url_pattern ?? '').trim() || '/'}`
-                            : '';
-                        const iframeSrc = hasOverride ? visualEditorPreviewUrl.trim() : defaultUrl;
-                        if (!iframeSrc) {
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={configEditorMode === 'visual'}
+                    aria-controls="config-editor-panel-visual"
+                    id="config-tab-visual"
+                    tabIndex={configEditorMode === 'visual' ? 0 : -1}
+                    className={`config-editor-tab ${configEditorMode === 'visual' ? 'config-editor-tab--active' : ''}`}
+                    onClick={() => setConfigEditorMode('visual')}
+                    aria-label="Visual editor: preview target page and element selector"
+                  >
+                    <span className="config-editor-tab-icon config-editor-tab-icon--visual">
+                      <Icon source={ViewIcon} />
+                    </span>
+                    <span className="config-editor-tab-label">Visual Editor</span>
+                    {visualEditorDirty && (
+                      <span className="config-editor-tab-dirty" title="Unsaved changes" aria-hidden>
+                        •
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={configEditorMode === 'code'}
+                    aria-controls="config-editor-panel-code"
+                    id="config-tab-code"
+                    tabIndex={configEditorMode === 'code' ? 0 : -1}
+                    className={`config-editor-tab ${configEditorMode === 'code' ? 'config-editor-tab--active' : ''}`}
+                    onClick={() => setConfigEditorMode('code')}
+                    aria-label="Code editor: add CSS and JavaScript per variant"
+                  >
+                    <span className="config-editor-tab-icon">
+                      <Icon source={CodeIcon} />
+                    </span>
+                    <span className="config-editor-tab-label">Code Editor</span>
+                    {codeEditorDirty && (
+                      <span className="config-editor-tab-dirty" title="Unsaved changes" aria-hidden>
+                        •
+                      </span>
+                    )}
+                  </button>
+                </div>
+
+                <div className="config-editor-panels">
+                  <div
+                    id="config-editor-panel-visual"
+                    role="tabpanel"
+                    aria-labelledby="config-tab-visual"
+                    hidden={configEditorMode !== 'visual'}
+                    className={`config-editor-panel config-editor-panel--visual ${configEditorMode === 'visual' ? 'config-editor-panel--active' : ''}`}
+                  >
+                    <div className="variant-visual-editor-content">
+                      <BlockStack gap="400">
+                        <div className="variant-visual-editor-default-page">
+                          <Text as="span" variant="bodySm" fontWeight="semibold">
+                            Default target page
+                          </Text>
+                          <Text
+                            as="p"
+                            variant="bodySm"
+                            color="subdued"
+                            style={{ marginTop: '0.25rem' }}
+                          >
+                            {(formData.segments?.url_pattern ?? '').trim()
+                              ? formData.segments.url_pattern
+                              : (formData.segments?.page_rules?.length ?? 0) > 0
+                                ? 'Page rules (from Targeting step)'
+                                : 'All pages'}
+                          </Text>
+                        </div>
+                        <TextField
+                          label="Preview URL"
+                          value={formData.segments?.visual_editor_preview_url ?? ''}
+                          onChange={value => {
+                            setIsDirty(true);
+                            setVisualEditorDirty(true);
+                            setFormData(prev => ({
+                              ...prev,
+                              segments: {
+                                ...(prev.segments || {}),
+                                visual_editor_preview_url: value,
+                              },
+                            }));
+                            setVisualPreviewLoadState('idle');
+                          }}
+                          placeholder={(() => {
+                            const d =
+                              initialData?.shop_domain || getPreviewDomain() || getShopDomain();
+                            const path = getPreviewPathForTarget(
+                              formData.segments?.url_pattern,
+                              formData.target_type || initialData?.target_type
+                            );
+                            return d
+                              ? `https://${d.replace(/^https?:\/\//i, '').replace(/\/+$/, '')}${path}`
+                              : 'https://your-site.com/';
+                          })()}
+                          helpText="Page URL is loaded in the preview. Add the RipX script to your store to enable click-to-select for elements."
+                          autoComplete="url"
+                        />
+                        <div className="variant-visual-editor-test-page-row">
+                          <Button
+                            size="slim"
+                            variant="secondary"
+                            onClick={() => {
+                              const testPageUrl =
+                                window.location.origin + '/ripx-preview-test.html';
+                              setIsDirty(true);
+                              setVisualEditorDirty(true);
+                              setFormData(prev => ({
+                                ...prev,
+                                segments: {
+                                  ...(prev.segments || {}),
+                                  visual_editor_preview_url: testPageUrl,
+                                },
+                              }));
+                              setVisualPreviewLoadState('idle');
+                            }}
+                          >
+                            Load test page
+                          </Button>
+                          <Text as="span" variant="bodySm" tone="subdued">
+                            Use the built-in test page to try element selection without a real site
+                            or script install.
+                          </Text>
+                        </div>
+                        {(() => {
+                          const veUrl = (formData.segments?.visual_editor_preview_url ?? '').trim();
+                          const hasOverride = veUrl.length > 0;
+                          const domainForPreview =
+                            (initialData?.shop_domain && String(initialData.shop_domain).trim()) ||
+                            getPreviewDomain() ||
+                            getShopDomain();
+                          const pathForPreview = getPreviewPathForTarget(
+                            formData.segments?.url_pattern,
+                            formData.target_type || initialData?.target_type
+                          );
+                          const baseUrl = resolvePreviewBaseUrl({
+                            variantUrl: null,
+                            overrideUrl: hasOverride ? veUrl : null,
+                            domain: domainForPreview || undefined,
+                            path: pathForPreview,
+                          });
+                          const variants = formData.variants ?? [];
+                          const safeVisualIndex = Math.min(
+                            Math.max(0, visualPreviewVariantIndex),
+                            Math.max(0, variants.length - 1)
+                          );
+                          const previewVariant = variants[safeVisualIndex];
+                          const testId = initialData?.id;
+                          const iframeSrc =
+                            (baseUrl && testId
+                              ? buildPreviewUrlUtil({
+                                  baseUrl,
+                                  testId,
+                                  variantId:
+                                    previewVariant?.id ||
+                                    previewVariant?.name ||
+                                    (previewVariant ? `variant-${safeVisualIndex + 1}` : ''),
+                                  variantName:
+                                    previewVariant?.name ||
+                                    (previewVariant ? `Variant ${safeVisualIndex + 1}` : ''),
+                                  visualEditor: true,
+                                })
+                              : null) || '';
+                          if (!iframeSrc) {
+                            return (
+                              <div className="variant-visual-editor-empty">
+                                <Text as="p" variant="bodySm" color="subdued">
+                                  Enter a Preview URL above (e.g. your store or homepage), or
+                                  connect a shop so the default store URL is used.
+                                </Text>
+                                <Text
+                                  as="p"
+                                  variant="bodySm"
+                                  color="subdued"
+                                  style={{ marginTop: '0.5rem' }}
+                                >
+                                  The preview loads your page directly. Add the RipX script to your
+                                  store to enable click-to-select elements.
+                                </Text>
+                              </div>
+                            );
+                          }
+                          const showEmbedBlocked = visualPreviewLoadState === 'error';
+                          const rules = Array.from(
+                            { length: 5 },
+                            (_, i) =>
+                              (previewVariant?.config?.visual_editor_rules || [])[i] || {
+                                selector: '',
+                                css: '',
+                                js: '',
+                                position: 'after',
+                              }
+                          );
+                          const selectedCount = rules.filter(r => (r.selector || '').trim()).length;
+                          const atLimit = selectedCount >= 5;
+                          const updateCurrentVariantRules = updater => {
+                            setFormData(prev => {
+                              const variants = [...(prev.variants || [])];
+                              const v = variants[safeVisualIndex];
+                              const config = { ...(v?.config || {}) };
+                              const nextRules = Array.from(
+                                { length: 5 },
+                                (_, i) =>
+                                  rules[i] || { selector: '', css: '', js: '', position: 'after' }
+                              );
+                              updater(nextRules);
+                              config.visual_editor_rules = nextRules;
+                              variants[safeVisualIndex] = { ...v, config };
+                              return { ...prev, variants };
+                            });
+                            setIsDirty(true);
+                            setVisualEditorDirty(true);
+                          };
+                          const positionButtons = [
+                            { label: 'After', value: 'after', title: 'Insert after element' },
+                            { label: 'Before', value: 'before', title: 'Insert before element' },
+                            {
+                              label: 'Inside (first)',
+                              value: 'afterbegin',
+                              title: 'Insert as first child',
+                            },
+                            {
+                              label: 'Inside (last)',
+                              value: 'beforeend',
+                              title: 'Insert as last child',
+                            },
+                          ];
+                          const snippetTabs = [
+                            { id: 'selector', label: 'Selector' },
+                            { id: 'css', label: 'CSS' },
+                            { id: 'js', label: 'JavaScript' },
+                          ];
                           return (
-                            <div className="variant-visual-editor-empty">
-                              <Text as="p" variant="bodySm" color="subdued">
-                                Enter a Preview URL above to load the page, or complete the
-                                Targeting step so the default store page can be used.
-                              </Text>
+                            <div className="variant-visual-editor-single-layout">
+                              <div className="variant-visual-editor-preview-section">
+                                <div className="variant-visual-editor-preview-hint" role="status">
+                                  <Text as="p" variant="bodySm" tone="subdued">
+                                    {!testId && 'Save the test to see variant styling. '}
+                                    Element selection works when the RipX script is in your site’s{' '}
+                                    <code>&lt;head&gt;</code>. Add it via Settings → Installation;
+                                    then clicks in the preview will capture selectors.
+                                  </Text>
+                                </div>
+                                {variants.length > 1 && (
+                                  <div className="variant-visual-editor-variant-tabs">
+                                    <Text as="span" variant="bodySm" fontWeight="semibold">
+                                      Variant:
+                                    </Text>
+                                    <div className="variant-visual-editor-variant-tabs-list">
+                                      {variants.map((v, idx) => (
+                                        <button
+                                          key={`visual-preview-${idx}-${v?.name ?? idx}`}
+                                          type="button"
+                                          className={`variant-visual-editor-variant-tab ${idx === safeVisualIndex ? 'variant-visual-editor-variant-tab--active' : ''}`}
+                                          onClick={() => {
+                                            setVisualPreviewVariantIndex(idx);
+                                            setVisualPreviewLoadState('loading');
+                                          }}
+                                        >
+                                          {v?.name || `Variant ${idx + 1}`}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {showEmbedBlocked && (
+                                  <div
+                                    className="variant-visual-editor-embed-blocked-card"
+                                    role="alert"
+                                  >
+                                    <Text as="p" variant="bodySm" tone="subdued">
+                                      Preview could not be loaded. Check the URL and try again.
+                                    </Text>
+                                  </div>
+                                )}
+                                <div className="variant-visual-editor-preview-wrap">
+                                  {visualPreviewLoadState === 'loading' && (
+                                    <div
+                                      className="variant-visual-editor-preview-loading"
+                                      aria-hidden
+                                    >
+                                      <div className="variant-visual-editor-preview-spinner" />
+                                      <Text as="p" variant="bodySm" tone="subdued">
+                                        Loading preview…
+                                      </Text>
+                                    </div>
+                                  )}
+                                  <iframe
+                                    key={`visual-preview-iframe-${safeVisualIndex}-${iframeSrc}`}
+                                    title={`Visual editor: ${previewVariant?.name || `Variant ${safeVisualIndex + 1}`}`}
+                                    src={iframeSrc}
+                                    className="variant-visual-editor-preview-iframe"
+                                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                                    onLoad={() => setVisualPreviewLoadState('loaded')}
+                                    onError={() => setVisualPreviewLoadState('error')}
+                                  />
+                                  {visualSnippetPanelExpanded && (
+                                    <div
+                                      className="variant-visual-editor-preview-blocking-overlay"
+                                      aria-hidden
+                                      role="presentation"
+                                      onClick={() => setVisualSnippetPanelExpanded(false)}
+                                      title="Click to close snippet panel"
+                                    >
+                                      <span className="variant-visual-editor-preview-blocking-text">
+                                        Click to close panel and select elements
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="variant-visual-editor-snippet-panel-wrap">
+                                <div
+                                  className={`variant-visual-editor-bottom-bar ${changingSelectorIndex !== null && !visualSnippetPanelExpanded ? 'variant-visual-editor-bottom-bar--change-mode' : ''}`}
+                                  style={{
+                                    paddingBottom: visualSnippetPanelExpanded ? 0 : undefined,
+                                  }}
+                                >
+                                  <button
+                                    type="button"
+                                    className="variant-visual-editor-bottom-bar-trigger"
+                                    onClick={() => setVisualSnippetPanelExpanded(prev => !prev)}
+                                    aria-expanded={visualSnippetPanelExpanded}
+                                    aria-label={
+                                      visualSnippetPanelExpanded
+                                        ? 'Collapse snippet panel'
+                                        : 'Expand snippet panel'
+                                    }
+                                  >
+                                    <div className="variant-visual-editor-bottom-bar-label-wrap">
+                                      <span className="variant-visual-editor-bottom-bar-count">
+                                        {selectedCount} element{selectedCount !== 1 ? 's' : ''}{' '}
+                                        selected
+                                      </span>
+                                      {changingSelectorIndex !== null &&
+                                        !visualSnippetPanelExpanded && (
+                                          <span className="variant-visual-editor-bottom-bar-change-hint">
+                                            Click in preview to replace selector
+                                          </span>
+                                        )}
+                                    </div>
+                                    <span
+                                      className={`variant-visual-editor-bottom-bar-chevron ${visualSnippetPanelExpanded ? 'variant-visual-editor-bottom-bar-chevron--up' : ''}`}
+                                      aria-hidden
+                                    >
+                                      <Icon source={ChevronDownIcon} />
+                                    </span>
+                                  </button>
+                                </div>
+                                {visualSnippetPanelExpanded && (
+                                  <>
+                                    <div
+                                      ref={visualSnippetBackdropRef}
+                                      className="variant-visual-editor-snippet-backdrop"
+                                      role="presentation"
+                                      onClick={() => setVisualSnippetPanelExpanded(false)}
+                                      onKeyDown={e =>
+                                        e.key === 'Escape' && setVisualSnippetPanelExpanded(false)
+                                      }
+                                    />
+                                    <div
+                                      ref={visualSnippetPanelRef}
+                                      className="variant-visual-editor-snippet-overlay"
+                                      role="dialog"
+                                      aria-label={
+                                        variants.length > 1
+                                          ? `Element snippets for ${previewVariant?.name || `Variant ${safeVisualIndex + 1}`}`
+                                          : 'Element snippets'
+                                      }
+                                    >
+                                      <div
+                                        className="variant-visual-editor-snippet-overlay-handle"
+                                        aria-hidden
+                                      />
+                                      <div className="variant-visual-editor-snippet-overlay-header">
+                                        <div className="variant-visual-editor-snippet-overlay-header-inner">
+                                          <div className="variant-visual-editor-snippet-overlay-header-title">
+                                            {variants.length > 1 ? (
+                                              <>
+                                                <Text
+                                                  as="span"
+                                                  variant="headingMd"
+                                                  fontWeight="semibold"
+                                                  className="variant-visual-editor-snippet-overlay-variant-title"
+                                                >
+                                                  {previewVariant?.name ||
+                                                    `Variant ${safeVisualIndex + 1}`}
+                                                </Text>
+                                                <span
+                                                  className="variant-visual-editor-snippet-overlay-title-sep"
+                                                  aria-hidden
+                                                >
+                                                  ·
+                                                </span>
+                                                <Text
+                                                  as="span"
+                                                  variant="bodySm"
+                                                  tone="subdued"
+                                                  className="variant-visual-editor-snippet-overlay-title-meta"
+                                                >
+                                                  Element snippets
+                                                </Text>
+                                              </>
+                                            ) : (
+                                              <Text
+                                                as="span"
+                                                variant="headingMd"
+                                                fontWeight="semibold"
+                                              >
+                                                Element snippets
+                                              </Text>
+                                            )}
+                                            <Badge tone="info" size="small">
+                                              {selectedCount}/5
+                                            </Badge>
+                                          </div>
+                                          <Text
+                                            as="p"
+                                            variant="bodySm"
+                                            tone="subdued"
+                                            className="variant-visual-editor-snippet-overlay-subtitle"
+                                          >
+                                            Edit selectors, CSS, and JS for each selected element.
+                                          </Text>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          className="variant-visual-editor-snippet-collapse-btn"
+                                          onClick={() => setVisualSnippetPanelExpanded(false)}
+                                          aria-label="Collapse panel"
+                                        >
+                                          <Icon source={ChevronDownIcon} />
+                                        </button>
+                                      </div>
+                                      <div className="variant-visual-editor-snippet-overlay-body">
+                                        {(() => {
+                                          const ruleIndicesWithSelectors = rules
+                                            .map((r, i) => ((r.selector || '').trim() ? i : null))
+                                            .filter(i => i !== null && i !== undefined);
+                                          const effectiveActiveIndex =
+                                            ruleIndicesWithSelectors.includes(
+                                              visualSnippetActiveElementIndex
+                                            )
+                                              ? visualSnippetActiveElementIndex
+                                              : (ruleIndicesWithSelectors[0] ?? 0);
+                                          const idx = effectiveActiveIndex;
+                                          const rule = rules[idx] || {
+                                            selector: '',
+                                            css: '',
+                                            js: '',
+                                            position: 'after',
+                                          };
+                                          const rawTab = visualRuleActiveTab[idx] || 'selector';
+                                          const activeTab =
+                                            rawTab === 'position' ? 'selector' : rawTab;
+                                          const handleRemoveElement = ruleIndexToRemove => {
+                                            updateCurrentVariantRules(nextRules => {
+                                              nextRules[ruleIndexToRemove] = {
+                                                selector: '',
+                                                css: '',
+                                                js: '',
+                                                position: 'after',
+                                              };
+                                            });
+                                            const remaining = ruleIndicesWithSelectors.filter(
+                                              i => i !== ruleIndexToRemove
+                                            );
+                                            setVisualSnippetActiveElementIndex(remaining[0] ?? 0);
+                                            setVisualRuleActiveTab(prev => {
+                                              const next = { ...prev };
+                                              delete next[ruleIndexToRemove];
+                                              return next;
+                                            });
+                                            if (changingSelectorIndex === ruleIndexToRemove)
+                                              setChangingSelectorIndex(null);
+                                          };
+
+                                          const handleChangeSelector = ruleIdx => {
+                                            setChangingSelectorIndex(ruleIdx);
+                                            setVisualSnippetActiveElementIndex(ruleIdx);
+                                            setVisualRuleActiveTab(prev => ({
+                                              ...prev,
+                                              [ruleIdx]: 'selector',
+                                            }));
+                                            setVisualSnippetPanelExpanded(false);
+                                          };
+
+                                          if (ruleIndicesWithSelectors.length === 0) {
+                                            return (
+                                              <div className="variant-visual-editor-snippet-empty">
+                                                {changingSelectorIndex !== null && (
+                                                  <div className="variant-visual-editor-snippet-change-banner">
+                                                    <Text
+                                                      as="p"
+                                                      variant="bodySm"
+                                                      fontWeight="medium"
+                                                    >
+                                                      Click an element in the preview to replace the
+                                                      selector.
+                                                    </Text>
+                                                    <button
+                                                      type="button"
+                                                      className="variant-visual-editor-snippet-change-cancel"
+                                                      onClick={() => setChangingSelectorIndex(null)}
+                                                    >
+                                                      Cancel
+                                                    </button>
+                                                  </div>
+                                                )}
+                                                <div
+                                                  className="variant-visual-editor-snippet-empty-icon"
+                                                  aria-hidden
+                                                />
+                                                <Text
+                                                  as="p"
+                                                  variant="bodyMd"
+                                                  fontWeight="medium"
+                                                  tone="subdued"
+                                                >
+                                                  No elements selected
+                                                </Text>
+                                                <Text as="p" variant="bodySm" tone="subdued">
+                                                  Click an element in the preview above to add it
+                                                  (max 5 per variant).
+                                                </Text>
+                                              </div>
+                                            );
+                                          }
+
+                                          return (
+                                            <>
+                                              {changingSelectorIndex !== null && (
+                                                <div className="variant-visual-editor-snippet-change-banner">
+                                                  <Text as="p" variant="bodySm" fontWeight="medium">
+                                                    Click an element in the preview to replace this
+                                                    selector.
+                                                  </Text>
+                                                  <button
+                                                    type="button"
+                                                    className="variant-visual-editor-snippet-change-cancel"
+                                                    onClick={() => setChangingSelectorIndex(null)}
+                                                  >
+                                                    Cancel
+                                                  </button>
+                                                </div>
+                                              )}
+                                              {atLimit && (
+                                                <div
+                                                  className="variant-visual-editor-snippet-limit-msg"
+                                                  role="alert"
+                                                >
+                                                  <Text
+                                                    as="p"
+                                                    variant="bodySm"
+                                                    fontWeight="medium"
+                                                    tone="critical"
+                                                  >
+                                                    Maximum 5 elements per variant. Remove one to
+                                                    add another.
+                                                  </Text>
+                                                </div>
+                                              )}
+                                              <div className="variant-visual-editor-snippet-elements-section">
+                                                <Text
+                                                  as="span"
+                                                  variant="bodySm"
+                                                  fontWeight="semibold"
+                                                  tone="subdued"
+                                                  className="variant-visual-editor-snippet-elements-label"
+                                                >
+                                                  Selected elements ({selectedCount}/5)
+                                                </Text>
+                                                <div className="variant-visual-editor-snippet-element-tabs">
+                                                  {ruleIndicesWithSelectors.map(ruleIdx => (
+                                                    <div
+                                                      key={ruleIdx}
+                                                      className="variant-visual-editor-snippet-element-tab-wrap"
+                                                    >
+                                                      <button
+                                                        type="button"
+                                                        className={`variant-visual-editor-snippet-element-tab ${effectiveActiveIndex === ruleIdx ? 'variant-visual-editor-snippet-element-tab--active' : ''}`}
+                                                        onClick={() =>
+                                                          setVisualSnippetActiveElementIndex(
+                                                            ruleIdx
+                                                          )
+                                                        }
+                                                      >
+                                                        Element {ruleIdx + 1}
+                                                      </button>
+                                                      <button
+                                                        type="button"
+                                                        className="variant-visual-editor-snippet-element-tab-remove"
+                                                        onClick={e => {
+                                                          e.stopPropagation();
+                                                          handleRemoveElement(ruleIdx);
+                                                        }}
+                                                        aria-label={`Remove element ${ruleIdx + 1}`}
+                                                        title="Remove element"
+                                                      >
+                                                        <Icon source={XIcon} />
+                                                      </button>
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              </div>
+                                              <div className="variant-visual-editor-snippet-card">
+                                                <div className="variant-visual-editor-snippet-card-header-row">
+                                                  <Text
+                                                    as="span"
+                                                    variant="bodyMd"
+                                                    fontWeight="semibold"
+                                                  >
+                                                    Element {idx + 1}
+                                                  </Text>
+                                                  <div className="variant-visual-editor-snippet-card-header-actions">
+                                                    <button
+                                                      type="button"
+                                                      className="variant-visual-editor-snippet-change-selector-btn"
+                                                      onClick={() => handleChangeSelector(idx)}
+                                                      aria-label="Change selector"
+                                                      title="Click in preview to pick a different element"
+                                                    >
+                                                      <span>Change</span>
+                                                    </button>
+                                                    <button
+                                                      type="button"
+                                                      className="variant-visual-editor-snippet-remove-element-btn"
+                                                      onClick={() => handleRemoveElement(idx)}
+                                                      aria-label="Remove this element"
+                                                    >
+                                                      <Icon source={XIcon} />
+                                                      <span>Remove</span>
+                                                    </button>
+                                                  </div>
+                                                </div>
+                                                <div className="variant-visual-editor-snippet-card-inner">
+                                                  <div className="variant-visual-editor-snippet-card-sidebar">
+                                                    {snippetTabs.map(tab => (
+                                                      <button
+                                                        key={tab.id}
+                                                        type="button"
+                                                        className={`variant-visual-editor-snippet-tab ${activeTab === tab.id ? 'variant-visual-editor-snippet-tab--active' : ''}`}
+                                                        onClick={() =>
+                                                          setVisualRuleActiveTab(prev => ({
+                                                            ...prev,
+                                                            [idx]: tab.id,
+                                                          }))
+                                                        }
+                                                      >
+                                                        {tab.label}
+                                                      </button>
+                                                    ))}
+                                                  </div>
+                                                  <div className="variant-visual-editor-snippet-card-content">
+                                                    {activeTab === 'selector' && (
+                                                      <div className="variant-visual-editor-selector-tab-content">
+                                                        <div className="variant-visual-editor-selector-field-wrap">
+                                                          <Text
+                                                            as="label"
+                                                            variant="bodySm"
+                                                            fontWeight="medium"
+                                                            tone="subdued"
+                                                            className="variant-visual-editor-selector-label"
+                                                          >
+                                                            CSS selector
+                                                          </Text>
+                                                          <TextField
+                                                            label="Selector"
+                                                            labelHidden
+                                                            value={rule.selector}
+                                                            onChange={value => {
+                                                              updateCurrentVariantRules(
+                                                                nextRules => {
+                                                                  nextRules[idx] = {
+                                                                    ...nextRules[idx],
+                                                                    selector: value,
+                                                                  };
+                                                                }
+                                                              );
+                                                            }}
+                                                            placeholder="Click element in preview or type selector"
+                                                            autoComplete="off"
+                                                          />
+                                                        </div>
+                                                        <div className="variant-visual-editor-position-group">
+                                                          <Text
+                                                            as="span"
+                                                            variant="bodySm"
+                                                            fontWeight="medium"
+                                                            tone="subdued"
+                                                            className="variant-visual-editor-position-label"
+                                                          >
+                                                            Insert position
+                                                          </Text>
+                                                          <div
+                                                            className="variant-visual-editor-position-buttons"
+                                                            role="group"
+                                                            aria-label="Insert position"
+                                                          >
+                                                            {positionButtons.map(opt => (
+                                                              <button
+                                                                key={opt.value}
+                                                                type="button"
+                                                                title={opt.title}
+                                                                className={`variant-visual-editor-position-btn ${(rule.position || 'after') === opt.value ? 'variant-visual-editor-position-btn--active' : ''}`}
+                                                                onClick={() => {
+                                                                  updateCurrentVariantRules(
+                                                                    nextRules => {
+                                                                      nextRules[idx] = {
+                                                                        ...nextRules[idx],
+                                                                        position: opt.value,
+                                                                      };
+                                                                    }
+                                                                  );
+                                                                }}
+                                                              >
+                                                                {opt.label}
+                                                              </button>
+                                                            ))}
+                                                          </div>
+                                                        </div>
+                                                      </div>
+                                                    )}
+                                                    {activeTab === 'css' && (
+                                                      <TextField
+                                                        label="CSS"
+                                                        labelHidden
+                                                        value={rule.css}
+                                                        onChange={value => {
+                                                          updateCurrentVariantRules(nextRules => {
+                                                            nextRules[idx] = {
+                                                              ...nextRules[idx],
+                                                              css: value,
+                                                            };
+                                                          });
+                                                        }}
+                                                        placeholder="/* CSS for this element */"
+                                                        multiline={5}
+                                                        autoComplete="off"
+                                                      />
+                                                    )}
+                                                    {activeTab === 'js' && (
+                                                      <TextField
+                                                        label="JavaScript"
+                                                        labelHidden
+                                                        value={rule.js}
+                                                        onChange={value => {
+                                                          updateCurrentVariantRules(nextRules => {
+                                                            nextRules[idx] = {
+                                                              ...nextRules[idx],
+                                                              js: value,
+                                                            };
+                                                          });
+                                                        }}
+                                                        placeholder="// JS for this element"
+                                                        multiline={5}
+                                                        autoComplete="off"
+                                                      />
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </>
+                                          );
+                                        })()}
+                                      </div>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
                             </div>
                           );
-                        }
-                        return (
-                          <div className="variant-visual-editor-preview-wrap">
-                            <iframe
-                              title="Visual editor preview"
-                              src={iframeSrc}
-                              className="variant-visual-editor-preview-iframe"
-                              sandbox="allow-scripts allow-same-origin"
-                            />
-                          </div>
-                        );
-                      })()}
-                    </BlockStack>
-                  </div>
-                </Collapsible>
-              </BlockStack>
-
-              {!visualEditorExpanded && (
-                <>
-                  <div className="variant-selector-container">
-                    <div className="variant-selector-wrapper">
-                      <div className="variant-selector">
-                        {variantCodesData.map((variant, index) => {
-                          const COLORS = [
-                            '#06b6d4',
-                            '#8b5cf6',
-                            '#f49342',
-                            '#14b8a6',
-                            '#b98900',
-                            '#e91e63',
-                          ];
-                          const color = COLORS[index % COLORS.length];
-                          const isSelected = index === selectedVariantIndex;
-                          const hasCode =
-                            (variant?.css && variant.css.trim()) ||
-                            (variant?.js && variant.js.trim());
-
-                          return (
-                            <button
-                              key={`${variant.name}-${index}`}
-                              className={`variant-selector-button ${isSelected ? 'variant-selector-button--selected' : ''}`}
-                              onClick={() => {
-                                hasVariantSelectionRef.current = true;
-                                setSelectedVariantIndex(index);
-                              }}
-                              style={{
-                                '--variant-color': color,
-                              }}
-                            >
-                              <div
-                                className="variant-selector-color-indicator"
-                                style={{ backgroundColor: color }}
-                              />
-                              <InlineStack gap="200" align="center">
-                                <Text
-                                  variant="bodyMd"
-                                  fontWeight={isSelected ? 'semibold' : 'medium'}
-                                >
-                                  {variant.name}
-                                </Text>
-                                {hasCode && <Badge tone="success">Code</Badge>}
-                              </InlineStack>
-                              {isSelected && (
-                                <div className="variant-selector-check">
-                                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                                    <path
-                                      d="M13.5 4L6 11.5L2.5 8"
-                                      stroke="currentColor"
-                                      strokeWidth="2"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                    />
-                                  </svg>
-                                </div>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      {variantCodesData.length > 1 && (
-                        <div className="variant-navigation-buttons">
-                          <Button
-                            plain
-                            onClick={() => handleVariantNavigation('prev')}
-                            disabled={selectedVariantIndex === 0}
-                            aria-label="Previous variant"
-                          >
-                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                              <path
-                                d="M12.5 15L7.5 10L12.5 5"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              />
-                            </svg>
-                          </Button>
-                          <Text variant="bodySm" color="subdued" as="span">
-                            {selectedVariantIndex + 1} / {variantCodesData.length}
-                          </Text>
-                          <Button
-                            plain
-                            onClick={() => handleVariantNavigation('next')}
-                            disabled={selectedVariantIndex === variantCodesData.length - 1}
-                            aria-label="Next variant"
-                          >
-                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                              <path
-                                d="M7.5 5L12.5 10L7.5 15"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              />
-                            </svg>
-                          </Button>
-                        </div>
-                      )}
+                        })()}
+                      </BlockStack>
                     </div>
                   </div>
 
-                  {variantCodesData[selectedVariantIndex] &&
-                    (() => {
-                      const currentVariant = variantCodesData[selectedVariantIndex];
-                      const COLORS = [
-                        '#06b6d4',
-                        '#8b5cf6',
-                        '#f49342',
-                        '#14b8a6',
-                        '#b98900',
-                        '#e91e63',
-                      ];
-                      const color = COLORS[selectedVariantIndex % COLORS.length];
-                      const cssLineCount = currentVariant.css
-                        ? currentVariant.css.split('\n').length
-                        : 0;
-                      const cssCharCount = currentVariant.css ? currentVariant.css.length : 0;
-                      const jsLineCount = currentVariant.js
-                        ? currentVariant.js.split('\n').length
-                        : 0;
-                      const jsCharCount = currentVariant.js ? currentVariant.js.length : 0;
+                  <div
+                    id="config-editor-panel-code"
+                    role="tabpanel"
+                    aria-labelledby="config-tab-code"
+                    hidden={configEditorMode !== 'code'}
+                    className={`config-editor-panel config-editor-panel--code ${configEditorMode === 'code' ? 'config-editor-panel--active' : ''}`}
+                  >
+                    <div className="variant-selector-container">
+                      <div className="variant-selector-wrapper">
+                        <div className="variant-selector">
+                          {variantCodesData.map((variant, index) => {
+                            const COLORS = [
+                              '#06b6d4',
+                              '#8b5cf6',
+                              '#f49342',
+                              '#14b8a6',
+                              '#b98900',
+                              '#e91e63',
+                            ];
+                            const color = COLORS[index % COLORS.length];
+                            const isSelected = index === selectedVariantIndex;
+                            const hasCode =
+                              (variant?.css && variant.css.trim()) ||
+                              (variant?.js && variant.js.trim());
 
-                      return (
-                        <div
-                          className="variant-code-editor-card"
-                          style={{
-                            '--variant-color': color,
-                          }}
-                        >
-                          <Card sectioned>
-                            <BlockStack gap="500">
-                              <InlineStack align="space-between" blockAlign="center">
-                                <InlineStack gap="300" align="center">
-                                  <div
-                                    className="variant-code-color-indicator"
-                                    style={{ backgroundColor: color }}
-                                  />
-                                  <div>
-                                    <Text variant="headingSm" as="h4" fontWeight="semibold">
-                                      {currentVariant.name}
-                                    </Text>
-                                    <Text
-                                      variant="bodySm"
-                                      color="subdued"
-                                      as="p"
-                                      style={{ marginTop: '0.125rem' }}
-                                    >
-                                      CSS: {cssLineCount} {cssLineCount === 1 ? 'line' : 'lines'} •
-                                      JS: {jsLineCount} {jsLineCount === 1 ? 'line' : 'lines'}
-                                    </Text>
-                                  </div>
+                            return (
+                              <button
+                                key={`${variant.name}-${index}`}
+                                className={`variant-selector-button ${isSelected ? 'variant-selector-button--selected' : ''}`}
+                                onClick={() => {
+                                  hasVariantSelectionRef.current = true;
+                                  setSelectedVariantIndex(index);
+                                }}
+                                style={{
+                                  '--variant-color': color,
+                                }}
+                              >
+                                <div
+                                  className="variant-selector-color-indicator"
+                                  style={{ backgroundColor: color }}
+                                />
+                                <InlineStack gap="200" align="center">
+                                  <Text
+                                    variant="bodyMd"
+                                    fontWeight={isSelected ? 'semibold' : 'medium'}
+                                  >
+                                    {variant.name}
+                                  </Text>
+                                  {hasCode && <Badge tone="success">Code</Badge>}
                                 </InlineStack>
-                              </InlineStack>
-
-                              <div className="variant-code-split-container">
-                                <div className="variant-code-split-panel css-panel">
-                                  <div className="variant-code-section-header">
-                                    <InlineStack gap="300" align="center" blockAlign="center">
-                                      <div className="code-type-icon css-icon">
-                                        <svg
-                                          width="20"
-                                          height="20"
-                                          viewBox="0 0 24 24"
-                                          fill="none"
-                                          xmlns="http://www.w3.org/2000/svg"
-                                        >
-                                          <path
-                                            d="M4 2L5.5 19.5L12 22L18.5 19.5L20 2H4Z"
-                                            stroke="currentColor"
-                                            strokeWidth="1.5"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                          />
-                                          <path
-                                            d="M7 8H17M7 12H15M7 16H16"
-                                            stroke="currentColor"
-                                            strokeWidth="1.5"
-                                            strokeLinecap="round"
-                                          />
-                                          <path
-                                            d="M12 8L10 10L12 12"
-                                            stroke="currentColor"
-                                            strokeWidth="1.5"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                          />
-                                        </svg>
-                                      </div>
-                                      <Text variant="headingSm" as="h5" fontWeight="semibold">
-                                        CSS
-                                      </Text>
-                                      <Text variant="bodySm" color="subdued" as="span">
-                                        {cssLineCount} {cssLineCount === 1 ? 'line' : 'lines'} •{' '}
-                                        {cssCharCount.toLocaleString()}{' '}
-                                        {cssCharCount === 1 ? 'char' : 'chars'}
-                                      </Text>
-                                      {cssValidationErrors.length > 0 && (
-                                        <Badge status="critical" tone="critical">
-                                          {cssValidationErrors.length}{' '}
-                                          {cssValidationErrors.length === 1 ? 'error' : 'errors'}
-                                        </Badge>
-                                      )}
-                                      {cssValidationErrors.length === 0 &&
-                                        (currentVariant.css || '').trim() !== '' && (
-                                          <Badge status="success">✓ Valid</Badge>
-                                        )}
-                                    </InlineStack>
-                                  </div>
-                                  <div className="variant-code-editor-wrapper">
-                                    <TextField
-                                      label=""
-                                      value={currentVariant.css || ''}
-                                      onChange={value => handleVariantCodeChange('css', value)}
-                                      multiline={25}
-                                      autoComplete="off"
-                                      placeholder="/* Enter your CSS code here */&#10;&#10;.my-class {&#10;  color: #333;&#10;  font-size: 16px;&#10;}"
-                                      error={
-                                        cssValidationErrors.length > 0
-                                          ? cssValidationErrors[0]
-                                          : undefined
-                                      }
-                                    />
-                                    {cssValidationErrors.length > 0 && (
-                                      <div className="code-validation-errors">
-                                        <BlockStack gap="200">
-                                          {cssValidationErrors.map((errorItem, idx) => (
-                                            <div key={idx} className="validation-error-item">
-                                              <InlineStack gap="200" align="start">
-                                                <svg
-                                                  width="16"
-                                                  height="16"
-                                                  viewBox="0 0 16 16"
-                                                  fill="none"
-                                                >
-                                                  <circle
-                                                    cx="8"
-                                                    cy="8"
-                                                    r="7"
-                                                    stroke="currentColor"
-                                                    strokeWidth="1.5"
-                                                  />
-                                                  <path
-                                                    d="M8 5V8M8 11H8.01"
-                                                    stroke="currentColor"
-                                                    strokeWidth="1.5"
-                                                    strokeLinecap="round"
-                                                  />
-                                                </svg>
-                                                <Text variant="bodySm" color="critical" as="span">
-                                                  {errorItem}
-                                                </Text>
-                                              </InlineStack>
-                                            </div>
-                                          ))}
-                                        </BlockStack>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-
-                                <div className="variant-code-split-divider">
-                                  <div className="split-divider-line" />
-                                  <div className="split-divider-handle">
-                                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                {isSelected && (
+                                  <div className="variant-selector-check">
+                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                                       <path
-                                        d="M7.5 5L12.5 10L7.5 15"
-                                        stroke="currentColor"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                      />
-                                      <path
-                                        d="M12.5 5L7.5 10L12.5 15"
+                                        d="M13.5 4L6 11.5L2.5 8"
                                         stroke="currentColor"
                                         strokeWidth="2"
                                         strokeLinecap="round"
@@ -5588,131 +6526,358 @@ function TestWizard({
                                       />
                                     </svg>
                                   </div>
-                                </div>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {variantCodesData.length > 1 && (
+                          <div className="variant-navigation-buttons">
+                            <Button
+                              plain
+                              onClick={() => handleVariantNavigation('prev')}
+                              disabled={selectedVariantIndex === 0}
+                              aria-label="Previous variant"
+                            >
+                              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                <path
+                                  d="M12.5 15L7.5 10L12.5 5"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </Button>
+                            <Text variant="bodySm" color="subdued" as="span">
+                              {selectedVariantIndex + 1} / {variantCodesData.length}
+                            </Text>
+                            <Button
+                              plain
+                              onClick={() => handleVariantNavigation('next')}
+                              disabled={selectedVariantIndex === variantCodesData.length - 1}
+                              aria-label="Next variant"
+                            >
+                              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                <path
+                                  d="M7.5 5L12.5 10L7.5 15"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
 
-                                <div className="variant-code-split-panel js-panel">
-                                  <div className="variant-code-section-header">
-                                    <InlineStack gap="300" align="center" blockAlign="center">
-                                      <div className="code-type-icon js-icon">
-                                        <svg
-                                          width="20"
-                                          height="20"
-                                          viewBox="0 0 24 24"
-                                          fill="none"
-                                          xmlns="http://www.w3.org/2000/svg"
-                                        >
-                                          <rect
-                                            x="2"
-                                            y="2"
+                    {variantCodesData[selectedVariantIndex] &&
+                      (() => {
+                        const currentVariant = variantCodesData[selectedVariantIndex];
+                        const COLORS = [
+                          '#06b6d4',
+                          '#8b5cf6',
+                          '#f49342',
+                          '#14b8a6',
+                          '#b98900',
+                          '#e91e63',
+                        ];
+                        const color = COLORS[selectedVariantIndex % COLORS.length];
+                        const cssLineCount = currentVariant.css
+                          ? currentVariant.css.split('\n').length
+                          : 0;
+                        const cssCharCount = currentVariant.css ? currentVariant.css.length : 0;
+                        const jsLineCount = currentVariant.js
+                          ? currentVariant.js.split('\n').length
+                          : 0;
+                        const jsCharCount = currentVariant.js ? currentVariant.js.length : 0;
+
+                        return (
+                          <div
+                            className="variant-code-editor-card"
+                            style={{
+                              '--variant-color': color,
+                            }}
+                          >
+                            <Card sectioned>
+                              <BlockStack gap="500">
+                                <InlineStack align="space-between" blockAlign="center">
+                                  <InlineStack gap="300" align="center">
+                                    <div
+                                      className="variant-code-color-indicator"
+                                      style={{ backgroundColor: color }}
+                                    />
+                                    <div>
+                                      <Text variant="headingSm" as="h4" fontWeight="semibold">
+                                        {currentVariant.name}
+                                      </Text>
+                                      <Text
+                                        variant="bodySm"
+                                        color="subdued"
+                                        as="p"
+                                        style={{ marginTop: '0.125rem' }}
+                                      >
+                                        CSS: {cssLineCount} {cssLineCount === 1 ? 'line' : 'lines'}{' '}
+                                        • JS: {jsLineCount} {jsLineCount === 1 ? 'line' : 'lines'}
+                                      </Text>
+                                    </div>
+                                  </InlineStack>
+                                </InlineStack>
+
+                                <div className="variant-code-split-container">
+                                  <div className="variant-code-split-panel css-panel">
+                                    <div className="variant-code-section-header">
+                                      <InlineStack gap="300" align="center" blockAlign="center">
+                                        <div className="code-type-icon css-icon">
+                                          <svg
                                             width="20"
                                             height="20"
-                                            rx="2"
-                                            stroke="currentColor"
-                                            strokeWidth="1.5"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                          />
-                                          <path
-                                            d="M8 8C8 8 9 7 10 7C11 7 12 8 12 9C12 10 11 11 10 11C9 11 8 12 8 13C8 14 9 15 10 15C11 15 12 14 12 14"
-                                            stroke="currentColor"
-                                            strokeWidth="1.5"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                          />
-                                          <path
-                                            d="M16 8L16 14M16 11L18 11"
-                                            stroke="currentColor"
-                                            strokeWidth="1.5"
-                                            strokeLinecap="round"
-                                          />
-                                        </svg>
-                                      </div>
-                                      <Text variant="headingSm" as="h5" fontWeight="semibold">
-                                        JavaScript
-                                      </Text>
-                                      <Text variant="bodySm" color="subdued" as="span">
-                                        {jsLineCount} {jsLineCount === 1 ? 'line' : 'lines'} •{' '}
-                                        {jsCharCount.toLocaleString()}{' '}
-                                        {jsCharCount === 1 ? 'char' : 'chars'}
-                                      </Text>
-                                      {jsValidationErrors.length > 0 && (
-                                        <Badge status="critical" tone="critical">
-                                          {jsValidationErrors.length}{' '}
-                                          {jsValidationErrors.length === 1 ? 'error' : 'errors'}
-                                        </Badge>
-                                      )}
-                                      {jsValidationErrors.length === 0 &&
-                                        (currentVariant.js || '').trim() !== '' && (
-                                          <Badge status="success">✓ Valid</Badge>
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            xmlns="http://www.w3.org/2000/svg"
+                                          >
+                                            <path
+                                              d="M4 2L5.5 19.5L12 22L18.5 19.5L20 2H4Z"
+                                              stroke="currentColor"
+                                              strokeWidth="1.5"
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                            />
+                                            <path
+                                              d="M7 8H17M7 12H15M7 16H16"
+                                              stroke="currentColor"
+                                              strokeWidth="1.5"
+                                              strokeLinecap="round"
+                                            />
+                                            <path
+                                              d="M12 8L10 10L12 12"
+                                              stroke="currentColor"
+                                              strokeWidth="1.5"
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                            />
+                                          </svg>
+                                        </div>
+                                        <Text variant="headingSm" as="h5" fontWeight="semibold">
+                                          CSS
+                                        </Text>
+                                        <Text variant="bodySm" color="subdued" as="span">
+                                          {cssLineCount} {cssLineCount === 1 ? 'line' : 'lines'} •{' '}
+                                          {cssCharCount.toLocaleString()}{' '}
+                                          {cssCharCount === 1 ? 'char' : 'chars'}
+                                        </Text>
+                                        {cssValidationErrors.length > 0 && (
+                                          <Badge status="critical" tone="critical">
+                                            {cssValidationErrors.length}{' '}
+                                            {cssValidationErrors.length === 1 ? 'error' : 'errors'}
+                                          </Badge>
                                         )}
-                                    </InlineStack>
+                                        {cssValidationErrors.length === 0 &&
+                                          (currentVariant.css || '').trim() !== '' && (
+                                            <Badge status="success">✓ Valid</Badge>
+                                          )}
+                                      </InlineStack>
+                                    </div>
+                                    <div className="variant-code-editor-wrapper">
+                                      <TextField
+                                        label=""
+                                        value={currentVariant.css || ''}
+                                        onChange={value => handleVariantCodeChange('css', value)}
+                                        multiline={25}
+                                        autoComplete="off"
+                                        placeholder="/* Enter your CSS code here */&#10;&#10;.my-class {&#10;  color: #333;&#10;  font-size: 16px;&#10;}"
+                                        error={
+                                          cssValidationErrors.length > 0
+                                            ? cssValidationErrors[0]
+                                            : undefined
+                                        }
+                                      />
+                                      {cssValidationErrors.length > 0 && (
+                                        <div className="code-validation-errors">
+                                          <BlockStack gap="200">
+                                            {cssValidationErrors.map((errorItem, idx) => (
+                                              <div key={idx} className="validation-error-item">
+                                                <InlineStack gap="200" align="start">
+                                                  <svg
+                                                    width="16"
+                                                    height="16"
+                                                    viewBox="0 0 16 16"
+                                                    fill="none"
+                                                  >
+                                                    <circle
+                                                      cx="8"
+                                                      cy="8"
+                                                      r="7"
+                                                      stroke="currentColor"
+                                                      strokeWidth="1.5"
+                                                    />
+                                                    <path
+                                                      d="M8 5V8M8 11H8.01"
+                                                      stroke="currentColor"
+                                                      strokeWidth="1.5"
+                                                      strokeLinecap="round"
+                                                    />
+                                                  </svg>
+                                                  <Text variant="bodySm" color="critical" as="span">
+                                                    {errorItem}
+                                                  </Text>
+                                                </InlineStack>
+                                              </div>
+                                            ))}
+                                          </BlockStack>
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
-                                  <div className="variant-code-editor-wrapper">
-                                    <TextField
-                                      label=""
-                                      value={currentVariant.js || ''}
-                                      onChange={value => handleVariantCodeChange('js', value)}
-                                      multiline={25}
-                                      autoComplete="off"
-                                      placeholder="// Enter your JavaScript code here&#10;&#10;console.log('Hello, World!');&#10;document.querySelector('.my-class').style.display = 'block';"
-                                      error={
-                                        jsValidationErrors.length > 0
-                                          ? jsValidationErrors[0]
-                                          : undefined
-                                      }
-                                    />
-                                    {jsValidationErrors.length > 0 && (
-                                      <div className="code-validation-errors">
-                                        <BlockStack gap="200">
-                                          {jsValidationErrors.map((errorItem, idx) => (
-                                            <div key={idx} className="validation-error-item">
-                                              <InlineStack gap="200" align="start">
-                                                <svg
-                                                  width="16"
-                                                  height="16"
-                                                  viewBox="0 0 16 16"
-                                                  fill="none"
-                                                >
-                                                  <circle
-                                                    cx="8"
-                                                    cy="8"
-                                                    r="7"
-                                                    stroke="currentColor"
-                                                    strokeWidth="1.5"
-                                                  />
-                                                  <path
-                                                    d="M8 5V8M8 11H8.01"
-                                                    stroke="currentColor"
-                                                    strokeWidth="1.5"
-                                                    strokeLinecap="round"
-                                                  />
-                                                </svg>
-                                                <Text variant="bodySm" color="critical" as="span">
-                                                  {errorItem}
-                                                </Text>
-                                              </InlineStack>
-                                            </div>
-                                          ))}
-                                        </BlockStack>
-                                      </div>
-                                    )}
+
+                                  <div className="variant-code-split-divider">
+                                    <div className="split-divider-line" />
+                                    <div className="split-divider-handle">
+                                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                        <path
+                                          d="M7.5 5L12.5 10L7.5 15"
+                                          stroke="currentColor"
+                                          strokeWidth="2"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                        />
+                                        <path
+                                          d="M12.5 5L7.5 10L12.5 15"
+                                          stroke="currentColor"
+                                          strokeWidth="2"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                        />
+                                      </svg>
+                                    </div>
+                                  </div>
+
+                                  <div className="variant-code-split-panel js-panel">
+                                    <div className="variant-code-section-header">
+                                      <InlineStack gap="300" align="center" blockAlign="center">
+                                        <div className="code-type-icon js-icon">
+                                          <svg
+                                            width="20"
+                                            height="20"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            xmlns="http://www.w3.org/2000/svg"
+                                          >
+                                            <rect
+                                              x="2"
+                                              y="2"
+                                              width="20"
+                                              height="20"
+                                              rx="2"
+                                              stroke="currentColor"
+                                              strokeWidth="1.5"
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                            />
+                                            <path
+                                              d="M8 8C8 8 9 7 10 7C11 7 12 8 12 9C12 10 11 11 10 11C9 11 8 12 8 13C8 14 9 15 10 15C11 15 12 14 12 14"
+                                              stroke="currentColor"
+                                              strokeWidth="1.5"
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                            />
+                                            <path
+                                              d="M16 8L16 14M16 11L18 11"
+                                              stroke="currentColor"
+                                              strokeWidth="1.5"
+                                              strokeLinecap="round"
+                                            />
+                                          </svg>
+                                        </div>
+                                        <Text variant="headingSm" as="h5" fontWeight="semibold">
+                                          JavaScript
+                                        </Text>
+                                        <Text variant="bodySm" color="subdued" as="span">
+                                          {jsLineCount} {jsLineCount === 1 ? 'line' : 'lines'} •{' '}
+                                          {jsCharCount.toLocaleString()}{' '}
+                                          {jsCharCount === 1 ? 'char' : 'chars'}
+                                        </Text>
+                                        {jsValidationErrors.length > 0 && (
+                                          <Badge status="critical" tone="critical">
+                                            {jsValidationErrors.length}{' '}
+                                            {jsValidationErrors.length === 1 ? 'error' : 'errors'}
+                                          </Badge>
+                                        )}
+                                        {jsValidationErrors.length === 0 &&
+                                          (currentVariant.js || '').trim() !== '' && (
+                                            <Badge status="success">✓ Valid</Badge>
+                                          )}
+                                      </InlineStack>
+                                    </div>
+                                    <div className="variant-code-editor-wrapper">
+                                      <TextField
+                                        label=""
+                                        value={currentVariant.js || ''}
+                                        onChange={value => handleVariantCodeChange('js', value)}
+                                        multiline={25}
+                                        autoComplete="off"
+                                        placeholder="// Enter your JavaScript code here&#10;&#10;console.log('Hello, World!');&#10;document.querySelector('.my-class').style.display = 'block';"
+                                        error={
+                                          jsValidationErrors.length > 0
+                                            ? jsValidationErrors[0]
+                                            : undefined
+                                        }
+                                      />
+                                      {jsValidationErrors.length > 0 && (
+                                        <div className="code-validation-errors">
+                                          <BlockStack gap="200">
+                                            {jsValidationErrors.map((errorItem, idx) => (
+                                              <div key={idx} className="validation-error-item">
+                                                <InlineStack gap="200" align="start">
+                                                  <svg
+                                                    width="16"
+                                                    height="16"
+                                                    viewBox="0 0 16 16"
+                                                    fill="none"
+                                                  >
+                                                    <circle
+                                                      cx="8"
+                                                      cy="8"
+                                                      r="7"
+                                                      stroke="currentColor"
+                                                      strokeWidth="1.5"
+                                                    />
+                                                    <path
+                                                      d="M8 5V8M8 11H8.01"
+                                                      stroke="currentColor"
+                                                      strokeWidth="1.5"
+                                                      strokeLinecap="round"
+                                                    />
+                                                  </svg>
+                                                  <Text variant="bodySm" color="critical" as="span">
+                                                    {errorItem}
+                                                  </Text>
+                                                </InlineStack>
+                                              </div>
+                                            ))}
+                                          </BlockStack>
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
 
-                              <div className="variant-code-help-text">
-                                <Text variant="bodySm" color="subdued" as="p">
-                                  💡 CSS and JavaScript will be automatically wrapped in
-                                  &lt;style&gt; and &lt;script&gt; tags when saved
-                                </Text>
-                              </div>
-                            </BlockStack>
-                          </Card>
-                        </div>
-                      );
-                    })()}
-                </>
-              )}
+                                <div className="variant-code-help-text">
+                                  <Text variant="bodySm" color="subdued" as="p">
+                                    💡 CSS and JavaScript will be automatically wrapped in
+                                    &lt;style&gt; and &lt;script&gt; tags when saved
+                                  </Text>
+                                </div>
+                              </BlockStack>
+                            </Card>
+                          </div>
+                        );
+                      })()}
+                  </div>
+                </div>
+              </div>
             </BlockStack>
           ) : (
             <Card sectioned>
@@ -5835,6 +7000,35 @@ function TestWizard({
                 })()}
               </span>
             </div>
+            <div className={stepStyles.reviewItem}>
+              <span className={stepStyles.reviewItemLabel}>Conversion Window</span>
+              <span className={stepStyles.reviewItemValue}>
+                {formData.goal?.conversion_window_days ??
+                  initialData?.goal?.conversion_window_days ??
+                  30}{' '}
+                days
+              </span>
+            </div>
+            <div className={stepStyles.reviewItem}>
+              <span className={stepStyles.reviewItemLabel}>Analysis</span>
+              <span className={stepStyles.reviewItemValue}>
+                {(formData.goal?.analysis_method ||
+                  initialData?.goal?.analysis_method ||
+                  'frequentist') === 'bayesian'
+                  ? 'Bayesian'
+                  : 'Frequentist (p-values)'}
+              </span>
+            </div>
+            {(formData.goal?.conversion_url || initialData?.goal?.conversion_url)?.trim() && (
+              <div className={stepStyles.reviewItem}>
+                <span className={stepStyles.reviewItemLabel}>Goal URL</span>
+                <span className={stepStyles.reviewItemValue}>
+                  {String(
+                    formData.goal?.conversion_url || initialData?.goal?.conversion_url || ''
+                  ).trim()}
+                </span>
+              </div>
+            )}
             <div className={stepStyles.reviewItem}>
               <span className={stepStyles.reviewItemLabel}>Confidence</span>
               <span className={stepStyles.reviewItemValue}>
@@ -5988,6 +7182,14 @@ function TestWizard({
   return (
     <>
       <Toast message={error} type="error" onClose={() => setError(null)} duration={5000} />
+      {visualPreviewToast && (
+        <Toast
+          message={visualPreviewToast.message}
+          type={visualPreviewToast.type}
+          onClose={() => setVisualPreviewToast(null)}
+          duration={visualPreviewToast.type === 'success' ? 3000 : 4000}
+        />
+      )}
 
       <Layout>
         <Layout.Section>

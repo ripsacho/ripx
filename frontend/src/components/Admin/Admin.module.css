@@ -924,8 +924,9 @@
 /* Content inner (scrollable) - padding here instead of outer layout */
 .adminContentInner {
   flex: 1;
-  min-height: 0;
+  min-height: 280px; /* ensure overview content is visible */
   padding: 1.25rem 1.5rem 2rem;
+  overflow-y: auto;
 }
 
 /* Content area footer */
@@ -976,10 +977,10 @@
   border-radius: 4px;
 }
 
-/* Hide Polaris Page header when using AdminHero (single source for title/actions) */
-/* Polaris 12: header is first child of .Polaris-Page (no .Polaris-Page__Header). Older: .Polaris-Page__Header. */
-.adminPageWithHero :global(.Polaris-Page__Header),
-.adminPageWithHero :global(.Polaris-Page) > :first-child {
+/* Hide only the Polaris Page header when using AdminHero (single source for title/actions).
+   Do NOT hide .Polaris-Page > :first-child — in some Polaris versions the first child is the
+   main content wrapper, which would make the whole admin content area blank. */
+.adminPageWithHero :global(.Polaris-Page__Header) {
   display: none !important;
 }
 
@@ -1440,7 +1441,7 @@
 /* Table wrapper: same border-radius and hover as main app DataTables */
 .adminTableWrap {
   overflow-x: auto;
-  margin-bottom: var(--spacing-sm);
+  margin-bottom: 0;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-secondary);
   background: var(--surface-1, rgba(255, 255, 255, 0.6));
@@ -1453,6 +1454,14 @@
 
 .adminTableWrap :global(.Polaris-DataTable__Table) {
   border-radius: var(--radius-lg);
+  border-collapse: collapse;
+}
+
+/* Consistent cell padding and vertical alignment */
+.adminTableWrap :global(.Polaris-DataTable__Cell),
+.adminTableWrap :global(.Polaris-DataTable__HeadingCell) {
+  padding: 0.75rem 1rem;
+  vertical-align: middle;
 }
 
 .adminTableWrap :global(.Polaris-DataTable__Row):hover {
@@ -1464,12 +1473,26 @@
   border-bottom: 1px solid var(--border-secondary);
 }
 
-.adminTableWrap :global(.Polaris-DataTable__Cell--header) {
+.adminTableWrap :global(.Polaris-DataTable__Cell--header),
+.adminTableWrap :global(.Polaris-DataTable__HeadingCell) {
   font-weight: 600;
   font-size: 0.8125rem;
   text-transform: none;
   letter-spacing: 0.01em;
   color: var(--text-secondary);
+}
+
+/* Align action column content (last column) */
+.adminTableWrap :global(.Polaris-DataTable__Cell:last-child),
+.adminTableWrap :global(.Polaris-DataTable__HeadingCell:last-child) {
+  text-align: right;
+  padding-left: 1.25rem;
+  padding-right: 1rem;
+}
+
+.adminTableWrap :global(.Polaris-DataTable__Cell:last-child) > * {
+  margin-left: auto;
+  margin-right: 0;
 }
 
 /* Filter row for list pages */
@@ -1488,8 +1511,8 @@
 
 /* Main section intro: title/description block (visually distinct) */
 .adminMainSection {
-  padding: var(--spacing-lg) var(--spacing-xl);
-  margin-bottom: var(--spacing-lg);
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.25rem;
   background: linear-gradient(135deg, rgba(6, 182, 212, 0.04) 0%, rgba(139, 92, 246, 0.03) 100%);
   border: 1px solid var(--border-secondary);
   border-left: 4px solid transparent;
@@ -1516,6 +1539,17 @@
   border-left-color: var(--futuristic-cyan);
 }
 
+/* Overview loading state - visible spinner and message */
+.adminOverviewLoading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2.5rem 1.5rem;
+  min-height: 140px;
+}
+
 /* In-page description block (below header) */
 .adminPageDescription {
   font-size: 0.9375rem;
@@ -1529,7 +1563,8 @@
 .adminPageSubtitle {
   font-size: 0.875rem;
   color: var(--text-tertiary);
-  margin-top: 0.25rem;
+  margin: 0 0 1rem 0;
+  padding: 0.25rem 0;
 }
 
 /* Section heading for overview and list pages */
@@ -2011,20 +2046,182 @@
   padding-top: 0;
 }
 
-/* ========== Admin Users: Grid & Toolbar ========== */
-.adminUsersToolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 1rem 1.25rem;
-  padding: 0.75rem 0 1rem;
+/* List pages: consistent spacing between table and pagination */
+.adminPage .adminTableWrap + .adminListPagination {
+  margin-top: 1rem;
 }
 
-.adminUsersToolbar .adminUsersToolbarFilters {
+/* ========== Admin list pages: shared grid, toolbar, actions ========== */
+.adminListToolbar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  align-items: end;
+  gap: 1rem 1.5rem;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.25rem;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.05) 0%, rgba(139, 92, 246, 0.03) 100%);
+  border: 1px solid var(--border-secondary);
+  border-left: 4px solid var(--futuristic-cyan);
+  border-radius: var(--radius-lg);
+}
+
+.adminListToolbar :global(.Polaris-Select),
+.adminListToolbar :global(.Polaris-TextField) {
+  margin-bottom: 0;
+}
+
+.adminListToolbar :global(.Polaris-Labelled--hidden) + * {
+  margin-top: 0;
+}
+
+.adminListToolbar :global(.Polaris-TextField__Input),
+.adminListToolbar :global(.Polaris-Select__Input) {
+  border-radius: 8px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.adminListToolbar :global(.Polaris-TextField__Input:focus),
+.adminListToolbar :global(.Polaris-Select__Input:focus) {
+  border-color: var(--futuristic-cyan);
+  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.2);
+}
+
+.adminListToolbarActions {
   display: flex;
+  align-items: center;
+  gap: 0.75rem;
   flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 0.75rem 1rem;
+  padding-block-end: 0.125rem;
+}
+
+/* Action column: pill container + grouped buttons */
+.adminListActionsWrap {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.04) 0%, rgba(139, 92, 246, 0.02) 100%);
+  border: 1px solid var(--border-secondary);
+  border-radius: 10px;
+  min-height: 2.5rem;
+  box-sizing: border-box;
+}
+
+.adminListActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.adminListActions :global(.Polaris-Button) {
+  min-height: 30px;
+  padding: 0 0.6rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border-radius: 8px;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.adminListActions :global(.Polaris-Button:hover):not(:disabled) {
+  transform: translateY(-0.5px);
+}
+
+.adminListActions :global(.Polaris-Button--primary) {
+  background: linear-gradient(135deg, var(--futuristic-cyan), #0891b2);
+  border: none;
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(6, 182, 212, 0.3);
+}
+
+.adminListActions :global(.Polaris-Button--primary:hover):not(:disabled) {
+  box-shadow: 0 2px 10px rgba(6, 182, 212, 0.4);
+}
+
+.adminListActions :global(.Polaris-Button--plain) {
+  color: var(--text-secondary);
+  border: 1px solid transparent;
+}
+
+.adminListActions :global(.Polaris-Button--plain:hover):not(:disabled) {
+  color: var(--futuristic-cyan);
+  background: rgba(6, 182, 212, 0.08);
+  border-color: rgba(6, 182, 212, 0.2);
+}
+
+.adminListActions :global(.Polaris-Button[data-polaris-unstyled]) {
+  min-height: 30px;
+  padding: 0 0.6rem;
+  border-radius: 8px;
+}
+
+/* Danger actions in list */
+.adminListActions :global([class*='critical']) {
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.adminListActions :global([class*='critical'][class*='plain']:hover):not(:disabled),
+.adminListActions :global(.Polaris-Button--critical.Polaris-Button--plain:hover):not(:disabled) {
+  background: rgba(220, 38, 38, 0.08);
+  border-color: rgba(220, 38, 38, 0.25);
+  color: #dc2626;
+}
+
+/* Icon + label in action buttons */
+.adminListActions :global(.Polaris-Button .Polaris-Icon) {
+  margin-right: 0.35rem;
+}
+
+.adminListLink {
+  font-weight: 600;
+  color: var(--futuristic-cyan);
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  text-decoration: none;
+  transition: color 0.15s ease, text-decoration 0.15s ease;
+}
+
+.adminListLink:hover {
+  color: #0891b2;
+  text-decoration: underline;
+}
+
+.adminListLink:focus-visible {
+  outline: 2px solid var(--futuristic-cyan);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.adminListPagination {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+  padding: 1.25rem 0 0;
+  margin-top: 1rem;
+  border-top: 1px solid var(--border-secondary);
+}
+
+.adminListPagination :global(.Polaris-Button) {
+  min-width: 2.75rem;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.adminListPagination :global(.Polaris-Button:not(:disabled):hover) {
+  background: rgba(6, 182, 212, 0.1);
+  border-color: rgba(6, 182, 212, 0.3);
+}
+
+.adminListPaginationInfo {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  font-weight: 500;
 }
 
 .adminUsersTableSummary {
@@ -2033,21 +2230,38 @@
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 0.25rem 0;
+  font-size: 0.875rem;
+}
+
+/* Legacy aliases */
+.adminUsersToolbar {
+  padding: 0 0 1rem;
+}
+
+.adminUsersToolbar .adminUsersToolbarFilters {
+  display: contents;
+}
+
+.adminUsersToolbar .adminUsersToolbarFilters > * {
+  margin-bottom: 0;
 }
 
 .adminUsersPagination {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 1rem;
   flex-wrap: wrap;
-  padding: 0.75rem 0;
+  padding: 1rem 0;
   border-top: 1px solid var(--border-secondary);
-  margin-top: 0.5rem;
+  margin-top: 0.75rem;
 }
 
 .adminUsersPagination :global(.Polaris-Button) {
-  min-width: 2.5rem;
+  min-width: 2.75rem;
+  border-radius: 8px;
+  font-weight: 500;
 }
 
 /* ========== User Detail Modal: Layout & UX ========== */
