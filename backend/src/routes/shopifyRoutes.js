@@ -135,10 +135,16 @@ router.get(
           shopDomain,
           error: msg,
         });
-        emptyReason =
-          resourceLabel === 'pages'
-            ? 'Missing "read online store pages" permission. Reinstall the app from Shopify Admin to grant it.'
-            : `Missing permission to read ${resourceLabel}. Reinstall the app from Shopify Admin to grant read_products/read_collections.`;
+        if (resourceLabel === 'pages') {
+          emptyReason =
+            'Missing "read online store pages" permission. Reinstall the app from Shopify Admin to grant it.';
+        } else if (resourceLabel === 'collections') {
+          emptyReason =
+            'Missing "read collections" permission. Reinstall the app from Shopify Admin to grant read_collections.';
+        } else {
+          emptyReason =
+            'Missing "read products" permission. Reinstall the app from Shopify Admin to grant read_products.';
+        }
         return [];
       }
       throw err;
