@@ -55,11 +55,19 @@ function getStorefrontScriptPath() {
   return path.join(__dirname, '../../..', 'shopify', 'storefront-script.js');
 }
 
-function buildSignatureMessage(params, useAmpersand) {
-  const pairs = Object.keys(params)
+/**
+ * Build the message used for Shopify App Proxy HMAC (per Shopify docs).
+ * Sorted key=value pairs, no delimiter between pairs. Array values joined with comma.
+ */
+function buildSignatureMessage(params) {
+  return Object.keys(params)
     .sort()
-    .map(key => `${key}=${Array.isArray(params[key]) ? params[key].join(',') : params[key]}`);
-  return useAmpersand ? pairs.join('&') : pairs.join('');
+    .map(key => {
+      const v = params[key];
+      const val = Array.isArray(v) ? v.join(',') : v === undefined || v === null ? '' : String(v);
+      return `${key}=${val}`;
+    })
+    .join('');
 }
 
 function verifyAppProxySignature(query) {
@@ -70,24 +78,15 @@ function verifyAppProxySignature(query) {
 
   const { signature: _signature, ...rest } = query;
   const secret = process.env.SHOPIFY_API_SECRET;
-
-  const hexDigest = message => crypto.createHmac('sha256', secret).update(message).digest('hex');
-
-  const digestNoAmp = hexDigest(buildSignatureMessage(rest, false));
-  const digestAmp = hexDigest(buildSignatureMessage(rest, true));
+  const message = buildSignatureMessage(rest);
+  const digest = crypto.createHmac('sha256', secret).update(message).digest('hex');
 
   const signatureBuffer = Buffer.from(signature, 'utf8');
-  const digestNoAmpBuffer = Buffer.from(digestNoAmp, 'utf8');
-  const digestAmpBuffer = Buffer.from(digestAmp, 'utf8');
-
-  const matchNoAmp =
-    signatureBuffer.length === digestNoAmpBuffer.length &&
-    crypto.timingSafeEqual(signatureBuffer, digestNoAmpBuffer);
-  const matchAmp =
-    signatureBuffer.length === digestAmpBuffer.length &&
-    crypto.timingSafeEqual(signatureBuffer, digestAmpBuffer);
-
-  return matchNoAmp || matchAmp;
+  const digestBuffer = Buffer.from(digest, 'utf8');
+  if (signatureBuffer.length !== digestBuffer.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(signatureBuffer, digestBuffer);
 }
 
 /**
@@ -108,11 +107,25 @@ router.get(
 
     if (!hasSignature) {
       if (isProduction) {
-        return res.status(401).json({ success: false, error: 'Unauthorized' });
+        return res
+          .status(401)
+          .set('Content-Type', 'application/json')
+          .json({
+            success: false,
+            error: 'Unauthorized',
+            hint: 'App proxy requests must include signature. Check Partner Dashboard App Proxy URL.',
+          });
       }
       logger.warn('App proxy signature missing (dev only)', { shop });
     } else if (!verifyAppProxySignature(req.query)) {
-      return res.status(401).json({ success: false, error: 'Unauthorized' });
+      if (isProduction) {
+        logger.warn('App proxy signature verification failed', { shop });
+      }
+      return res.status(401).set('Content-Type', 'application/json').json({
+        success: false,
+        error: 'Unauthorized',
+        hint: 'Signature invalid. Ensure SHOPIFY_API_SECRET matches the app Client secret in Partner Dashboard.',
+      });
     }
 
     const tests = await getActiveTestsForStorefront(shop);
