@@ -102,7 +102,15 @@ try {
       if (cachedSessionMiddleware) {
         return cachedSessionMiddleware(req, res, next);
       }
-      sessionStorePromise.then(mw => (mw ? mw(req, res, next) : next())).catch(next);
+      sessionStorePromise
+        .then(store => {
+          cachedSessionMiddleware = session({
+            ...sessionOptions,
+            store: store || undefined,
+          });
+          return cachedSessionMiddleware(req, res, next);
+        })
+        .catch(next);
     };
   } else {
     const sessionStore = createSessionStore();

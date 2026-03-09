@@ -473,7 +473,7 @@ function AppContent() {
     return <Navigate to={{ pathname: ROUTES.CONNECT, search: location.search }} replace />;
   }
 
-  // Email-only users (session but no API key/shop): only / and /domains are allowed; /app/:domain is handled by AppDomainLayout
+  // Email-only users (session but no API key/shop): allow /, /domains, and universal routes (Profile, Settings, Docs, Notifications). Redirect other main app paths to /domains so they connect a store; /app/:domain is handled by AppDomainLayout.
   const emailOnlyNoKey =
     hasCreds &&
     hasEmailSession() &&
@@ -484,7 +484,7 @@ function AppContent() {
   const isLegacyMainAppPath =
     (MAIN_APP_PATHS.includes(location.pathname) && location.pathname !== ROUTES.USER_PANEL) ||
     /^\/tests\/[^/]+/.test(location.pathname);
-  if (emailOnlyNoKey && isLegacyMainAppPath) {
+  if (emailOnlyNoKey && isLegacyMainAppPath && !isUniversalAppRoute) {
     return <Navigate to={ROUTES.DOMAINS} replace />;
   }
 
