@@ -323,6 +323,27 @@
   outline: none;
 }
 
+.userMenuHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem 1rem 0.5rem;
+  margin: 0 0.25rem 0.5rem;
+  border-bottom: 1px solid var(--border-secondary);
+}
+
+.userEmail {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--futuristic-cyan);
+  word-break: break-all;
+  letter-spacing: -0.01em;
+}
+
+[data-theme='dark'] .userEmail {
+  color: var(--futuristic-cyan);
+}
+
 .menuItem {
   display: block;
   width: 100%;

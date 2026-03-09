@@ -36,8 +36,11 @@ function TopBar({
 }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAdmin, isLoading, role } = useAdminMe();
+  const { data: adminMeData, isAdmin, isLoading, role } = useAdminMe();
   const showAdminEntry = Boolean(!isLoading && isAdmin && role);
+  const userEmail =
+    adminMeData?.adminId && String(adminMeData.adminId).includes('@') ? adminMeData.adminId : null;
+  const shopDomain = adminMeData?.shopDomain || (!userEmail && adminMeData?.adminId) || null;
   const [userMenuActive, setUserMenuActive] = useState(false);
   const [settingsMenuActive, setSettingsMenuActive] = useState(false);
   const [notificationsActive, setNotificationsActive] = useState(false);
@@ -345,6 +348,7 @@ function TopBar({
                 onClick={toggleUserMenu}
                 aria-label="User menu"
                 className={`${styles.iconBtn} ${userMenuActive ? styles.active : ''}`}
+                title={userEmail || shopDomain || 'Account menu'}
               >
                 <Icon source={ProfileIcon} />
               </button>
@@ -354,6 +358,14 @@ function TopBar({
             preferredPosition="below"
           >
             <div className={styles.menuList} role="menu">
+              {(userEmail || shopDomain) && (
+                <div className={styles.userMenuHeader}>
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    {userEmail ? 'Signed in as' : 'Store'}
+                  </Text>
+                  <span className={styles.userEmail}>{userEmail || shopDomain}</span>
+                </div>
+              )}
               <button
                 type="button"
                 className={styles.menuItem}
