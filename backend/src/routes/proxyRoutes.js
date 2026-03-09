@@ -114,13 +114,14 @@ async function serveScript(req, res) {
     }
     logger.warn('App proxy signature missing (dev only)', { shop });
   } else if (!verifyAppProxySignature(req.query)) {
-    if (isProduction) {
-      logger.warn('App proxy signature verification failed', { shop });
-    }
+    logger.warn('App proxy signature verification failed', {
+      shop,
+      hint: 'Set SHOPIFY_API_SECRET on this server to the exact Client secret from Partner Dashboard → your app → Client credentials (same app that has the App Proxy).',
+    });
     return res.status(401).set('Content-Type', 'application/json').json({
       success: false,
       error: 'Unauthorized',
-      hint: 'Signature invalid. Ensure SHOPIFY_API_SECRET matches the app Client secret in Partner Dashboard.',
+      hint: 'Signature invalid. Set SHOPIFY_API_SECRET on this server to the exact Client secret from Partner Dashboard → your app → Client credentials (same app that has the App Proxy). No extra spaces.',
     });
   }
 
