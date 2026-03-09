@@ -90,68 +90,67 @@ function verifyAppProxySignature(query) {
 }
 
 /**
- * GET /api/proxy/script.js
- * Serve storefront script via app proxy.
+ * Shared handler: serve storefront script (used for both /script.js and /script.js/script.js).
+ * Shopify appends the path to the Proxy URL; if Partner Dashboard Proxy URL includes /script.js,
+ * the request arrives as /api/proxy/script.js/script.js. We handle both so the script loads either way.
  */
-router.get(
-  '/script.js',
-  asyncHandler(async (req, res) => {
-    const shop = req.query.shop || req.query.shop_domain;
+async function serveScript(req, res) {
+  const shop = req.query.shop || req.query.shop_domain;
 
-    if (!shop || !isValidShopDomain(shop)) {
-      return res.status(400).json({ success: false, error: 'Invalid shop domain' });
-    }
+  if (!shop || !isValidShopDomain(shop)) {
+    return res.status(400).json({ success: false, error: 'Invalid shop domain' });
+  }
 
-    const hasSignature = Boolean(req.query.signature);
-    const isProduction = process.env.NODE_ENV === 'production';
+  const hasSignature = Boolean(req.query.signature);
+  const isProduction = process.env.NODE_ENV === 'production';
 
-    if (!hasSignature) {
-      if (isProduction) {
-        return res
-          .status(401)
-          .set('Content-Type', 'application/json')
-          .json({
-            success: false,
-            error: 'Unauthorized',
-            hint: 'App proxy requests must include signature. Check Partner Dashboard App Proxy URL.',
-          });
-      }
-      logger.warn('App proxy signature missing (dev only)', { shop });
-    } else if (!verifyAppProxySignature(req.query)) {
-      if (isProduction) {
-        logger.warn('App proxy signature verification failed', { shop });
-      }
+  if (!hasSignature) {
+    if (isProduction) {
       return res.status(401).set('Content-Type', 'application/json').json({
         success: false,
         error: 'Unauthorized',
-        hint: 'Signature invalid. Ensure SHOPIFY_API_SECRET matches the app Client secret in Partner Dashboard.',
+        hint: 'App proxy requests must include signature. Check Partner Dashboard App Proxy URL.',
       });
     }
-
-    const tests = await getActiveTestsForStorefront(shop);
-    const runtimeConfig = buildRuntimeConfig(shop, tests, req);
-    const scriptPath = getStorefrontScriptPath();
-
-    let scriptContents;
-    try {
-      scriptContents = fs.readFileSync(scriptPath, 'utf8');
-    } catch (err) {
-      logger.error('Storefront script file missing or unreadable', {
-        path: scriptPath,
-        shop,
-        error: err.message,
-      });
-      res.status(503).set('Content-Type', 'text/plain').send('Script temporarily unavailable.');
-      return;
+    logger.warn('App proxy signature missing (dev only)', { shop });
+  } else if (!verifyAppProxySignature(req.query)) {
+    if (isProduction) {
+      logger.warn('App proxy signature verification failed', { shop });
     }
+    return res.status(401).set('Content-Type', 'application/json').json({
+      success: false,
+      error: 'Unauthorized',
+      hint: 'Signature invalid. Ensure SHOPIFY_API_SECRET matches the app Client secret in Partner Dashboard.',
+    });
+  }
 
-    const version = req.query.v;
-    const cacheSeconds = version ? 31536000 : 300;
+  const tests = await getActiveTestsForStorefront(shop);
+  const runtimeConfig = buildRuntimeConfig(shop, tests, req);
+  const scriptPath = getStorefrontScriptPath();
 
-    res.set('Content-Type', 'application/javascript');
-    res.set('Cache-Control', `public, max-age=${cacheSeconds}`);
-    res.send(`window.AB_TEST_RUNTIME_CONFIG=${JSON.stringify(runtimeConfig)};\n${scriptContents}`);
-  })
-);
+  let scriptContents;
+  try {
+    scriptContents = fs.readFileSync(scriptPath, 'utf8');
+  } catch (err) {
+    logger.error('Storefront script file missing or unreadable', {
+      path: scriptPath,
+      shop,
+      error: err.message,
+    });
+    res.status(503).set('Content-Type', 'text/plain').send('Script temporarily unavailable.');
+    return;
+  }
+
+  const version = req.query.v;
+  const cacheSeconds = version ? 31536000 : 300;
+
+  res.set('Content-Type', 'application/javascript');
+  res.set('Cache-Control', `public, max-age=${cacheSeconds}`);
+  res.send(`window.AB_TEST_RUNTIME_CONFIG=${JSON.stringify(runtimeConfig)};\n${scriptContents}`);
+}
+
+router.get('/script.js', asyncHandler(serveScript));
+// Double path when Partner Dashboard Proxy URL incorrectly includes /script.js
+router.get('/script.js/script.js', asyncHandler(serveScript));
 
 module.exports = router;
