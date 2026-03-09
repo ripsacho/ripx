@@ -102,7 +102,7 @@ try {
       if (cachedSessionMiddleware) {
         return cachedSessionMiddleware(req, res, next);
       }
-      sessionStorePromise
+      return sessionStorePromise
         .then(store => {
           cachedSessionMiddleware = session({
             ...sessionOptions,

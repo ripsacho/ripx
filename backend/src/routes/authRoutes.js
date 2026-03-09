@@ -697,18 +697,18 @@ router.get(
       normalizedShop === shopCookieNorm &&
       (state === stateCookie ||
         (typeof state === 'string' && state.replace(/ /g, '+') === stateCookie));
+    if (!verifyOAuthHmac(req.query)) {
+      return res.status(401).json({ success: false, error: 'Invalid OAuth signature' });
+    }
+
+    // When state/cookie are missing (e.g. user came from Shopify grant/scope page), only treat as "wrong store" if we have a cookie for a different shop. Otherwise accept the callback so the store they just approved gets connected.
     if (!parsed && !cookieOk) {
-      const baseUrl = getOAuthRedirectBase(req);
-      logger.warn(
-        'OAuth callback: invalid state (cookies may be missing if callback host differs from /auth/start)',
-        {
-          shop: normalizedShop,
-          hasStateCookie: !!stateCookie,
-          hasShopCookie: !!shopCookie,
-        }
-      );
-      // Callback shop differed from the shop we started OAuth for → send to Domains to retry (do not add the wrong store)
       if (shopCookie && shopCookieNorm && normalizedShop !== shopCookieNorm) {
+        const baseUrl = getOAuthRedirectBase(req);
+        logger.warn('OAuth callback: shop in callback differed from cookie (wrong store)', {
+          callbackShop: normalizedShop,
+          cookieShop: shopCookieNorm,
+        });
         const { maxAge: _m, ...clearOpts } = OAUTH_COOKIE_OPTIONS;
         res.clearCookie('shopify_oauth_state', clearOpts);
         res.clearCookie('shopify_oauth_shop', clearOpts);
@@ -716,13 +716,12 @@ router.get(
           `${baseUrl}/domains?shop=${encodeURIComponent(shopCookieNorm)}&reason=${encodeURIComponent(CONNECT_REASON.OAUTH_WRONG_STORE)}`
         );
       }
-      return res.redirect(
-        `${baseUrl}/connect?shop=${encodeURIComponent(normalizedShop)}&reason=${encodeURIComponent(CONNECT_REASON.OAUTH_EXPIRED)}`
+      logger.info(
+        'OAuth callback: no state/cookie match (e.g. grant flow); accepting callback for shop',
+        {
+          shop: normalizedShop,
+        }
       );
-    }
-
-    if (!verifyOAuthHmac(req.query)) {
-      return res.status(401).json({ success: false, error: 'Invalid OAuth signature' });
     }
 
     const tokenResponse = await fetch(`https://${shop}/admin/oauth/access_token`, {
