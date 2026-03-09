@@ -337,7 +337,7 @@ class ShopifyService {
       input: {
         subPath: proxyPath,
         subPathPrefix: 'apps',
-        proxyUrl: `${process.env.APP_URL}/api/proxy/script.js`,
+        proxyUrl: `${process.env.APP_URL}/api/proxy`,
       },
     };
 

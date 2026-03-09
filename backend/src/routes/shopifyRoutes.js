@@ -184,7 +184,7 @@ router.get(
     const shopDomain = req.shopDomain;
 
     const appUrl = process.env.APP_URL || null;
-    const proxyTargetUrl = appUrl ? `${appUrl}/api/proxy/script.js` : null;
+    const proxyTargetUrl = appUrl ? `${appUrl}/api/proxy` : null;
 
     const [proxyStatus, embedStatus] = await Promise.all([
       checkAppProxyStatus(shopDomain),
