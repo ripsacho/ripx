@@ -626,7 +626,6 @@ router.get(
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
-      const storeEsc = shopEsc;
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.setHeader('X-Frame-Options', 'SAMEORIGIN');
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
@@ -646,17 +645,17 @@ router.get(
     h1{font-size:1.25rem;margin:0 0 12px}
     p{margin:0 0 12px}
     .store-name{background:#eff6ff;border:1px solid #93c5fd;border-radius:6px;padding:10px 14px;margin:12px 0;font-weight:600;font-size:1rem;color:#1e40af}
-    .recommended{background:#ecfdf5;border:1px solid #10b981;border-radius:8px;padding:14px 16px;margin:16px 0;font-size:0.95rem;color:#065f46}
-    .recommended strong{display:block;margin-bottom:8px;color:#047857}
-    .recommended ol{margin:8px 0 0;padding-left:1.4em}
-    .recommended li{margin:6px 0}
-    .recommended a.store-admin{font-weight:600;color:#047857;word-break:break-all}
-    .tip{background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:14px 16px;margin:20px 0;font-size:0.9rem;color:#166534}
-    .tip strong{display:block;margin-bottom:6px}
-    .tip ul,.tip ol{margin:8px 0 0;padding-left:1.2em}
-    .tip li{margin:4px 0}
-    a.btn{display:inline-block;margin-top:8px;padding:12px 24px;background:#008060;color:#fff!important;text-decoration:none;border-radius:6px;font-weight:600;cursor:pointer}
+    .steps{background:#ecfdf5;border:1px solid #10b981;border-radius:8px;padding:14px 16px;margin:16px 0;font-size:0.95rem;color:#065f46}
+    .steps strong{display:block;margin-bottom:8px;color:#047857}
+    .steps ol{margin:8px 0 0;padding-left:1.4em}
+    .steps li{margin:8px 0}
+    .step-num{font-weight:700;color:#047857}
+    a.btn{display:inline-block;margin:8px 8px 8px 0;padding:12px 24px;background:#008060;color:#fff!important;text-decoration:none;border-radius:6px;font-weight:600;cursor:pointer}
     a.btn:hover{background:#006e52}
+    a.btn-secondary{background:#0d9488;color:#fff!important}
+    a.btn-secondary:hover{background:#0f766e}
+    .warn{background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:12px 14px;margin:16px 0;font-size:0.9rem;color:#92400e}
+    .warn strong{color:#b45309}
     .muted{font-size:0.85rem;color:#6b7280;margin-top:20px}
   </style>
 </head>
@@ -664,22 +663,20 @@ router.get(
   <h1>Connect this store to RipX</h1>
   <p>Store you are adding:</p>
   <p class="store-name" aria-label="Store to add">${shopEsc}</p>
-  <div class="recommended" role="alert">
-    <strong>Recommended if you have multiple Shopify stores</strong>
-    <p style="margin:0 0 8px">Shopify may otherwise approve the wrong store. Do this in the same incognito window:</p>
+  <div class="steps" role="alert">
+    <strong>Do these steps in order, in the same tab (or same incognito window)</strong>
     <ol>
-      <li>Open <a href="${storeAdminEsc}" class="store-admin" target="_blank" rel="noopener">${storeEsc} admin</a> in a new tab and log in. Wait until you see the admin for <strong>${shopEsc}</strong>.</li>
-      <li>Return to this tab and click <strong>Continue to Shopify</strong> below. The approval will then be for ${shopEsc}.</li>
+      <li class="step-num">Click the button below. You will leave this page and go to <strong>${shopEsc}</strong> admin. Log in there. Then use your browser <strong>Back</strong> button to return here.
+        <p style="margin:8px 0 0"><a href="${storeAdminEsc}" class="btn">Go to ${shopEsc} admin (then Back to return)</a></p>
+      </li>
+      <li class="step-num">After you are back on this page, click <strong>Continue to Shopify</strong>. You will go to Shopify to approve; the address bar must show <strong>${shopEsc}</strong> when you click Allow.
+        <p style="margin:12px 0 0"><a href="${continueUrlEsc}" class="btn btn-secondary">Continue to Shopify</a></p>
+      </li>
     </ol>
   </div>
-  <p>Or click below to go to Shopify now (if you have only one store or already logged into ${shopEsc} in this window):</p>
-  <div class="tip" role="alert">
-    <strong>If you go straight to Shopify</strong>
-    <ul>
-      <li>When Shopify shows a <strong>list of stores</strong>, choose <strong>${shopEsc}</strong>. Before clicking Allow, check the address bar — it must show ${shopEsc}.</li>
-    </ul>
+  <div class="warn" role="alert">
+    <strong>Important:</strong> Complete Step 1 (go to admin, log in, Back) before Step 2. When Shopify asks you to approve, check the address bar: it must show <strong>${shopEsc}</strong>. If it shows a different store, do not click Allow; use Back and try again.
   </div>
-  <a href="${continueUrlEsc}" class="btn">Continue to Shopify</a>
   <p class="muted">This link expires in 10 minutes.</p>
 </body>
 </html>`;

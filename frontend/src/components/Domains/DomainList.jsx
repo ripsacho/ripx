@@ -1059,13 +1059,13 @@ function DomainList() {
                         )}
                       </p>
                       <p style={{ marginTop: 8 }}>
-                        <strong>Best for multiple stores:</strong> Copy the link, open it in{' '}
-                        <strong>incognito</strong>. On the instruction page, first open{' '}
-                        <strong>{oauthWrongStoreShop} admin</strong> in a new tab (link on that
-                        page) and log in there. Then return to the instruction tab and click{' '}
-                        <strong>Continue to Shopify</strong>. That way the approval is for{' '}
-                        {oauthWrongStoreShop}. If the copy button fails, sign in first (top right),
-                        then try again.
+                        <strong>Use the same-tab flow:</strong> Copy the link and open it in{' '}
+                        <strong>incognito</strong>. On the instruction page: <strong>Step 1</strong>{' '}
+                        — click the button to go to <strong>{oauthWrongStoreShop} admin</strong>,
+                        log in there, then use your browser <strong>Back</strong> to return.{' '}
+                        <strong>Step 2</strong> — click &ldquo;Continue to Shopify&rdquo;. When
+                        Shopify asks to approve, the address bar must show {oauthWrongStoreShop}. If
+                        the copy button fails, sign in first (top right), then try again.
                       </p>
                     </Banner>
                   </div>
