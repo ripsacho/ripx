@@ -635,25 +635,31 @@ router.get(
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Connect ${shopEsc} to RipX</title>
   <style>
-    body{font-family:system-ui,sans-serif;max-width:440px;margin:48px auto;padding:24px;line-height:1.55;color:#1f2937}
+    body{font-family:system-ui,sans-serif;max-width:520px;margin:48px auto;padding:24px;line-height:1.55;color:#1f2937}
     h1{font-size:1.25rem;margin:0 0 12px}
     p{margin:0 0 12px}
+    .store-name{background:#eff6ff;border:1px solid #93c5fd;border-radius:6px;padding:10px 14px;margin:12px 0;font-weight:600;font-size:1rem;color:#1e40af}
     .tip{background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:14px 16px;margin:20px 0;font-size:0.9rem;color:#166534}
     .tip strong{display:block;margin-bottom:6px}
-    .tip ul{margin:8px 0 0;padding-left:1.2em}
+    .tip ul,.tip ol{margin:8px 0 0;padding-left:1.2em}
+    .tip li{margin:4px 0}
     a.btn{display:inline-block;margin-top:8px;padding:12px 24px;background:#008060;color:#fff!important;text-decoration:none;border-radius:6px;font-weight:600;cursor:pointer}
     a.btn:hover{background:#006e52}
     .muted{font-size:0.85rem;color:#6b7280;margin-top:20px}
   </style>
 </head>
 <body role="main">
-  <h1>Connect ${shopEsc} to RipX</h1>
-  <p>Click the button below to go to Shopify and approve access for this store.</p>
+  <h1>Connect this store to RipX</h1>
+  <p>Store you are adding:</p>
+  <p class="store-name" aria-label="Store to add">${shopEsc}</p>
+  <p>Click the button below. You will go to Shopify to approve access.</p>
   <div class="tip" role="alert">
-    <strong>To connect this store only</strong>
+    <strong>Important — multiple stores</strong>
     <ul>
-      <li>If you have <strong>multiple Shopify stores</strong>, open this page in an <strong>incognito/private</strong> window first.</li>
-      <li>When Shopify asks you to log in, log in to <strong>${shopEsc}</strong> so only that store is connected.</li>
+      <li>Use an <strong>incognito/private</strong> window so no other store is already logged in.</li>
+      <li>When Shopify asks you to log in, use the email that has access to <strong>${shopEsc}</strong>.</li>
+      <li>If Shopify shows a <strong>list of your stores</strong>, choose <strong>${shopEsc}</strong>. Do not select another store.</li>
+      <li>Before you click Allow/Approve, check the browser address bar — it should contain <strong>${shopEsc}</strong>. If it shows a different store, do not approve; close the tab and open this link again, then select ${shopEsc}.</li>
     </ul>
   </div>
   <a href="${continueUrlEsc}" class="btn">Continue to Shopify</a>
@@ -922,11 +928,14 @@ router.get(
           `${baseUrl}/connect/oauth-success?shop=${encodeURIComponent(normalizedShop)}`
         )
       );
+    } else if (requestedShopFromCookie) {
+      // Wrong store was approved: send user to My domains so they can use "Copy link for incognito" for the store they wanted (no login page).
+      res.redirect(
+        `${baseUrl}/domains?reason=${encodeURIComponent(CONNECT_REASON.OAUTH_WRONG_STORE)}&shop=${encodeURIComponent(requestedShopFromCookie)}&connected_shop=${encodeURIComponent(normalizedShop)}`
+      );
     } else {
       res.redirect(
-        appendRequested(
-          `${baseUrl}/connect?shop=${encodeURIComponent(normalizedShop)}&reason=${encodeURIComponent(CONNECT_REASON.SIGN_IN_TO_LINK)}`
-        )
+        `${baseUrl}/connect?shop=${encodeURIComponent(normalizedShop)}&reason=${encodeURIComponent(CONNECT_REASON.SIGN_IN_TO_LINK)}`
       );
     }
   })

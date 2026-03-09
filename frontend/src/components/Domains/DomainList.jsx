@@ -326,6 +326,7 @@ function DomainList() {
         const next = new URLSearchParams(prev);
         next.delete('reason');
         next.delete('shop');
+        next.delete('connected_shop');
         return next;
       });
     }
@@ -1013,6 +1014,7 @@ function DomainList() {
               {(() => {
                 const reason = searchParams.get('reason');
                 const oauthWrongStoreShop = searchParams.get('shop');
+                const connectedShop = searchParams.get('connected_shop') || '';
                 const isOauthWrongStore =
                   reason === (ROUTES.CONNECT_REASON?.OAUTH_WRONG_STORE || 'oauth_wrong_store') &&
                   oauthWrongStoreShop;
@@ -1027,6 +1029,7 @@ function DomainList() {
                           const next = new URLSearchParams(prev);
                           next.delete('reason');
                           next.delete('shop');
+                          next.delete('connected_shop');
                           return next;
                         });
                       }}
@@ -1043,15 +1046,27 @@ function DomainList() {
                       }}
                     >
                       <p>
-                        You approved a different store, so we did not add it. To add{' '}
-                        <strong>{oauthWrongStoreShop}</strong>:
+                        {connectedShop ? (
+                          <>
+                            We connected <strong>{connectedShop}</strong>. To add{' '}
+                            <strong>{oauthWrongStoreShop}</strong>:
+                          </>
+                        ) : (
+                          <>
+                            You approved a different store. To add{' '}
+                            <strong>{oauthWrongStoreShop}</strong>:
+                          </>
+                        )}
                       </p>
                       <p style={{ marginTop: 8 }}>
                         Click <strong>Copy link for incognito</strong>, open the link in a new{' '}
-                        <strong>incognito/private</strong> window, follow the instruction page, then
-                        click <strong>Continue to Shopify</strong>. When Shopify asks you to log in,
-                        log in to <strong>{oauthWrongStoreShop}</strong> so only that store is
-                        connected.
+                        <strong>incognito/private</strong> window. On the instruction page, click{' '}
+                        <strong>Continue to Shopify</strong>. When Shopify asks you to log in, log
+                        in and, if it shows a <strong>list of stores</strong>, select{' '}
+                        <strong>{oauthWrongStoreShop}</strong>. Before clicking Allow, check the
+                        address bar — it should show {oauthWrongStoreShop}. If it shows another
+                        store, do not approve; open the link again and pick {oauthWrongStoreShop}.
+                        If the copy button fails, sign in first (top right), then try again.
                       </p>
                     </Banner>
                   </div>
