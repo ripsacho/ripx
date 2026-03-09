@@ -90,6 +90,7 @@ try {
   if (useRedisSession) {
     const sessionStorePromise = createSessionStoreAsync();
     let cachedSessionMiddleware = null;
+    // Single creation path: only this .then() sets cachedSessionMiddleware so all requests use the same instance.
     sessionStorePromise
       .then(store => {
         cachedSessionMiddleware = session({ ...sessionOptions, store: store || undefined });
@@ -104,12 +105,9 @@ try {
         cachedSessionMiddleware(req, res, next);
         return;
       }
+      // Wait for the single creation above; do not create middleware here to avoid race and multiple instances.
       sessionStorePromise
-        .then(store => {
-          cachedSessionMiddleware = session({
-            ...sessionOptions,
-            store: store || undefined,
-          });
+        .then(() => {
           cachedSessionMiddleware(req, res, next);
         })
         .catch(next);
@@ -477,24 +475,28 @@ const healthHandler = async (req, res) => {
     const { ping, query } = require('./utils/database');
     await ping();
     dbStatus = 'ok';
-    const { getMaintenanceMode } = require('./utils/maintenanceMode');
-    maintenanceValue = await getMaintenanceMode();
-    // key_value_store may not exist on very old DBs; catch keeps health responding with dbStatus 'error'
-    const kv = await query('SELECT key, value FROM key_value_store WHERE key IN ($1, $2)', [
-      KV_KEYS.ANNOUNCEMENT_BANNER,
-      KV_KEYS.MAINTENANCE_MESSAGE,
-    ]);
-    for (const row of kv.rows || []) {
-      const v =
-        row.value !== null && row.value !== undefined && String(row.value).trim() !== ''
-          ? String(row.value).trim()
-          : null;
-      if (row.key === KV_KEYS.ANNOUNCEMENT_BANNER && v) {
-        announcementBanner = v;
+    // key_value_store may not exist on very old DBs; only ping determines DB health
+    try {
+      const { getMaintenanceMode } = require('./utils/maintenanceMode');
+      maintenanceValue = await getMaintenanceMode();
+      const kv = await query('SELECT key, value FROM key_value_store WHERE key IN ($1, $2)', [
+        KV_KEYS.ANNOUNCEMENT_BANNER,
+        KV_KEYS.MAINTENANCE_MESSAGE,
+      ]);
+      for (const row of kv.rows || []) {
+        const v =
+          row.value !== null && row.value !== undefined && String(row.value).trim() !== ''
+            ? String(row.value).trim()
+            : null;
+        if (row.key === KV_KEYS.ANNOUNCEMENT_BANNER && v) {
+          announcementBanner = v;
+        }
+        if (row.key === KV_KEYS.MAINTENANCE_MESSAGE && v) {
+          maintenanceMessage = v;
+        }
       }
-      if (row.key === KV_KEYS.MAINTENANCE_MESSAGE && v) {
-        maintenanceMessage = v;
-      }
+    } catch (_kvErr) {
+      // Optional table or KV failure; do not mark DB unhealthy
     }
   } catch (err) {
     dbStatus = 'error';

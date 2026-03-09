@@ -626,19 +626,31 @@ router.get(
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
+      const storeEsc = shopEsc;
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.setHeader('X-Frame-Options', 'SAMEORIGIN');
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      const storeAdminUrl = `https://${parsed.shop}/admin`;
+      const storeAdminEsc = storeAdminUrl
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
       const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Connect ${shopEsc} to RipX</title>
   <style>
-    body{font-family:system-ui,sans-serif;max-width:520px;margin:48px auto;padding:24px;line-height:1.55;color:#1f2937}
+    body{font-family:system-ui,sans-serif;max-width:560px;margin:48px auto;padding:24px;line-height:1.55;color:#1f2937}
     h1{font-size:1.25rem;margin:0 0 12px}
     p{margin:0 0 12px}
     .store-name{background:#eff6ff;border:1px solid #93c5fd;border-radius:6px;padding:10px 14px;margin:12px 0;font-weight:600;font-size:1rem;color:#1e40af}
+    .recommended{background:#ecfdf5;border:1px solid #10b981;border-radius:8px;padding:14px 16px;margin:16px 0;font-size:0.95rem;color:#065f46}
+    .recommended strong{display:block;margin-bottom:8px;color:#047857}
+    .recommended ol{margin:8px 0 0;padding-left:1.4em}
+    .recommended li{margin:6px 0}
+    .recommended a.store-admin{font-weight:600;color:#047857;word-break:break-all}
     .tip{background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:14px 16px;margin:20px 0;font-size:0.9rem;color:#166534}
     .tip strong{display:block;margin-bottom:6px}
     .tip ul,.tip ol{margin:8px 0 0;padding-left:1.2em}
@@ -652,14 +664,19 @@ router.get(
   <h1>Connect this store to RipX</h1>
   <p>Store you are adding:</p>
   <p class="store-name" aria-label="Store to add">${shopEsc}</p>
-  <p>Click the button below. You will go to Shopify to approve access.</p>
+  <div class="recommended" role="alert">
+    <strong>Recommended if you have multiple Shopify stores</strong>
+    <p style="margin:0 0 8px">Shopify may otherwise approve the wrong store. Do this in the same incognito window:</p>
+    <ol>
+      <li>Open <a href="${storeAdminEsc}" class="store-admin" target="_blank" rel="noopener">${storeEsc} admin</a> in a new tab and log in. Wait until you see the admin for <strong>${shopEsc}</strong>.</li>
+      <li>Return to this tab and click <strong>Continue to Shopify</strong> below. The approval will then be for ${shopEsc}.</li>
+    </ol>
+  </div>
+  <p>Or click below to go to Shopify now (if you have only one store or already logged into ${shopEsc} in this window):</p>
   <div class="tip" role="alert">
-    <strong>Important — multiple stores</strong>
+    <strong>If you go straight to Shopify</strong>
     <ul>
-      <li>Use an <strong>incognito/private</strong> window so no other store is already logged in.</li>
-      <li>When Shopify asks you to log in, use the email that has access to <strong>${shopEsc}</strong>.</li>
-      <li>If Shopify shows a <strong>list of your stores</strong>, choose <strong>${shopEsc}</strong>. Do not select another store.</li>
-      <li>Before you click Allow/Approve, check the browser address bar — it should contain <strong>${shopEsc}</strong>. If it shows a different store, do not approve; close the tab and open this link again, then select ${shopEsc}.</li>
+      <li>When Shopify shows a <strong>list of stores</strong>, choose <strong>${shopEsc}</strong>. Before clicking Allow, check the address bar — it must show ${shopEsc}.</li>
     </ul>
   </div>
   <a href="${continueUrlEsc}" class="btn">Continue to Shopify</a>

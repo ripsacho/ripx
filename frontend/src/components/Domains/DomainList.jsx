@@ -1059,14 +1059,13 @@ function DomainList() {
                         )}
                       </p>
                       <p style={{ marginTop: 8 }}>
-                        Click <strong>Copy link for incognito</strong>, open the link in a new{' '}
-                        <strong>incognito/private</strong> window. On the instruction page, click{' '}
-                        <strong>Continue to Shopify</strong>. When Shopify asks you to log in, log
-                        in and, if it shows a <strong>list of stores</strong>, select{' '}
-                        <strong>{oauthWrongStoreShop}</strong>. Before clicking Allow, check the
-                        address bar — it should show {oauthWrongStoreShop}. If it shows another
-                        store, do not approve; open the link again and pick {oauthWrongStoreShop}.
-                        If the copy button fails, sign in first (top right), then try again.
+                        <strong>Best for multiple stores:</strong> Copy the link, open it in{' '}
+                        <strong>incognito</strong>. On the instruction page, first open{' '}
+                        <strong>{oauthWrongStoreShop} admin</strong> in a new tab (link on that
+                        page) and log in there. Then return to the instruction tab and click{' '}
+                        <strong>Continue to Shopify</strong>. That way the approval is for{' '}
+                        {oauthWrongStoreShop}. If the copy button fails, sign in first (top right),
+                        then try again.
                       </p>
                     </Banner>
                   </div>
