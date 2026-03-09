@@ -7,10 +7,12 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, Navigate, Outlet } from 'react-router-dom';
+import { BlockStack } from '@shopify/polaris';
 import { useQuery } from '@tanstack/react-query';
 import { ROUTES } from '../../constants';
 import {
   setCurrentStore,
+  getApiKey,
   getAccountApiKey,
   getDomainKeys,
   hasEmailSession,
@@ -18,6 +20,7 @@ import {
 } from '../../services';
 import { isShopifyStoreDomain, normalizeShopifyDomain } from '../../utils/shopifyAdmin';
 import { RouteLoading } from '../LoadingSkeleton/RouteLoading';
+import ShopifyConnectionBanner from './ShopifyConnectionBanner';
 
 /** OAuth start URL to connect a Shopify store */
 function getShopifyConnectUrl(shopDomain) {
@@ -40,10 +43,13 @@ function AppDomainLayout() {
   const redirectAttempted = useRef(false);
 
   const validDomain = domain && isValidDomainParam(domain);
+  const apiKey = getApiKey();
   const accountKey = getAccountApiKey();
   const domainKeys = getDomainKeys();
   const keyForDomain =
-    accountKey || (domain && (domainKeys[domain] || domainKeys[normalizeShopifyDomain(domain)]));
+    apiKey ||
+    accountKey ||
+    (domain && (domainKeys[domain] || domainKeys[normalizeShopifyDomain(domain)]));
   const isShopify = domain ? isShopifyStoreDomain(domain) : false;
   const needsShopifySessionCheck = isShopify && !keyForDomain;
 
@@ -99,7 +105,12 @@ function AppDomainLayout() {
     }
   }
 
-  return <Outlet />;
+  return (
+    <BlockStack gap="400">
+      {isShopify && <ShopifyConnectionBanner />}
+      <Outlet />
+    </BlockStack>
+  );
 }
 
 export default AppDomainLayout;

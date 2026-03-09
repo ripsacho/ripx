@@ -9,6 +9,7 @@ import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { Page, Card, Text, Button, BlockStack, Box } from '@shopify/polaris';
 import { PageShell, LegalFooter } from '../Shared';
 import { ROUTES } from '../../constants';
+import { getUrlWithEmbedParams } from '../../services';
 import styles from '../Auth/AuthConfirmResult.module.css';
 
 export const OAUTH_SUCCESS_MESSAGE_TYPE = 'ripx-store-connected';
@@ -43,7 +44,8 @@ export default function OAuthSuccess() {
       setNotified(true);
     } else if (!isOpenedInNewTab) {
       const timer = window.setTimeout(() => {
-        navigate(ROUTES.appDashboard(shop), { replace: true });
+        const target = getUrlWithEmbedParams(ROUTES.appDashboard(shop), { shop });
+        navigate(target, { replace: true });
       }, 2000);
       return () => window.clearTimeout(timer);
     }
@@ -78,8 +80,9 @@ export default function OAuthSuccess() {
                         <Link to={ROUTES.DOMAINS} style={{ fontWeight: 600 }}>
                           My domains
                         </Link>{' '}
-                        and use “Copy link for incognito” for that store (open the link in an
-                        incognito window and log in to {requestedShop} when Shopify asks).
+                        and use “Copy link for incognito” for that store. Open the link in
+                        incognito; on the instruction page do Step 1 (go to {requestedShop} admin,
+                        log in, Back), then Step 2 (Continue to Shopify).
                       </Text>
                     </BlockStack>
                   ) : null}
@@ -104,7 +107,12 @@ export default function OAuthSuccess() {
                         <Button
                           variant="primary"
                           size="large"
-                          onClick={() => navigate(ROUTES.appDashboard(shop), { replace: true })}
+                          onClick={() => {
+                            const target = getUrlWithEmbedParams(ROUTES.appDashboard(shop), {
+                              shop,
+                            });
+                            navigate(target, { replace: true });
+                          }}
                         >
                           Go to dashboard
                         </Button>

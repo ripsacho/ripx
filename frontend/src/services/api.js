@@ -7,6 +7,7 @@
 import axios from 'axios';
 import { STORAGE_KEYS, ROUTES } from '../constants';
 import { hasCredentialsFromSources } from '../utils/credentials';
+import { isShopifyStoreDomain } from '../utils/shopifyAdmin';
 
 // Use VITE_API_URL when set; otherwise /api for same-origin (works with proxy in dev and when served from same host)
 const API_BASE_URL = (() => {
@@ -93,10 +94,17 @@ export function getConnectUrl(params = {}) {
 /**
  * When in Shopify Admin iframe, append current query string (host, shop) to the path so the
  * embed context is preserved. Use for any in-app navigation (e.g. to dashboard) from within the embed.
+ * @param {string} path - Path (e.g. /app/domain.com)
+ * @param {{ shop?: string }} [options] - When opening a specific domain in embed, pass { shop: domain } so the URL query matches the path and the correct store loads
  */
-export function getUrlWithEmbedParams(path) {
+export function getUrlWithEmbedParams(path, options = {}) {
   if (typeof window === 'undefined' || !path) return path;
-  const search = window.location.search;
+  let search = window.location.search;
+  if (options.shop) {
+    const params = new URLSearchParams(search || '');
+    params.set('shop', options.shop);
+    search = '?' + params.toString();
+  }
   if (!search) return path;
   return path + (path.includes('?') ? '&' + search.slice(1) : search);
 }
@@ -194,24 +202,44 @@ apiClient.interceptors.response.use(
       if (isOnDomainsPage && isDomainsFlowRequest) {
         return Promise.reject(error);
       }
+      // Connection-status check: don't redirect so ShopifyConnectionBanner can show "Store not connected"
+      if (requestUrl.includes('/shopify/connection-status')) {
+        return Promise.reject(error);
+      }
       const shopDomain = getShopDomain();
       const apiKey = getApiKey();
       const emailToken = getEmailToken();
       const onPublicAuthPage =
         path.startsWith(ROUTES.CONNECT) || path.startsWith(ROUTES.AUTH_CALLBACK);
       // 401 with a shop in the request = "shop not authenticated" (no OAuth token yet), not "session invalid" — don't clear email session
+      const isShopifyRoute = requestUrl.includes('/shopify/');
       const requestShop =
-        error.config?.params?.shop || (requestUrl.includes('shop=') ? shopDomain : null);
+        error.config?.params?.shop ||
+        (requestUrl.includes('shop=') ? shopDomain : null) ||
+        (isShopifyRoute && shopDomain ? shopDomain : null);
       const isShopNotAuthenticated =
         !!requestShop &&
         (requestUrl.includes('/account/stores') ||
           requestUrl.includes('/auth/start') ||
-          requestUrl.includes('/tests'));
+          requestUrl.includes('/tests') ||
+          isShopifyRoute);
       if ((emailToken || apiKey) && !onPublicAuthPage && isShopNotAuthenticated) {
         isRedirectingToLogin = true;
         const normalized = /\.myshopify\.com$/i.test(requestShop)
           ? String(requestShop).trim().toLowerCase()
           : requestShop;
+        clearStoreSelection();
+        const reason = ROUTES.CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect';
+        redirectToAppUrl(getConnectUrl({ shop: normalized, reason }));
+        return Promise.reject(error);
+      }
+      // On /app/:domain never clear auth — redirect to Connect with shop so user can connect store without losing session
+      const isOnAppDomainRoute = /^\/app\/[^/]+/.test(path);
+      if (isOnAppDomainRoute && shopDomain && !onPublicAuthPage) {
+        isRedirectingToLogin = true;
+        const normalized = /\.myshopify\.com$/i.test(shopDomain)
+          ? String(shopDomain).trim().toLowerCase()
+          : shopDomain;
         clearStoreSelection();
         const reason = ROUTES.CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect';
         redirectToAppUrl(getConnectUrl({ shop: normalized, reason }));
@@ -271,9 +299,22 @@ function getAppCred(key) {
 
 /**
  * Get shop domain from URL or environment.
- * Reads sessionStorage first so "Open app" window credentials don't leak to admin panel tab.
+ * When pathname is /app/:domain, the user explicitly navigated to that domain — prefer it over
+ * query param (embed may have carried ?shop= from another store), so "Open" from My domains
+ * opens the correct store.
  */
 export function getShopDomain() {
+  const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+  const pathMatch = pathname.match(/^\/app\/([^/]+)/);
+  let domainFromPath = null;
+  if (pathMatch) {
+    try {
+      domainFromPath = decodeURIComponent(pathMatch[1]);
+    } catch {
+      domainFromPath = pathMatch[1];
+    }
+  }
+
   const urlParams = new URLSearchParams(window.location.search);
   const shop = urlParams.get('shop');
   const host = urlParams.get('host');
@@ -304,6 +345,7 @@ export function getShopDomain() {
   }
 
   let resolvedShop =
+    domainFromPath ||
     shop ||
     shopFromAppBridge ||
     shopFromHost ||
@@ -488,9 +530,13 @@ export function clearAuthStorage() {
 }
 
 /**
- * Check if we're in standalone mode (API key auth)
+ * Check if we're in standalone mode (API key auth).
+ * When the current domain is a Shopify store (*.myshopify.com), we're in Shopify context
+ * and should show Shopify setup/UI even if an API key is in storage.
  */
 export function isStandaloneMode() {
+  const shop = getShopDomain();
+  if (shop && isShopifyStoreDomain(shop)) return false;
   return !!getApiKey();
 }
 
@@ -601,11 +647,13 @@ export function apiRequest(method, endpoint, data = null, config = {}) {
       endpoint.startsWith('/auth/start') ||
       endpoint.startsWith('/account/stores'));
 
+  // When on /app/:domain, pass store so /account/stores returns correct currentStore (StoreSwitcher highlights the right store)
+  const storeParam = endpoint === '/account/stores' && shopDomain ? { store: shopDomain } : {};
   const requestConfig = {
     method,
     url,
     params: useEmailSession
-      ? configParams
+      ? { ...storeParam, ...configParams }
       : shopDomain
         ? { shop: shopDomain, ...configParams }
         : configParams,

@@ -49,12 +49,14 @@ router.get(
         });
       }
       const stores = await getStoresForAccount(resolvedAccountId);
-      const preferredStore = req.query.store || (stores[0] && stores[0].domain) || null;
+      const reqStore = (req.query.store || '').trim().toLowerCase();
+      const match = reqStore && stores.find(s => (s.domain || '').toLowerCase() === reqStore);
+      const preferredStore = match ? match.domain : (stores[0] && stores[0].domain) || null;
       return sendSuccess(res, HTTP_STATUS.OK, {
         stores: stores.map(s => ({
           id: s.id,
           domain: s.domain,
-          platform: s.platform,
+          platform: /\.myshopify\.com$/i.test(s.domain) ? 'shopify' : s.platform || 'standalone',
           isCurrent: s.domain === preferredStore,
         })),
         currentStore: preferredStore,
@@ -69,7 +71,7 @@ router.get(
         stores: stores.map(s => ({
           id: s.id,
           domain: s.domain,
-          platform: s.platform,
+          platform: /\.myshopify\.com$/i.test(s.domain) ? 'shopify' : s.platform || 'standalone',
           isCurrent: s.domain === shopDomain,
         })),
         currentStore: shopDomain,

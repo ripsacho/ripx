@@ -353,12 +353,18 @@ function AppContent() {
     }
   };
 
-  // On Domains page skip session check so a 401 from /me/domains never triggers redirect; DomainList handles sign-in via "Sign in required" + open Connect in new tab
-  const sessionCheckEndpoint = isDomainsRoute ? null : '/admin/me';
+  // On Domains page skip session check so a 401 from /me/domains never triggers redirect; DomainList handles sign-in via "Sign in required" + open Connect in new tab.
+  // On /app/:domain use /account/stores so email users (non-admin) don't get 401 from /admin/me and redirect to login.
+  const sessionCheckEndpoint = isDomainsRoute
+    ? null
+    : isAppDomainRoute
+      ? '/account/stores'
+      : '/admin/me';
   useSessionCheck(hasCreds && !isPublicPath && !connectToken, () => sessionCheckEndpoint);
 
   // Initial auth check: before showing any protected app content, validate session once to avoid flash of app then redirect to login.
-  // On Domains with only shop (no token), skip so we don't 401 and redirect; on Domains with email session use /me/domains.
+  // On Domains with only shop (no token), skip; on Domains with email session use /me/domains.
+  // On /app/:domain use /account/stores so email users (non-admin) don't get 401 from /admin/me and redirect to login.
   useEffect(() => {
     if (!isProtectedRouteWithCreds || authCheckStartedRef.current) return;
     authCheckStartedRef.current = true;
@@ -372,7 +378,9 @@ function AppContent() {
         ? '/me/domains'
         : isDomainsRoute && !getEmailToken()
           ? null
-          : '/admin/me';
+          : isAppDomainRoute
+            ? '/account/stores'
+            : '/admin/me';
     if (!endpoint) {
       window.clearTimeout(timeoutId);
       setAuthCheckStatus(AUTH_CHECK.DONE);
@@ -384,7 +392,7 @@ function AppContent() {
         window.clearTimeout(timeoutId);
         setAuthCheckStatus(AUTH_CHECK.DONE);
       });
-  }, [isProtectedRouteWithCreds, isDomainsRoute]);
+  }, [isProtectedRouteWithCreds, isDomainsRoute, isAppDomainRoute]);
 
   // Reset auth check when navigating to/from connect or when creds change so we re-validate on next protected visit
   useEffect(() => {

@@ -71,7 +71,9 @@ router.get(
         return {
           id: row.id,
           domain: row.domain,
-          platform: row.platform,
+          platform: /\.myshopify\.com$/i.test(row.domain)
+            ? 'shopify'
+            : row.platform || 'standalone',
           connection: row.api_key_prefix ? `${row.api_key_prefix}...` : '—',
           verifiedAt: row.domain_verified_at || null,
           permittedUsers,

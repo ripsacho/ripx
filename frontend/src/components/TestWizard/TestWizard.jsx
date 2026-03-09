@@ -57,7 +57,9 @@ import TrafficAllocationSlider from '../TestCreator/TrafficAllocationSlider';
 import Toast from '../Toast/Toast';
 import styles from './TargetingSection.module.css';
 import stepStyles from './WizardSteps.module.css';
+import { useParams } from 'react-router-dom';
 import { getShopDomain, getPreviewDomain, apiGet, apiPost, isStandaloneMode } from '../../services';
+import { isShopifyStoreDomain } from '../../utils/shopifyAdmin';
 import {
   buildPreviewUrl as buildPreviewUrlUtil,
   resolvePreviewBaseUrl,
@@ -194,7 +196,9 @@ function TestWizard({
   const [savePresetName, setSavePresetName] = useState('');
   const [loadedPresetId, setLoadedPresetId] = useState('');
   const [placementSection, setPlacementSection] = useState('page'); // 'page' | 'device' | 'audience' | 'holdout' | 'advanced'
-  const isStandalone = isStandaloneMode();
+  const { domain: routeDomain } = useParams();
+  const isShopifyFromRoute = routeDomain && isShopifyStoreDomain(routeDomain);
+  const isStandalone = !isShopifyFromRoute && isStandaloneMode();
   const contentTypesForStep = isStandalone
     ? TEST_TYPE_CATEGORIES.content.types.filter(t => STANDALONE_TEST_TYPE_IDS.includes(t.key))
     : TEST_TYPE_CATEGORIES.content.types;

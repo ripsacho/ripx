@@ -80,7 +80,7 @@ ALTER TABLE users DROP CONSTRAINT IF EXISTS users_auth_identifier_check;
 --    Re-run safe: if email is already NOT NULL and index exists, this may no-op or succeed.
 DROP INDEX IF EXISTS idx_users_email_unique;
 ALTER TABLE users ALTER COLUMN email SET NOT NULL;
-CREATE UNIQUE INDEX idx_users_email_unique ON users(LOWER(TRIM(email)));
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(LOWER(TRIM(email)));
 -- Keep status constraint (valid for email-only: pending|accepted|rejected|active|locked|suspended)
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_status_check;
 ALTER TABLE users ADD CONSTRAINT users_status_check CHECK (

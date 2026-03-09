@@ -2,7 +2,8 @@
  * Shopify Admin helpers – open app in Shopify Admin context (embedded) instead of standalone.
  */
 
-const SHOPIFY_DOMAIN_SUFFIX = /.\.myshopify\.com$/i;
+// Match store.myshopify.com (one or more chars before .myshopify.com). Escaped dot required.
+const SHOPIFY_DOMAIN_SUFFIX = /.+\.myshopify\.com$/i;
 
 /**
  * Whether the given domain is a Shopify store (myshopify.com).
@@ -47,7 +48,7 @@ export function getShopifyAdminAppUrl(shopDomain) {
   if (!APP_HANDLE || !shopDomain || typeof shopDomain !== 'string') return null;
   const trimmed = shopDomain.trim();
   if (!SHOPIFY_DOMAIN_SUFFIX.test(trimmed)) return null;
-  const storeHandle = trimmed.replace(SHOPIFY_DOMAIN_SUFFIX, '');
+  const storeHandle = trimmed.replace(/\.myshopify\.com$/i, '');
   if (!storeHandle) return null;
   return `https://admin.shopify.com/store/${encodeURIComponent(storeHandle)}/apps/${encodeURIComponent(APP_HANDLE)}`;
 }

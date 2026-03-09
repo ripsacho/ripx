@@ -90,27 +90,38 @@ try {
   if (useRedisSession) {
     const sessionStorePromise = createSessionStoreAsync();
     let cachedSessionMiddleware = null;
-    // Single creation path: only this .then() sets cachedSessionMiddleware so all requests use the same instance.
+    const pendingRequests = [];
+    const flushPending = () => {
+      const mw = cachedSessionMiddleware;
+      const batch = pendingRequests.splice(0, pendingRequests.length);
+      if (mw && batch.length > 0) {
+        for (const { req, res, next } of batch) {
+          mw(req, res, next);
+        }
+      } else if (batch.length > 0) {
+        const err = new Error('Session middleware not ready');
+        for (const { next } of batch) {
+          next(err);
+        }
+      }
+    };
     sessionStorePromise
       .then(store => {
         cachedSessionMiddleware = session({ ...sessionOptions, store: store || undefined });
+        flushPending();
         return cachedSessionMiddleware;
       })
       .catch(err => {
         logger.error('Session store init failed, using memory fallback', { error: err.message });
         cachedSessionMiddleware = session({ ...sessionOptions, store: undefined });
+        flushPending();
       });
     sessionMiddleware = (req, res, next) => {
       if (cachedSessionMiddleware) {
         cachedSessionMiddleware(req, res, next);
         return;
       }
-      // Wait for the single creation above; do not create middleware here to avoid race and multiple instances.
-      sessionStorePromise
-        .then(() => {
-          cachedSessionMiddleware(req, res, next);
-        })
-        .catch(next);
+      pendingRequests.push({ req, res, next });
     };
   } else {
     const sessionStore = createSessionStore();
@@ -414,6 +425,8 @@ const authLimiter = rateLimit({
   message: { success: false, error: 'Too many auth attempts, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
+  // Don't count GET /api/auth/install (install page + redirect to Shopify); uses signed token, not a login attempt
+  skip: req => req.method === 'GET' && req.path === '/install',
 });
 app.use('/api/auth', authLimiter);
 

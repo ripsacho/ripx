@@ -30,6 +30,7 @@ import {
   isEmbeddedInIframe,
   redirectToAppUrl,
   getConnectUrl,
+  getUrlWithEmbedParams,
 } from '../../services';
 import { isShopifyStoreDomain, normalizeShopifyDomain } from '../../utils/shopifyAdmin';
 import { useAdminMe } from '../../hooks';
@@ -75,7 +76,10 @@ function UserPanel() {
       const raw = res.data?.data ?? res.data;
       const stores = raw?.stores ?? [];
       return {
-        domains: stores.map(s => ({ domain: s.domain, platform: s.platform || 'shopify' })),
+        domains: stores.map(s => ({
+          domain: s.domain,
+          platform: /\.myshopify\.com$/i.test(s.domain) ? 'shopify' : s.platform || 'standalone',
+        })),
       };
     },
     staleTime: 30 * 1000,
@@ -108,7 +112,13 @@ function UserPanel() {
             // ignore localStorage errors
           }
           setCurrentStore(normalized);
-          navigate(ROUTES.appDashboard(normalized));
+          if (isEmbeddedInIframe()) {
+            window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalized), {
+              shop: normalized,
+            });
+          } else {
+            navigate(ROUTES.appDashboard(normalized));
+          }
           return;
         }
         setCurrentStore(normalized);
@@ -120,7 +130,13 @@ function UserPanel() {
             s => (s.domain || '').toLowerCase() === (normalized || '').toLowerCase()
           );
           if (connected) {
-            navigate(ROUTES.appDashboard(normalized));
+            if (isEmbeddedInIframe()) {
+              window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalized), {
+                shop: normalized,
+              });
+            } else {
+              navigate(ROUTES.appDashboard(normalized));
+            }
           } else {
             const origin = typeof window !== 'undefined' ? window.location.origin : '';
             try {
@@ -150,7 +166,13 @@ function UserPanel() {
               })
             );
           } else {
-            navigate(ROUTES.appDashboard(normalized));
+            if (isEmbeddedInIframe()) {
+              window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalized), {
+                shop: normalized,
+              });
+            } else {
+              navigate(ROUTES.appDashboard(normalized));
+            }
           }
         }
         return;
@@ -159,7 +181,13 @@ function UserPanel() {
       try {
         window.localStorage.setItem(STORAGE_KEYS.API_KEY, key);
         setCurrentStore(domain);
-        navigate(ROUTES.appDashboard(domain));
+        if (isEmbeddedInIframe()) {
+          window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(domain), {
+            shop: domain,
+          });
+        } else {
+          navigate(ROUTES.appDashboard(domain));
+        }
       } catch {
         // ignore localStorage errors
       }
@@ -339,7 +367,11 @@ function UserPanel() {
                 <div className={styles.domainGrid}>
                   {domains.map((d, index) => {
                     const domain = typeof d === 'string' ? d : d?.domain;
-                    const platform = typeof d === 'object' && d?.platform ? d.platform : 'shopify';
+                    const platform = isShopifyStoreDomain(domain)
+                      ? 'shopify'
+                      : typeof d === 'object' && d?.platform
+                        ? d.platform
+                        : 'standalone';
                     const keyForDomain = accountKey || (domainKeys && domainKeys[domain]);
                     const isShopify = isShopifyStoreDomain(domain);
                     const canOpen = !!keyForDomain || isShopify;

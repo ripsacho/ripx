@@ -4,11 +4,12 @@
  */
 import React from 'react';
 import { Page } from '@shopify/polaris';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { ProductIcon } from '@shopify/polaris-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { PageShell } from '../Shared';
 import { apiPost, isStandaloneMode, unwrapData } from '../../services';
+import { isShopifyStoreDomain } from '../../utils/shopifyAdmin';
 import { useInvalidateTests, useAppRoutes } from '../../hooks';
 import { STANDALONE_TEST_TYPE_IDS } from '../../constants';
 import TestWizard from '../TestWizard/TestWizard';
@@ -31,15 +32,18 @@ const STANDALONE_TEMPLATES = new Set(['content', 'onsite-edit', 'split-url']);
 
 function TestCreator() {
   const navigate = useNavigate();
+  const { domain: routeDomain } = useParams();
   const queryClient = useQueryClient();
   const invalidateTests = useInvalidateTests();
   const routes = useAppRoutes();
   const [searchParams] = useSearchParams();
   const rawTemplate = searchParams.get('type');
-  const validSet = isStandaloneMode() ? STANDALONE_TEMPLATES : SHOPIFY_TEMPLATES;
+  const isShopifyFromRoute = routeDomain && isShopifyStoreDomain(routeDomain);
+  const standaloneMode = !isShopifyFromRoute && isStandaloneMode();
+  const validSet = standaloneMode ? STANDALONE_TEMPLATES : SHOPIFY_TEMPLATES;
   const templateType = rawTemplate && validSet.has(rawTemplate) ? rawTemplate : null;
   const initialTemplateForWizard =
-    isStandaloneMode() && templateType && !STANDALONE_TEST_TYPE_IDS.includes(templateType)
+    standaloneMode && templateType && !STANDALONE_TEST_TYPE_IDS.includes(templateType)
       ? null
       : templateType;
   const testName = searchParams.get('name') || '';

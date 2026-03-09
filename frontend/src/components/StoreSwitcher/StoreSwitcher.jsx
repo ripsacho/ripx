@@ -9,7 +9,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Popover, ActionList, Text, BlockStack, Icon } from '@shopify/polaris';
 import { StoreIcon } from '@shopify/polaris-icons';
-import { apiGet, setCurrentStore as persistCurrentStore } from '../../services';
+import {
+  apiGet,
+  setCurrentStore as persistCurrentStore,
+  getUrlWithEmbedParams,
+  isEmbeddedInIframe,
+} from '../../services';
 import { ROUTES } from '../../constants';
 import styles from './StoreSwitcher.module.css';
 
@@ -59,7 +64,11 @@ function StoreSwitcher() {
       }
       persistCurrentStore(domain);
       setActive(false);
-      navigate(ROUTES.appDashboard(domain));
+      if (isEmbeddedInIframe()) {
+        window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(domain), { shop: domain });
+      } else {
+        navigate(ROUTES.appDashboard(domain));
+      }
     },
     [currentStore, navigate]
   );

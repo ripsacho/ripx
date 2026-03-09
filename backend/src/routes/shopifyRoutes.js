@@ -59,6 +59,21 @@ async function checkEmbedStatus(shopDomain) {
 }
 
 /**
+ * GET /api/shopify/connection-status
+ * Lightweight check that the current shop has a valid session (used by frontend to show "store not connected" banner).
+ * Returns 200 with { connected, shop }; 401 from auth middleware when store is not connected.
+ */
+router.get(
+  '/connection-status',
+  asyncHandler((req, res) => {
+    res.json({
+      connected: true,
+      shop: req.shopDomain,
+    });
+  })
+);
+
+/**
  * GET /api/shopify/products/:id
  * Get product information
  */

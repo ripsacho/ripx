@@ -161,6 +161,12 @@ function isShopifyOAuthUrl(url) {
   );
 }
 
+/** True when we have a URL to show "Continue" / "Copy link" in Add domain modal (Shopify OAuth or our install page) */
+function isConnectStoreUrl(url) {
+  if (typeof url !== 'string' || !url.startsWith('https://')) return false;
+  return isShopifyOAuthUrl(url) || url.includes('/api/auth/install');
+}
+
 function DomainList() {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -181,6 +187,8 @@ function DomainList() {
   /** When set, show "Continue to Shopify" link/button so user gesture triggers redirect or new tab */
   const [pendingOAuthUrl, setPendingOAuthUrl] = useState(null);
   const [pendingOAuthShop, setPendingOAuthShop] = useState(null);
+  /** Expiry in seconds for the install link (from install-link API); shown in modal */
+  const [pendingOAuthExpiresInSeconds, setPendingOAuthExpiresInSeconds] = useState(null);
   /** When set, show "Sign in required" and open Connect in new tab instead of redirecting */
   const [signInRequiredShop, setSignInRequiredShop] = useState(null);
   /** When true, show "Link copied" and incognito steps (after Copy link in embed) */
@@ -299,7 +307,10 @@ function DomainList() {
       const raw = res.data?.data ?? res.data;
       const stores = raw?.stores ?? [];
       return {
-        domains: stores.map(s => ({ domain: s.domain, platform: s.platform || 'shopify' })),
+        domains: stores.map(s => ({
+          domain: s.domain,
+          platform: /\.myshopify\.com$/i.test(s.domain) ? 'shopify' : s.platform || 'standalone',
+        })),
         raw,
       };
     },
@@ -407,7 +418,9 @@ function DomainList() {
     const returnOAuthUrl = !!options.returnOAuthUrl;
     if (hasKey) {
       setCurrentStore(normalizedDomain);
-      window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalizedDomain));
+      window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalizedDomain), {
+        shop: normalizedDomain,
+      });
       return;
     }
     // Prevent 401 interceptor from redirecting so we can redirect with shop/reason from catch
@@ -425,7 +438,9 @@ function DomainList() {
         );
         if (connected) {
           setCurrentStore(normalizedDomain);
-          window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalizedDomain));
+          window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalizedDomain), {
+            shop: normalizedDomain,
+          });
           return;
         }
         const origin = typeof window !== 'undefined' ? window.location.origin : '';
@@ -458,7 +473,9 @@ function DomainList() {
       );
       if (connected) {
         setCurrentStore(normalizedDomain);
-        window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalizedDomain));
+        window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalizedDomain), {
+          shop: normalizedDomain,
+        });
       } else {
         const origin = typeof window !== 'undefined' ? window.location.origin : '';
         try {
@@ -496,7 +513,9 @@ function DomainList() {
         );
       } else {
         setCurrentStore(normalizedDomain);
-        window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalizedDomain));
+        window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalizedDomain), {
+          shop: normalizedDomain,
+        });
       }
     } finally {
       if (returnOAuthUrl && typeof window !== 'undefined')
@@ -532,7 +551,7 @@ function DomainList() {
     try {
       window.localStorage.setItem(STORAGE_KEYS.API_KEY, key);
       setCurrentStore(domain);
-      window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(domain));
+      window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(domain), { shop: domain });
     } catch (_) {
       // ignore storage errors
     }
@@ -551,7 +570,9 @@ function DomainList() {
         // ignore localStorage errors
       }
       setCurrentStore(normalized);
-      window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalized));
+      window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalized), {
+        shop: normalized,
+      });
       return;
     }
     if (isShopify) {
@@ -563,7 +584,9 @@ function DomainList() {
       }
     } else {
       setCurrentStore(normalized);
-      window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalized));
+      window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalized), {
+        shop: normalized,
+      });
     }
   };
 
@@ -595,6 +618,7 @@ function DomainList() {
     setAddError(null);
     setPendingOAuthUrl(null);
     setPendingOAuthShop(null);
+    setPendingOAuthExpiresInSeconds(null);
     setSignInRequiredShop(null);
     setOauthLinkCopied(false);
     try {
@@ -606,84 +630,54 @@ function DomainList() {
         );
         if (connected) {
           setCurrentStore(normalizedShop);
-          window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalizedShop));
+          window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalizedShop), {
+            shop: normalizedShop,
+          });
           setConnectShopifyLoading(false);
           return;
         }
         const baseUrl = getApiBaseUrl();
         const token = getEmailToken();
         const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
-        // When embedded, use install-link URL so user opens OUR link in incognito; our server then redirects to Shopify for this shop only (no wrong-store possible).
-        if (isEmbedded) {
-          const origin = typeof window !== 'undefined' ? window.location.origin : '';
-          const installLinkUrl = `${baseUrl}/auth/install-link?shop=${encodeURIComponent(normalizedShop)}${origin ? `&callback_base=${encodeURIComponent(origin)}` : ''}`;
-          const res = await fetch(installLinkUrl, { credentials: 'include', headers: authHeaders });
-          const data = await res.json().catch(() => ({}));
-          const installUrl = data?.url ?? data?.data?.url;
-          if (res.status === 401) {
-            setSignInRequiredShop(domainToUse);
-            setConnectShopifyLoading(false);
-            return;
-          }
-          if (
-            installUrl &&
-            typeof installUrl === 'string' &&
-            installUrl.includes('/api/auth/install')
-          ) {
-            setPendingOAuthUrl(installUrl);
-            setPendingOAuthShop(domainToUse);
-          } else {
-            setAddError(data?.error || 'Could not get connection link.');
-          }
-          setConnectShopifyLoading(false);
-          return;
-        }
-        // Standalone: get Shopify OAuth URL for same-tab link
         const origin = typeof window !== 'undefined' ? window.location.origin : '';
-        const startUrl = `${baseUrl}/auth/start?shop=${encodeURIComponent(normalizedShop)}&callback_base=${encodeURIComponent(origin)}`;
-        const res = await fetch(startUrl, {
-          credentials: 'include',
-          headers: authHeaders,
-        });
+        // Use install-link for both embedded and standalone: same instruction page (Step 1 → store admin, Step 2 → Continue to Shopify) so the correct store is approved.
+        const installLinkUrl = `${baseUrl}/auth/install-link?shop=${encodeURIComponent(normalizedShop)}${origin ? `&callback_base=${encodeURIComponent(origin)}` : ''}`;
+        const res = await fetch(installLinkUrl, { credentials: 'include', headers: authHeaders });
         const data = await res.json().catch(() => ({}));
-        const redirectUrl = data?.redirectUrl ?? data?.data?.redirectUrl;
+        const installUrl = data?.url ?? data?.data?.url;
         if (res.status === 401) {
           setSignInRequiredShop(domainToUse);
           setConnectShopifyLoading(false);
           return;
         }
-        if (redirectUrl && typeof redirectUrl === 'string' && isShopifyOAuthUrl(redirectUrl)) {
-          const urlHost = (() => {
-            try {
-              return new URL(redirectUrl).hostname.toLowerCase();
-            } catch {
-              return '';
-            }
-          })();
-          if (urlHost !== normalizedShop.toLowerCase()) {
-            setAddError(`OAuth URL was for a different store (${urlHost}). Please try again.`);
-            setConnectShopifyLoading(false);
-            return;
-          }
-          setPendingOAuthUrl(redirectUrl);
+        if (!res.ok) {
+          const msg =
+            res.status === 429
+              ? 'Too many requests. Please try again in a few minutes.'
+              : data?.error || `Could not get connection link (${res.status}).`;
+          setAddError(msg);
+          setConnectShopifyLoading(false);
+          return;
+        }
+        if (
+          installUrl &&
+          typeof installUrl === 'string' &&
+          installUrl.includes('/api/auth/install')
+        ) {
+          setPendingOAuthUrl(installUrl);
           setPendingOAuthShop(domainToUse);
+          const expiresIn = data?.expires_in_seconds ?? 600;
+          setPendingOAuthExpiresInSeconds(
+            typeof expiresIn === 'number' && expiresIn > 0 ? expiresIn : 600
+          );
         } else {
           setAddError(data?.error || 'Could not get connection link.');
         }
         setConnectShopifyLoading(false);
         return;
       }
-      // No email session: use existing flow (account/stores path)
-      const result = await openAppAfterVerify(domainToUse, false, { returnOAuthUrl: true });
-      const url = result?.redirectUrl;
-      if (url && isShopifyOAuthUrl(url)) {
-        setPendingOAuthUrl(url);
-        setPendingOAuthShop(domainToUse);
-      } else if (result?.signInRequired && result?.shop) {
-        setSignInRequiredShop(result.shop);
-      } else if (url) {
-        setSignInRequiredShop(domainToUse);
-      }
+      // No email session: show sign-in in modal (avoids 401 redirect to login page)
+      setSignInRequiredShop(domainToUse);
     } catch (err) {
       setAddError(err?.response?.data?.error || err?.message || 'Could not start connection.');
     } finally {
@@ -767,12 +761,14 @@ function DomainList() {
     };
   }, [addModalOpen]);
 
+  const displayPlatform = d =>
+    isShopifyStoreDomain(d?.domain) ? 'shopify' : d?.platform || 'standalone';
   const rows = useEmailDomains
     ? domains.map(d => {
         const keyForDomain = accountKey || domainKeys[d.domain];
         return [
           d.domain,
-          d.platform || 'standalone',
+          displayPlatform(d),
           d.connection || '—',
           (d.permittedUsers || []).map(u => u.email).join(', ') || '—',
           d.myRole || '—',
@@ -820,7 +816,7 @@ function DomainList() {
       })
     : domains.map(d => [
         d.domain,
-        d.platform || 'standalone',
+        displayPlatform(d),
         <div key={`open-${d.domain}`} className={styles.domainActionsWrap}>
           <button
             type="button"
@@ -983,18 +979,24 @@ function DomainList() {
                 <div className={styles.bannerWrap}>
                   <Banner
                     tone="info"
-                    title="Connect using incognito"
+                    title="Connect this store"
                     onDismiss={() => setStartOAuthNewTab(null)}
                   >
                     <p>
-                      This page is inside another store&apos;s admin. To connect{' '}
-                      <strong>{startOAuthNewTab.shop}</strong>: 1) Click &quot;Copy link&quot;
-                      below. 2) Open incognito/private window. 3) Paste and press Enter. 4) Log in
-                      to {startOAuthNewTab.shop} when Shopify asks. 5) Click Install/Approve.
+                      To connect <strong>{startOAuthNewTab.shop}</strong>: click &quot;Continue to
+                      Shopify&quot; to open the connection flow in this window. Or copy the link to
+                      open in a private window.
                     </p>
-                    <p style={{ marginTop: 8 }}>
+                    <p style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                      <a
+                        href={startOAuthNewTab.url}
+                        target="_top"
+                        rel="noopener noreferrer"
+                        className={styles.continueToShopifyButton}
+                      >
+                        Continue to Shopify
+                      </a>
                       <Button
-                        variant="primary"
                         icon={ClipboardIcon}
                         onClick={() => {
                           try {
@@ -1003,9 +1005,8 @@ function DomainList() {
                             // ignore clipboard errors
                           }
                         }}
-                        className={styles.continueToShopifyButton}
                       >
-                        Copy link
+                        Copy link for private window
                       </Button>
                     </p>
                   </Banner>
@@ -1210,6 +1211,7 @@ function DomainList() {
           setShopifyDomainToConnect(null);
           setPendingOAuthUrl(null);
           setPendingOAuthShop(null);
+          setPendingOAuthExpiresInSeconds(null);
           setSignInRequiredShop(null);
           setOauthLinkCopied(false);
         }}
@@ -1252,6 +1254,7 @@ function DomainList() {
                     setShopifyDomainToConnect(null);
                     setPendingOAuthUrl(null);
                     setPendingOAuthShop(null);
+                    setPendingOAuthExpiresInSeconds(null);
                     setSignInRequiredShop(null);
                     setOauthLinkCopied(false);
                   },
@@ -1267,6 +1270,7 @@ function DomainList() {
                     setShopifyDomainToConnect(null);
                     setPendingOAuthUrl(null);
                     setPendingOAuthShop(null);
+                    setPendingOAuthExpiresInSeconds(null);
                     setSignInRequiredShop(null);
                     setOauthLinkCopied(false);
                   },
@@ -1382,8 +1386,8 @@ function DomainList() {
                           </h3>
                           <p className={styles.addModalIntroSubtitle}>
                             You need to be signed in to connect {signInRequiredShop}. We’ll open the
-                            sign-in page in a new tab. After signing in, return here and try
-                            connecting again.
+                            sign-in page in a new tab. After signing in, return to this tab, click
+                            Back, then try Connect with Shopify again.
                           </p>
                         </div>
                       </div>
@@ -1405,7 +1409,7 @@ function DomainList() {
                         Open sign-in page
                       </Button>
                     </div>
-                  ) : pendingOAuthUrl && isShopifyOAuthUrl(pendingOAuthUrl) ? (
+                  ) : pendingOAuthUrl && isConnectStoreUrl(pendingOAuthUrl) ? (
                     <div className={styles.continueToShopifyBlock}>
                       <div className={styles.addModalIntro} data-step="continue">
                         <div className={styles.addModalIconWrap} aria-hidden data-variant="shopify">
@@ -1413,23 +1417,17 @@ function DomainList() {
                         </div>
                         <div className={styles.addModalDescription}>
                           <h3 className={styles.addModalIntroTitle}>
-                            {isEmbedded ? 'Connect store using incognito' : 'Continue to Shopify'}
+                            {isEmbedded ? 'Connect this store' : 'Continue to Shopify'}
                           </h3>
                           <p className={styles.addModalIntroSubtitle}>
                             {isEmbedded
-                              ? `To connect ${pendingOAuthShop} (and not the store you're viewing now), use the link below in an incognito/private window.`
-                              : `Click the button below to connect ${pendingOAuthShop}. You'll be taken to Shopify to approve access, then returned here.`}
+                              ? `Click "Continue to Shopify" to open the connection flow in this window. You'll see an instruction page: do Step 1 (go to ${pendingOAuthShop} admin, log in, Back), then Step 2 (Continue to Shopify). Or copy the link to open in a private window.`
+                              : `Click the button below. You'll see an instruction page: do Step 1 (go to store admin, log in, Back), then Step 2 (Continue to Shopify) to connect ${pendingOAuthShop}.`}
                           </p>
                         </div>
                       </div>
                       {isEmbedded ? (
                         <>
-                          <p className={styles.addModalHint} style={{ marginBottom: 8 }}>
-                            <strong>Steps:</strong> 1) Click &quot;Copy link&quot; below. 2) Open an
-                            incognito/private window (Ctrl+Shift+N or Cmd+Shift+N). 3) Paste the
-                            link and press Enter. 4) When Shopify asks, log in to{' '}
-                            <strong>{pendingOAuthShop}</strong>. 5) Click Install/Approve.
-                          </p>
                           <div
                             style={{
                               display: 'flex',
@@ -1438,8 +1436,15 @@ function DomainList() {
                               gap: 12,
                             }}
                           >
+                            <a
+                              href={pendingOAuthUrl}
+                              target="_top"
+                              rel="noopener noreferrer"
+                              className={styles.continueToShopifyButton}
+                            >
+                              Continue to Shopify
+                            </a>
                             <Button
-                              variant="primary"
                               icon={ClipboardIcon}
                               onClick={() => {
                                 try {
@@ -1450,11 +1455,24 @@ function DomainList() {
                                   // ignore clipboard errors
                                 }
                               }}
-                              className={styles.continueToShopifyButton}
                             >
-                              {modalOAuthLinkCopied ? 'Copied! Paste in incognito' : 'Copy link'}
+                              {modalOAuthLinkCopied ? 'Copied!' : 'Copy link for private window'}
                             </Button>
                           </div>
+                          <p className={styles.addModalHint} style={{ marginTop: 8 }}>
+                            Continuing opens the connection page in this window. On that page: Step
+                            1 — go to <strong>{pendingOAuthShop}</strong> admin, log in, Back. Step
+                            2 — click Continue to Shopify, then Allow when prompted.
+                          </p>
+                          {pendingOAuthExpiresInSeconds !== null && (
+                            <p className={styles.addModalHint} style={{ marginTop: 8 }}>
+                              Link expires in{' '}
+                              {pendingOAuthExpiresInSeconds >= 60
+                                ? `${Math.round(pendingOAuthExpiresInSeconds / 60)} minutes`
+                                : `${pendingOAuthExpiresInSeconds} seconds`}
+                              .
+                            </p>
+                          )}
                         </>
                       ) : (
                         <>
@@ -1467,6 +1485,15 @@ function DomainList() {
                           >
                             Continue to Shopify
                           </a>
+                          {pendingOAuthExpiresInSeconds !== null && (
+                            <p className={styles.addModalHint} style={{ marginTop: 8 }}>
+                              Link expires in{' '}
+                              {pendingOAuthExpiresInSeconds >= 60
+                                ? `${Math.round(pendingOAuthExpiresInSeconds / 60)} minutes`
+                                : `${pendingOAuthExpiresInSeconds} seconds`}
+                              .
+                            </p>
+                          )}
                         </>
                       )}
                     </div>

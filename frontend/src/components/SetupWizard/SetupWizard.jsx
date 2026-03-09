@@ -25,6 +25,7 @@ import {
 } from '@shopify/polaris';
 import { SettingsIcon, CodeIcon } from '@shopify/polaris-icons';
 import { apiGet, getShopDomain, isStandaloneMode } from '../../services';
+import { isShopifyStoreDomain } from '../../utils/shopifyAdmin';
 import { PageShell } from '../Shared';
 import { ROUTES } from '../../constants';
 import styles from './SetupWizard.module.css';
@@ -70,7 +71,8 @@ function SetupWizard() {
   const [installation, setInstallation] = useState(null);
   const [installationLoading, setInstallationLoading] = useState(false);
 
-  const standalone = isStandaloneMode();
+  const isShopifyFromRoute = domain && isShopifyStoreDomain(domain);
+  const standalone = !isShopifyFromRoute && isStandaloneMode();
   const shopDomain = setupStatus?.shopDomain || getShopDomain();
   const settingsPath = domain ? ROUTES.appSettings(domain) : ROUTES.SETTINGS;
   const appUrl = setupStatus?.appUrl || '';
