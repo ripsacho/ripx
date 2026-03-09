@@ -58,7 +58,14 @@ import Toast from '../Toast/Toast';
 import styles from './TargetingSection.module.css';
 import stepStyles from './WizardSteps.module.css';
 import { useParams } from 'react-router-dom';
-import { getShopDomain, getPreviewDomain, apiGet, apiPost, isStandaloneMode } from '../../services';
+import {
+  getShopDomain,
+  getPreviewDomain,
+  apiGet,
+  apiPost,
+  isStandaloneMode,
+  getApiBaseUrl,
+} from '../../services';
 import { isShopifyStoreDomain } from '../../utils/shopifyAdmin';
 import {
   buildPreviewUrl as buildPreviewUrlUtil,
@@ -5560,7 +5567,10 @@ function TestWizard({
                                   visualEditor: true,
                                 })
                               : null;
-                          const iframeSrc = fullPreviewUrl || baseUrl || '';
+                          const directPreviewUrl = fullPreviewUrl || baseUrl || '';
+                          const iframeSrc = directPreviewUrl
+                            ? `${getApiBaseUrl()}/api/track/preview-document?url=${encodeURIComponent(directPreviewUrl)}&ab_visual_editor=1`
+                            : '';
                           const previewWithoutTestId = Boolean(baseUrl && !testId);
                           if (!baseUrl) {
                             return (

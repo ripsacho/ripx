@@ -271,11 +271,13 @@ app.use((req, res, next) => {
   const validShop = shop && SHOP_DOMAIN_REGEX.test(shop);
 
   // Per-shop when we have it; otherwise allow all Shopify (iframe often has no ?shop= or Referer on first load)
-  const frameAncestors = validShop
-    ? `https://${shop} https://admin.shopify.com`
-    : 'https://admin.shopify.com https://*.myshopify.com';
-
+  // Include app origin so the app can embed its own pages (e.g. visual editor preview-document iframe)
   const appUrl = process.env.APP_URL || 'http://localhost:3000';
+  const appOrigin = appUrl.replace(/\/+$/, '');
+  const frameAncestors = validShop
+    ? `https://${shop} https://admin.shopify.com ${appOrigin}`
+    : `https://admin.shopify.com https://*.myshopify.com ${appOrigin}`;
+
   const csp = [
     "default-src 'self'",
     "script-src 'self'",

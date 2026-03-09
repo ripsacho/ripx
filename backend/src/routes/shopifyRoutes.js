@@ -131,19 +131,27 @@ router.get(
         /access denied|scope|permission|403/i.test(msg) ||
         (err.response && err.response.status === 403);
       if (isAccessDenied) {
-        logger.warn(`Store ${resourceLabel} list failed (missing scope?).`, {
+        const configuredScopes = (process.env.SHOPIFY_SCOPES || '')
+          .split(',')
+          .map(s => s.trim())
+          .filter(Boolean);
+        const hasProducts = configuredScopes.some(s => s === 'read_products');
+        const hasCollections = configuredScopes.some(s => s === 'read_collections');
+        logger.warn(`Store ${resourceLabel} list failed (missing scope or old token).`, {
           shopDomain,
           error: msg,
+          serverHasReadProducts: hasProducts,
+          serverHasReadCollections: hasCollections,
         });
         if (resourceLabel === 'pages') {
           emptyReason =
-            'Missing "read online store pages" permission. Reinstall the app from Shopify Admin to grant it.';
+            'Missing "read online store pages" permission. Ensure server SHOPIFY_SCOPES includes read_online_store_pages, then reinstall the app from Shopify Admin.';
         } else if (resourceLabel === 'collections') {
           emptyReason =
-            'Missing "read collections" permission. Reinstall the app from Shopify Admin to grant read_collections.';
+            'Missing "read collections" permission. Ensure server SHOPIFY_SCOPES includes read_collections, then reinstall the app from Shopify Admin (Apps → your app → Uninstall → Install again).';
         } else {
           emptyReason =
-            'Missing "read products" permission. Reinstall the app from Shopify Admin to grant read_products.';
+            'Missing "read products" permission. Ensure server SHOPIFY_SCOPES includes read_products, then reinstall the app from Shopify Admin (Apps → your app → Uninstall → Install again).';
         }
         return [];
       }
