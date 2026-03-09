@@ -118,7 +118,19 @@ router.get(
     const tests = await getActiveTestsForStorefront(shop);
     const runtimeConfig = buildRuntimeConfig(shop, tests, req);
     const scriptPath = getStorefrontScriptPath();
-    const scriptContents = fs.readFileSync(scriptPath, 'utf8');
+
+    let scriptContents;
+    try {
+      scriptContents = fs.readFileSync(scriptPath, 'utf8');
+    } catch (err) {
+      logger.error('Storefront script file missing or unreadable', {
+        path: scriptPath,
+        shop,
+        error: err.message,
+      });
+      res.status(503).set('Content-Type', 'text/plain').send('Script temporarily unavailable.');
+      return;
+    }
 
     const version = req.query.v;
     const cacheSeconds = version ? 31536000 : 300;
