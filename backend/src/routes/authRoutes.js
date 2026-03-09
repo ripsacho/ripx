@@ -214,11 +214,22 @@ function getOAuthRedirectBaseFromRequest(req) {
     }
     const s = raw.split(',')[0].trim();
     let h;
+    let protocol = 'https';
+    let port = '';
     try {
       const u = new URL(s.startsWith('http') ? s : `https://${s}`);
       h = u.hostname.toLowerCase();
+      protocol = u.protocol === 'http:' ? 'http' : 'https';
+      const portNum = u.port || '';
+      if (portNum && portNum !== '80' && portNum !== '443') {
+        port = `:${portNum}`;
+      }
     } catch {
       h = s.split(':')[0].toLowerCase();
+      protocol =
+        req.get('X-Forwarded-Proto') === 'https' || req.get('X-Forwarded-SSL') === 'on'
+          ? 'https'
+          : (req.protocol || 'https').replace(/:$/, '');
     }
     if (!h) {
       return null;
@@ -230,11 +241,7 @@ function getOAuthRedirectBaseFromRequest(req) {
     if (!isHostAllowed(h)) {
       return null;
     }
-    const protocol =
-      req.get('X-Forwarded-Proto') === 'https' || req.get('X-Forwarded-SSL') === 'on'
-        ? 'https'
-        : 'https';
-    return `${protocol}://${h}`.replace(/\/+$/, '');
+    return `${protocol}://${h}${port}`.replace(/\/+$/, '');
   };
 
   // Prefer Host / X-Forwarded-Host (actual request host)
@@ -266,7 +273,7 @@ function getOAuthRedirectBaseFromRequest(req) {
  * Base URL for OAuth redirect_uri and in-app redirects.
  * Priority: RIPX_OAUTH_REDIRECT_BASE (must match Partner Dashboard) > request host / Origin > callback_base > APP_URL.
  * Shopify requires redirect_uri and Application URL to have the same host — set RIPX_OAUTH_REDIRECT_BASE to your
- * Partner Dashboard Application URL (e.g. https://splitter.echologyx.com) when it differs from where users open the app.
+ * Partner Dashboard Application URL (e.g. https://your-app.example.com) when it differs from where users open the app.
  */
 function getOAuthRedirectBase(req = null) {
   const strictBase = process.env.RIPX_OAUTH_REDIRECT_BASE;
@@ -461,7 +468,7 @@ function getEmailFromSession(req) {
  * GET /api/auth/oauth-redirect-uri
  * Returns the redirect_uri and base URL used for OAuth. Use this to verify they match
  * Shopify Partner Dashboard → App setup → Application URL and Allowed redirection URL(s).
- * If they don't match, set RIPX_OAUTH_REDIRECT_BASE to your Application URL (e.g. https://splitter.echologyx.com).
+ * If they don't match, set RIPX_OAUTH_REDIRECT_BASE to your Application URL (same host as Partner Dashboard).
  */
 router.get('/oauth-redirect-uri', (req, res) => {
   const strictBase =
@@ -474,7 +481,15 @@ router.get('/oauth-redirect-uri', (req, res) => {
     redirectUri,
     base,
     source: strictBase ? 'RIPX_OAUTH_REDIRECT_BASE' : 'request_or_app_url',
-    hint: 'Set Application URL and this redirect_uri in Shopify Partner Dashboard. If using a stable domain (e.g. splitter.echologyx.com), set RIPX_OAUTH_REDIRECT_BASE to that URL.',
+    partnerDashboard: {
+      applicationUrl: base,
+      allowedRedirectionUrl: redirectUri,
+      note: 'In Partner Dashboard → Your app → App setup → URLs, set Application URL and add the allowed redirection URL exactly as above (same host).',
+    },
+    clientIdNote:
+      process.env.SHOPIFY_API_KEY &&
+      'Partner Dashboard Client ID must match SHOPIFY_API_KEY. If the grant URL shows a different client_id, the link was generated for another app or env.',
+    hint: 'Set Application URL and Allowed redirection URL(s) in Shopify Partner Dashboard to this base and redirect_uri. For a fixed domain, set RIPX_OAUTH_REDIRECT_BASE to that URL.',
   });
 });
 

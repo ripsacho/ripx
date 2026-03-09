@@ -636,6 +636,26 @@ if (require.main === module) {
       environment: process.env.NODE_ENV || 'development',
       version: APP_VERSION,
     });
+    // Shopify OAuth: remind deployers to align Partner Dashboard with redirect_uri
+    if (
+      process.env.SHOPIFY_API_KEY &&
+      process.env.SHOPIFY_API_KEY !== 'your_shopify_api_key_here' &&
+      process.env.RIPX_STANDALONE_ONLY !== 'true'
+    ) {
+      const oauthBase =
+        process.env.RIPX_OAUTH_REDIRECT_BASE ||
+        process.env.APP_URL ||
+        process.env.FRONTEND_URL ||
+        'http://localhost:3000';
+      const base = String(oauthBase).replace(/\/+$/, '') || 'http://localhost:3000';
+      logger.info(
+        'Shopify OAuth: ensure Partner Dashboard Application URL and Allowed redirection URL(s) match',
+        {
+          expectedCallback: `${base}/api/auth/callback`,
+          hint: 'GET /api/auth/oauth-redirect-uri on your app host returns exact values to copy into Partner Dashboard.',
+        }
+      );
+    }
     // Optional: verify SMTP connection in background (logs success or failure)
     const emailService = require('./services/emailService');
     if (emailService.isConfigured()) {

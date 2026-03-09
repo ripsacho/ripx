@@ -39,6 +39,7 @@ Optional but recommended:
 - `REDIS_URL` – for sessions and background jobs (scheduled tests, archive).
 - `SESSION_SECRET` – or it falls back to `JWT_SECRET`.
 - SMTP vars – for magic-link and OTP emails (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`).
+- **Shopify OAuth:** `RIPX_OAUTH_REDIRECT_BASE` – set to your app’s public URL (same as Partner Dashboard Application URL) when it differs from the request host (e.g. behind a tunnel). The app derives `redirect_uri` from this, the request, or `APP_URL` so it works for any domain. See [EMBED_TUNNEL.md](EMBED_TUNNEL.md) for a **configuration decision tree** (single URL vs tunnel vs localhost). After deploy, call `GET /api/auth/oauth-redirect-uri` to get exact values for Partner Dashboard.
 
 ---
 
@@ -149,6 +150,9 @@ Use a unit file that sets `NODE_ENV=production` and `WorkingDirectory` to the pr
 - **Admin:**  
   Log in with the super admin email (OTP or magic link); open `/admin` if you use the admin panel.
 
+- **Shopify OAuth (if you use Shopify):**  
+  Open `https://your-app-domain/api/auth/oauth-redirect-uri`. The JSON response includes `partnerDashboard.applicationUrl` and `partnerDashboard.allowedRedirectionUrl` — ensure these match **Application URL** and **Allowed redirection URL(s)** in Shopify Partner Dashboard. The server logs the expected callback at startup when Shopify is configured.
+
 ---
 
 ## Quick one-time checklist (after git pull)
@@ -178,10 +182,11 @@ pm2 save
 
 ## Troubleshooting
 
-| Issue               | Check                                                                                 |
-| ------------------- | ------------------------------------------------------------------------------------- |
-| Blank page or 404   | `NODE_ENV=production` and `frontend/dist` exists (run `npm run build`).               |
-| DB errors           | `DATABASE_URL` correct; DB is up; migrations ran (`npm run migrate`).                 |
-| Cannot log in       | First admin created? Run `npm run ensure-superadmin` with email set in `.env`.        |
-| 401 on API          | CORS: add your frontend origin to `ALLOWED_ORIGINS` in `.env`.                        |
-| Jobs/session issues | Set `REDIS_URL` if you use Redis; otherwise in-memory session and no background jobs. |
+| Issue                | Check                                                                                                                                                                                                                                                                                                                                                       |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Blank page or 404    | `NODE_ENV=production` and `frontend/dist` exists (run `npm run build`).                                                                                                                                                                                                                                                                                     |
+| DB errors            | `DATABASE_URL` correct; DB is up; migrations ran (`npm run migrate`).                                                                                                                                                                                                                                                                                       |
+| Cannot log in        | First admin created? Run `npm run ensure-superadmin` with email set in `.env`.                                                                                                                                                                                                                                                                              |
+| 401 on API           | CORS: add your frontend origin to `ALLOWED_ORIGINS` in `.env`.                                                                                                                                                                                                                                                                                              |
+| Jobs/session issues  | Set `REDIS_URL` if you use Redis; otherwise in-memory session and no background jobs.                                                                                                                                                                                                                                                                       |
+| Invalid install link | See [EMBED_TUNNEL.md](EMBED_TUNNEL.md). Quick fix: open `GET /api/auth/oauth-redirect-uri` on your app host and set Partner Dashboard **Application URL** and **Allowed redirection URL(s)** to `partnerDashboard.applicationUrl` and `partnerDashboard.allowedRedirectionUrl`. Ensure `SHOPIFY_API_KEY` in `.env` matches Partner Dashboard **Client ID**. |
