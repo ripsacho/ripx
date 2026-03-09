@@ -400,6 +400,7 @@ router.get(
           'User-Agent':
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
         },
       });
       clearTimeout(timeoutId);
@@ -417,14 +418,32 @@ router.get(
       const origin = `${parsed.protocol}//${parsed.host}`;
       const hostname = parsed.hostname || parsed.host;
       const appUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
-      const baseTag = `<base href="${origin}/">`;
+
+      // Base URL = page directory so relative paths (e.g. "theme.css") resolve correctly.
+      const pathDir = parsed.pathname.endsWith('/')
+        ? parsed.pathname
+        : (parsed.pathname.replace(/\/?[^/]*$/, '') || '/') + '/';
+      const baseHref = origin + pathDir;
+      const baseTag = `<base href="${baseHref}">`;
+      const referrerMeta = '<meta name="referrer" content="no-referrer">'; // so store CDN doesn't block subresource requests from proxy origin
 
       // Strip CSP so store CSS/JS can load when document is served from our origin (iframe).
-      // Otherwise style-src/script-src 'self' would block store resources.
       html = html.replace(
         /<meta\s[^>]*\bhttp-equiv\s*=\s*["']?(?:Content-Security-Policy|Content-Security-Policy-Report-Only)["']?[^>]*>/gi,
         ''
       );
+
+      // Rewrite root-relative URLs (href="/... and src="/...) to absolute so resources load from the store.
+      html = html.replace(
+        /(\s(?:href|src)\s*=\s*["'])\/(?!\/)/g,
+        (_m, prefix) => prefix + origin + '/'
+      );
+      // Normalize protocol-relative URLs (//cdn.shopify.com/...) to https so they load in any context.
+      html = html.replace(/(\s(?:href|src)\s*=\s*["'])\/\//g, '$1https://');
+
+      // Rewrite root-relative and protocol-relative url() in CSS (inline styles and <style> blocks).
+      html = html.replace(/url\s*\(\s*["']?\/(?!\/)/g, () => `url(${origin}/`);
+      html = html.replace(/url\s*\(\s*["']?\/\//g, () => 'url(https://');
 
       const runtimeConfig = {
         apiUrl: `${appUrl.replace(/\/+$/, '')}/api`,
@@ -445,9 +464,9 @@ router.get(
         `<script>window.AB_TEST_RUNTIME_CONFIG=${JSON.stringify(runtimeConfig)};</script>` +
         (scriptContent ? `<script>${scriptContent}</script>` : '');
 
-      // Inject base at start of <head> so all relative URLs resolve to the store.
+      // Inject base and referrer policy at start of <head> so all relative URLs resolve to the store.
       if (html.includes('<head')) {
-        html = html.replace(/(<head\s*[^>]*>)/i, `$1\n${baseTag}`);
+        html = html.replace(/(<head\s*[^>]*>)/i, `$1\n${baseTag}\n${referrerMeta}`);
       }
       if (html.includes('</head>')) {
         html = html.replace('</head>', `${injectScript}\n</head>`);
