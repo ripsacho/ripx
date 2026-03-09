@@ -1047,11 +1047,11 @@ function DomainList() {
                         <strong>{oauthWrongStoreShop}</strong>:
                       </p>
                       <p style={{ marginTop: 8 }}>
-                        Click <strong>Copy link for incognito</strong>, then open a new{' '}
-                        <strong>incognito/private</strong> window, paste the link there, and
-                        complete the flow. When Shopify asks you to log in, make sure you log in to{' '}
-                        <strong>{oauthWrongStoreShop}</strong> (the store you want to add). That way
-                        only that store is connected.
+                        Click <strong>Copy link for incognito</strong>, open the link in a new{' '}
+                        <strong>incognito/private</strong> window, follow the instruction page, then
+                        click <strong>Continue to Shopify</strong>. When Shopify asks you to log in,
+                        log in to <strong>{oauthWrongStoreShop}</strong> so only that store is
+                        connected.
                       </p>
                     </Banner>
                   </div>

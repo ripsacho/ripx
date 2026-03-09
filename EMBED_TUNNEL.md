@@ -119,8 +119,10 @@ If you use a tunnel (e.g. Cloudflare), either use the tunnel URL everywhere (App
 If you see **"You approved a different store"** when adding a store (e.g. ripperx-2) from another store's admin:
 
 1. Use **Copy link for incognito** and open that link in a **new incognito/private** window.
-2. Paste the link and complete the flow. When Shopify asks you to log in, log in to **the store you want to add** (e.g. ripperx-2), not the store you were viewing before.
-3. The install link uses the same domain as the app's OAuth callback (from `RIPX_OAUTH_REDIRECT_BASE` or the request), so cookies and redirect stay consistent and only the intended store is connected.
+2. You’ll see a short **instruction page**; click **Continue to Shopify**, then when Shopify asks you to log in, log in to **the store you want to add** (e.g. ripperx-2), not the store you were viewing before.
+3. The install link uses the same domain as the app's OAuth callback (from `RIPX_OAUTH_REDIRECT_BASE` or the request), so cookies and redirect stay consistent.
+
+**Full guide:** See [docs/OAUTH_ADD_STORE.md](docs/OAUTH_ADD_STORE.md) for why this happens and how to avoid it.
 
 ## References
 

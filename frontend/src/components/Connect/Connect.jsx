@@ -412,12 +412,25 @@ function Connect() {
                         domains and connect your Shopify store.
                       </p>
                     ),
-                    [CONNECT_REASON?.SIGN_IN_TO_LINK || 'sign_in_to_link']: (
-                      <p className={styles.authReasonBanner} role="alert">
-                        This store needs to be linked to your account. Sign in, then connect the
-                        store from My domains.
-                      </p>
-                    ),
+                    [CONNECT_REASON?.SIGN_IN_TO_LINK || 'sign_in_to_link']: (() => {
+                      const requestedShop = (searchParams.get('requested_shop') || '').trim();
+                      const connectedShop = (searchParams.get('shop') || '').trim();
+                      return (
+                        <p className={styles.authReasonBanner} role="alert">
+                          This store needs to be linked to your account. Sign in, then go to{' '}
+                          <Link to={ROUTES.DOMAINS}>My domains</Link> to connect stores.
+                          {requestedShop && connectedShop && requestedShop !== connectedShop && (
+                            <>
+                              {' '}
+                              We connected <strong>{connectedShop}</strong>. To add{' '}
+                              <strong>{requestedShop}</strong> too, use “Copy link for incognito”
+                              for that store in My domains (open in incognito and log in to{' '}
+                              {requestedShop} when Shopify asks).
+                            </>
+                          )}
+                        </p>
+                      );
+                    })(),
                     [CONNECT_REASON?.STORE_LINKED_TO_ANOTHER || 'store_linked_to_another']: (
                       <p className={styles.authReasonBanner} role="alert">
                         This store is already linked to another account. Use the account that owns

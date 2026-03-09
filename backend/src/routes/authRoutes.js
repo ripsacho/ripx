@@ -562,7 +562,7 @@ router.get(
       typeof req.query.callback_base === 'string' ? req.query.callback_base.trim() : '';
     const validatedBase = callbackBaseRaw ? validateCallbackBase(callbackBaseRaw) : null;
     const baseUrl = strictBase || validatedBase || getOAuthRedirectBase(req);
-    let installUrl = `${baseUrl}/api/auth/install?shop=${encodeURIComponent(shop)}&t=${encodeURIComponent(token)}`;
+    let installUrl = `${baseUrl}/api/auth/install?shop=${encodeURIComponent(shop)}&t=${encodeURIComponent(token)}&confirm=1`;
     if (validatedBase && validatedBase !== baseUrl) {
       installUrl += `&callback_base=${encodeURIComponent(validatedBase)}`;
     }
@@ -571,9 +571,10 @@ router.get(
 );
 
 /**
- * GET /api/auth/install?shop=...&t=...&callback_base=...
- * No auth. Validates signed token t, then redirects to Shopify OAuth for that shop.
- * callback_base (optional): use for redirect_uri when provided and allowed (needed when backend sees Host: localhost behind a tunnel).
+ * GET /api/auth/install?shop=...&t=...&callback_base=...&confirm=1
+ * No auth. Validates signed token t. If confirm=1, shows a short instruction page so the user
+ * opens in incognito and logs into the correct store (avoids "wrong store" callback). Otherwise
+ * sets cookies and redirects to Shopify OAuth for that shop.
  */
 router.get(
   '/install',
@@ -581,6 +582,7 @@ router.get(
     const rawShop = req.query.shop;
     const shop = typeof rawShop === 'string' ? rawShop.trim().toLowerCase() : '';
     const token = typeof req.query.t === 'string' ? req.query.t.trim() : '';
+    const showConfirm = req.query.confirm === '1';
     const callbackBaseRaw =
       typeof req.query.callback_base === 'string' ? req.query.callback_base.trim() : '';
     const callbackBase = callbackBaseRaw ? validateCallbackBase(callbackBaseRaw) : null;
@@ -596,6 +598,57 @@ router.get(
       return res.redirect(
         `${baseUrl}/domains?reason=${encodeURIComponent(CONNECT_REASON.OAUTH_EXPIRED)}`
       );
+    }
+    if (showConfirm) {
+      const continuePath = `/api/auth/install?shop=${encodeURIComponent(parsed.shop)}&t=${encodeURIComponent(token)}`;
+      const continueQuery = callbackBase
+        ? `&callback_base=${encodeURIComponent(callbackBase)}`
+        : '';
+      const continueUrlRaw = continuePath + continueQuery;
+      const continueUrlEsc = continueUrlRaw
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      const shopEsc = parsed.shop
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+      const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Connect ${shopEsc} to RipX</title>
+  <style>
+    body{font-family:system-ui,sans-serif;max-width:440px;margin:48px auto;padding:24px;line-height:1.55;color:#1f2937}
+    h1{font-size:1.25rem;margin:0 0 12px}
+    p{margin:0 0 12px}
+    .tip{background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:14px 16px;margin:20px 0;font-size:0.9rem;color:#166534}
+    .tip strong{display:block;margin-bottom:6px}
+    .tip ul{margin:8px 0 0;padding-left:1.2em}
+    a.btn{display:inline-block;margin-top:8px;padding:12px 24px;background:#008060;color:#fff!important;text-decoration:none;border-radius:6px;font-weight:600;cursor:pointer}
+    a.btn:hover{background:#006e52}
+    .muted{font-size:0.85rem;color:#6b7280;margin-top:20px}
+  </style>
+</head>
+<body role="main">
+  <h1>Connect ${shopEsc} to RipX</h1>
+  <p>Click the button below to go to Shopify and approve access for this store.</p>
+  <div class="tip" role="alert">
+    <strong>To connect this store only</strong>
+    <ul>
+      <li>If you have <strong>multiple Shopify stores</strong>, open this page in an <strong>incognito/private</strong> window first.</li>
+      <li>When Shopify asks you to log in, log in to <strong>${shopEsc}</strong> so only that store is connected.</li>
+    </ul>
+  </div>
+  <a href="${continueUrlEsc}" class="btn">Continue to Shopify</a>
+  <p class="muted">This link expires in 10 minutes.</p>
+</body>
+</html>`;
+      res.send(html);
+      return;
     }
     const state = generateState(parsed.shop, parsed.email);
     res.cookie('shopify_oauth_state', state, OAUTH_COOKIE_OPTIONS);
@@ -701,27 +754,28 @@ router.get(
       return res.status(401).json({ success: false, error: 'Invalid OAuth signature' });
     }
 
-    // When state/cookie are missing (e.g. user came from Shopify grant/scope page), only treat as "wrong store" if we have a cookie for a different shop. Otherwise accept the callback so the store they just approved gets connected.
+    // When state/cookie are missing or callback shop differs from cookie: always accept the callback
+    // for the shop Shopify returned (HMAC is already verified). Add that store so we never block the user.
+    // If they had requested a different store (cookie), capture it so we can pass requested_shop in the redirect.
+    let requestedShopFromCookie = null;
     if (!parsed && !cookieOk) {
       if (shopCookie && shopCookieNorm && normalizedShop !== shopCookieNorm) {
-        const baseUrl = getOAuthRedirectBase(req);
-        logger.warn('OAuth callback: shop in callback differed from cookie (wrong store)', {
-          callbackShop: normalizedShop,
-          cookieShop: shopCookieNorm,
-        });
-        const { maxAge: _m, ...clearOpts } = OAUTH_COOKIE_OPTIONS;
-        res.clearCookie('shopify_oauth_state', clearOpts);
-        res.clearCookie('shopify_oauth_shop', clearOpts);
-        return res.redirect(
-          `${baseUrl}/domains?shop=${encodeURIComponent(shopCookieNorm)}&reason=${encodeURIComponent(CONNECT_REASON.OAUTH_WRONG_STORE)}`
+        requestedShopFromCookie = shopCookieNorm;
+        logger.info(
+          'OAuth callback: connecting shop from callback (differs from requested); will pass requested_shop for UI',
+          {
+            callbackShop: normalizedShop,
+            requestedShop: shopCookieNorm,
+          }
+        );
+      } else {
+        logger.info(
+          'OAuth callback: no state/cookie match (e.g. grant flow); accepting callback for shop',
+          {
+            shop: normalizedShop,
+          }
         );
       }
-      logger.info(
-        'OAuth callback: no state/cookie match (e.g. grant flow); accepting callback for shop',
-        {
-          shop: normalizedShop,
-        }
-      );
     }
 
     const tokenResponse = await fetch(`https://${shop}/admin/oauth/access_token`, {
@@ -827,6 +881,10 @@ router.get(
     res.clearCookie('shopify_oauth_shop', clearOpts);
 
     const baseUrl = getOAuthRedirectBase(req);
+    const appendRequested = url =>
+      requestedShopFromCookie
+        ? `${url}${url.includes('?') ? '&' : '?'}requested_shop=${encodeURIComponent(requestedShopFromCookie)}`
+        : url;
     if (storeLinkedToAnother) {
       auditLogService.logAuthAction(req, {
         action: 'shopify_connect_rejected_linked_to_another',
@@ -835,14 +893,21 @@ router.get(
         changes: { domain: normalizedShop },
       });
       res.redirect(
-        `${baseUrl}/connect?shop=${encodeURIComponent(normalizedShop)}&reason=${encodeURIComponent(CONNECT_REASON.STORE_LINKED_TO_ANOTHER)}`
+        appendRequested(
+          `${baseUrl}/connect?shop=${encodeURIComponent(normalizedShop)}&reason=${encodeURIComponent(CONNECT_REASON.STORE_LINKED_TO_ANOTHER)}`
+        )
       );
     } else if (linked) {
-      // Redirect to success page so embed flow can show "Close this tab" and notify opener; standalone will redirect to app from there
-      res.redirect(`${baseUrl}/connect/oauth-success?shop=${encodeURIComponent(normalizedShop)}`);
+      res.redirect(
+        appendRequested(
+          `${baseUrl}/connect/oauth-success?shop=${encodeURIComponent(normalizedShop)}`
+        )
+      );
     } else {
       res.redirect(
-        `${baseUrl}/connect?shop=${encodeURIComponent(normalizedShop)}&reason=${encodeURIComponent(CONNECT_REASON.SIGN_IN_TO_LINK)}`
+        appendRequested(
+          `${baseUrl}/connect?shop=${encodeURIComponent(normalizedShop)}&reason=${encodeURIComponent(CONNECT_REASON.SIGN_IN_TO_LINK)}`
+        )
       );
     }
   })

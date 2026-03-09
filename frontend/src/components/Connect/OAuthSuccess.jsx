@@ -5,7 +5,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { Page, Card, Text, Button, BlockStack, Box } from '@shopify/polaris';
 import { PageShell, LegalFooter } from '../Shared';
 import { ROUTES } from '../../constants';
@@ -17,6 +17,7 @@ export default function OAuthSuccess() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const shop = searchParams.get('shop') || '';
+  const requestedShop = searchParams.get('requested_shop') || '';
   const [notified, setNotified] = useState(false);
 
   const isOpenedInNewTab = typeof window !== 'undefined' && !!window.opener;
@@ -59,6 +60,22 @@ export default function OAuthSuccess() {
                   <Text as="h1" variant="headingLg">
                     Store connected
                   </Text>
+                  {requestedShop && requestedShop !== shop ? (
+                    <BlockStack gap="200">
+                      <Text as="p" variant="bodyMd" tone="subdued">
+                        We connected <strong>{shop}</strong>. You had requested{' '}
+                        <strong>{requestedShop}</strong>.
+                      </Text>
+                      <Text as="p" variant="bodyMd" tone="subdued">
+                        To add {requestedShop} too, go to{' '}
+                        <Link to={ROUTES.DOMAINS} style={{ fontWeight: 600 }}>
+                          My domains
+                        </Link>{' '}
+                        and use “Copy link for incognito” for that store (open the link in an
+                        incognito window and log in to {requestedShop} when Shopify asks).
+                      </Text>
+                    </BlockStack>
+                  ) : null}
                   {isOpenedInNewTab ? (
                     <>
                       <Text as="p" variant="bodyMd" tone="subdued">
