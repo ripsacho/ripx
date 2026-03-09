@@ -6102,17 +6102,21 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 .variant-visual-editor-embed-blocked-card {
-  padding: 0.75rem 1rem;
+  padding: 0.875rem 1rem;
   margin-bottom: 0.75rem;
   border-radius: var(--radius-md);
   background: rgba(245, 158, 11, 0.1);
   border: 1px solid rgba(245, 158, 11, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: flex-start;
 }
 .variant-visual-editor-embed-blocked-card p {
-  margin: 0 0 0.25rem 0;
+  margin: 0;
 }
-.variant-visual-editor-embed-blocked-card p:last-child {
-  margin-bottom: 0;
+.variant-visual-editor-embed-blocked-card .Polaris-Button {
+  flex-shrink: 0;
 }
 
 .variant-visual-editor-single-layout {

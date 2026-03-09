@@ -180,6 +180,8 @@ function TestWizard({
     }
   }, [isDirty]);
   const [visualPreviewLoadState, setVisualPreviewLoadState] = useState('idle'); // 'idle' | 'loading' | 'loaded' | 'error'
+  const [visualPreviewRetryKey, setVisualPreviewRetryKey] = useState(0); // increment to force iframe remount on retry
+  const [visualPreviewLoadingSlow, setVisualPreviewLoadingSlow] = useState(false); // true after 3s in loading
   const [visualPreviewVariantIndex, setVisualPreviewVariantIndex] = useState(0);
   const [visualPreviewToast, setVisualPreviewToast] = useState(null);
   const [visualSnippetPanelExpanded, setVisualSnippetPanelExpanded] = useState(false);
@@ -886,12 +888,22 @@ function TestWizard({
     routeDomain,
   ]);
 
-  // Timeout fallback when iframe is blocked (e.g. X-Frame-Options) and onLoad never fires
+  // "Taking a while?" hint after 3s in loading state
+  useEffect(() => {
+    if (visualPreviewLoadState !== 'loading') {
+      setVisualPreviewLoadingSlow(false);
+      return;
+    }
+    const t = setTimeout(() => setVisualPreviewLoadingSlow(true), 3000);
+    return () => clearTimeout(t);
+  }, [visualPreviewLoadState]);
+
+  // Timeout fallback when iframe is blocked or slow (onLoad may never fire)
   useEffect(() => {
     if (visualPreviewLoadState !== 'loading') return;
     const t = setTimeout(() => {
       setVisualPreviewLoadState(prev => (prev === 'loading' ? 'error' : prev));
-    }, 3000);
+    }, 8000);
     return () => clearTimeout(t);
   }, [visualPreviewLoadState]);
 
@@ -909,10 +921,14 @@ function TestWizard({
     setChangingSelectorIndex(null);
   }, [visualPreviewVariantIndex]);
 
-  // Listen for selector from visual editor iframe (variant-specific, max 5 per variant, or replace when changing)
+  // Listen for selector from visual editor iframe and for preview-error (backend fallback page)
   useEffect(() => {
     function handleMessage(event) {
       try {
+        if (event.data?.type === 'ripx-preview-error') {
+          setVisualPreviewLoadState('error');
+          return;
+        }
         if (event.data?.type !== 'ripx-visual-selector' || typeof event.data.selector !== 'string')
           return;
         const sel = event.data.selector.trim();
@@ -5569,7 +5585,7 @@ function TestWizard({
                               : null;
                           const directPreviewUrl = fullPreviewUrl || baseUrl || '';
                           const iframeSrc = directPreviewUrl
-                            ? `${getApiBaseUrl()}/api/track/preview-document?url=${encodeURIComponent(directPreviewUrl)}&ab_visual_editor=1`
+                            ? `${getApiBaseUrl()}/track/preview-document?url=${encodeURIComponent(directPreviewUrl)}&ab_visual_editor=1`
                             : '';
                           const previewWithoutTestId = Boolean(baseUrl && !testId);
                           if (!baseUrl) {
@@ -5586,8 +5602,8 @@ function TestWizard({
                                   color="subdued"
                                   style={{ marginTop: '0.5rem' }}
                                 >
-                                  The preview loads your page directly. Add the RipX script to your
-                                  store to enable click-to-select elements.
+                                  Enter a Preview URL above or connect a store; the preview loads
+                                  with the RipX script so you can click to select elements.
                                 </Text>
                               </div>
                             );
@@ -5648,9 +5664,9 @@ function TestWizard({
                                 <div className="variant-visual-editor-preview-hint" role="status">
                                   <Text as="p" variant="bodySm" tone="subdued">
                                     {!testId && 'Save the test to see variant styling. '}
-                                    Element selection works when the RipX script is in your site’s{' '}
-                                    <code>&lt;head&gt;</code>. Add it via App settings →
-                                    Installation; then clicks in the preview will capture selectors.
+                                    The preview loads your store page with the RipX script so you
+                                    can click to select elements. For live tests, add the script via
+                                    App settings → Installation.
                                   </Text>
                                 </div>
                                 {variants.length > 1 && (
@@ -5681,8 +5697,18 @@ function TestWizard({
                                     role="alert"
                                   >
                                     <Text as="p" variant="bodySm" tone="subdued">
-                                      Preview could not be loaded. Check the URL and try again.
+                                      Preview could not be loaded. Check the preview URL above or
+                                      the store may be slow to respond.
                                     </Text>
+                                    <Button
+                                      size="slim"
+                                      onClick={() => {
+                                        setVisualPreviewLoadState('loading');
+                                        setVisualPreviewRetryKey(k => k + 1);
+                                      }}
+                                    >
+                                      Try again
+                                    </Button>
                                   </div>
                                 )}
                                 <div className="variant-visual-editor-preview-wrap">
@@ -5695,17 +5721,25 @@ function TestWizard({
                                       <Text as="p" variant="bodySm" tone="subdued">
                                         Loading preview…
                                       </Text>
+                                      {visualPreviewLoadingSlow && (
+                                        <Text as="p" variant="bodySm" tone="subdued">
+                                          Taking a while? Check the preview URL or try again in a
+                                          moment.
+                                        </Text>
+                                      )}
                                     </div>
                                   )}
-                                  <iframe
-                                    key={`visual-preview-iframe-${safeVisualIndex}-${iframeSrc}`}
-                                    title={`Visual editor: ${previewVariant?.name || `Variant ${safeVisualIndex + 1}`}`}
-                                    src={iframeSrc}
-                                    className="variant-visual-editor-preview-iframe"
-                                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-                                    onLoad={() => setVisualPreviewLoadState('loaded')}
-                                    onError={() => setVisualPreviewLoadState('error')}
-                                  />
+                                  {!showEmbedBlocked && (
+                                    <iframe
+                                      key={`visual-preview-iframe-${safeVisualIndex}-${iframeSrc}-${visualPreviewRetryKey}`}
+                                      title={`Visual editor: ${previewVariant?.name || `Variant ${safeVisualIndex + 1}`}`}
+                                      src={iframeSrc}
+                                      className="variant-visual-editor-preview-iframe"
+                                      sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                                      onLoad={() => setVisualPreviewLoadState('loaded')}
+                                      onError={() => setVisualPreviewLoadState('error')}
+                                    />
+                                  )}
                                   {visualSnippetPanelExpanded && (
                                     <div
                                       className="variant-visual-editor-preview-blocking-overlay"

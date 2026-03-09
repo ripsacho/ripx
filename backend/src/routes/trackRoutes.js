@@ -246,7 +246,7 @@ router.get(
 );
 
 const PREVIEW_FALLBACK_HTML =
-  '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><script>try{window.parent.postMessage({type:"ripx-preview-error"},"*");}catch(e){}</script><p>Loading preview…</p></body></html>';
+  '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Preview unavailable</title></head><body style="margin:0;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f3f4f6;color:#6b7280;"><script>try{window.parent.postMessage({type:"ripx-preview-error"},"*");}catch(e){}</script><p style="margin:0;font-size:0.9375rem;">Preview unavailable. Check the URL or try again.</p></body></html>';
 
 function sendPreviewFallback(res) {
   res
@@ -254,6 +254,26 @@ function sendPreviewFallback(res) {
     .set('Content-Type', 'text/html; charset=utf-8')
     .set('Cache-Control', 'no-store')
     .send(PREVIEW_FALLBACK_HTML);
+}
+
+/** Reject private/loopback hostnames for preview-document to reduce SSRF risk. In development, localhost is allowed. */
+function isPrivateOrUnsafeHost(hostname) {
+  if (!hostname || typeof hostname !== 'string') {return true;}
+  const h = hostname.toLowerCase().trim();
+  const isDev = process.env.NODE_ENV !== 'production';
+  if (h === 'localhost' || h.endsWith('.localhost') || h === '127.0.0.1') {
+    return isDev ? false : true;
+  }
+  const parts = h.split('.');
+  if (parts.length === 4 && parts.every(p => /^\d+$/.test(p))) {
+    const [a, b] = parts.map(Number);
+    if (a === 10) {return true;}
+    if (a === 172 && b >= 16 && b <= 31) {return true;}
+    if (a === 192 && b === 168) {return true;}
+    if (a === 127) {return true;}
+    if (a === 169 && b === 254) {return true;}
+  }
+  return false;
 }
 
 /**
@@ -348,6 +368,12 @@ router.get(
       return;
     }
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      sendPreviewFallback(res);
+      return;
+    }
+    const hostname = parsed.hostname || parsed.host || '';
+    if (isPrivateOrUnsafeHost(hostname)) {
+      logger.warn('Preview document: rejected private or unsafe host', { hostname });
       sendPreviewFallback(res);
       return;
     }
