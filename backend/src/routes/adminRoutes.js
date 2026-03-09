@@ -20,7 +20,15 @@ const { sensitiveAdminLimiter } = require('../middleware/sensitiveAdminLimiter')
 const { PERMISSIONS } = require('../permissions');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const { sendSuccess } = require('../utils/response');
-const { HTTP_STATUS, PLATFORM_ROLE_VALUES, PLATFORM_ROLES } = require('../constants');
+const {
+  HTTP_STATUS,
+  PLATFORM_ROLE_VALUES,
+  PLATFORM_ROLES,
+  KV_KEYS,
+  PAGINATION,
+  KV_VALUE_MAX_BYTES,
+  SETTINGS_BOUNDS,
+} = require('../constants');
 const {
   getByDomain,
   getByEmail,
@@ -237,6 +245,10 @@ router.post(
   })
 );
 
+/** Max lengths for send-announcement (align with mailProcessService). */
+const ANNOUNCEMENT_MAX_SUBJECT_LENGTH = 500;
+const ANNOUNCEMENT_MAX_BODY_BYTES = 200 * 1024;
+
 /**
  * POST /api/admin/send-announcement
  * Send announcement email to all accepted standalone users. Body: { subject, bodyHtml, bodyText }.
@@ -244,9 +256,41 @@ router.post(
 router.post(
   '/send-announcement',
   asyncHandler(async (req, res) => {
-    const subject = req.body?.subject || 'Announcement from RipX';
-    const bodyHtml = req.body?.bodyHtml || req.body?.body || '';
-    const bodyText = req.body?.bodyText || '';
+    let subject =
+      req.body?.subject !== undefined && req.body?.subject !== null
+        ? String(req.body.subject)
+        : 'Announcement from RipX';
+    const bodyHtml =
+      req.body?.bodyHtml !== undefined && req.body?.bodyHtml !== null
+        ? String(req.body.bodyHtml)
+        : req.body?.body !== undefined && req.body?.body !== null
+          ? String(req.body.body)
+          : '';
+    const bodyText =
+      req.body?.bodyText !== undefined && req.body?.bodyText !== null
+        ? String(req.body.bodyText)
+        : '';
+    subject = subject.trim();
+    if (subject.length > ANNOUNCEMENT_MAX_SUBJECT_LENGTH) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        error: `Subject must be at most ${ANNOUNCEMENT_MAX_SUBJECT_LENGTH} characters`,
+      });
+    }
+    const bodyHtmlBytes = Buffer.byteLength(bodyHtml, 'utf8');
+    const bodyTextBytes = Buffer.byteLength(bodyText, 'utf8');
+    if (bodyHtmlBytes > ANNOUNCEMENT_MAX_BODY_BYTES) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        error: `HTML body must be at most ${Math.round(ANNOUNCEMENT_MAX_BODY_BYTES / 1024)}KB`,
+      });
+    }
+    if (bodyTextBytes > ANNOUNCEMENT_MAX_BODY_BYTES) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        error: `Plain text body must be at most ${Math.round(ANNOUNCEMENT_MAX_BODY_BYTES / 1024)}KB`,
+      });
+    }
     const emails = await standaloneUser.listAcceptedEmails();
     if (emails.length === 0) {
       return sendSuccess(res, HTTP_STATUS.OK, { sent: 0, message: 'No users to email' });
@@ -301,7 +345,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const raw = (req.query.email || '').trim();
     const email = raw.toLowerCase();
-    if (!email || !email.includes('@')) {
+    if (!email || !validators.isValidEmail(email)) {
       return res.status(400).json({ success: false, error: 'Valid email required' });
     }
     const user = await getByEmail(email);
@@ -349,8 +393,16 @@ router.get(
 router.get(
   '/users',
   asyncHandler(async (req, res) => {
-    const { limit = 50, offset = 0, status: statusFilter, q: search } = req.query;
-    const limitNum = Math.min(parseInt(limit, 10) || 50, 200);
+    const {
+      limit = PAGINATION.ADMIN_DEFAULT_LIMIT,
+      offset = 0,
+      status: statusFilter,
+      q: search,
+    } = req.query;
+    const limitNum = Math.min(
+      parseInt(limit, 10) || PAGINATION.ADMIN_DEFAULT_LIMIT,
+      PAGINATION.ADMIN_MAX_LIMIT
+    );
     const offsetNum = Math.max(0, parseInt(offset, 10) || 0);
 
     const conditions = ["t.platform = 'shopify'", 't.account_id = u.account_id'];
@@ -1683,11 +1735,23 @@ router.put(
     const body = req.body || {};
     const minSampleSize =
       body.min_sample_size !== undefined && body.min_sample_size !== null
-        ? Math.max(10, Math.min(10000, parseInt(body.min_sample_size, 10) || 100))
+        ? Math.max(
+            SETTINGS_BOUNDS.MIN_SAMPLE_SIZE,
+            Math.min(
+              SETTINGS_BOUNDS.MAX_SAMPLE_SIZE,
+              parseInt(body.min_sample_size, 10) || SETTINGS_BOUNDS.DEFAULT_MIN_SAMPLE_SIZE
+            )
+          )
         : null;
     const confidenceLevel =
       body.confidence_level !== undefined && body.confidence_level !== null
-        ? Math.max(0.8, Math.min(1, parseFloat(body.confidence_level) || 0.95))
+        ? Math.max(
+            SETTINGS_BOUNDS.CONFIDENCE_LEVEL_MIN,
+            Math.min(
+              SETTINGS_BOUNDS.CONFIDENCE_LEVEL_MAX,
+              parseFloat(body.confidence_level) || SETTINGS_BOUNDS.DEFAULT_CONFIDENCE_LEVEL
+            )
+          )
         : null;
     const autoStopEnabled =
       body.auto_stop_enabled !== undefined
@@ -2168,11 +2232,12 @@ router.delete(
 router.get(
   '/config/legal',
   asyncHandler(async (_req, res) => {
-    const kv = await query(
-      "SELECT key, value FROM key_value_store WHERE key IN ('config.terms_url', 'config.privacy_url')"
-    );
-    const termsUrl = kv.rows.find(r => r.key === 'config.terms_url')?.value || null;
-    const privacyUrl = kv.rows.find(r => r.key === 'config.privacy_url')?.value || null;
+    const kv = await query('SELECT key, value FROM key_value_store WHERE key IN ($1, $2)', [
+      KV_KEYS.TERMS_URL,
+      KV_KEYS.PRIVACY_URL,
+    ]);
+    const termsUrl = kv.rows.find(r => r.key === KV_KEYS.TERMS_URL)?.value || null;
+    const privacyUrl = kv.rows.find(r => r.key === KV_KEYS.PRIVACY_URL)?.value || null;
     return sendSuccess(res, HTTP_STATUS.OK, {
       termsUrl:
         termsUrl !== null && termsUrl !== undefined && String(termsUrl).trim() !== ''
@@ -2197,17 +2262,17 @@ router.put(
     if (termsUrl !== undefined) {
       const val = termsUrl === null || termsUrl === '' ? '' : String(termsUrl).trim();
       await query(
-        `INSERT INTO key_value_store (key, value, updated_at) VALUES ('config.terms_url', $1, NOW())
-         ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()`,
-        [val]
+        `INSERT INTO key_value_store (key, value, updated_at) VALUES ($1, $2, NOW())
+         ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()`,
+        [KV_KEYS.TERMS_URL, val]
       );
     }
     if (privacyUrl !== undefined) {
       const val = privacyUrl === null || privacyUrl === '' ? '' : String(privacyUrl).trim();
       await query(
-        `INSERT INTO key_value_store (key, value, updated_at) VALUES ('config.privacy_url', $1, NOW())
-         ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()`,
-        [val]
+        `INSERT INTO key_value_store (key, value, updated_at) VALUES ($1, $2, NOW())
+         ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()`,
+        [KV_KEYS.PRIVACY_URL, val]
       );
     }
     await auditLogService.logAdminAction(req, {
@@ -2216,11 +2281,12 @@ router.put(
       action: 'set',
       changes: { terms_url: termsUrl !== undefined, privacy_url: privacyUrl !== undefined },
     });
-    const kv = await query(
-      "SELECT key, value FROM key_value_store WHERE key IN ('config.terms_url', 'config.privacy_url')"
-    );
-    const t = kv.rows.find(r => r.key === 'config.terms_url')?.value || null;
-    const p = kv.rows.find(r => r.key === 'config.privacy_url')?.value || null;
+    const kv = await query('SELECT key, value FROM key_value_store WHERE key IN ($1, $2)', [
+      KV_KEYS.TERMS_URL,
+      KV_KEYS.PRIVACY_URL,
+    ]);
+    const t = kv.rows.find(r => r.key === KV_KEYS.TERMS_URL)?.value || null;
+    const p = kv.rows.find(r => r.key === KV_KEYS.PRIVACY_URL)?.value || null;
     return sendSuccess(res, HTTP_STATUS.OK, {
       termsUrl: t !== null && t !== undefined && String(t).trim() !== '' ? String(t).trim() : null,
       privacyUrl:
@@ -2504,6 +2570,12 @@ router.put(
     }
     const value =
       req.body?.value !== null && req.body?.value !== undefined ? String(req.body.value) : '';
+    if (Buffer.byteLength(value, 'utf8') > KV_VALUE_MAX_BYTES) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        error: `Value must be at most ${Math.round(KV_VALUE_MAX_BYTES / 1024)}KB`,
+      });
+    }
     await query(
       `INSERT INTO key_value_store (key, value, updated_at)
        VALUES ($1, $2, NOW())
@@ -2645,8 +2717,8 @@ router.put(
 );
 
 const { getMaintenanceMode, MAINTENANCE_KEY } = require('../utils/maintenanceMode');
-const MAINTENANCE_MESSAGE_KEY = 'config.maintenance_message';
-const ANNOUNCEMENT_BANNER_KEY = 'config.announcement_banner';
+const MAINTENANCE_MESSAGE_KEY = KV_KEYS.MAINTENANCE_MESSAGE;
+const ANNOUNCEMENT_BANNER_KEY = KV_KEYS.ANNOUNCEMENT_BANNER;
 
 /**
  * GET /api/admin/maintenance

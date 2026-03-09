@@ -17,6 +17,7 @@ import {
 import { ExportIcon } from '@shopify/polaris-icons';
 import { useNavigate } from 'react-router-dom';
 import { PageShell } from '../Shared';
+import { useAppRoutes } from '../../hooks';
 import { apiGet } from '../../services';
 import { getDefaultExportFormat, getDefaultAnalyticsDateRange } from '../../utils/preferences';
 import styles from './Export.module.css';
@@ -49,12 +50,13 @@ function Export({ testId }) {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState(null);
   const navigate = useNavigate();
+  const routes = useAppRoutes();
 
   useEffect(() => {
     if (!testId || testId === 'undefined') {
-      navigate('/tests');
+      navigate(routes.tests);
     }
-  }, [testId, navigate]);
+  }, [testId, navigate, routes.tests]);
 
   const handleExport = async () => {
     if (!testId || testId === 'undefined') return;
@@ -117,8 +119,8 @@ function Export({ testId }) {
         title="Export Report"
         subtitle="Download test analytics, funnel, and events"
         breadcrumbs={[
-          { content: 'All Tests', onAction: () => navigate('/tests') },
-          { content: 'Test Details', onAction: () => navigate(`/tests/${testId}`) },
+          { content: 'All Tests', onAction: () => navigate(routes.tests) },
+          { content: 'Test Details', onAction: () => navigate(routes.testDetail(testId)) },
           { content: 'Export' },
         ]}
       >

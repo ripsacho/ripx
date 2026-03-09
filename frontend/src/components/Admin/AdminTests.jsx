@@ -108,7 +108,10 @@ export default function AdminTests() {
     t.variantCount,
     new Date(t.updatedAt).toLocaleDateString(),
     <InlineStack key={`actions-${t.id}`} gap="200" blockAlign="center">
-      <Button size="slim" url={ROUTES.TEST_DETAIL(t.id)}>
+      <Button
+        size="slim"
+        url={t.shopDomain ? ROUTES.appTestDetail(t.shopDomain, t.id) : ROUTES.TEST_DETAIL(t.id)}
+      >
         View
       </Button>
       {t.status === 'running' && (

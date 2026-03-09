@@ -3,7 +3,7 @@
  *
  * Lists in-app notifications for the current shop with mark-read actions.
  */
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { Page, Button, BlockStack, Text, Spinner, Banner, Icon } from '@shopify/polaris';
 import { NotificationIcon } from '@shopify/polaris-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -60,6 +60,14 @@ function Notifications() {
   const notifications = data?.notifications ?? [];
   const unreadCount = data?.unreadCount ?? 0;
 
+  useEffect(() => {
+    const prev = document.title;
+    document.title = 'Notifications - RipX';
+    return () => {
+      document.title = prev;
+    };
+  }, []);
+
   return (
     <PageShell className={styles.notificationsPage}>
       <Page title="" subtitle="">
@@ -71,7 +79,7 @@ function Notifications() {
             <div style={{ flex: 1, minWidth: 0 }}>
               <h1 className={styles.notificationsHeroTitle}>Notifications</h1>
               <p className={styles.notificationsHeroSubtitle}>
-                In-app alerts for your store: test completion, significance updates, and system
+                In-app alerts for your domains: test completion, significance updates, and system
                 messages. Mark as read or clear all.
               </p>
             </div>

@@ -34,7 +34,8 @@ class NotificationService {
     `;
 
     const logger = require('../utils/logger');
-    logger.info('Email notification', { to: recipientEmail, subject });
+    const toSafe = recipientEmail ? `${recipientEmail.substring(0, 6)}…` : '';
+    logger.info('Email notification', { to: toSafe, subject });
 
     // In production:
     // await emailService.send({
@@ -69,7 +70,8 @@ class NotificationService {
     `;
 
     const logger = require('../utils/logger');
-    logger.info('Significance notification', { to: recipientEmail, subject });
+    const toSafe = recipientEmail ? `${recipientEmail.substring(0, 6)}…` : '';
+    logger.info('Significance notification', { to: toSafe, subject });
   }
 
   /**

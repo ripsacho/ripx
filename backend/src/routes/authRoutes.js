@@ -9,7 +9,7 @@ const express = require('express');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { upsertShopSession } = require('../models/shopSession');
-const { upsertShopifyTenant } = require('../models/tenant');
+const { upsertShopifyTenant, getTenantByDomain } = require('../models/tenant');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const emailVerificationService = require('../services/emailVerificationService');
 const loginOtpService = require('../services/loginOtpService');
@@ -21,7 +21,7 @@ const { isUserStatusBlocked, isUserStatusAllowedForSession } = require('../const
 const logger = require('../utils/logger');
 
 const router = express.Router();
-const { query } = require('../utils/database');
+const { query, withTransaction } = require('../utils/database');
 
 const EMAIL_SESSION_EXPIRY_DAYS = 30;
 const EMAIL_SESSION_EXPIRY_HOURS = 24;
@@ -48,14 +48,58 @@ function isValidShopDomain(shop) {
 }
 
 const STATE_SEP = '|';
+const EMAIL_SESSION_COOKIE = 'ripx_email_session';
 
-function generateState(shop) {
+/** Connect page ?reason= values (must match frontend ROUTES.CONNECT_REASON) */
+const CONNECT_REASON = {
+  SIGN_IN_TO_CONNECT: 'sign_in_to_connect',
+  SIGN_IN_TO_LINK: 'sign_in_to_link',
+  STORE_LINKED_TO_ANOTHER: 'store_linked_to_another',
+  OAUTH_EXPIRED: 'oauth_expired',
+  /** Callback shop differed from OAuth-started shop → redirect to Domains to retry */
+  OAUTH_WRONG_STORE: 'oauth_wrong_store',
+};
+
+const OAUTH_COOKIE_OPTIONS = {
+  httpOnly: true,
+  sameSite: 'lax',
+  secure: process.env.NODE_ENV === 'production',
+  maxAge: 10 * 60 * 1000,
+  path: '/',
+};
+
+/**
+ * Decode state payload and return email segment (no signature check).
+ * Used when state is accepted via cookie match. Email is everything after the second separator
+ * so emails containing STATE_SEP (|) parse correctly.
+ */
+function getEmailFromStatePayload(state) {
+  if (!state || state.indexOf('.') === -1) {
+    return '';
+  }
+  try {
+    const b64 = state.split('.')[0].replace(/-/g, '+').replace(/_/g, '/');
+    const payload = Buffer.from(b64, 'base64').toString('utf8');
+    const segs = payload.split(STATE_SEP);
+    if (segs.length < 3) {
+      return '';
+    }
+    const emailPart = segs.slice(2).join(STATE_SEP);
+    return (emailPart || '').trim().toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function generateState(shop, email = '') {
+  const secret = process.env.SHOPIFY_API_SECRET;
+  if (!secret) {
+    throw new Error('SHOPIFY_API_SECRET is required for Shopify OAuth state signing');
+  }
   const nonce = crypto.randomBytes(16).toString('hex');
-  const payload = nonce + STATE_SEP + shop;
-  const sig = crypto
-    .createHmac('sha256', process.env.SHOPIFY_API_SECRET || process.env.JWT_SECRET || '')
-    .update(payload)
-    .digest('hex');
+  const emailPart = (email && typeof email === 'string' ? email.trim().toLowerCase() : '') || '';
+  const payload = nonce + STATE_SEP + shop + STATE_SEP + emailPart;
+  const sig = crypto.createHmac('sha256', secret).update(payload).digest('hex');
   const payloadB64 = Buffer.from(payload, 'utf8')
     .toString('base64')
     .replace(/\+/g, '-')
@@ -64,7 +108,11 @@ function generateState(shop) {
   return payloadB64 + '.' + sig;
 }
 
-function verifyState(state, shop) {
+/**
+ * Verify signed OAuth state and parse payload. Returns { shop, email } or null if invalid.
+ * email is '' when not present (legacy state format).
+ */
+function verifyAndParseState(state, shop) {
   if (!state || !shop || !process.env.SHOPIFY_API_SECRET) {
     return null;
   }
@@ -89,21 +137,210 @@ function verifyState(state, shop) {
   ) {
     return null;
   }
-  const idx = payload.indexOf(STATE_SEP);
-  if (idx === -1) {
+  const segs = payload.split(STATE_SEP);
+  if (segs.length < 2) {
     return null;
   }
-  const shopFromState = payload.slice(idx + 1);
-  if (shopFromState !== shop) {
+  const shopFromState = segs[1];
+  if (shopFromState.trim().toLowerCase() !== shop.trim().toLowerCase()) {
     return null;
   }
-  return shopFromState;
+  // Email may contain STATE_SEP (|); take everything after second separator
+  const email = segs.length >= 3 ? segs.slice(2).join(STATE_SEP).trim().toLowerCase() : '';
+  return { shop: shopFromState, email };
 }
 
-function getAuthRedirectUrl(shop, state) {
+/**
+ * Allowed host patterns for request-derived redirect base (so redirect_uri always matches the host the user is on).
+ * Shopify requires redirect_uri and application url to have matching hosts.
+ */
+function getAllowedRedirectHosts() {
+  const hosts = new Set();
+  for (const envUrl of [
+    process.env.RIPX_OAUTH_REDIRECT_BASE,
+    process.env.FRONTEND_URL,
+    process.env.APP_URL,
+  ]) {
+    if (envUrl) {
+      try {
+        const u = new URL(envUrl.startsWith('http') ? envUrl : `https://${envUrl}`);
+        hosts.add(u.hostname.toLowerCase());
+      } catch {
+        // ignore invalid URL
+      }
+    }
+  }
+  // Optional: allow extra hosts that match Partner Dashboard (e.g. custom domain)
+  const extra = process.env.RIPX_OAUTH_ALLOWED_HOSTS || '';
+  extra.split(',').forEach(s => {
+    const h = s.trim().toLowerCase();
+    if (h) {
+      hosts.add(h);
+    }
+  });
+  hosts.add('localhost');
+  hosts.add('127.0.0.1');
+  return hosts;
+}
+
+/** Allowed host suffixes for tunnels (Cloudflare, ngrok). Host must end with one of these. */
+const ALLOWED_HOST_SUFFIXES = ['.trycloudflare.com', '.ngrok-free.app', '.ngrok.io', '.ngrok.app'];
+
+function isHostAllowed(host) {
+  if (!host || typeof host !== 'string') {
+    return false;
+  }
+  const h = host.toLowerCase().trim();
+  if (getAllowedRedirectHosts().has(h)) {
+    return true;
+  }
+  return ALLOWED_HOST_SUFFIXES.some(suffix => h.endsWith(suffix));
+}
+
+/**
+ * Get redirect base from the request (Host or X-Forwarded-Host) so redirect_uri matches the host the user is on.
+ * Shopify requires redirect_uri and application url to have matching hosts — using request host ensures that.
+ * Returns null if request host is not allowed.
+ * When behind a tunnel (e.g. cloudflared), Host is often localhost — then try Origin/Referer (browser sends page origin).
+ */
+function getOAuthRedirectBaseFromRequest(req) {
+  if (!req || !req.get) {
+    return null;
+  }
+
+  const tryHost = raw => {
+    if (!raw || typeof raw !== 'string') {
+      return null;
+    }
+    const s = raw.split(',')[0].trim();
+    let h;
+    try {
+      const u = new URL(s.startsWith('http') ? s : `https://${s}`);
+      h = u.hostname.toLowerCase();
+    } catch {
+      h = s.split(':')[0].toLowerCase();
+    }
+    if (!h) {
+      return null;
+    }
+    const isLocal = h === 'localhost' || h === '127.0.0.1';
+    if (isLocal) {
+      return null;
+    }
+    if (!isHostAllowed(h)) {
+      return null;
+    }
+    const protocol =
+      req.get('X-Forwarded-Proto') === 'https' || req.get('X-Forwarded-SSL') === 'on'
+        ? 'https'
+        : 'https';
+    return `${protocol}://${h}`.replace(/\/+$/, '');
+  };
+
+  // Prefer Host / X-Forwarded-Host (actual request host)
+  const host = req.get('X-Forwarded-Host') || req.get('Host') || '';
+  const h = host.split(',')[0].trim().split(':')[0];
+  if (h && h !== 'localhost' && h !== '127.0.0.1' && isHostAllowed(h)) {
+    const protocol =
+      req.get('X-Forwarded-Proto') === 'https' || req.get('X-Forwarded-SSL') === 'on'
+        ? 'https'
+        : req.protocol || 'https';
+    const port =
+      req.get('X-Forwarded-Port') ||
+      (req.socket && req.socket.address && req.socket.address().port);
+    const portSuffix = port && String(port) !== '80' && String(port) !== '443' ? `:${port}` : '';
+    return `${protocol}://${h}${portSuffix}`.replace(/\/+$/, '');
+  }
+
+  // When Host is localhost (tunnel/proxy), use Origin or Referer so redirect_uri matches the page the user is on
+  const origin = req.get('Origin') || req.get('Referer') || '';
+  const fromOrigin = tryHost(origin);
+  if (fromOrigin) {
+    return fromOrigin;
+  }
+
+  return null;
+}
+
+/**
+ * Base URL for OAuth redirect_uri and in-app redirects.
+ * Priority: RIPX_OAUTH_REDIRECT_BASE (must match Partner Dashboard) > request host / Origin > callback_base > APP_URL.
+ * Shopify requires redirect_uri and Application URL to have the same host — set RIPX_OAUTH_REDIRECT_BASE to your
+ * Partner Dashboard Application URL (e.g. https://splitter.echologyx.com) when it differs from where users open the app.
+ */
+function getOAuthRedirectBase(req = null) {
+  const strictBase = process.env.RIPX_OAUTH_REDIRECT_BASE;
+  if (strictBase && typeof strictBase === 'string') {
+    const validated = validateCallbackBase(strictBase.trim().replace(/\/+$/, ''));
+    if (validated) {
+      if (process.env.LOG_LEVEL === 'debug') {
+        logger.debug('OAuth redirect base from RIPX_OAUTH_REDIRECT_BASE', { base: validated });
+      }
+      return validated;
+    }
+  }
+
+  const fromRequest = req ? getOAuthRedirectBaseFromRequest(req) : null;
+  const base =
+    fromRequest ||
+    (process.env.FRONTEND_URL || process.env.APP_URL || '').replace(/\/$/, '') ||
+    'http://localhost:3000';
+  if (req && !fromRequest && (process.env.FRONTEND_URL || process.env.APP_URL)) {
+    const host = req.get('X-Forwarded-Host') || req.get('Host') || '';
+    if (host && (host.includes('localhost') || host.includes('127.0.0.1'))) {
+      logger.info('OAuth redirect base from APP_URL/FRONTEND_URL (request host was localhost)', {
+        base: base.replace(/\/$/, '').substring(0, 60) + (base.length > 60 ? '…' : ''),
+      });
+    }
+  }
+  if (process.env.LOG_LEVEL === 'debug' && req) {
+    const host = req.get('X-Forwarded-Host') || req.get('Host') || '';
+    logger.debug('OAuth redirect base', { fromRequest: !!fromRequest, requestHost: host, base });
+  }
+  return base;
+}
+
+/**
+ * Validate that a candidate callback base URL is allowed (same host as app or localhost in dev).
+ * Uses same allowlist as isHostAllowed so tunnel URLs (e.g. .trycloudflare.com) and RIPX_OAUTH_ALLOWED_HOSTS are accepted.
+ * Returns the normalized base (no trailing slash) or null if invalid.
+ */
+function validateCallbackBase(candidate) {
+  if (!candidate || typeof candidate !== 'string') {
+    return null;
+  }
+  const s = candidate.trim().replace(/\/+$/, '');
+  if (!s) {
+    return null;
+  }
+  let url;
+  try {
+    url = new URL(s.startsWith('http') ? s : `https://${s}`);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return null;
+  }
+  const host = url.hostname.toLowerCase();
+  if (!isHostAllowed(host)) {
+    return null;
+  }
+  const base = `${url.protocol}//${url.host}`.replace(/\/+$/, '');
+  return base;
+}
+
+function getAuthRedirectUrl(shop, state, callbackBaseOverride = null, req = null) {
   const apiKey = process.env.SHOPIFY_API_KEY;
   const scopes = process.env.SHOPIFY_SCOPES || '';
-  const redirectUri = `${process.env.APP_URL}/api/auth/callback`;
+  // Use RIPX_OAUTH_REDIRECT_BASE when set so redirect_uri always matches Partner Dashboard
+  const strictBase =
+    process.env.RIPX_OAUTH_REDIRECT_BASE && typeof process.env.RIPX_OAUTH_REDIRECT_BASE === 'string'
+      ? validateCallbackBase(process.env.RIPX_OAUTH_REDIRECT_BASE.trim().replace(/\/+$/, ''))
+      : null;
+  const validatedBase = callbackBaseOverride ? validateCallbackBase(callbackBaseOverride) : null;
+  const base = strictBase || validatedBase || getOAuthRedirectBase(req);
+  const redirectUri = `${base}/api/auth/callback`;
   const params = new URLSearchParams({
     client_id: apiKey,
     scope: scopes,
@@ -112,6 +349,72 @@ function getAuthRedirectUrl(shop, state) {
   });
 
   return `https://${shop}/admin/oauth/authorize?${params.toString()}`;
+}
+
+const INSTALL_TOKEN_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
+
+/**
+ * Create a signed one-time install token so the user can open a link in incognito;
+ * that link hits /auth/install which validates the token and redirects to Shopify for the intended shop only.
+ */
+function createInstallToken(shop, email) {
+  if (!shop || !email || !process.env.SHOPIFY_API_SECRET) {
+    return null;
+  }
+  const exp = Date.now() + INSTALL_TOKEN_EXPIRY_MS;
+  const payload = JSON.stringify({
+    shop: shop.trim().toLowerCase(),
+    email: email.trim().toLowerCase(),
+    exp,
+  });
+  const payloadB64 = Buffer.from(payload, 'utf8')
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+  const sig = crypto
+    .createHmac('sha256', process.env.SHOPIFY_API_SECRET)
+    .update(payload)
+    .digest('hex');
+  return payloadB64 + '.' + sig;
+}
+
+/**
+ * Verify install token and return { shop, email } or null. Ensures shop in token matches query param.
+ */
+function verifyInstallToken(token, shopFromQuery) {
+  if (!token || !shopFromQuery || !process.env.SHOPIFY_API_SECRET) {
+    return null;
+  }
+  const parts = token.split('.');
+  if (parts.length !== 2) {
+    return null;
+  }
+  const [payloadB64, sig] = parts;
+  const payload = Buffer.from(payloadB64.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString(
+    'utf8'
+  );
+  let data;
+  try {
+    data = JSON.parse(payload);
+  } catch {
+    return null;
+  }
+  const expectedSig = crypto
+    .createHmac('sha256', process.env.SHOPIFY_API_SECRET)
+    .update(payload)
+    .digest('hex');
+  if (sig !== expectedSig || !data.shop || !data.email || typeof data.exp !== 'number') {
+    return null;
+  }
+  if (data.exp < Date.now()) {
+    return null;
+  }
+  const shopNorm = shopFromQuery.trim().toLowerCase();
+  if (data.shop !== shopNorm) {
+    return null;
+  }
+  return { shop: data.shop, email: data.email };
 }
 
 function verifyOAuthHmac(query) {
@@ -133,10 +436,164 @@ function verifyOAuthHmac(query) {
   return crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(hmac));
 }
 
+/**
+ * Get email from email session (cookie or Authorization). Returns null if missing/invalid.
+ */
+function getEmailFromSession(req) {
+  const token =
+    req.cookies?.[EMAIL_SESSION_COOKIE] ||
+    req.headers?.authorization?.replace(/^Bearer\s+/i, '').trim();
+  if (!token || !process.env.JWT_SECRET) {
+    return null;
+  }
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (decoded.ripxtype === 'email_session' && decoded.email) {
+      return (decoded.email || '').trim().toLowerCase();
+    }
+  } catch (_) {
+    /* invalid or expired */
+  }
+  return null;
+}
+
+/**
+ * GET /api/auth/oauth-redirect-uri
+ * Returns the redirect_uri and base URL used for OAuth. Use this to verify they match
+ * Shopify Partner Dashboard → App setup → Application URL and Allowed redirection URL(s).
+ * If they don't match, set RIPX_OAUTH_REDIRECT_BASE to your Application URL (e.g. https://splitter.echologyx.com).
+ */
+router.get('/oauth-redirect-uri', (req, res) => {
+  const strictBase =
+    process.env.RIPX_OAUTH_REDIRECT_BASE && typeof process.env.RIPX_OAUTH_REDIRECT_BASE === 'string'
+      ? validateCallbackBase(process.env.RIPX_OAUTH_REDIRECT_BASE.trim().replace(/\/+$/, ''))
+      : null;
+  const base = strictBase || getOAuthRedirectBase(req);
+  const redirectUri = `${base}/api/auth/callback`;
+  res.json({
+    redirectUri,
+    base,
+    source: strictBase ? 'RIPX_OAUTH_REDIRECT_BASE' : 'request_or_app_url',
+    hint: 'Set Application URL and this redirect_uri in Shopify Partner Dashboard. If using a stable domain (e.g. splitter.echologyx.com), set RIPX_OAUTH_REDIRECT_BASE to that URL.',
+  });
+});
+
+/**
+ * GET /api/auth/start?shop=...
+ * Start Shopify OAuth when caller sends Authorization: Bearer <email_session_jwt>.
+ * Returns { redirectUrl } so frontend can navigate (cookie may not be set yet).
+ * Uses only req.query.shop (ignores X-Shopify-Shop-Domain and any other source).
+ */
+router.get(
+  '/start',
+  asyncHandler((req, res) => {
+    const rawShop = req.query.shop;
+    const shop = typeof rawShop === 'string' ? rawShop.trim().toLowerCase() : '';
+    const callbackBase =
+      typeof req.query.callback_base === 'string' ? req.query.callback_base.trim() : undefined;
+    if (!shop || !isValidShopDomain(shop)) {
+      return res.status(400).json({ success: false, error: 'Invalid shop domain' });
+    }
+    if (!process.env.SHOPIFY_API_KEY || !process.env.SHOPIFY_SCOPES || !process.env.APP_URL) {
+      return res.status(500).json({ success: false, error: 'OAuth configuration missing' });
+    }
+    const email = getEmailFromSession(req);
+    if (!email) {
+      return res.status(401).json({
+        success: false,
+        error: 'Sign in to connect a store',
+        code: 'SIGN_IN_REQUIRED',
+      });
+    }
+    const state = generateState(shop, email);
+    const oauthUrl = getAuthRedirectUrl(shop, state, callbackBase, req);
+    res.cookie('shopify_oauth_state', state, OAUTH_COOKIE_OPTIONS);
+    res.cookie('shopify_oauth_shop', shop, OAUTH_COOKIE_OPTIONS);
+    return res.json({ success: true, redirectUrl: oauthUrl });
+  })
+);
+
+/**
+ * GET /api/auth/install-link?shop=...&callback_base=...
+ * Returns a signed URL that when opened (e.g. in incognito) redirects to Shopify OAuth for that shop only.
+ * The returned URL uses the same base as redirect_uri (RIPX_OAUTH_REDIRECT_BASE when set) so cookies set on /auth/install
+ * are on the same domain as the callback and the flow completes correctly.
+ */
+router.get(
+  '/install-link',
+  asyncHandler((req, res) => {
+    const rawShop = req.query.shop;
+    const shop = typeof rawShop === 'string' ? rawShop.trim().toLowerCase() : '';
+    if (!shop || !isValidShopDomain(shop)) {
+      return res.status(400).json({ success: false, error: 'Invalid shop domain' });
+    }
+    const email = getEmailFromSession(req);
+    if (!email) {
+      return res
+        .status(401)
+        .json({ success: false, error: 'Sign in to connect a store', code: 'SIGN_IN_REQUIRED' });
+    }
+    const token = createInstallToken(shop, email);
+    if (!token) {
+      return res.status(500).json({ success: false, error: 'Could not create install link' });
+    }
+    // Use same base as redirect_uri so install and callback share domain (cookies then work)
+    const strictBase =
+      process.env.RIPX_OAUTH_REDIRECT_BASE &&
+      typeof process.env.RIPX_OAUTH_REDIRECT_BASE === 'string'
+        ? validateCallbackBase(process.env.RIPX_OAUTH_REDIRECT_BASE.trim().replace(/\/+$/, ''))
+        : null;
+    const callbackBaseRaw =
+      typeof req.query.callback_base === 'string' ? req.query.callback_base.trim() : '';
+    const validatedBase = callbackBaseRaw ? validateCallbackBase(callbackBaseRaw) : null;
+    const baseUrl = strictBase || validatedBase || getOAuthRedirectBase(req);
+    let installUrl = `${baseUrl}/api/auth/install?shop=${encodeURIComponent(shop)}&t=${encodeURIComponent(token)}`;
+    if (validatedBase && validatedBase !== baseUrl) {
+      installUrl += `&callback_base=${encodeURIComponent(validatedBase)}`;
+    }
+    return res.json({ success: true, url: installUrl });
+  })
+);
+
+/**
+ * GET /api/auth/install?shop=...&t=...&callback_base=...
+ * No auth. Validates signed token t, then redirects to Shopify OAuth for that shop.
+ * callback_base (optional): use for redirect_uri when provided and allowed (needed when backend sees Host: localhost behind a tunnel).
+ */
+router.get(
+  '/install',
+  asyncHandler((req, res) => {
+    const rawShop = req.query.shop;
+    const shop = typeof rawShop === 'string' ? rawShop.trim().toLowerCase() : '';
+    const token = typeof req.query.t === 'string' ? req.query.t.trim() : '';
+    const callbackBaseRaw =
+      typeof req.query.callback_base === 'string' ? req.query.callback_base.trim() : '';
+    const callbackBase = callbackBaseRaw ? validateCallbackBase(callbackBaseRaw) : null;
+    if (!shop || !isValidShopDomain(shop) || !token) {
+      const baseUrl = getOAuthRedirectBase(req);
+      return res.redirect(
+        `${baseUrl}/domains?reason=${encodeURIComponent(CONNECT_REASON.OAUTH_EXPIRED)}`
+      );
+    }
+    const parsed = verifyInstallToken(token, shop);
+    if (!parsed) {
+      const baseUrl = getOAuthRedirectBase(req);
+      return res.redirect(
+        `${baseUrl}/domains?reason=${encodeURIComponent(CONNECT_REASON.OAUTH_EXPIRED)}`
+      );
+    }
+    const state = generateState(parsed.shop, parsed.email);
+    res.cookie('shopify_oauth_state', state, OAUTH_COOKIE_OPTIONS);
+    res.cookie('shopify_oauth_shop', parsed.shop, OAUTH_COOKIE_OPTIONS);
+    const oauthUrl = getAuthRedirectUrl(parsed.shop, state, callbackBase, req);
+    return res.redirect(oauthUrl);
+  })
+);
+
 router.get(
   '/',
   asyncHandler((req, res) => {
-    const { shop } = req.query;
+    const { shop, callback_base: callbackBase } = req.query;
 
     if (!shop || !isValidShopDomain(shop)) {
       return res.status(400).json({ success: false, error: 'Invalid shop domain' });
@@ -151,23 +608,21 @@ router.get(
       return res.status(500).json({ success: false, error: 'OAuth configuration missing' });
     }
 
-    // Signed state (no cookies): works when callback is opened in top window and cookies from iframe aren't sent
-    const state = generateState(shop);
+    // Require email session: domain must be linked to a registered user
+    const email = getEmailFromSession(req);
+    if (!email) {
+      const baseUrl = getOAuthRedirectBase(req);
+      const redirectUrl = `${baseUrl}/connect?shop=${encodeURIComponent(shop.trim().toLowerCase())}&reason=${encodeURIComponent(CONNECT_REASON.SIGN_IN_TO_CONNECT)}`;
+      return res.redirect(redirectUrl);
+    }
 
-    res.cookie('shopify_oauth_state', state, {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 10 * 60 * 1000,
-    });
-    res.cookie('shopify_oauth_shop', shop, {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 10 * 60 * 1000,
-    });
+    // Signed state including email so callback can link tenant to user
+    const state = generateState(shop, email);
 
-    const oauthUrl = getAuthRedirectUrl(shop, state);
+    res.cookie('shopify_oauth_state', state, OAUTH_COOKIE_OPTIONS);
+    res.cookie('shopify_oauth_shop', shop, OAUTH_COOKIE_OPTIONS);
+
+    const oauthUrl = getAuthRedirectUrl(shop, state, callbackBase, req);
     // User must click: browsers block iframe from setting window.top.location without a user gesture
     const hrefSafe = oauthUrl
       .replace(/&/g, '&amp;')
@@ -214,11 +669,41 @@ router.get(
       return res.status(400).json({ success: false, error: 'Invalid shop domain' });
     }
 
-    // Prefer signed state (works when cookies from iframe aren't sent on redirect)
-    const verifiedShop = verifyState(state, shop);
-    const cookieOk = stateCookie && shopCookie && shop === shopCookie && state === stateCookie;
-    if (!verifiedShop && !cookieOk) {
-      return res.status(400).json({ success: false, error: 'Invalid OAuth state' });
+    const normalizedShop = shop.trim().toLowerCase();
+    let parsed = verifyAndParseState(state, shop);
+    if (!parsed && typeof state === 'string' && state.includes(' ')) {
+      const stateFixed = state.replace(/ /g, '+');
+      parsed = verifyAndParseState(stateFixed, shop);
+    }
+    const shopCookieNorm = (shopCookie || '').trim().toLowerCase();
+    const cookieOk =
+      stateCookie &&
+      shopCookie &&
+      normalizedShop === shopCookieNorm &&
+      (state === stateCookie ||
+        (typeof state === 'string' && state.replace(/ /g, '+') === stateCookie));
+    if (!parsed && !cookieOk) {
+      const baseUrl = getOAuthRedirectBase(req);
+      logger.warn(
+        'OAuth callback: invalid state (cookies may be missing if callback host differs from /auth/start)',
+        {
+          shop: normalizedShop,
+          hasStateCookie: !!stateCookie,
+          hasShopCookie: !!shopCookie,
+        }
+      );
+      // Callback shop differed from the shop we started OAuth for → send to Domains to retry (do not add the wrong store)
+      if (shopCookie && shopCookieNorm && normalizedShop !== shopCookieNorm) {
+        const { maxAge: _m, ...clearOpts } = OAUTH_COOKIE_OPTIONS;
+        res.clearCookie('shopify_oauth_state', clearOpts);
+        res.clearCookie('shopify_oauth_shop', clearOpts);
+        return res.redirect(
+          `${baseUrl}/domains?shop=${encodeURIComponent(shopCookieNorm)}&reason=${encodeURIComponent(CONNECT_REASON.OAUTH_WRONG_STORE)}`
+        );
+      }
+      return res.redirect(
+        `${baseUrl}/connect?shop=${encodeURIComponent(normalizedShop)}&reason=${encodeURIComponent(CONNECT_REASON.OAUTH_EXPIRED)}`
+      );
     }
 
     if (!verifyOAuthHmac(req.query)) {
@@ -241,24 +726,111 @@ router.get(
         status: tokenResponse.status,
         error: errorText,
       });
+      const baseUrl = getOAuthRedirectBase(req);
+      if (tokenResponse.status === 400) {
+        return res.redirect(
+          `${baseUrl}/connect?shop=${encodeURIComponent(normalizedShop)}&reason=${encodeURIComponent(CONNECT_REASON.OAUTH_EXPIRED)}`
+        );
+      }
       return res.status(500).json({ success: false, error: 'Token exchange failed' });
     }
 
     const tokenData = await tokenResponse.json();
 
     await upsertShopSession({
-      shopDomain: shop,
+      shopDomain: normalizedShop,
       accessToken: tokenData.access_token,
       scope: tokenData.scope,
     });
 
-    await upsertShopifyTenant(shop);
+    await upsertShopifyTenant(normalizedShop);
 
-    res.clearCookie('shopify_oauth_state');
-    res.clearCookie('shopify_oauth_shop');
+    const tenant = await getTenantByDomain(normalizedShop);
+    const stateEmail =
+      (parsed && parsed.email) || (cookieOk ? getEmailFromStatePayload(state) : '');
+    let linked = false;
+    let storeLinkedToAnother = false;
 
-    const redirectTo = process.env.APP_URL || '/';
-    res.redirect(`${redirectTo}/?shop=${shop}`);
+    if (stateEmail && tenant && emailVerificationService.isValidEmail(stateEmail)) {
+      const user = await userModel.getByEmail(stateEmail);
+      if (user && isUserStatusAllowedForSession(user.status)) {
+        const { ensureAccountForUser } = require('../models/standaloneUser');
+        const { accountId } = (await ensureAccountForUser(user.id)) || {};
+        if (accountId) {
+          // Only allow: (a) linking when account_id is null, or (b) re-auth when tenant.account_id equals current user's account
+          if (tenant.account_id !== null && tenant.account_id !== accountId) {
+            storeLinkedToAnother = true;
+          } else {
+            const didLink = await withTransaction(async client => {
+              const row = await client.query(
+                'SELECT id, account_id FROM tenants WHERE domain = $1 FOR UPDATE',
+                [normalizedShop]
+              );
+              const t = row.rows[0];
+              if (!t) {
+                return false;
+              }
+              if (t.account_id !== null && t.account_id !== accountId) {
+                return false;
+              }
+              if (t.account_id) {
+                const role = t.account_id === accountId ? 'owner' : 'member';
+                await client.query(
+                  `INSERT INTO user_domain_access (user_id, tenant_id, role) VALUES ($1, $2, $3)
+                   ON CONFLICT (user_id, tenant_id) DO UPDATE SET role = $3, updated_at = NOW()`,
+                  [user.id, t.id, role]
+                );
+              } else {
+                await client.query(
+                  'UPDATE tenants SET account_id = $1, updated_at = NOW() WHERE id = $2',
+                  [accountId, t.id]
+                );
+                await client.query(
+                  `INSERT INTO user_domain_access (user_id, tenant_id, role) VALUES ($1, $2, 'owner')
+                   ON CONFLICT (user_id, tenant_id) DO UPDATE SET role = 'owner', updated_at = NOW()`,
+                  [user.id, t.id]
+                );
+              }
+              return true;
+            });
+            if (didLink) {
+              linked = true;
+              const updatedTenant = await getTenantByDomain(normalizedShop);
+              auditLogService.logAuthAction(req, {
+                action: 'shopify_connect_linked',
+                actorId: stateEmail,
+                entityId: updatedTenant?.id,
+                changes: { domain: normalizedShop, accountId },
+              });
+            }
+          }
+        }
+      }
+    }
+
+    const { maxAge: _m, ...clearOpts } = OAUTH_COOKIE_OPTIONS;
+    res.clearCookie('shopify_oauth_state', clearOpts);
+    res.clearCookie('shopify_oauth_shop', clearOpts);
+
+    const baseUrl = getOAuthRedirectBase(req);
+    if (storeLinkedToAnother) {
+      auditLogService.logAuthAction(req, {
+        action: 'shopify_connect_rejected_linked_to_another',
+        actorId: stateEmail || 'unknown',
+        entityId: tenant?.id,
+        changes: { domain: normalizedShop },
+      });
+      res.redirect(
+        `${baseUrl}/connect?shop=${encodeURIComponent(normalizedShop)}&reason=${encodeURIComponent(CONNECT_REASON.STORE_LINKED_TO_ANOTHER)}`
+      );
+    } else if (linked) {
+      // Redirect to success page so embed flow can show "Close this tab" and notify opener; standalone will redirect to app from there
+      res.redirect(`${baseUrl}/connect/oauth-success?shop=${encodeURIComponent(normalizedShop)}`);
+    } else {
+      res.redirect(
+        `${baseUrl}/connect?shop=${encodeURIComponent(normalizedShop)}&reason=${encodeURIComponent(CONNECT_REASON.SIGN_IN_TO_LINK)}`
+      );
+    }
   })
 );
 
@@ -322,7 +894,7 @@ router.get(
   '/confirm-email',
   asyncHandler(async (req, res) => {
     const token = req.query?.token;
-    const frontendUrl = (process.env.FRONTEND_URL || process.env.APP_URL || '').replace(/\/$/, '');
+    const frontendUrl = getOAuthRedirectBase(req);
     const confirmResultPath = '/auth/confirm-result';
 
     const redirectToResult = (status, message) => {
@@ -541,6 +1113,16 @@ router.post(
       expiresIn,
     });
     auditLogService.logAuthAction(req, { action: 'login_success', actorId: payload.email });
+    const maxAgeMs = rememberMe
+      ? EMAIL_SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000
+      : EMAIL_SESSION_EXPIRY_HOURS * 60 * 60 * 1000;
+    res.cookie(EMAIL_SESSION_COOKIE, sessionToken, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: maxAgeMs,
+      path: '/',
+    });
     res.json({
       success: true,
       token: sessionToken,
@@ -629,6 +1211,17 @@ router.get(
       expiresIn,
     });
 
+    const maxAgeMs = rememberMe
+      ? EMAIL_SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000
+      : EMAIL_SESSION_EXPIRY_HOURS * 60 * 60 * 1000;
+    res.cookie(EMAIL_SESSION_COOKIE, sessionToken, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: maxAgeMs,
+      path: '/',
+    });
+
     if (redirectUri) {
       const url = new URL(redirectUri);
       url.searchParams.set('token', sessionToken);
@@ -642,6 +1235,42 @@ router.get(
       expiresIn,
       email: normalizedEmail,
     });
+  })
+);
+
+const LOGOUT_COOKIE_OPTIONS = {
+  path: '/',
+  httpOnly: true,
+  sameSite: 'lax',
+  secure: process.env.NODE_ENV === 'production',
+};
+
+function clearEmailSessionCookie(res) {
+  res.clearCookie(EMAIL_SESSION_COOKIE, LOGOUT_COOKIE_OPTIONS);
+}
+
+/**
+ * POST /api/auth/logout
+ * Clear email session cookie so OAuth start and other cookie-based flows don't use a stale session.
+ */
+router.post(
+  '/logout',
+  asyncHandler((req, res) => {
+    clearEmailSessionCookie(res);
+    res.status(200).json({ success: true });
+  })
+);
+
+/**
+ * GET /api/auth/logout
+ * Clear cookie and redirect to Connect (e.g. from "Log out" link in email).
+ */
+router.get(
+  '/logout',
+  asyncHandler((req, res) => {
+    clearEmailSessionCookie(res);
+    const baseUrl = getOAuthRedirectBase(req);
+    res.redirect(`${baseUrl}/connect`);
   })
 );
 

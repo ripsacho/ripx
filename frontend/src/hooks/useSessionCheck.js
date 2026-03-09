@@ -15,8 +15,9 @@ const VISIBILITY_DEBOUNCE_MS = INTERVALS.SESSION_CHECK_VISIBILITY_DEBOUNCE ?? 20
 
 /**
  * @param {boolean} enabled - When true, session checks run (user has creds and is not on a public path)
+ * @param {() => string | null} [getEndpoint] - Optional. Returns endpoint to call (e.g. '/admin/me' or '/me/domains'); return null to skip this check (avoids 401 on Domains when only shop in URL).
  */
-export function useSessionCheck(enabled) {
+export function useSessionCheck(enabled, getEndpoint = null) {
   const intervalRef = useRef(null);
   const timeoutRef = useRef(null);
   const lastVisibilityCheckRef = useRef(0);
@@ -28,7 +29,9 @@ export function useSessionCheck(enabled) {
     const initialDelayMs = INTERVALS.SESSION_CHECK_INITIAL_DELAY ?? 25 * 1000;
 
     const checkSession = () => {
-      apiGet('/admin/me').catch(() => {
+      const endpoint = typeof getEndpoint === 'function' ? getEndpoint() : '/admin/me';
+      if (!endpoint) return;
+      apiGet(endpoint).catch(() => {
         // 401 → interceptor clears auth storage and redirects to /connect
         // Other errors (network, etc.) are ignored for this background check
       });
@@ -73,5 +76,5 @@ export function useSessionCheck(enabled) {
       stopInterval();
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [enabled]);
+  }, [enabled, getEndpoint]);
 }

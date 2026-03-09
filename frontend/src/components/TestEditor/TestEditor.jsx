@@ -23,13 +23,14 @@ import { ArrowLeftIcon } from '@shopify/polaris-icons';
 import { PageShell } from '../Shared';
 import { apiGet, apiPut, unwrapData, getShopDomain, getPreviewDomain } from '../../services';
 import { buildPreviewUrl, resolvePreviewBaseUrl } from '../../utils/previewUrl';
-import { ROUTES } from '../../constants';
+import { useAppRoutes } from '../../hooks';
 import Toast from '../Toast/Toast';
 import styles from './TestEditor.module.css';
 
 export default function TestEditor() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const routes = useAppRoutes();
   const [test, setTest] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -43,7 +44,7 @@ export default function TestEditor() {
 
   useEffect(() => {
     if (!id || id === 'undefined') {
-      navigate(ROUTES.TESTS);
+      navigate(routes.tests);
       return;
     }
     apiGet(`/tests/${id}`)
@@ -64,7 +65,7 @@ export default function TestEditor() {
       })
       .catch(() => setTest(null))
       .finally(() => setLoading(false));
-  }, [id, navigate]);
+  }, [id, navigate, routes.tests]);
 
   const variants = test?.variants || [];
   const safeIndex = Math.min(Math.max(0, selectedVariantIndex), Math.max(0, variants.length - 1));
@@ -166,16 +167,23 @@ export default function TestEditor() {
 
   useEffect(() => {
     function handleMessage(event) {
-      if (event.data?.type === 'ripx-visual-selector' && typeof event.data.selector === 'string') {
-        const sel = event.data.selector.trim();
-        if (sel && navigator.clipboard?.writeText) {
-          navigator.clipboard.writeText(sel).then(
-            () => setToast({ message: `Selector copied: ${sel}`, type: 'success' }),
-            () => setToast({ message: `Selector: ${sel}`, type: 'info' })
-          );
-        } else {
-          setToast({ message: `Selector: ${sel}`, type: 'info' });
+      try {
+        if (
+          event.data?.type === 'ripx-visual-selector' &&
+          typeof event.data.selector === 'string'
+        ) {
+          const sel = event.data.selector.trim();
+          if (sel && navigator.clipboard?.writeText) {
+            navigator.clipboard.writeText(sel).then(
+              () => setToast({ message: `Selector copied: ${sel}`, type: 'success' }),
+              () => setToast({ message: `Selector: ${sel}`, type: 'info' })
+            );
+          } else {
+            setToast({ message: `Selector: ${sel}`, type: 'info' });
+          }
         }
+      } catch (_) {
+        // Ignore malformed or cross-origin messages
       }
     }
     window.addEventListener('message', handleMessage);
@@ -205,7 +213,7 @@ export default function TestEditor() {
         title="Visual & Code Editor"
         backAction={{
           content: 'Test',
-          onAction: () => navigate(ROUTES.TEST_DETAIL(id)),
+          onAction: () => navigate(routes.testDetail(id)),
           icon: ArrowLeftIcon,
         }}
       >

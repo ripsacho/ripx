@@ -1,4 +1,5 @@
 const analyticsService = require('./analytics');
+const { TEST_HEALTH } = require('../constants');
 
 /**
  * Test Health Score Service
@@ -81,12 +82,14 @@ class TestHealthService {
       }
     }
 
-    // Statistical significance check
+    // Statistical significance check (uses shop confidence level; significance.significant reflects that)
     if (test.significance) {
-      if (test.significance.pValue > 0.05) {
+      if (!test.significance.significant) {
         score -= 10;
-        issues.push('Not statistically significant (p-value > 0.05)');
-        recommendations.push('Wait for more data to reach significance');
+        issues.push('Not statistically significant yet');
+        recommendations.push(
+          'Wait for more data to reach significance (threshold uses your Settings confidence level)'
+        );
       }
     } else if (test.status === 'running') {
       recommendations.push('Test is running - waiting for statistical significance');
@@ -95,7 +98,7 @@ class TestHealthService {
     // Conversion rate check
     if (variants && variants.length > 0) {
       const hasZeroConversions = variants.some(
-        v => (v.conversions || 0) === 0 && (v.visitors || 0) > 50
+        v => (v.conversions || 0) === 0 && (v.visitors || 0) > TEST_HEALTH.MIN_VISITORS_PER_VARIANT
       );
       if (hasZeroConversions) {
         score -= 15;

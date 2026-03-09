@@ -24,6 +24,8 @@ export const STORAGE_KEYS = {
   SHOP_DOMAIN: 'shopDomain',
   CURRENT_STORE: 'ripx_current_store', // Multi-store: selected domain when account has multiple
   ANNOUNCEMENT_DISMISSED: 'ripx_announcement_dismissed', // Dismissed announcement banner text
+  /** Set before /auth/start so 401 interceptor does not overwrite Shopify OAuth redirect */
+  OAUTH_REDIRECTING: 'ripx_oauth_redirecting',
 };
 
 /** Intervals (ms) */
@@ -35,6 +37,8 @@ export const INTERVALS = {
   SESSION_CHECK_INITIAL_DELAY: 25 * 1000, // 25 seconds
   /** Min ms between visibility-triggered session checks (debounce tab focus) */
   SESSION_CHECK_VISIBILITY_DEBOUNCE: 2000,
+  /** Initial auth check: max wait before showing app or failing (avoids infinite loader) */
+  AUTH_CHECK_TIMEOUT_MS: 10_000,
 };
 
 /** App metadata */

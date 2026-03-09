@@ -9,7 +9,7 @@ import { ProductIcon } from '@shopify/polaris-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { PageShell } from '../Shared';
 import { apiPost, isStandaloneMode, unwrapData } from '../../services';
-import { useInvalidateTests } from '../../hooks';
+import { useInvalidateTests, useAppRoutes } from '../../hooks';
 import { STANDALONE_TEST_TYPE_IDS } from '../../constants';
 import TestWizard from '../TestWizard/TestWizard';
 import styles from './TestCreator.module.css';
@@ -33,6 +33,7 @@ function TestCreator() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const invalidateTests = useInvalidateTests();
+  const routes = useAppRoutes();
   const [searchParams] = useSearchParams();
   const rawTemplate = searchParams.get('type');
   const validSet = isStandaloneMode() ? STANDALONE_TEMPLATES : SHOPIFY_TEMPLATES;
@@ -57,7 +58,7 @@ function TestCreator() {
         // Pre-populate cache so TestDetail shows correct data immediately (avoids stale variant count)
         queryClient.setQueryData(['tests', testData.id], testData);
         invalidateTests();
-        navigate(`/tests/${testData.id}`, { state: { createdTest: testData } });
+        navigate(routes.testDetail(testData.id), { state: { createdTest: testData } });
       } else {
         throw new Error('Invalid response: test not returned');
       }
@@ -108,7 +109,7 @@ function TestCreator() {
               initialStep={initialTemplateForWizard ? 2 : 1}
               submitLabel="Create Test"
               onSubmit={handleSubmit}
-              onCancel={() => navigate('/tests')}
+              onCancel={() => navigate(routes.tests)}
             />
           </div>
         </div>

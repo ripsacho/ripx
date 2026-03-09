@@ -33,7 +33,7 @@ import styles from './Analytics.module.css';
 import { getTestTypeDisplay } from '../../utils/testType';
 import { setupDataTableButtonStyling } from '../../utils/dataTableStyles';
 import { apiPut } from '../../services';
-import { useAnalyticsDashboard, useInvalidateAnalytics } from '../../hooks';
+import { useAnalyticsDashboard, useInvalidateAnalytics, useAppRoutes } from '../../hooks';
 import { MetricCard, MetricGrid, TooltipWrapper, CustomTabs } from '../Shared';
 import {
   LineChart,
@@ -71,6 +71,7 @@ const CHART_TOOLTIP_STYLE = {
 function Analytics() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const routes = useAppRoutes();
   const [segmentDevice, setSegmentDevice] = useState('all');
   const [segmentCountry, setSegmentCountry] = useState('all');
   const [selectedTab, setSelectedTab] = useState(0);
@@ -95,9 +96,9 @@ function Analytics() {
 
   useEffect(() => {
     if (!id || id === 'undefined') {
-      navigate('/tests');
+      navigate(routes.tests);
     }
-  }, [id, navigate]);
+  }, [id, navigate, routes.tests]);
 
   useEffect(() => {
     return setupDataTableButtonStyling();
@@ -138,13 +139,13 @@ function Analytics() {
           title={testInfo?.name || 'Test Analytics'}
           subtitle="Analytics"
           breadcrumbs={[
-            { content: 'All Tests', onAction: () => navigate('/tests') },
+            { content: 'All Tests', onAction: () => navigate(routes.tests) },
             testInfo?.id
               ? {
                   content: testInfo.name || 'Test Details',
-                  onAction: () => navigate(`/tests/${testInfo.id}`),
+                  onAction: () => navigate(routes.testDetail(testInfo.id)),
                 }
-              : { content: 'Test Details', onAction: () => navigate(`/tests/${id}`) },
+              : { content: 'Test Details', onAction: () => navigate(routes.testDetail(id)) },
           ]}
           primaryAction={{
             content: 'Retry',
@@ -298,7 +299,7 @@ function Analytics() {
                 <button
                   type="button"
                   className={styles.heroBreadcrumbLink}
-                  onClick={() => navigate('/tests')}
+                  onClick={() => navigate(routes.tests)}
                 >
                   ← All Tests
                 </button>
@@ -306,7 +307,7 @@ function Analytics() {
                 <button
                   type="button"
                   className={styles.heroBreadcrumbLink}
-                  onClick={() => navigate(`/tests/${id}`)}
+                  onClick={() => navigate(routes.testDetail(id))}
                 >
                   Test Details
                 </button>
@@ -366,7 +367,7 @@ function Analytics() {
                     <button
                       type="button"
                       className={`${styles.heroPrimaryBtn} ${styles.heroPrimaryBtnExport}`}
-                      onClick={() => navigate(`/tests/${id}/export`)}
+                      onClick={() => navigate(routes.testExport(id))}
                     >
                       <Icon source={ExportIcon} />
                       Export Results
@@ -376,7 +377,7 @@ function Analytics() {
                       <button
                         type="button"
                         className={styles.heroSecondaryBtn}
-                        onClick={() => navigate(`/tests/${id}`)}
+                        onClick={() => navigate(routes.testDetail(id))}
                       >
                         <Icon source={EyeFirstIcon} />
                         View Details
@@ -385,7 +386,7 @@ function Analytics() {
                         <button
                           type="button"
                           className={styles.heroSecondaryBtn}
-                          onClick={() => navigate(`/tests/${id}/promo-links`)}
+                          onClick={() => navigate(routes.testPromoLinks(id))}
                         >
                           <Icon source={LinkIcon} />
                           Promo Links

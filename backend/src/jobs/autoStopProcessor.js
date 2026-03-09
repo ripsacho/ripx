@@ -1,8 +1,9 @@
 /**
  * Auto-Stop Processor
  *
- * Stops running tests when they reach statistical significance (p < 0.05)
- * Only runs for shops with auto_stop_enabled in shop_settings
+ * Stops running tests when they reach statistical significance.
+ * Significance uses each shop's confidence level from shop_settings (e.g. 95% → p < 0.05).
+ * Only runs for shops with auto_stop_enabled in shop_settings.
  */
 
 const { query } = require('../utils/database');
@@ -11,8 +12,7 @@ const { updateTest } = require('../models/test');
 const analyticsService = require('../services/analytics');
 const notificationService = require('../services/notificationService');
 const outboundWebhookService = require('../services/outboundWebhookService');
-
-const MIN_VISITORS_PER_VARIANT = 50;
+const { TEST_HEALTH } = require('../constants');
 
 async function processAutoStop() {
   try {
@@ -46,7 +46,7 @@ async function processAutoStop() {
         const { significant, pValue, winner } = analytics.significance;
 
         const minVisitors = Math.min(...analytics.variants.map(v => v.visitors || 0));
-        if (minVisitors < MIN_VISITORS_PER_VARIANT) {
+        if (minVisitors < TEST_HEALTH.MIN_VISITORS_PER_VARIANT) {
           continue;
         }
 

@@ -273,7 +273,10 @@
     const country = getCountryCode();
     const trafficSource = getTrafficSource();
     const currentUrl = window.location.href || '';
-    const currentPathname = (window.location.pathname != null && window.location.pathname !== '') ? window.location.pathname : '/';
+    const currentPathname =
+      window.location.pathname != null && window.location.pathname !== ''
+        ? window.location.pathname
+        : '/';
     const sessionCount = getAndIncrementSessionCount();
 
     const jsTargetingResults = {};
@@ -362,7 +365,10 @@
       const country = getCountryCode();
       const trafficSource = getTrafficSource();
       const currentUrl = window.location.href || '';
-      const currentPathname = (window.location.pathname != null && window.location.pathname !== '') ? window.location.pathname : '/';
+      const currentPathname =
+        window.location.pathname != null && window.location.pathname !== ''
+          ? window.location.pathname
+          : '/';
       const sessionCount = getAndIncrementSessionCount();
 
       const urlParams = new URLSearchParams(window.location.search);
@@ -620,7 +626,12 @@
     if (!el || !el.tagName) return '';
     var tag = el.tagName.toLowerCase();
 
-    if (el.id && typeof el.id === 'string' && /^[a-zA-Z][\w-]*$/.test(el.id) && !/^\d+$/.test(el.id)) {
+    if (
+      el.id &&
+      typeof el.id === 'string' &&
+      /^[a-zA-Z][\w-]*$/.test(el.id) &&
+      !/^\d+$/.test(el.id)
+    ) {
       try {
         if (document.querySelector('#' + CSS.escape(el.id)) === el) {
           return '#' + CSS.escape(el.id);
@@ -628,7 +639,13 @@
       } catch (e) {}
     }
 
-    var dataAttrs = ['data-product-id', 'data-variant-id', 'data-section-id', 'data-block-id', 'data-id'];
+    var dataAttrs = [
+      'data-product-id',
+      'data-variant-id',
+      'data-section-id',
+      'data-block-id',
+      'data-id',
+    ];
     for (var d = 0; d < dataAttrs.length; d++) {
       var val = el.getAttribute(dataAttrs[d]);
       if (val != null && String(val).trim()) {
@@ -643,7 +660,12 @@
     if (el.attributes) {
       for (var a = 0; a < el.attributes.length; a++) {
         var attr = el.attributes[a];
-        if (attr.name && attr.name.indexOf('data-') === 0 && attr.value && !/^(data-ember|data-react|data-v-)/i.test(attr.name)) {
+        if (
+          attr.name &&
+          attr.name.indexOf('data-') === 0 &&
+          attr.value &&
+          !/^(data-ember|data-react|data-v-)/i.test(attr.name)
+        ) {
           try {
             var escapedA = String(attr.value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
             var ds = '[' + attr.name + '="' + escapedA + '"]';
@@ -654,7 +676,10 @@
       }
     }
 
-    var classes = el.className && typeof el.className === 'string' ? el.className.trim().split(/\s+/).filter(Boolean) : [];
+    var classes =
+      el.className && typeof el.className === 'string'
+        ? el.className.trim().split(/\s+/).filter(Boolean)
+        : [];
     for (var c = 0; c < classes.length; c++) {
       var cls = classes[c];
       if (/^[a-zA-Z_][\w-]*$/.test(cls) && !/^(ng-|ember|react|data-|js-)/i.test(cls)) {
@@ -697,34 +722,42 @@
     }
     var overlay = document.createElement('div');
     overlay.id = 'ripx-visual-picker-overlay';
-    overlay.setAttribute('style',
-      'position:fixed;inset:0;z-index:2147483647;pointer-events:none;');
+    overlay.setAttribute('style', 'position:fixed;inset:0;z-index:2147483647;pointer-events:none;');
     var box = document.createElement('div');
     box.id = 'ripx-visual-picker-highlight';
-    box.setAttribute('style',
+    box.setAttribute(
+      'style',
       'position:fixed;border:2px solid #06b6d4;background:rgba(6,182,212,0.15);pointer-events:none;' +
-      'border-radius:4px;box-sizing:border-box;transition:top 0.05s,left 0.05s,width 0.05s,height 0.05s;');
+        'border-radius:4px;box-sizing:border-box;transition:top 0.05s,left 0.05s,width 0.05s,height 0.05s;'
+    );
     var bar = document.createElement('div');
     bar.id = 'ripx-visual-picker-bar';
-    bar.setAttribute('style',
+    bar.setAttribute(
+      'style',
       'position:fixed;top:0;left:0;right:0;z-index:2147483647;pointer-events:auto;' +
-      'background:#1a1a1a;color:#fff;padding:10px 16px;font-family:system-ui,sans-serif;' +
-      'font-size:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;box-shadow:0 2px 8px rgba(0,0,0,0.3);');
+        'background:#1a1a1a;color:#fff;padding:10px 16px;font-family:system-ui,sans-serif;' +
+        'font-size:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;box-shadow:0 2px 8px rgba(0,0,0,0.3);'
+    );
     var label = document.createElement('span');
     label.id = 'ripx-visual-picker-label';
-    label.textContent = 'Click an element to select it. Selector will be sent to the editor or copy below.';
+    label.textContent =
+      'Click an element to select it. Selector will be sent to the editor or copy below.';
     label.setAttribute('style', 'flex:1;min-width:120px;');
     var selectorInput = document.createElement('input');
     selectorInput.type = 'text';
     selectorInput.readOnly = true;
     selectorInput.placeholder = 'Selector will appear here after click';
-    selectorInput.setAttribute('style',
+    selectorInput.setAttribute(
+      'style',
       'flex:1;min-width:160px;max-width:320px;padding:6px 10px;border:1px solid #444;border-radius:4px;' +
-      'background:#2a2a2a;color:#e5e5e5;font-family:monospace;font-size:12px;');
+        'background:#2a2a2a;color:#e5e5e5;font-family:monospace;font-size:12px;'
+    );
     var copyBtn = document.createElement('button');
     copyBtn.textContent = 'Copy selector';
-    copyBtn.setAttribute('style',
-      'background:#06b6d4;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:13px;');
+    copyBtn.setAttribute(
+      'style',
+      'background:#06b6d4;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:13px;'
+    );
     copyBtn.onclick = function () {
       var val = selectorInput.value.trim();
       if (!val) return;
@@ -732,35 +765,51 @@
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText(val).then(function () {
             copyBtn.textContent = 'Copied!';
-            setTimeout(function () { copyBtn.textContent = 'Copy selector'; }, 2000);
+            setTimeout(function () {
+              copyBtn.textContent = 'Copy selector';
+            }, 2000);
           });
         }
       } catch (e) {}
     };
     var sendBtn = document.createElement('button');
     sendBtn.textContent = 'Send to RipX';
-    sendBtn.setAttribute('style',
-      'background:#059669;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;');
+    sendBtn.setAttribute(
+      'style',
+      'background:#059669;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;'
+    );
     sendBtn.onclick = function () {
       var val = selectorInput.value.trim();
       if (!val) return;
       try {
         if (window.opener && !window.opener.closed) {
-          window.opener.postMessage({ type: 'ripx-visual-selector', selector: val, source: 'ripx-picker' }, '*');
+          window.opener.postMessage(
+            { type: 'ripx-visual-selector', selector: val, source: 'ripx-picker' },
+            '*'
+          );
           sendBtn.textContent = 'Sent!';
-          setTimeout(function () { sendBtn.textContent = 'Send to RipX'; }, 2000);
+          setTimeout(function () {
+            sendBtn.textContent = 'Send to RipX';
+          }, 2000);
         } else {
           sendBtn.textContent = 'Open from editor tab';
-          setTimeout(function () { sendBtn.textContent = 'Send to RipX'; }, 2500);
+          setTimeout(function () {
+            sendBtn.textContent = 'Send to RipX';
+          }, 2500);
         }
       } catch (e) {}
     };
     var closeBtn = document.createElement('button');
     closeBtn.textContent = 'Close';
-    closeBtn.setAttribute('style',
-      'background:#444;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:13px;');
+    closeBtn.setAttribute(
+      'style',
+      'background:#444;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:13px;'
+    );
     closeBtn.onclick = function () {
-      if (window.opener && !window.opener.closed) try { window.close(); } catch (e) {}
+      if (window.opener && !window.opener.closed)
+        try {
+          window.close();
+        } catch (e) {}
     };
     bar.appendChild(label);
     bar.appendChild(selectorInput);
@@ -779,7 +828,7 @@
         return;
       }
       box.style.display = 'block';
-      box.style.top = (rect.top + barHeight) + 'px';
+      box.style.top = rect.top + barHeight + 'px';
       box.style.left = rect.left + 'px';
       box.style.width = rect.width + 'px';
       box.style.height = rect.height + 'px';
@@ -789,11 +838,14 @@
       selectorInput.value = selector;
       try {
         if (window.opener && !window.opener.closed) {
-          window.opener.postMessage({
-            type: 'ripx-visual-selector',
-            selector: selector,
-            source: 'ripx-picker'
-          }, '*');
+          window.opener.postMessage(
+            {
+              type: 'ripx-visual-selector',
+              selector: selector,
+              source: 'ripx-picker',
+            },
+            '*'
+          );
           label.textContent = 'Selector sent to editor! You can close this tab or copy below.';
           label.setAttribute('style', 'flex:1;min-width:120px;color:#34d399;');
         } else {
@@ -806,32 +858,43 @@
       }
     }
 
-    document.addEventListener('mousemove', function (e) {
-      var el = document.elementFromPoint(e.clientX, e.clientY);
-      if (!el || el === overlay || el === box || el === bar || bar.contains(el)) {
-        setHighlight(null);
-        if (!selectorInput.value) {
-          label.textContent = 'Click an element to select it. Selector will be sent to the editor or copy below.';
-          label.setAttribute('style', 'flex:1;min-width:120px;');
+    document.addEventListener(
+      'mousemove',
+      function (e) {
+        var el = document.elementFromPoint(e.clientX, e.clientY);
+        if (!el || el === overlay || el === box || el === bar || bar.contains(el)) {
+          setHighlight(null);
+          if (!selectorInput.value) {
+            label.textContent =
+              'Click an element to select it. Selector will be sent to the editor or copy below.';
+            label.setAttribute('style', 'flex:1;min-width:120px;');
+          }
+          return;
         }
-        return;
-      }
-      var rect = el.getBoundingClientRect();
-      setHighlight({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
-      var sel = getSelectorForElement(el);
-      label.textContent = sel ? (el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + ' \u2192 ' + sel) : el.tagName.toLowerCase();
-      label.setAttribute('style', 'flex:1;min-width:120px;');
-    }, { passive: true });
+        var rect = el.getBoundingClientRect();
+        setHighlight({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
+        var sel = getSelectorForElement(el);
+        label.textContent = sel
+          ? el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + ' \u2192 ' + sel
+          : el.tagName.toLowerCase();
+        label.setAttribute('style', 'flex:1;min-width:120px;');
+      },
+      { passive: true }
+    );
 
-    document.addEventListener('click', function (e) {
-      if (bar.contains(e.target)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      var el = document.elementFromPoint(e.clientX, e.clientY);
-      if (!el || el === overlay || el === box || el === bar) return;
-      var selector = getSelectorForElement(el);
-      if (selector) onSelectorChosen(selector);
-    }, true);
+    document.addEventListener(
+      'click',
+      function (e) {
+        if (bar.contains(e.target)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        var el = document.elementFromPoint(e.clientX, e.clientY);
+        if (!el || el === overlay || el === box || el === bar) return;
+        var selector = getSelectorForElement(el);
+        if (selector) onSelectorChosen(selector);
+      },
+      true
+    );
   }
 
   /**
@@ -855,14 +918,18 @@
     overlay.setAttribute('style', 'position:fixed;inset:0;z-index:2147483646;pointer-events:none;');
     var box = document.createElement('div');
     box.id = 'ripx-visual-editor-highlight';
-    box.setAttribute('style',
+    box.setAttribute(
+      'style',
       'position:fixed;border:2px solid #06b6d4;background:rgba(6,182,212,0.2);pointer-events:none;' +
-      'border-radius:4px;box-sizing:border-box;transition:top 0.05s,left 0.05s,width 0.05s,height 0.05s;');
+        'border-radius:4px;box-sizing:border-box;transition:top 0.05s,left 0.05s,width 0.05s,height 0.05s;'
+    );
     var hint = document.createElement('div');
-    hint.setAttribute('style',
+    hint.setAttribute(
+      'style',
       'position:fixed;bottom:12px;left:50%;transform:translateX(-50%);z-index:2147483647;' +
-      'padding:8px 14px;background:#1a1a1a;color:#fff;font-size:13px;border-radius:6px;' +
-      'box-shadow:0 2px 8px rgba(0,0,0,0.3);pointer-events:none;');
+        'padding:8px 14px;background:#1a1a1a;color:#fff;font-size:13px;border-radius:6px;' +
+        'box-shadow:0 2px 8px rgba(0,0,0,0.3);pointer-events:none;'
+    );
     hint.textContent = 'Click an element to select — selector will appear in the panel';
     document.body.appendChild(overlay);
     document.body.appendChild(box);
@@ -887,19 +954,29 @@
         if (node && node !== overlay && node !== box && !(hint && hint.contains(node))) return node;
       }
       var fallback = document.elementFromPoint(clientX, clientY);
-      if (fallback && fallback !== overlay && fallback !== box && !(hint && hint.contains(fallback))) return fallback;
+      if (
+        fallback &&
+        fallback !== overlay &&
+        fallback !== box &&
+        !(hint && hint.contains(fallback))
+      )
+        return fallback;
       return null;
     }
 
-    document.addEventListener('mousemove', function (e) {
-      var el = getTargetUnderCursor(e.clientX, e.clientY);
-      if (!el) {
-        setHighlight(null);
-        return;
-      }
-      var rect = el.getBoundingClientRect();
-      setHighlight({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
-    }, { passive: true });
+    document.addEventListener(
+      'mousemove',
+      function (e) {
+        var el = getTargetUnderCursor(e.clientX, e.clientY);
+        if (!el) {
+          setHighlight(null);
+          return;
+        }
+        var rect = el.getBoundingClientRect();
+        setHighlight({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
+      },
+      { passive: true }
+    );
 
     function handleSelectClick(e) {
       e.preventDefault();
@@ -913,7 +990,10 @@
       } catch (err) {}
       if (selector && targetWindow && !targetWindow.closed) {
         try {
-          targetWindow.postMessage({ type: 'ripx-visual-selector', selector: selector, source: 'ripx-visual-editor' }, '*');
+          targetWindow.postMessage(
+            { type: 'ripx-visual-selector', selector: selector, source: 'ripx-visual-editor' },
+            '*'
+          );
         } catch (err) {}
       }
     }
@@ -1050,13 +1130,25 @@
     var sa = String(a).trim();
     var sb = String(b).trim();
     if (sa === sb) return true;
-    if (sa.indexOf(sb) === 0 && (sa.length === sb.length || sa.charAt(sb.length) === '/')) return true;
-    if (sb.indexOf(sa) === 0 && (sb.length === sa.length || sb.charAt(sa.length) === '/')) return true;
+    if (sa.indexOf(sb) === 0 && (sa.length === sb.length || sa.charAt(sb.length) === '/'))
+      return true;
+    if (sb.indexOf(sa) === 0 && (sb.length === sa.length || sb.charAt(sa.length) === '/'))
+      return true;
     var trailA = sa.replace(/.*\/(\d+)\/?$/, '$1') || sa;
     var trailB = sb.replace(/.*\/(\d+)\/?$/, '$1') || sb;
     if (trailA === trailB && trailA !== '') {
-      var typeA = sa.indexOf('/Product/') !== -1 ? 'Product' : sa.indexOf('/Collection/') !== -1 ? 'Collection' : '';
-      var typeB = sb.indexOf('/Product/') !== -1 ? 'Product' : sb.indexOf('/Collection/') !== -1 ? 'Collection' : '';
+      var typeA =
+        sa.indexOf('/Product/') !== -1
+          ? 'Product'
+          : sa.indexOf('/Collection/') !== -1
+            ? 'Collection'
+            : '';
+      var typeB =
+        sb.indexOf('/Product/') !== -1
+          ? 'Product'
+          : sb.indexOf('/Collection/') !== -1
+            ? 'Collection'
+            : '';
       if (typeA === typeB && typeA !== '') return true;
     }
     return false;
@@ -1243,7 +1335,8 @@
   // Ping backend when script loads so the dashboard can show "Script detected" for standalone
   if (hasValidConfig && CONFIG.shopDomain) {
     var pingParam = CONFIG.shopDomain.indexOf('.myshopify.com') !== -1 ? 'shop=' : 'site=';
-    var pingUrl = CONFIG.apiUrl + '/track/ping?' + pingParam + encodeURIComponent(CONFIG.shopDomain);
+    var pingUrl =
+      CONFIG.apiUrl + '/track/ping?' + pingParam + encodeURIComponent(CONFIG.shopDomain);
     try {
       fetchWithTimeout(pingUrl, { method: 'GET', keepalive: true }, 5000).catch(function () {});
     } catch (e) {}

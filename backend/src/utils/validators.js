@@ -4,6 +4,8 @@
  * Common validation functions for the application
  */
 
+const { MAX_TEST_NAME_LENGTH } = require('../constants');
+
 class Validators {
   /**
    * Validate email address
@@ -174,8 +176,8 @@ class Validators {
       errors.push('Test name is required');
     }
 
-    if (config.name && config.name.length > 255) {
-      errors.push('Test name must be less than 255 characters');
+    if (config.name && config.name.length > MAX_TEST_NAME_LENGTH) {
+      errors.push(`Test name must be at most ${MAX_TEST_NAME_LENGTH} characters`);
     }
 
     // Align with abTestEngine and constants: accept all types used by frontend and API

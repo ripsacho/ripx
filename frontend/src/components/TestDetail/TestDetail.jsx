@@ -30,6 +30,7 @@ import {
   usePersonalizeTest,
   useRolloutTest,
   useDisablePersonalization,
+  useAppRoutes,
 } from '../../hooks';
 import { useQueryClient } from '@tanstack/react-query';
 import { getTestTypeDisplay, getVariantCount } from '../../utils/testType';
@@ -39,6 +40,7 @@ function TestDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const routes = useAppRoutes();
   const [actionLoading, setActionLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState(null);
@@ -211,7 +213,7 @@ function TestDetail() {
     setErrorMessage(null);
     try {
       await deleteMutation.mutateAsync(id);
-      navigate('/tests');
+      navigate(routes.tests);
     } catch (err) {
       setErrorMessage('Failed to delete test');
     } finally {
@@ -228,7 +230,7 @@ function TestDetail() {
       if (testData?.id) {
         queryClient.setQueryData(['tests', testData.id], testData);
         invalidateTests();
-        navigate(`/tests/${testData.id}`, { state: { createdTest: testData } });
+        navigate(routes.testDetail(testData.id), { state: { createdTest: testData } });
       }
     } catch (err) {
       setErrorMessage('Failed to clone test');
@@ -323,7 +325,7 @@ function TestDetail() {
         className={`${styles.detailPage} wizard-page`}
         message="Test not found"
         messageType="error"
-        onCloseMessage={() => navigate('/tests')}
+        onCloseMessage={() => navigate(routes.tests)}
       >
         <Page title="Test Details" />
       </PageShell>
@@ -433,7 +435,7 @@ function TestDetail() {
                   <button
                     type="button"
                     className={styles.detailBreadcrumbLink}
-                    onClick={() => navigate('/tests')}
+                    onClick={() => navigate(routes.tests)}
                   >
                     ← All Tests
                   </button>
@@ -554,7 +556,7 @@ function TestDetail() {
                       <button
                         type="button"
                         className={styles.detailSecondaryBtn}
-                        onClick={() => navigate(`/tests/${id}/analytics`)}
+                        onClick={() => navigate(routes.testAnalytics(id))}
                       >
                         <Icon source={ChartLineIcon} />
                         View Analytics
@@ -562,7 +564,7 @@ function TestDetail() {
                       <button
                         type="button"
                         className={styles.detailSecondaryBtn}
-                        onClick={() => navigate(`/tests/${id}/export`)}
+                        onClick={() => navigate(routes.testExport(id))}
                       >
                         <Icon source={ExportIcon} />
                         Export
@@ -571,7 +573,7 @@ function TestDetail() {
                         <button
                           type="button"
                           className={styles.detailSecondaryBtn}
-                          onClick={() => navigate(`/tests/${id}/promo-links`)}
+                          onClick={() => navigate(routes.testPromoLinks(id))}
                         >
                           <Icon source={LinkIcon} />
                           Promo Links
@@ -753,7 +755,7 @@ function TestDetail() {
                 submitLabel="Save Changes"
                 onSubmit={handleSave}
                 onSaveCode={handleSaveCode}
-                onCancel={() => navigate('/tests')}
+                onCancel={() => navigate(routes.tests)}
                 submitLoading={saveLoading}
                 onTitleRender={handleTitleRender}
               />

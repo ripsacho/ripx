@@ -59,9 +59,9 @@ function StoreSwitcher() {
       }
       persistCurrentStore(domain);
       setActive(false);
-      window.location.reload();
+      navigate(ROUTES.appDashboard(domain));
     },
-    [currentStore]
+    [currentStore, navigate]
   );
 
   const multiStore = stores.length > 1;

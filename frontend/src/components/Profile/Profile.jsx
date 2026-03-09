@@ -49,6 +49,14 @@ function Profile() {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get('tab') || 'profile';
 
+  useEffect(() => {
+    const prev = document.title;
+    document.title = 'Profile - RipX';
+    return () => {
+      document.title = prev;
+    };
+  }, []);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -184,7 +192,7 @@ function Profile() {
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
-      setError('Failed to update account settings. Please try again.');
+      setError('Failed to update account. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -240,7 +248,7 @@ function Profile() {
 
   return (
     <PageShell
-      message={success ? 'Settings saved successfully!' : null}
+      message={success ? 'Profile saved successfully!' : null}
       messageType={success ? 'success' : 'error'}
       onCloseMessage={() => {
         setSuccess(false);
@@ -488,41 +496,24 @@ function Profile() {
                   >
                     <Card className={styles.profilePanelCard}>
                       <Box padding="500">
-                        <BlockStack gap="400">
+                        <BlockStack gap="300">
                           <div className={styles.sectionHeader}>
                             <div className={styles.sectionHeaderIcon}>
                               <SettingsIcon />
                             </div>
                             <div className={styles.sectionHeaderContent}>
                               <Text variant="headingMd" as="h2">
-                                Account Information
+                                Store & billing
                               </Text>
                               <Text as="p" variant="bodySm" tone="subdued">
-                                Your shop domain, plan, and billing details
+                                Shop domain, plan, and billing details are managed in the app — not
+                                here. Open a store from Home to see store-specific information.
                               </Text>
                             </div>
                           </div>
-                          <div className={styles.panelCardBody}>
-                            <TextField
-                              label="Shop Domain"
-                              value={accountData.shopDomain}
-                              disabled
-                              helpText="Your Shopify store domain"
-                            />
-                            <TextField
-                              label="Plan"
-                              value={accountData.plan}
-                              disabled
-                              helpText="Current subscription plan"
-                            />
-                            <TextField
-                              label="Billing Email"
-                              type="email"
-                              value={accountData.billingEmail}
-                              onChange={v => setAccountData({ ...accountData, billingEmail: v })}
-                              helpText="Email address for billing and invoices"
-                            />
-                          </div>
+                          <Link to={ROUTES.USER_PANEL} className={styles.quickLinkBtn}>
+                            Home (open a store)
+                          </Link>
                         </BlockStack>
                       </Box>
                     </Card>
@@ -664,17 +655,21 @@ function Profile() {
                                 App Configuration
                               </Text>
                               <Text as="p" variant="bodySm" tone="subdued">
-                                Test defaults, webhooks, integrations, and theme are in{' '}
+                                Theme is in{' '}
                                 <Link to={ROUTES.SETTINGS} className={styles.settingsLink}>
-                                  Settings
-                                </Link>{' '}
-                                — General (test config, webhooks), Integrations, Appearance (theme).
+                                  Account settings
+                                </Link>
+                                . Test defaults, webhooks, integrations, and installation are in the
+                                app — open a store from Home and use App settings in the sidebar.
                               </Text>
                             </div>
                           </div>
                           <InlineStack gap="200" wrap>
                             <Link to={ROUTES.SETTINGS} className={styles.quickLinkBtn}>
-                              Open Settings
+                              Account settings (theme)
+                            </Link>
+                            <Link to={ROUTES.USER_PANEL} className={styles.quickLinkBtn}>
+                              Open app
                             </Link>
                           </InlineStack>
                         </BlockStack>
@@ -693,9 +688,9 @@ function Profile() {
                                 Appearance
                               </Text>
                               <Text as="p" variant="bodySm" tone="subdued">
-                                Theme and display options. Also available in{' '}
+                                Theme and display options. Also in{' '}
                                 <Link to={ROUTES.SETTINGS} className={styles.settingsLink}>
-                                  Settings → Appearance
+                                  Account settings
                                 </Link>
                               </Text>
                             </div>
@@ -767,102 +762,40 @@ function Profile() {
                               </BlockStack>
                             )}
                           </div>
-                        </BlockStack>
-                      </Box>
-                    </Card>
-
-                    <Card className={styles.profilePanelCard}>
-                      <Box padding="500">
-                        <BlockStack gap="400">
-                          <div className={styles.sectionHeader}>
-                            <div className={styles.sectionHeaderIcon}>
-                              <SettingsIcon />
-                            </div>
-                            <div className={styles.sectionHeaderContent}>
-                              <Text variant="headingMd" as="h2">
-                                Dashboard & Editor
-                              </Text>
-                              <Text as="p" variant="bodySm" tone="subdued">
-                                Default views and editor behavior
-                              </Text>
-                            </div>
-                          </div>
-                          <div className={styles.panelCardBody}>
-                            <Select
-                              label="Default View"
-                              options={[
-                                { label: 'Grid View', value: 'grid' },
-                                { label: 'List View', value: 'list' },
-                                { label: 'Compact View', value: 'compact' },
-                              ]}
-                              value={preferences.dashboardView}
-                              onChange={v => setPreferences(p => ({ ...p, dashboardView: v }))}
-                            />
-                            <Select
-                              label="Default Test Type"
-                              options={[
-                                { label: 'Price Test', value: 'price' },
-                                { label: 'Content Test', value: 'content' },
-                                { label: 'Shipping Test', value: 'shipping' },
-                                { label: 'Offer Test', value: 'offer' },
-                              ]}
-                              value={preferences.defaultTestType}
-                              onChange={v => setPreferences(p => ({ ...p, defaultTestType: v }))}
-                            />
-                            <Select
-                              label="Default analytics date range"
-                              options={[
-                                { label: 'Last 7 days', value: '7' },
-                                { label: 'Last 30 days', value: '30' },
-                                { label: 'Last 90 days', value: '90' },
-                                { label: 'All time', value: 'all' },
-                              ]}
-                              value={preferences.defaultAnalyticsDateRange || '30'}
-                              onChange={v =>
-                                setPreferences(p => ({ ...p, defaultAnalyticsDateRange: v }))
-                              }
-                              helpText="Default when opening Analytics"
-                            />
-                            <Select
-                              label="Default export format"
-                              options={[
-                                { label: 'CSV', value: 'csv' },
-                                { label: 'JSON', value: 'json' },
-                              ]}
-                              value={preferences.defaultExportFormat || 'csv'}
-                              onChange={v =>
-                                setPreferences(p => ({ ...p, defaultExportFormat: v }))
-                              }
-                              helpText="Default format for data exports"
-                            />
-                            <Checkbox
-                              label="Auto-save changes"
-                              checked={preferences.autoSave}
-                              onChange={v => setPreferences(p => ({ ...p, autoSave: v }))}
-                              helpText="Automatically save your work as you type"
-                            />
-                            <Checkbox
-                              label="Show tooltips"
-                              checked={preferences.showTooltips}
-                              onChange={v => setPreferences(p => ({ ...p, showTooltips: v }))}
-                              helpText="Display helpful tooltips throughout the interface"
-                            />
-                            <Checkbox
-                              label="Compact mode"
-                              checked={preferences.compactMode}
-                              onChange={v => setPreferences(p => ({ ...p, compactMode: v }))}
-                              helpText="Reduce spacing for a more compact interface"
-                            />
-                          </div>
                           <InlineStack align="end">
                             <Button
                               variant="primary"
                               loading={saving}
                               onClick={handlePreferencesUpdate}
                             >
-                              Save Changes
+                              Save changes
                             </Button>
                           </InlineStack>
+                        </BlockStack>
+                      </Box>
+                    </Card>
+
+                    <Card className={styles.profilePanelCard}>
+                      <Box padding="500">
+                        <BlockStack gap="300">
+                          <div className={styles.sectionHeader}>
+                            <div className={styles.sectionHeaderIcon}>
+                              <SettingsIcon />
+                            </div>
+                            <div className={styles.sectionHeaderContent}>
+                              <Text variant="headingMd" as="h2">
+                                App display preferences
+                              </Text>
+                              <Text as="p" variant="bodySm" tone="subdued">
+                                Default test type, analytics date range, export format, dashboard
+                                view, and other app defaults are configured in the app — not here.
+                                Open a store from Home, then use App settings in the sidebar.
+                              </Text>
+                            </div>
+                          </div>
+                          <Link to={ROUTES.USER_PANEL} className={styles.quickLinkBtn}>
+                            Open app
+                          </Link>
                         </BlockStack>
                       </Box>
                     </Card>

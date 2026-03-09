@@ -4,8 +4,8 @@
  * Polished settings UI with tabs, integration cards, and user-friendly controls
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Link, useSearchParams, useLocation } from 'react-router-dom';
 import {
   Page,
   Card,
@@ -143,7 +143,8 @@ function formatRelativeTime(iso) {
   return d.toLocaleDateString();
 }
 
-const TAB_CONFIG = [
+/** Full app settings (inside /app/:domain) – installation, test config, webhooks, integrations, presets */
+const TAB_CONFIG_APP = [
   { id: 'installation', label: 'Installation', icon: CodeIcon },
   { id: 'general', label: 'General', icon: SettingsIcon },
   { id: 'integrations', label: 'Integrations', icon: ChartVerticalIcon },
@@ -151,17 +152,34 @@ const TAB_CONFIG = [
   { id: 'presets', label: 'Targeting Presets', icon: TargetIcon },
 ];
 
-const TAB_IDS = TAB_CONFIG.map(t => t.id);
+/** Account-level only (universal /settings) – theme/appearance; app-related config is in the app */
+const TAB_CONFIG_ACCOUNT = [{ id: 'appearance', label: 'Appearance', icon: PaintBrushFlatIcon }];
 
-function tabIndexFromSearchParams(searchParams) {
+function tabIndexFromSearchParams(searchParams, tabConfig) {
   const tab = searchParams.get('tab');
-  const i = TAB_IDS.indexOf(tab);
+  const ids = tabConfig.map(t => t.id);
+  const i = ids.indexOf(tab);
   return i >= 0 ? i : 0;
 }
 
 function Settings() {
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [selectedTab, setSelectedTabState] = useState(() => tabIndexFromSearchParams(searchParams));
+  const isAppSettings = /^\/app\/[^/]+\/settings$/.test(location.pathname);
+  const TAB_CONFIG = isAppSettings ? TAB_CONFIG_APP : TAB_CONFIG_ACCOUNT;
+  const TAB_IDS = useMemo(() => TAB_CONFIG.map(t => t.id), [TAB_CONFIG]);
+
+  const [selectedTab, setSelectedTabState] = useState(() =>
+    tabIndexFromSearchParams(searchParams, TAB_CONFIG)
+  );
+
+  useEffect(() => {
+    const prev = document.title;
+    document.title = isAppSettings ? 'App settings - RipX' : 'Account settings - RipX';
+    return () => {
+      document.title = prev;
+    };
+  }, [isAppSettings]);
 
   const setSelectedTab = useCallback(
     index => {
@@ -178,13 +196,13 @@ function Settings() {
         { replace: true }
       );
     },
-    [setSearchParams]
+    [setSearchParams, TAB_CONFIG.length, TAB_IDS]
   );
 
   useEffect(() => {
-    const index = tabIndexFromSearchParams(searchParams);
+    const index = tabIndexFromSearchParams(searchParams, TAB_CONFIG);
     setSelectedTabState(index);
-  }, [searchParams]);
+  }, [searchParams, TAB_CONFIG]);
   const [settings, setSettings] = useState({ ...DEFAULT_SETTINGS });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -303,20 +321,24 @@ function Settings() {
   }, [fetchIntegrations]);
 
   useEffect(() => {
-    fetchSettings();
-  }, [fetchSettings]);
+    if (!isAppSettings) setLoading(false);
+  }, [isAppSettings]);
 
   useEffect(() => {
-    fetchPresets();
-  }, [fetchPresets]);
+    if (isAppSettings) fetchSettings();
+  }, [isAppSettings, fetchSettings]);
 
   useEffect(() => {
-    fetchIntegrations();
-  }, [fetchIntegrations]);
+    if (isAppSettings) fetchPresets();
+  }, [isAppSettings, fetchPresets]);
 
   useEffect(() => {
-    fetchInstallation();
-  }, [fetchInstallation]);
+    if (isAppSettings) fetchIntegrations();
+  }, [isAppSettings, fetchIntegrations]);
+
+  useEffect(() => {
+    if (isAppSettings) fetchInstallation();
+  }, [isAppSettings, fetchInstallation]);
 
   const handleCopy = useCallback(async (text, successMsg = 'Copied') => {
     if (!text) return;
@@ -423,9 +445,9 @@ function Settings() {
     try {
       await apiPut('/settings', payload);
       setSettings(payload);
-      setMessage('Settings saved successfully');
+      setMessage('App settings saved successfully');
     } catch (err) {
-      setMessage(err?.response?.data?.error || 'Failed to save settings');
+      setMessage(err?.response?.data?.error || 'Failed to save app settings');
     } finally {
       setSaving(false);
     }
@@ -451,6 +473,8 @@ function Settings() {
       }
     }
   };
+
+  const activeTabId = TAB_IDS[selectedTab];
 
   const formatPresetSegments = p => {
     const seg = p?.segments || {};
@@ -482,17 +506,38 @@ function Settings() {
                 <SettingsIcon />
               </div>
               <div>
-                <h1 className={styles.settingsHeroTitle}>Settings</h1>
+                <h1 className={styles.settingsHeroTitle}>
+                  {isAppSettings ? 'App settings' : 'Account settings'}
+                </h1>
                 <p className={styles.settingsHeroSubtitle}>
-                  Configure installation, test defaults, integrations, and appearance
+                  {isAppSettings
+                    ? 'Installation, test defaults, webhooks, integrations, and appearance for this store'
+                    : 'Theme and appearance. For test configuration and installation, open the app.'}
                 </p>
               </div>
             </div>
 
+            {!isAppSettings && (
+              <Card className={`${styles.settingsPanelCard} ${styles.settingsPanelCardFull}`}>
+                <Box padding="400">
+                  <BlockStack gap="200">
+                    <Text variant="bodyMd" as="p">
+                      Test configuration, installation snippet, webhooks, integrations, and
+                      targeting presets are available in the app. Open a store from Home to
+                      configure them.
+                    </Text>
+                    <Link to={ROUTES.USER_PANEL} className={styles.quickLinkBtn}>
+                      Open app
+                    </Link>
+                  </BlockStack>
+                </Box>
+              </Card>
+            )}
+
             <nav
               className={styles.settingsTabBar}
               role="tablist"
-              aria-label="Settings sections"
+              aria-label={isAppSettings ? 'App settings sections' : 'Account settings sections'}
               onKeyDown={e => {
                 const count = TAB_CONFIG.length;
                 if (e.key === 'ArrowLeft' && selectedTab > 0) {
@@ -536,13 +581,17 @@ function Settings() {
                 onDismiss={() => setSettingsLoadError(false)}
                 action={{ content: 'Retry', onAction: () => fetchSettings() }}
               >
-                Couldn&apos;t load settings. Check your connection and try again. You can still use
-                Installation, Integrations, and other tabs.
+                Couldn&apos;t load app settings. Check your connection and try again. You can still
+                use Installation, Integrations, and other tabs.
               </Banner>
             )}
           </div>
 
-          <main id="settings-main" className={styles.settingsBody} aria-label="Settings content">
+          <main
+            id="settings-main"
+            className={styles.settingsBody}
+            aria-label={isAppSettings ? 'App settings content' : 'Account settings content'}
+          >
             <BlockStack gap={CONTENT_GAP}>
               {loading ? (
                 <div className={styles.settingsLoadingSkeleton}>
@@ -555,9 +604,9 @@ function Settings() {
                   className={styles.settingsPanels}
                   role="region"
                   aria-live="polite"
-                  aria-label="Settings panel"
+                  aria-label={isAppSettings ? 'App settings panel' : 'Account settings panel'}
                 >
-                  {selectedTab === 0 && (
+                  {isAppSettings && activeTabId === 'installation' && (
                     <div
                       id="settings-panel-installation"
                       role="tabpanel"
@@ -647,8 +696,11 @@ function Settings() {
                                       Retry
                                     </Button>
                                   )}
-                                  <Link to={ROUTES.SETUP} className={styles.installationEmptyCta}>
-                                    Open Setup Wizard
+                                  <Link
+                                    to={ROUTES.USER_PANEL}
+                                    className={styles.installationEmptyCta}
+                                  >
+                                    Open app (Setup Wizard)
                                   </Link>
                                 </div>
                               </div>
@@ -781,11 +833,8 @@ function Settings() {
                                 {!installation.instructions?.steps?.length &&
                                   !installation.instructions?.altMethod && (
                                     <Text as="p" variant="bodyMd" tone="subdued">
-                                      For guided setup, use the{' '}
-                                      <Link to={ROUTES.SETUP} className={styles.setupWizardLink}>
-                                        Setup Wizard
-                                      </Link>{' '}
-                                      from the sidebar.
+                                      For guided setup, open the app and use the Setup Wizard from
+                                      the sidebar.
                                     </Text>
                                   )}
                               </div>
@@ -796,7 +845,7 @@ function Settings() {
                     </div>
                   )}
 
-                  {selectedTab === 1 && (
+                  {isAppSettings && activeTabId === 'general' && (
                     <div
                       id="settings-panel-general"
                       role="tabpanel"
@@ -1106,7 +1155,7 @@ function Settings() {
                     </div>
                   )}
 
-                  {selectedTab === 2 && (
+                  {isAppSettings && activeTabId === 'integrations' && (
                     <div
                       id="settings-panel-integrations"
                       role="tabpanel"
@@ -1371,7 +1420,7 @@ function Settings() {
                     </div>
                   )}
 
-                  {selectedTab === 3 && (
+                  {activeTabId === 'appearance' && (
                     <div
                       id="settings-panel-appearance"
                       role="tabpanel"
@@ -1446,7 +1495,7 @@ function Settings() {
                     </div>
                   )}
 
-                  {selectedTab === 4 && (
+                  {isAppSettings && activeTabId === 'presets' && (
                     <div
                       id="settings-panel-presets"
                       role="tabpanel"
@@ -1508,11 +1557,11 @@ function Settings() {
                                     <TargetIcon />
                                   </div>
                                   <p className={styles.presetsEmptyText}>
-                                    No targeting presets yet. Create a test and save your targeting
-                                    as a preset in the Test Wizard to reuse it later.
+                                    No targeting presets yet. Open the app, create a test, and save
+                                    your targeting as a preset in the Test Wizard to reuse it later.
                                   </p>
-                                  <Link to={ROUTES.CREATE_TEST} className={styles.presetsEmptyCta}>
-                                    Create a test
+                                  <Link to={ROUTES.USER_PANEL} className={styles.presetsEmptyCta}>
+                                    Open app
                                   </Link>
                                 </div>
                               )}

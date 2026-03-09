@@ -10,6 +10,7 @@ const validators = require('../utils/validators');
 const { query } = require('../utils/database');
 const { sendError } = require('../utils/response');
 const { asyncHandler } = require('../middleware/asyncHandler');
+const { PAGINATION } = require('../constants');
 
 const validateNotificationId = (req, res, next) => {
   const id = req.params?.id;
@@ -32,8 +33,13 @@ router.get(
     }
 
     const rawLimit =
-      req.query.limit !== undefined && req.query.limit !== '' ? parseInt(req.query.limit, 10) : 20;
-    const limit = Math.min(Number.isNaN(rawLimit) || rawLimit <= 0 ? 20 : rawLimit, 50);
+      req.query.limit !== undefined && req.query.limit !== ''
+        ? parseInt(req.query.limit, 10)
+        : PAGINATION.DEFAULT_LIMIT;
+    const limit = Math.min(
+      Number.isNaN(rawLimit) || rawLimit <= 0 ? PAGINATION.DEFAULT_LIMIT : rawLimit,
+      PAGINATION.MAX_LIMIT
+    );
     const unreadOnly = req.query.unread === 'true';
 
     let sql = `

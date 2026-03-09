@@ -85,6 +85,37 @@ describe('validators.isValidPercentage', () => {
   });
 });
 
+describe('validators.isValidUUID', () => {
+  it('returns true for valid v4-style UUIDs', () => {
+    expect(validators.isValidUUID('a1b2c3d4-e5f6-4789-a012-3456789abcde')).toBe(true);
+    expect(validators.isValidUUID('00000000-0000-0000-0000-000000000000')).toBe(true);
+    expect(validators.isValidUUID('FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF')).toBe(true);
+  });
+
+  it('returns false for non-UUID strings', () => {
+    expect(validators.isValidUUID('not-a-uuid')).toBe(false);
+    expect(validators.isValidUUID('a1b2c3d4-e5f6-4789-a012')).toBe(false);
+    expect(validators.isValidUUID('a1b2c3d4e5f64789a0123456789abcde')).toBe(false);
+    expect(validators.isValidUUID('')).toBe(false);
+    expect(validators.isValidUUID(null)).toBe(false);
+    expect(validators.isValidUUID(undefined)).toBe(false);
+  });
+});
+
+describe('validators.validateDomainForInput', () => {
+  it('returns valid and normalized for good domains', () => {
+    const r = validators.validateDomainForInput('  Example.COM  ');
+    expect(r.valid).toBe(true);
+    expect(r.normalized).toBe('example.com');
+  });
+
+  it('returns error for empty or invalid', () => {
+    expect(validators.validateDomainForInput('').valid).toBe(false);
+    expect(validators.validateDomainForInput('invalid').valid).toBe(false);
+    expect(validators.validateDomainForInput('localhost').valid).toBe(false);
+  });
+});
+
 describe('validators.sanitizeString', () => {
   it('trims and removes angle brackets', () => {
     expect(validators.sanitizeString('  hello  ')).toBe('hello');

@@ -109,11 +109,11 @@ class CustomMetricsService {
     const result = await query(sql, [test_id, variant_id, shop_domain, metricConfig.eventName]);
 
     if (metricConfig.aggregation === 'count') {
-      return parseInt(result.rows[0].event_count) || 0;
+      return parseInt(result.rows[0].event_count, 10) || 0;
     } else if (metricConfig.aggregation === 'sum') {
       return parseFloat(result.rows[0].event_value_sum) || 0;
     } else if (metricConfig.aggregation === 'average') {
-      const count = parseInt(result.rows[0].event_count) || 0;
+      const count = parseInt(result.rows[0].event_count, 10) || 0;
       const sum = parseFloat(result.rows[0].event_value_sum) || 0;
       return count > 0 ? sum / count : 0;
     }

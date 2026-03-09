@@ -11,6 +11,7 @@
 const { query } = require('../utils/database');
 const { getTestAnalytics, getSecondaryEventMetrics } = require('../models/analytics');
 const { getTestById } = require('../models/test');
+const { STATISTICAL_THRESHOLD, SETTINGS_BOUNDS } = require('../constants');
 
 class AnalyticsService {
   /**
@@ -42,7 +43,7 @@ class AnalyticsService {
     const n2 = Number(variantB?.visitors) || 0;
     const x1 = Number(variantA?.conversions) || 0;
     const x2 = Number(variantB?.conversions) || 0;
-    const threshold = Number(options.significanceThreshold) || 0.05;
+    const threshold = Number(options.significanceThreshold) || STATISTICAL_THRESHOLD.P_VALUE;
 
     if (n1 <= 0 || n2 <= 0 || !Number.isFinite(x1) || !Number.isFinite(x2)) {
       return {
@@ -289,7 +290,7 @@ class AnalyticsService {
    * @returns {Object} Significance results
    */
   calculateMultiVariantSignificance(variants, options = {}) {
-    const threshold = Number(options.significanceThreshold) || 0.05;
+    const threshold = Number(options.significanceThreshold) || STATISTICAL_THRESHOLD.P_VALUE;
     if (!variants || variants.length < 2) {
       return {
         significant: false,
@@ -505,13 +506,14 @@ class AnalyticsService {
 
     // Calculate significance (frequentist) or Bayesian probability to beat control
     const analysisMethod = goal.analysis_method || 'frequentist';
-    let significanceThreshold = 0.05;
+    let significanceThreshold = STATISTICAL_THRESHOLD.P_VALUE;
     try {
       const settingsRes = await query(
         'SELECT confidence_level FROM shop_settings WHERE shop_domain = $1',
         [shopDomain]
       );
-      const conf = Number(settingsRes.rows[0]?.confidence_level) || 0.95;
+      const conf =
+        Number(settingsRes.rows[0]?.confidence_level) || SETTINGS_BOUNDS.DEFAULT_CONFIDENCE_LEVEL;
       significanceThreshold = 1 - conf;
     } catch {
       // Use default

@@ -1,0 +1,151 @@
+/* AccountNav – app bar for Home, My domains, Admin */
+
+.accountNav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: linear-gradient(
+    170deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(248, 250, 252, 0.96) 50%,
+    rgba(255, 255, 255, 0.98) 100%
+  );
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border-secondary);
+  box-shadow: 0 1px 0 rgba(6, 182, 212, 0.06);
+}
+
+.accountNav::before {
+  content: '';
+  display: block;
+  height: 3px;
+  background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
+  opacity: 0.85;
+}
+
+[data-theme='dark'] .accountNav {
+  background: linear-gradient(
+    170deg,
+    rgba(22, 22, 22, 0.97) 0%,
+    rgba(15, 15, 15, 0.95) 40%,
+    rgba(6, 182, 212, 0.08) 100%
+  );
+  border-bottom-color: rgba(6, 182, 212, 0.15);
+}
+
+.accountNavInner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.625rem 1.5rem;
+  flex-wrap: wrap;
+  max-width: 1400px;
+  margin: 0 auto;
+  min-height: 52px;
+}
+
+.accountNavLogo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  text-decoration: none;
+  color: var(--text-primary);
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.accountNavLogo:hover {
+  color: var(--text-primary);
+  opacity: 0.9;
+}
+
+.accountNavLogoImg {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 8px rgba(6, 182, 212, 0.25));
+}
+
+.accountNavLogoText {
+  flex-shrink: 0;
+}
+
+.accountNavLinks {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  flex-wrap: wrap;
+}
+
+.accountNavLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  text-decoration: none;
+  border-radius: 8px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.accountNavLink:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.accountNavLinkCurrent {
+  background: rgba(6, 182, 212, 0.1);
+  color: var(--futuristic-cyan);
+}
+
+[data-theme='dark'] .accountNavLinkCurrent {
+  background: rgba(6, 182, 212, 0.15);
+}
+
+.accountNavLinkAdmin {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, var(--futuristic-cyan), #0891b2);
+  text-decoration: none;
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(6, 182, 212, 0.35);
+  transition: box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.accountNavLinkAdmin:hover {
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(6, 182, 212, 0.45);
+  opacity: 0.95;
+}
+
+.accountNavActions {
+  display: flex;
+  align-items: center;
+}
+
+.accountNavSignOut {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.accountNavSignOut:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}

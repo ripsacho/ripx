@@ -42,6 +42,7 @@ import {
   useStopTest,
   useDeleteTest,
   useInvalidateTests,
+  useAppRoutes,
 } from '../../hooks';
 import { TEST_STATUS_OPTIONS, PERSONALIZATION_MODES } from '../../constants';
 import { getTestTypeDisplay, getVariantCount } from '../../utils/testType';
@@ -60,6 +61,7 @@ function TestList() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const viewFilter = searchParams.get('view') || 'all';
+  const routes = useAppRoutes();
 
   const invalidateTests = useInvalidateTests();
   const { data: tests = [], isLoading: loading, isError, error, refetch: _fetchTests } = useTests();
@@ -267,7 +269,7 @@ function TestList() {
       ) {
         return;
       }
-      navigate(`/tests/${test.id}`, { state: { listTest: test } });
+      navigate(routes.testDetail(test.id), { state: { listTest: test } });
     };
 
     const isLoading = actionLoading[test.id] || false;
@@ -547,7 +549,7 @@ function TestList() {
             <button
               type="button"
               className={styles.cardActionLink}
-              onClick={() => navigate(`/tests/${test.id}/analytics`)}
+              onClick={() => navigate(routes.testAnalytics(test.id))}
             >
               <Icon source={ChartLineIcon} />
               View Analytics
@@ -555,7 +557,7 @@ function TestList() {
             <button
               type="button"
               className={`${styles.cardActionLink} ${styles.cardActionLinkPrimary}`}
-              onClick={() => navigate(`/tests/${test.id}`, { state: { listTest: test } })}
+              onClick={() => navigate(routes.testDetail(test.id), { state: { listTest: test } })}
             >
               <Icon source={ViewIcon} />
               View Details
@@ -829,7 +831,7 @@ function TestList() {
               <button
                 type="button"
                 className={styles.createTestBtn}
-                onClick={() => navigate('/tests/new')}
+                onClick={() => navigate(routes.createTest)}
               >
                 <Icon source={PlusIcon} />
                 Create Test
@@ -909,7 +911,7 @@ function TestList() {
                         heading="Create your first AB test"
                         action={{
                           content: 'Create Test',
-                          onAction: () => navigate('/tests/new'),
+                          onAction: () => navigate(routes.createTest),
                         }}
                         image="https://cdn.shopify.com/s/files/1/0757/9955/files/empty-state.svg"
                       >
@@ -962,7 +964,7 @@ function TestList() {
                                   }
                                 : {
                                     content: 'Create Test',
-                                    onAction: () => navigate('/tests/new'),
+                                    onAction: () => navigate(routes.createTest),
                                   }
                             }
                           >

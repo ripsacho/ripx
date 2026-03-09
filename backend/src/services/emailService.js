@@ -62,6 +62,13 @@ function getTransporter() {
   return transporter;
 }
 
+const SMTP_MAX_RETRIES = parseInt(process.env.SMTP_MAX_RETRIES || '3', 10) || 3;
+const SMTP_RETRY_DELAY_MS = parseInt(process.env.SMTP_RETRY_DELAY_MS || '1000', 10) || 1000;
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 /**
  * @param {{ to?: string, subject?: string, text?: string, html?: string, replyTo?: string }} options
  * @returns {Promise<boolean>} true if sent or stubbed, false on validation or SMTP failure
@@ -80,38 +87,50 @@ async function sendMail(options) {
     });
     return true;
   }
-  try {
-    const info = await transport.sendMail({
-      from: FROM,
-      to,
-      subject,
-      text:
-        text ||
-        (html
-          ? html
-              .replace(/<[^>]+>/g, ' ')
-              .replace(/\s+/g, ' ')
-              .trim()
-          : ''),
-      html: html || undefined,
-      replyTo: replyTo || undefined,
-    });
-    logger.info('Email sent', {
-      to: to?.substring(0, 6) + '…',
-      subject: subject?.substring(0, 40),
-      messageId: info?.messageId,
-    });
-    return true;
-  } catch (err) {
-    logger.error('Email send failed', {
-      to: to?.substring(0, 6) + '…',
-      subject: subject?.substring(0, 40),
-      error: err.message,
-      code: err.code,
-      response: err.response ? String(err.response).slice(0, 120) : undefined,
-    });
-    return false;
+  const payload = {
+    from: FROM,
+    to,
+    subject,
+    text:
+      text ||
+      (html
+        ? html
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+        : ''),
+    html: html || undefined,
+    replyTo: replyTo || undefined,
+  };
+  for (let attempt = 1; attempt <= SMTP_MAX_RETRIES; attempt++) {
+    try {
+      const info = await transport.sendMail(payload);
+      logger.info('Email sent', {
+        to: to?.substring(0, 6) + '…',
+        subject: subject?.substring(0, 40),
+        messageId: info?.messageId,
+        ...(attempt > 1 && { attempt }),
+      });
+      return true;
+    } catch (err) {
+      const _lastErr = err;
+      const isLast = attempt === SMTP_MAX_RETRIES;
+      logger[isLast ? 'error' : 'warn']('Email send failed', {
+        to: to?.substring(0, 6) + '…',
+        subject: subject?.substring(0, 40),
+        error: err.message,
+        code: err.code,
+        attempt,
+        maxRetries: SMTP_MAX_RETRIES,
+        response: err.response ? String(err.response).slice(0, 120) : undefined,
+      });
+      if (!isLast) {
+        const backoffMs = SMTP_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+        await delay(backoffMs);
+      }
+    }
   }
+  return false;
 }
 
 /**

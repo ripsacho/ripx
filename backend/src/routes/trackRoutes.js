@@ -27,6 +27,7 @@ const {
 } = require('../utils/maintenanceMode');
 const logger = require('../utils/logger');
 const { asyncHandler } = require('../middleware/asyncHandler');
+const { HEATMAP_EVENTS_BATCH_MAX, ERROR_MESSAGES } = require('../constants');
 
 /** Middleware: return 403 when domain is on block list (key_value_store key block_list.<domain>) */
 async function blockListCheck(req, res, next) {
@@ -57,7 +58,11 @@ async function maintenanceCheck(req, res, next) {
   const site = req.query.site || req.body?.site;
   const domain = await resolveTenantDomain(shop, site);
   if (isMaintenanceActiveForDomain(domain, maintenanceValue)) {
-    return res.status(503).json({ success: false, maintenance: true });
+    return res.status(503).json({
+      success: false,
+      error: ERROR_MESSAGES.MAINTENANCE,
+      maintenance: true,
+    });
   }
   next();
 }
@@ -529,10 +534,17 @@ router.post(
       return res.json({ success: true, inserted: 0 });
     }
 
+    if (events.length > HEATMAP_EVENTS_BATCH_MAX) {
+      return res.status(400).json({
+        success: false,
+        error: `Too many events. Maximum ${HEATMAP_EVENTS_BATCH_MAX} per request.`,
+      });
+    }
+
     const valid = events.filter(
       e =>
-        e.test_id &&
-        e.variant_id &&
+        validators.isValidUUID(e.test_id) &&
+        validators.isValidUUID(e.variant_id) &&
         e.page_url &&
         (e.event_type === 'click' || e.event_type === 'scroll')
     );

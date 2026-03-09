@@ -23,14 +23,79 @@
 /* ========== Root layout: two panels ========== */
 .connectRoot {
   display: flex;
+  flex-direction: column;
   min-height: 100vh;
   width: 100%;
   position: relative;
   background: var(--bg-primary, #f8fafc);
 }
 
+/* Top bar: RipX + My domains (consistent with AccountNav) */
+.connectTopBar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1.25rem;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border-secondary, rgba(0, 0, 0, 0.06));
+}
+
+[data-theme='dark'] .connectTopBar {
+  background: rgba(18, 18, 18, 0.9);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.connectTopBarLogo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.connectTopBarLogo:hover {
+  color: var(--text-primary);
+  opacity: 0.9;
+}
+
+.connectTopBarLogo img {
+  object-fit: contain;
+}
+
+.connectTopBarNav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.connectTopBarLink {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-decoration: none;
+  border-radius: 8px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.connectTopBarLink:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
 [data-theme='dark'] .connectRoot {
   background: var(--bg-primary);
+}
+
+.connectPanels {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
 }
 
 /* ========== Hero panel (left, desktop only) ========== */
@@ -348,6 +413,62 @@
   outline: 2px solid var(--futuristic-cyan);
   outline-offset: 2px;
   border-radius: 10px;
+}
+
+/* ========== Shopify connect (when ?shop= is present) ========== */
+.shopifyConnectBanner {
+  width: 100%;
+  margin-bottom: 1.25rem;
+  padding: 1.25rem;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.08) 0%, rgba(8, 126, 139, 0.06) 100%);
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  border-radius: 16px;
+}
+
+[data-theme='dark'] .shopifyConnectBanner {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.12) 0%, rgba(8, 126, 139, 0.08) 100%);
+  border-color: rgba(6, 182, 212, 0.25);
+}
+
+.shopifyConnectBannerInner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.shopifyConnectBannerTitle {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.shopifyConnectBannerDesc {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.shopifyConnectBanner .shopifyConnectBannerInner button {
+  align-self: flex-start;
+}
+
+/* ========== Reason banner (sign in to connect store) ========== */
+.authReasonBanner {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  background: rgba(6, 182, 212, 0.08);
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  border-radius: 10px;
+  color: var(--text-primary, #1a1a1a);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+[data-theme='dark'] .authReasonBanner {
+  background: rgba(6, 182, 212, 0.12);
+  border-color: rgba(6, 182, 212, 0.25);
+  color: var(--text-primary);
 }
 
 /* ========== Form card ========== */

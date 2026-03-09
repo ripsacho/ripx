@@ -16,6 +16,7 @@ const bodyParser = require('body-parser');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const logger = require('./utils/logger');
+// Load env first; any module that uses database or env (e.g. validateEnvironment) depends on this.
 require('dotenv').config();
 
 const APP_VERSION = process.env.APP_VERSION || '1.0.0';
@@ -81,6 +82,7 @@ try {
       secure: process.env.NODE_ENV === 'production',
       httpOnly: true,
       maxAge: 24 * 60 * 60 * 1000,
+      sameSite: 'lax',
     },
   };
 
@@ -139,7 +141,7 @@ const { errorHandler } = require('./middleware/errorHandler');
 const { asyncHandler } = require('./middleware/asyncHandler');
 const { requestIdMiddleware } = require('./middleware/requestId');
 const { authenticate, authenticateShopify } = require('./middleware/auth');
-const { RATE_LIMIT, HTTP_STATUS } = require('./constants');
+const { RATE_LIMIT, HTTP_STATUS, KV_KEYS } = require('./constants');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -173,10 +175,23 @@ function validateEnvironment() {
   }
 
   const jwtSecret = process.env.JWT_SECRET || '';
-  if (jwtSecret.length < 32 || jwtSecret === 'your_jwt_secret_here') {
-    logger.warn(
-      'JWT_SECRET is weak or default. Use a strong random string (32+ chars) in production.'
-    );
+  const weakPatterns = [
+    'your_jwt_secret_here',
+    'your_jwt_secret_here_generate_strong_random_string',
+    'change_me',
+    'secret',
+  ];
+  const isWeak =
+    jwtSecret.length < 32 || weakPatterns.some(p => jwtSecret.includes(p) || jwtSecret === p);
+  if (isWeak) {
+    const msg =
+      'JWT_SECRET is weak or default. Use a strong random string (32+ chars), e.g. openssl rand -hex 32';
+    if (process.env.NODE_ENV === 'production') {
+      logger.error(msg);
+      process.stderr.write(`❌ ${msg}\n`);
+      process.exit(1);
+    }
+    logger.warn(msg);
   }
 
   if (process.env.NODE_ENV === 'production') {
@@ -221,6 +236,10 @@ app.use(
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false, // Required for Shopify Polaris
     frameguard: false, // Use CSP frame-ancestors only (allows Shopify Admin iframe)
+    hsts:
+      process.env.NODE_ENV === 'production'
+        ? { maxAge: 31536000, includeSubDomains: true, preload: true }
+        : false,
   })
 );
 
@@ -350,7 +369,7 @@ app.use((req, res, next) => {
 const apiLimiter = rateLimit({
   windowMs: RATE_LIMIT.WINDOW_MS,
   max: RATE_LIMIT.MAX_REQUESTS,
-  message: 'Too many requests from this IP, please try again later.',
+  message: { success: false, error: 'Too many requests from this IP, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
   skip: req =>
@@ -366,7 +385,7 @@ app.use('/api/', apiLimiter);
 const adminLimiter = rateLimit({
   windowMs: RATE_LIMIT.WINDOW_MS,
   max: parseInt(process.env.RATE_LIMIT_ADMIN_MAX, 10) || 120,
-  message: 'Too many admin requests, please try again later.',
+  message: { success: false, error: 'Too many admin requests, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -375,7 +394,7 @@ app.use('/api/admin', adminLimiter);
 const trackLimiter = rateLimit({
   windowMs: RATE_LIMIT.WINDOW_MS,
   max: parseInt(process.env.RATE_LIMIT_TRACK_MAX, 10) || 2000,
-  message: 'Too many tracking requests, please try again later.',
+  message: { success: false, error: 'Too many tracking requests, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -384,7 +403,7 @@ app.use('/api/track', trackLimiter);
 const authLimiter = rateLimit({
   windowMs: RATE_LIMIT.WINDOW_MS,
   max: parseInt(process.env.RATE_LIMIT_AUTH_MAX, 10) || 30,
-  message: 'Too many auth attempts, please try again later.',
+  message: { success: false, error: 'Too many auth attempts, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -394,17 +413,40 @@ app.use('/api/auth', authLimiter);
 const clientErrorLimiter = rateLimit({
   windowMs: RATE_LIMIT.WINDOW_MS,
   max: parseInt(process.env.RATE_LIMIT_CLIENT_ERROR_MAX, 10) || 100,
-  message: 'Too many error reports, please try again later.',
+  message: { success: false, error: 'Too many error reports, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
 app.use('/api/track/client-error', clientErrorLimiter);
+
+const tenantLimiter = rateLimit({
+  windowMs: RATE_LIMIT.WINDOW_MS,
+  max: parseInt(process.env.RATE_LIMIT_TENANT_MAX, 10) || 10,
+  message: { success: false, error: 'Too many registration attempts. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/tenants', tenantLimiter);
 
 // API docs (Swagger UI at /api-docs)
 app.use('/api-docs', apiDocsRoutes);
 
 // Set when SIGTERM/SIGINT received so health returns 503 during drain (load balancers stop sending traffic)
 let isShuttingDown = false;
+
+// Shared Redis client for health checks (reused to avoid creating a new connection per request)
+let healthRedisClient = null;
+
+async function getHealthRedisClient() {
+  if (healthRedisClient) {
+    return healthRedisClient;
+  }
+  const { createClient } = require('redis');
+  const client = createClient({ url: process.env.REDIS_URL });
+  await client.connect();
+  healthRedisClient = client;
+  return client;
+}
 
 // Health check endpoints (unauthenticated, for monitoring)
 const healthHandler = async (req, res) => {
@@ -428,18 +470,19 @@ const healthHandler = async (req, res) => {
     const { getMaintenanceMode } = require('./utils/maintenanceMode');
     maintenanceValue = await getMaintenanceMode();
     // key_value_store may not exist on very old DBs; catch keeps health responding with dbStatus 'error'
-    const kv = await query(
-      "SELECT key, value FROM key_value_store WHERE key IN ('config.announcement_banner', 'config.maintenance_message')"
-    );
+    const kv = await query('SELECT key, value FROM key_value_store WHERE key IN ($1, $2)', [
+      KV_KEYS.ANNOUNCEMENT_BANNER,
+      KV_KEYS.MAINTENANCE_MESSAGE,
+    ]);
     for (const row of kv.rows || []) {
       const v =
         row.value !== null && row.value !== undefined && String(row.value).trim() !== ''
           ? String(row.value).trim()
           : null;
-      if (row.key === 'config.announcement_banner' && v) {
+      if (row.key === KV_KEYS.ANNOUNCEMENT_BANNER && v) {
         announcementBanner = v;
       }
-      if (row.key === 'config.maintenance_message' && v) {
+      if (row.key === KV_KEYS.MAINTENANCE_MESSAGE && v) {
         maintenanceMessage = v;
       }
     }
@@ -448,14 +491,12 @@ const healthHandler = async (req, res) => {
   }
   if (process.env.REDIS_URL) {
     try {
-      const { createClient } = require('redis');
-      const client = createClient({ url: process.env.REDIS_URL });
-      await client.connect();
+      const client = await getHealthRedisClient();
       await client.ping();
-      await client.quit();
       redisStatus = 'ok';
     } catch (err) {
       redisStatus = 'error';
+      healthRedisClient = null; // allow reconnect on next check
     }
   }
   const overall =
@@ -488,11 +529,12 @@ app.get(
   '/api/config/legal',
   asyncHandler(async (req, res) => {
     const { query } = require('./utils/database');
-    const kv = await query(
-      "SELECT key, value FROM key_value_store WHERE key IN ('config.terms_url', 'config.privacy_url')"
-    );
-    const termsUrl = kv.rows.find(r => r.key === 'config.terms_url')?.value;
-    const privacyUrl = kv.rows.find(r => r.key === 'config.privacy_url')?.value;
+    const kv = await query('SELECT key, value FROM key_value_store WHERE key IN ($1, $2)', [
+      KV_KEYS.TERMS_URL,
+      KV_KEYS.PRIVACY_URL,
+    ]);
+    const termsUrl = kv.rows.find(r => r.key === KV_KEYS.TERMS_URL)?.value;
+    const privacyUrl = kv.rows.find(r => r.key === KV_KEYS.PRIVACY_URL)?.value;
     res.json({
       success: true,
       termsUrl:
@@ -535,10 +577,18 @@ app.use('/api', (req, res) => {
   });
 });
 
-// Production: serve frontend static files (SPA)
-if (process.env.NODE_ENV === 'production') {
-  const path = require('path');
-  const frontendDist = path.join(__dirname, '../../frontend/dist');
+// Reject requests for source paths (e.g. /src/App.jsx from dev index). Prevents blank page when tunnel serves dev HTML but backend can't serve /src/*.
+app.get('/src/*', (_req, res) => {
+  res.status(404).send('Not found');
+});
+
+// Serve built SPA when frontend/dist exists (production or tunnel: avoid /src/* requests that cause 500/blank page).
+const path = require('path');
+const fs = require('fs');
+const frontendDist = path.join(__dirname, '../../frontend/dist');
+const distExists =
+  fs.existsSync(frontendDist) && fs.existsSync(path.join(frontendDist, 'index.html'));
+if (distExists) {
   app.use(express.static(frontendDist));
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api')) {
@@ -566,54 +616,61 @@ process.on('uncaughtException', error => {
   process.exit(1);
 });
 
-// Start server
-const server = app.listen(PORT, () => {
-  server.timeout = parseInt(process.env.REQUEST_TIMEOUT_MS, 10) || 60000;
-  server.keepAliveTimeout = 65000;
-  server.headersTimeout = 66000;
-  logger.info('RipX server started', {
-    port: PORT,
-    environment: process.env.NODE_ENV || 'development',
-    version: APP_VERSION,
+// Start server only when run directly (e.g. node app.js). When required (e.g. by supertest),
+// do not listen so the app can be used with request(app) without binding to PORT.
+if (require.main === module) {
+  const server = app.listen(PORT, () => {
+    server.timeout = parseInt(process.env.REQUEST_TIMEOUT_MS, 10) || 60000;
+    server.keepAliveTimeout = 65000;
+    server.headersTimeout = 66000;
+    logger.info('RipX server started', {
+      port: PORT,
+      environment: process.env.NODE_ENV || 'development',
+      version: APP_VERSION,
+    });
+    // Optional: verify SMTP connection in background (logs success or failure)
+    const emailService = require('./services/emailService');
+    if (emailService.isConfigured()) {
+      emailService.verifyConnection().catch(() => {});
+    }
   });
-  // Optional: verify SMTP connection in background (logs success or failure)
-  const emailService = require('./services/emailService');
-  if (emailService.isConfigured()) {
-    emailService.verifyConnection().catch(() => {});
-  }
-});
 
-// Graceful shutdown for server
-const gracefulShutdown = signal => {
-  if (isShuttingDown) {
-    return;
-  }
-  isShuttingDown = true;
-  logger.info(`${signal} received, shutting down gracefully`);
+  const gracefulShutdown = signal => {
+    if (isShuttingDown) {
+      return;
+    }
+    isShuttingDown = true;
+    logger.info(`${signal} received, shutting down gracefully`);
 
-  server.close(() => {
-    logger.info('HTTP server closed');
-    // Close database connections
-    const { closeDatabase } = require('./utils/database');
-    closeDatabase()
-      .then(() => {
-        logger.info('Database connections closed');
-        process.exit(0);
-      })
-      .catch(error => {
-        logger.error('Error during shutdown', { error });
-        process.exit(1);
+    server.close(() => {
+      logger.info('HTTP server closed');
+      const closeRedis = healthRedisClient
+        ? healthRedisClient
+            .quit()
+            .catch(err => logger.warn('Health Redis close', { err: err?.message }))
+        : Promise.resolve();
+      closeRedis.then(() => {
+        const { closeDatabase } = require('./utils/database');
+        closeDatabase()
+          .then(() => {
+            logger.info('Database connections closed');
+            process.exit(0);
+          })
+          .catch(error => {
+            logger.error('Error during shutdown', { error });
+            process.exit(1);
+          });
       });
-  });
+    });
 
-  // Force close after 10 seconds
-  setTimeout(() => {
-    logger.error('Forced shutdown after timeout');
-    process.exit(1);
-  }, 10000);
-};
+    setTimeout(() => {
+      logger.error('Forced shutdown after timeout');
+      process.exit(1);
+    }, 10000);
+  };
 
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+}
 
 module.exports = app;

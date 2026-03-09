@@ -64,225 +64,13 @@ import {
 } from '../../utils/previewUrl';
 import { inferTemplateKeyFromVariants } from '../../utils/testType';
 import { STANDALONE_TEST_TYPE_IDS } from '../../constants';
-
-const TEST_TEMPLATES = {
-  price: {
-    name: 'Price Test',
-    icon: '💰',
-    description: 'Test different product prices to find optimal pricing',
-    defaultConfig: {
-      type: 'price',
-      variants: [
-        { name: 'Control', allocation: 50, config: { price: null } },
-        { name: 'Variant A', allocation: 50, config: { price: null } },
-      ],
-    },
-  },
-  pricing: {
-    name: 'Pricing',
-    icon: '💰',
-    description: 'Test price points on one product, multiple products, or entire collections.',
-    defaultConfig: {
-      type: 'price',
-      variants: [
-        { name: 'Control', allocation: 50, config: { price: null } },
-        { name: 'Variant A', allocation: 50, config: { price: null } },
-      ],
-    },
-  },
-  content: {
-    name: 'Content Test',
-    icon: '📝',
-    description: 'Test headlines, descriptions, and messaging',
-    defaultConfig: {
-      type: 'content',
-      variants: [
-        { name: 'Control', allocation: 50, config: {} },
-        { name: 'Variant A', allocation: 50, config: {} },
-      ],
-    },
-  },
-  'onsite-edit': {
-    name: 'Onsite Edit',
-    icon: '✏️',
-    description:
-      'Edit or hide page elements like text, images, or sections without changing your theme.',
-    defaultConfig: {
-      type: 'content',
-      variants: [
-        { name: 'Control', allocation: 50, config: {} },
-        { name: 'Variant A', allocation: 50, config: {} },
-      ],
-    },
-  },
-  'split-url': {
-    name: 'Split URL',
-    icon: '🔀',
-    description: 'Send visitors to alternate URLs to test page-level changes.',
-    defaultConfig: {
-      type: 'content',
-      variants: [
-        { name: 'Control', allocation: 50, config: { url: '' } },
-        { name: 'Variant A', allocation: 50, config: { url: '' } },
-      ],
-    },
-  },
-  template: {
-    name: 'Template',
-    icon: '📄',
-    description: 'Compare and test different homepage, product, and collections templates.',
-    defaultConfig: {
-      type: 'content',
-      variants: [
-        { name: 'Control', allocation: 50, config: { template: '' } },
-        { name: 'Variant A', allocation: 50, config: { template: '' } },
-      ],
-    },
-  },
-  theme: {
-    name: 'Theme',
-    icon: '🎨',
-    description: 'Test theme redesigns, new navigation, or impact of adding an app.',
-    defaultConfig: {
-      type: 'content',
-      variants: [
-        { name: 'Control', allocation: 50, config: {} },
-        { name: 'Variant A', allocation: 50, config: {} },
-      ],
-    },
-  },
-  shipping: {
-    name: 'Shipping Test',
-    icon: '🚚',
-    description: 'Test shipping rates and free shipping thresholds',
-    defaultConfig: {
-      type: 'shipping',
-      variants: [
-        { name: 'Control', allocation: 50, config: { rate: null } },
-        { name: 'Variant A', allocation: 50, config: { rate: null } },
-      ],
-    },
-  },
-  offer: {
-    name: 'Offer Test',
-    icon: '🎁',
-    description: 'Test discounts and promotional offers',
-    defaultConfig: {
-      type: 'offer',
-      variants: [
-        {
-          name: 'Control',
-          allocation: 50,
-          config: { discount_type: 'percent', discount_value: null },
-        },
-        {
-          name: 'Variant A',
-          allocation: 50,
-          config: { discount_type: 'percent', discount_value: null },
-        },
-      ],
-    },
-  },
-  checkout: {
-    name: 'Checkout Test',
-    icon: '🛒',
-    description: 'Try checkout customizations like trust badges, guarantees, and custom images.',
-    defaultConfig: {
-      type: 'checkout',
-      variants: [
-        { name: 'Control', allocation: 50, config: {} },
-        { name: 'Variant A', allocation: 50, config: {} },
-      ],
-    },
-  },
-  combination: {
-    name: 'Combination Test',
-    icon: '🔬',
-    description:
-      'Test multiple variables together (e.g., price + shipping) for interaction effects.',
-    defaultConfig: {
-      type: 'combination',
-      variants: [
-        { name: 'Control + Control', allocation: 25, config: { price: null, rate: null } },
-        { name: 'Price A + Control', allocation: 25, config: { price: null, rate: null } },
-        { name: 'Control + Shipping A', allocation: 25, config: { price: null, rate: null } },
-        { name: 'Price A + Shipping A', allocation: 25, config: { price: null, rate: null } },
-      ],
-    },
-  },
-};
-
-const TEST_TYPE_CATEGORIES = {
-  content: {
-    title: 'Content Tests',
-    description: 'Test visual and content changes',
-    types: [
-      {
-        key: 'onsite-edit',
-        name: 'Onsite Edit',
-        description:
-          'Edit or hide page elements like text, images, or sections without changing your theme.',
-        icon: '✏️',
-      },
-      {
-        key: 'split-url',
-        name: 'Split URL',
-        description: 'Send visitors to alternate URLs to test page-level changes.',
-        icon: '🔀',
-      },
-      {
-        key: 'template',
-        name: 'Template',
-        description: 'Compare and test different homepage, product, and collections templates.',
-        icon: '📄',
-      },
-      {
-        key: 'theme',
-        name: 'Theme',
-        description: 'Test theme redesigns, new navigation, or impact of adding an app.',
-        icon: '🎨',
-      },
-    ],
-  },
-  profit: {
-    title: 'Profit Tests',
-    description: 'Test changes that directly impact revenue',
-    types: [
-      {
-        key: 'pricing',
-        name: 'Pricing',
-        description: 'Test price points on one product, multiple products, or entire collections.',
-        icon: '💰',
-      },
-      {
-        key: 'shipping',
-        name: 'Shipping',
-        description: 'Explore different shipping rates and free shipping thresholds.',
-        icon: '🚚',
-      },
-      {
-        key: 'offer',
-        name: 'Offer',
-        description: 'Compare percentage discounts, dollar-off amounts, or tiered incentives.',
-        icon: '🎁',
-      },
-      {
-        key: 'checkout',
-        name: 'Checkout Test',
-        description:
-          'Try checkout customizations like trust badges, guarantees, and custom images.',
-        icon: '🛒',
-      },
-      {
-        key: 'combination',
-        name: 'Combination Test',
-        description:
-          'Test multiple variables together (e.g., price + shipping) for interaction effects.',
-        icon: '🔬',
-      },
-    ],
-  },
-};
+import {
+  TEST_TEMPLATES,
+  TEST_TYPE_CATEGORIES,
+  buildWizardSteps,
+  getStepIds,
+} from './testWizardConfig';
+import { getWizardStepErrors } from './wizardValidation';
 
 /** URL pattern for homepage on Shopify: root and /index */
 const HOMEPAGE_URL_PATTERN_SHOPIFY = '^/$|^/index';
@@ -509,46 +297,8 @@ function TestWizard({
     return () => window.removeEventListener('scroll', checkStuck);
   }, []);
 
-  const steps = showTemplateStep
-    ? [
-        { id: 1, title: 'Select Test Type', description: 'Choose a test template' },
-        { id: 2, title: 'Traffic Allocation', description: 'Set traffic distribution' },
-        {
-          id: 3,
-          title: 'Targeting & Segmentation',
-          description: 'Scope, device, audience, holdout',
-        },
-        { id: 4, title: 'Goal & Metrics', description: 'Define success metric and conversion' },
-        {
-          id: 5,
-          title: 'Variant Configuration',
-          description: 'Configure each variant (code, URLs, etc.)',
-        },
-        {
-          id: 6,
-          title: mode === 'create' ? 'Review & Create' : 'Review & Save',
-          description: 'Review and confirm',
-        },
-      ]
-    : [
-        { id: 1, title: 'Traffic Allocation', description: 'Set traffic distribution' },
-        {
-          id: 2,
-          title: 'Targeting & Segmentation',
-          description: 'Scope, device, audience, holdout',
-        },
-        { id: 3, title: 'Goal & Metrics', description: 'Define success metric and conversion' },
-        {
-          id: 4,
-          title: 'Variant Configuration',
-          description: 'Configure each variant (code, URLs, etc.)',
-        },
-        {
-          id: 5,
-          title: mode === 'create' ? 'Review & Create' : 'Review & Save',
-          description: 'Review and confirm',
-        },
-      ];
+  const steps = buildWizardSteps(showTemplateStep, mode);
+  const stepIds = getStepIds(showTemplateStep);
 
   useEffect(() => {
     if (!onTitleRender) return;
@@ -634,7 +384,6 @@ function TestWizard({
       .finally(() => setStoreResourcesLoading(false));
   }, [targetTypeForResources, storeResourceSearchDebounced, isStandalone]);
 
-  const targetingStepId = showTemplateStep ? 3 : 2;
   useEffect(() => {
     if (isStandalone && (placementSection === 'device' || placementSection === 'audience')) {
       setPlacementSection('page');
@@ -643,7 +392,7 @@ function TestWizard({
   }, [isStandalone]);
   useEffect(() => {
     const handler = e => {
-      if (currentStep !== targetingStepId) return;
+      if (currentStep !== stepIds.targeting) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === '1') {
         setPlacementSection('page');
@@ -694,7 +443,7 @@ function TestWizard({
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [currentStep, targetingStepId, isStandalone]);
+  }, [currentStep, stepIds.targeting, isStandalone]);
 
   useEffect(() => {
     if (initialData) {
@@ -1093,31 +842,67 @@ function TestWizard({
   // Listen for selector from visual editor iframe (variant-specific, max 5 per variant, or replace when changing)
   useEffect(() => {
     function handleMessage(event) {
-      if (event.data?.type !== 'ripx-visual-selector' || typeof event.data.selector !== 'string')
-        return;
-      const sel = event.data.selector.trim();
-      if (!sel) return;
+      try {
+        if (event.data?.type !== 'ripx-visual-selector' || typeof event.data.selector !== 'string')
+          return;
+        const sel = event.data.selector.trim();
+        if (!sel) return;
 
-      const form = formDataRef.current;
-      const variantIndex = Math.min(
-        Math.max(0, visualPreviewVariantIndexRef.current),
-        (form.variants?.length || 1) - 1
-      );
-      const variant = form.variants?.[variantIndex];
-      const rules = Array.from(
-        { length: 5 },
-        (_, i) =>
-          (variant?.config?.visual_editor_rules || [])[i] || {
-            selector: '',
-            css: '',
-            js: '',
-            position: 'after',
-          }
-      );
-      const selectedCount = rules.filter(r => (r.selector || '').trim()).length;
-      const changeIdx = changingSelectorIndexRef.current;
+        const form = formDataRef.current;
+        const variantIndex = Math.min(
+          Math.max(0, visualPreviewVariantIndexRef.current),
+          (form.variants?.length || 1) - 1
+        );
+        const variant = form.variants?.[variantIndex];
+        const rules = Array.from(
+          { length: 5 },
+          (_, i) =>
+            (variant?.config?.visual_editor_rules || [])[i] || {
+              selector: '',
+              css: '',
+              js: '',
+              position: 'after',
+            }
+        );
+        const selectedCount = rules.filter(r => (r.selector || '').trim()).length;
+        const changeIdx = changingSelectorIndexRef.current;
 
-      if (changeIdx !== null && changeIdx >= 0 && changeIdx < 5) {
+        if (changeIdx !== null && changeIdx >= 0 && changeIdx < 5) {
+          setFormData(prev => {
+            const variants = [...(prev.variants || [])];
+            const v = variants[variantIndex];
+            const config = { ...(v?.config || {}) };
+            const nextRules = Array.from(
+              { length: 5 },
+              (_, i) => rules[i] || { selector: '', css: '', js: '', position: 'after' }
+            );
+            nextRules[changeIdx] = { ...nextRules[changeIdx], selector: sel };
+            config.visual_editor_rules = nextRules;
+            variants[variantIndex] = { ...v, config };
+            return { ...prev, variants };
+          });
+          setChangingSelectorIndex(null);
+          setIsDirty(true);
+          setVisualEditorDirty(true);
+          setVisualSnippetPanelExpanded(true);
+          setVisualSnippetActiveElementIndex(changeIdx);
+          setVisualPreviewToast({ message: 'Selector updated', type: 'success' });
+          setTimeout(() => setVisualPreviewToast(null), 2000);
+          return;
+        }
+
+        if (selectedCount >= 5) {
+          setVisualPreviewToast({
+            message: 'Maximum 5 elements per variant. Remove an element to add another.',
+            type: 'critical',
+          });
+          setTimeout(() => setVisualPreviewToast(null), 4000);
+          return;
+        }
+
+        const firstEmpty = rules.findIndex(r => !(r.selector || '').trim());
+        const idx = firstEmpty >= 0 ? firstEmpty : 0;
+
         setFormData(prev => {
           const variants = [...(prev.variants || [])];
           const v = variants[variantIndex];
@@ -1126,55 +911,23 @@ function TestWizard({
             { length: 5 },
             (_, i) => rules[i] || { selector: '', css: '', js: '', position: 'after' }
           );
-          nextRules[changeIdx] = { ...nextRules[changeIdx], selector: sel };
+          nextRules[idx] = { ...nextRules[idx], selector: sel };
           config.visual_editor_rules = nextRules;
           variants[variantIndex] = { ...v, config };
           return { ...prev, variants };
         });
-        setChangingSelectorIndex(null);
         setIsDirty(true);
         setVisualEditorDirty(true);
         setVisualSnippetPanelExpanded(true);
-        setVisualSnippetActiveElementIndex(changeIdx);
-        setVisualPreviewToast({ message: 'Selector updated', type: 'success' });
-        setTimeout(() => setVisualPreviewToast(null), 2000);
-        return;
-      }
-
-      if (selectedCount >= 5) {
+        setVisualSnippetActiveElementIndex(idx);
         setVisualPreviewToast({
-          message: 'Maximum 5 elements per variant. Remove an element to add another.',
-          type: 'critical',
+          message: 'Element selected — snippet panel opened',
+          type: 'success',
         });
-        setTimeout(() => setVisualPreviewToast(null), 4000);
-        return;
+        setTimeout(() => setVisualPreviewToast(null), 2500);
+      } catch (_) {
+        // Ignore malformed or cross-origin messages
       }
-
-      const firstEmpty = rules.findIndex(r => !(r.selector || '').trim());
-      const idx = firstEmpty >= 0 ? firstEmpty : 0;
-
-      setFormData(prev => {
-        const variants = [...(prev.variants || [])];
-        const v = variants[variantIndex];
-        const config = { ...(v?.config || {}) };
-        const nextRules = Array.from(
-          { length: 5 },
-          (_, i) => rules[i] || { selector: '', css: '', js: '', position: 'after' }
-        );
-        nextRules[idx] = { ...nextRules[idx], selector: sel };
-        config.visual_editor_rules = nextRules;
-        variants[variantIndex] = { ...v, config };
-        return { ...prev, variants };
-      });
-      setIsDirty(true);
-      setVisualEditorDirty(true);
-      setVisualSnippetPanelExpanded(true);
-      setVisualSnippetActiveElementIndex(idx);
-      setVisualPreviewToast({
-        message: 'Element selected — snippet panel opened',
-        type: 'success',
-      });
-      setTimeout(() => setVisualPreviewToast(null), 2500);
     }
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
@@ -1513,8 +1266,7 @@ function TestWizard({
     }
 
     try {
-      const codeStepId = showTemplateStep ? 5 : 4;
-      const isCodeStep = currentStep === codeStepId;
+      const isCodeStep = currentStep === stepIds.code;
       let useCodeEndpoint = options.saveCodeOnly === true;
 
       if (!useCodeEndpoint && isCodeStep && lastSavedSnapshotRef.current) {
@@ -1579,9 +1331,8 @@ function TestWizard({
     setIsDirty(snapshot !== lastSavedSnapshotRef.current);
   }, [formData, variantCodesData]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const codeStepId = showTemplateStep ? 5 : 4;
   useEffect(() => {
-    if (mode !== 'edit' || currentStep !== codeStepId) return;
+    if (mode !== 'edit' || currentStep !== stepIds.code) return;
     if (!lastSavedSnapshotRef.current || variantCodesData.length !== formData.variants?.length)
       return;
     const snapshot = JSON.stringify(buildPayload());
@@ -1609,8 +1360,7 @@ function TestWizard({
     if (autosaveTimeoutRef.current) {
       clearTimeout(autosaveTimeoutRef.current);
     }
-    const codeStepId = showTemplateStep ? 5 : 4;
-    const autosaveDelay = currentStep === codeStepId ? 2500 : 1200;
+    const autosaveDelay = currentStep === stepIds.code ? 2500 : 1200;
     autosaveTimeoutRef.current = setTimeout(() => {
       handleSubmit({ silent: true });
     }, autosaveDelay);
@@ -1625,129 +1375,17 @@ function TestWizard({
     showTemplateStep,
   ]);
 
-  const getStepErrors = stepId => {
-    const errors = [];
-    if (showTemplateStep && stepId === 1) {
-      const nameToCheck = formData.name?.trim() || initialData?.name?.trim();
-      if (!nameToCheck) {
-        errors.push('Test name is required.');
-      }
-      if (!selectedTemplate) {
-        errors.push('Select a test type to continue.');
-      }
-    }
-    const targetingStepId = showTemplateStep ? 3 : 2;
-    const goalStepId = showTemplateStep ? 4 : 3;
-    if (stepId === goalStepId) {
-      const nameToCheck = formData.name?.trim() || initialData?.name?.trim();
-      if (!nameToCheck) {
-        errors.push('Test name is required.');
-      }
-      if (!formData.goal?.metric) {
-        errors.push('Select a success metric (Revenue, Conversion, or AOV).');
-      }
-      const cogs = formData.goal?.cogs;
-      if (cogs?.enabled) {
-        const cogsVal = Number(cogs.value);
-        if (cogs.type === 'percentage' && (Number.isNaN(cogsVal) || cogsVal < 0 || cogsVal > 100)) {
-          errors.push('COGS percentage must be between 0 and 100.');
-        }
-        if (cogs.type === 'fixed_per_order' && (Number.isNaN(cogsVal) || cogsVal < 0)) {
-          errors.push('COGS per order must be 0 or greater.');
-        }
-      }
-    }
-    if (stepId === targetingStepId) {
-      const targetType = formData.target_type || initialData?.target_type;
-      const pageRules = formData.segments?.page_rules || initialData?.segments?.page_rules || [];
-      const hasCustomScope = pageRules.length > 0;
-      const hasTargetId =
-        (formData.target_id && formData.target_id.trim()) ||
-        (Array.isArray(formData.target_ids) && formData.target_ids.length > 0) ||
-        (initialData?.target_id && initialData.target_id.trim()) ||
-        (Array.isArray(initialData?.target_ids) && initialData.target_ids.length > 0);
-      const needsTargetId =
-        targetType &&
-        targetType !== '' &&
-        targetType !== 'all' &&
-        targetType !== 'homepage' &&
-        targetType !== 'cart' &&
-        targetType !== 'checkout' &&
-        targetType !== 'all-products' &&
-        targetType !== 'all-collections';
-      if (!hasCustomScope && needsTargetId && !hasTargetId) {
-        errors.push('Target ID is required for the selected target type.');
-      }
-      const holdoutValue = Number(formData.holdout_percent);
-      if (!Number.isNaN(holdoutValue) && (holdoutValue < 0 || holdoutValue > 50)) {
-        errors.push('Holdout percent must be between 0 and 50.');
-      }
-    }
-    const trafficStepId = showTemplateStep ? 2 : 1;
-    if (stepId === trafficStepId) {
-      const totalAllocation = (formData.variants || []).reduce(
-        (sum, v) => sum + (v.allocation || 0),
-        0
-      );
-      if (Math.abs(totalAllocation - 100) > 0.01) {
-        errors.push(
-          `Total traffic allocation must equal 100%. Current: ${totalAllocation.toFixed(2)}%.`
-        );
-      }
-    }
-    const codeStepId = showTemplateStep ? 5 : 4;
-    if (stepId === codeStepId) {
-      if (cssValidationErrors.length > 0) {
-        errors.push('Fix CSS syntax errors before continuing.');
-      }
-      if (jsValidationErrors.length > 0) {
-        errors.push('Fix JavaScript syntax errors before continuing.');
-      }
-    }
-    const reviewStepId = steps[steps.length - 1]?.id;
-    if (reviewStepId && stepId === reviewStepId) {
-      const nameToCheck = formData.name?.trim() || initialData?.name?.trim();
-      if (!nameToCheck) errors.push('Test name is required.');
-      if (!formData.goal?.metric && !initialData?.goal?.metric) {
-        errors.push('Select a success metric in the Goal & Metrics step.');
-      }
-      const cogsReview = formData.goal?.cogs;
-      if (cogsReview?.enabled) {
-        const v = Number(cogsReview.value);
-        if (cogsReview.type === 'percentage' && (Number.isNaN(v) || v < 0 || v > 100)) {
-          errors.push('COGS percentage must be between 0 and 100.');
-        }
-        if (cogsReview.type === 'fixed_per_order' && (Number.isNaN(v) || v < 0)) {
-          errors.push('COGS per order must be 0 or greater.');
-        }
-      }
-      const totalAllocation = (formData.variants || []).reduce(
-        (s, v) => s + (v.allocation || 0),
-        0
-      );
-      if (Math.abs(totalAllocation - 100) > 0.01) {
-        errors.push(`Traffic allocation must equal 100%. Current: ${totalAllocation.toFixed(1)}%.`);
-      }
-      const targetType = formData.target_type || initialData?.target_type;
-      const pageRules = formData.segments?.page_rules || initialData?.segments?.page_rules || [];
-      const hasCustomScope = pageRules.length > 0;
-      const hasTargetId =
-        (formData.target_id && formData.target_id.trim()) ||
-        (Array.isArray(formData.target_ids) && formData.target_ids.length > 0) ||
-        (initialData?.target_id && initialData?.target_id.trim()) ||
-        (Array.isArray(initialData?.target_ids) && initialData?.target_ids.length > 0);
-      const needsTargetIdReview =
-        targetType &&
-        targetType !== '' &&
-        !['all', 'homepage', 'cart', 'checkout', 'all-products', 'all-collections'].includes(
-          targetType
-        );
-      if (!hasCustomScope && needsTargetIdReview && !hasTargetId) {
-        errors.push('Target ID is required for the selected scope in the Targeting step.');
-      }
-    }
-    return errors;
-  };
+  const getStepErrors = stepId =>
+    getWizardStepErrors(stepId, {
+      stepIds,
+      reviewStepId: steps[steps.length - 1]?.id,
+      formData,
+      initialData,
+      showTemplateStep,
+      selectedTemplate,
+      cssValidationErrors,
+      jsValidationErrors,
+    });
 
   const handleVariantCodeChange = (type, value) => {
     setCodeEditorDirty(true);
@@ -5926,8 +5564,8 @@ function TestWizard({
                                   <Text as="p" variant="bodySm" tone="subdued">
                                     {!testId && 'Save the test to see variant styling. '}
                                     Element selection works when the RipX script is in your site’s{' '}
-                                    <code>&lt;head&gt;</code>. Add it via Settings → Installation;
-                                    then clicks in the preview will capture selectors.
+                                    <code>&lt;head&gt;</code>. Add it via App settings →
+                                    Installation; then clicks in the preview will capture selectors.
                                   </Text>
                                 </div>
                                 {variants.length > 1 && (

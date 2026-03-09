@@ -100,7 +100,7 @@ router.get(
     const shop = req.query.shop || req.query.shop_domain;
 
     if (!shop || !isValidShopDomain(shop)) {
-      return res.status(400).send('Invalid shop domain');
+      return res.status(400).json({ success: false, error: 'Invalid shop domain' });
     }
 
     const hasSignature = Boolean(req.query.signature);
@@ -108,11 +108,11 @@ router.get(
 
     if (!hasSignature) {
       if (isProduction) {
-        return res.status(401).send('Unauthorized');
+        return res.status(401).json({ success: false, error: 'Unauthorized' });
       }
       logger.warn('App proxy signature missing (dev only)', { shop });
     } else if (!verifyAppProxySignature(req.query)) {
-      return res.status(401).send('Unauthorized');
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
 
     const tests = await getActiveTestsForStorefront(shop);

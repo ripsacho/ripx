@@ -6,6 +6,7 @@
 
 import axios from 'axios';
 import { STORAGE_KEYS, ROUTES } from '../constants';
+import { hasCredentialsFromSources } from '../utils/credentials';
 
 // Use VITE_API_URL when set; otherwise /api for same-origin (works with proxy in dev and when served from same host)
 const API_BASE_URL = (() => {
@@ -22,6 +23,14 @@ export function getApiBaseUrl() {
 /** Public: full URL for health check (GET). */
 export function getHealthUrl() {
   return API_BASE_URL + '/health';
+}
+
+/**
+ * Call backend logout to clear email session cookie (so OAuth start doesn't use stale session).
+ * Fire-and-forget; does not block. Call clearAuthStorage() and redirect after.
+ */
+export function logout() {
+  fetch(`${API_BASE_URL}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => {});
 }
 
 // Create axios instance with default config
@@ -41,6 +50,57 @@ export function setQueryClientForPermissionInvalidation(queryClient) {
 /** Guard so we only redirect once when multiple 401s occur (e.g. session check + other requests) */
 let isRedirectingToLogin = false;
 
+/** Reset the redirect guard (e.g. when user is on Connect page so a future 401 after re-login can redirect again) */
+export function resetRedirectingToLogin() {
+  isRedirectingToLogin = false;
+}
+
+/**
+ * When embedded in Shopify Admin (iframe), redirect only the iframe so the top window stays on Admin.
+ * When not embedded, redirect the top window as before.
+ * Use for any redirect to our app (Connect, dashboard, etc.) so we never "leave" the Admin panel.
+ */
+export function redirectToAppUrl(url) {
+  if (typeof window === 'undefined') return;
+  if (window.self !== window.top) {
+    window.location.href = url;
+  } else {
+    window.top.location.href = url;
+  }
+}
+
+/** True when the app is running inside an iframe (e.g. Shopify Admin embed). */
+export function isEmbeddedInIframe() {
+  return typeof window !== 'undefined' && window.self !== window.top;
+}
+
+/**
+ * Build Connect URL preserving current page's query params (host, shop, etc.).
+ * When redirecting to Connect from within the Shopify Admin iframe, we must keep host and shop
+ * so the embed context is not lost (otherwise Shopify may redirect the top frame).
+ */
+export function getConnectUrl(params = {}) {
+  const base = ROUTES.CONNECT;
+  const currentSearch = typeof window !== 'undefined' ? window.location.search : '';
+  const combined = new URLSearchParams(currentSearch);
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== '') combined.set(k, String(v));
+  });
+  const q = combined.toString();
+  return q ? `${base}${base.includes('?') ? '&' : '?'}${q}` : base;
+}
+
+/**
+ * When in Shopify Admin iframe, append current query string (host, shop) to the path so the
+ * embed context is preserved. Use for any in-app navigation (e.g. to dashboard) from within the embed.
+ */
+export function getUrlWithEmbedParams(path) {
+  if (typeof window === 'undefined' || !path) return path;
+  const search = window.location.search;
+  if (!search) return path;
+  return path + (path.includes('?') ? '&' + search.slice(1) : search);
+}
+
 // Request interceptor: add correlation ID for distributed tracing
 apiClient.interceptors.request.use(config => {
   if (!config.headers['X-Request-ID']) {
@@ -51,14 +111,51 @@ apiClient.interceptors.request.use(config => {
 });
 
 // Response interceptor for error handling
+const RETRY_DELAY_MS = 2000;
+
 apiClient.interceptors.response.use(
   response => response,
   error => {
-    // Handle network errors
+    // Prefer API error message (rate limit, validation, etc.) when present
+    const apiMsg =
+      error.response?.data?.error ??
+      (typeof error.response?.data?.message === 'string' ? error.response.data.message : null);
+    if (typeof apiMsg === 'string') {
+      error.message = apiMsg;
+    }
+
+    // Override for specific network errors
     if (error.code === 'ECONNABORTED') {
       error.message = 'Request timeout. Please try again.';
     } else if (error.code === 'ERR_NETWORK') {
       error.message = 'Network error. Please check your connection.';
+    }
+
+    // Retry GET once on 5xx (transient server errors)
+    const status = error.response?.status;
+    const method = error.config?.method?.toLowerCase();
+    if (
+      status >= 500 &&
+      status < 600 &&
+      method === 'get' &&
+      error.config &&
+      !error.config._retried
+    ) {
+      error.config._retried = true;
+      return new Promise((resolve, reject) => {
+        setTimeout(() => {
+          apiClient
+            .request(error.config)
+            .then(resolve)
+            .catch(retryErr => {
+              retryErr.message = 'Request failed after retry. Please try again.';
+              reject(retryErr);
+            });
+        }, RETRY_DELAY_MS);
+      });
+    }
+    if (error.config?._retried) {
+      error.message = 'Request failed after retry. Please try again.';
     }
 
     // Log errors in development
@@ -73,21 +170,78 @@ apiClient.interceptors.response.use(
 
     if (error.response?.status === 401) {
       if (isRedirectingToLogin) return Promise.reject(error);
+      // Don't redirect when we're in the middle of OAuth start → Shopify; let DomainList handle (e.g. redirect to Connect?shop=...)
+      try {
+        if (
+          typeof window !== 'undefined' &&
+          window.sessionStorage?.getItem(STORAGE_KEYS.OAUTH_REDIRECTING)
+        ) {
+          window.sessionStorage.removeItem(STORAGE_KEYS.OAUTH_REDIRECTING);
+          return Promise.reject(error);
+        }
+      } catch {
+        // ignore sessionStorage errors
+      }
+      // On Domains page, never redirect on domain/OAuth-related 401 — let DomainList show "Sign in required" and open Connect in new tab
+      const path = typeof window !== 'undefined' ? window.location.pathname : '';
+      const requestUrl = String(error.config?.url || '');
+      const isOnDomainsPage =
+        path === ROUTES.DOMAINS || path === ROUTES.DOMAINS + '/' || path.includes('/domains');
+      const isDomainsFlowRequest =
+        requestUrl.includes('/me/domains') ||
+        requestUrl.includes('/auth/start') ||
+        requestUrl.includes('/account/stores');
+      if (isOnDomainsPage && isDomainsFlowRequest) {
+        return Promise.reject(error);
+      }
       const shopDomain = getShopDomain();
       const apiKey = getApiKey();
-      const path = window.location.pathname;
       const emailToken = getEmailToken();
       const onPublicAuthPage =
         path.startsWith(ROUTES.CONNECT) || path.startsWith(ROUTES.AUTH_CALLBACK);
-      // Email session or API key: clear and send to login (single entry is email)
+      // 401 with a shop in the request = "shop not authenticated" (no OAuth token yet), not "session invalid" — don't clear email session
+      const requestShop =
+        error.config?.params?.shop || (requestUrl.includes('shop=') ? shopDomain : null);
+      const isShopNotAuthenticated =
+        !!requestShop &&
+        (requestUrl.includes('/account/stores') ||
+          requestUrl.includes('/auth/start') ||
+          requestUrl.includes('/tests'));
+      if ((emailToken || apiKey) && !onPublicAuthPage && isShopNotAuthenticated) {
+        isRedirectingToLogin = true;
+        const normalized = /\.myshopify\.com$/i.test(requestShop)
+          ? String(requestShop).trim().toLowerCase()
+          : requestShop;
+        clearStoreSelection();
+        const reason = ROUTES.CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect';
+        redirectToAppUrl(getConnectUrl({ shop: normalized, reason }));
+        return Promise.reject(error);
+      }
+      // Email session or API key: clear and send to login (session invalid)
       if ((apiKey || emailToken) && !onPublicAuthPage) {
         isRedirectingToLogin = true;
         clearAuthStorage();
-        window.location.href = ROUTES.CONNECT;
+        redirectToAppUrl(getConnectUrl());
       } else if (shopDomain && !apiKey && !emailToken && !path.startsWith('/api/auth')) {
-        // Shop in URL but no session: redirect to Shopify OAuth only when not using email login
+        // Shopify store not connected: send to Connect with ?shop= and reason so banner shows
         isRedirectingToLogin = true;
-        window.location.href = `/api/auth?shop=${encodeURIComponent(shopDomain)}`;
+        const normalized = /\.myshopify\.com$/i.test(shopDomain)
+          ? shopDomain.trim().toLowerCase()
+          : shopDomain;
+        const reason = ROUTES.CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect';
+        redirectToAppUrl(getConnectUrl({ shop: normalized, reason }));
+      }
+    }
+
+    // Store installed but not linked to an email user: sign in and connect
+    if (error.response?.status === 403 && error.response?.data?.code === 'STORE_NOT_LINKED') {
+      if (isRedirectingToLogin) return Promise.reject(error);
+      const shop = error.response?.data?.shop;
+      if (shop && typeof window !== 'undefined') {
+        isRedirectingToLogin = true;
+        clearAuthStorage();
+        const reason = ROUTES.CONNECT_REASON?.SIGN_IN_TO_LINK || 'sign_in_to_link';
+        redirectToAppUrl(getConnectUrl({ shop, reason }));
       }
     }
 
@@ -149,7 +303,7 @@ export function getShopDomain() {
     currentStore = null;
   }
 
-  const resolvedShop =
+  let resolvedShop =
     shop ||
     shopFromAppBridge ||
     shopFromHost ||
@@ -159,6 +313,11 @@ export function getShopDomain() {
     null;
 
   if (resolvedShop) {
+    resolvedShop = String(resolvedShop).trim();
+    // Normalize Shopify domains to lowercase so backend session lookup matches
+    if (/\.myshopify\.com$/i.test(resolvedShop)) {
+      resolvedShop = resolvedShop.toLowerCase();
+    }
     try {
       const fromSession = window.sessionStorage?.getItem(STORAGE_KEYS.SHOP_DOMAIN);
       const fromLocal = window.localStorage?.getItem(STORAGE_KEYS.SHOP_DOMAIN);
@@ -346,7 +505,7 @@ export function hasEmailSession() {
  * Has any auth: shop, API key, or email session
  */
 export function hasCredentials() {
-  return !!getShopDomain() || !!getApiKey() || !!getEmailToken();
+  return hasCredentialsFromSources(getShopDomain(), getApiKey(), getEmailToken());
 }
 
 /**
@@ -422,7 +581,11 @@ export function apiRequest(method, endpoint, data = null, config = {}) {
 
   const emailToken = getEmailToken();
   const allowedWithoutShopOrKey =
-    emailToken && (endpoint.startsWith('/admin/') || endpoint.startsWith('/me/'));
+    emailToken &&
+    (endpoint.startsWith('/admin/') ||
+      endpoint.startsWith('/me/') ||
+      endpoint.startsWith('/auth/start') ||
+      endpoint.startsWith('/account/stores'));
   if (!shopDomain && !apiKey && !allowedWithoutShopOrKey) {
     throw new Error('Missing credentials. Open from Shopify Admin or set API key.');
   }
@@ -430,8 +593,13 @@ export function apiRequest(method, endpoint, data = null, config = {}) {
   // Extract params and headers from config to avoid conflicts
   const { params: configParams = {}, headers: configHeaders = {}, ...restConfig } = config;
 
+  // Use email session for admin/me, auth/start, and account/stores (list user's stores without sending shop)
   const useEmailSession =
-    getEmailToken() && (endpoint.startsWith('/admin/') || endpoint.startsWith('/me/'));
+    getEmailToken() &&
+    (endpoint.startsWith('/admin/') ||
+      endpoint.startsWith('/me/') ||
+      endpoint.startsWith('/auth/start') ||
+      endpoint.startsWith('/account/stores'));
 
   const requestConfig = {
     method,
@@ -462,7 +630,11 @@ export function apiRequest(method, endpoint, data = null, config = {}) {
   }
 
   if (!useEmailSession && shopDomain) {
-    requestConfig.headers['X-Shopify-Shop-Domain'] = shopDomain;
+    // Normalize .myshopify.com to lowercase so backend session lookup matches
+    const normalized = /\.myshopify\.com$/i.test(shopDomain)
+      ? shopDomain.trim().toLowerCase()
+      : shopDomain;
+    requestConfig.headers['X-Shopify-Shop-Domain'] = normalized;
   }
 
   if (data) {

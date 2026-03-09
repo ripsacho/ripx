@@ -78,11 +78,11 @@ router.post(
     // HMAC verification required; reject if missing or invalid
     if (!hmac) {
       logger.warn('Webhook rejected: missing HMAC', { path: req.path });
-      return res.status(401).send('Unauthorized');
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
     if (!verifyWebhook(req.body, hmac)) {
       logger.warn('Webhook rejected: invalid HMAC', { shop, path: req.path });
-      return res.status(401).send('Unauthorized');
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
 
     const payloadHash = crypto.createHash('sha256').update(req.body).digest('hex');
@@ -168,11 +168,11 @@ router.post(
 
     if (!hmac) {
       logger.warn('Webhook rejected: missing HMAC', { path: req.path });
-      return res.status(401).send('Unauthorized');
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
     if (!verifyWebhook(req.body, hmac)) {
       logger.warn('Webhook rejected: invalid HMAC', { shop, path: req.path });
-      return res.status(401).send('Unauthorized');
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
 
     const payloadHash = crypto.createHash('sha256').update(req.body).digest('hex');
@@ -232,11 +232,11 @@ router.post(
 
     if (!hmac) {
       logger.warn('Webhook rejected: missing HMAC', { path: req.path });
-      return res.status(401).send('Unauthorized');
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
     if (!verifyWebhook(req.body, hmac)) {
       logger.warn('Webhook rejected: invalid HMAC', { shopDomain, path: req.path });
-      return res.status(401).send('Unauthorized');
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
 
     // Clean up shop data

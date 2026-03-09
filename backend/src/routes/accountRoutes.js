@@ -12,10 +12,12 @@ const { isShopifyDomain } = require('../models/tenant');
 const validators = require('../utils/validators');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const { HTTP_STATUS } = require('../constants');
+const userModel = require('../models/user');
+const standaloneUser = require('../models/standaloneUser');
 
 /**
  * GET /api/account/stores
- * List stores for current auth (standalone: account tenants; Shopify: current shop)
+ * List stores for current auth: email session (user's account), API key (account), or Shopify (single shop).
  */
 router.get(
   '/stores',
@@ -23,6 +25,43 @@ router.get(
     const shopDomain = req.shopDomain;
     const accountId = req.accountId;
     const platform = req.platform;
+
+    // Email session: resolve user -> account -> list stores (so StoreSwitcher/layout work without a shop in storage)
+    if (req.authType === 'email' && req.email) {
+      const email = (req.email || '').trim().toLowerCase();
+      const user = await userModel.getByEmail(email);
+      if (!user) {
+        return sendSuccess(res, HTTP_STATUS.OK, {
+          stores: [],
+          currentStore: null,
+          multiStore: false,
+          platform: 'standalone',
+        });
+      }
+      const { accountId: resolvedAccountId } =
+        (await standaloneUser.ensureAccountForUser(user.id)) || {};
+      if (!resolvedAccountId) {
+        return sendSuccess(res, HTTP_STATUS.OK, {
+          stores: [],
+          currentStore: null,
+          multiStore: false,
+          platform: 'standalone',
+        });
+      }
+      const stores = await getStoresForAccount(resolvedAccountId);
+      const preferredStore = req.query.store || (stores[0] && stores[0].domain) || null;
+      return sendSuccess(res, HTTP_STATUS.OK, {
+        stores: stores.map(s => ({
+          id: s.id,
+          domain: s.domain,
+          platform: s.platform,
+          isCurrent: s.domain === preferredStore,
+        })),
+        currentStore: preferredStore,
+        multiStore: stores.length > 1,
+        platform: 'standalone',
+      });
+    }
 
     if (accountId) {
       const stores = await getStoresForAccount(accountId);

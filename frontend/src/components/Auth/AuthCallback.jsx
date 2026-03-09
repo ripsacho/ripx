@@ -4,16 +4,22 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { useSearchParams, Navigate } from 'react-router-dom';
+import { useSearchParams, useLocation, Navigate } from 'react-router-dom';
 import { Page, Spinner, Text, BlockStack } from '@shopify/polaris';
 import { PageShell } from '../Shared';
-import { ROUTES, isPlatformAdmin } from '../../constants';
-import { setEmailToken, apiGet, clearStoreSelection } from '../../services';
+import { ROUTES } from '../../constants';
+import {
+  setEmailToken,
+  clearStoreSelection,
+  getUrlWithEmbedParams,
+  getConnectUrl,
+} from '../../services';
 
 import { getApiBaseUrl } from '../../services/api';
 
 function AuthCallback() {
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const token = searchParams.get('token');
   const [status, setStatus] = useState('exchanging'); // exchanging | done | error
   const [errorMessage, setErrorMessage] = useState(null);
@@ -48,20 +54,8 @@ function AuthCallback() {
 
         setEmailToken(data.token);
         clearStoreSelection();
-
-        try {
-          const meRes = await apiGet('/admin/me');
-          const me = meRes.data?.data ?? meRes.data;
-          if (cancelled) return;
-          if (isPlatformAdmin(me?.role)) {
-            window.location.replace(ROUTES.ADMIN);
-          } else {
-            window.location.replace(ROUTES.DOMAINS);
-          }
-        } catch (_) {
-          if (cancelled) return;
-          window.location.replace(ROUTES.DOMAINS);
-        }
+        if (cancelled) return;
+        window.location.replace(getUrlWithEmbedParams(ROUTES.USER_PANEL));
         setStatus('done');
       } catch (err) {
         if (!cancelled) {
@@ -78,7 +72,7 @@ function AuthCallback() {
   }, [token, searchParams]);
 
   if (!token) {
-    return <Navigate to={ROUTES.CONNECT} replace />;
+    return <Navigate to={{ pathname: ROUTES.CONNECT, search: location.search }} replace />;
   }
 
   return (
@@ -95,7 +89,7 @@ function AuthCallback() {
           )}
           {status === 'error' && (
             <Text as="p" tone="critical">
-              {errorMessage}. <a href={ROUTES.CONNECT}>Go to sign in</a>.
+              {errorMessage}. <a href={getConnectUrl()}>Go to sign in</a>.
             </Text>
           )}
         </BlockStack>

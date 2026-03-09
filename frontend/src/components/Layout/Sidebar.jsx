@@ -13,43 +13,59 @@ import {
   PlusIcon,
   ChartLineIcon,
   CompassIcon,
-  SettingsIcon,
-  ProfileIcon,
-  BookIcon,
   ConnectIcon,
   MagicIcon,
+  HomeIcon,
+  SettingsIcon,
 } from '@shopify/polaris-icons';
 import { ROUTES } from '../../constants';
-import { hasEmailSession, getApiKey, getShopDomain } from '../../services';
 import { useTests } from '../../hooks';
 import { prefetchOnHover } from '../../utils/prefetch';
+import { getAppDomainFromPath } from '../../utils/breadcrumb';
 
-const baseNavigationGroups = [
-  {
-    label: 'Main',
-    items: [
-      { path: ROUTES.DASHBOARD, label: 'Dashboard', icon: ChartVerticalIcon },
-      { path: ROUTES.TESTS, label: 'All Tests', icon: ClipboardChecklistIcon },
-      {
-        path: ROUTES.TESTS_PERSONALIZATION,
-        label: 'Personalization',
-        icon: MagicIcon,
-        badgeKey: 'personalization',
-      },
-      { path: ROUTES.CREATE_TEST, label: 'Create Test', icon: PlusIcon },
-      { path: ROUTES.ANALYTICS, label: 'Analytics', icon: ChartLineIcon },
-    ],
-  },
-  {
-    label: 'Setup & Settings',
-    items: [
-      { path: ROUTES.SETUP, label: 'Setup Wizard', icon: CompassIcon },
-      { path: ROUTES.SETTINGS, label: 'Settings', icon: SettingsIcon },
-      { path: ROUTES.DOCS, label: 'Documentation', icon: BookIcon },
-      { path: ROUTES.PROFILE, label: 'Profile', icon: ProfileIcon },
-    ],
-  },
-];
+const baseNavigationGroups = (domain = null) => {
+  const dash = domain ? ROUTES.appDashboard(domain) : ROUTES.DASHBOARD;
+  const tests = domain ? ROUTES.appTests(domain) : ROUTES.TESTS;
+  const testsPersonalization = domain
+    ? ROUTES.appTestsPersonalization(domain)
+    : ROUTES.TESTS_PERSONALIZATION;
+  const createTest = domain ? ROUTES.appCreateTest(domain) : ROUTES.CREATE_TEST;
+  const analytics = domain ? ROUTES.appAnalytics(domain) : ROUTES.ANALYTICS;
+  const setup = domain ? ROUTES.appSetup(domain) : ROUTES.SETUP;
+  const appSettings = domain ? ROUTES.appSettings(domain) : null;
+  return [
+    ...(domain
+      ? [
+          {
+            label: 'Account',
+            items: [{ path: ROUTES.USER_PANEL, label: 'Home', icon: HomeIcon }],
+          },
+        ]
+      : []),
+    {
+      label: 'Main',
+      items: [
+        { path: dash, label: 'Dashboard', icon: ChartVerticalIcon },
+        { path: tests, label: 'All Tests', icon: ClipboardChecklistIcon },
+        {
+          path: testsPersonalization,
+          label: 'Personalization',
+          icon: MagicIcon,
+          badgeKey: 'personalization',
+        },
+        { path: createTest, label: 'Create Test', icon: PlusIcon },
+        { path: analytics, label: 'Analytics', icon: ChartLineIcon },
+      ],
+    },
+    {
+      label: 'Setup',
+      items: [
+        { path: setup, label: 'Setup Wizard', icon: CompassIcon },
+        ...(appSettings ? [{ path: appSettings, label: 'App settings', icon: SettingsIcon }] : []),
+      ],
+    },
+  ];
+};
 
 function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMobileClose }) {
   const [showLogo, setShowLogo] = useState(true);
@@ -59,6 +75,9 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
   const navigate = useNavigate();
   const location = useLocation();
   const { data: tests = [] } = useTests();
+  const appDomain = getAppDomainFromPath(location.pathname);
+  const isAccountContext =
+    !appDomain && (location.pathname === ROUTES.USER_PANEL || location.pathname === ROUTES.DOMAINS);
 
   const personalizationCount = useMemo(
     () =>
@@ -66,20 +85,20 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
     [tests]
   );
 
-  const emailOnly = hasEmailSession() && !getApiKey() && !getShopDomain();
-
   const navigationGroups = useMemo(() => {
-    if (emailOnly) {
+    if (isAccountContext) {
       return [
         {
           label: 'Account',
-          items: [{ path: ROUTES.DOMAINS, label: 'My domains', icon: ConnectIcon }],
+          items: [
+            { path: ROUTES.USER_PANEL, label: 'Home', icon: HomeIcon },
+            { path: ROUTES.DOMAINS, label: 'My domains', icon: ConnectIcon },
+          ],
         },
       ];
     }
-    /* Connect/Sign in is a full-page auth route – not shown in sidebar to avoid opening it inside app layout */
-    return baseNavigationGroups;
-  }, [emailOnly]);
+    return baseNavigationGroups(appDomain);
+  }, [isAccountContext, appDomain]);
 
   const handleNavMouseEnter = useCallback(
     (item, el) => {
@@ -99,12 +118,20 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
   const viewParam = searchParams.get('view');
 
   const isActive = (path, _item) => {
-    if (path === ROUTES.DASHBOARD) return location.pathname === ROUTES.DASHBOARD;
-    if (path === ROUTES.TESTS_PERSONALIZATION) {
-      return location.pathname === '/tests' && viewParam === 'personalization';
+    if (path === ROUTES.USER_PANEL) return location.pathname === ROUTES.USER_PANEL;
+    const dashboardPath = appDomain ? ROUTES.appDashboard(appDomain) : ROUTES.DASHBOARD;
+    if (path === dashboardPath) {
+      return location.pathname === dashboardPath || location.pathname === dashboardPath + '/';
     }
-    if (path === ROUTES.TESTS) {
-      return location.pathname === '/tests' && viewParam !== 'personalization';
+    const testsListPath = appDomain ? ROUTES.appTests(appDomain) : ROUTES.TESTS;
+    if (
+      path ===
+      (appDomain ? ROUTES.appTestsPersonalization(appDomain) : ROUTES.TESTS_PERSONALIZATION)
+    ) {
+      return location.pathname === testsListPath && viewParam === 'personalization';
+    }
+    if (path === testsListPath) {
+      return location.pathname === testsListPath && viewParam !== 'personalization';
     }
     if (location.pathname === path) return true;
     if (location.pathname.startsWith(path)) {
@@ -120,6 +147,8 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
     }
     return false;
   };
+
+  const homePath = appDomain ? ROUTES.appDashboard(appDomain) : ROUTES.USER_PANEL;
 
   return (
     <div className={`sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
@@ -140,12 +169,12 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
             }}
           >
             <div
-              onClick={() => navigate(ROUTES.DASHBOARD)}
+              onClick={() => navigate(homePath)}
               className="sidebar-brand"
               role="button"
               tabIndex={0}
-              onKeyDown={e => e.key === 'Enter' && navigate(ROUTES.DASHBOARD)}
-              aria-label="Go to Dashboard"
+              onKeyDown={e => e.key === 'Enter' && navigate(homePath)}
+              aria-label={appDomain ? 'Go to Dashboard' : 'Go to Home'}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -227,12 +256,12 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
           >
             {/* Icon - Hidden when collapse button is shown */}
             <div
-              onClick={() => navigate(ROUTES.DASHBOARD)}
+              onClick={() => navigate(homePath)}
               className="sidebar-brand sidebar-brand-icon"
               role="button"
               tabIndex={0}
-              onKeyDown={e => e.key === 'Enter' && navigate(ROUTES.DASHBOARD)}
-              aria-label="Go to Dashboard"
+              onKeyDown={e => e.key === 'Enter' && navigate(homePath)}
+              aria-label={appDomain ? 'Go to Dashboard' : 'Go to Home'}
               style={{
                 opacity: showCollapseButton ? 0 : 1,
                 transition: 'opacity 0.2s ease',

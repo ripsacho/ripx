@@ -20,7 +20,8 @@ const { HTTP_STATUS, ERROR_MESSAGES } = require('../constants');
 function errorHandler(err, req, res, _next) {
   const statusCode = err.status || err.statusCode || HTTP_STATUS.INTERNAL_SERVER_ERROR;
 
-  // Enriched structured log for debugging and monitoring
+  // Enriched structured log for debugging and monitoring.
+  // Never log req.body, req.headers.authorization, or full tokens (PII/security).
   logger.error('Request error', {
     requestId: req.id,
     error: err.message,
@@ -30,7 +31,6 @@ function errorHandler(err, req, res, _next) {
     method: req.method,
     statusCode,
     shopDomain: req.shopDomain || req.get?.('X-Shopify-Shop-Domain'),
-    // Optional: Sentry.captureException(err) when SENTRY_DSN is set
     ...(process.env.SENTRY_DSN && { sentryHint: 'configure SENTRY_DSN for external reporting' }),
   });
 

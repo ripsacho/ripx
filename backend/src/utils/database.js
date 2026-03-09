@@ -20,6 +20,19 @@ function getPoolMax() {
   return process.env.NODE_ENV === 'production' ? 20 : 10;
 }
 
+/** Optional statement timeout in ms (e.g. 60000). Prevents long queries from holding pool connections. */
+function getStatementTimeoutMs() {
+  const env = process.env.DATABASE_STATEMENT_TIMEOUT_MS;
+  if (env === null || env === undefined || env === '') {
+    return null;
+  }
+  const n = parseInt(env, 10);
+  if (Number.isNaN(n) || n < 0) {
+    return null;
+  }
+  return n;
+}
+
 /**
  * Initialize database connection
  */
@@ -36,8 +49,18 @@ function initDatabase() {
           }
         : false;
 
+    const connectionString = process.env.DATABASE_URL;
+    const timeoutMs = getStatementTimeoutMs();
+    // Append statement_timeout so long queries don't hold connections (PostgreSQL option in ms)
+    const urlWithTimeout =
+      timeoutMs !== undefined && timeoutMs !== null && timeoutMs > 0 && connectionString
+        ? connectionString.includes('?')
+          ? `${connectionString}&options=${encodeURIComponent('-c statement_timeout=' + timeoutMs)}`
+          : `${connectionString}?options=${encodeURIComponent('-c statement_timeout=' + timeoutMs)}`
+        : connectionString;
+
     pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString: urlWithTimeout,
       ssl: sslConfig,
       max: getPoolMax(),
       idleTimeoutMillis: parseInt(process.env.DATABASE_POOL_IDLE_TIMEOUT_MS, 10) || 30000,

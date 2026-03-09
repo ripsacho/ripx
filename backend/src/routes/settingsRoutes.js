@@ -14,9 +14,12 @@ const integrationConfig = require('../services/integrationConfigService');
 const { getTenantByDomain } = require('../models/tenant');
 const userModel = require('../models/user');
 const userDomainAccess = require('../models/userDomainAccess');
+const { SETTINGS_BOUNDS } = require('../constants');
 
 function escapeHtmlAttr(str) {
-  if (typeof str !== 'string') {return '';}
+  if (typeof str !== 'string') {
+    return '';
+  }
   return str
     .replace(/&/g, '&amp;')
     .replace(/"/g, '&quot;')
@@ -55,14 +58,14 @@ router.get(
       row.min_sample_size !== null &&
       row.min_sample_size !== undefined
         ? Number(row.min_sample_size)
-        : 100;
+        : SETTINGS_BOUNDS.DEFAULT_MIN_SAMPLE_SIZE;
     const baseConf =
       row !== null &&
       row !== undefined &&
       row.confidence_level !== null &&
       row.confidence_level !== undefined
         ? Number(row.confidence_level)
-        : 0.95;
+        : SETTINGS_BOUNDS.DEFAULT_CONFIDENCE_LEVEL;
     const baseAuto = row === null || row === undefined ? true : row.auto_stop_enabled !== false;
     const baseWebhookUrl = row?.outbound_webhook_url || '';
     let webhookEvents = row?.outbound_webhook_events;
@@ -115,8 +118,16 @@ router.get(
       }
     }
     const settings = {
-      minSampleSize: Math.max(10, Math.min(10000, minSampleSize)) || 100,
-      confidenceLevel: Math.max(0.8, Math.min(1, confidenceLevel)) || 0.95,
+      minSampleSize:
+        Math.max(
+          SETTINGS_BOUNDS.MIN_SAMPLE_SIZE,
+          Math.min(SETTINGS_BOUNDS.MAX_SAMPLE_SIZE, minSampleSize)
+        ) || SETTINGS_BOUNDS.DEFAULT_MIN_SAMPLE_SIZE,
+      confidenceLevel:
+        Math.max(
+          SETTINGS_BOUNDS.CONFIDENCE_LEVEL_MIN,
+          Math.min(SETTINGS_BOUNDS.CONFIDENCE_LEVEL_MAX, confidenceLevel)
+        ) || SETTINGS_BOUNDS.DEFAULT_CONFIDENCE_LEVEL,
       autoStopEnabled: !!autoStopEnabled,
       outboundWebhookUrl: outboundWebhookUrl || '',
       outboundWebhookEvents:
@@ -142,8 +153,8 @@ router.put(
     }
 
     const {
-      minSampleSize = 100,
-      confidenceLevel = 0.95,
+      minSampleSize = SETTINGS_BOUNDS.DEFAULT_MIN_SAMPLE_SIZE,
+      confidenceLevel = SETTINGS_BOUNDS.DEFAULT_CONFIDENCE_LEVEL,
       autoStopEnabled = true,
       outboundWebhookUrl = '',
       outboundWebhookEvents = ['test_complete', 'significance'],
@@ -158,8 +169,20 @@ router.put(
       }
     }
 
-    const minSample = Math.max(10, Math.min(10000, parseInt(minSampleSize, 10) || 100));
-    const confidence = Math.max(0.8, Math.min(1, parseFloat(confidenceLevel) || 0.95));
+    const minSample = Math.max(
+      SETTINGS_BOUNDS.MIN_SAMPLE_SIZE,
+      Math.min(
+        SETTINGS_BOUNDS.MAX_SAMPLE_SIZE,
+        parseInt(minSampleSize, 10) || SETTINGS_BOUNDS.DEFAULT_MIN_SAMPLE_SIZE
+      )
+    );
+    const confidence = Math.max(
+      SETTINGS_BOUNDS.CONFIDENCE_LEVEL_MIN,
+      Math.min(
+        SETTINGS_BOUNDS.CONFIDENCE_LEVEL_MAX,
+        parseFloat(confidenceLevel) || SETTINGS_BOUNDS.DEFAULT_CONFIDENCE_LEVEL
+      )
+    );
     const events =
       Array.isArray(outboundWebhookEvents) && outboundWebhookEvents.length > 0
         ? outboundWebhookEvents

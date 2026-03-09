@@ -100,7 +100,7 @@ class TimeSeriesService {
           WHERE test_id = $1 AND variant_id = $2 AND DATE(assigned_at) = $3
         `;
         const visitorsResult = await query(visitorsSql, [test.test_id, variantId, dateStr]);
-        const visitors = parseInt(visitorsResult.rows[0]?.visitors || 0);
+        const visitors = parseInt(visitorsResult.rows[0]?.visitors || 0, 10);
 
         // Get conversions for this variant and date (JOIN ensures only assigned users)
         const conversionsSql = `
@@ -117,7 +117,7 @@ class TimeSeriesService {
 
         const conversionsResult = await query(conversionsSql, [test.test_id, variantId, dateStr]);
 
-        const conversions = parseInt(conversionsResult.rows[0]?.conversions || 0);
+        const conversions = parseInt(conversionsResult.rows[0]?.conversions || 0, 10);
         const revenue = parseFloat(conversionsResult.rows[0]?.revenue || 0);
 
         // Insert or update daily analytics (ensures row exists even when visitors=0)

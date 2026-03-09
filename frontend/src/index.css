@@ -350,7 +350,7 @@ textarea:focus-visible {
   min-height: 100vh;
 }
 
-/* Admin panel - no padding, full bleed so AdminLayout controls its own spacing */
+/* Admin panel: no padding; AdminLayout (sidebar + TopBar + content) controls layout */
 .main-content-wrapper--admin {
   padding: 0 !important;
   min-height: 100vh;
@@ -362,10 +362,24 @@ textarea:focus-visible {
   min-height: 100vh;
 }
 
-/* My domains - no sidebar/topbar; full-width content for regular users */
+/* User panel and My domains use same app shell (sidebar + topbar); content uses standard app padding */
+.main-content-wrapper--user-panel,
 .main-content-wrapper--domains {
-  padding: 0 !important;
   min-height: 100vh;
+}
+
+/* Profile, Settings, Docs, Notifications: standalone pages (TopBar only, no AB sidebar) */
+.main-content-wrapper--universal {
+  min-height: 100vh;
+}
+
+/* Constrain width and center content on universal pages for readability */
+.main-content-wrapper--universal .profilePage,
+.main-content-wrapper--universal .settingsPage,
+.main-content-wrapper--universal .notificationsPage {
+  max-width: 1000px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .main-content-wrapper--auth .Polaris-Page,
@@ -439,10 +453,6 @@ textarea:focus-visible {
   }
 
   .main-content-wrapper--docs {
-    padding: 0 !important;
-  }
-
-  .main-content-wrapper--domains {
     padding: 0 !important;
   }
 
@@ -883,6 +893,21 @@ textarea:focus-visible {
   right: 0;
   z-index: 1000;
   transition: left var(--transition-smooth);
+}
+
+/* Admin: TopBar is inside layout (beside sidebar), not fixed overlay */
+.main-content-wrapper--admin .top-bar,
+.top-bar.top-bar-inline {
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  width: 100%;
+}
+
+/* Auth/connect pages: hide app TopBar if it ever renders (login has its own header) */
+[data-auth-layout] .top-bar {
+  display: none !important;
 }
 
 /* ============================================
@@ -3221,6 +3246,7 @@ body:not(.admin-page) div[class*="Polaris-Modal"] [class*="Dialog"] {
   position: relative !important;
 }
 
+/* Add domain modal (My domains) – larger size; target by content so it always applies */
 /* Email template editor modal – wider dialog for subject/body editing */
 .Polaris-Modal-Dialog:has([data-template-editor]),
 div[class*="Polaris-Modal"][class*="Dialog"]:has([data-template-editor]) {
@@ -3250,6 +3276,100 @@ div[class*="Modal__Dialog"] {
   position: relative;
   max-width: min(500px, 92vw);
   transition: box-shadow var(--transition-base), border-color var(--transition-base);
+}
+
+/* Add domain modal (My domains) – container: center and comfortable padding */
+[data-add-domain-modal-open] .Polaris-Modal-DialogContainer,
+[data-add-domain-modal-open] div[class*="Polaris-Modal"][class*="Container"] {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 1.25rem !important;
+  box-sizing: border-box !important;
+}
+
+@media (min-width: 640px) {
+  [data-add-domain-modal-open] .Polaris-Modal-DialogContainer,
+  [data-add-domain-modal-open] div[class*="Polaris-Modal"][class*="Container"] {
+    padding: 1.5rem !important;
+  }
+}
+
+/* Add domain modal – dialog size and position; MUST come after general modal panel */
+[data-add-domain-modal-open] .Polaris-Modal-Dialog,
+[data-add-domain-modal-open] div[class*="Polaris-Modal"][class*="Dialog"],
+.Polaris-Modal-Dialog:has([data-add-domain-modal]),
+div[class*="Polaris-Modal"][class*="Dialog"]:has([data-add-domain-modal]) {
+  width: 100% !important;
+  min-width: min(100vw - 2.5rem, 520px) !important;
+  max-width: min(100vw - 2.5rem, 640px) !important;
+  max-height: min(88vh, 720px) !important;
+  margin: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+@media (min-width: 680px) {
+  [data-add-domain-modal-open] .Polaris-Modal-Dialog,
+  [data-add-domain-modal-open] div[class*="Polaris-Modal"][class*="Dialog"],
+  .Polaris-Modal-Dialog:has([data-add-domain-modal]),
+  div[class*="Polaris-Modal"][class*="Dialog"]:has([data-add-domain-modal]) {
+    min-width: 560px !important;
+    max-width: 640px !important;
+  }
+}
+
+[data-add-domain-modal-open] .Polaris-Modal-Dialog .Polaris-Modal-Dialog__Modal,
+[data-add-domain-modal-open] .Polaris-Modal-Dialog div[class*="Modal-Dialog__Modal"],
+.Polaris-Modal-Dialog:has([data-add-domain-modal]) .Polaris-Modal-Dialog__Modal,
+.Polaris-Modal-Dialog:has([data-add-domain-modal]) div[class*="Modal-Dialog__Modal"],
+div[class*="Polaris-Modal"][class*="Dialog"]:has([data-add-domain-modal]) [class*="Modal-Dialog__Modal"] {
+  width: 100% !important;
+  max-width: 100% !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+[data-add-domain-modal-open] .Polaris-Modal-Dialog .Polaris-Modal__Header,
+[data-add-domain-modal-open] .Polaris-Modal-Dialog [class*="Modal__Header"],
+.Polaris-Modal-Dialog:has([data-add-domain-modal]) .Polaris-Modal__Header,
+.Polaris-Modal-Dialog:has([data-add-domain-modal]) [class*="Modal__Header"],
+div[class*="Polaris-Modal"][class*="Dialog"]:has([data-add-domain-modal]) [class*="Modal__Header"] {
+  padding: 1.35rem 1.75rem !important;
+}
+
+[data-add-domain-modal-open] .Polaris-Modal-Dialog .Polaris-Modal__Body,
+[data-add-domain-modal-open] .Polaris-Modal-Dialog [class*="Modal__Body"],
+.Polaris-Modal-Dialog:has([data-add-domain-modal]) .Polaris-Modal__Body,
+.Polaris-Modal-Dialog:has([data-add-domain-modal]) [class*="Modal__Body"],
+div[class*="Polaris-Modal"][class*="Dialog"]:has([data-add-domain-modal]) [class*="Modal__Body"] {
+  padding: 0 !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+[data-add-domain-modal-open] .Polaris-Modal-Dialog .Polaris-Modal-Section,
+[data-add-domain-modal-open] .Polaris-Modal-Dialog [class*="Modal-Section"],
+.Polaris-Modal-Dialog:has([data-add-domain-modal]) .Polaris-Modal-Section,
+.Polaris-Modal-Dialog:has([data-add-domain-modal]) [class*="Modal-Section"],
+div[class*="Polaris-Modal"][class*="Dialog"]:has([data-add-domain-modal]) [class*="Modal-Section"] {
+  padding: 0 !important;
+}
+
+/* Add domain modal – keep footer visible at bottom when body scrolls */
+[data-add-domain-modal-open] .Polaris-Modal-Dialog .Polaris-Modal-Footer,
+[data-add-domain-modal-open] .Polaris-Modal-Dialog [class*="Modal-Footer"],
+.Polaris-Modal-Dialog:has([data-add-domain-modal]) .Polaris-Modal-Footer,
+.Polaris-Modal-Dialog:has([data-add-domain-modal]) [class*="Modal-Footer"] {
+  flex-shrink: 0 !important;
+  padding: 1.25rem 1.75rem !important;
+  border-top: 1px solid var(--border-primary) !important;
 }
 
 /* Gradient accent bar at top of modal (like notification popover / project panels) */

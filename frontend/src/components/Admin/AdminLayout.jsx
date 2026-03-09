@@ -17,6 +17,7 @@ import {
   ListBulletedIcon,
   ChevronLeftIcon,
   ArrowUpIcon,
+  ArrowLeftIcon,
   KeyIcon,
   ClockIcon,
   FlagIcon,
@@ -26,6 +27,7 @@ import {
 } from '@shopify/polaris-icons';
 import { ROUTES, APP_META } from '../../constants';
 import { getHealthUrl } from '../../services/api';
+import TopBar from '../Layout/TopBar';
 import styles from './Admin.module.css';
 
 const ADMIN_TITLE_SUFFIX = `Admin · ${APP_META.NAME}`;
@@ -103,7 +105,7 @@ const pathToSection = {
 function AdminLayout({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const section = pathToSection[location.pathname] || 'Admin';
+  const _section = pathToSection[location.pathname] || 'Admin';
   const [collapsed, setCollapsed] = useState(false);
   const [hoverDrawer, setHoverDrawer] = useState(null); // { label, top, height }
   const [showBackToTop, setShowBackToTop] = useState(false);
@@ -267,45 +269,70 @@ function AdminLayout({ children }) {
             })}
           </nav>
           <div className={styles.adminSidebarFooter}>
+            <div className={styles.adminSidebarFooterActions}>
+              <button
+                type="button"
+                className={styles.adminBackToApp}
+                onClick={() => navigate(ROUTES.USER_PANEL)}
+                aria-label="Back to app"
+                title="Back to RipX app (Home)"
+              >
+                <span className={styles.adminSidebarBtnContent}>
+                  <span className={styles.adminSidebarBtnIcon}>
+                    <Icon source={ArrowLeftIcon} tone="base" />
+                  </span>
+                  <span className={styles.adminSidebarBtnLabel}>Back to app</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                className={styles.adminSidebarFooterLink}
+                onClick={() => navigate(ROUTES.DOMAINS)}
+                aria-label="My domains"
+                title="My domains"
+              >
+                <span className={styles.adminSidebarBtnContent}>
+                  <span className={styles.adminSidebarBtnIcon}>
+                    <Icon source={GlobeIcon} tone="base" />
+                  </span>
+                  <span className={styles.adminSidebarBtnLabel}>My domains</span>
+                </span>
+              </button>
+            </div>
             {!collapsed && <div className={styles.adminSidebarFooterBrand}>RipX Admin</div>}
           </div>
         </aside>
-        <main className={styles.adminContent}>
-          <header className={styles.adminContentHead} aria-label="Admin section">
-            <nav className={styles.adminBreadcrumb} aria-label="Breadcrumb">
-              <button
-                type="button"
-                className={styles.adminBreadcrumbItem}
-                onClick={() => navigate(ROUTES.ADMIN_OVERVIEW)}
-              >
-                Admin
-              </button>
-              <span className={styles.adminBreadcrumbSep}>/</span>
-              <span className={styles.adminBreadcrumbCurrent}>{section}</span>
-            </nav>
-          </header>
-          <div className={styles.adminContentInner}>{children}</div>
-          <footer className={styles.adminContentFoot}>
-            <div className={styles.adminFooterInner}>
-              <span className={styles.adminFooterCopy}>RipX Admin</span>
-              <a
-                href={healthUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={styles.adminFooterLink}
-              >
-                System health
-              </a>
-              <button
-                type="button"
-                className={styles.adminFooterLinkBtn}
-                onClick={() => navigate(ROUTES.DOCS)}
-              >
-                Docs
-              </button>
-            </div>
-          </footer>
-        </main>
+        <div className={styles.adminRightColumn}>
+          <TopBar
+            inline
+            sidebarWidth={collapsed ? 80 : 240}
+            sidebarCollapsed={collapsed}
+            showMobileToggle={false}
+          />
+          <main className={styles.adminContent}>
+            <div className={styles.adminContentInner}>{children}</div>
+            <footer className={styles.adminContentFoot}>
+              <div className={styles.adminFooterInner}>
+                <span className={styles.adminFooterCopy}>RipX Admin</span>
+                <a
+                  href={healthUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={styles.adminFooterLink}
+                >
+                  System health
+                </a>
+                <button
+                  type="button"
+                  className={styles.adminFooterLinkBtn}
+                  onClick={() => navigate(ROUTES.DOCS)}
+                >
+                  Docs
+                </button>
+              </div>
+            </footer>
+          </main>
+        </div>
       </div>
       {collapsed &&
         hoverDrawer &&

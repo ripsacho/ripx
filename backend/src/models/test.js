@@ -8,6 +8,7 @@
 const { query } = require('../utils/database');
 const logger = require('../utils/logger');
 const { getTenantByDomain } = require('./tenant');
+const { MAX_TEST_NAME_LENGTH } = require('../constants');
 
 /**
  * Safely parse JSON with error handling
@@ -253,9 +254,14 @@ class TestModel {
       if (!testData.shop_domain) {
         throw new Error('shop_domain is required');
       }
-      if (!testData.name || !testData.name.trim()) {
+      const name = typeof testData.name === 'string' ? testData.name.trim() : '';
+      if (!name) {
         throw new Error('name is required');
       }
+      if (name.length > MAX_TEST_NAME_LENGTH) {
+        throw new Error(`name must be at most ${MAX_TEST_NAME_LENGTH} characters`);
+      }
+      testData.name = name;
       if (!testData.type) {
         throw new Error('type is required');
       }
@@ -538,8 +544,16 @@ class TestModel {
         );
       } else if (key !== 'id' && key !== 'shop_domain' && key !== 'created_at') {
         // Allow updating most fields, but protect certain ones
+        let val = updates[key];
+        if (key === 'name' && val !== undefined && val !== null) {
+          const trimmed = typeof val === 'string' ? val.trim() : String(val).trim();
+          if (trimmed.length > MAX_TEST_NAME_LENGTH) {
+            throw new Error(`name must be at most ${MAX_TEST_NAME_LENGTH} characters`);
+          }
+          val = trimmed;
+        }
         fields.push(`${key} = $${paramIndex}`);
-        values.push(updates[key] !== undefined ? updates[key] : null);
+        values.push(val !== undefined ? val : null);
       }
       paramIndex++;
     });

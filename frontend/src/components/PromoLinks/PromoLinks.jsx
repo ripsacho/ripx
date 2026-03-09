@@ -24,12 +24,14 @@ import { setupDataTableButtonStyling } from '../../utils/dataTableStyles';
 import { PageShell } from '../Shared';
 import LoadingSkeleton from '../LoadingSkeleton/LoadingSkeleton';
 import Toast from '../Toast/Toast';
+import { useAppRoutes } from '../../hooks';
 import { apiGet, apiPost, unwrapData } from '../../services';
 import styles from './PromoLinks.module.css';
 
 function PromoLinks() {
   const { id: testId } = useParams();
   const navigate = useNavigate();
+  const routes = useAppRoutes();
   const [promoLinks, setPromoLinks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -50,12 +52,12 @@ function PromoLinks() {
 
   useEffect(() => {
     if (!testId || testId === 'undefined') {
-      navigate('/tests');
+      navigate(routes.tests);
       return;
     }
     fetchPromoLinks();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch when testId changes
-  }, [testId, navigate]);
+  }, [testId, navigate, routes.tests]);
 
   // Force dark theme styles for DataTable buttons
   useEffect(() => {
@@ -167,8 +169,8 @@ function PromoLinks() {
         title="Promo Links"
         subtitle="Manage promo links for offer testing"
         breadcrumbs={[
-          { content: 'All Tests', onAction: () => navigate('/tests') },
-          { content: 'Test Details', onAction: () => navigate(`/tests/${testId}`) },
+          { content: 'All Tests', onAction: () => navigate(routes.tests) },
+          { content: 'Test Details', onAction: () => navigate(routes.testDetail(testId)) },
           { content: 'Promo Links' },
         ]}
         primaryAction={{

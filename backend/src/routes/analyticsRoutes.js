@@ -28,6 +28,7 @@ const {
 } = require('../models/heatmap');
 const { getFunnelMetrics, getEventsList, getEventTypesForTest } = require('../models/analytics');
 const exportRoutes = require('./exportRoutes');
+const { PAGINATION } = require('../constants');
 
 /**
  * GET /api/analytics/tests/:id
@@ -162,7 +163,10 @@ router.get(
     const { limit, offset, event_type, event_name, variant_id, start_date, end_date } = req.query;
     const options = {};
     if (limit) {
-      options.limit = Math.min(parseInt(limit, 10) || 50, 200);
+      options.limit = Math.min(
+        parseInt(limit, 10) || PAGINATION.ANALYTICS_DEFAULT_LIMIT,
+        PAGINATION.ANALYTICS_MAX_LIMIT
+      );
     }
     if (offset) {
       options.offset = Math.max(0, parseInt(offset, 10));

@@ -1,4 +1,4 @@
-/* My Domains page – smart layout, top bar, hero, cards */
+/* My Domains page – advanced layout (match User Panel): hero, orbs, stats, cards */
 
 .domainsPage {
   --domains-card-radius: 16px;
@@ -9,7 +9,7 @@
   flex-direction: column;
 }
 
-/* Hide default Page header only (not first child – when title is empty, first child can be content) */
+/* Hide default Page header */
 .domainsPage :global(.Polaris-Page__Header) {
   display: none !important;
 }
@@ -19,7 +19,7 @@
   margin-top: 0;
 }
 
-/* Empty state: Page and content grow to fill viewport so message can be centered */
+/* Empty state: Page and content grow to fill viewport */
 .domainsPageEmpty :global(.Polaris-Page) {
   flex: 1;
   display: flex;
@@ -34,76 +34,342 @@
   min-height: 0;
 }
 
-/* Custom header: top bar + hero */
-.domainsHeader {
+/* ========== Canvas (hero + stats) ========== */
+.domainsCanvas {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  max-width: 1320px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0;
+}
+
+/* ========== Hero – full impact (match User Panel) ========== */
+.domainsHero {
   position: relative;
-  background: linear-gradient(
-    170deg,
-    rgba(255, 255, 255, 0.97) 0%,
-    rgba(248, 250, 252, 0.94) 40%,
-    rgba(6, 182, 212, 0.05) 100%
-  );
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--border-secondary);
-  box-shadow: 0 2px 20px rgba(6, 182, 212, 0.06);
+  padding: 2.5rem 1.5rem 3rem;
+  margin-bottom: 0;
+  overflow: hidden;
+  border-radius: 0 0 32px 32px;
 }
 
-[data-theme='dark'] .domainsHeader {
-  background: linear-gradient(
-    170deg,
-    rgba(22, 22, 22, 0.97) 0%,
-    rgba(15, 15, 15, 0.95) 40%,
-    rgba(6, 182, 212, 0.08) 100%
-  );
-  border-bottom-color: rgba(6, 182, 212, 0.15);
-  box-shadow: 0 2px 24px rgba(0, 0, 0, 0.2);
+@media (min-width: 768px) {
+  .domainsHero {
+    padding: 3rem 2rem 4rem;
+    border-radius: 0 0 40px 40px;
+  }
 }
 
-.domainsHeader::before {
+.domainsHeroGradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    160deg,
+    #05101a 0%,
+    #0c1222 15%,
+    #0f172a 35%,
+    #1e3a4a 55%,
+    #0e7490 78%,
+    #06b6d4 100%
+  );
+  opacity: 0.98;
+  animation: domainsHeroGradientShift 18s ease-in-out infinite alternate;
+}
+
+@keyframes domainsHeroGradientShift {
+  0% { opacity: 0.96; filter: brightness(1); }
+  100% { opacity: 1; filter: brightness(1.05); }
+}
+
+.domainsHeroGradient::before {
   content: '';
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
-  opacity: 0.85;
+  height: 5px;
+  background: linear-gradient(90deg, #06b6d4, #a78bfa, #06b6d4);
+  background-size: 200% 100%;
+  animation: domainsHeroBarShift 6s ease-in-out infinite;
+  opacity: 0.95;
 }
 
-.domainsTopBar {
+@keyframes domainsHeroBarShift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+[data-theme='dark'] .domainsHeroGradient {
+  background: linear-gradient(
+    160deg,
+    #020617 0%,
+    #0f172a 30%,
+    #134e4e 60%,
+    #0e7490 85%,
+    #06b6d4 100%
+  );
+  opacity: 0.99;
+}
+
+.domainsHeroGrid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(6, 182, 212, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(6, 182, 212, 0.06) 1px, transparent 1px);
+  background-size: 32px 32px;
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+.domainsHeroOrb1,
+.domainsHeroOrb2 {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  filter: blur(60px);
+  opacity: 0.4;
+  animation: domainsHeroOrbFloat 20s ease-in-out infinite;
+}
+
+.domainsHeroOrb1 {
+  width: 320px;
+  height: 320px;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.5) 0%, transparent 70%);
+  top: -80px;
+  right: -60px;
+  animation-delay: 0s;
+}
+
+.domainsHeroOrb2 {
+  width: 240px;
+  height: 240px;
+  background: radial-gradient(circle, rgba(167, 139, 250, 0.4) 0%, transparent 70%);
+  bottom: -40px;
+  left: -40px;
+  animation-delay: -8s;
+}
+
+@keyframes domainsHeroOrbFloat {
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.35; }
+  33% { transform: translate(15px, -10px) scale(1.05); opacity: 0.45; }
+  66% { transform: translate(-10px, 8px) scale(0.98); opacity: 0.4; }
+}
+
+.domainsHeroContent {
+  position: relative;
+  z-index: 1;
+  max-width: 760px;
+  animation: domainsHeroFadeIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes domainsHeroFadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.domainsHeroTitle {
+  font-size: clamp(2rem, 5vw, 2.75rem);
+  font-weight: 800;
+  letter-spacing: -0.045em;
+  line-height: 1.15;
+  margin: 0 0 0.75rem 0;
+}
+
+.domainsHeroTitleAccent {
+  background: linear-gradient(135deg, #67e8f9 0%, #22d3ee 40%, #c4b5fd 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 0 24px rgba(6, 182, 212, 0.4));
+}
+
+.domainsHeroSubtitle {
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 0 0 2rem 0;
+  max-width: 44rem;
+}
+
+.domainsHeroQuickActions {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.75rem 1.5rem;
   flex-wrap: wrap;
+  gap: 0.85rem;
 }
 
-.domainsTopBarTitle {
+.domainsQuickActionCard {
   display: inline-flex;
   align-items: center;
-  gap: 0.6rem;
-  font-size: 1.125rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--text-primary);
+  gap: 1rem;
+  padding: 1.1rem 1.4rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 16px;
+  color: #fff;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: 200px;
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
 }
 
-.domainsLogo {
-  width: 32px;
-  height: 32px;
-  object-fit: contain;
-  filter: drop-shadow(0 2px 8px rgba(6, 182, 212, 0.25));
+.domainsQuickActionCard:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.35);
+  transform: translateY(-3px) scale(1.01);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+  color: #fff;
 }
 
-.domainsTopBarActions {
+.domainsQuickActionCard:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.8);
+  outline-offset: 2px;
+}
+
+.domainsQuickActionIcon {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.15);
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+  justify-content: center;
 }
 
+.domainsQuickActionCard :global(.Polaris-Icon) {
+  color: #fff;
+}
+
+.domainsQuickActionText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.domainsQuickActionLabel {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.domainsQuickActionDesc {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* ========== Stats strip ========== */
+.domainsStatsStrip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  margin: -1.5rem 1.5rem 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  position: relative;
+  z-index: 2;
+}
+
+@media (min-width: 768px) {
+  .domainsStatsStrip {
+    margin: -2rem 2rem 0;
+    padding: 1.25rem 1.75rem;
+  }
+}
+
+.domainsStatsItem {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.domainsStatsValue {
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: var(--futuristic-cyan);
+  line-height: 1;
+}
+
+.domainsStatsLabel {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.domainsStatsDivider {
+  width: 1px;
+  height: 28px;
+  background: var(--border-secondary);
+  flex-shrink: 0;
+}
+
+.domainsStatsCta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--futuristic-cyan);
+  padding: 0.5rem 0.75rem;
+  border-radius: 10px;
+  transition: background 0.2s ease, color 0.2s ease;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+}
+
+.domainsStatsCta:hover {
+  background: rgba(6, 182, 212, 0.1);
+  color: var(--futuristic-cyan);
+}
+
+.domainsStatsCta:focus-visible {
+  outline: 2px solid var(--futuristic-cyan);
+  outline-offset: 2px;
+}
+
+.domainsStatsCta :global(.Polaris-Icon) {
+  flex-shrink: 0;
+}
+
+/* ========== App content wrapper ========== */
+.domainsAppContent {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.domainsAppContent::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 40% at 50% 0%, rgba(6, 182, 212, 0.07), transparent 50%),
+    radial-gradient(ellipse 60% 30% at 80% 20%, rgba(139, 92, 246, 0.05), transparent 45%);
+  pointer-events: none;
+}
+
+[data-theme='dark'] .domainsAppContent::before {
+  background:
+    radial-gradient(ellipse 80% 40% at 50% 0%, rgba(6, 182, 212, 0.1), transparent 50%),
+    radial-gradient(ellipse 60% 30% at 80% 20%, rgba(139, 92, 246, 0.06), transparent 45%);
+}
+
+/* Legacy button styles (used in table empty state and modals) */
 .domainsActionPrimary {
   display: inline-flex;
   align-items: center;
@@ -170,79 +436,12 @@
   height: 16px;
 }
 
-.domainsActionSignOut {
-  padding: 0.45rem 0.85rem;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--text-secondary);
-  background: transparent;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: color 0.2s ease, background 0.2s ease;
-}
-
-.domainsActionSignOut:focus-visible {
-  outline: 2px solid var(--text-secondary);
-  outline-offset: 2px;
-}
-
-.domainsActionSignOut:hover {
-  color: var(--text-primary);
-  background: rgba(0, 0, 0, 0.05);
-}
-
-[data-theme='dark'] .domainsActionSignOut:hover {
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.domainsHero {
-  padding: 0.875rem 1.5rem 1.5rem;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 1rem 1.5rem;
-}
-
-.domainsHeroText {
-  margin: 0;
-  font-size: 0.9375rem;
-  line-height: 1.55;
-  color: var(--text-secondary);
-  max-width: 42rem;
-  flex: 1 1 auto;
-}
-
-.domainsHeroStat {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.35rem;
-  padding: 0.35rem 0.75rem;
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.12), rgba(139, 92, 246, 0.08));
-  border: 1px solid rgba(6, 182, 212, 0.2);
-  border-radius: 999px;
-  font-size: 0.8125rem;
-}
-
-.domainsHeroStatValue {
-  font-weight: 700;
-  color: var(--futuristic-cyan);
-  letter-spacing: -0.02em;
-}
-
-.domainsHeroStatLabel {
-  font-weight: 500;
-  color: var(--text-secondary);
-}
-
-[data-theme='dark'] .domainsHeroStat {
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.15), rgba(139, 92, 246, 0.1));
-  border-color: rgba(6, 182, 212, 0.25);
-}
-
 .domainsContent {
+  position: relative;
+  z-index: 1;
   padding: 1.75rem 1.5rem 2.25rem;
   max-width: 1200px;
+  width: 100%;
   margin: 0 auto;
   box-sizing: border-box;
 }
@@ -877,38 +1076,139 @@
   margin-top: 0.5rem;
 }
 
-/* Add domain modal – intro block with icon */
+/* Add domain modal – top accent bar */
+.addModalAccentBar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #06b6d4, #8b5cf6, #06b6d4);
+  background-size: 200% 100%;
+  border-radius: 20px 20px 0 0;
+  animation: addModalAccentShift 8s ease-in-out infinite;
+  box-shadow: 0 2px 12px rgba(6, 182, 212, 0.25);
+}
+
+@keyframes addModalAccentShift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+/* Add domain modal – step indicator (pill + progress bar) */
+.addModalStepWrap {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding-bottom: 1.25rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--border-secondary);
+}
+
+.addModalStepPill {
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  padding: 0.4rem 0.75rem;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.08), rgba(139, 92, 246, 0.06));
+  border: 1px solid rgba(6, 182, 212, 0.18);
+  border-radius: 999px;
+}
+
+.addModalStepTrack {
+  flex: 1;
+  min-width: 0;
+  height: 6px;
+  background: var(--border-secondary);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.addModalStepProgress {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--futuristic-cyan), #8b5cf6);
+  border-radius: 999px;
+  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.35);
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Add domain modal – section wrapper (for accent bar) */
+.addModalSection {
+  position: relative;
+  padding: 1.5rem 1.75rem 2rem;
+}
+
+@media (min-width: 560px) {
+  .addModalSection {
+    padding: 1.75rem 2rem 2.5rem;
+  }
+}
+
+/* Add domain modal – intro block */
 .addModalIntro {
   display: flex;
   align-items: flex-start;
-  gap: 1rem;
-  padding: 1rem 1.25rem;
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.06) 0%, rgba(139, 92, 246, 0.03) 100%);
-  border: 1px solid rgba(6, 182, 212, 0.15);
-  border-radius: 12px;
-  margin-bottom: 0.25rem;
+  gap: 1.25rem;
+  padding: 1.4rem 1.5rem 1.5rem;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.04) 0%, rgba(139, 92, 246, 0.03) 100%);
+  border: 1px solid var(--border-secondary);
+  border-left: 4px solid var(--futuristic-cyan);
+  border-radius: 0 var(--radius-xl) var(--radius-xl) 0;
+  margin-bottom: 1rem;
+}
+
+.addModalIntro[data-step='form'] {
+  padding: 1.3rem 1.5rem 1.4rem;
+  margin-bottom: 1rem;
+}
+
+.addModalIntro[data-step='form']:has(.addModalIconWrap[data-variant='shopify']) {
+  border-left-color: #8b5cf6;
 }
 
 [data-theme='dark'] .addModalIntro {
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%);
-  border-color: rgba(6, 182, 212, 0.2);
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.06) 0%, rgba(139, 92, 246, 0.04) 100%);
+  border-color: rgba(6, 182, 212, 0.15);
 }
 
 .addModalIconWrap {
   flex-shrink: 0;
-  width: 44px;
-  height: 44px;
+  width: 52px;
+  height: 52px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(139, 92, 246, 0.12));
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(139, 92, 246, 0.1));
   color: var(--futuristic-cyan);
+  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.15);
 }
 
 .addModalIconWrap :global(svg) {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
+}
+
+.addModalIconWrap[data-variant='shopify'] {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(6, 182, 212, 0.1));
+  color: #a78bfa;
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.2);
 }
 
 .addModalDescription {
@@ -916,20 +1216,299 @@
   min-width: 0;
 }
 
-.addModalDescription p {
+.addModalIntroTitle {
   margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  line-height: 1.3;
 }
 
-.addModalDescription p + p {
-  margin-top: 0.35rem;
+.addModalIntroSubtitle {
+  margin: 0.5rem 0 0;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+@media (min-width: 560px) {
+  .addModalIntro {
+    padding: 1.6rem 1.75rem 1.75rem;
+    border-radius: 0 20px 20px 0;
+  }
+  .addModalIntro[data-step='form'] {
+    padding: 1.4rem 1.6rem 1.5rem;
+  }
+  .addModalIconWrap {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+  }
+  .addModalIconWrap :global(svg) {
+    width: 30px;
+    height: 30px;
+  }
+  .addModalIntroTitle {
+    font-size: 1.2rem;
+  }
+  .addModalIntroSubtitle {
+    font-size: 0.9375rem;
+    margin-top: 0.45rem;
+  }
+}
+
+/* Add domain modal – choice step (custom vs Shopify): vertical card layout */
+.addModalChoiceGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.125rem;
+  margin-top: 0.5rem;
+}
+
+@media (min-width: 560px) {
+  .addModalChoiceGrid {
+    gap: 1.5rem;
+    margin-top: 0.75rem;
+  }
+}
+
+@media (max-width: 560px) {
+  .addModalChoiceGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.addModalChoiceCard {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.85rem;
+  padding: 1.35rem 1.4rem;
+  min-height: 140px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.6) 0%, var(--bg-secondary) 100%);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-xl);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: all 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.addModalChoiceCard[data-type='custom'] {
+  border-left: 4px solid var(--futuristic-cyan);
+}
+
+.addModalChoiceCard[data-type='shopify'] {
+  border-left: 4px solid #8b5cf6;
+}
+
+.addModalChoiceCard:hover {
+  background: linear-gradient(180deg, rgba(6, 182, 212, 0.08) 0%, rgba(6, 182, 212, 0.04) 100%);
+  border-color: rgba(6, 182, 212, 0.35);
+  box-shadow: 0 8px 24px rgba(6, 182, 212, 0.12), 0 0 0 1px rgba(6, 182, 212, 0.1);
+  transform: translateY(-3px);
+}
+
+.addModalChoiceCard[data-type='shopify']:hover {
+  background: linear-gradient(180deg, rgba(139, 92, 246, 0.08) 0%, rgba(139, 92, 246, 0.04) 100%);
+  border-color: rgba(139, 92, 246, 0.35);
+  box-shadow: 0 8px 24px rgba(139, 92, 246, 0.12), 0 0 0 1px rgba(139, 92, 246, 0.1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .addModalChoiceCard:hover {
+    transform: none;
+  }
+  .addModalChoiceCard:hover .addModalChoiceCardArrow {
+    transform: none;
+  }
+  .addModalStepProgress {
+    transition: none;
+  }
+  .addModalAccentBar {
+    animation: none;
+  }
+}
+
+.addModalChoiceCard:focus-visible {
+  outline: 2px solid var(--futuristic-cyan);
+  outline-offset: 2px;
+}
+
+[data-theme='dark'] .addModalChoiceCard {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+  border-color: rgba(6, 182, 212, 0.2);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme='dark'] .addModalChoiceCard:hover {
+  background: linear-gradient(180deg, rgba(6, 182, 212, 0.12) 0%, rgba(6, 182, 212, 0.06) 100%);
+  border-color: rgba(6, 182, 212, 0.4);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(6, 182, 212, 0.2);
+}
+
+[data-theme='dark'] .addModalChoiceCard[data-type='shopify']:hover {
+  background: linear-gradient(180deg, rgba(139, 92, 246, 0.12) 0%, rgba(139, 92, 246, 0.06) 100%);
+  border-color: rgba(139, 92, 246, 0.4);
+  box-shadow: 0 8px 28px rgba(139, 92, 246, 0.15), 0 0 0 1px rgba(139, 92, 246, 0.2);
+}
+
+/* Top row: icon + label */
+.addModalChoiceCardTop {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.addModalChoiceCardIcon {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.15), rgba(139, 92, 246, 0.08));
+  color: var(--futuristic-cyan);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.addModalChoiceCard[data-type='shopify'] .addModalChoiceCardIcon {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.18), rgba(6, 182, 212, 0.08));
+  color: #8b5cf6;
+}
+
+.addModalChoiceCardIcon :global(.Polaris-Icon) {
+  width: 22px;
+  height: 22px;
+}
+
+.addModalChoiceCardLabel {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  line-height: 1.25;
+}
+
+.addModalChoiceCardDesc {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.addModalChoiceCardArrow {
+  align-self: flex-end;
+  margin-top: auto;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+  opacity: 0.7;
+  transition: opacity 0.2s ease, transform 0.2s ease, color 0.2s ease;
+}
+
+.addModalChoiceCardArrow::before {
+  content: 'Select ';
+  opacity: 0.8;
+}
+
+.addModalChoiceCard:hover .addModalChoiceCardArrow {
+  opacity: 1;
+  color: var(--futuristic-cyan);
+  transform: translateX(2px);
+}
+
+.addModalChoiceCard[data-type='shopify']:hover .addModalChoiceCardArrow {
+  color: #8b5cf6;
+}
+
+@media (min-width: 560px) {
+  .addModalChoiceCard {
+    padding: 1.5rem 1.6rem;
+    gap: 0.9rem;
+    min-height: 152px;
+  }
+  .addModalChoiceCardIcon {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+  }
+  .addModalChoiceCardIcon :global(.Polaris-Icon) {
+    width: 24px;
+    height: 24px;
+  }
+  .addModalChoiceCardLabel {
+    font-size: 1.0625rem;
+  }
+  .addModalChoiceCardDesc {
+    font-size: 0.875rem;
+  }
+}
+
+/* Add domain modal – form step card */
+.addModalFormCard {
+  padding: 1.5rem 1.6rem;
+  background: linear-gradient(180deg, rgba(6, 182, 212, 0.03) 0%, var(--bg-secondary) 100%);
+  border: 1px solid var(--border-secondary);
+  border-left: 4px solid var(--futuristic-cyan);
+  border-radius: 0 var(--radius-xl) var(--radius-xl) 0;
+  margin-top: 0.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+
+[data-theme='dark'] .addModalFormCard {
+  background: linear-gradient(180deg, rgba(6, 182, 212, 0.06) 0%, rgba(255, 255, 255, 0.02) 100%);
+  border-color: rgba(6, 182, 212, 0.15);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+}
+
+@media (min-width: 560px) {
+  .addModalFormCard {
+    padding: 1.6rem 1.75rem;
+    border-radius: 0 20px 20px 0;
+  }
 }
 
 .addDomainFieldWrap {
-  margin-top: 0.5rem;
+  margin-top: 0;
 }
 
 .addDomainFieldWrap :global(.Polaris-TextField) {
   margin-top: 0;
+}
+
+.addDomainFieldWrap:first-child {
+  margin-top: 0;
+}
+
+.addDomainFieldSuccess {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--p-color-text-success);
+}
+
+.addDomainFieldSuccessCheck {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15em;
+  height: 1.15em;
+  border-radius: 50%;
+  background: var(--p-color-bg-fill-success, #008060);
+  color: #fff;
+  font-size: 0.75em;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
 }
 
 .modalHint {
@@ -957,7 +1536,137 @@
   border-top-color: rgba(6, 182, 212, 0.15);
 }
 
-/* Modal styling – override Polaris modal for consistency */
+/* Add domain modal – Continue to Shopify (user-gesture link for embedded Admin) */
+.continueToShopifyBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 0.25rem 0;
+}
+
+.continueToShopifyButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: #fff;
+  background: #008060;
+  border: none;
+  border-radius: 8px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  align-self: flex-start;
+}
+
+.continueToShopifyButton:hover {
+  background: #006e52;
+  color: #fff;
+}
+
+.continueToShopifyButton:focus {
+  outline: 2px solid #008060;
+  outline-offset: 2px;
+}
+
+[data-theme='dark'] .continueToShopifyButton {
+  background: #00a884;
+}
+
+[data-theme='dark'] .continueToShopifyButton:hover {
+  background: #008060;
+}
+
+.continueToShopifyActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.copyOAuthLinkButton {
+  flex-shrink: 0;
+}
+
+.continueToShopifyButtonSecondary {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.875rem;
+  color: var(--p-color-text-subdued, #6d7175);
+  text-decoration: underline;
+}
+.continueToShopifyButtonSecondary:hover {
+  color: var(--p-color-text, #202223);
+}
+
+.addModalHint {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--p-color-text-subdued, #6d7175);
+}
+
+.addModalSteps {
+  margin: 0;
+  padding: 1rem;
+  background: var(--p-color-bg-surface-secondary, #f6f6f7);
+  border-radius: 8px;
+  font-size: 0.875rem;
+}
+.addModalStepsTitle {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+.addModalStepsList {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+.addModalStepsList li {
+  margin-bottom: 0.25rem;
+}
+.addModalStepsList li:last-child {
+  margin-bottom: 0;
+}
+
+.oauthUrlPreview {
+  display: inline-block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  font-family: ui-monospace, monospace;
+  color: var(--p-color-text-subdued, #6d7175);
+  word-break: break-all;
+}
+
+/* Add domain modal – dialog look (size handled in index.css for cascade) */
+:global([data-add-domain-modal-open]) :global(.Polaris-Modal-Dialog) {
+  border-radius: 20px;
+  box-shadow: 0 24px 56px rgba(6, 182, 212, 0.12), 0 12px 24px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(6, 182, 212, 0.1);
+}
+
+:global([data-add-domain-modal-open]) :global(.Polaris-Modal-Header) {
+  padding: 1.5rem 1.75rem;
+  border-bottom: 1px solid var(--border-secondary);
+  flex-shrink: 0;
+  background: var(--bg-secondary);
+}
+
+:global([data-add-domain-modal-open]) :global(.Polaris-Modal-Header__Title) {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+
+:global([data-add-domain-modal-open]) :global(.Polaris-Modal-Content) {
+  padding: 0;
+}
+
+/* Add domain modal – section padding (see .addModalSection above) */
+
+/* Modal styling – override Polaris modal for consistency (other modals on this page) */
 .domainsPage :global(.Polaris-Modal-Dialog) {
   border-radius: 20px;
   box-shadow: 0 24px 48px rgba(6, 182, 212, 0.12);
@@ -965,6 +1674,10 @@
 
 [data-theme='dark'] .domainsPage :global(.Polaris-Modal-Dialog) {
   box-shadow: 0 24px 56px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme='dark'] :global([data-add-domain-modal-open]) :global(.Polaris-Modal-Dialog) {
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(6, 182, 212, 0.15);
 }
 
 .domainsPage :global(.Polaris-Modal-Header) {

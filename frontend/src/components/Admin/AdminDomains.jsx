@@ -447,7 +447,7 @@ export default function AdminDomains() {
                       {domainDetail.recentTests.map(t => (
                         <li key={t.id} style={{ marginBottom: '0.25rem' }}>
                           <Link
-                            url={`/tests/${t.id}`}
+                            url={detailDomain ? ROUTES.appTestDetail(detailDomain, t.id) : '#'}
                             removeUnderline
                             target="_blank"
                             rel="noopener noreferrer"

@@ -10,7 +10,7 @@ const logger = require('../utils/logger');
 const { ERROR_MESSAGES } = require('../constants');
 const { sendUnauthorized } = require('../utils/response');
 const { getShopSession } = require('../models/shopSession');
-const { getTenantByApiKey, isShopifyDomain } = require('../models/tenant');
+const { getTenantByApiKey, getTenantByDomain, isShopifyDomain } = require('../models/tenant');
 const {
   getAccountByApiKey,
   getTenantByAccountAndDomain,
@@ -62,14 +62,15 @@ async function authenticateShopify(req, res, next) {
       return sendUnauthorized(res, 'Shop domain required');
     }
 
-    // Validate shop domain format
-    if (!shop.match(/^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/)) {
+    // Validate shop domain format and normalize (Shopify domains are lowercase)
+    if (!shop.match(/^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/i)) {
       logger.warn('Authentication failed: Invalid shop domain format', {
         shop,
         path: req.path,
       });
       return sendUnauthorized(res, 'Invalid shop domain');
     }
+    const normalizedShop = shop.trim().toLowerCase();
 
     // For POST/PUT requests with body, verify HMAC if present
     if ((req.method === 'POST' || req.method === 'PUT') && req.body) {
@@ -93,27 +94,43 @@ async function authenticateShopify(req, res, next) {
     // 2. Get access token from database based on shop domain
     // 3. Verify token is still valid
 
-    req.shopDomain = shop;
+    req.shopDomain = normalizedShop;
 
-    const shopSession = await getShopSession(shop);
+    const shopSession = await getShopSession(normalizedShop);
     if (shopSession?.access_token) {
       req.shopifyAccessToken = shopSession.access_token;
     } else if (process.env.NODE_ENV !== 'production' && process.env.SHOPIFY_ACCESS_TOKEN) {
       // Dev-only fallback when shop has not completed OAuth
       req.shopifyAccessToken = process.env.SHOPIFY_ACCESS_TOKEN;
-      logger.debug('Using SHOPIFY_ACCESS_TOKEN dev fallback', { shop });
+      logger.debug('Using SHOPIFY_ACCESS_TOKEN dev fallback', { shop: normalizedShop });
     } else {
       logger.warn('Authentication failed: No access token found for shop', {
-        shop,
+        shop: normalizedShop,
         path: req.path,
       });
       return sendUnauthorized(res, 'Shop not authenticated');
     }
 
-    const userStatus = await getRoleAndStatus(shop);
+    // Require tenant to be linked to an email user for app UI (shop-authenticated) routes.
+    // Webhooks (/api/webhooks) do not use this middleware, so they are not affected.
+    const tenant = await getTenantByDomain(normalizedShop);
+    if (tenant && tenant.account_id === null) {
+      logger.warn('Authentication rejected: store not linked to a user', {
+        shop: normalizedShop,
+        path: req.path,
+      });
+      return res.status(403).json({
+        success: false,
+        error: 'This store is not linked to a user. Sign in and connect this store to continue.',
+        code: 'STORE_NOT_LINKED',
+        shop: normalizedShop,
+      });
+    }
+
+    const userStatus = await getRoleAndStatus(normalizedShop);
     if (isUserStatusBlocked(userStatus?.status)) {
       logger.warn('Authentication rejected: account restricted', {
-        shop,
+        shop: normalizedShop,
         status: userStatus?.status,
         path: req.path,
       });

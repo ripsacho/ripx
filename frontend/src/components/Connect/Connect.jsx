@@ -7,16 +7,20 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Page, FormLayout, TextField, Button, Box, Checkbox } from '@shopify/polaris';
 import { PageShell, LegalFooter } from '../Shared';
-import { ROUTES, isPlatformAdmin } from '../../constants';
+import { ROUTES } from '../../constants';
 import {
   hasEmailSession,
+  getEmailToken,
+  getApiBaseUrl,
   apiPostPublic,
   setEmailToken,
-  apiGet,
   clearStoreSelection,
+  isEmbeddedInIframe,
+  getUrlWithEmbedParams,
 } from '../../services';
 import { STORAGE_KEYS } from '../../constants';
 import { RouteLoading } from '../LoadingSkeleton/RouteLoading';
+import { isShopifyStoreDomain } from '../../utils/shopifyAdmin';
 import styles from './Connect.module.css';
 
 const OTP_EXPIRY_SECONDS = 60;
@@ -40,6 +44,42 @@ function Connect() {
   const [otpResendLoading, setOtpResendLoading] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
   const otpInputRefs = useRef([]);
+
+  // When reason=sign_in_to_connect and shop= and user has email session (e.g. token in localStorage, cookie not set), auto-start OAuth
+  const signInToConnectStartHandled = useRef(false);
+  useEffect(() => {
+    const reason = searchParams.get('reason');
+    const shop = (searchParams.get('shop') || '').trim();
+    const signInToConnectReason = ROUTES.CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect';
+    if (
+      reason !== signInToConnectReason ||
+      !shop ||
+      !isShopifyStoreDomain(shop) ||
+      !hasEmailSession() ||
+      signInToConnectStartHandled.current
+    )
+      return;
+    signInToConnectStartHandled.current = true;
+    const token = getEmailToken();
+    if (!token) return;
+    (async () => {
+      try {
+        const base = getApiBaseUrl();
+        const origin = typeof window !== 'undefined' ? window.location.origin : '';
+        const params = new URLSearchParams({ shop });
+        if (origin) params.set('callback_base', origin);
+        const url = `${base}/auth/start?${params.toString()}`;
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+        const data = await res.json().catch(() => ({}));
+        if (data.redirectUrl) {
+          if (isEmbeddedInIframe()) window.open(data.redirectUrl, '_blank', 'noopener,noreferrer');
+          else window.top.location.href = data.redirectUrl;
+        }
+      } catch (_) {
+        signInToConnectStartHandled.current = false;
+      }
+    })();
+  }, [searchParams]);
 
   // One-time connect token (from admin "Connect app" / "Open app") – exchange and redirect to dashboard
   const [connectTokenExchanging, setConnectTokenExchanging] = useState(false);
@@ -95,7 +135,7 @@ function Connect() {
           return next;
         });
         setIsRedirecting(true);
-        window.location.href = ROUTES.DASHBOARD;
+        window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(domain));
       } catch (err) {
         if (!cancelled) {
           const msg =
@@ -180,20 +220,9 @@ function Connect() {
       setEmailToken(data.token);
       clearStoreSelection();
       setIsRedirecting(true);
-      let target = ROUTES.DOMAINS;
-      try {
-        const meRes = await apiGet('/admin/me');
-        const me = meRes.data?.data ?? meRes.data;
-        const role = me?.role ?? null;
-        if (isPlatformAdmin(role)) {
-          target = ROUTES.ADMIN;
-        }
-      } catch (_) {
-        target = ROUTES.DOMAINS;
-      }
       requestAnimationFrame(() => {
         setTimeout(() => {
-          window.location.replace(target);
+          window.location.replace(getUrlWithEmbedParams(ROUTES.USER_PANEL));
         }, 180);
       });
     } catch (err) {
@@ -320,308 +349,342 @@ function Connect() {
     >
       <Page title="">
         <div className={styles.connectRoot}>
-          {/* Left: Brand hero (desktop) */}
-          <aside className={styles.connectHero}>
-            <div className={styles.heroContent}>
-              <div className={styles.heroBrand}>
-                <img src="/logo.svg" alt="" className={styles.heroLogo} width={56} height={56} />
-                <div className={styles.heroBrandText}>
-                  <span className={styles.heroName}>RipX</span>
-                  <p className={styles.heroTagline}>A/B testing</p>
-                </div>
-              </div>
-              <h2 className={`${styles.heroTitle} ${styles.heroTaglineBelow}`}>
-                Run experiments. <br />
-                <span className={styles.heroTitleAccent}>Ship winners.</span>
-              </h2>
-              <p className={styles.heroSub}>
-                Sign in to manage your domains and A/B tests with confidence.
-              </p>
-              <ul className={styles.heroList}>
-                <li>Passwordless email sign-in</li>
-                <li>Multi-domain support</li>
-                <li>Admin-approved access</li>
-              </ul>
-            </div>
-            <div className={styles.heroGradient} aria-hidden="true" />
-            <div className={styles.heroGrid} aria-hidden="true" />
-          </aside>
-
-          {/* Right: Form */}
-          <main className={styles.connectMain}>
-            <div className={styles.connectInner}>
-              {/* Mobile-only brand */}
-              <header className={styles.authHeader}>
-                <div className={styles.authBrand}>
-                  <img
-                    src="/logo.svg"
-                    alt=""
-                    className={styles.authLogoImg}
-                    width={40}
-                    height={40}
-                  />
-                  <div className={styles.authBrandText}>
-                    <span className={styles.authBrandName}>RipX</span>
-                    <span className={styles.authTagline}>A/B testing</span>
+          <div className={styles.connectPanels}>
+            {/* Left: Brand hero (desktop) */}
+            <aside className={styles.connectHero}>
+              <div className={styles.heroContent}>
+                <div className={styles.heroBrand}>
+                  <img src="/logo.svg" alt="" className={styles.heroLogo} width={56} height={56} />
+                  <div className={styles.heroBrandText}>
+                    <span className={styles.heroName}>RipX</span>
+                    <p className={styles.heroTagline}>A/B testing</p>
                   </div>
                 </div>
-                {hasEmailSession() && (
-                  <Link to={ROUTES.DOMAINS} className={styles.authLink}>
-                    Already signed in? Go to My domains →
-                  </Link>
-                )}
-              </header>
+                <h2 className={`${styles.heroTitle} ${styles.heroTaglineBelow}`}>
+                  Run experiments. <br />
+                  <span className={styles.heroTitleAccent}>Ship winners.</span>
+                </h2>
+                <p className={styles.heroSub}>
+                  Sign in to manage your domains and A/B tests with confidence.
+                </p>
+                <ul className={styles.heroList}>
+                  <li>Passwordless email sign-in</li>
+                  <li>Multi-domain support</li>
+                  <li>Admin-approved access</li>
+                </ul>
+              </div>
+              <div className={styles.heroGradient} aria-hidden="true" />
+              <div className={styles.heroGrid} aria-hidden="true" />
+            </aside>
 
-              <div className={styles.authCard}>
-                <div className={styles.authCardInner}>
-                  {step === 'otp' ? (
-                    <>
-                      <div className={styles.otpHeader}>
-                        <button
-                          type="button"
-                          className={styles.otpBack}
-                          onClick={handleBackToEmail}
-                        >
-                          ← Back
-                        </button>
-                      </div>
-                      <div className={styles.authCardBody}>
-                        <div className={styles.otpPanel}>
-                          <p className={styles.otpSentTo}>
-                            We sent a 6-digit code to <strong>{otpEmail}</strong>
-                          </p>
-                          <form onSubmit={handleVerifyCode} className={styles.authForm}>
-                            <FormLayout>
-                              <div className={styles.otpInputWrap}>
-                                <label className={styles.otpInputLabel}>Verification code</label>
-                                <div
-                                  className={styles.otpBoxes}
-                                  role="group"
-                                  aria-label="6-digit verification code"
-                                  onPaste={handleOtpPaste}
-                                >
-                                  {[0, 1, 2, 3, 4, 5].map(i => (
-                                    <input
-                                      key={i}
-                                      ref={el => {
-                                        otpInputRefs.current[i] = el;
-                                      }}
-                                      type="text"
-                                      inputMode="numeric"
-                                      autoComplete="one-time-code"
-                                      maxLength={1}
-                                      className={styles.otpBox}
-                                      value={otpDigits[i] || ''}
-                                      onChange={e => setOtpDigit(i, e.target.value)}
-                                      onKeyDown={e => handleOtpKeyDown(i, e)}
-                                      aria-label={`Digit ${i + 1} of 6`}
-                                    />
-                                  ))}
-                                </div>
-                                <div className={styles.otpTimer}>
-                                  {otpSecondsLeft > 0 ? (
-                                    <span className={styles.otpTimerText}>
-                                      Code expires in 0:{String(otpSecondsLeft).padStart(2, '0')}
-                                    </span>
-                                  ) : (
-                                    <span className={styles.otpTimerExpired}>Code expired</span>
-                                  )}
-                                </div>
-                              </div>
-                              <Box paddingBlockStart="300">
-                                <div className={styles.authFormActions}>
-                                  <Button
-                                    submit
-                                    variant="primary"
-                                    fullWidth
-                                    size="large"
-                                    loading={otpVerifyLoading}
-                                    disabled={otpCode.replace(/\D/g, '').length !== 6}
+            {/* Right: Form */}
+            <main className={styles.connectMain}>
+              <div className={styles.connectInner}>
+                {/* Mobile-only brand */}
+                <header className={styles.authHeader}>
+                  <div className={styles.authBrand}>
+                    <img
+                      src="/logo.svg"
+                      alt=""
+                      className={styles.authLogoImg}
+                      width={40}
+                      height={40}
+                    />
+                    <div className={styles.authBrandText}>
+                      <span className={styles.authBrandName}>RipX</span>
+                      <span className={styles.authTagline}>A/B testing</span>
+                    </div>
+                  </div>
+                  {hasEmailSession() && (
+                    <Link to={ROUTES.DOMAINS} className={styles.authLink}>
+                      Already signed in? Go to My domains →
+                    </Link>
+                  )}
+                </header>
+
+                {(() => {
+                  const reason = (searchParams.get('reason') || '').trim();
+                  const { CONNECT_REASON } = ROUTES;
+                  const knownReasons = {
+                    [CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect']: (
+                      <p className={styles.authReasonBanner} role="alert">
+                        Sign in with your email to connect a store. After signing in, go to My
+                        domains and connect your Shopify store.
+                      </p>
+                    ),
+                    [CONNECT_REASON?.SIGN_IN_TO_LINK || 'sign_in_to_link']: (
+                      <p className={styles.authReasonBanner} role="alert">
+                        This store needs to be linked to your account. Sign in, then connect the
+                        store from My domains.
+                      </p>
+                    ),
+                    [CONNECT_REASON?.STORE_LINKED_TO_ANOTHER || 'store_linked_to_another']: (
+                      <p className={styles.authReasonBanner} role="alert">
+                        This store is already linked to another account. Use the account that owns
+                        this store, or contact support if you need to transfer it.
+                      </p>
+                    ),
+                    [CONNECT_REASON?.OAUTH_EXPIRED || 'oauth_expired']: (
+                      <p className={styles.authReasonBanner} role="alert">
+                        The connection link expired or was already used. Sign in and connect the
+                        store again from My domains.
+                      </p>
+                    ),
+                  };
+                  return knownReasons[reason] ?? null;
+                })()}
+
+                <div className={styles.authCard}>
+                  <div className={styles.authCardInner}>
+                    {step === 'otp' ? (
+                      <>
+                        <div className={styles.otpHeader}>
+                          <button
+                            type="button"
+                            className={styles.otpBack}
+                            onClick={handleBackToEmail}
+                          >
+                            ← Back
+                          </button>
+                        </div>
+                        <div className={styles.authCardBody}>
+                          <div className={styles.otpPanel}>
+                            <p className={styles.otpSentTo}>
+                              We sent a 6-digit code to <strong>{otpEmail}</strong>
+                            </p>
+                            <form onSubmit={handleVerifyCode} className={styles.authForm}>
+                              <FormLayout>
+                                <div className={styles.otpInputWrap}>
+                                  <label className={styles.otpInputLabel}>Verification code</label>
+                                  <div
+                                    className={styles.otpBoxes}
+                                    role="group"
+                                    aria-label="6-digit verification code"
+                                    onPaste={handleOtpPaste}
                                   >
-                                    Sign in
+                                    {[0, 1, 2, 3, 4, 5].map(i => (
+                                      <input
+                                        key={i}
+                                        ref={el => {
+                                          otpInputRefs.current[i] = el;
+                                        }}
+                                        type="text"
+                                        inputMode="numeric"
+                                        autoComplete="one-time-code"
+                                        maxLength={1}
+                                        className={styles.otpBox}
+                                        value={otpDigits[i] || ''}
+                                        onChange={e => setOtpDigit(i, e.target.value)}
+                                        onKeyDown={e => handleOtpKeyDown(i, e)}
+                                        aria-label={`Digit ${i + 1} of 6`}
+                                      />
+                                    ))}
+                                  </div>
+                                  <div className={styles.otpTimer}>
+                                    {otpSecondsLeft > 0 ? (
+                                      <span className={styles.otpTimerText}>
+                                        Code expires in 0:{String(otpSecondsLeft).padStart(2, '0')}
+                                      </span>
+                                    ) : (
+                                      <span className={styles.otpTimerExpired}>Code expired</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <Box paddingBlockStart="300">
+                                  <div className={styles.authFormActions}>
+                                    <Button
+                                      submit
+                                      variant="primary"
+                                      fullWidth
+                                      size="large"
+                                      loading={otpVerifyLoading}
+                                      disabled={otpCode.replace(/\D/g, '').length !== 6}
+                                    >
+                                      Sign in
+                                    </Button>
+                                  </div>
+                                </Box>
+                                <div className={styles.otpResend}>
+                                  <Button
+                                    variant="plain"
+                                    size="slim"
+                                    onClick={handleResendCode}
+                                    disabled={otpSecondsLeft > 0}
+                                    loading={otpResendLoading}
+                                  >
+                                    {otpSecondsLeft > 0
+                                      ? `Send new code in 0:${String(otpSecondsLeft).padStart(2, '0')}`
+                                      : 'Send new code'}
                                   </Button>
                                 </div>
-                              </Box>
-                              <div className={styles.otpResend}>
-                                <Button
-                                  variant="plain"
-                                  size="slim"
-                                  onClick={handleResendCode}
-                                  disabled={otpSecondsLeft > 0}
-                                  loading={otpResendLoading}
-                                >
-                                  {otpSecondsLeft > 0
-                                    ? `Send new code in 0:${String(otpSecondsLeft).padStart(2, '0')}`
-                                    : 'Send new code'}
-                                </Button>
-                              </div>
-                            </FormLayout>
-                          </form>
+                              </FormLayout>
+                            </form>
+                          </div>
                         </div>
-                      </div>
-                      <div className={styles.authCardFooter}>
-                        <p className={styles.otpFooterHint}>
-                          You can request a new code up to 3 times every 15 minutes.
-                        </p>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div
-                        className={styles.authTabs}
-                        role="tablist"
-                        aria-label="Sign in or create account"
-                      >
-                        <button
-                          type="button"
-                          role="tab"
-                          aria-selected={mode === 'signin'}
-                          aria-controls="auth-panel-signin"
-                          id="auth-tab-signin"
-                          className={`${styles.authTab} ${mode === 'signin' ? styles.authTabActive : ''}`}
-                          onClick={() => setMode('signin')}
-                        >
-                          Sign in
-                        </button>
-                        <button
-                          type="button"
-                          role="tab"
-                          aria-selected={mode === 'register'}
-                          aria-controls="auth-panel-register"
-                          id="auth-tab-register"
-                          className={`${styles.authTab} ${mode === 'register' ? styles.authTabActive : ''}`}
-                          onClick={() => setMode('register')}
-                        >
-                          Create account
-                        </button>
+                        <div className={styles.authCardFooter}>
+                          <p className={styles.otpFooterHint}>
+                            You can request a new code up to 3 times every 15 minutes.
+                          </p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
                         <div
-                          className={styles.authTabIndicator}
-                          style={{
-                            transform: mode === 'register' ? 'translateX(100%)' : 'translateX(0)',
-                          }}
-                        />
-                      </div>
-
-                      <div className={styles.authCardBody}>
-                        <div className={styles.authPanelWrapper}>
-                          <div
-                            id="auth-panel-signin"
-                            role="tabpanel"
-                            aria-labelledby="auth-tab-signin"
-                            aria-hidden={mode !== 'signin'}
-                            className={`${styles.authPanel} ${mode === 'signin' ? styles.authPanelActive : styles.authPanelInactive}`}
-                          >
-                            <p className={styles.authPanelHint}>
-                              Enter your email and we&apos;ll send a one-time sign-in code. Approved
-                              accounts receive a 6-digit code; your account must be approved by an
-                              administrator first.
-                            </p>
-                            <form onSubmit={handleSignIn} className={styles.authForm}>
-                              <FormLayout>
-                                <TextField
-                                  label="Email"
-                                  type="email"
-                                  value={email}
-                                  onChange={setEmail}
-                                  placeholder="you@example.com"
-                                  autoComplete="email"
-                                  error={error}
-                                />
-                                <Checkbox
-                                  label="Remember me for 30 days on this device"
-                                  checked={rememberMe}
-                                  onChange={setRememberMe}
-                                />
-                                <Box paddingBlockStart="300">
-                                  <div className={styles.authFormActions}>
-                                    <Button
-                                      submit
-                                      variant="primary"
-                                      fullWidth
-                                      size="large"
-                                      loading={loading}
-                                    >
-                                      Email sign-in code
-                                    </Button>
-                                  </div>
-                                </Box>
-                              </FormLayout>
-                            </form>
-                          </div>
-                          <div
-                            id="auth-panel-register"
-                            role="tabpanel"
-                            aria-labelledby="auth-tab-register"
-                            aria-hidden={mode !== 'register'}
-                            className={`${styles.authPanel} ${mode === 'register' ? styles.authPanelActive : styles.authPanelInactive}`}
-                          >
-                            <p className={styles.authPanelHint}>
-                              We&apos;ll send a confirmation link. After you confirm, an
-                              administrator must approve your account before you can sign in.
-                            </p>
-                            <form onSubmit={handleRegister} className={styles.authForm}>
-                              <FormLayout>
-                                <TextField
-                                  label="Email"
-                                  type="email"
-                                  value={email}
-                                  onChange={setEmail}
-                                  placeholder="you@example.com"
-                                  autoComplete="email"
-                                  error={error}
-                                />
-                                <Box paddingBlockStart="300">
-                                  <div className={styles.authFormActions}>
-                                    <Button
-                                      submit
-                                      variant="primary"
-                                      fullWidth
-                                      size="large"
-                                      loading={loading}
-                                    >
-                                      Create account
-                                    </Button>
-                                  </div>
-                                </Box>
-                              </FormLayout>
-                            </form>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className={styles.authCardFooter}>
-                        {mode === 'signin' ? (
+                          className={styles.authTabs}
+                          role="tablist"
+                          aria-label="Sign in or create account"
+                        >
                           <button
                             type="button"
-                            className={styles.authSwitch}
-                            onClick={() => setMode('register')}
-                          >
-                            Don&apos;t have an account?{' '}
-                            <span className={styles.authSwitchAccent}>Create one</span>
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            className={styles.authSwitch}
+                            role="tab"
+                            aria-selected={mode === 'signin'}
+                            aria-controls="auth-panel-signin"
+                            id="auth-tab-signin"
+                            className={`${styles.authTab} ${mode === 'signin' ? styles.authTabActive : ''}`}
                             onClick={() => setMode('signin')}
                           >
-                            Already have an account?{' '}
-                            <span className={styles.authSwitchAccent}>Sign in</span>
+                            Sign in
                           </button>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected={mode === 'register'}
+                            aria-controls="auth-panel-register"
+                            id="auth-tab-register"
+                            className={`${styles.authTab} ${mode === 'register' ? styles.authTabActive : ''}`}
+                            onClick={() => setMode('register')}
+                          >
+                            Create account
+                          </button>
+                          <div
+                            className={styles.authTabIndicator}
+                            style={{
+                              transform: mode === 'register' ? 'translateX(100%)' : 'translateX(0)',
+                            }}
+                          />
+                        </div>
 
-              <p className={styles.authFooter}>
-                After signing in, go to <strong>My domains</strong> to add a website or connect with
-                an API key.
-              </p>
-              <LegalFooter />
-            </div>
-          </main>
+                        <div className={styles.authCardBody}>
+                          <div className={styles.authPanelWrapper}>
+                            <div
+                              id="auth-panel-signin"
+                              role="tabpanel"
+                              aria-labelledby="auth-tab-signin"
+                              aria-hidden={mode !== 'signin'}
+                              className={`${styles.authPanel} ${mode === 'signin' ? styles.authPanelActive : styles.authPanelInactive}`}
+                            >
+                              <p className={styles.authPanelHint}>
+                                Enter your email and we&apos;ll send a one-time sign-in code.
+                                Approved accounts receive a 6-digit code; your account must be
+                                approved by an administrator first.
+                              </p>
+                              <form onSubmit={handleSignIn} className={styles.authForm}>
+                                <FormLayout>
+                                  <TextField
+                                    label="Email"
+                                    type="email"
+                                    value={email}
+                                    onChange={setEmail}
+                                    placeholder="you@example.com"
+                                    autoComplete="email"
+                                    error={error}
+                                  />
+                                  <Checkbox
+                                    label="Remember me for 30 days on this device"
+                                    checked={rememberMe}
+                                    onChange={setRememberMe}
+                                  />
+                                  <Box paddingBlockStart="300">
+                                    <div className={styles.authFormActions}>
+                                      <Button
+                                        submit
+                                        variant="primary"
+                                        fullWidth
+                                        size="large"
+                                        loading={loading}
+                                      >
+                                        Email sign-in code
+                                      </Button>
+                                    </div>
+                                  </Box>
+                                </FormLayout>
+                              </form>
+                            </div>
+                            <div
+                              id="auth-panel-register"
+                              role="tabpanel"
+                              aria-labelledby="auth-tab-register"
+                              aria-hidden={mode !== 'register'}
+                              className={`${styles.authPanel} ${mode === 'register' ? styles.authPanelActive : styles.authPanelInactive}`}
+                            >
+                              <p className={styles.authPanelHint}>
+                                We&apos;ll send a confirmation link. After you confirm, an
+                                administrator must approve your account before you can sign in.
+                              </p>
+                              <form onSubmit={handleRegister} className={styles.authForm}>
+                                <FormLayout>
+                                  <TextField
+                                    label="Email"
+                                    type="email"
+                                    value={email}
+                                    onChange={setEmail}
+                                    placeholder="you@example.com"
+                                    autoComplete="email"
+                                    error={error}
+                                  />
+                                  <Box paddingBlockStart="300">
+                                    <div className={styles.authFormActions}>
+                                      <Button
+                                        submit
+                                        variant="primary"
+                                        fullWidth
+                                        size="large"
+                                        loading={loading}
+                                      >
+                                        Create account
+                                      </Button>
+                                    </div>
+                                  </Box>
+                                </FormLayout>
+                              </form>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className={styles.authCardFooter}>
+                          {mode === 'signin' ? (
+                            <button
+                              type="button"
+                              className={styles.authSwitch}
+                              onClick={() => setMode('register')}
+                            >
+                              Don&apos;t have an account?{' '}
+                              <span className={styles.authSwitchAccent}>Create one</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className={styles.authSwitch}
+                              onClick={() => setMode('signin')}
+                            >
+                              Already have an account?{' '}
+                              <span className={styles.authSwitchAccent}>Sign in</span>
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <p className={styles.authFooter}>
+                  After signing in, go to <strong>My domains</strong> to add a website or connect
+                  with an API key.
+                </p>
+                <LegalFooter />
+              </div>
+            </main>
+          </div>
         </div>
       </Page>
     </PageShell>

@@ -19,7 +19,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import Toast from '../Toast/Toast';
 import LoadingSkeleton from '../LoadingSkeleton/LoadingSkeleton';
-import { useTests } from '../../hooks';
+import { useTests, useAppRoutes } from '../../hooks';
 import { MetricCard, MetricGrid } from '../Shared';
 import { getTestTypeDisplay, getVariantCount } from '../../utils/testType';
 import pageShell from '../Shared/PageShell.module.css';
@@ -37,6 +37,7 @@ import {
 
 function AnalyticsOverview() {
   const navigate = useNavigate();
+  const routes = useAppRoutes();
   const [currentPage, setCurrentPage] = useState(1);
   const testsPerPage = 5;
 
@@ -112,7 +113,7 @@ function AnalyticsOverview() {
 
   const TestCard = ({ test }) => {
     const handleCardClick = () => {
-      navigate(`/tests/${test.id}/analytics`);
+      navigate(routes.testAnalytics(test.id));
     };
 
     // Calculate performance metrics
@@ -427,10 +428,10 @@ function AnalyticsOverview() {
                         </Text>
                       </BlockStack>
                       <InlineStack gap="200">
-                        <Button onClick={() => navigate('/tests')} variant="secondary">
+                        <Button onClick={() => navigate(routes.tests)} variant="secondary">
                           View All Tests
                         </Button>
-                        <Button onClick={() => navigate('/tests/new')}>Create Test</Button>
+                        <Button onClick={() => navigate(routes.createTest)}>Create Test</Button>
                       </InlineStack>
                     </InlineStack>
 
@@ -441,7 +442,7 @@ function AnalyticsOverview() {
                         heading="Create your first AB test"
                         action={{
                           content: 'Create Test',
-                          onAction: () => navigate('/tests/new'),
+                          onAction: () => navigate(routes.createTest),
                         }}
                         image="https://cdn.shopify.com/s/files/1/0757/9955/files/empty-state.svg"
                       >

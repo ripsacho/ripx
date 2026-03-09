@@ -31,6 +31,8 @@ import {
   ClipboardIcon,
   HomeIcon,
   ListBulletedIcon,
+  PersonIcon,
+  NotificationIcon,
 } from '@shopify/polaris-icons';
 import pageShell from '../Shared/PageShell.module.css';
 import styles from './Documentation.module.css';
@@ -132,7 +134,7 @@ const SECTIONS = [
   },
   {
     id: 'settings',
-    title: 'Settings',
+    title: 'App settings',
     icon: SettingsIcon,
     group: 'integrations',
     keywords: 'sample size confidence webhook theme',
@@ -308,7 +310,8 @@ function DocSectionContent({ sectionId }) {
         <BlockStack gap="400">
           <Text as="p" variant="bodyMd">
             RipX works with both Shopify and non-Shopify sites. Get your snippet from{' '}
-            <strong>Settings → Installation</strong>.
+            <strong>App settings → Installation</strong> (in the app: open a store, then Settings in
+            the sidebar).
           </Text>
           <Text variant="headingMd" as="h4">
             Shopify
@@ -332,7 +335,7 @@ function DocSectionContent({ sectionId }) {
             steps={[
               'Register at /connect (Register new site tab) with your domain',
               'Copy API key and connect',
-              'Add snippet from Settings → Installation',
+              'Add snippet from App settings → Installation',
             ]}
           />
           <CodeBlock
@@ -340,7 +343,7 @@ function DocSectionContent({ sectionId }) {
             language="html"
           />
           <DocCallout type="info" title="Platform detection">
-            Settings → Installation shows the correct snippet for your platform (Shopify or
+            App settings → Installation shows the correct snippet for your platform (Shopify or
             Standalone) with copy buttons.
           </DocCallout>
         </BlockStack>
@@ -443,8 +446,8 @@ npm run dev`}
             Install the script
           </Text>
           <p>
-            After connecting, go to Setup Wizard or Settings → Installation. Copy the script URL and
-            add it to your site&apos;s <code>&lt;head&gt;</code> or before{' '}
+            After connecting, go to Setup Wizard or App settings → Installation. Copy the script URL
+            and add it to your site&apos;s <code>&lt;head&gt;</code> or before{' '}
             <code>&lt;/body&gt;</code>.
           </p>
           <Text variant="headingMd" as="h4">
@@ -479,8 +482,8 @@ npm run dev`}
             headers={['Route', 'Description']}
             rows={[
               ['/', 'Dashboard home'],
-              ['/tests', 'All tests with filters'],
-              ['/tests/new', 'Create test wizard'],
+              [ROUTES.TESTS, 'All tests with filters'],
+              [ROUTES.CREATE_TEST, 'Create test wizard'],
               ['/analytics', 'Cross-test analytics'],
             ]}
           />
@@ -721,6 +724,10 @@ npm run dev`}
     case 'settings':
       return (
         <BlockStack gap="400">
+          <Text as="p" variant="bodyMd">
+            These tabs are in <strong>App settings</strong> (open a store, then Settings in the
+            sidebar). Account settings (theme only) are under your profile menu.
+          </Text>
           <Text variant="headingMd" as="h4">
             General Tab
           </Text>
@@ -747,7 +754,7 @@ npm run dev`}
           <Text variant="headingMd" as="h4">
             Targeting Presets
           </Text>
-          <p>Save and reuse targeting configs. Create in Test Wizard, manage in Settings.</p>
+          <p>Save and reuse targeting configs. Create in Test Wizard, manage in App settings.</p>
         </BlockStack>
       );
 
@@ -775,7 +782,7 @@ npm run dev`}
           </Text>
           <p>
             Create presets in the Test Wizard targeting step. Manage them in{' '}
-            <strong>Settings → Targeting Presets</strong>.
+            <strong>App settings → Targeting Presets</strong>.
           </p>
         </BlockStack>
       );
@@ -812,8 +819,8 @@ npm run dev`}
             Export
           </Text>
           <p>
-            Trigger from <strong>Settings → Integrations</strong>. Incremental (new events) or full
-            (events + tests). Last export time shown in the UI.
+            Trigger from <strong>App settings → Integrations</strong>. Incremental (new events) or
+            full (events + tests). Last export time shown in the UI.
           </p>
           <Text variant="headingMd" as="h4">
             Export Tables
@@ -850,8 +857,8 @@ npm run dev`}
             Setup
           </Text>
           <p>
-            Add your webhook URL in <strong>Settings → General</strong>. The payload includes test
-            ID, status, winner, and metrics.
+            Add your webhook URL in <strong>App settings → General</strong>. The payload includes
+            test ID, status, winner, and metrics.
           </p>
         </BlockStack>
       );
@@ -889,8 +896,8 @@ npm run dev`}
             BigQuery Export
           </Text>
           <p>
-            Incremental (new events) or full (events + tests). Trigger from Settings → Integrations
-            or API.
+            Incremental (new events) or full (events + tests). Trigger from App settings →
+            Integrations or API.
           </p>
         </BlockStack>
       );
@@ -1349,7 +1356,7 @@ function Documentation() {
           </span>
           <button
             type="button"
-            onClick={() => navigate(ROUTES.DASHBOARD)}
+            onClick={() => navigate(ROUTES.USER_PANEL)}
             className={styles.docsTopBarMainApp}
             aria-label="Go to dashboard"
             title="Back to dashboard"
@@ -1605,20 +1612,26 @@ function Documentation() {
             >
               <CodeIcon /> API Docs (Swagger)
             </a>
-            <Link to="/tests" className={styles.docsResourcesLink}>
-              <TargetIcon /> All Tests
+            <Link to={ROUTES.USER_PANEL} className={styles.docsResourcesLink}>
+              <TargetIcon /> App (tests, dashboard)
             </Link>
-            <Link to="/connect" className={styles.docsResourcesLink}>
+            <Link to={ROUTES.CONNECT} className={styles.docsResourcesLink}>
               <ConnectIcon /> Connect / API Key
             </Link>
-            <Link to="/settings" className={styles.docsResourcesLink}>
-              <SettingsIcon /> Settings
+            <Link to={ROUTES.SETTINGS} className={styles.docsResourcesLink}>
+              <SettingsIcon /> Account settings (theme)
             </Link>
-            <Link to="/setup" className={styles.docsResourcesLink}>
-              <CompassIcon /> Setup Wizard
+            <Link to={ROUTES.USER_PANEL} className={styles.docsResourcesLink}>
+              <SettingsIcon /> App settings (in the app)
             </Link>
-            <Link to="/analytics" className={styles.docsResourcesLink}>
-              <ChartLineIcon /> Analytics
+            <Link to={ROUTES.USER_PANEL} className={styles.docsResourcesLink}>
+              <CompassIcon /> App (Setup Wizard)
+            </Link>
+            <Link to={ROUTES.PROFILE} className={styles.docsResourcesLink}>
+              <PersonIcon /> Profile
+            </Link>
+            <Link to={ROUTES.NOTIFICATIONS} className={styles.docsResourcesLink}>
+              <NotificationIcon /> Notifications
             </Link>
           </div>
         </div>

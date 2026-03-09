@@ -7,7 +7,18 @@
 const { query } = require('../utils/database');
 const logger = require('../utils/logger');
 
+function normalizeShopDomain(domain) {
+  if (!domain || typeof domain !== 'string') {
+    return '';
+  }
+  return domain.trim().toLowerCase();
+}
+
 async function upsertShopSession({ shopDomain, accessToken, scope }) {
+  const normalized = normalizeShopDomain(shopDomain);
+  if (!normalized) {
+    throw new Error('shopDomain is required');
+  }
   const sql = `
     INSERT INTO shop_sessions (shop_domain, access_token, scope, installed_at, updated_at)
     VALUES ($1, $2, $3, NOW(), NOW())
@@ -20,7 +31,7 @@ async function upsertShopSession({ shopDomain, accessToken, scope }) {
   `;
 
   try {
-    const result = await query(sql, [shopDomain, accessToken, scope || null]);
+    const result = await query(sql, [normalized, accessToken, scope || null]);
     return result.rows[0];
   } catch (error) {
     logger.error('Error upserting shop session', { error: error.message, shopDomain });
@@ -29,21 +40,29 @@ async function upsertShopSession({ shopDomain, accessToken, scope }) {
 }
 
 async function getShopSession(shopDomain) {
+  const normalized = normalizeShopDomain(shopDomain);
+  if (!normalized) {
+    return null;
+  }
   const sql = `
     SELECT * FROM shop_sessions
     WHERE shop_domain = $1
   `;
 
-  const result = await query(sql, [shopDomain]);
+  const result = await query(sql, [normalized]);
   return result.rows[0] || null;
 }
 
 async function deleteShopSession(shopDomain) {
+  const normalized = normalizeShopDomain(shopDomain);
+  if (!normalized) {
+    return false;
+  }
   const sql = `
     DELETE FROM shop_sessions
     WHERE shop_domain = $1
   `;
-  const result = await query(sql, [shopDomain]);
+  const result = await query(sql, [normalized]);
   return result.rowCount > 0;
 }
 

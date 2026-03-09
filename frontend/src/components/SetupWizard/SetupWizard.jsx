@@ -7,6 +7,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import {
   Page,
   Card,
@@ -61,6 +62,7 @@ const StepIcon = ({ type }) => {
 };
 
 function SetupWizard() {
+  const { domain } = useParams();
   const [setupStatus, setSetupStatus] = useState(null);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState(null);
@@ -70,6 +72,7 @@ function SetupWizard() {
 
   const standalone = isStandaloneMode();
   const shopDomain = setupStatus?.shopDomain || getShopDomain();
+  const settingsPath = domain ? ROUTES.appSettings(domain) : ROUTES.SETTINGS;
   const appUrl = setupStatus?.appUrl || '';
   const proxyTargetUrl = setupStatus?.proxyTargetUrl || '';
   const proxyScriptUrl = useMemo(() => {
@@ -344,8 +347,8 @@ function SetupWizard() {
                         </List>
                         <Text variant="bodyMd" tone="subdued">
                           Need the full snippet? Go to{' '}
-                          <a href={ROUTES.SETTINGS} className={styles.setupLink}>
-                            Settings → Installation
+                          <a href={settingsPath} className={styles.setupLink}>
+                            App settings → Installation
                           </a>{' '}
                           for the complete HTML.
                         </Text>
@@ -386,7 +389,7 @@ function SetupWizard() {
                               The RipX script has been detected on <strong>{inst?.domain}</strong>.
                               Setup is complete.
                             </Text>
-                            <Button url={ROUTES.DASHBOARD} variant="primary">
+                            <Button url={ROUTES.USER_PANEL} variant="primary">
                               Go to Dashboard
                             </Button>
                           </>
@@ -420,7 +423,7 @@ function SetupWizard() {
                             Create a test and start tracking. Visit the Dashboard to see results and
                             analytics.
                           </Text>
-                          <Button url={ROUTES.DASHBOARD} variant="primary" size="large">
+                          <Button url={ROUTES.USER_PANEL} variant="primary" size="large">
                             Go to Dashboard
                           </Button>
                         </BlockStack>
@@ -452,8 +455,8 @@ function SetupWizard() {
                         )}
                       </BlockStack>
                       <Divider />
-                      <Button url={ROUTES.SETTINGS} size="slim">
-                        Settings → Installation
+                      <Button url={settingsPath} size="slim">
+                        App settings → Installation
                       </Button>
                     </BlockStack>
                   </Card>

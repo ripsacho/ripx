@@ -107,7 +107,10 @@ class ABTestEngine {
           if (percent <= 0) {
             return null;
           }
-          const hash = crypto.createHash('md5').update(userId).digest('hex');
+          const hash = crypto
+            .createHash('md5')
+            .update(String(userId || ''))
+            .digest('hex');
           const bucket = parseInt(hash.substring(0, 8), 16) % 100;
           if (bucket >= percent) {
             return null; // User sees control (no variant)
@@ -144,7 +147,10 @@ class ABTestEngine {
             rampPercent + (daysSinceStart / rampDays) * (100 - rampPercent)
           );
         }
-        const hash = crypto.createHash('md5').update(userId).digest('hex');
+        const hash = crypto
+          .createHash('md5')
+          .update(String(userId || ''))
+          .digest('hex');
         const bucket = parseInt(hash.substring(0, 8), 16) % 100;
         if (bucket >= effectivePercent) {
           return null;

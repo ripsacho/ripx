@@ -6,13 +6,14 @@
  */
 
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { hasCredentials } from '../../services/api';
 import { ROUTES } from '../../constants';
 
 function AuthGuard({ children }) {
+  const location = useLocation();
   if (!hasCredentials()) {
-    return <Navigate to={ROUTES.CONNECT} replace />;
+    return <Navigate to={{ pathname: ROUTES.CONNECT, search: location.search }} replace />;
   }
 
   return children;

@@ -174,7 +174,7 @@ class AnalyticsModel {
         variantMap[row.variant_id] = {
           variant_id: row.variant_id,
           variant_name: row.variant_name,
-          visitors: parseInt(row.visitors) || 0,
+          visitors: parseInt(row.visitors, 10) || 0,
           conversions: 0,
           revenue: 0,
         };
@@ -182,7 +182,7 @@ class AnalyticsModel {
 
       conversionsResult.rows.forEach(row => {
         if (variantMap[row.variant_id]) {
-          variantMap[row.variant_id].conversions = parseInt(row.conversions) || 0;
+          variantMap[row.variant_id].conversions = parseInt(row.conversions, 10) || 0;
           variantMap[row.variant_id].revenue = parseFloat(row.revenue) || 0;
         }
       });
@@ -254,7 +254,7 @@ class AnalyticsModel {
     `;
 
     const result = await query(sql, [testId, shopDomain, eventType]);
-    return parseInt(result.rows[0].count) || 0;
+    return parseInt(result.rows[0].count, 10) || 0;
   }
 
   /**
@@ -321,7 +321,7 @@ class AnalyticsModel {
         result[safeName] = {};
         q.rows.forEach(row => {
           result[safeName][row.variant_id] = {
-            count: parseInt(row.count) || 0,
+            count: parseInt(row.count, 10) || 0,
             sum: parseFloat(row.sum) || 0,
           };
         });
@@ -456,14 +456,14 @@ class AnalyticsModel {
     const byVariant = {};
     const variantNames = {};
     results[0].rows.forEach(row => {
-      byVariant[row.variant_id] = { visitors: parseInt(row.count) || 0 };
+      byVariant[row.variant_id] = { visitors: parseInt(row.count, 10) || 0 };
       variantNames[row.variant_id] = row.variant_name;
     });
     for (let i = 1; i < results.length; i++) {
       const key = queries[i].key;
       results[i].rows.forEach(row => {
         if (byVariant[row.variant_id]) {
-          byVariant[row.variant_id][key] = parseInt(row.count) || 0;
+          byVariant[row.variant_id][key] = parseInt(row.count, 10) || 0;
         }
       });
     }

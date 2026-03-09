@@ -10,7 +10,6 @@ import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAdminMe } from '../../hooks';
 import { ROUTES } from '../../constants';
-import { hasEmailSession, getApiKey, getShopDomain } from '../../services';
 import { RouteLoading } from '../LoadingSkeleton/RouteLoading';
 
 function AdminGuard({ children }) {
@@ -21,8 +20,7 @@ function AdminGuard({ children }) {
   }
 
   if (!isAdmin || !role) {
-    const emailOnly = hasEmailSession() && !getApiKey() && !getShopDomain();
-    return <Navigate to={emailOnly ? ROUTES.DOMAINS : ROUTES.DASHBOARD} replace />;
+    return <Navigate to={ROUTES.USER_PANEL} replace />;
   }
 
   return children;

@@ -19,10 +19,15 @@ import Toast from '../Toast/Toast';
 import LoadingSkeleton from '../LoadingSkeleton/LoadingSkeleton';
 import { MetricCard } from '../Shared';
 import { getTestTypeDisplay, getVariantCount } from '../../utils/testType';
-import { ROUTES } from '../../constants';
 import pageShell from '../Shared/PageShell.module.css';
 import styles from './Dashboard.module.css';
-import { useTests, useDashboardStats, useAnimatedCounter, useCursorGlow } from '../../hooks';
+import {
+  useTests,
+  useDashboardStats,
+  useAnimatedCounter,
+  useCursorGlow,
+  useAppRoutes,
+} from '../../hooks';
 import { isStandaloneMode } from '../../services';
 import ProgressRing from './ProgressRing';
 
@@ -85,6 +90,7 @@ function Dashboard() {
   }, []);
   const testsPerPage = 5;
   const navigate = useNavigate();
+  const routes = useAppRoutes();
 
   const {
     data: tests = [],
@@ -316,7 +322,7 @@ function Dashboard() {
         shortcut: 'N',
         onSelect: () => {
           setCommandPaletteOpen(false);
-          navigate(ROUTES.CREATE_TEST);
+          navigate(routes.createTest);
         },
       },
       {
@@ -325,7 +331,7 @@ function Dashboard() {
         shortcut: 'T',
         onSelect: () => {
           setCommandPaletteOpen(false);
-          navigate(ROUTES.TESTS);
+          navigate(routes.tests);
         },
       },
       {
@@ -334,7 +340,7 @@ function Dashboard() {
         shortcut: 'S',
         onSelect: () => {
           setCommandPaletteOpen(false);
-          navigate(ROUTES.SETUP);
+          navigate(routes.setup);
         },
       },
       {
@@ -343,7 +349,7 @@ function Dashboard() {
         shortcut: 'A',
         onSelect: () => {
           setCommandPaletteOpen(false);
-          navigate(ROUTES.ANALYTICS);
+          navigate(routes.analytics);
         },
       },
       {
@@ -363,13 +369,13 @@ function Dashboard() {
       sublabel: `${getTestTypeDisplay(t).label} • ${t.status}`,
       onSelect: () => {
         setCommandPaletteOpen(false);
-        navigate(ROUTES.TEST_DETAIL(t.id));
+        navigate(routes.testDetail(t.id));
       },
     }));
     return testItems.length
       ? [...base, { id: 'sep', label: '—', isSep: true }, ...testItems]
       : base;
-  }, [tests, navigate, fetchTests, fetchStats]);
+  }, [tests, navigate, fetchTests, fetchStats, routes]);
   const filteredCommandItems = useMemo(() => {
     const q = commandQuery.trim().toLowerCase();
     if (!q) return allCommandItems.filter(x => !x.isSep);
@@ -406,7 +412,8 @@ function Dashboard() {
   }, [commandPaletteOpen, filteredCommandItems, safeSelected, runCommandAction]);
 
   const TestCard = ({ test }) => {
-    const handleCardClick = () => navigate(`/tests/${test.id}`, { state: { listTest: test } });
+    const handleCardClick = () =>
+      navigate(routes.testDetail(test.id), { state: { listTest: test } });
     const handleAction = (e, fn) => {
       e.stopPropagation();
       fn();
@@ -449,7 +456,7 @@ function Dashboard() {
           <button
             type="button"
             className={styles.testCardActionBtn}
-            onClick={e => handleAction(e, () => navigate(`/tests/${test.id}/analytics`))}
+            onClick={e => handleAction(e, () => navigate(routes.testAnalytics(test.id)))}
             aria-label="View analytics"
           >
             <ChartLineIcon />
@@ -459,7 +466,9 @@ function Dashboard() {
               type="button"
               className={styles.testCardActionBtn}
               onClick={e =>
-                handleAction(e, () => navigate(`/tests/${test.id}`, { state: { listTest: test } }))
+                handleAction(e, () =>
+                  navigate(routes.testDetail(test.id), { state: { listTest: test } })
+                )
               }
               aria-label="View test"
             >
@@ -470,7 +479,9 @@ function Dashboard() {
               type="button"
               className={styles.testCardActionBtn}
               onClick={e =>
-                handleAction(e, () => navigate(`/tests/${test.id}`, { state: { listTest: test } }))
+                handleAction(e, () =>
+                  navigate(routes.testDetail(test.id), { state: { listTest: test } })
+                )
               }
               aria-label="View test"
             >
@@ -605,7 +616,7 @@ function Dashboard() {
       <button
         type="button"
         className={`${styles.fab} ${styles.rippleBtn} ${activeCount > 0 ? styles.fabActive : ''}`}
-        onClick={() => navigate('/tests/new')}
+        onClick={() => navigate(routes.createTest)}
         aria-label="Create new test"
         title="Create test"
       >
@@ -724,7 +735,7 @@ function Dashboard() {
                           type="button"
                           className={styles.insightLink}
                           onClick={() =>
-                            navigate(`/tests/${bestPerformer.test.id}`, {
+                            navigate(routes.testDetail(bestPerformer.test.id), {
                               state: { listTest: bestPerformer.test },
                             })
                           }
@@ -767,19 +778,19 @@ function Dashboard() {
                   </button>
                 </div>
                 <div className={styles.heroQuickLinks}>
-                  <Link to={ROUTES.SETUP} className={styles.heroQuickLink}>
+                  <Link to={routes.setup} className={styles.heroQuickLink}>
                     Setup
                   </Link>
                   <span className={styles.heroQuickLinkDivider} aria-hidden="true" />
-                  <Link to={ROUTES.ANALYTICS} className={styles.heroQuickLink}>
+                  <Link to={routes.analytics} className={styles.heroQuickLink}>
                     Analytics
                   </Link>
                   <span className={styles.heroQuickLinkDivider} aria-hidden="true" />
-                  <Link to={ROUTES.SETTINGS} className={styles.heroQuickLink}>
-                    Settings
+                  <Link to={routes.settings} className={styles.heroQuickLink}>
+                    App settings
                   </Link>
                   <span className={styles.heroQuickLinkDivider} aria-hidden="true" />
-                  <Link to={ROUTES.TESTS} className={styles.heroQuickLink}>
+                  <Link to={routes.tests} className={styles.heroQuickLink}>
                     All Tests
                   </Link>
                 </div>
@@ -864,7 +875,7 @@ function Dashboard() {
                   — Analyze results and promote winners
                 </span>
               </div>
-              <Button size="slim" onClick={() => navigate('/tests')}>
+              <Button size="slim" onClick={() => navigate(routes.tests)}>
                 Review now
               </Button>
             </div>
@@ -918,7 +929,9 @@ function Dashboard() {
                           type: 'pricing',
                           testTypeId: 'pricing',
                         });
-                        navigate(`/tests/new?${params.toString()}`);
+                        navigate(
+                          routes.createTest + (params.toString() ? `?${params.toString()}` : '')
+                        );
                       }}
                     >
                       <span className={styles.quickStartIcon}>💰</span>
@@ -933,7 +946,9 @@ function Dashboard() {
                           type: 'shipping',
                           testTypeId: 'shipping',
                         });
-                        navigate(`/tests/new?${params.toString()}`);
+                        navigate(
+                          routes.createTest + (params.toString() ? `?${params.toString()}` : '')
+                        );
                       }}
                     >
                       <span className={styles.quickStartIcon}>🚚</span>
@@ -945,7 +960,9 @@ function Dashboard() {
                       className={`${styles.quickStartBtn} ${styles.quickStartOffer} ${styles.rippleBtn}`}
                       onClick={() => {
                         const params = new URLSearchParams({ type: 'offer', testTypeId: 'offer' });
-                        navigate(`/tests/new?${params.toString()}`);
+                        navigate(
+                          routes.createTest + (params.toString() ? `?${params.toString()}` : '')
+                        );
                       }}
                     >
                       <span className={styles.quickStartIcon}>🎁</span>
@@ -953,7 +970,7 @@ function Dashboard() {
                       <span className={styles.quickStartDesc}>Test discounts</span>
                     </button>
                     <Link
-                      to={ROUTES.CREATE_TEST}
+                      to={routes.createTest}
                       className={`${styles.quickStartBtn} ${styles.quickStartMore} ${styles.rippleBtn}`}
                     >
                       <span className={styles.quickStartIcon}>⋯</span>
@@ -970,7 +987,9 @@ function Dashboard() {
                       type: 'content',
                       testTypeId: 'onsite-edit',
                     });
-                    navigate(`/tests/new?${params.toString()}`);
+                    navigate(
+                      routes.createTest + (params.toString() ? `?${params.toString()}` : '')
+                    );
                   }}
                 >
                   <span className={styles.quickStartIcon}>✏️</span>
@@ -985,7 +1004,9 @@ function Dashboard() {
                       type: 'content',
                       testTypeId: 'split-url',
                     });
-                    navigate(`/tests/new?${params.toString()}`);
+                    navigate(
+                      routes.createTest + (params.toString() ? `?${params.toString()}` : '')
+                    );
                   }}
                 >
                   <span className={styles.quickStartIcon}>🔀</span>
@@ -994,7 +1015,7 @@ function Dashboard() {
                 </button>
                 {isStandaloneMode() && (
                   <Link
-                    to={ROUTES.CREATE_TEST}
+                    to={routes.createTest}
                     className={`${styles.quickStartBtn} ${styles.quickStartMore} ${styles.rippleBtn}`}
                   >
                     <span className={styles.quickStartIcon}>⋯</span>
@@ -1038,7 +1059,7 @@ function Dashboard() {
                       key={test.id}
                       type="button"
                       className={styles.recentActivityItem}
-                      onClick={() => navigate(ROUTES.TEST_DETAIL(test.id))}
+                      onClick={() => navigate(routes.testDetail(test.id))}
                       title={test.name}
                     >
                       <span className={styles.recentActivityItemText}>
@@ -1056,7 +1077,7 @@ function Dashboard() {
                     <button
                       type="button"
                       className={styles.recentActivityViewAll}
-                      onClick={() => navigate(ROUTES.TESTS)}
+                      onClick={() => navigate(routes.tests)}
                     >
                       View all
                     </button>
@@ -1145,10 +1166,10 @@ function Dashboard() {
                   </p>
                 </BlockStack>
                 <InlineStack gap="200">
-                  <Button onClick={() => navigate('/tests')} variant="secondary">
+                  <Button onClick={() => navigate(routes.tests)} variant="secondary">
                     View All Tests
                   </Button>
-                  <Button onClick={() => navigate('/tests/new')}>Create Test</Button>
+                  <Button onClick={() => navigate(routes.createTest)}>Create Test</Button>
                 </InlineStack>
               </div>
 
@@ -1196,10 +1217,10 @@ function Dashboard() {
                       auto-suggested.
                     </p>
                     <div className={styles.emptyStateActions}>
-                      <Button onClick={() => navigate('/tests/new')} size="large">
+                      <Button onClick={() => navigate(routes.createTest)} size="large">
                         Create Your First Test
                       </Button>
-                      <Button onClick={() => navigate('/tests/new')} variant="plain">
+                      <Button onClick={() => navigate(routes.createTest)} variant="plain">
                         Explore test types
                       </Button>
                     </div>
