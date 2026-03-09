@@ -53,6 +53,33 @@
   pointer-events: none;
 }
 
+/* Futuristic vignette + corner brackets */
+.connectRoot::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    135deg,
+    rgba(0, 0, 0, 0.03) 0%,
+    transparent 25%,
+    transparent 75%,
+    rgba(0, 0, 0, 0.03) 100%
+  );
+  opacity: 0.8;
+}
+
+[data-theme='dark'] .connectRoot::after {
+  background: linear-gradient(
+    135deg,
+    rgba(0, 0, 0, 0.2) 0%,
+    transparent 25%,
+    transparent 75%,
+    rgba(0, 0, 0, 0.2) 100%
+  );
+}
+
 /* Top bar: glassmorphism, clear hierarchy */
 .connectTopBar {
   flex-shrink: 0;
@@ -67,6 +94,38 @@
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   transition: background 0.25s ease, border-color 0.25s ease;
+  overflow: hidden;
+}
+
+/* Futuristic shimmer line under top bar */
+.connectTopBar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(6, 182, 212, 0.2) 20%,
+    rgba(6, 182, 212, 0.6) 40%,
+    rgba(167, 139, 250, 0.6) 60%,
+    rgba(6, 182, 212, 0.2) 80%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: topBarShimmer 6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes topBarShimmer {
+  0%, 100% {
+    background-position: 200% 0;
+  }
+  50% {
+    background-position: -100% 0;
+  }
 }
 
 [data-theme='dark'] .connectRoot::before {
@@ -79,6 +138,18 @@
 [data-theme='dark'] .connectTopBar {
   background: rgba(18, 18, 18, 0.78);
   border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme='dark'] .connectTopBar::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(6, 182, 212, 0.25) 20%,
+    rgba(6, 182, 212, 0.5) 40%,
+    rgba(167, 139, 250, 0.5) 60%,
+    rgba(6, 182, 212, 0.25) 80%,
+    transparent 100%
+  );
 }
 
 .connectTopBarLogo {
@@ -210,6 +281,56 @@
   }
 }
 
+/* Idle: circuit / data-stream lines – diagonal dashes moving for HUD feel */
+.connectIdleCircuit {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.4;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent 0,
+    transparent 8px,
+    rgba(6, 182, 212, 0.12) 8px,
+    rgba(6, 182, 212, 0.12) 10px
+  );
+  background-size: 28px 28px;
+  animation: idleCircuitMove 18s linear infinite;
+}
+
+.connectIdleCircuit::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent 0,
+    transparent 12px,
+    rgba(167, 139, 250, 0.08) 12px,
+    rgba(167, 139, 250, 0.08) 14px
+  );
+  background-size: 32px 32px;
+  animation: idleCircuitMoveAlt 22s linear infinite;
+}
+
+@keyframes idleCircuitMove {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 28px 28px;
+  }
+}
+
+@keyframes idleCircuitMoveAlt {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 32px 32px;
+  }
+}
+
 .connectPanels {
   display: flex;
   flex: 1;
@@ -234,6 +355,131 @@
   width: 100%;
   --hand-angle: 0deg;
   transition: none;
+}
+
+/* Center divider: vertical futuristic seam between equal 50/50 panels */
+.connectCenterDivider {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  z-index: 2;
+  pointer-events: none;
+  transform: translateX(-50%);
+  display: none;
+}
+
+@media (min-width: 960px) {
+  .connectCenterDivider {
+    display: block;
+  }
+}
+
+.connectCenterDividerLine {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  margin-left: -1px;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(6, 182, 212, 0.25) 15%,
+    rgba(6, 182, 212, 0.55) 35%,
+    rgba(167, 139, 250, 0.6) 65%,
+    rgba(6, 182, 212, 0.25) 85%,
+    transparent 100%
+  );
+  opacity: 0.9;
+  animation: centerDividerBreathe 3s ease-in-out infinite;
+}
+
+@keyframes centerDividerBreathe {
+  0%, 100% {
+    opacity: 0.75;
+    filter: brightness(1);
+  }
+  50% {
+    opacity: 1;
+    filter: brightness(1.15);
+  }
+}
+
+.connectCenterDividerGlow {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 80px;
+  margin-left: -40px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(6, 182, 212, 0.04) 30%,
+    rgba(167, 139, 250, 0.06) 50%,
+    rgba(6, 182, 212, 0.04) 70%,
+    transparent 100%
+  );
+  opacity: 0.85;
+}
+
+.connectCenterDividerScan {
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  top: 0;
+  height: 120px;
+  background: linear-gradient(
+    180deg,
+    rgba(6, 182, 212, 0.2) 0%,
+    rgba(167, 139, 250, 0.25) 40%,
+    transparent 100%
+  );
+  border-radius: 2px;
+  animation: centerDividerScan 4s ease-in-out infinite;
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.15), 0 0 40px rgba(167, 139, 250, 0.08);
+}
+
+@keyframes centerDividerScan {
+  0%, 100% {
+    top: 0;
+    opacity: 0.6;
+  }
+  50% {
+    top: calc(100% - 120px);
+    opacity: 0.9;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .connectCenterDividerScan {
+    animation: none;
+    opacity: 0.5;
+  }
+}
+
+[data-theme='dark'] .connectCenterDividerLine {
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(6, 182, 212, 0.35) 15%,
+    rgba(167, 139, 250, 0.5) 50%,
+    rgba(6, 182, 212, 0.35) 85%,
+    transparent 100%
+  );
+}
+
+[data-theme='dark'] .connectCenterDividerGlow {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(6, 182, 212, 0.06) 30%,
+    rgba(167, 139, 250, 0.08) 50%,
+    rgba(6, 182, 212, 0.06) 70%,
+    transparent 100%
+  );
 }
 
 /* Iris sweep: subtle dim then restore (depth) */
@@ -505,16 +751,18 @@
     min-height: 100vh;
   }
 
-  /* 48% hero / 52% form – form slightly prioritized per UX research */
+  /* Equal 50% / 50% split – both panels same width */
   .connectViewOutgoing .connectPanelLeft,
   .connectViewIncoming .connectPanelLeft {
-    flex-basis: 48%;
-    width: 48%;
+    flex-basis: 50%;
+    width: 50%;
+    max-width: 50%;
   }
   .connectViewOutgoing .connectPanelRight,
   .connectViewIncoming .connectPanelRight {
-    flex-basis: 52%;
-    width: 52%;
+    flex-basis: 50%;
+    width: 50%;
+    max-width: 50%;
   }
 }
 
@@ -555,6 +803,22 @@
   position: relative;
   justify-content: center;
   background: transparent;
+}
+
+@media (min-width: 960px) {
+  .panelHero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background-image:
+      linear-gradient(rgba(6, 182, 212, 0.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(6, 182, 212, 0.02) 1px, transparent 1px);
+    background-size: 24px 24px;
+    mask-image: radial-gradient(ellipse 100% 80% at 30% 50%, black 0%, transparent 70%);
+    -webkit-mask-image: radial-gradient(ellipse 100% 80% at 30% 50%, black 0%, transparent 70%);
+    pointer-events: none;
+  }
 }
 
 .panelHero .connectPanelInner {
@@ -721,6 +985,22 @@
   justify-content: center;
   align-items: center;
   padding: 2.25rem 1.25rem;
+}
+
+@media (min-width: 960px) {
+  .panelForm::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background-image:
+      linear-gradient(rgba(167, 139, 250, 0.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(167, 139, 250, 0.02) 1px, transparent 1px);
+    background-size: 28px 28px;
+    mask-image: radial-gradient(ellipse 80% 100% at 70% 50%, black 0%, transparent 65%);
+    -webkit-mask-image: radial-gradient(ellipse 80% 100% at 70% 50%, black 0%, transparent 65%);
+    pointer-events: none;
+  }
 }
 
 .panelForm::before {
@@ -1163,6 +1443,15 @@
     animation-delay: 0ms !important;
     transition-duration: 0.01ms !important;
   }
+  .connectTopBar::after,
+  .connectCenterDividerLine,
+  .connectIdleCircuit,
+  .connectIdleCircuit::before,
+  .authCard::after,
+  .authBrandName,
+  .authFormActions :global(button) {
+    animation: none !important;
+  }
   .connectIdleTech {
     opacity: 0.3;
   }
@@ -1307,7 +1596,7 @@
 @media (min-width: 960px) {
   .connectHero {
     display: flex;
-    max-width: 52%;
+    max-width: 50%;
   }
 }
 
@@ -1619,10 +1908,28 @@
   font-size: 1.85rem;
   font-weight: 800;
   letter-spacing: -0.045em;
-  background: linear-gradient(135deg, var(--futuristic-cyan), var(--futuristic-violet));
+  background: linear-gradient(
+    110deg,
+    var(--futuristic-cyan) 0%,
+    #22d3ee 25%,
+    var(--futuristic-violet) 50%,
+    #a78bfa 75%,
+    var(--futuristic-cyan) 100%
+  );
+  background-size: 200% 100%;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  animation: authBrandShimmer 8s ease-in-out infinite;
+}
+
+@keyframes authBrandShimmer {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
 }
 
 .authTagline {
@@ -1697,15 +2004,94 @@
   align-self: flex-start;
 }
 
-/* ========== Reason banner (sign in to connect store) ========== */
+/* ========== Short text + tooltip (advanced tooltip on info icon) ========== */
+.shortTextWithTooltip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.shortTextWithTooltipLabel {
+  font: inherit;
+  color: inherit;
+}
+
+.shortTextWithTooltipIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15em;
+  height: 1.15em;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(6, 182, 212, 0.15);
+  color: var(--futuristic-cyan);
+  font-size: 0.85em;
+  cursor: help;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+.shortTextWithTooltipIcon:hover {
+  background: rgba(6, 182, 212, 0.25);
+  color: var(--futuristic-cyan);
+  transform: scale(1.08);
+}
+
+.shortTextWithTooltipIcon:focus-visible {
+  outline: 2px solid var(--futuristic-cyan);
+  outline-offset: 2px;
+}
+
+[data-theme='dark'] .shortTextWithTooltipIcon {
+  background: rgba(6, 182, 212, 0.2);
+  color: #67e8f9;
+}
+
+/* Inline error/success message (short text + tooltip for full) */
+.authInlineMessage {
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.authInlineMessageError {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: var(--status-error, #b91c1c);
+}
+
+.authInlineMessageSuccess {
+  background: rgba(6, 182, 212, 0.08);
+  border: 1px solid rgba(6, 182, 212, 0.25);
+  color: #0e7490;
+}
+
+[data-theme='dark'] .authInlineMessageError {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+}
+
+[data-theme='dark'] .authInlineMessageSuccess {
+  background: rgba(6, 182, 212, 0.12);
+  border-color: rgba(6, 182, 212, 0.3);
+  color: #67e8f9;
+}
+
+/* ========== Reason banner (sign in to connect store) – compact ========== */
 .authReasonBanner {
-  margin: 0 0 1rem;
-  padding: 0.75rem 1rem;
+  margin: 0 0 0.875rem;
+  padding: 0.5rem 0.75rem;
   background: rgba(6, 182, 212, 0.08);
   border: 1px solid rgba(6, 182, 212, 0.2);
   border-radius: 10px;
   color: var(--text-primary, #1a1a1a);
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   line-height: 1.4;
 }
 
@@ -1775,6 +2161,34 @@
   }
 }
 
+/* Auth card: subtle corner glow pulse (futuristic frame) */
+.authCard::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 0 20px 0 0;
+  background: linear-gradient(
+    135deg,
+    rgba(6, 182, 212, 0.1) 0%,
+    transparent 55%
+  );
+  pointer-events: none;
+  animation: authCardCornerPulse 4s ease-in-out infinite;
+  z-index: 0;
+}
+
+@keyframes authCardCornerPulse {
+  0%, 100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 .authCard:hover {
   border-color: rgba(6, 182, 212, 0.28);
   box-shadow:
@@ -1832,19 +2246,19 @@
 
 /* Headline → hint → fields → CTA flow (conversion best practice) */
 .authCardTitle {
-  margin: 0 0 0.5rem 0;
-  padding: 1.5rem 1.5rem 0 1.5rem;
-  font-size: 1.5rem;
+  margin: 0 0 0.375rem 0;
+  padding: 1.25rem 1.25rem 0 1.25rem;
+  font-size: 1.375rem;
   font-weight: 700;
   letter-spacing: -0.025em;
-  line-height: 1.25;
+  line-height: 1.28;
   color: var(--text-primary);
 }
 
 @media (min-width: 600px) {
   .authCardTitle {
-    font-size: 1.625rem;
-    padding-top: 1.75rem;
+    font-size: 1.5rem;
+    padding: 1.5rem 1.5rem 0 1.5rem;
   }
 }
 
@@ -1911,14 +2325,14 @@
 
 /* ========== Card body ========== */
 .authCardBody {
-  padding: 1rem 1.5rem 1.25rem;
-  min-height: 280px;
+  padding: 0.875rem 1.25rem 1rem;
+  min-height: 240px;
   position: relative;
 }
 
 @media (min-width: 600px) {
   .authCardBody {
-    padding: 1.25rem 1.5rem 1.5rem;
+    padding: 1rem 1.5rem 1.25rem;
   }
 }
 
@@ -1964,23 +2378,23 @@
 }
 
 .authPanelHint {
-  margin: 0 0 1.5rem 0;
-  padding: 1rem 1.2rem;
+  margin: 0 0 1rem 0;
+  padding: 0.6rem 0.85rem;
   font-size: 0.875rem;
-  line-height: 1.55;
+  line-height: 1.45;
   color: var(--text-secondary);
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.08), rgba(139, 92, 246, 0.05));
-  border-left: 4px solid var(--futuristic-cyan);
-  border-radius: 0 12px 12px 0;
-  transition: background 0.32s cubic-bezier(0.25, 0.1, 0.25, 1);
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.06), rgba(139, 92, 246, 0.04));
+  border-left: 3px solid rgba(6, 182, 212, 0.5);
+  border-radius: 0 10px 10px 0;
+  transition: background 0.25s ease;
 }
 
 .authPanelHint:hover {
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(139, 92, 246, 0.07));
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.08), rgba(139, 92, 246, 0.06));
 }
 
 [data-theme='dark'] .authPanelHint {
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.12), rgba(139, 92, 246, 0.08));
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(139, 92, 246, 0.06));
   border-left-color: var(--futuristic-cyan);
 }
 
@@ -2009,8 +2423,14 @@
 }
 
 /* Primary CTA – prominent, 48px min touch target (accessibility) */
+.authFormActions {
+  position: relative;
+}
+
 .authFormActions :global(button) {
+  position: relative;
   background: linear-gradient(135deg, var(--futuristic-cyan), #0891b2) !important;
+  animation: authButtonGlow 3s ease-in-out infinite;
   border: none !important;
   color: #fff !important;
   font-weight: 600 !important;
@@ -2036,6 +2456,15 @@
 
 .authFormActions :global(button:active) {
   transform: scale(0.98) translateY(0);
+}
+
+@keyframes authButtonGlow {
+  0%, 100% {
+    box-shadow: 0 4px 16px rgba(6, 182, 212, 0.38), 0 0 20px -4px rgba(6, 182, 212, 0.2) !important;
+  }
+  50% {
+    box-shadow: 0 4px 20px rgba(6, 182, 212, 0.45), 0 0 28px -2px rgba(6, 182, 212, 0.35) !important;
+  }
 }
 
 /* Trust hint – reassurance without clutter */
@@ -2122,13 +2551,13 @@
 
 /* ========== Page footer ========== */
 .authFooter {
-  margin-top: 1.75rem;
-  padding: 1.25rem 0.5rem 0;
+  margin-top: 1.25rem;
+  padding: 0.875rem 0.5rem 0;
   font-size: 0.8125rem;
   color: var(--text-secondary);
   text-align: center;
-  line-height: 1.65;
-  border-top: 1px solid var(--border-secondary, rgba(6, 182, 212, 0.1));
+  line-height: 1.5;
+  border-top: 1px solid rgba(6, 182, 212, 0.1);
 }
 
 /* Legal footer (Terms/Privacy) – no bottom space on Connect */

@@ -219,6 +219,8 @@ function TestWizard({
   const [storeResources, setStoreResources] = useState([]);
   const [storeResourcesLoading, setStoreResourcesLoading] = useState(false);
   const [storeResourceSearch, setStoreResourceSearch] = useState('');
+  /** When store-resources API fails or returns empty_reason, show this instead of generic message */
+  const [storeResourcesError, setStoreResourcesError] = useState(null);
 
   const handleScopeSelect = useCallback((scope, tt, up, needsId) => {
     setIsDirty(true);
@@ -384,15 +386,25 @@ function TestWizard({
       return;
     }
     setStoreResourcesLoading(true);
+    setStoreResourcesError(null);
     const query = encodeURIComponent(storeResourceSearchDebounced.trim());
     apiGet(`/shopify/store-resources?type=${targetTypeForResources}&query=${query}&first=100`, {
       shop,
     })
       .then(res => {
         const list = res.data?.resources || [];
+        const emptyReason = res.data?.empty_reason || null;
         setStoreResources(list);
+        setStoreResourcesError(list.length === 0 && emptyReason ? emptyReason : null);
       })
-      .catch(() => setStoreResources([]))
+      .catch(err => {
+        setStoreResources([]);
+        const msg =
+          err?.response?.data?.error ||
+          err?.message ||
+          'Could not load store data. Check connection in the top bar.';
+        setStoreResourcesError(msg);
+      })
       .finally(() => setStoreResourcesLoading(false));
   }, [
     targetTypeForResources,
@@ -806,17 +818,48 @@ function TestWizard({
     return '/';
   }, []);
 
+  // Resolve the first selected target to a concrete path (e.g. /products/handle) for preview. Auto-targets first from list.
+  const getFirstTargetPreviewPath = useCallback(() => {
+    const targetType = formData.target_type || initialData?.target_type;
+    const urlPattern = formData.segments?.url_pattern ?? '';
+    const firstId =
+      formData.target_id ||
+      (Array.isArray(formData.target_ids) && formData.target_ids.length > 0
+        ? formData.target_ids[0]
+        : null);
+    const resources = storeResources || [];
+    if (targetType === 'product' && resources.length > 0) {
+      const r = firstId ? resources.find(res => res.id === firstId) : resources[0];
+      if (r?.handle) return `/products/${encodeURIComponent(r.handle)}`;
+    }
+    if (targetType === 'collection' && resources.length > 0) {
+      const r = firstId ? resources.find(res => res.id === firstId) : resources[0];
+      if (r?.handle) return `/collections/${encodeURIComponent(r.handle)}`;
+    }
+    if (targetType === 'page' && resources.length > 0) {
+      const r = firstId ? resources.find(res => res.id === firstId) : resources[0];
+      if (r?.handle) return `/pages/${encodeURIComponent(r.handle)}`;
+    }
+    return getPreviewPathForTarget(urlPattern, targetType);
+  }, [
+    formData.target_type,
+    formData.target_id,
+    formData.target_ids,
+    formData.segments?.url_pattern,
+    storeResources,
+    initialData?.target_type,
+    getPreviewPathForTarget,
+  ]);
+
   // Set visual preview loading when switching to visual tab or when preview URL changes
   useEffect(() => {
     if (configEditorMode !== 'visual') {
       setVisualPreviewLoadState('idle');
       return;
     }
-    const pathForPreview = getPreviewPathForTarget(
-      formData.segments?.url_pattern,
-      formData.target_type || initialData?.target_type
-    );
-    const domainForPreview = initialData?.shop_domain || getPreviewDomain() || getShopDomain();
+    const pathForPreview = getFirstTargetPreviewPath();
+    const domainForPreview =
+      initialData?.shop_domain || getPreviewDomain() || getShopDomain() || routeDomain;
     const resolved = resolvePreviewBaseUrl({
       variantUrl: null,
       overrideUrl: (formData.segments?.visual_editor_preview_url ?? '').trim() || null,
@@ -832,6 +875,8 @@ function TestWizard({
     initialData?.shop_domain,
     initialData?.target_type,
     getPreviewPathForTarget,
+    getFirstTargetPreviewPath,
+    routeDomain,
   ]);
 
   // Timeout fallback when iframe is blocked (e.g. X-Frame-Options) and onLoad never fires
@@ -2494,14 +2539,16 @@ function TestWizard({
                                               />
                                             </div>
                                             <Text as="p" variant="bodySm" tone="subdued">
-                                              {storeResourceSearch
-                                                ? 'No matches. Try a different search.'
-                                                : formData.target_type === 'page'
-                                                  ? 'No pages found. If your store has pages, the app may need "read online store pages" permission—reinstall the app from your Shopify admin to grant it.'
-                                                  : formData.target_type === 'product' ||
-                                                      formData.target_type === 'collection'
-                                                    ? 'No products or collections loaded. If your store has them, the store may need to be reconnected (OAuth) so the app can read store data—open this store from My domains and use "Connect store" if you see a warning, or add the store again from the Connect page.'
-                                                    : 'No items in your store yet, or the list is still loading.'}
+                                              {storeResourcesError
+                                                ? storeResourcesError
+                                                : storeResourceSearch
+                                                  ? 'No matches. Try a different search.'
+                                                  : formData.target_type === 'page'
+                                                    ? 'No pages found.'
+                                                    : formData.target_type === 'product' ||
+                                                        formData.target_type === 'collection'
+                                                      ? 'No products or collections found. Use the connection status in the top bar to reconnect the store if needed.'
+                                                      : 'No items in your store yet, or the list is still loading.'}
                                             </Text>
                                           </div>
                                         ) : (
@@ -5432,16 +5479,22 @@ function TestWizard({
                           }}
                           placeholder={(() => {
                             const d =
-                              initialData?.shop_domain || getPreviewDomain() || getShopDomain();
-                            const path = getPreviewPathForTarget(
-                              formData.segments?.url_pattern,
-                              formData.target_type || initialData?.target_type
-                            );
-                            return d
-                              ? `https://${d.replace(/^https?:\/\//i, '').replace(/\/+$/, '')}${path}`
+                              initialData?.shop_domain ||
+                              getPreviewDomain() ||
+                              getShopDomain() ||
+                              routeDomain;
+                            const path = getFirstTargetPreviewPath();
+                            const domainClean = d
+                              ? d
+                                  .replace(/^https?:\/\//i, '')
+                                  .replace(/\/+$/, '')
+                                  .split('/')[0]
+                              : '';
+                            return domainClean
+                              ? `https://${domainClean}${path.startsWith('/') ? path : `/${path}`}`
                               : 'https://your-site.com/';
                           })()}
-                          helpText="Page URL is loaded in the preview. Add the RipX script to your store to enable click-to-select for elements."
+                          helpText="When empty, the first target page from Targeting is used automatically (e.g. first product, collection, or homepage). Add the RipX script to your store to enable click-to-select."
                           autoComplete="url"
                         />
                         <div className="variant-visual-editor-test-page-row">
@@ -5476,11 +5529,9 @@ function TestWizard({
                           const domainForPreview =
                             (initialData?.shop_domain && String(initialData.shop_domain).trim()) ||
                             getPreviewDomain() ||
-                            getShopDomain();
-                          const pathForPreview = getPreviewPathForTarget(
-                            formData.segments?.url_pattern,
-                            formData.target_type || initialData?.target_type
-                          );
+                            getShopDomain() ||
+                            routeDomain;
+                          const pathForPreview = getFirstTargetPreviewPath();
                           const baseUrl = resolvePreviewBaseUrl({
                             variantUrl: null,
                             overrideUrl: hasOverride ? veUrl : null,
@@ -5494,8 +5545,8 @@ function TestWizard({
                           );
                           const previewVariant = variants[safeVisualIndex];
                           const testId = initialData?.id;
-                          const iframeSrc =
-                            (baseUrl && testId
+                          const fullPreviewUrl =
+                            baseUrl && testId
                               ? buildPreviewUrlUtil({
                                   baseUrl,
                                   testId,
@@ -5508,13 +5559,16 @@ function TestWizard({
                                     (previewVariant ? `Variant ${safeVisualIndex + 1}` : ''),
                                   visualEditor: true,
                                 })
-                              : null) || '';
-                          if (!iframeSrc) {
+                              : null;
+                          const iframeSrc = fullPreviewUrl || baseUrl || '';
+                          const previewWithoutTestId = Boolean(baseUrl && !testId);
+                          if (!baseUrl) {
                             return (
                               <div className="variant-visual-editor-empty">
                                 <Text as="p" variant="bodySm" color="subdued">
-                                  Enter a Preview URL above (e.g. your store or homepage), or
-                                  connect a shop so the default store URL is used.
+                                  Connect a shop or open this test from a store (e.g. My domains →
+                                  open store) so the preview can load the store URL. You can also
+                                  enter a Preview URL above.
                                 </Text>
                                 <Text
                                   as="p"

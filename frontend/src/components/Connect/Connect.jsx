@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Page, FormLayout, TextField, Button, Box, Checkbox } from '@shopify/polaris';
+import { Page, FormLayout, TextField, Button, Box, Checkbox, Tooltip } from '@shopify/polaris';
 import { PageShell, LegalFooter } from '../Shared';
 import { ROUTES } from '../../constants';
 import {
@@ -24,6 +24,28 @@ import { STORAGE_KEYS } from '../../constants';
 import { RouteLoading } from '../LoadingSkeleton/RouteLoading';
 import { isShopifyStoreDomain } from '../../utils/shopifyAdmin';
 import styles from './Connect.module.css';
+
+/** Short visible text with full message in tooltip (advanced tooltip on info icon) */
+function ShortTextWithTooltip({ shortText, fullMessage, className = '', iconLabel = 'More info' }) {
+  if (!fullMessage || fullMessage === shortText) {
+    return <span className={className}>{shortText}</span>;
+  }
+  return (
+    <span className={`${styles.shortTextWithTooltip} ${className}`}>
+      <span className={styles.shortTextWithTooltipLabel}>{shortText}</span>
+      <Tooltip content={fullMessage} preferredPosition="above" hoverDelay={300}>
+        <button
+          type="button"
+          className={styles.shortTextWithTooltipIcon}
+          aria-label={iconLabel}
+          tabIndex={0}
+        >
+          <span aria-hidden>ⓘ</span>
+        </button>
+      </Tooltip>
+    </span>
+  );
+}
 
 const OTP_EXPIRY_SECONDS = 60;
 /* Transition: minimal wait before clock, timer matches iris duration, no gap after */
@@ -423,45 +445,40 @@ function Connect() {
   const reasonBanner = (() => {
     const reason = (searchParams.get('reason') || '').trim();
     const { CONNECT_REASON } = ROUTES;
+    const requestedShop = (searchParams.get('requested_shop') || '').trim();
+    const connectedShop = (searchParams.get('shop') || '').trim();
     const knownReasons = {
-      [CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect']: (
-        <p className={styles.authReasonBanner} role="alert">
-          Sign in with your email to connect a store. After signing in, go to My domains and connect
-          your Shopify store.
-        </p>
-      ),
-      [CONNECT_REASON?.SIGN_IN_TO_LINK || 'sign_in_to_link']: (() => {
-        const requestedShop = (searchParams.get('requested_shop') || '').trim();
-        const connectedShop = (searchParams.get('shop') || '').trim();
-        return (
-          <p className={styles.authReasonBanner} role="alert">
-            This store needs to be linked to your account. Sign in, then go to{' '}
-            <Link to={ROUTES.DOMAINS}>My domains</Link> to connect stores.
-            {requestedShop && connectedShop && requestedShop !== connectedShop && (
-              <>
-                {' '}
-                We connected <strong>{connectedShop}</strong>. To add{' '}
-                <strong>{requestedShop}</strong>, use &quot;Copy link for incognito&quot; in My
-                domains.
-              </>
-            )}
-          </p>
-        );
-      })(),
-      [CONNECT_REASON?.STORE_LINKED_TO_ANOTHER || 'store_linked_to_another']: (
-        <p className={styles.authReasonBanner} role="alert">
-          This store is already linked to another account. Use the account that owns this store, or
-          contact support if you need to transfer it.
-        </p>
-      ),
-      [CONNECT_REASON?.OAUTH_EXPIRED || 'oauth_expired']: (
-        <p className={styles.authReasonBanner} role="alert">
-          The connection link expired or was already used. Sign in and connect the store again from
-          My domains.
-        </p>
-      ),
+      [CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect']: {
+        short: 'Sign in to connect this store.',
+        full: 'Sign in with your email to connect a store. After signing in, go to My domains and connect your Shopify store.',
+      },
+      [CONNECT_REASON?.SIGN_IN_TO_LINK || 'sign_in_to_link']: {
+        short: 'Link this store to your account.',
+        full:
+          requestedShop && connectedShop && requestedShop !== connectedShop
+            ? `This store needs to be linked to your account. Sign in, then go to My domains to connect stores. We connected ${connectedShop}. To add ${requestedShop}, use "Copy link for incognito" in My domains.`
+            : 'This store needs to be linked to your account. Sign in, then go to My domains to connect stores.',
+      },
+      [CONNECT_REASON?.STORE_LINKED_TO_ANOTHER || 'store_linked_to_another']: {
+        short: 'Store linked to another account.',
+        full: 'This store is already linked to another account. Use the account that owns this store, or contact support if you need to transfer it.',
+      },
+      [CONNECT_REASON?.OAUTH_EXPIRED || 'oauth_expired']: {
+        short: 'Link expired or already used.',
+        full: 'The connection link expired or was already used. Sign in and connect the store again from My domains.',
+      },
     };
-    return knownReasons[reason] ?? null;
+    const entry = knownReasons[reason];
+    if (!entry) return null;
+    return (
+      <p className={styles.authReasonBanner} role="alert">
+        <ShortTextWithTooltip
+          shortText={entry.short}
+          fullMessage={entry.full}
+          iconLabel="Reason details"
+        />
+      </p>
+    );
   })();
 
   const heroLogin = (
@@ -478,7 +495,11 @@ function Connect() {
         <span className={styles.heroTitleAccent}>Ship winners.</span>
       </h2>
       <p className={styles.heroSub}>
-        Sign in to manage your domains and A/B tests with confidence.
+        <ShortTextWithTooltip
+          shortText="Sign in to manage domains and A/B tests."
+          fullMessage="Sign in to manage your domains and A/B tests with confidence."
+          iconLabel="Details"
+        />
       </p>
       <ul className={styles.heroList}>
         <li>Passwordless email sign-in</li>
@@ -502,8 +523,11 @@ function Connect() {
         <span className={styles.heroTitleAccent}>Request access.</span>
       </h2>
       <p className={styles.heroSub}>
-        Register with your email. After confirmation, an administrator will approve your account so
-        you can sign in and add domains.
+        <ShortTextWithTooltip
+          shortText="Register with email; admin approval required."
+          fullMessage="Register with your email. After confirmation, an administrator will approve your account so you can sign in and add domains."
+          iconLabel="Details"
+        />
       </p>
       <ul className={styles.heroList}>
         <li>Email confirmation link</li>
@@ -529,6 +553,16 @@ function Connect() {
                 <p className={styles.otpSentTo}>
                   We sent a 6-digit code to <strong>{otpEmail}</strong>
                 </p>
+                {error && (
+                  <div className={styles.authInlineMessage} role="alert">
+                    <ShortTextWithTooltip
+                      shortText="Invalid or expired code."
+                      fullMessage={error}
+                      className={styles.authInlineMessageError}
+                      iconLabel="Error details"
+                    />
+                  </div>
+                )}
                 <form onSubmit={handleVerifyCode} className={styles.authForm}>
                   <FormLayout>
                     <div className={styles.otpInputWrap}>
@@ -600,7 +634,11 @@ function Connect() {
             </div>
             <div className={styles.authCardFooter}>
               <p className={styles.otpFooterHint}>
-                You can request a new code up to 3 times every 15 minutes.
+                <ShortTextWithTooltip
+                  shortText="Limit: 3 codes per 15 min."
+                  fullMessage="You can request a new code up to 3 times every 15 minutes."
+                  iconLabel="Resend limit"
+                />
               </p>
             </div>
           </>
@@ -609,11 +647,34 @@ function Connect() {
             <h3 className={styles.authCardTitle}>Sign in</h3>
             <div className={styles.authCardBody}>
               <p className={styles.authPanelHint}>
-                Enter your email and we&apos;ll send a one-time sign-in code. Approved accounts
-                receive a 6-digit code.
+                <ShortTextWithTooltip
+                  shortText="We'll email you a sign-in code."
+                  fullMessage="Enter your email and we'll send a one-time sign-in code. Approved accounts receive a 6-digit code."
+                  iconLabel="How it works"
+                />
               </p>
               <form onSubmit={handleSignIn} className={styles.authForm}>
                 <FormLayout>
+                  {success && (
+                    <div className={styles.authInlineMessage} role="status">
+                      <ShortTextWithTooltip
+                        shortText="Check your email."
+                        fullMessage={success}
+                        className={styles.authInlineMessageSuccess}
+                        iconLabel="Full message"
+                      />
+                    </div>
+                  )}
+                  {error && (
+                    <div className={styles.authInlineMessage} role="alert">
+                      <ShortTextWithTooltip
+                        shortText="Something went wrong."
+                        fullMessage={error}
+                        className={styles.authInlineMessageError}
+                        iconLabel="Error details"
+                      />
+                    </div>
+                  )}
                   <TextField
                     label="Email"
                     type="email"
@@ -621,7 +682,7 @@ function Connect() {
                     onChange={setEmail}
                     placeholder="you@example.com"
                     autoComplete="email"
-                    error={error}
+                    error={undefined}
                   />
                   <Checkbox
                     label="Remember me for 30 days on this device"
@@ -665,9 +726,32 @@ function Connect() {
         <h3 className={styles.authCardTitle}>Create account</h3>
         <div className={styles.authCardBody}>
           <p className={styles.authPanelHint}>
-            We&apos;ll send a confirmation link. After you confirm, an administrator must approve
-            your account before you can sign in.
+            <ShortTextWithTooltip
+              shortText="Confirmation link + admin approval required."
+              fullMessage="We'll send a confirmation link. After you confirm, an administrator must approve your account before you can sign in."
+              iconLabel="How it works"
+            />
           </p>
+          {success && (
+            <div className={styles.authInlineMessage} role="status">
+              <ShortTextWithTooltip
+                shortText="Check your email."
+                fullMessage={success}
+                className={styles.authInlineMessageSuccess}
+                iconLabel="Full message"
+              />
+            </div>
+          )}
+          {error && (
+            <div className={styles.authInlineMessage} role="alert">
+              <ShortTextWithTooltip
+                shortText="Something went wrong."
+                fullMessage={error}
+                className={styles.authInlineMessageError}
+                iconLabel="Error details"
+              />
+            </div>
+          )}
           <form onSubmit={handleRegister} className={styles.authForm}>
             <FormLayout>
               <TextField
@@ -677,7 +761,7 @@ function Connect() {
                 onChange={setEmail}
                 placeholder="you@example.com"
                 autoComplete="email"
-                error={error}
+                error={undefined}
               />
               <Box paddingBlockStart="300">
                 <div className={styles.authFormActions}>
@@ -759,8 +843,11 @@ function Connect() {
         {reasonBanner}
         {loginCard}
         <p className={styles.authFooter}>
-          After signing in, go to <strong>My domains</strong> to add a website or connect with an
-          API key.
+          <ShortTextWithTooltip
+            shortText="Next: My domains → add site or API key."
+            fullMessage="After signing in, go to My domains to add a website or connect with an API key."
+            iconLabel="Next steps"
+          />
         </p>
         <LegalFooter />
       </>
@@ -774,10 +861,13 @@ function Connect() {
 
   const ariaHiddenFlip = transitionPhase === 'exiting' || transitionPhase === 'flipIn';
 
+  const toastMessage =
+    error || success ? (error ? 'Something went wrong.' : 'Check your email.') : null;
+
   return (
     <PageShell
       className={styles.authPageWrapper}
-      message={error || success}
+      message={toastMessage}
       messageType={error ? 'error' : 'success'}
       onCloseMessage={() => {
         setError(null);
@@ -792,6 +882,7 @@ function Connect() {
             <div className={styles.connectIdleTech} aria-hidden>
               <div className={styles.connectIdleGrid} />
               <div className={styles.connectIdleDots} />
+              <div className={styles.connectIdleCircuit} />
             </div>
           )}
           <div
@@ -808,6 +899,12 @@ function Connect() {
                 : undefined
             }
           >
+            {/* Center divider: vertical futuristic seam between equal panels */}
+            <div className={styles.connectCenterDivider} aria-hidden>
+              <span className={styles.connectCenterDividerLine} />
+              <span className={styles.connectCenterDividerGlow} />
+              <span className={styles.connectCenterDividerScan} />
+            </div>
             {/* Tech overlay: scan line + grid, visible during exit – futuristic HUD feel */}
             <div
               className={`${styles.transitionTechOverlay} ${transitionPhase === 'exiting' ? styles.transitionTechOverlayActive : ''}`}

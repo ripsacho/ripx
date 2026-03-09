@@ -7,11 +7,30 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { InlineStack, Popover, Text, BlockStack, Button, Icon, Tooltip } from '@shopify/polaris';
-import { NotificationIcon, SettingsIcon, ProfileIcon } from '@shopify/polaris-icons';
-import { getShopDomain, apiGet, apiPut, getUrlWithEmbedParams } from '../../services';
+import {
+  NotificationIcon,
+  SettingsIcon,
+  ProfileIcon,
+  CheckCircleIcon,
+  LinkIcon,
+} from '@shopify/polaris-icons';
+import { useQuery } from '@tanstack/react-query';
+import {
+  getShopDomain,
+  apiGet,
+  apiPut,
+  getUrlWithEmbedParams,
+  getConnectUrl,
+  redirectToAppUrl,
+} from '../../services';
 import { ROUTES, UNIVERSAL_APP_ROUTES } from '../../constants';
 import { useAdminMe } from '../../hooks';
 import { getBreadcrumb, getAppDomainFromPath } from '../../utils/breadcrumb';
+import {
+  isShopifyStoreDomain,
+  normalizeShopifyDomain,
+  getShopifyStoreHandle,
+} from '../../utils/shopifyAdmin';
 import StoreSwitcher from '../StoreSwitcher/StoreSwitcher';
 import styles from './TopBar.module.css';
 
@@ -55,6 +74,34 @@ function TopBar({
   const appDomain = getAppDomainFromPath(location.pathname);
   const settingsPath = appDomain ? ROUTES.appSettings(appDomain) : ROUTES.SETTINGS;
   const _isUniversalPage = UNIVERSAL_APP_ROUTES.includes(location.pathname);
+
+  const isShopifyStore = Boolean(appDomain && isShopifyStoreDomain(appDomain));
+  const {
+    data: connectionData,
+    isFetched: connectionFetched,
+    isError: connectionError,
+  } = useQuery({
+    queryKey: ['shopify', 'connection-status', appDomain],
+    queryFn: async () => {
+      const res = await apiGet('/shopify/connection-status');
+      return res.data;
+    },
+    retry: false,
+    staleTime: 2 * 60 * 1000,
+    enabled: isShopifyStore,
+  });
+  const shopifyConnected = connectionFetched && !connectionError && connectionData?.connected;
+  const shopifyNotConnected =
+    isShopifyStore && connectionFetched && (connectionError || !connectionData?.connected);
+  const shopifyStoreHandle = isShopifyStore && appDomain ? getShopifyStoreHandle(appDomain) : '';
+  const handleConnectStore = useCallback(() => {
+    if (!appDomain) return;
+    const url = getConnectUrl({
+      shop: normalizeShopifyDomain(appDomain),
+      reason: ROUTES.CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect',
+    });
+    redirectToAppUrl(url);
+  }, [appDomain]);
 
   const toggleUserMenu = useCallback(() => setUserMenuActive(a => !a), []);
   const toggleSettingsMenu = useCallback(() => setSettingsMenuActive(a => !a), []);
@@ -236,14 +283,17 @@ function TopBar({
                     Loading...
                   </Text>
                 ) : notifications.length === 0 ? (
-                  <>
+                  <div className={styles.notificationEmptyState}>
+                    <span className={styles.notificationEmptyIcon} aria-hidden>
+                      •
+                    </span>
                     <Text variant="bodySm" tone="subdued" as="p">
                       No new notifications
                     </Text>
                     <Text variant="bodySm" tone="subdued" as="p">
                       You&apos;ll see test completion alerts and significance updates here.
                     </Text>
-                  </>
+                  </div>
                 ) : (
                   <BlockStack gap="200">
                     {notifications.map(n => (
@@ -346,10 +396,19 @@ function TopBar({
               <button
                 type="button"
                 onClick={toggleUserMenu}
-                aria-label="User menu"
-                className={`${styles.iconBtn} ${userMenuActive ? styles.active : ''}`}
+                aria-label={userEmail ? `Account: ${userEmail}` : 'User menu'}
+                className={`${styles.userMenuTrigger} ${styles.iconBtn} ${userMenuActive ? styles.active : ''}`}
                 title={userEmail || shopDomain || 'Account menu'}
               >
+                {(userEmail || shopDomain) && (
+                  <span className={styles.userMenuTriggerLabel} title={userEmail || shopDomain}>
+                    {userEmail
+                      ? userEmail.length > 28
+                        ? `${userEmail.slice(0, 12)}…${userEmail.slice(-10)}`
+                        : userEmail
+                      : shopDomain}
+                  </span>
+                )}
                 <Icon source={ProfileIcon} />
               </button>
             }
@@ -364,6 +423,57 @@ function TopBar({
                     {userEmail ? 'Signed in as' : 'Store'}
                   </Text>
                   <span className={styles.userEmail}>{userEmail || shopDomain}</span>
+                </div>
+              )}
+              {/* Shopify store only: connection status (never shown for standalone or non-Shopify domains) */}
+              {isShopifyStore && connectionFetched && shopifyStoreHandle && (
+                <div
+                  className={styles.userMenuConnection}
+                  role="region"
+                  aria-label="Shopify store connection"
+                >
+                  <div className={styles.userMenuConnectionLabel}>Shopify store</div>
+                  {shopifyConnected ? (
+                    <div
+                      className={styles.userMenuConnectedCard}
+                      aria-label={`${shopifyStoreHandle} connected to Shopify`}
+                    >
+                      <span className={styles.userMenuConnectedIcon} aria-hidden>
+                        <Icon source={CheckCircleIcon} />
+                      </span>
+                      <div className={styles.userMenuConnectedText}>
+                        <span className={styles.userMenuConnectedTitle}>Connected to Shopify</span>
+                        <span className={styles.userMenuConnectedSub}>
+                          {shopifyStoreHandle}
+                          <span className={styles.userMenuConnectedSubSep} aria-hidden>
+                            {' '}
+                            ·{' '}
+                          </span>
+                          Store data synced
+                        </span>
+                      </div>
+                    </div>
+                  ) : shopifyNotConnected ? (
+                    <div className={styles.userMenuNotConnected}>
+                      <span className={styles.userMenuNotConnectedLabel}>
+                        <span className={styles.userMenuNotConnectedIcon} aria-hidden>
+                          <Icon source={LinkIcon} />
+                        </span>
+                        {shopifyStoreHandle} isn&apos;t linked
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          closeUserMenu();
+                          handleConnectStore();
+                        }}
+                        className={styles.userMenuConnectBtn}
+                        aria-label={`Connect ${shopifyStoreHandle} to Shopify`}
+                      >
+                        Connect to Shopify
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               )}
               <button

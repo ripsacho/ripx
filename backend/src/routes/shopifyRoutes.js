@@ -124,6 +124,7 @@ router.get(
     }
 
     let list;
+    let emptyReason = null; // Set when list is empty due to scope/API error so frontend can show it
     const handleListError = (err, resourceLabel) => {
       const msg = (err && err.message) || String(err);
       const isAccessDenied =
@@ -134,6 +135,10 @@ router.get(
           shopDomain,
           error: msg,
         });
+        emptyReason =
+          resourceLabel === 'pages'
+            ? 'Missing "read online store pages" permission. Reinstall the app from Shopify Admin to grant it.'
+            : `Missing permission to read ${resourceLabel}. Reinstall the app from Shopify Admin to grant read_products/read_collections.`;
         return [];
       }
       throw err;
@@ -149,7 +154,7 @@ router.get(
           list = await shopifyService.listPages(shopDomain, accessToken, searchQuery, first);
         } catch (err) {
           list = handleListError(err, 'pages');
-          if (list.length === 0) {
+          if (list.length === 0 && !emptyReason) {
             logger.warn('Add read_online_store_pages to SHOPIFY_SCOPES and reinstall the app.', {
               shopDomain,
             });
@@ -170,6 +175,7 @@ router.get(
       success: true,
       type: rawType,
       resources: Array.isArray(list) ? list : [],
+      ...(emptyReason && { empty_reason: emptyReason }),
     });
   })
 );

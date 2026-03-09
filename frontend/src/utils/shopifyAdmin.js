@@ -26,6 +26,19 @@ export function normalizeShopifyDomain(domain) {
 }
 
 /**
+ * Get a short display name for a Shopify store (subdomain before .myshopify.com).
+ * Use in UI when full domain is too long. Returns empty string if not a Shopify domain.
+ * @param {string} domain - e.g. uq4axu-rn.myshopify.com
+ * @returns {string} e.g. uq4axu-rn
+ */
+export function getShopifyStoreHandle(domain) {
+  if (!domain || typeof domain !== 'string') return '';
+  const t = domain.trim();
+  if (!SHOPIFY_DOMAIN_SUFFIX.test(t)) return '';
+  return t.replace(/\.myshopify\.com$/i, '');
+}
+
+/**
  * App handle for the Shopify Admin apps URL (from Partner dashboard / shopify.app.toml).
  * Set VITE_SHOPIFY_APP_HANDLE in .env (e.g. "ripx") so "Open app" for Shopify stores
  * opens in Shopify Admin instead of standalone.
