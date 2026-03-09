@@ -104,7 +104,8 @@
   const PREVIEW_VARIANT_NAME = URL_PARAMS.get('ab_preview_variant_name');
   const PREVIEW_MODE = URL_PARAMS.get('ab_preview') === '1' || !!PREVIEW_TEST_ID;
   const VISUAL_PICKER_MODE = URL_PARAMS.get('ab_visual_picker') === '1';
-  const AB_VISUAL_EDITOR = URL_PARAMS.get('ab_visual_editor') === '1';
+  const AB_VISUAL_EDITOR =
+    URL_PARAMS.get('ab_visual_editor') === '1' || !!(CONFIG.visualEditor === true);
   const IN_IFRAME = typeof window.parent !== 'undefined' && window.self !== window.top;
   const VISUAL_EDITOR_EMBED = AB_VISUAL_EDITOR && IN_IFRAME;
   /** Visual picker (and editor) only run when page is in iframe + param; never on live site to avoid affecting normal use */

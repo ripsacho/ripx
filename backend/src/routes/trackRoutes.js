@@ -258,7 +258,9 @@ function sendPreviewFallback(res) {
 
 /** Reject private/loopback hostnames for preview-document to reduce SSRF risk. In development, localhost is allowed. */
 function isPrivateOrUnsafeHost(hostname) {
-  if (!hostname || typeof hostname !== 'string') {return true;}
+  if (!hostname || typeof hostname !== 'string') {
+    return true;
+  }
   const h = hostname.toLowerCase().trim();
   const isDev = process.env.NODE_ENV !== 'production';
   if (h === 'localhost' || h.endsWith('.localhost') || h === '127.0.0.1') {
@@ -267,11 +269,21 @@ function isPrivateOrUnsafeHost(hostname) {
   const parts = h.split('.');
   if (parts.length === 4 && parts.every(p => /^\d+$/.test(p))) {
     const [a, b] = parts.map(Number);
-    if (a === 10) {return true;}
-    if (a === 172 && b >= 16 && b <= 31) {return true;}
-    if (a === 192 && b === 168) {return true;}
-    if (a === 127) {return true;}
-    if (a === 169 && b === 254) {return true;}
+    if (a === 10) {
+      return true;
+    }
+    if (a === 172 && b >= 16 && b <= 31) {
+      return true;
+    }
+    if (a === 192 && b === 168) {
+      return true;
+    }
+    if (a === 127) {
+      return true;
+    }
+    if (a === 169 && b === 254) {
+      return true;
+    }
   }
   return false;
 }
@@ -406,10 +418,19 @@ router.get(
       const hostname = parsed.hostname || parsed.host;
       const appUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
       const baseTag = `<base href="${origin}/">`;
+
+      // Strip CSP so store CSS/JS can load when document is served from our origin (iframe).
+      // Otherwise style-src/script-src 'self' would block store resources.
+      html = html.replace(
+        /<meta\s[^>]*\bhttp-equiv\s*=\s*["']?(?:Content-Security-Policy|Content-Security-Policy-Report-Only)["']?[^>]*>/gi,
+        ''
+      );
+
       const runtimeConfig = {
         apiUrl: `${appUrl.replace(/\/+$/, '')}/api`,
         shopDomain: hostname,
         activeTests: [],
+        visualEditor: true, // preview-document is only used for visual editor iframe
       };
       let scriptContent;
       try {
@@ -423,8 +444,13 @@ router.get(
       const injectScript =
         `<script>window.AB_TEST_RUNTIME_CONFIG=${JSON.stringify(runtimeConfig)};</script>` +
         (scriptContent ? `<script>${scriptContent}</script>` : '');
+
+      // Inject base at start of <head> so all relative URLs resolve to the store.
+      if (html.includes('<head')) {
+        html = html.replace(/(<head\s*[^>]*>)/i, `$1\n${baseTag}`);
+      }
       if (html.includes('</head>')) {
-        html = html.replace('</head>', `${baseTag}\n${injectScript}\n</head>`);
+        html = html.replace('</head>', `${injectScript}\n</head>`);
       } else if (html.includes('<body')) {
         html = html.replace(/(<body[^>]*>)/i, `$1\n${baseTag}\n${injectScript}\n`);
       } else {
