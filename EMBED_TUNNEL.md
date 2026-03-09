@@ -51,13 +51,13 @@ Set **App URL** to the exact URL of your app (e.g. `https://xxx.trycloudflare.co
 
 ## Dynamic OAuth URL (works for any domain)
 
-The app derives the OAuth `redirect_uri` **dynamically** so it works for any deployment:
+The app derives the OAuth `redirect_uri` from env and request so it works for any deployment:
 
-1. **`RIPX_OAUTH_REDIRECT_BASE`** (optional) – If set, this is always used as the base for `redirect_uri`. Set it to the **exact** Application URL you configure in Shopify Partner Dashboard (e.g. `https://your-app.example.com`). Use this when the URL users open (e.g. a tunnel) differs from the Application URL.
-2. **Request host / `callback_base`** – If not using the env var, the app uses the request host (or the frontend’s `callback_base` query param, e.g. `window.location.origin`) so that behind a tunnel or custom domain the correct host is used.
+1. **`RIPX_OAUTH_REDIRECT_BASE`** (recommended) – If set, this is **always** used as the base for `redirect_uri` and install links. Set it to the **exact** Application URL in Shopify Partner Dashboard (e.g. `https://splitter.echologyx.com`). **Do not** use a dynamic tunnel URL (e.g. `https://xxx.trycloudflare.com`) — it changes when the tunnel restarts and Shopify will reject OAuth. Use a **stable** custom domain and point it at your app. See [docs/OAUTH_FIX.md](docs/OAUTH_FIX.md).
+2. **Request host / `callback_base`** – If not using the env var, the app uses the request host or the frontend’s `callback_base` query param.
 3. **`APP_URL` / `FRONTEND_URL`** – Fallback when the request host is localhost or missing.
 
-**Verify:** After deployment, call `GET /api/auth/oauth-redirect-uri` (from the same host as your app). The response includes `partnerDashboard.applicationUrl` and `partnerDashboard.allowedRedirectionUrl` — copy these into Partner Dashboard. The server also logs the expected callback URL at startup when Shopify is configured.
+**Verify:** After deployment, call `GET /api/auth/oauth-redirect-uri` (from the same host as your app). The response includes `partnerDashboard.applicationUrl` and `partnerDashboard.allowedRedirectionUrl` — copy these into Partner Dashboard. If `isDynamicTunnel: true`, switch to a stable URL and see docs/OAUTH_FIX.md. The server also logs the expected callback URL at startup when Shopify is configured.
 
 ### Configuration decision tree
 

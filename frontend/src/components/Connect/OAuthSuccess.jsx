@@ -16,14 +16,17 @@ export const OAUTH_SUCCESS_MESSAGE_TYPE = 'ripx-store-connected';
 export default function OAuthSuccess() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const shop = searchParams.get('shop') || '';
-  const requestedShop = searchParams.get('requested_shop') || '';
+  const shop = (searchParams.get('shop') || '').trim().toLowerCase();
+  const requestedShop = (searchParams.get('requested_shop') || '').trim().toLowerCase();
   const [notified, setNotified] = useState(false);
 
   const isOpenedInNewTab = typeof window !== 'undefined' && !!window.opener;
 
   useEffect(() => {
-    if (!shop) return;
+    if (!shop) {
+      navigate(ROUTES.DOMAINS || '/domains', { replace: true });
+      return;
+    }
     if (isOpenedInNewTab && window.opener && !notified) {
       const payload = { type: OAUTH_SUCCESS_MESSAGE_TYPE, shop: shop.trim().toLowerCase() };
       const ourOrigin = window.location.origin;
@@ -45,6 +48,10 @@ export default function OAuthSuccess() {
       return () => window.clearTimeout(timer);
     }
   }, [shop, isOpenedInNewTab, notified, navigate]);
+
+  if (!shop) {
+    return null;
+  }
 
   return (
     <PageShell className={styles.confirmPageWrapper}>

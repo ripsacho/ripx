@@ -477,10 +477,18 @@ router.get('/oauth-redirect-uri', (req, res) => {
       : null;
   const base = strictBase || getOAuthRedirectBase(req);
   const redirectUri = `${base}/api/auth/callback`;
+  const isDynamicTunnel =
+    /\.trycloudflare\.com$/i.test(base) ||
+    /\.ngrok-free\.app$/i.test(base) ||
+    /\.ngrok\.(io|app)$/i.test(base);
   res.json({
     redirectUri,
     base,
     source: strictBase ? 'RIPX_OAUTH_REDIRECT_BASE' : 'request_or_app_url',
+    isDynamicTunnel,
+    mismatchWarning: isDynamicTunnel
+      ? 'This base is a dynamic tunnel URL that changes when the tunnel restarts. Shopify requires redirect_uri and Application URL to have the same host. Set RIPX_OAUTH_REDIRECT_BASE to a STABLE domain (e.g. from shopify.app.toml application_url) and use that same URL in Partner Dashboard. See docs/OAUTH_FIX.md.'
+      : null,
     partnerDashboard: {
       applicationUrl: base,
       allowedRedirectionUrl: redirectUri,
@@ -489,7 +497,7 @@ router.get('/oauth-redirect-uri', (req, res) => {
     clientIdNote:
       process.env.SHOPIFY_API_KEY &&
       'Partner Dashboard Client ID must match SHOPIFY_API_KEY. If the grant URL shows a different client_id, the link was generated for another app or env.',
-    hint: 'Set Application URL and Allowed redirection URL(s) in Shopify Partner Dashboard to this base and redirect_uri. For a fixed domain, set RIPX_OAUTH_REDIRECT_BASE to that URL.',
+    hint: 'Set Application URL and Allowed redirection URL(s) in Shopify Partner Dashboard to this base and redirect_uri. Use a stable domain in RIPX_OAUTH_REDIRECT_BASE (match shopify.app.toml application_url).',
   });
 });
 
@@ -566,7 +574,11 @@ router.get(
     if (validatedBase && validatedBase !== baseUrl) {
       installUrl += `&callback_base=${encodeURIComponent(validatedBase)}`;
     }
-    return res.json({ success: true, url: installUrl });
+    return res.json({
+      success: true,
+      url: installUrl,
+      expires_in_seconds: Math.floor(INSTALL_TOKEN_EXPIRY_MS / 1000),
+    });
   })
 );
 
@@ -616,6 +628,7 @@ router.get(
         .replace(/>/g, '&gt;');
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
       const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -768,6 +781,12 @@ router.get(
             requestedShop: shopCookieNorm,
           }
         );
+        auditLogService.logAuthAction(req, {
+          action: 'shopify_connect_callback_differed',
+          actorId: getEmailFromStatePayload(state) || 'anonymous',
+          entityId: null,
+          changes: { connectedShop: normalizedShop, requestedShop: shopCookieNorm },
+        });
       } else {
         logger.info(
           'OAuth callback: no state/cookie match (e.g. grant flow); accepting callback for shop',

@@ -8,6 +8,9 @@
  * @version 1.0.0
  */
 
+// Load .env before any other require that might read process.env (e.g. logger, isProduction).
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const compression = require('compression');
@@ -16,8 +19,6 @@ const bodyParser = require('body-parser');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const logger = require('./utils/logger');
-// Load env first; any module that uses database or env (e.g. validateEnvironment) depends on this.
-require('dotenv').config();
 
 const APP_VERSION = process.env.APP_VERSION || '1.0.0';
 const startTime = Date.now();
@@ -100,15 +101,16 @@ try {
       });
     sessionMiddleware = (req, res, next) => {
       if (cachedSessionMiddleware) {
-        return cachedSessionMiddleware(req, res, next);
+        cachedSessionMiddleware(req, res, next);
+        return;
       }
-      return sessionStorePromise
+      sessionStorePromise
         .then(store => {
           cachedSessionMiddleware = session({
             ...sessionOptions,
             store: store || undefined,
           });
-          return cachedSessionMiddleware(req, res, next);
+          cachedSessionMiddleware(req, res, next);
         })
         .catch(next);
     };
@@ -636,7 +638,7 @@ if (require.main === module) {
       environment: process.env.NODE_ENV || 'development',
       version: APP_VERSION,
     });
-    // Shopify OAuth: remind deployers to align Partner Dashboard with redirect_uri
+    // Shopify OAuth: remind deployers to align Partner Dashboard with redirect_uri; warn if using dynamic tunnel URL
     if (
       process.env.SHOPIFY_API_KEY &&
       process.env.SHOPIFY_API_KEY !== 'your_shopify_api_key_here' &&
@@ -648,6 +650,15 @@ if (require.main === module) {
         process.env.FRONTEND_URL ||
         'http://localhost:3000';
       const base = String(oauthBase).replace(/\/+$/, '') || 'http://localhost:3000';
+      const isDynamicTunnel =
+        /\.trycloudflare\.com$/i.test(base) ||
+        /\.ngrok-free\.app$/i.test(base) ||
+        /\.ngrok\.(io|app)$/i.test(base);
+      if (isDynamicTunnel) {
+        logger.warn(
+          'Shopify OAuth: RIPX_OAUTH_REDIRECT_BASE or APP_URL is a dynamic tunnel URL. It changes when the tunnel restarts, so Partner Dashboard will mismatch and OAuth will fail. Use a stable custom domain (e.g. splitter.echologyx.com) and set it in Partner Dashboard and RIPX_OAUTH_REDIRECT_BASE. See docs/OAUTH_ADD_STORE.md and docs/OAUTH_FIX.md.'
+        );
+      }
       logger.info(
         'Shopify OAuth: ensure Partner Dashboard Application URL and Allowed redirection URL(s) match',
         {
