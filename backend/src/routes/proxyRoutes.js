@@ -97,8 +97,15 @@ function verifyAppProxySignature(query) {
 async function serveScript(req, res) {
   const shop = req.query.shop || req.query.shop_domain;
 
-  if (!shop || !isValidShopDomain(shop)) {
-    return res.status(400).json({ success: false, error: 'Invalid shop domain' });
+  if (!shop) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid shop domain',
+      hint: 'Load the script via your store URL so Shopify adds the shop parameter, e.g. https://<store>.myshopify.com/apps/ripx/script.js?v=1 — do not open this proxy URL directly.',
+    });
+  }
+  if (!isValidShopDomain(shop)) {
+    return res.status(400).json({ success: false, error: 'Invalid shop domain', shop });
   }
 
   const hasSignature = Boolean(req.query.signature);
