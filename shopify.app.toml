@@ -2,7 +2,7 @@
 # For each deployment: set application_url and auth.redirect_urls to your app's public URL (same as Partner Dashboard).
 # SHOPIFY_API_KEY in .env must equal this client_id so OAuth uses this app's Partner Dashboard URLs. See docs/OAUTH_FIX.md.
 
-client_id = "e7a7d74e7aaa14162e3951a559bda6c1"
+client_id = "4f6689d8765892c7201a611f1f578bb6"
 name = "RIPX"
 application_url = "https://splitter.echologyx.com"
 embedded = true
