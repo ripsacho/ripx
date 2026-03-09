@@ -133,6 +133,83 @@
   background: var(--bg-primary);
 }
 
+/* ========== Idle-state tech layer: animated grid + floating dots ========== */
+.connectIdleTech {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.connectIdleGrid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(6, 182, 212, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(6, 182, 212, 0.03) 1px, transparent 1px);
+  background-size: 48px 48px;
+  animation: idleGridShift 20s linear infinite;
+}
+
+.connectIdleGrid::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(6, 182, 212, 0.02) 50%,
+    transparent 100%
+  );
+  animation: idleGridPulse 6s ease-in-out infinite;
+}
+
+@keyframes idleGridShift {
+  0% {
+    transform: translate(0, 0);
+  }
+  100% {
+    transform: translate(48px, 48px);
+  }
+}
+
+@keyframes idleGridPulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.connectIdleDots {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(2px 2px at 20% 30%, rgba(6, 182, 212, 0.25), transparent),
+    radial-gradient(2px 2px at 80% 70%, rgba(167, 139, 250, 0.2), transparent),
+    radial-gradient(2px 2px at 40% 80%, rgba(6, 182, 212, 0.15), transparent),
+    radial-gradient(2px 2px at 60% 20%, rgba(167, 139, 250, 0.18), transparent);
+  background-size: 200% 200%;
+  background-position: 0% 0%, 100% 100%, 50% 50%, 80% 20%;
+  animation: idleDotsFloat 25s ease-in-out infinite;
+  opacity: 0.8;
+}
+
+@keyframes idleDotsFloat {
+  0%,
+  100% {
+    background-position: 0% 0%, 100% 100%, 50% 50%, 80% 20%;
+  }
+  33% {
+    background-position: 100% 50%, 0% 50%, 80% 80%, 20% 80%;
+  }
+  66% {
+    background-position: 50% 100%, 50% 0%, 20% 20%, 80% 60%;
+  }
+}
+
 .connectPanels {
   display: flex;
   flex: 1;
@@ -503,7 +580,7 @@
   bottom: 0;
 }
 
-/* Description content: glassmorphism card, tech-style */
+/* Description content: glassmorphism card, tech-style + edge glow */
 .panelHero .heroContent {
   max-width: 380px;
   width: 100%;
@@ -521,15 +598,37 @@
   border-radius: 0 16px 16px 0;
   box-shadow:
     0 4px 24px rgba(0, 0, 0, 0.2),
-    0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset,
+    -4px 0 24px -4px rgba(6, 182, 212, 0.25);
   transition: box-shadow 0.3s ease, border-left-color 0.3s ease;
+  animation: heroEdgeGlow 4s ease-in-out infinite;
+}
+
+@keyframes heroEdgeGlow {
+  0%,
+  100% {
+    box-shadow:
+      0 4px 24px rgba(0, 0, 0, 0.2),
+      0 0 0 1px rgba(255, 255, 255, 0.06) inset,
+      -4px 0 24px -4px rgba(6, 182, 212, 0.25);
+    border-left-color: rgba(6, 182, 212, 0.65);
+  }
+  50% {
+    box-shadow:
+      0 4px 24px rgba(0, 0, 0, 0.2),
+      0 0 0 1px rgba(255, 255, 255, 0.06) inset,
+      -6px 0 32px -2px rgba(6, 182, 212, 0.4);
+    border-left-color: rgba(6, 182, 212, 0.9);
+  }
 }
 
 .panelHero .heroContent:hover {
   box-shadow:
     0 8px 32px rgba(0, 0, 0, 0.25),
-    0 0 0 1px rgba(255, 255, 255, 0.08) inset;
-  border-left-color: rgba(6, 182, 212, 0.85);
+    0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+    -6px 0 32px -2px rgba(6, 182, 212, 0.45);
+  border-left-color: rgba(6, 182, 212, 0.9);
+  animation: none;
 }
 
 [data-theme='dark'] .panelHero .heroContent {
@@ -614,13 +713,35 @@
   box-shadow: 0 0 8px rgba(6, 182, 212, 0.4);
 }
 
-/* Panel showing form (login or register): centered, clear hierarchy */
+/* Panel showing form (login or register): centered, subtle tech bg */
 .panelForm {
+  position: relative;
   background: var(--bg-primary, #f8fafc);
   overflow-y: auto;
   justify-content: center;
   align-items: center;
   padding: 2.25rem 1.25rem;
+}
+
+.panelForm::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 70% 30%, rgba(6, 182, 212, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 80% at 30% 70%, rgba(167, 139, 250, 0.03) 0%, transparent 50%);
+  pointer-events: none;
+  animation: panelFormGlow 8s ease-in-out infinite alternate;
+}
+
+@keyframes panelFormGlow {
+  0% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 1;
+  }
 }
 
 .panelForm .connectPanelInner {
@@ -1025,10 +1146,15 @@
 
 /* Accessibility: respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
+  .connectIdleTech,
   .heroGradient,
   .heroGrid,
   .connectPanelsSwap,
   .connectPanel,
+  .panelHero .heroContent,
+  .panelForm::before,
+  .authBrand::after,
+  .authCardScanLine,
   .phaseExiting .connectViewOutgoing .connectPanelInner > *,
   .phaseEntering .connectViewOutgoing .connectPanelInner > *,
   .phaseEntering .connectViewOutgoing .connectPanel::after,
@@ -1037,8 +1163,18 @@
     animation-delay: 0ms !important;
     transition-duration: 0.01ms !important;
   }
+  .connectIdleTech {
+    opacity: 0.3;
+  }
   .heroGradient,
-  .heroGrid {
+  .heroGrid,
+  .authCardScanLine {
+    animation: none !important;
+  }
+  .panelHero .heroContent {
+    animation: none !important;
+  }
+  .authBrand::after {
     animation: none !important;
   }
 
@@ -1434,6 +1570,35 @@
   align-items: center;
   gap: 0.85rem;
   text-align: left;
+  position: relative;
+}
+
+.authBrand::after {
+  content: '';
+  position: absolute;
+  right: -0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--futuristic-cyan);
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.6);
+  animation: liveDotPulse 2s ease-in-out infinite;
+}
+
+@keyframes liveDotPulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+    box-shadow: 0 0 10px rgba(6, 182, 212, 0.6);
+  }
+  50% {
+    opacity: 0.7;
+    transform: translateY(-50%) scale(1.2);
+    box-shadow: 0 0 16px rgba(6, 182, 212, 0.9);
+  }
 }
 
 .authBrandText {
@@ -1550,7 +1715,7 @@
   color: var(--text-primary);
 }
 
-/* ========== Form card ========== */
+/* ========== Form card: tech frame + scan line ========== */
 .authCard {
   position: relative;
   width: 100%;
@@ -1563,6 +1728,45 @@
     0 20px 48px -12px rgba(6, 182, 212, 0.12);
   overflow: hidden;
   transition: box-shadow 0.28s ease, border-color 0.28s ease;
+}
+
+/* Tech scan line – moves down the card periodically */
+.authCardScanLine {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  top: 0;
+  z-index: 1;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(6, 182, 212, 0.4) 20%,
+    rgba(167, 139, 250, 0.5) 50%,
+    rgba(6, 182, 212, 0.4) 80%,
+    transparent 100%
+  );
+  box-shadow: 0 0 16px rgba(6, 182, 212, 0.3);
+  animation: authCardScan 5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes authCardScan {
+  0%,
+  100% {
+    top: 0;
+    opacity: 0.6;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    top: 100%;
+    opacity: 0.6;
+  }
 }
 
 @media (min-width: 600px) {
@@ -1621,6 +1825,8 @@
 }
 
 .authCardInner {
+  position: relative;
+  z-index: 2;
   padding: 0;
 }
 

@@ -377,16 +377,30 @@ function TestWizard({
       setStoreResources([]);
       return;
     }
+    // Use route domain explicitly so the correct Shopify store is queried (avoids wrong-shop when multiple stores)
+    const shop = isShopifyFromRoute ? routeDomain : null;
+    if (!shop) {
+      setStoreResources([]);
+      return;
+    }
     setStoreResourcesLoading(true);
     const query = encodeURIComponent(storeResourceSearchDebounced.trim());
-    apiGet(`/shopify/store-resources?type=${targetTypeForResources}&query=${query}&first=100`)
+    apiGet(`/shopify/store-resources?type=${targetTypeForResources}&query=${query}&first=100`, {
+      shop,
+    })
       .then(res => {
         const list = res.data?.resources || [];
         setStoreResources(list);
       })
       .catch(() => setStoreResources([]))
       .finally(() => setStoreResourcesLoading(false));
-  }, [targetTypeForResources, storeResourceSearchDebounced, isStandalone]);
+  }, [
+    targetTypeForResources,
+    storeResourceSearchDebounced,
+    isStandalone,
+    isShopifyFromRoute,
+    routeDomain,
+  ]);
 
   useEffect(() => {
     if (isStandalone && (placementSection === 'device' || placementSection === 'audience')) {
@@ -2484,7 +2498,10 @@ function TestWizard({
                                                 ? 'No matches. Try a different search.'
                                                 : formData.target_type === 'page'
                                                   ? 'No pages found. If your store has pages, the app may need "read online store pages" permission—reinstall the app from your Shopify admin to grant it.'
-                                                  : 'No items in your store yet, or the list is still loading.'}
+                                                  : formData.target_type === 'product' ||
+                                                      formData.target_type === 'collection'
+                                                    ? 'No products or collections loaded. If your store has them, the store may need to be reconnected (OAuth) so the app can read store data—open this store from My domains and use "Connect store" if you see a warning, or add the store again from the Connect page.'
+                                                    : 'No items in your store yet, or the list is still loading.'}
                                             </Text>
                                           </div>
                                         ) : (

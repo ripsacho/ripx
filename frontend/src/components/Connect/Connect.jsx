@@ -515,6 +515,7 @@ function Connect() {
 
   const loginCard = (
     <div className={styles.authCard}>
+      <div className={styles.authCardScanLine} aria-hidden />
       <div className={styles.authCardInner}>
         {step === 'otp' ? (
           <>
@@ -659,6 +660,7 @@ function Connect() {
 
   const registerCard = (
     <div className={styles.authCard}>
+      <div className={styles.authCardScanLine} aria-hidden />
       <div className={styles.authCardInner}>
         <h3 className={styles.authCardTitle}>Create account</h3>
         <div className={styles.authCardBody}>
@@ -785,6 +787,13 @@ function Connect() {
     >
       <Page title="">
         <div className={styles.connectRoot}>
+          {/* Idle-state tech layer: subtle grid + data feel when not transitioning */}
+          {transitionPhase === 'idle' && (
+            <div className={styles.connectIdleTech} aria-hidden>
+              <div className={styles.connectIdleGrid} />
+              <div className={styles.connectIdleDots} />
+            </div>
+          )}
           <div
             ref={panelsSwapRef}
             className={`${styles.connectPanels} ${styles.connectPanelsSwap} ${phaseClass} ${viewClass}`}

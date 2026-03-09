@@ -74,7 +74,9 @@ function StoreSwitcher() {
   );
 
   const multiStore = stores.length > 1;
-  const showAddWebsite = platform === 'standalone' && stores.length > 0;
+  // Only show "Add another website" when account has at least one standalone store (not when all are Shopify)
+  const hasStandaloneStore = stores.some(s => (s.platform || '').toLowerCase() === 'standalone');
+  const showAddWebsite = hasStandaloneStore && stores.length > 0;
 
   if (stores.length === 0 || (!multiStore && !showAddWebsite)) {
     return null;
@@ -86,12 +88,16 @@ function StoreSwitcher() {
   const displayLabelFull = currentStore ? currentStore.replace(/^www\./, '') : displayLabel;
 
   const actionItems = [
-    ...stores.map(store => ({
-      content: store.domain,
-      onAction: () => handleStoreSelect(store.domain),
-      active: store.domain === currentStore,
-    })),
-    ...(stores.length > 0 && platform === 'standalone'
+    ...stores.map(store => {
+      const plat = (store.platform || '').toLowerCase();
+      const badge = plat === 'shopify' ? 'Shopify' : 'Standalone';
+      return {
+        content: `${store.domain} · ${badge}`,
+        onAction: () => handleStoreSelect(store.domain),
+        active: store.domain === currentStore,
+      };
+    }),
+    ...(stores.length > 0 && hasStandaloneStore
       ? [
           { content: '—', disabled: true },
           {

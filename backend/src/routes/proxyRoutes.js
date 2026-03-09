@@ -72,12 +72,13 @@ function buildSignatureMessage(params) {
 
 function verifyAppProxySignature(query) {
   const signature = query.signature;
-  if (!signature || !process.env.SHOPIFY_API_SECRET) {
+  const rawSecret = process.env.SHOPIFY_API_SECRET;
+  if (!signature || !rawSecret) {
     return false;
   }
+  const secret = String(rawSecret).trim();
 
   const { signature: _signature, ...rest } = query;
-  const secret = process.env.SHOPIFY_API_SECRET;
   const message = buildSignatureMessage(rest);
   const digest = crypto.createHmac('sha256', secret).update(message).digest('hex');
 
@@ -110,6 +111,13 @@ async function serveScript(req, res) {
 
   const hasSignature = Boolean(req.query.signature);
   const isProduction = process.env.NODE_ENV === 'production';
+  const skipVerify = !isProduction && process.env.RIPX_APP_PROXY_SKIP_VERIFY === 'true';
+
+  if (skipVerify) {
+    logger.warn('App proxy signature verification skipped (RIPX_APP_PROXY_SKIP_VERIFY=true)', {
+      shop,
+    });
+  }
 
   if (!hasSignature) {
     if (isProduction) {
@@ -120,7 +128,7 @@ async function serveScript(req, res) {
       });
     }
     logger.warn('App proxy signature missing (dev only)', { shop });
-  } else if (!verifyAppProxySignature(req.query)) {
+  } else if (!skipVerify && !verifyAppProxySignature(req.query)) {
     logger.warn('App proxy signature verification failed', {
       shop,
       hint: 'Set SHOPIFY_API_SECRET on this server to the exact Client secret from Partner Dashboard → your app → Client credentials (same app that has the App Proxy).',
