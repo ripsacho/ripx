@@ -111,11 +111,17 @@
   }
   const URL_PARAMS = new URLSearchParams(window.location.search);
   const PREVIEW_TEST_ID =
-    URL_PARAMS.get('ab_preview_test') || (CONFIG.previewTestId && String(CONFIG.previewTestId)) || null;
+    URL_PARAMS.get('ab_preview_test') ||
+    (CONFIG.previewTestId && String(CONFIG.previewTestId)) ||
+    null;
   const PREVIEW_VARIANT_ID =
-    URL_PARAMS.get('ab_preview_variant') || (CONFIG.previewVariantId && String(CONFIG.previewVariantId)) || null;
+    URL_PARAMS.get('ab_preview_variant') ||
+    (CONFIG.previewVariantId && String(CONFIG.previewVariantId)) ||
+    null;
   const PREVIEW_VARIANT_NAME =
-    URL_PARAMS.get('ab_preview_variant_name') || (CONFIG.previewVariantName && String(CONFIG.previewVariantName)) || null;
+    URL_PARAMS.get('ab_preview_variant_name') ||
+    (CONFIG.previewVariantName && String(CONFIG.previewVariantName)) ||
+    null;
   const PREVIEW_MODE =
     URL_PARAMS.get('ab_preview') === '1' || !!PREVIEW_TEST_ID || !!(CONFIG.previewMode === true);
   const VISUAL_PICKER_MODE = URL_PARAMS.get('ab_visual_picker') === '1';
