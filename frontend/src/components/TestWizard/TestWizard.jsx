@@ -194,9 +194,13 @@ function TestWizard({
   const formDataRef = useRef(formData);
   const visualPreviewVariantIndexRef = useRef(visualPreviewVariantIndex);
   const changingSelectorIndexRef = useRef(changingSelectorIndex);
+  const selectedVariantIndexRef = useRef(selectedVariantIndex);
   useEffect(() => {
     formDataRef.current = formData;
   }, [formData]);
+  useEffect(() => {
+    selectedVariantIndexRef.current = selectedVariantIndex;
+  }, [selectedVariantIndex]);
   useEffect(() => {
     visualPreviewVariantIndexRef.current = visualPreviewVariantIndex;
   }, [visualPreviewVariantIndex]);
@@ -662,8 +666,10 @@ function TestWizard({
   };
 
   const buildPayload = (data = formData, codes = variantCodesData) => {
-    const variantsWithCode = (data.variants || []).map((variant, index) => {
-      const combinedCode = buildCombinedCode(codes[index]);
+    const variants = data.variants || [];
+    const codesList = Array.isArray(codes) ? codes : [];
+    const variantsWithCode = variants.map((variant, index) => {
+      const combinedCode = buildCombinedCode(codesList[index]);
       const existingCode = variant?.code || variant?.config?.code || '';
       if (combinedCode) {
         return {
@@ -791,9 +797,10 @@ function TestWizard({
   };
 
   const buildCodePayload = (data = formData, codes = variantCodesData) => {
+    const variants = data.variants || [];
     return {
-      variants: data.variants.map((variant, index) => {
-        const codeData = codes[index] || codes.find(item => item?.name === variant.name);
+      variants: variants.map((variant, index) => {
+        const codeData = codes[index] ?? codes.find(item => item?.name === variant.name);
         const code = codeData
           ? buildCombinedCode(codeData)
           : (variant?.code ?? variant?.config?.code ?? '');
@@ -1130,6 +1137,9 @@ function TestWizard({
     return { ...payload, variants };
   };
 
+  // Sync variant codes from formData.variants into variantCodesData. Only run when variants list
+  // changes (length or items). Do NOT depend on selectedVariantIndex — otherwise switching tabs
+  // would re-run this and overwrite in-progress edits in variantCodesData with stale state.
   useEffect(() => {
     setVariantCodesData(prev => {
       const updated = (formData.variants || []).map((variant, index) => {
@@ -1179,13 +1189,14 @@ function TestWizard({
         };
       });
 
-      if (selectedVariantIndex >= updated.length) {
+      const currentSelected = selectedVariantIndexRef.current;
+      if (updated.length > 0 && currentSelected >= updated.length) {
         setSelectedVariantIndex(0);
       }
 
       return updated;
     });
-  }, [formData.variants, selectedVariantIndex]);
+  }, [formData.variants]);
 
   useEffect(() => {
     if (hasVariantSelectionRef.current || variantCodesData.length === 0) {
@@ -1203,10 +1214,13 @@ function TestWizard({
   }, [variantCodesData]);
 
   useEffect(() => {
-    if (variantCodesData.length > 0 && variantCodesData[selectedVariantIndex]) {
-      const current = variantCodesData[selectedVariantIndex];
+    const current = variantCodesData[selectedVariantIndex];
+    if (current) {
       setCssValidationErrors(validateCSS(current.css));
       setJsValidationErrors(validateJS(current.js));
+    } else {
+      setCssValidationErrors([]);
+      setJsValidationErrors([]);
     }
   }, [selectedVariantIndex, variantCodesData]);
 
@@ -1491,13 +1505,15 @@ function TestWizard({
       jsValidationErrors,
     });
 
-  const handleVariantCodeChange = (type, value) => {
+  const handleVariantCodeChange = (type, value, variantIndex) => {
+    const index =
+      typeof variantIndex === 'number' && variantIndex >= 0 ? variantIndex : selectedVariantIndex;
     setCodeEditorDirty(true);
     setVariantCodesData(prev => {
       const updated = [...prev];
-      if (updated[selectedVariantIndex]) {
-        updated[selectedVariantIndex] = {
-          ...updated[selectedVariantIndex],
+      if (updated[index] !== undefined) {
+        updated[index] = {
+          ...updated[index],
           [type]: value,
         };
       }
@@ -6463,7 +6479,13 @@ function TestWizard({
                                       <TextField
                                         label=""
                                         value={currentVariant.css || ''}
-                                        onChange={value => handleVariantCodeChange('css', value)}
+                                        onChange={value =>
+                                          handleVariantCodeChange(
+                                            'css',
+                                            value,
+                                            selectedVariantIndex
+                                          )
+                                        }
                                         multiline={25}
                                         autoComplete="off"
                                         placeholder="/* Enter your CSS code here */&#10;&#10;.my-class {&#10;  color: #333;&#10;  font-size: 16px;&#10;}"
@@ -6594,7 +6616,9 @@ function TestWizard({
                                       <TextField
                                         label=""
                                         value={currentVariant.js || ''}
-                                        onChange={value => handleVariantCodeChange('js', value)}
+                                        onChange={value =>
+                                          handleVariantCodeChange('js', value, selectedVariantIndex)
+                                        }
                                         multiline={25}
                                         autoComplete="off"
                                         placeholder="// Enter your JavaScript code here&#10;&#10;console.log('Hello, World!');&#10;document.querySelector('.my-class').style.display = 'block';"
