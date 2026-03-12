@@ -40,6 +40,17 @@
 
   const CONFIG = Object.assign({}, DEFAULT_CONFIG, window.AB_TEST_RUNTIME_CONFIG || {});
   const hasValidConfig = !!(CONFIG.apiUrl && CONFIG.apiUrl.trim());
+
+  /** Polyfill CSS.escape for older browsers (selector building in visual editor). */
+  if (typeof CSS === 'undefined' || typeof CSS.escape !== 'function') {
+    window.CSS = window.CSS || {};
+    if (!window.CSS.escape) {
+      window.CSS.escape = function (val) {
+        var s = String(val);
+        return s.replace(/\\/g, '\\\\').replace(/([^\w-])/g, '\\$1');
+      };
+    }
+  }
   const consentRequired = !!CONFIG.consentRequired;
   const SCRIPT_VERSION = (CONFIG.version && String(CONFIG.version)) || '1.0.0';
   const DEBUG = !!(typeof window !== 'undefined' && window.__RIPX_DEBUG__);
@@ -99,10 +110,20 @@
     window.ripx_consent_callback = cb;
   }
   const URL_PARAMS = new URLSearchParams(window.location.search);
-  const PREVIEW_TEST_ID = URL_PARAMS.get('ab_preview_test');
-  const PREVIEW_VARIANT_ID = URL_PARAMS.get('ab_preview_variant');
-  const PREVIEW_VARIANT_NAME = URL_PARAMS.get('ab_preview_variant_name');
-  const PREVIEW_MODE = URL_PARAMS.get('ab_preview') === '1' || !!PREVIEW_TEST_ID;
+  const PREVIEW_TEST_ID =
+    URL_PARAMS.get('ab_preview_test') ||
+    (CONFIG.previewTestId && String(CONFIG.previewTestId)) ||
+    null;
+  const PREVIEW_VARIANT_ID =
+    URL_PARAMS.get('ab_preview_variant') ||
+    (CONFIG.previewVariantId && String(CONFIG.previewVariantId)) ||
+    null;
+  const PREVIEW_VARIANT_NAME =
+    URL_PARAMS.get('ab_preview_variant_name') ||
+    (CONFIG.previewVariantName && String(CONFIG.previewVariantName)) ||
+    null;
+  const PREVIEW_MODE =
+    URL_PARAMS.get('ab_preview') === '1' || !!PREVIEW_TEST_ID || !!(CONFIG.previewMode === true);
   const VISUAL_PICKER_MODE = URL_PARAMS.get('ab_visual_picker') === '1';
   const AB_VISUAL_EDITOR =
     URL_PARAMS.get('ab_visual_editor') === '1' || !!(CONFIG.visualEditor === true);
@@ -619,13 +640,67 @@
     }
   }
 
+  /** Position values from visual editor map to insertAdjacentElement. */
+  var VISUAL_RULE_POSITION_MAP = {
+    after: 'afterend',
+    before: 'beforebegin',
+    afterbegin: 'afterbegin',
+    beforeend: 'beforeend',
+  };
+
+  /**
+   * Apply visual editor rules (selector + css/js + position) in preview/visual editor mode.
+   * Injects style/script nodes relative to the first element matching each rule's selector.
+   */
+  function applyVisualEditorRules(testId, variant) {
+    var rules = variant?.config?.visual_editor_rules;
+    if (!Array.isArray(rules) || rules.length === 0) return;
+    var markerPrefix = 'ab-test-ve-' + String(testId || 'preview') + '-';
+    document.querySelectorAll('[data-ab-test-ve]').forEach(function (node) {
+      var val = node.getAttribute('data-ab-test-ve');
+      if (val && val.indexOf(markerPrefix) === 0) node.remove();
+    });
+    rules.forEach(function (rule, index) {
+      if (!rule || typeof rule !== 'object') return;
+      var selector = typeof rule.selector === 'string' ? rule.selector.trim() : '';
+      if (!selector) return;
+      var css = typeof rule.css === 'string' ? rule.css.trim() : '';
+      var js = typeof rule.js === 'string' ? rule.js.trim() : '';
+      if (!css && !js) return;
+      var position = VISUAL_RULE_POSITION_MAP[rule.position] || 'afterend';
+      var el;
+      try {
+        el = document.querySelector(selector);
+      } catch (e) {
+        return;
+      }
+      if (!el || !el.insertAdjacentElement) return;
+      var marker = markerPrefix + index;
+      if (js) {
+        var scriptEl = document.createElement('script');
+        scriptEl.setAttribute('data-ab-test-ve', marker);
+        scriptEl.textContent = js;
+        el.insertAdjacentElement(position, scriptEl);
+      }
+      if (css) {
+        var styleEl = document.createElement('style');
+        styleEl.setAttribute('data-ab-test-ve', marker);
+        styleEl.textContent = css;
+        el.insertAdjacentElement(position, styleEl);
+      }
+    });
+  }
+
   /**
    * Build a short, unique CSS selector for an element (for visual editor picker).
    * Prefers: id, then data-* (e.g. data-product-id, data-variant-id for Shopify), then tag.class, then path.
+   * Skips non-element nodes (e.g. document, text nodes) and ensures tagName is safe for selectors.
    */
   function getSelectorForElement(el) {
-    if (!el || !el.tagName) return '';
+    if (!el || typeof el.tagName !== 'string') return '';
+    if (el.nodeType !== 1) return ''; /* ELEMENT_NODE */
     var tag = el.tagName.toLowerCase();
+    if (!tag) return '';
 
     if (
       el.id &&
@@ -965,19 +1040,40 @@
       return null;
     }
 
+    var lastClientX = -1;
+    var lastClientY = -1;
+    var rafScheduled = false;
+    function updateHighlightAtCursor() {
+      var el = getTargetUnderCursor(lastClientX, lastClientY);
+      if (!el) {
+        setHighlight(null);
+        return;
+      }
+      var rect = el.getBoundingClientRect();
+      setHighlight({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
+    }
+
     document.addEventListener(
       'mousemove',
       function (e) {
-        var el = getTargetUnderCursor(e.clientX, e.clientY);
-        if (!el) {
-          setHighlight(null);
-          return;
+        lastClientX = e.clientX;
+        lastClientY = e.clientY;
+        if (!rafScheduled) {
+          rafScheduled = true;
+          requestAnimationFrame(function () {
+            rafScheduled = false;
+            updateHighlightAtCursor();
+          });
         }
-        var rect = el.getBoundingClientRect();
-        setHighlight({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
       },
       { passive: true }
     );
+
+    function onScrollOrResize() {
+      if (lastClientX >= 0 && lastClientY >= 0) updateHighlightAtCursor();
+    }
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
 
     function handleSelectClick(e) {
       e.preventDefault();
@@ -1315,11 +1411,12 @@
         });
       });
 
-      // Preview mode: apply the preview variant's CSS/JS even when the test is not in activeTests
+      // Preview mode: apply the preview variant's CSS/JS and visual editor rules
       if (PREVIEW_MODE && PREVIEW_TEST_ID) {
         getVariant(PREVIEW_TEST_ID).then(function (variant) {
           if (variant) {
             applyCustomCode(PREVIEW_TEST_ID, variant);
+            applyVisualEditorRules(PREVIEW_TEST_ID, variant);
           }
         });
       }

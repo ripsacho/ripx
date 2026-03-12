@@ -4,7 +4,7 @@
  * Reusable create/edit flow for AB tests.
  * Template selection is optional for edit mode.
  */
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Card,
   FormLayout,
@@ -70,6 +70,7 @@ import { isShopifyStoreDomain } from '../../utils/shopifyAdmin';
 import {
   buildPreviewUrl as buildPreviewUrlUtil,
   resolvePreviewBaseUrl,
+  PREVIEW_PARAMS,
 } from '../../utils/previewUrl';
 import { inferTemplateKeyFromVariants } from '../../utils/testType';
 import { STANDALONE_TEST_TYPE_IDS } from '../../constants';
@@ -921,10 +922,27 @@ function TestWizard({
     setChangingSelectorIndex(null);
   }, [visualPreviewVariantIndex]);
 
+  // Allowed postMessage origins: app origin + API origin (iframe may load preview-document from API host)
+  const allowedPreviewMessageOrigins = useMemo(() => {
+    const list = [window.location.origin];
+    try {
+      const base = getApiBaseUrl();
+      if (base && /^https?:\/\//i.test(base)) {
+        const u = new URL(base);
+        if (u.origin && !list.includes(u.origin)) list.push(u.origin);
+      }
+    } catch (_) {
+      // ignore
+    }
+    return list;
+  }, []);
+
   // Listen for selector from visual editor iframe and for preview-error (backend fallback page)
   useEffect(() => {
     function handleMessage(event) {
       try {
+        if (!allowedPreviewMessageOrigins.includes(event.origin)) return;
+
         if (event.data?.type === 'ripx-preview-error') {
           setVisualPreviewLoadState('error');
           return;
@@ -932,7 +950,7 @@ function TestWizard({
         if (event.data?.type !== 'ripx-visual-selector' || typeof event.data.selector !== 'string')
           return;
         const sel = event.data.selector.trim();
-        if (!sel) return;
+        if (!sel || sel.length > 2048) return;
 
         const form = formDataRef.current;
         const variantIndex = Math.min(
@@ -1017,7 +1035,7 @@ function TestWizard({
     }
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, []);
+  }, [allowedPreviewMessageOrigins]);
 
   const validateCSS = css => {
     const errors = [];
@@ -5517,35 +5535,9 @@ function TestWizard({
                               ? `https://${domainClean}${path.startsWith('/') ? path : `/${path}`}`
                               : 'https://your-site.com/';
                           })()}
-                          helpText="When empty, the first target page from Targeting is used automatically (e.g. first product, collection, or homepage). Add the RipX script to your store to enable click-to-select."
+                          helpText="When empty, the first target page from Targeting is used automatically (e.g. first product, collection, or homepage). Add the RipX script to your store (App settings → Installation) to enable click-to-select."
                           autoComplete="url"
                         />
-                        <div className="variant-visual-editor-test-page-row">
-                          <Button
-                            size="slim"
-                            variant="secondary"
-                            onClick={() => {
-                              const testPageUrl =
-                                window.location.origin + '/ripx-preview-test.html';
-                              setIsDirty(true);
-                              setVisualEditorDirty(true);
-                              setFormData(prev => ({
-                                ...prev,
-                                segments: {
-                                  ...(prev.segments || {}),
-                                  visual_editor_preview_url: testPageUrl,
-                                },
-                              }));
-                              setVisualPreviewLoadState('idle');
-                            }}
-                          >
-                            Load test page
-                          </Button>
-                          <Text as="span" variant="bodySm" tone="subdued">
-                            Use the built-in test page to try element selection without a real site
-                            or script install.
-                          </Text>
-                        </div>
                         {(() => {
                           const veUrl = (formData.segments?.visual_editor_preview_url ?? '').trim();
                           const hasOverride = veUrl.length > 0;
@@ -5584,10 +5576,39 @@ function TestWizard({
                                 })
                               : null;
                           const directPreviewUrl = fullPreviewUrl || baseUrl || '';
-                          const iframeSrc = directPreviewUrl
-                            ? `${getApiBaseUrl()}/track/preview-document?url=${encodeURIComponent(directPreviewUrl)}&ab_visual_editor=1`
-                            : '';
-                          const previewWithoutTestId = Boolean(baseUrl && !testId);
+                          let iframeSrc = '';
+                          if (directPreviewUrl) {
+                            const apiBase = (getApiBaseUrl() || '').replace(/\/+$/, '') || '/api';
+                            const previewDocPath = `${apiBase}/track/preview-document`;
+                            const isRelative =
+                              typeof window !== 'undefined' &&
+                              apiBase &&
+                              !/^https?:\/\//i.test(apiBase);
+                            const previewDoc = isRelative
+                              ? new URL(previewDocPath, window.location.origin)
+                              : new URL(previewDocPath);
+                            previewDoc.searchParams.set('url', directPreviewUrl);
+                            previewDoc.searchParams.set('ab_visual_editor', '1');
+                            if (fullPreviewUrl) {
+                              try {
+                                const u = new URL(fullPreviewUrl);
+                                [
+                                  PREVIEW_PARAMS.PREVIEW,
+                                  PREVIEW_PARAMS.TEST_ID,
+                                  PREVIEW_PARAMS.VARIANT_ID,
+                                  PREVIEW_PARAMS.VARIANT_NAME,
+                                ].forEach(k => {
+                                  const v = u.searchParams.get(k);
+                                  if (v !== undefined && v !== null && v !== '')
+                                    previewDoc.searchParams.set(k, v);
+                                });
+                              } catch (_) {
+                                /* ignore */
+                              }
+                            }
+                            iframeSrc = previewDoc.toString();
+                          }
+                          const _previewWithoutTestId = Boolean(baseUrl && !testId);
                           if (!baseUrl) {
                             return (
                               <div className="variant-visual-editor-empty">
@@ -5602,8 +5623,9 @@ function TestWizard({
                                   color="subdued"
                                   style={{ marginTop: '0.5rem' }}
                                 >
-                                  Enter a Preview URL above or connect a store; the preview loads
-                                  with the RipX script so you can click to select elements.
+                                  The preview loads your store page with the RipX script injected so
+                                  you can click to select elements. Add the script in App settings →
+                                  Installation for your live store.
                                 </Text>
                               </div>
                             );

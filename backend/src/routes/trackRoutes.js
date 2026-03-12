@@ -119,7 +119,10 @@ function getStorefrontScriptPath() {
 const SCRIPT_VERSION = '1';
 
 function buildRuntimeConfig(shop, tests, req) {
-  const appUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+  const appUrl = (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(
+    /\/+$/,
+    ''
+  );
 
   return {
     apiUrl: `${appUrl}/api`,
@@ -262,6 +265,9 @@ function isPrivateOrUnsafeHost(hostname) {
     return true;
   }
   const h = hostname.toLowerCase().trim();
+  if (h === '0.0.0.0' || h === '::1' || h === '::' || h === 'ip6-localhost') {
+    return true;
+  }
   const isDev = process.env.NODE_ENV !== 'production';
   if (h === 'localhost' || h.endsWith('.localhost') || h === '127.0.0.1') {
     return isDev ? false : true;
@@ -287,76 +293,6 @@ function isPrivateOrUnsafeHost(hostname) {
   }
   return false;
 }
-
-/**
- * GET /api/track/preview-test-page
- * Minimal test page for the visual editor: simple HTML + script loaded via URL (same as real domain).
- * Script is loaded from /api/track/script.js?site=preview-test (config + script in one response).
- */
-router.get(
-  '/preview-test-page',
-  asyncHandler((req, res) => {
-    const bodyContent = [
-      '<nav class="preview-test-nav">',
-      '  <a href="#home">Home</a>',
-      '  <a href="#about">About</a>',
-      '  <a href="#contact">Contact</a>',
-      '</nav>',
-      '<header class="preview-test-header">',
-      '  <h1 id="hero">RipX Visual Editor Test Page</h1>',
-      '  <p class="preview-test-lead">Click any element below to capture its selector in the editor. Script loads from a separate URL like on a real site.</p>',
-      '</header>',
-      '<main class="preview-test-main">',
-      '  <section class="preview-test-card" data-section="feature">',
-      '    <h2>Sample Section</h2>',
-      '    <p>This is a card. Click the heading, paragraph, or buttons to select them.</p>',
-      '    <div class="preview-test-actions">',
-      '      <button type="button" class="preview-test-btn preview-test-btn--primary">Primary action</button>',
-      '      <button type="button" class="preview-test-btn">Secondary</button>',
-      '    </div>',
-      '  </section>',
-      '  <section class="preview-test-card">',
-      '    <h2>Another Section</h2>',
-      '    <p>More content for testing element selection.</p>',
-      '  </section>',
-      '</main>',
-      '<footer class="preview-test-footer" data-id="footer">RipX preview test page</footer>',
-    ].join('\n');
-    const styles =
-      'body{font-family:system-ui,-apple-system,sans-serif;margin:0;padding:1.5rem;max-width:42rem;margin-left:auto;margin-right:auto;color:#1f2937;line-height:1.6;}' +
-      '.preview-test-nav{display:flex;gap:1rem;margin-bottom:1.5rem;padding-bottom:1rem;border-bottom:1px solid #e5e7eb;}' +
-      '.preview-test-nav a{color:#4f46e5;text-decoration:none;font-weight:500;}' +
-      '.preview-test-nav a:hover{text-decoration:underline;}' +
-      '.preview-test-header{margin-bottom:1.5rem;}' +
-      '.preview-test-header h1{font-size:1.5rem;font-weight:600;margin:0 0 0.5rem 0;color:#111827;}' +
-      '.preview-test-lead{margin:0;font-size:0.9375rem;color:#6b7280;}' +
-      '.preview-test-main{display:flex;flex-direction:column;gap:1rem;}' +
-      '.preview-test-card{padding:1.25rem;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;}' +
-      '.preview-test-card h2{font-size:1.125rem;font-weight:600;margin:0 0 0.5rem 0;color:#374151;}' +
-      '.preview-test-card p{margin:0 0 0.75rem 0;font-size:0.875rem;color:#4b5563;}' +
-      '.preview-test-actions{display:flex;gap:0.5rem;flex-wrap:wrap;}' +
-      '.preview-test-btn{padding:0.5rem 1rem;font-size:0.875rem;font-weight:500;border-radius:6px;cursor:pointer;border:1px solid #d1d5db;background:#fff;color:#374151;}' +
-      '.preview-test-btn:hover{background:#f3f4f6;}' +
-      '.preview-test-btn--primary{background:#4f46e5;color:#fff;border-color:#4f46e5;}' +
-      '.preview-test-btn--primary:hover{background:#4338ca;}' +
-      '.preview-test-footer{margin-top:2rem;padding-top:1rem;border-top:1px solid #e5e7eb;font-size:0.8125rem;color:#9ca3af;}';
-    const scriptUrl = '/api/track/script.js?site=preview-test';
-    const html =
-      '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-      '<title>RipX – Preview test page</title>' +
-      '<script src="' +
-      scriptUrl +
-      '"></script>' +
-      '<style>' +
-      styles +
-      '</style></head><body>' +
-      bodyContent +
-      '</body></html>';
-    res.set('Content-Type', 'text/html; charset=utf-8');
-    res.set('Cache-Control', 'no-store');
-    res.send(html);
-  })
-);
 
 /**
  * GET /api/track/preview-document
@@ -415,15 +351,44 @@ router.get(
         return;
       }
       let html = await fetchRes.text();
-      const origin = `${parsed.protocol}//${parsed.host}`;
-      const hostname = parsed.hostname || parsed.host;
+      const maxHtmlBytes = 5 * 1024 * 1024; // 5MB cap to avoid DoS from huge responses
+      if (Buffer.byteLength(html, 'utf8') > maxHtmlBytes) {
+        logger.warn('Preview document: response too large', {
+          url: rawUrl,
+          bytes: Buffer.byteLength(html, 'utf8'),
+        });
+        sendPreviewFallback(res);
+        return;
+      }
+      // Use final URL after redirects so base/origin match the actual response (e.g. http→https, non-www→www).
+      let origin = `${parsed.protocol}//${parsed.host}`;
+      let hostname = parsed.hostname || parsed.host || '';
+      if (fetchRes.url) {
+        try {
+          const finalUrl = new URL(fetchRes.url);
+          if (finalUrl.protocol === 'http:' || finalUrl.protocol === 'https:') {
+            const finalHost = finalUrl.hostname || hostname;
+            if (isPrivateOrUnsafeHost(finalHost)) {
+              logger.warn('Preview document: redirect to private or unsafe host', {
+                hostname: finalHost,
+              });
+              sendPreviewFallback(res);
+              return;
+            }
+            origin = finalUrl.origin;
+            hostname = finalHost;
+          }
+        } catch (_) {
+          /* keep initial origin/hostname */
+        }
+      }
       const appUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+      // Escape origin for safe use in replace (e.g. $ in host would break replacement).
+      const originForReplace = origin.replace(/\$/g, '$$');
 
-      // Base URL = page directory so relative paths (e.g. "theme.css") resolve correctly.
-      const pathDir = parsed.pathname.endsWith('/')
-        ? parsed.pathname
-        : (parsed.pathname.replace(/\/?[^/]*$/, '') || '/') + '/';
-      const baseHref = origin + pathDir;
+      // Base URL = store origin root so relative assets (theme.css, assets/...) load from store root.
+      // Escape for HTML attribute: & and " so base tag never breaks parsing.
+      const baseHref = (origin + '/').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
       const baseTag = `<base href="${baseHref}">`;
       const referrerMeta = '<meta name="referrer" content="no-referrer">'; // so store CDN doesn't block subresource requests from proxy origin
 
@@ -436,13 +401,13 @@ router.get(
       // Rewrite root-relative URLs (href="/... and src="/...) to absolute so resources load from the store.
       html = html.replace(
         /(\s(?:href|src)\s*=\s*["'])\/(?!\/)/g,
-        (_m, prefix) => prefix + origin + '/'
+        (_m, prefix) => prefix + originForReplace + '/'
       );
       // Normalize protocol-relative URLs (//cdn.shopify.com/...) to https so they load in any context.
       html = html.replace(/(\s(?:href|src)\s*=\s*["'])\/\//g, '$1https://');
 
       // Rewrite root-relative and protocol-relative url() in CSS (inline styles and <style> blocks).
-      html = html.replace(/url\s*\(\s*["']?\/(?!\/)/g, () => `url(${origin}/`);
+      html = html.replace(/url\s*\(\s*["']?\/(?!\/)/g, () => `url(${originForReplace}/`);
       html = html.replace(/url\s*\(\s*["']?\/\//g, () => 'url(https://');
 
       const runtimeConfig = {
@@ -450,6 +415,10 @@ router.get(
         shopDomain: hostname,
         activeTests: [],
         visualEditor: true, // preview-document is only used for visual editor iframe
+        previewTestId: req.query.ab_preview_test || null,
+        previewVariantId: req.query.ab_preview_variant || null,
+        previewVariantName: req.query.ab_preview_variant_name || null,
+        previewMode: req.query.ab_preview === '1' || !!req.query.ab_preview_test,
       };
       let scriptContent;
       try {
@@ -477,6 +446,11 @@ router.get(
       }
       res.set('Content-Type', 'text/html; charset=utf-8');
       res.set('Cache-Control', 'no-store');
+      // Permissive CSP for preview iframe so injected script and store CSS/JS/resources load; frame-ancestors limits embedding to same origin.
+      res.set(
+        'Content-Security-Policy',
+        "default-src 'self' https: http:; script-src 'unsafe-inline' 'unsafe-eval' 'self' https: http:; style-src 'unsafe-inline' 'self' https: http:; img-src 'self' data: https: http:; font-src 'self' https: http: data:; connect-src 'self' https: http:; frame-ancestors 'self'"
+      );
       res.send(html);
     } catch (err) {
       clearTimeout(timeoutId);

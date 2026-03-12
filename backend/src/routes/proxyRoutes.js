@@ -8,6 +8,7 @@ const express = require('express');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
+const querystring = require('querystring');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const { getActiveTestsForStorefront } = require('../models/test');
 const logger = require('../utils/logger');
@@ -21,7 +22,10 @@ function isValidShopDomain(shop) {
 const SCRIPT_VERSION = '1';
 
 function buildRuntimeConfig(shop, tests, req) {
-  const appUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+  const appUrl = (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(
+    /\/+$/,
+    ''
+  );
 
   return {
     apiUrl: `${appUrl}/api`,
@@ -68,6 +72,20 @@ function buildSignatureMessage(params) {
       return `${key}=${val}`;
     })
     .join('');
+}
+
+/**
+ * Get query params from the request URL (raw query string) so we use exactly what
+ * Shopify sent, including empty params. Express req.query can merge/alter in some setups.
+ */
+function getQueryFromRequest(req) {
+  const url = req.originalUrl || req.url || '';
+  const qIndex = url.indexOf('?');
+  if (qIndex === -1) {
+    return {};
+  }
+  const queryString = url.slice(qIndex + 1);
+  return querystring.parse(queryString);
 }
 
 function verifyAppProxySignature(query) {
@@ -128,16 +146,27 @@ async function serveScript(req, res) {
       });
     }
     logger.warn('App proxy signature missing (dev only)', { shop });
-  } else if (!skipVerify && !verifyAppProxySignature(req.query)) {
-    logger.warn('App proxy signature verification failed', {
-      shop,
-      hint: 'Set SHOPIFY_API_SECRET on this server to the exact Client secret from Partner Dashboard → your app → Client credentials (same app that has the App Proxy).',
-    });
-    return res.status(401).set('Content-Type', 'application/json').json({
-      success: false,
-      error: 'Unauthorized',
-      hint: 'Signature invalid. Set SHOPIFY_API_SECRET on this server to the exact Client secret from Partner Dashboard → your app → Client credentials (same app that has the App Proxy). No extra spaces.',
-    });
+  } else if (!skipVerify) {
+    const queryFromRaw = getQueryFromRequest(req);
+    let verified = verifyAppProxySignature(queryFromRaw);
+    if (!verified && Object.keys(req.query).length > 0) {
+      verified = verifyAppProxySignature(req.query);
+    }
+    if (!verified) {
+      const paramKeys = Object.keys(queryFromRaw)
+        .filter(k => k !== 'signature')
+        .sort();
+      logger.warn('App proxy signature verification failed', {
+        shop,
+        paramKeys,
+        hint: 'Use Client secret from the same app that has the App Proxy. See docs/APP_PROXY_SIGNATURE_RESEARCH.md.',
+      });
+      return res.status(401).set('Content-Type', 'application/json').json({
+        success: false,
+        error: 'Unauthorized',
+        hint: 'Signature invalid. Set SHOPIFY_API_SECRET to the Client secret of the app that has the App Proxy (Partner Dashboard → app → Client credentials). SHOPIFY_API_KEY must match that app’s Client ID.',
+      });
+    }
   }
 
   const tests = await getActiveTestsForStorefront(shop);
@@ -160,7 +189,8 @@ async function serveScript(req, res) {
   const version = req.query.v;
   const cacheSeconds = version ? 31536000 : 300;
 
-  res.set('Content-Type', 'application/javascript');
+  res.set('Content-Type', 'application/javascript; charset=utf-8');
+  res.set('X-Content-Type-Options', 'nosniff');
   res.set('Cache-Control', `public, max-age=${cacheSeconds}`);
   res.send(`window.AB_TEST_RUNTIME_CONFIG=${JSON.stringify(runtimeConfig)};\n${scriptContents}`);
 }

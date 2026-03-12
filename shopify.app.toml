@@ -21,10 +21,17 @@ api_version = "2026-01"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-# Same as app release + read_collections (required for product/collection targeting)
-scopes = "read_online_store_pages,read_orders,read_products,write_products,read_collections"
+scopes = "read_online_store_pages,read_orders,read_products,write_products,read_content"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 
 [auth]
 redirect_urls = [ "https://splitter.echologyx.com/api/auth/callback" ]
+
+[app_proxy]
+url = "https://splitter.echologyx.com/api/proxy/script.js"
+subpath = "ripx"
+prefix = "apps"
+
+[pos]
+embedded = true

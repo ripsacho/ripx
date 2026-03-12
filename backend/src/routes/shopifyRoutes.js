@@ -127,6 +127,22 @@ router.get(
     let emptyReason = null; // Set when list is empty due to scope/API error so frontend can show it
     const handleListError = (err, resourceLabel) => {
       const msg = (err && err.message) || String(err);
+      const statusCode = err.response?.status ?? err.networkStatusCode ?? null;
+      const isUnauthorized =
+        statusCode === 401 || /401|unauthorized|invalid.*token|token.*invalid/i.test(msg);
+      if (isUnauthorized) {
+        logger.warn(
+          'Store resources list failed: Shopify returned 401 (expired or invalid token).',
+          {
+            shopDomain,
+            resourceLabel,
+            error: msg,
+          }
+        );
+        emptyReason =
+          'Your store session has expired or the app was reinstalled. Open this app again from Shopify Admin (Apps → your app), or reinstall the app to reconnect and refresh the list.';
+        return [];
+      }
       const isAccessDenied =
         /access denied|scope|permission|403/i.test(msg) ||
         (err.response && err.response.status === 403);
