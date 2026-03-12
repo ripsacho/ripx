@@ -1109,11 +1109,11 @@ function TestWizard({
   };
 
   const parseVariantCode = code => {
-    if (!code) {
-      return { css: '', js: '' };
-    }
-    const cssMatch = code.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
-    const jsMatch = code.match(/<script[^>]*>([\s\S]*?)<\/script>/i);
+    if (code === undefined || code === null) return { css: '', js: '' };
+    const str = typeof code === 'string' ? code : String(code);
+    if (!str.trim()) return { css: '', js: '' };
+    const cssMatch = str.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+    const jsMatch = str.match(/<script[^>]*>([\s\S]*?)<\/script>/i);
     return {
       css: cssMatch ? cssMatch[1].trim() : '',
       js: jsMatch ? jsMatch[1].trim() : '',
@@ -1121,14 +1121,12 @@ function TestWizard({
   };
 
   const buildCombinedCode = codeData => {
-    if (!codeData) return '';
+    if (!codeData || typeof codeData !== 'object') return '';
+    const css = typeof codeData.css === 'string' ? codeData.css : '';
+    const js = typeof codeData.js === 'string' ? codeData.js : '';
     let combinedCode = '';
-    if (codeData.css && codeData.css.trim()) {
-      combinedCode += `<style>\n${codeData.css}\n</style>\n`;
-    }
-    if (codeData.js && codeData.js.trim()) {
-      combinedCode += `<script>\n${codeData.js}\n</script>`;
-    }
+    if (css.trim()) combinedCode += `<style>\n${css}\n</style>\n`;
+    if (js.trim()) combinedCode += `<script>\n${js}\n</script>`;
     return combinedCode.trim();
   };
 
@@ -1149,13 +1147,26 @@ function TestWizard({
   // changes (length or items). Do NOT depend on selectedVariantIndex — otherwise switching tabs
   // would re-run this and overwrite in-progress edits in variantCodesData with stale state.
   // When the server provides code (sourceCode), always use it so reload shows saved code.
+  // In edit mode, fall back to initialData.variants and use its length so we never show fewer variants than the server has.
   useEffect(() => {
     setVariantCodesData(prev => {
-      const updated = (formData.variants || []).map((variant, index) => {
+      const formVariants = formData.variants || [];
+      const serverVariants =
+        mode === 'edit' && Array.isArray(initialData?.variants) ? initialData.variants : [];
+      const len = Math.max(formVariants.length, serverVariants.length);
+      const updated = Array.from({ length: len }, (_, index) => {
+        const variant = formVariants[index] ?? serverVariants[index];
+        if (!variant) return { name: `Variant ${index + 1}`, css: '', js: '', code: '' };
         const existing = prev[index] || prev.find(item => item?.name === variant.name);
-        const sourceCode = variant?.code ?? variant?.config?.code ?? '';
+        const fromForm = variant?.code ?? variant?.config?.code ?? '';
+        const fromServer = serverVariants[index]
+          ? (serverVariants[index].code ?? serverVariants[index].config?.code ?? '')
+          : '';
+        const sourceCode =
+          (fromForm && String(fromForm).trim()) || (fromServer && String(fromServer).trim())
+            ? fromForm || fromServer
+            : '';
 
-        // Server has code: always hydrate from it so page reload shows persisted code
         if (sourceCode && String(sourceCode).trim()) {
           const parsed = parseVariantCode(sourceCode);
           return {
@@ -1166,15 +1177,9 @@ function TestWizard({
             code: sourceCode,
           };
         }
-
-        // No server code: preserve existing edits if any
         if (existing && (existing.css?.trim() || existing.js?.trim())) {
-          return {
-            ...existing,
-            name: variant.name,
-          };
+          return { ...existing, name: variant.name };
         }
-
         const parsed = parseVariantCode('');
         return {
           ...(existing || {}),
@@ -1189,10 +1194,9 @@ function TestWizard({
       if (updated.length > 0 && currentSelected >= updated.length) {
         setSelectedVariantIndex(0);
       }
-
       return updated;
     });
-  }, [formData.variants]);
+  }, [formData.variants, mode, initialData?.variants]);
 
   // Direct hydration from server: when initialData changes (load or after save), push variant code
   // into variantCodesData so reload or cache update always shows persisted code.
@@ -1493,6 +1497,13 @@ function TestWizard({
   useEffect(() => {
     if (mode !== 'edit') return;
     if (!isInitialized || !lastSavedSnapshotRef.current) return;
+    if (currentStep === stepIds.code) {
+      if (autosaveTimeoutRef.current) {
+        clearTimeout(autosaveTimeoutRef.current);
+        autosaveTimeoutRef.current = null;
+      }
+      return;
+    }
     if (!isDirty) {
       if (autosaveTimeoutRef.current) {
         clearTimeout(autosaveTimeoutRef.current);
@@ -1509,10 +1520,16 @@ function TestWizard({
     if (autosaveTimeoutRef.current) {
       clearTimeout(autosaveTimeoutRef.current);
     }
-    const autosaveDelay = currentStep === stepIds.code ? 2500 : 1200;
+    const autosaveDelay = 1200;
     autosaveTimeoutRef.current = setTimeout(() => {
       handleSubmit({ silent: true });
     }, autosaveDelay);
+    return () => {
+      if (autosaveTimeoutRef.current) {
+        clearTimeout(autosaveTimeoutRef.current);
+        autosaveTimeoutRef.current = null;
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- handleSubmit/isInitialized would cause autosave loop
   }, [
     isDirty,
@@ -1542,26 +1559,19 @@ function TestWizard({
     setCodeEditorDirty(true);
     setVariantCodesData(prev => {
       const updated = [...prev];
-      if (updated[index] !== undefined) {
-        updated[index] = {
-          ...updated[index],
-          [type]: value,
-        };
-      }
+      const current = updated[index] ?? { name: `Variant ${index + 1}`, css: '', js: '', code: '' };
+      const next = { ...current, [type]: value };
+      next.code = buildCombinedCode(next);
+      updated[index] = next;
       return updated;
     });
 
     if (validationTimeoutRef.current) {
       clearTimeout(validationTimeoutRef.current);
     }
-
     validationTimeoutRef.current = setTimeout(() => {
-      if (type === 'css') {
-        setCssValidationErrors(validateCSS(value));
-      }
-      if (type === 'js') {
-        setJsValidationErrors(validateJS(value));
-      }
+      if (type === 'css') setCssValidationErrors(validateCSS(value));
+      if (type === 'js') setJsValidationErrors(validateJS(value));
     }, 300);
   };
 

@@ -58,7 +58,9 @@ async function archiveOldTests() {
 }
 
 if (archiveQueue) {
-  archiveQueue.process(async () => archiveOldTests());
+  archiveQueue.process(async () => {
+    await archiveOldTests();
+  });
   // Schedule daily archive (runs archive + webhook_events cleanup)
   archiveQueue.add({}, { repeat: { cron: '0 3 * * *' } }); // 3am daily
 }

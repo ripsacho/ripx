@@ -360,7 +360,10 @@ app.use((req, res, next) => {
   if (skipBodyParse(req)) {
     return next();
   }
-  return bodyParser.urlencoded({ extended: true })(req, res, next);
+  return bodyParser.urlencoded({
+    extended: true,
+    limit: process.env.BODY_LIMIT || '1mb',
+  })(req, res, next);
 });
 app.use(cookieParser());
 
@@ -706,9 +709,10 @@ if (require.main === module) {
     server.close(() => {
       logger.info('HTTP server closed');
       const closeRedis = healthRedisClient
-        ? healthRedisClient
-            .quit()
-            .catch(err => logger.warn('Health Redis close', { err: err?.message }))
+        ? healthRedisClient.quit().catch(err => {
+            logger.warn('Health Redis close', { err: err?.message });
+            return Promise.resolve();
+          })
         : Promise.resolve();
       closeRedis.then(() => {
         const { closeDatabase } = require('./utils/database');
