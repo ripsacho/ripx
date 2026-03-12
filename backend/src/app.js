@@ -427,8 +427,13 @@ const authLimiter = rateLimit({
   message: { success: false, error: 'Too many auth attempts, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
-  // Don't count GET /api/auth/install (install page + redirect to Shopify); uses signed token, not a login attempt
-  skip: req => req.method === 'GET' && req.path === '/install',
+  // Don't count GET /api/auth/install (install page + redirect to Shopify); uses signed token, not a login attempt.
+  // req.path may be full path (/api/auth/install) or relative to mount (/install) depending on Express version.
+  skip: req =>
+    req.method === 'GET' &&
+    (req.path === '/install' ||
+      req.path === '/api/auth/install' ||
+      (req.originalUrl && req.originalUrl.includes('/auth/install'))),
 });
 app.use('/api/auth', authLimiter);
 

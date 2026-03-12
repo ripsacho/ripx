@@ -532,6 +532,7 @@ function TestWizard({
         variants: (initialData.variants || DEFAULT_FORM_DATA.variants).map((variant, vIdx) => {
           const config =
             variant.config && typeof variant.config === 'object' ? { ...variant.config } : {};
+          const serverCode = variant?.code ?? variant?.config?.code ?? config?.code ?? '';
           const veRules = Array.isArray(config.visual_editor_rules)
             ? Array.from(
                 { length: 5 },
@@ -570,7 +571,8 @@ function TestWizard({
           return {
             ...variant,
             allocation: variant.allocation ?? 0,
-            config: { ...config, visual_editor_rules: veRules },
+            code: serverCode,
+            config: { ...config, code: serverCode, visual_editor_rules: veRules },
           };
         }),
         segments: (() => {
@@ -625,11 +627,16 @@ function TestWizard({
     if (variantCountMismatch && serverVariants.length > 0) {
       setFormData(prev => ({
         ...prev,
-        variants: serverVariants.map(v => ({
-          ...v,
-          allocation: v.allocation ?? 0,
-          config: v.config && typeof v.config === 'object' ? { ...v.config } : {},
-        })),
+        variants: serverVariants.map(v => {
+          const serverCode = v?.code ?? v?.config?.code ?? '';
+          const config = v?.config && typeof v.config === 'object' ? { ...v.config } : {};
+          return {
+            ...v,
+            allocation: v.allocation ?? 0,
+            code: serverCode,
+            config: { ...config, code: serverCode },
+          };
+        }),
       }));
       return;
     }
@@ -798,16 +805,17 @@ function TestWizard({
 
   const buildCodePayload = (data = formData, codes = variantCodesData) => {
     const variants = data.variants || [];
+    const codesList = Array.isArray(codes) ? codes : [];
     return {
       variants: variants.map((variant, index) => {
-        const codeData = codes[index] ?? codes.find(item => item?.name === variant.name);
+        const codeData = codesList[index] ?? codesList.find(item => item?.name === variant.name);
         const code = codeData
           ? buildCombinedCode(codeData)
           : (variant?.code ?? variant?.config?.code ?? '');
         return {
-          id: variant.id,
-          name: variant.name || variant.config?.name || `Variant ${index + 1}`,
-          code: code || '',
+          id: variant.id || null,
+          name: (variant.name || variant.config?.name || `Variant ${index + 1}`).trim(),
+          code: code !== undefined && code !== null ? String(code) : '',
         };
       }),
     };
@@ -1140,30 +1148,18 @@ function TestWizard({
   // Sync variant codes from formData.variants into variantCodesData. Only run when variants list
   // changes (length or items). Do NOT depend on selectedVariantIndex — otherwise switching tabs
   // would re-run this and overwrite in-progress edits in variantCodesData with stale state.
+  // When the server provides code (sourceCode), always use it so reload shows saved code.
   useEffect(() => {
     setVariantCodesData(prev => {
       const updated = (formData.variants || []).map((variant, index) => {
         const existing = prev[index] || prev.find(item => item?.name === variant.name);
-        const sourceCode = variant?.code || variant?.config?.code || '';
-        const shouldHydrate = !!sourceCode && (!existing || (!existing.css && !existing.js));
+        const sourceCode = variant?.code ?? variant?.config?.code ?? '';
 
-        if (existing && !shouldHydrate && existing.code === sourceCode) {
-          return {
-            ...existing,
-            name: variant.name,
-          };
-        }
-
-        if (
-          existing &&
-          !shouldHydrate &&
-          existing.code &&
-          sourceCode &&
-          existing.code !== sourceCode
-        ) {
+        // Server has code: always hydrate from it so page reload shows persisted code
+        if (sourceCode && String(sourceCode).trim()) {
           const parsed = parseVariantCode(sourceCode);
           return {
-            ...existing,
+            ...(existing || {}),
             name: variant.name,
             css: parsed.css,
             js: parsed.js,
@@ -1171,21 +1167,21 @@ function TestWizard({
           };
         }
 
-        // Preserve user-entered code when source (formData) is empty but we have existing edits
-        if (existing && !sourceCode && (existing.css?.trim() || existing.js?.trim())) {
+        // No server code: preserve existing edits if any
+        if (existing && (existing.css?.trim() || existing.js?.trim())) {
           return {
             ...existing,
             name: variant.name,
           };
         }
 
-        const parsed = parseVariantCode(sourceCode);
+        const parsed = parseVariantCode('');
         return {
           ...(existing || {}),
           name: variant.name,
           css: parsed.css,
           js: parsed.js,
-          code: sourceCode,
+          code: '',
         };
       });
 
@@ -1197,6 +1193,41 @@ function TestWizard({
       return updated;
     });
   }, [formData.variants]);
+
+  // Direct hydration from server: when initialData changes (load or after save), push variant code
+  // into variantCodesData so reload or cache update always shows persisted code.
+  const lastServerCodesRef = useRef(null);
+  useEffect(() => {
+    if (mode !== 'edit' || !initialData?.id || !Array.isArray(initialData.variants)) return;
+    if (isDirty && previousTestIdRef.current === initialData.id) return;
+    const serverCodesFingerprint = `${initialData.id}-${initialData.updated_at ?? ''}-${(
+      initialData.variants || []
+    )
+      .map(v => `${v?.id ?? ''}|${v?.name ?? ''}|${(v?.code ?? v?.config?.code ?? '').length}`)
+      .join(';')}`;
+    if (lastServerCodesRef.current === serverCodesFingerprint) return;
+    lastServerCodesRef.current = serverCodesFingerprint;
+
+    const fromServer = (initialData.variants || []).map(variant => {
+      const sourceCode = variant?.code ?? variant?.config?.code ?? '';
+      if (sourceCode && String(sourceCode).trim()) {
+        const parsed = parseVariantCode(sourceCode);
+        return {
+          name: variant.name,
+          css: parsed.css,
+          js: parsed.js,
+          code: sourceCode,
+        };
+      }
+      return {
+        name: variant.name,
+        css: '',
+        js: '',
+        code: '',
+      };
+    });
+    setVariantCodesData(fromServer);
+  }, [mode, initialData?.id, initialData?.variants]);
 
   useEffect(() => {
     if (hasVariantSelectionRef.current || variantCodesData.length === 0) {

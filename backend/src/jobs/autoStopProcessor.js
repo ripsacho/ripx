@@ -56,10 +56,34 @@ async function processAutoStop() {
             stopped_at: new Date(),
           });
 
-          const winnerIndex = winner === 'variantB' ? 1 : 0;
+          // Resolve winner variant: 2-variant uses 'variantA'/'variantB'; 3+ uses 'best' + winnerVariantId
+          const sig = analytics.significance;
+          let winnerIndex = 0;
+          if (winner === 'variantB' && analytics.variants.length >= 2) {
+            winnerIndex = 1;
+          } else if (winner === 'variantA') {
+            winnerIndex = 0;
+          } else if (
+            winner === 'best' &&
+            ((sig.winnerVariantId !== undefined && sig.winnerVariantId !== null) ||
+              (sig.bestVariantId !== undefined && sig.bestVariantId !== null))
+          ) {
+            const winnerId = sig.winnerVariantId ?? sig.bestVariantId;
+            const idx = analytics.variants.findIndex(
+              v =>
+                String(v.id) === String(winnerId) ||
+                (v.id !== null && v.id !== undefined && v.id === winnerId)
+            );
+            if (idx >= 0) {
+              winnerIndex = idx;
+            }
+          }
           const winnerVariant = analytics.variants[winnerIndex];
           const winnerName =
-            winnerVariant?.name || (winner === 'variantB' ? 'Variant B' : 'Control');
+            winnerVariant?.name ||
+            (winnerIndex === 1 && analytics.variants.length === 2
+              ? 'Variant B'
+              : `Variant ${winnerIndex + 1}`);
 
           await notificationService.createInAppNotification(test.shop_domain, {
             type: 'test_complete',
