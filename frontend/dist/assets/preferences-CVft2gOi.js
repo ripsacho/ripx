@@ -1,1 +1,0 @@
-import{S as t}from"./index-ZV5XogD4.js";function r(){try{const r=localStorage.getItem(t.PREFERENCES);return r?JSON.parse(r):{}}catch{return{}}}function a(){return r().defaultAnalyticsDateRange||"30"}function e(){return r().defaultExportFormat||"csv"}export{e as a,a as g};
