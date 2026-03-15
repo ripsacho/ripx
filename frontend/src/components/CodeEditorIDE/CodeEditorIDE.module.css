@@ -1,0 +1,209 @@
+/* Code editor — VS Code Dark+–style syntax colors on a readable dark surface */
+
+.wrap {
+  display: flex;
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-secondary, #e1e5e9);
+  background: #1e1e1e;
+  position: relative;
+}
+
+.lineNumbers {
+  flex-shrink: 0;
+  width: 48px;
+  padding: 12px 8px 12px 12px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  text-align: right;
+  user-select: none;
+  background: #181818;
+  color: #858585;
+  font-family: "SF Mono", "Monaco", "Inconsolata", "Roboto Mono", "Courier New", monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  border-right: 1px solid #3c3c3c;
+}
+
+.lineNum {
+  min-height: 1.6em;
+}
+
+.editorScroll {
+  flex: 1;
+  overflow: auto;
+  min-width: 0;
+  background: #1e1e1e;
+}
+
+.editor {
+  min-height: 100%;
+  background: #1e1e1e;
+}
+
+/* Textarea sits on top of <pre>; must stay transparent so highlighted code shows through (library uses transparent text fill). */
+.editor :global(textarea) {
+  outline: none;
+  background: transparent !important;
+  caret-color: #d4d4d4;
+}
+
+.pre {
+  margin: 0;
+  background: #1e1e1e !important;
+  color: #d4d4d4 !important;
+}
+
+/* --- JavaScript / shared: IDE-like roles --- */
+
+/* Comments */
+.wrap :global(.token.comment),
+.wrap :global(.token.block-comment),
+.wrap :global(.token.prolog),
+.wrap :global(.token.doctype),
+.wrap :global(.token.cdata) {
+  color: #6a9955 !important;
+  font-style: italic;
+}
+
+/* Keywords: if, const, return, import… */
+.wrap :global(.token.keyword),
+.wrap :global(.token.builtin),
+.wrap :global(.token.important) {
+  color: #c586c0 !important;
+}
+
+/* Variables / identifiers (post-processed) + parameters feel */
+.wrap :global(.token.identifier) {
+  color: #9cdcfe !important;
+}
+
+/* String literals (values in quotes) */
+.wrap :global(.token.string),
+.wrap :global(.token.char),
+.wrap :global(.token.attr-value) {
+  color: #ce9178 !important;
+}
+
+/* Numbers, booleans as literal values */
+.wrap :global(.token.number),
+.wrap :global(.token.boolean) {
+  color: #b5cea8 !important;
+}
+
+/* Function names (calls) */
+.wrap :global(.token.function),
+.wrap :global(.token.function-name) {
+  color: #dcdcaa !important;
+}
+
+/* Types / classes after new, class, extends */
+.wrap :global(.token.class-name) {
+  color: #4ec9b0 !important;
+}
+
+/* Operators: +, ===, => */
+.wrap :global(.token.operator) {
+  color: #d4d4d4 !important;
+}
+
+/* Brackets, commas, semicolons */
+.wrap :global(.token.punctuation) {
+  color: #d4d4d4 !important;
+}
+
+/* Regex literals */
+.wrap :global(.token.regex) {
+  color: #d16969 !important;
+}
+.wrap :global(.token.regex-delimiter),
+.wrap :global(.token.regex-flags) {
+  color: #ce9178 !important;
+}
+.wrap :global(.token.regex-source) {
+  color: #d16969 !important;
+}
+
+/* this, module meta */
+.wrap :global(.token.constant),
+.wrap :global(.token.symbol) {
+  color: #569cd6 !important;
+}
+
+.wrap :global(.token.variable) {
+  color: #9cdcfe !important;
+}
+
+/* --- CSS-specific --- */
+
+/* Selectors: .foo, #bar, div */
+.wrap :global(.token.selector) {
+  color: #d7ba7d !important;
+}
+
+/* @media, @import */
+.wrap :global(.token.atrule) {
+  color: #c586c0 !important;
+}
+.wrap :global(.token.atrule) :global(.token.rule) {
+  color: #c586c0 !important;
+}
+
+/* CSS properties: color, display */
+.wrap :global(.token.property) {
+  color: #92c5f8 !important;
+}
+
+/* url(), calc() */
+.wrap :global(.token.url),
+.wrap :global(.token.function) {
+  color: #dcdcaa !important;
+}
+
+/* !important */
+.wrap :global(.token.important) {
+  color: #569cd6 !important;
+  font-weight: 600;
+}
+
+/* HTML-ish in CSS strings */
+.wrap :global(.token.tag),
+.wrap :global(.token.namespace),
+.wrap :global(.token.deleted) {
+  color: #569cd6 !important;
+}
+
+.wrap :global(.token.attr-name) {
+  color: #92c5f8 !important;
+}
+
+.wrap :global(.token.entity) {
+  color: #67cdcc !important;
+}
+
+.wrap :global(.token.inserted) {
+  color: #6a9955 !important;
+}
+
+.error {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 6px 12px;
+  font-size: 0.8125rem;
+  color: var(--status-error, #d72c0d);
+  background: rgba(215, 44, 13, 0.1);
+  border-top: 1px solid rgba(215, 44, 13, 0.3);
+}
+
+[data-theme="dark"] .wrap {
+  border-color: #454548;
+}
+
+[data-theme="dark"] .lineNumbers {
+  background: #181818;
+  border-right-color: #454548;
+  color: #858585;
+}

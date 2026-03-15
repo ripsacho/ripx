@@ -192,6 +192,11 @@ body {
   line-height: 1.6;
 }
 
+/* Support page: prevent horizontal scroll only; vertical scroll is the window */
+body:has([data-support-page="true"]) {
+  overflow-x: hidden;
+}
+
 /* Enhanced Typography */
 h1, h2, h3, h4, h5, h6 {
   font-weight: 600;
@@ -356,10 +361,11 @@ textarea:focus-visible {
   min-height: 100vh;
 }
 
-/* Documentation - no padding, full bleed so Documentation page controls its own layout */
+/* Documentation - no padding, full bleed; overflow visible so sticky sidebar works (viewport scroll) */
 .main-content-wrapper--docs {
   padding: 0 !important;
   min-height: 100vh;
+  overflow: visible;
 }
 
 /* User panel and My domains use same app shell (sidebar + topbar); content uses standard app padding */
@@ -376,10 +382,30 @@ textarea:focus-visible {
 /* Constrain width and center content on universal pages for readability */
 .main-content-wrapper--universal .profilePage,
 .main-content-wrapper--universal .settingsPage,
-.main-content-wrapper--universal .notificationsPage {
+.main-content-wrapper--universal .notificationsPage,
+.main-content-wrapper--universal .supportPage {
   max-width: 1000px;
   margin-left: auto;
   margin-right: auto;
+}
+
+/* Support page: no inner scroll — only the window scrolls; force layout/main to not show scrollbar */
+.layout-content--support {
+  overflow-x: hidden !important;
+  overflow-y: visible !important;
+  max-width: 100%;
+}
+
+.layout-content--support > main {
+  overflow-y: visible !important;
+  overflow-x: hidden !important;
+}
+
+.main-content-wrapper--universal:has(.supportPage) {
+  min-height: auto;
+  overflow-x: hidden !important;
+  overflow-y: visible !important;
+  max-width: 100%;
 }
 
 .main-content-wrapper--auth .Polaris-Page,
@@ -5930,7 +5956,134 @@ body > .Polaris-Tabs:not(:first-of-type),
   margin-bottom: var(--spacing-md);
 }
 
-/* Config step: Visual / Code editor tabs and panels */
+/* Config step: Visual / Code editor accordion (default closed) */
+.config-editor-accordion {
+  margin-top: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.config-editor-accordion-item {
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg-secondary);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.config-editor-accordion-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: none;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+  text-align: left;
+}
+
+.config-editor-accordion-head:hover {
+  background: var(--bg-hover);
+  color: var(--accent-primary, #06b6d4);
+}
+
+.config-editor-accordion-head:focus-visible {
+  outline: 2px solid var(--accent-primary, #06b6d4);
+  outline-offset: 2px;
+}
+
+.config-editor-accordion-head-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  background: rgba(6, 182, 212, 0.12);
+  color: var(--accent-primary, #06b6d4);
+}
+
+.config-editor-accordion-head-icon--visual {
+  background: rgba(6, 182, 212, 0.12);
+  color: var(--accent-primary, #06b6d4);
+}
+
+.config-editor-accordion-head-icon--code {
+  background: rgba(139, 92, 246, 0.12);
+  color: #8b5cf6;
+}
+
+.config-editor-accordion-head-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.config-editor-accordion-head-dirty {
+  color: var(--accent-primary, #06b6d4);
+  font-size: 1.25rem;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.config-editor-accordion-head-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  transition: transform 0.2s ease;
+}
+
+.config-editor-accordion-body {
+  border-top: 1px solid var(--border-secondary);
+  background: var(--bg-primary);
+  padding: 1rem;
+}
+
+.config-editor-accordion-body.config-editor-panel--visual,
+.config-editor-accordion-body.config-editor-panel--code {
+  min-height: 200px;
+}
+
+/* Accordion body is visible when Collapsible is open; don’t apply tab-panel hidden state */
+.config-editor-accordion-body.config-editor-panel {
+  position: relative;
+  inset: auto;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: none;
+}
+
+[data-theme="dark"] .config-editor-accordion-item {
+  background: var(--bg-secondary);
+  border-color: var(--border-primary);
+}
+
+[data-theme="dark"] .config-editor-accordion-head {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .config-editor-accordion-head:hover {
+  background: var(--bg-hover);
+  color: var(--accent-primary);
+}
+
+[data-theme="dark"] .config-editor-accordion-body {
+  background: var(--bg-primary);
+  border-top-color: var(--border-primary);
+}
+
+/* Config step: Visual / Code editor tabs (legacy) and panels */
 .config-editor-tabs-wrap {
   margin-top: var(--spacing-md);
   margin-bottom: var(--spacing-md);
@@ -7334,6 +7487,465 @@ body > .Polaris-Tabs:not(:first-of-type),
   flex-shrink: 0;
 }
 
+/* Variant code unified: variant tabs + editor card in one IDE-style block */
+.variant-code-unified {
+  margin-top: var(--spacing-md);
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.variant-code-variant-tab-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 8px 10px 0;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-primary);
+  min-height: 44px;
+  flex-wrap: wrap;
+}
+
+.variant-code-variant-tabs-list {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.variant-code-variant-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.variant-code-variant-tab:hover {
+  color: var(--variant-color, var(--accent-primary));
+  background: rgba(6, 182, 212, 0.06);
+}
+
+.variant-code-variant-tab:focus-visible {
+  outline: 2px solid var(--accent-primary, #06b6d4);
+  outline-offset: 2px;
+}
+
+.variant-code-variant-tab--active {
+  background: var(--bg-secondary);
+  color: var(--variant-color, var(--accent-primary));
+  border-color: var(--border-primary);
+  border-bottom: 1px solid var(--bg-secondary);
+  margin-bottom: -1px;
+  box-shadow: 0 -2px 0 0 var(--variant-color, var(--accent-primary));
+}
+
+.variant-code-variant-tab--active:hover {
+  background: var(--bg-secondary);
+  color: var(--variant-color, var(--accent-primary));
+}
+
+.variant-code-variant-tab-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.variant-code-variant-tab--active .variant-code-variant-tab-dot {
+  box-shadow: 0 0 0 2px var(--bg-secondary), 0 0 6px var(--variant-color, var(--accent-primary));
+}
+
+.variant-code-variant-tab-label {
+  white-space: nowrap;
+}
+
+.variant-code-variant-tab-badge {
+  margin-left: 0.25rem;
+}
+
+.variant-code-variant-tab-badge .Polaris-Badge {
+  font-size: 0.6875rem;
+  padding: 0.125rem 0.375rem;
+}
+
+.variant-code-variant-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+  flex-shrink: 0;
+}
+
+.variant-code-variant-nav button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  transition: all 0.2s ease;
+}
+
+.variant-code-variant-nav button:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--accent-primary);
+}
+
+.variant-code-variant-nav button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Card inside unified: no top radius so it blends with variant tab */
+.variant-code-unified .variant-code-editor-card {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.variant-code-unified .variant-code-editor-card .Polaris-Card {
+  border-radius: 0;
+  border-left-width: 4px;
+}
+
+/* Variant code pane: dropdown + collapsible sections (no nested tabs) */
+.variant-code-pane {
+  margin-top: var(--spacing-md);
+  width: 100%;
+}
+
+.variant-code-toolbar {
+  margin-bottom: 1rem;
+}
+
+.variant-code-toolbar-variant {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.variant-code-toolbar-variant .Polaris-Select {
+  min-width: 180px;
+  max-width: 280px;
+}
+
+/* Custom variant dropdown – advanced look */
+.variant-code-dropdown {
+  position: relative;
+  min-width: 200px;
+  max-width: 300px;
+}
+
+.variant-code-dropdown-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  width: 100%;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  text-align: left;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.variant-code-dropdown-trigger:hover {
+  border-color: var(--accent-primary, #06b6d4);
+  background: var(--bg-hover);
+  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.12);
+}
+
+.variant-code-dropdown-trigger:focus-visible {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.2);
+}
+
+.variant-code-dropdown-trigger-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.variant-code-dropdown-trigger-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.variant-code-dropdown-trigger-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.variant-code-dropdown-trigger[aria-expanded="true"] .variant-code-dropdown-trigger-chevron {
+  transform: rotate(180deg);
+}
+
+.variant-code-dropdown-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  min-width: 100%;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 0.375rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.08);
+  z-index: 100;
+  animation: variant-code-dropdown-open 0.2s ease;
+}
+
+@keyframes variant-code-dropdown-open {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.variant-code-dropdown-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  text-align: left;
+}
+
+.variant-code-dropdown-option:hover {
+  background: var(--bg-hover);
+}
+
+.variant-code-dropdown-option--selected {
+  background: rgba(6, 182, 212, 0.1);
+  color: var(--accent-primary, #06b6d4);
+}
+
+.variant-code-dropdown-option--selected:hover {
+  background: rgba(6, 182, 212, 0.14);
+}
+
+.variant-code-dropdown-option-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.variant-code-dropdown-option--selected .variant-code-dropdown-option-dot {
+  box-shadow: 0 0 0 2px var(--bg-secondary), 0 0 6px var(--option-color, var(--accent-primary));
+}
+
+.variant-code-dropdown-option-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.variant-code-dropdown-option .Polaris-Badge {
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  padding: 0.125rem 0.375rem;
+}
+
+.variant-code-dropdown-option-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-primary, #06b6d4);
+  flex-shrink: 0;
+}
+
+.variant-code-toolbar-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.variant-code-toolbar-nav .Polaris-Button {
+  min-width: 32px;
+  padding: 0.25rem;
+  color: var(--text-secondary);
+}
+
+.variant-code-toolbar-nav .Polaris-Button:hover:not(:disabled) {
+  color: var(--accent-primary);
+}
+
+.variant-code-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  flex-wrap: wrap;
+  padding: 0.625rem 1rem;
+  margin: 0 -1rem 0.75rem -1rem;
+  border-radius: 8px;
+  border-bottom: none;
+  background: var(--variant-color-light-strong, rgba(6, 182, 212, 0.12));
+  border-left: 3px solid var(--variant-color, var(--accent-primary));
+}
+
+.variant-code-summary-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.variant-code-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.variant-code-section-block {
+  border: 1px solid var(--border-secondary);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg-primary);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.variant-code-section-block:focus-within {
+  border-color: var(--accent-primary, #06b6d4);
+  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.12);
+}
+
+.variant-code-section-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  width: 100%;
+  padding: 0.625rem 1rem;
+  border: none;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+  text-align: left;
+}
+
+.variant-code-section-head:hover {
+  background: var(--bg-hover);
+}
+
+.variant-code-section-head:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.variant-code-section-head-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.variant-code-section-head-icon--css {
+  background: rgba(38, 77, 228, 0.1);
+  color: #2645e4;
+}
+
+.variant-code-section-head-icon--js {
+  background: rgba(247, 223, 30, 0.15);
+  color: #c9a806;
+}
+
+.variant-code-section-head-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.variant-code-section-head-meta {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-tertiary);
+}
+
+.variant-code-section-head-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  transition: transform 0.2s ease;
+}
+
+.variant-code-section-body {
+  padding: 1rem;
+  border-top: 1px solid var(--border-secondary);
+  background: var(--bg-primary);
+}
+
+.variant-code-section-body .variant-code-editor-wrapper {
+  margin: 0;
+  min-height: 280px;
+}
+
+.variant-code-section-body .variant-code-editor-wrapper .Polaris-TextField__Input {
+  min-height: 260px;
+}
+
+.variant-code-section-body .code-validation-errors {
+  margin-top: 0.75rem;
+}
+
 .variant-code-editor-card {
   transition: all var(--transition-smooth);
 }
@@ -7343,13 +7955,25 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 .variant-code-editor-card .Polaris-Card {
-  background: var(--bg-secondary);
+  background: linear-gradient(
+    180deg,
+    var(--variant-color-light, rgba(6, 182, 212, 0.08)) 0%,
+    transparent 12%,
+    var(--bg-secondary) 100%
+  );
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--border-primary);
   box-shadow: 0 4px 16px var(--shadow-md);
   transition: all var(--transition-smooth);
   border-left: 4px solid var(--variant-color, var(--accent-primary));
+  border-radius: 12px;
+  overflow: visible;
+}
+
+.variant-code-editor-card .Polaris-BlockStack > .variant-code-summary {
+  margin-left: 0;
+  margin-right: 0;
 }
 
 .variant-code-editor-card:hover .Polaris-Card {
@@ -7357,6 +7981,13 @@ body > .Polaris-Tabs:not(:first-of-type),
   border-color: var(--border-accent);
   border-left-color: var(--variant-color, var(--accent-primary));
   transform: translateY(-2px);
+}
+
+/* Variant header row: separate from tabbed editor */
+.variant-code-header {
+  padding-bottom: 1rem;
+  margin-bottom: 0.25rem;
+  border-bottom: 1px solid var(--border-secondary);
 }
 
 .variant-code-color-indicator {
@@ -7423,11 +8054,13 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 .variant-code-help-text {
-  padding: var(--spacing-sm) var(--spacing-md);
+  margin-top: 1rem;
+  padding: 0.625rem 1rem;
   background: var(--bg-tertiary);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-primary);
-  margin-top: var(--spacing-sm);
+  border-radius: 8px;
+  border: 1px solid var(--border-secondary);
+  border-left: 3px solid var(--accent-primary, #06b6d4);
+  font-size: 0.8125rem;
 }
 
 /* Code Validation Errors */
@@ -7483,7 +8116,214 @@ body > .Polaris-Tabs:not(:first-of-type),
   color: var(--status-error);
 }
 
-/* Variant Code Split View */
+/* Variant Code Tabbed – compact tabs, IDE-style, polished UI */
+.variant-code-tabbed {
+  margin-top: var(--spacing-md);
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.variant-code-tab-bar {
+  display: flex;
+  gap: 2px;
+  padding: 8px 10px 0;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-primary);
+  min-height: 40px;
+}
+
+.variant-code-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.variant-code-tab:hover {
+  color: var(--accent-primary, #06b6d4);
+  background: rgba(6, 182, 212, 0.06);
+}
+
+.variant-code-tab:focus-visible {
+  outline: 2px solid var(--accent-primary, #06b6d4);
+  outline-offset: 2px;
+}
+
+/* Active tab: blends with editor panel + subtle top accent (IDE-style) */
+.variant-code-tab--active {
+  background: var(--bg-secondary);
+  color: var(--accent-primary, #06b6d4);
+  border-color: var(--border-primary);
+  border-bottom: 1px solid var(--bg-secondary);
+  margin-bottom: -1px;
+  box-shadow: 0 -2px 0 0 var(--accent-primary, #06b6d4);
+}
+
+.variant-code-tab--active:hover {
+  background: var(--bg-secondary);
+  color: var(--accent-primary, #06b6d4);
+}
+
+.variant-code-tab .code-type-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background: rgba(6, 182, 212, 0.1);
+  transition: all 0.2s ease;
+}
+
+.variant-code-tab--active .code-type-icon {
+  background: rgba(6, 182, 212, 0.18);
+  color: var(--accent-primary, #06b6d4);
+}
+
+.variant-code-tab-meta {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  margin-left: 0.2rem;
+}
+
+.variant-code-tab--active .variant-code-tab-meta {
+  color: var(--text-secondary);
+}
+
+.variant-code-tab .Polaris-Badge {
+  margin-left: 0.25rem;
+  flex-shrink: 0;
+}
+
+.variant-code-tab-panel {
+  display: none;
+  flex-direction: column;
+  min-height: 420px;
+  background: var(--bg-secondary);
+}
+
+.variant-code-tab-panel--active {
+  display: flex;
+}
+
+.variant-code-tabbed .variant-code-tab-panel .variant-code-editor-wrapper {
+  flex: 1;
+  margin: 1rem;
+  min-height: 380px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-secondary);
+  background: var(--bg-primary);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.variant-code-tabbed .variant-code-tab-panel .variant-code-editor-wrapper:focus-within {
+  border-color: var(--accent-primary, #06b6d4);
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.15);
+}
+
+.variant-code-tabbed .variant-code-tab-panel .variant-code-editor-wrapper .Polaris-TextField {
+  height: 100%;
+}
+
+.variant-code-tabbed .variant-code-tab-panel .variant-code-editor-wrapper .Polaris-TextField__Input {
+  min-height: 380px;
+  resize: vertical;
+  border: none;
+  border-radius: 8px;
+}
+
+.variant-code-tabbed .variant-code-tab-panel .variant-code-editor-wrapper .Polaris-TextField__Backdrop {
+  border-radius: 8px;
+}
+
+.variant-code-tabbed .code-validation-errors {
+  margin-top: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  background: rgba(215, 44, 13, 0.06);
+  border: 1px solid rgba(215, 44, 13, 0.2);
+}
+
+[data-theme="dark"] .variant-code-tabbed {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="dark"] .variant-code-tab-bar {
+  background: var(--bg-tertiary);
+  border-bottom-color: var(--border-primary);
+}
+
+[data-theme="dark"] .variant-code-tab:hover {
+  background: rgba(6, 182, 212, 0.12);
+}
+
+[data-theme="dark"] .variant-code-tab--active {
+  background: var(--bg-secondary);
+  border-color: var(--border-primary);
+  border-bottom-color: var(--bg-secondary);
+  box-shadow: 0 -2px 0 0 var(--accent-primary);
+}
+
+[data-theme="dark"] .variant-code-tabbed .variant-code-tab-panel .variant-code-editor-wrapper {
+  background: var(--bg-primary);
+  border-color: var(--border-secondary);
+}
+
+[data-theme="dark"] .variant-code-tabbed .variant-code-tab-panel .variant-code-editor-wrapper:focus-within {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.25);
+}
+
+[data-theme="dark"] .variant-code-tabbed .code-validation-errors {
+  background: rgba(215, 44, 13, 0.12);
+  border-color: rgba(215, 44, 13, 0.3);
+}
+
+/* Variant Code Stack – legacy stacked sections */
+.variant-code-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-top: var(--spacing-md);
+  width: 100%;
+}
+
+.variant-code-stack-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 320px;
+  width: 100%;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 2px 8px var(--shadow-sm);
+}
+
+.variant-code-stack-section.js-panel {
+  min-height: 320px;
+}
+
+/* Legacy split view (kept for any other use) */
 .variant-code-split-container {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
@@ -7589,11 +8429,27 @@ body > .Polaris-Tabs:not(:first-of-type),
   min-height: 40px;
 }
 
-.variant-code-split-panel .variant-code-section-header {
+.variant-code-split-panel .variant-code-section-header,
+.variant-code-stack-section .variant-code-section-header {
   margin: var(--spacing-md);
   margin-bottom: var(--spacing-sm);
   border-radius: var(--radius-md);
   padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.variant-code-stack-section .variant-code-editor-wrapper {
+  flex: 1;
+  margin: 0 var(--spacing-md) var(--spacing-md);
+  min-height: 280px;
+}
+
+.variant-code-stack-section .variant-code-editor-wrapper .Polaris-TextField {
+  height: 100%;
+}
+
+.variant-code-stack-section .variant-code-editor-wrapper .Polaris-TextField__Input {
+  flex: 1;
+  min-height: 280px;
 }
 
 .variant-code-section-header .Polaris-InlineStack {
@@ -7708,6 +8564,12 @@ body > .Polaris-Tabs:not(:first-of-type),
   border-color: var(--border-primary);
 }
 
+[data-theme="dark"] .variant-code-stack-section {
+  background: var(--bg-secondary);
+  border-color: var(--border-primary);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
 [data-theme="dark"] .variant-code-split-divider {
   background: var(--bg-primary);
   border-color: var(--border-primary);
@@ -7745,9 +8607,19 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme="dark"] .variant-code-editor-card .Polaris-Card {
-  background: var(--bg-tertiary);
+  background: linear-gradient(
+    180deg,
+    var(--variant-color-light, rgba(6, 182, 212, 0.1)) 0%,
+    transparent 12%,
+    var(--bg-tertiary) 100%
+  );
   border-color: var(--border-primary);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .variant-code-summary {
+  background: var(--variant-color-light-strong, rgba(6, 182, 212, 0.18));
+  border-left-color: var(--variant-color, var(--accent-primary));
 }
 
 [data-theme="dark"] .variant-code-editor-card:hover .Polaris-Card {
@@ -7769,6 +8641,66 @@ body > .Polaris-Tabs:not(:first-of-type),
 [data-theme="dark"] .variant-code-help-text {
   background: var(--bg-primary);
   border-color: var(--border-secondary);
+}
+
+[data-theme="dark"] .variant-code-section-block {
+  background: var(--bg-primary);
+  border-color: var(--border-primary);
+}
+
+[data-theme="dark"] .variant-code-section-block:focus-within {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.2);
+}
+
+[data-theme="dark"] .variant-code-section-head {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .variant-code-section-head:hover {
+  background: var(--bg-hover);
+}
+
+[data-theme="dark"] .variant-code-section-head-icon--css {
+  background: rgba(91, 125, 248, 0.15);
+  color: #5b7df8;
+}
+
+[data-theme="dark"] .variant-code-section-head-icon--js {
+  background: rgba(247, 223, 30, 0.2);
+  color: #f7df1e;
+}
+
+[data-theme="dark"] .variant-code-section-body {
+  background: var(--bg-primary);
+  border-top-color: var(--border-primary);
+}
+
+[data-theme="dark"] .variant-code-dropdown-trigger {
+  background: var(--bg-secondary);
+  border-color: var(--border-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .variant-code-dropdown-trigger:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-hover);
+  box-shadow: 0 2px 12px rgba(6, 182, 212, 0.2);
+}
+
+[data-theme="dark"] .variant-code-dropdown-panel {
+  background: var(--bg-secondary);
+  border-color: var(--border-primary);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .variant-code-dropdown-option--selected {
+  background: rgba(6, 182, 212, 0.15);
+}
+
+[data-theme="dark"] .variant-code-dropdown-option--selected:hover {
+  background: rgba(6, 182, 212, 0.2);
 }
 
 [data-theme="dark"] .variant-selector {
@@ -7812,6 +8744,35 @@ body > .Polaris-Tabs:not(:first-of-type),
 }
 
 [data-theme="dark"] .variant-navigation-buttons button:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--accent-primary);
+}
+
+[data-theme="dark"] .variant-code-unified {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="dark"] .variant-code-variant-tab-bar {
+  background: var(--bg-tertiary);
+  border-bottom-color: var(--border-primary);
+}
+
+[data-theme="dark"] .variant-code-variant-tab:hover {
+  background: rgba(6, 182, 212, 0.12);
+}
+
+[data-theme="dark"] .variant-code-variant-tab--active {
+  background: var(--bg-secondary);
+  border-color: var(--border-primary);
+  border-bottom-color: var(--bg-secondary);
+  box-shadow: 0 -2px 0 0 var(--variant-color, var(--accent-primary));
+}
+
+[data-theme="dark"] .variant-code-variant-tab--active .variant-code-variant-tab-dot {
+  box-shadow: 0 0 0 2px var(--bg-secondary), 0 0 6px var(--variant-color, var(--accent-primary));
+}
+
+[data-theme="dark"] .variant-code-variant-nav button:hover:not(:disabled) {
   background: var(--bg-hover);
   color: var(--accent-primary);
 }
@@ -7893,6 +8854,42 @@ body > .Polaris-Tabs:not(:first-of-type),
 
   .variant-navigation-buttons {
     width: 100%;
+    justify-content: center;
+  }
+
+  .variant-code-variant-tab-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+    padding-bottom: 8px;
+  }
+
+  .variant-code-variant-tabs-list {
+    width: 100%;
+  }
+
+  .variant-code-variant-nav {
+    width: 100%;
+    justify-content: center;
+    padding-top: 0.25rem;
+    border-top: 1px solid var(--border-secondary);
+  }
+
+  .variant-code-toolbar-variant {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .variant-code-toolbar-variant .Polaris-Select {
+    max-width: none;
+  }
+
+  .variant-code-dropdown {
+    max-width: none;
+    width: 100%;
+  }
+
+  .variant-code-toolbar-nav {
     justify-content: center;
   }
 

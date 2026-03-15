@@ -111,7 +111,7 @@ describe('getBreadcrumb', () => {
     });
   });
 
-  it('returns Home > current for universal pages (Settings, Profile, Notifications, Docs)', () => {
+  it('returns Home > current for universal pages (Settings, Profile, Notifications, Docs, Support)', () => {
     expect(getBreadcrumb(ROUTES.SETTINGS)).toEqual({
       parent: 'Home',
       current: 'Account settings',
@@ -122,6 +122,16 @@ describe('getBreadcrumb', () => {
       current: 'Profile',
       parentPath: ROUTES.USER_PANEL,
     });
+    expect(getBreadcrumb(ROUTES.PROFILE, '?tab=account')).toEqual({
+      parent: 'Profile',
+      current: 'Account',
+      parentPath: ROUTES.PROFILE,
+    });
+    expect(getBreadcrumb(ROUTES.PROFILE, '?tab=preferences')).toEqual({
+      parent: 'Profile',
+      current: 'Preferences',
+      parentPath: ROUTES.PROFILE,
+    });
     expect(getBreadcrumb(ROUTES.NOTIFICATIONS)).toEqual({
       parent: 'Home',
       current: 'Notifications',
@@ -130,6 +140,11 @@ describe('getBreadcrumb', () => {
     expect(getBreadcrumb(ROUTES.DOCS)).toEqual({
       parent: 'Home',
       current: 'Documentation',
+      parentPath: ROUTES.USER_PANEL,
+    });
+    expect(getBreadcrumb(ROUTES.SUPPORT)).toEqual({
+      parent: 'Home',
+      current: 'Support',
       parentPath: ROUTES.USER_PANEL,
     });
   });
@@ -145,6 +160,11 @@ describe('getBreadcrumb', () => {
   it('returns single current for Analytics, Connect, Domains, etc.', () => {
     expect(getBreadcrumb(ROUTES.ANALYTICS)).toEqual({ current: 'Analytics' });
     expect(getBreadcrumb(ROUTES.CONNECT)).toEqual({ current: 'Connect' });
+    expect(getBreadcrumb(ROUTES.CONNECT_OAUTH_SUCCESS)).toEqual({
+      parent: 'Connect',
+      current: 'Success',
+      parentPath: ROUTES.CONNECT,
+    });
     expect(getBreadcrumb(ROUTES.DOMAINS)).toEqual({ current: 'My domains' });
   });
 
@@ -174,6 +194,12 @@ describe('getBreadcrumb', () => {
 
   it('returns Page not found for unknown path', () => {
     expect(getBreadcrumb('/unknown')).toEqual({ current: 'Page not found' });
+  });
+
+  it('returns safe default for invalid pathname', () => {
+    expect(getBreadcrumb(undefined)).toEqual({ current: 'Page not found' });
+    expect(getBreadcrumb(null)).toEqual({ current: 'Page not found' });
+    expect(getBreadcrumb('')).toEqual({ current: 'Page not found' });
   });
 
   it('returns Dashboard > Page not found for unknown path under /app/:domain', () => {

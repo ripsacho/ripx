@@ -7,7 +7,17 @@
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Page, BlockStack, Text, Box, Divider, TextField, Icon, Button } from '@shopify/polaris';
+import {
+  Page,
+  BlockStack,
+  Text,
+  Box,
+  Divider,
+  TextField,
+  Icon,
+  Button,
+  Tooltip,
+} from '@shopify/polaris';
 import {
   BookIcon,
   ChartVerticalIcon,
@@ -203,12 +213,13 @@ function SectionNav({ section, scrollToSection }) {
   const next = idx >= 0 && idx < SECTIONS.length - 1 ? SECTIONS[idx + 1] : null;
   if (!prev && !next) return null;
   return (
-    <div className={styles.sectionNav}>
+    <nav className={styles.sectionNav} aria-label="Section navigation">
       {prev ? (
         <button
           type="button"
           className={styles.sectionNavLink}
           onClick={() => scrollToSection(prev.id)}
+          aria-label={`Previous section: ${prev.title}`}
         >
           <span className={styles.sectionNavIconPrev}>
             <Icon source={ChevronRightIcon} />
@@ -226,6 +237,7 @@ function SectionNav({ section, scrollToSection }) {
           type="button"
           className={`${styles.sectionNavLink} ${styles.sectionNavLinkNext}`}
           onClick={() => scrollToSection(next.id)}
+          aria-label={`Next section: ${next.title}`}
         >
           <span>
             <span className={styles.sectionNavLabel}>Next</span>
@@ -236,7 +248,7 @@ function SectionNav({ section, scrollToSection }) {
       ) : (
         <div />
       )}
-    </div>
+    </nav>
   );
 }
 
@@ -253,16 +265,20 @@ function CopySectionLink({ sectionId }) {
     }
   }, [sectionId]);
   return (
-    <Button
-      variant="plain"
-      size="slim"
-      icon={ClipboardIcon}
-      onClick={handleCopy}
-      accessibilityLabel="Copy section link"
-      className={styles.copySectionLink}
-    >
-      {copied ? 'Copied!' : 'Copy link'}
-    </Button>
+    <Tooltip content="Copy link to this section" preferredPosition="above">
+      <span className={styles.copySectionLinkWrap}>
+        <Button
+          variant="plain"
+          size="slim"
+          icon={ClipboardIcon}
+          onClick={handleCopy}
+          accessibilityLabel="Copy section link"
+          className={styles.copySectionLink}
+        >
+          {copied ? 'Copied!' : 'Copy link'}
+        </Button>
+      </span>
+    </Tooltip>
   );
 }
 
@@ -1026,6 +1042,7 @@ function Documentation() {
   const [commandQuery, setCommandQuery] = useState('');
   const [commandSelected, setCommandSelected] = useState(0);
   const [showBackToTop, setShowBackToTop] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
   const activeNavRef = useRef(null);
   const activeCollapsedRef = useRef(null);
   const commandInputRef = useRef(null);
@@ -1072,7 +1089,7 @@ function Documentation() {
 
   const scrollToSection = useCallback(id => {
     setActiveSection(id);
-    const el = document.getElementById(`doc-section-${id}`);
+    const el = document.getElementById(id);
     el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     if (typeof window !== 'undefined' && window.history?.replaceState) {
       window.history.replaceState(null, '', `#${id}`);
@@ -1153,7 +1170,7 @@ function Documentation() {
     if (hash && SECTIONS.some(s => s.id === hash)) {
       setActiveSection(hash);
       setTimeout(() => {
-        const el = document.getElementById(`doc-section-${hash}`);
+        const el = document.getElementById(hash);
         el?.scrollIntoView({ behavior: 'auto', block: 'start' });
       }, 100);
     }
@@ -1184,9 +1201,10 @@ function Documentation() {
 
   // Scroll selected item into view in command palette
   useEffect(() => {
-    if (!commandPaletteOpen || !commandResultsRef.current) return;
-    const items = commandResultsRef.current.querySelectorAll(`button.${styles.commandPaletteItem}`);
-    items[commandSelected]?.scrollIntoView({ block: 'nearest' });
+    if (!commandPaletteOpen || !commandResultsRef.current || commandPaletteResults.length === 0)
+      return;
+    const options = commandResultsRef.current.querySelectorAll('[role="option"]');
+    options[commandSelected]?.scrollIntoView({ block: 'nearest' });
   }, [commandSelected, commandPaletteOpen, commandPaletteResults.length]);
 
   // Document title when on docs page
@@ -1198,23 +1216,39 @@ function Documentation() {
     };
   }, []);
 
-  // Reading progress + back-to-top visibility
+  // Reading progress, back-to-top visibility, and scroll state for sticky sidebar elevation
   useEffect(() => {
     const onScroll = () => {
       const winScroll = document.documentElement.scrollTop;
       const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
       setScrollProgress(height > 0 ? Math.min(winScroll / height, 1) : 0);
       setShowBackToTop(winScroll > 400);
+      setIsScrolled(winScroll > 30);
     };
     window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll(); // run once for initial state
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // Scroll active nav item into view when activeSection changes (from scroll spy)
+  // Scroll only the sidebar nav so the active item is visible (never scroll the document)
   useEffect(() => {
     const el = sidebarCollapsed ? activeCollapsedRef.current : activeNavRef.current;
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+    if (!el) return;
+    const scrollParent =
+      el.closest(`.${styles.sidebarNav}`) || el.closest(`.${styles.sidebarNavCollapsed}`);
+    if (!scrollParent || scrollParent.scrollHeight <= scrollParent.clientHeight) return;
+    const elRect = el.getBoundingClientRect();
+    const parentRect = scrollParent.getBoundingClientRect();
+    const relativeTop = elRect.top - parentRect.top + scrollParent.scrollTop;
+    const relativeBottom = relativeTop + elRect.height;
+    const pad = 8;
+    if (relativeTop < scrollParent.scrollTop) {
+      scrollParent.scrollTo({ top: Math.max(0, relativeTop - pad), behavior: 'smooth' });
+    } else if (relativeBottom > scrollParent.scrollTop + scrollParent.clientHeight) {
+      scrollParent.scrollTo({
+        top: relativeBottom - scrollParent.clientHeight + pad,
+        behavior: 'smooth',
+      });
     }
   }, [activeSection, sidebarCollapsed]);
 
@@ -1225,7 +1259,7 @@ function Documentation() {
         const intersecting = entries
           .filter(e => e.isIntersecting)
           .map(e => {
-            const id = e.target.id ? e.target.id.replace('doc-section-', '') : '';
+            const id = e.target.id || '';
             return { id, boundTop: e.boundingClientRect.top };
           })
           .filter(x => x.id);
@@ -1239,7 +1273,7 @@ function Documentation() {
       },
       { rootMargin: '-15% 0px -70% 0px', threshold: 0 }
     );
-    const ids = SECTIONS.map(s => `doc-section-${s.id}`);
+    const ids = SECTIONS.map(s => s.id);
     ids.forEach(id => {
       const el = document.getElementById(id);
       if (el) observer.observe(el);
@@ -1248,11 +1282,14 @@ function Documentation() {
   }, []);
 
   return (
-    <div className={`${pageShell.page} ${styles.docsPage}`}>
+    <div
+      className={`${pageShell.page} ${styles.docsPage} ${isScrolled ? styles.docsPageScrolled : ''}`}
+    >
       <div
         className={styles.docsProgressBar}
         style={{ transform: `scaleX(${scrollProgress})` }}
         role="progressbar"
+        aria-label="Reading progress"
         aria-valuenow={Math.round(scrollProgress * 100)}
         aria-valuemin={0}
         aria-valuemax={100}
@@ -1282,6 +1319,10 @@ function Documentation() {
                 className={styles.commandPaletteInput}
                 placeholder="Search sections..."
                 value={commandQuery}
+                aria-label="Search documentation sections"
+                aria-autocomplete="list"
+                aria-controls="command-palette-results"
+                aria-expanded={commandPaletteResults.length > 0}
                 onChange={e => {
                   setCommandQuery(e.target.value);
                   setCommandSelected(0);
@@ -1306,9 +1347,15 @@ function Documentation() {
               />
               <span className={styles.commandPaletteKbd}>↵</span>
             </div>
-            <div ref={commandResultsRef} className={styles.commandPaletteResults}>
+            <div
+              ref={commandResultsRef}
+              id="command-palette-results"
+              className={styles.commandPaletteResults}
+              role="listbox"
+              aria-label="Documentation sections"
+            >
               {commandPaletteResults.length === 0 ? (
-                <div className={styles.commandPaletteEmpty}>
+                <div className={styles.commandPaletteEmpty} role="status" aria-live="polite">
                   <Text as="p" tone="subdued">
                     No sections match &quot;{commandQuery}&quot;
                   </Text>
@@ -1318,6 +1365,8 @@ function Documentation() {
                   <button
                     key={s.id}
                     type="button"
+                    role="option"
+                    aria-selected={i === commandSelected}
                     className={`${styles.commandPaletteItem} ${i === commandSelected ? styles.commandPaletteItemActive : ''}`}
                     onClick={() => {
                       scrollToSection(s.id);
@@ -1337,14 +1386,16 @@ function Documentation() {
         </div>
       )}
       {showBackToTop && (
-        <button
-          type="button"
-          className={styles.backToTopFab}
-          onClick={scrollToTop}
-          aria-label="Back to top"
-        >
-          <Icon source={ArrowUpIcon} />
-        </button>
+        <Tooltip content="Scroll to top" preferredPosition="above">
+          <button
+            type="button"
+            className={styles.backToTopFab}
+            onClick={scrollToTop}
+            aria-label="Back to top"
+          >
+            <Icon source={ArrowUpIcon} />
+          </button>
+        </Tooltip>
       )}
       <Page title="" subtitle="">
         <header className={styles.docsTopBar} aria-label="Documentation header">
@@ -1354,18 +1405,19 @@ function Documentation() {
             </span>
             Documentation
           </span>
-          <button
-            type="button"
-            onClick={() => navigate(ROUTES.USER_PANEL)}
-            className={styles.docsTopBarMainApp}
-            aria-label="Go to dashboard"
-            title="Back to dashboard"
-          >
-            <span className={styles.docsTopBarMainAppIcon}>
-              <Icon source={HomeIcon} tone="base" />
-            </span>
-            <span className={styles.docsTopBarMainAppLabel}>Dashboard</span>
-          </button>
+          <Tooltip content="Back to dashboard" preferredPosition="below">
+            <button
+              type="button"
+              onClick={() => navigate(ROUTES.USER_PANEL)}
+              className={styles.docsTopBarMainApp}
+              aria-label="Go to dashboard"
+            >
+              <span className={styles.docsTopBarMainAppIcon}>
+                <Icon source={HomeIcon} tone="base" />
+              </span>
+              <span className={styles.docsTopBarMainAppLabel}>Dashboard</span>
+            </button>
+          </Tooltip>
         </header>
         <div className={styles.docsHero}>
           <div className={styles.docsHeroRow}>
@@ -1377,11 +1429,13 @@ function Documentation() {
               </p>
             </div>
             <div className={styles.docsHeroMeta}>
-              <span className={styles.docsHeroBadge}>v1.0.0</span>
-              <span className={styles.docsHeroBadge}>8 Test Types</span>
-              <span className={styles.docsHeroBadge}>Multi-Variant</span>
-              <span className={styles.docsHeroBadge}>GA4 & BigQuery</span>
-              <span className={styles.docsHeroBadge}>{READING_TIME_MIN} min read</span>
+              <span className={styles.docsHeroBadges}>
+                <span className={styles.docsHeroBadge}>v1.0.0</span>
+                <span className={styles.docsHeroBadge}>8 Test Types</span>
+                <span className={styles.docsHeroBadge}>Multi-Variant</span>
+                <span className={styles.docsHeroBadge}>GA4 & BigQuery</span>
+                <span className={styles.docsHeroBadge}>{READING_TIME_MIN} min read</span>
+              </span>
               <span className={styles.docsHeroHint}>
                 <kbd className={styles.kbd}>⌘K</kbd> / <kbd className={styles.kbd}>Ctrl+K</kbd> to
                 search
@@ -1458,14 +1512,19 @@ function Documentation() {
                   <h3 className={styles.sidebarTitle}>Contents</h3>
                 </div>
               )}
-              <button
-                type="button"
-                className={styles.sidebarToggle}
-                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              <Tooltip
+                content={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                preferredPosition="right"
               >
-                <Icon source={sidebarCollapsed ? ChevronDownIcon : ChevronUpIcon} />
-              </button>
+                <button
+                  type="button"
+                  className={styles.sidebarToggle}
+                  onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                  aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                >
+                  <Icon source={sidebarCollapsed ? ChevronDownIcon : ChevronUpIcon} />
+                </button>
+              </Tooltip>
             </div>
             {!sidebarCollapsed ? (
               <>
@@ -1475,7 +1534,7 @@ function Documentation() {
                       <Icon source={SearchIcon} />
                     </span>
                     <TextField
-                      label="Search"
+                      label="Search documentation"
                       labelHidden
                       value={searchQuery}
                       onChange={setSearchQuery}
@@ -1487,7 +1546,7 @@ function Documentation() {
                 <div className={styles.sidebarBody}>
                   <nav className={styles.sidebarNav}>
                     {filteredSections.length === 0 ? (
-                      <div className={styles.sidebarSearchEmpty}>
+                      <div className={styles.sidebarSearchEmpty} role="status" aria-live="polite">
                         <Text as="p" tone="subdued">
                           No sections match &quot;{searchQuery}&quot;
                         </Text>
@@ -1520,17 +1579,19 @@ function Documentation() {
                     )}
                   </nav>
                   <div className={styles.sidebarFooter}>
-                    <button
-                      type="button"
-                      className={styles.sidebarBackToTop}
-                      onClick={scrollToTop}
-                      aria-label="Back to top"
-                    >
-                      <span className={styles.sidebarBackToTopIcon}>
-                        <Icon source={ArrowUpIcon} />
-                      </span>
-                      Back to top
-                    </button>
+                    <Tooltip content="Scroll back to top" preferredPosition="right">
+                      <button
+                        type="button"
+                        className={styles.sidebarBackToTop}
+                        onClick={scrollToTop}
+                        aria-label="Back to top"
+                      >
+                        <span className={styles.sidebarBackToTopIcon}>
+                          <Icon source={ArrowUpIcon} />
+                        </span>
+                        Back to top
+                      </button>
+                    </Tooltip>
                   </div>
                 </div>
               </>
@@ -1570,8 +1631,9 @@ function Documentation() {
             {SECTIONS.map(section => (
               <section
                 key={section.id}
-                id={`doc-section-${section.id}`}
+                id={section.id}
                 className={styles.docSection}
+                aria-labelledby={`doc-heading-${section.id}`}
               >
                 <div className={styles.docSectionCard}>
                   <Box padding="500">
@@ -1581,9 +1643,9 @@ function Documentation() {
                           <Icon source={section.icon} />
                         </div>
                         <div className={styles.sectionTitleContent}>
-                          <h2>{section.title}</h2>
+                          <h2 id={`doc-heading-${section.id}`}>{section.title}</h2>
                           <Text as="p" variant="bodySm" tone="subdued">
-                            {section.title} — reference
+                            Reference
                           </Text>
                         </div>
                         <CopySectionLink sectionId={section.id} />
@@ -1599,8 +1661,8 @@ function Documentation() {
           </main>
         </div>
 
-        <div className={styles.docsResources}>
-          <Text variant="headingMd" as="h3">
+        <div className={styles.docsResources} aria-labelledby="docs-resources-heading">
+          <Text variant="headingMd" as="h3" id="docs-resources-heading">
             Additional Resources
           </Text>
           <div className={styles.docsResourcesLinks}>
@@ -1609,11 +1671,12 @@ function Documentation() {
               className={styles.docsResourcesLink}
               target="_blank"
               rel="noopener noreferrer"
+              aria-label="Open API Docs (Swagger) in new tab"
             >
               <CodeIcon /> API Docs (Swagger)
             </a>
             <Link to={ROUTES.USER_PANEL} className={styles.docsResourcesLink}>
-              <TargetIcon /> App (tests, dashboard)
+              <TargetIcon /> Dashboard (tests, quick start)
             </Link>
             <Link to={ROUTES.CONNECT} className={styles.docsResourcesLink}>
               <ConnectIcon /> Connect / API Key
@@ -1622,10 +1685,10 @@ function Documentation() {
               <SettingsIcon /> Account settings (theme)
             </Link>
             <Link to={ROUTES.USER_PANEL} className={styles.docsResourcesLink}>
-              <SettingsIcon /> App settings (in the app)
+              <SettingsIcon /> App settings
             </Link>
             <Link to={ROUTES.USER_PANEL} className={styles.docsResourcesLink}>
-              <CompassIcon /> App (Setup Wizard)
+              <CompassIcon /> Setup Wizard
             </Link>
             <Link to={ROUTES.PROFILE} className={styles.docsResourcesLink}>
               <PersonIcon /> Profile

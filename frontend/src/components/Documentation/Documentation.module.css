@@ -3,10 +3,39 @@
  * Premium visual design: hero, glassmorphism, animations, micro-interactions
  */
 
+/* overflow-x: clip keeps viewport as scroll container so position:sticky works on sidebar */
 .docsPage {
   --docs-sidebar-width: 320px;
   --docs-sidebar-collapsed: 72px;
   --docs-hero-height: 140px;
+  --docs-gap: 1.5rem;
+  --docs-radius: 18px;
+  --docs-topbar-height: 60px; /* app TopBar height so sidebar height excludes it */
+  overflow-x: hidden;
+  overflow-y: visible;
+  max-width: 100%;
+  padding: 0 1.25rem 2rem;
+}
+
+@supports (overflow-x: clip) {
+  .docsPage {
+    overflow-x: clip;
+  }
+}
+
+@media (min-width: 1200px) {
+  .docsPage {
+    padding-left: 1.75rem;
+    padding-right: 1.75rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .docsPage {
+    padding-left: 1rem;
+    padding-right: 1rem;
+    padding-bottom: 3rem;
+  }
 }
 
 /* Docs top bar: compact, polished (matches Admin / app design system) */
@@ -17,18 +46,21 @@
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.625rem 1.25rem 0.75rem;
-  margin-bottom: 0.5rem;
+  padding: 0.75rem 1.25rem 0.875rem;
+  margin-bottom: 0.75rem;
   border-bottom: 1px solid var(--border-secondary);
   background: linear-gradient(
     170deg,
-    rgba(255, 255, 255, 0.97) 0%,
-    rgba(248, 250, 252, 0.94) 40%,
-    rgba(6, 182, 212, 0.04) 100%
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(248, 250, 252, 0.96) 40%,
+    rgba(6, 182, 212, 0.05) 100%
   );
   border-radius: 0 0 14px 14px;
   backdrop-filter: blur(14px);
-  box-shadow: 0 1px 0 0 rgba(6, 182, 212, 0.06);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow:
+    0 1px 0 0 rgba(6, 182, 212, 0.06),
+    0 4px 12px -2px rgba(0, 0, 0, 0.04);
 }
 
 [data-theme='dark'] .docsTopBar {
@@ -148,7 +180,7 @@
   box-shadow: 0 4px 18px rgba(6, 182, 212, 0.25);
 }
 
-/* Reading progress bar - design system gradient */
+/* Reading progress bar - design system gradient, always visible when scrolling */
 .docsProgressBar {
   position: fixed;
   top: 0;
@@ -165,7 +197,8 @@
   animation: docsProgressShimmer 3s ease-in-out infinite;
   transform-origin: left;
   z-index: 1000;
-  box-shadow: 0 0 20px rgba(6, 182, 212, 0.35);
+  box-shadow: 0 0 24px rgba(6, 182, 212, 0.4), 0 2px 8px rgba(6, 182, 212, 0.15);
+  border-radius: 0 0 2px 2px;
 }
 
 @keyframes docsProgressShimmer {
@@ -173,21 +206,23 @@
   50% { background-position: 100% 50%; }
 }
 
-/* Hero section - compact, refined */
+/* Hero section - compact, refined, clear hierarchy */
 .docsHero {
-  margin: 0 0 1rem;
-  padding: 1rem 1.5rem 1.15rem;
+  margin: 0 0 1.25rem;
+  padding: 1.35rem 1.75rem 1.4rem;
   background: linear-gradient(
     135deg,
-    rgba(6, 182, 212, 0.08) 0%,
-    rgba(139, 92, 246, 0.06) 45%,
-    rgba(6, 182, 212, 0.05) 100%
+    rgba(6, 182, 212, 0.07) 0%,
+    rgba(139, 92, 246, 0.05) 40%,
+    rgba(6, 182, 212, 0.04) 100%
   );
-  border-radius: 14px;
+  border-radius: var(--docs-radius);
   border: 1px solid var(--border-secondary);
   position: relative;
   overflow: hidden;
-  box-shadow: 0 2px 12px rgba(6, 182, 212, 0.06);
+  box-shadow:
+    0 2px 12px rgba(6, 182, 212, 0.06),
+    0 0 0 1px rgba(255, 255, 255, 0.5) inset;
 }
 
 .docsHero::before {
@@ -196,10 +231,10 @@
   top: 0;
   left: 0;
   right: 0;
-  height: 3px;
+  height: 4px;
   background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
-  opacity: 0.9;
-  border-radius: 14px 14px 0 0;
+  opacity: 0.92;
+  border-radius: var(--docs-radius) var(--docs-radius) 0 0;
 }
 
 [data-theme='dark'] .docsHero {
@@ -227,17 +262,23 @@
 }
 
 .docsHeroTitle {
-  font-size: 1.25rem;
+  font-size: 1.5rem;
   font-weight: 800;
-  letter-spacing: -0.03em;
-  background: linear-gradient(135deg, var(--text-primary) 0%, var(--futuristic-cyan) 45%, var(--futuristic-violet) 100%);
+  letter-spacing: -0.035em;
+  line-height: 1.25;
+  background: linear-gradient(135deg, var(--text-primary) 0%, var(--futuristic-cyan) 40%, var(--futuristic-violet) 100%);
   background-size: 200% auto;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  margin: 0 0 0.3rem;
-  line-height: 1.3;
+  margin: 0 0 0.4rem;
   animation: docsTitleGradient 6s ease infinite;
+}
+
+@media (max-width: 768px) {
+  .docsHeroTitle {
+    font-size: 1.25rem;
+  }
 }
 
 @keyframes docsTitleGradient {
@@ -246,11 +287,11 @@
 }
 
 .docsHeroSubtitle {
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
   color: var(--text-secondary);
-  line-height: 1.5;
+  line-height: 1.55;
   margin: 0;
-  max-width: 520px;
+  max-width: 560px;
 }
 
 .docsHeroMeta {
@@ -259,34 +300,52 @@
   gap: 0.5rem;
   flex-wrap: wrap;
   flex-shrink: 0;
+  margin-top: 0.5rem;
+}
+
+.docsHeroBadges {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
 }
 
 .docsHeroBadge {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  padding: 0.28rem 0.55rem;
+  padding: 0.35rem 0.65rem;
   font-size: 0.6875rem;
   font-weight: 600;
-  border-radius: 8px;
-  background: rgba(6, 182, 212, 0.14);
+  border-radius: 10px;
+  background: rgba(6, 182, 212, 0.12);
   color: var(--futuristic-cyan);
-  border: 1px solid rgba(6, 182, 212, 0.2);
-  transition: all 0.2s ease;
+  border: 1px solid rgba(6, 182, 212, 0.18);
+  transition: all 0.22s ease;
   white-space: nowrap;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
 }
 
 .docsHeroBadge:hover {
-  background: rgba(6, 182, 212, 0.2);
+  background: rgba(6, 182, 212, 0.18);
   border-color: rgba(6, 182, 212, 0.35);
+  transform: translateY(-1px);
 }
 
 .docsHeroHint {
   font-size: 0.75rem;
   color: var(--text-tertiary);
-  margin-left: 0.25rem;
+  margin-left: 0.35rem;
   white-space: nowrap;
+  padding: 0.25rem 0.5rem;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--border-secondary);
+}
+
+[data-theme='dark'] .docsHeroHint {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
 .kbd {
@@ -442,8 +501,8 @@
 /* Floating back-to-top */
 .backToTopFab {
   position: fixed;
-  bottom: 2rem;
-  right: 2rem;
+  bottom: max(2rem, env(safe-area-inset-bottom));
+  right: max(2rem, env(safe-area-inset-right));
   width: 48px;
   height: 48px;
   display: flex;
@@ -491,6 +550,10 @@
   min-width: 0;
 }
 
+.copySectionLinkWrap {
+  display: inline-flex;
+}
+
 .copySectionLink {
   flex-shrink: 0;
   opacity: 0.7;
@@ -532,6 +595,11 @@
   border-color: rgba(6, 182, 212, 0.3);
   color: var(--futuristic-cyan);
   background: rgba(6, 182, 212, 0.06);
+}
+
+.sectionNavLink:focus-visible {
+  outline: 2px solid var(--futuristic-cyan);
+  outline-offset: 2px;
 }
 
 .sectionNavLink span {
@@ -580,6 +648,7 @@
 .docsQuickJumpWrap {
   margin-bottom: 1.5rem;
   padding: 1rem 1.25rem;
+  border-radius: var(--docs-radius);
   background: linear-gradient(
     145deg,
     rgba(255, 255, 255, 0.98) 0%,
@@ -587,7 +656,6 @@
     rgba(6, 182, 212, 0.03) 100%
   );
   border: 1px solid var(--border-secondary);
-  border-radius: 16px;
   box-shadow:
     0 2px 8px rgba(6, 182, 212, 0.06),
     0 0 0 1px rgba(6, 182, 212, 0.04) inset;
@@ -810,17 +878,17 @@
   max-width: 12em;
 }
 
-/* Layout */
+/* Layout - sidebar beside main content (grid; main content width limited by .docsMain max-width) */
 .docsLayout {
   display: grid;
-  grid-template-columns: var(--docs-sidebar-width) 1fr;
+  grid-template-columns: var(--docs-sidebar-width) minmax(0, 1fr);
   gap: 1.5rem;
   align-items: start;
   transition: grid-template-columns 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .docsLayoutCollapsed {
-  grid-template-columns: var(--docs-sidebar-collapsed) 1fr;
+  grid-template-columns: var(--docs-sidebar-collapsed) minmax(0, 1fr);
 }
 
 @media (max-width: 960px) {
@@ -832,11 +900,12 @@
   }
 }
 
-/* Sidebar - Advanced premium layout */
+/* Sidebar - sticky; top aligned with bottom of app top bar */
 .docsSidebar {
   position: sticky;
-  top: 1.25rem;
-  min-height: 420px;
+  top: var(--docs-topbar-height);
+  max-height: calc(100vh - var(--docs-topbar-height) - 1rem - env(safe-area-inset-top, 0px));
+  min-height: 280px;
   display: flex;
   flex-direction: column;
   background: linear-gradient(
@@ -855,8 +924,47 @@
     0 12px 40px -4px rgba(0, 0, 0, 0.06),
     0 0 0 1px rgba(0, 0, 0, 0.02),
     inset 0 1px 0 rgba(255, 255, 255, 0.95);
-  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: box-shadow 0.35s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s ease, transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
+}
+
+/* When page is scrolled, sidebar gets elevated shadow so it reads as “stuck” */
+.docsPageScrolled .docsSidebar {
+  box-shadow:
+    0 8px 24px -4px rgba(0, 0, 0, 0.08),
+    0 20px 48px -8px rgba(6, 182, 212, 0.12),
+    0 0 0 1px rgba(6, 182, 212, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.98);
+  border-color: rgba(6, 182, 212, 0.2);
+}
+
+.docsPageScrolled .docsSidebar:hover {
+  transform: none; /* keep sticky sidebar stable on hover */
+}
+
+[data-theme='dark'] .docsPageScrolled .docsSidebar {
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(6, 182, 212, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+@media (max-width: 960px) {
+  .docsPageScrolled .docsSidebar {
+    box-shadow:
+      0 4px 6px -1px rgba(0, 0, 0, 0.04),
+      0 12px 40px -4px rgba(0, 0, 0, 0.06),
+      0 0 0 1px rgba(0, 0, 0, 0.02),
+      inset 0 1px 0 rgba(255, 255, 255, 0.95);
+    border-color: rgba(6, 182, 212, 0.14);
+  }
+
+  [data-theme='dark'] .docsPageScrolled .docsSidebar {
+    box-shadow:
+      0 12px 48px rgba(0, 0, 0, 0.5),
+      0 0 0 1px rgba(6, 182, 212, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
 }
 
 .docsSidebar::before {
@@ -1050,12 +1158,13 @@
   box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.12) !important;
 }
 
-/* Nav groups - refined hierarchy */
+/* Nav groups - fills sticky sidebar, scrolls when needed */
 .sidebarNav {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  max-height: calc(100vh - 300px);
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   padding-right: 0.35rem;
@@ -1515,11 +1624,19 @@
   opacity: 0.9;
 }
 
-/* Main content */
+/* Main content - full width of viewport excluding sidebar (fills grid cell) */
 .docsMain {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: var(--docs-gap);
+  min-width: 0;
+  width: 100%;
+}
+
+@media (max-width: 960px) {
+  .docsMain {
+    gap: 1.25rem;
+  }
 }
 
 .docSection {
@@ -1602,19 +1719,37 @@
   }
 }
 
-/* Section card - elevated with glow */
+/* Section card - elevated with glow and left accent */
 .docSectionCard {
+  position: relative;
   background: var(--bg-secondary);
   border: 1px solid var(--border-secondary);
-  border-radius: 18px;
+  border-radius: var(--docs-radius);
   overflow: hidden;
   transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.docSectionCard::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--futuristic-cyan), var(--futuristic-violet));
+  opacity: 0.7;
+  border-radius: var(--docs-radius) 0 0 var(--docs-radius);
+  transition: opacity 0.25s ease;
 }
 
 .docSectionCard:hover {
   border-color: rgba(6, 182, 212, 0.22);
   box-shadow: 0 12px 40px rgba(6, 182, 212, 0.08);
   transform: translateY(-2px);
+}
+
+.docSectionCard:hover::before {
+  opacity: 1;
 }
 
 .sectionTitleRow {
@@ -2032,32 +2167,54 @@
   margin-bottom: 0;
 }
 
-/* Resources footer */
+/* Resources footer - card-style to match section cards */
 .docsResources {
-  margin-top: 2rem;
-  padding: 1.75rem 2.25rem;
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.08) 0%, rgba(139, 92, 246, 0.05) 100%);
-  border: 1px solid rgba(6, 182, 212, 0.12);
-  border-radius: 18px;
+  position: relative;
+  margin-top: 2.5rem;
+  padding: 1.75rem 2rem 2rem;
+  background: linear-gradient(
+    135deg,
+    rgba(6, 182, 212, 0.06) 0%,
+    rgba(139, 92, 246, 0.04) 50%,
+    rgba(6, 182, 212, 0.05) 100%
+  );
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--docs-radius);
+  box-shadow: 0 2px 12px rgba(6, 182, 212, 0.04);
+  overflow: hidden;
+}
+
+.docsResources::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
+  opacity: 0.85;
+  border-radius: var(--docs-radius) var(--docs-radius) 0 0;
 }
 
 .docsResources h3 {
-  margin: 0 0 1rem;
-  font-size: 1rem;
-  font-weight: 600;
+  margin: 0 0 1.25rem;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
 }
 
 .docsResourcesLinks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.85rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.75rem;
 }
 
 .docsResourcesLink {
   display: inline-flex;
   align-items: center;
-  gap: 0.55rem;
-  padding: 0.65rem 1.2rem;
+  gap: 0.5rem;
+  padding: 0.7rem 1rem;
   background: var(--bg-secondary);
   border: 1px solid var(--border-secondary);
   border-radius: 12px;
@@ -2065,13 +2222,13 @@
   font-weight: 500;
   color: var(--text-primary);
   text-decoration: none;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .docsResourcesLink:hover {
-  border-color: var(--futuristic-cyan);
+  border-color: rgba(6, 182, 212, 0.35);
   color: var(--futuristic-cyan);
-  box-shadow: 0 4px 16px rgba(6, 182, 212, 0.12);
+  box-shadow: 0 4px 16px rgba(6, 182, 212, 0.1);
   transform: translateY(-2px);
 }
 
@@ -2084,9 +2241,33 @@
   width: 18px;
   height: 18px;
   flex-shrink: 0;
+  opacity: 0.9;
   transition: transform 0.25s ease;
 }
 
 .docsResourcesLink:hover :global(svg) {
-  transform: scale(1.1);
+  transform: scale(1.08);
+  opacity: 1;
+}
+
+[data-theme='dark'] .docsResources {
+  background: linear-gradient(
+    135deg,
+    rgba(6, 182, 212, 0.08) 0%,
+    rgba(139, 92, 246, 0.05) 50%,
+    rgba(6, 182, 212, 0.06) 100%
+  );
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.2);
+}
+
+@media (max-width: 640px) {
+  .docsResources {
+    padding: 1.25rem 1.25rem 1.5rem;
+    margin-top: 2rem;
+  }
+
+  .docsResourcesLinks {
+    grid-template-columns: 1fr;
+  }
 }

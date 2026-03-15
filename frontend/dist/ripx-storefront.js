@@ -1392,11 +1392,41 @@
       const activeTests = CONFIG.activeTests || [];
       const currentProductId = getCurrentProductId();
 
+      if (DEBUG && activeTests.length === 0) {
+        debugLog(
+          'No active tests in config. Ensure the test is Running and the script is loaded with the correct shop (e.g. App Proxy or ?shop=xxx.myshopify.com).'
+        );
+      }
+
       activeTests.forEach(test => {
-        if (!matchesTarget(test)) return;
+        if (!matchesTarget(test)) {
+          if (DEBUG) {
+            var targetType = test.targetType || test.target_type || 'page';
+            var ids =
+              test.targetIds ||
+              (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
+            debugLog(
+              'Test skipped (target mismatch):',
+              test.id,
+              'targetType=' + targetType,
+              'targetIds=' + (ids.length ? ids.join(',') : 'any'),
+              'current product=' + (getCurrentProductId() || 'none'),
+              'current collection=' + (getCurrentCollectionId() || 'none')
+            );
+          }
+          return;
+        }
 
         getVariant(test.id).then(variant => {
-          if (!variant) return;
+          if (!variant) {
+            if (DEBUG)
+              debugLog(
+                'Test skipped (no variant assigned):',
+                test.id,
+                '- URL/segment may not match. Check targeting (URL pattern, device, etc.) or open with ?ab_preview=1 for preview.'
+              );
+            return;
+          }
           applyCustomCode(test.id, variant);
 
           if (test.type === 'price') {

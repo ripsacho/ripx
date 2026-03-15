@@ -56,6 +56,17 @@ async function runMigrations() {
       applied.add(file);
       console.log(`  ✅ ${file} completed`);
     } catch (error) {
+      const isPgvectorUnavailable =
+        file.startsWith('050_') &&
+        (error.code === '0A000' ||
+          (error.message && error.message.includes('extension "vector" is not available')));
+      if (isPgvectorUnavailable) {
+        console.warn(`  ⚠️  ${file} skipped: pgvector extension not installed.`);
+        console.warn('     To enable RAG support: install pgvector, then re-run npm run migrate.');
+        console.warn('     macOS (Homebrew): brew install pgvector');
+        console.warn('     See backend/migrations/050_pgvector_support_kb.sql or docs for more.');
+        continue;
+      }
       console.error(`  ❌ Error in ${file}:`, error.message);
       throw error;
     }

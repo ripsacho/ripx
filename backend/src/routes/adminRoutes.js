@@ -3164,4 +3164,154 @@ router.get(
   })
 );
 
+// --- Admin support tickets (list, update status, bulk) ---
+const SUPPORT_TICKET_STATUSES = ['open', 'closed', 'resolved'];
+const SUPPORT_TICKETS_LIST_LIMIT = 200;
+
+/**
+ * GET /api/admin/support-tickets
+ * List support tickets for admin triage. Query: status, sort=created_at|updated_at|status, order=asc|desc, limit, offset.
+ */
+router.get(
+  '/support-tickets',
+  asyncHandler(async (req, res) => {
+    const rawStatus =
+      typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : null;
+    const status = rawStatus && SUPPORT_TICKET_STATUSES.includes(rawStatus) ? rawStatus : null;
+    const sort = (req.query.sort || 'created_at').toLowerCase();
+    const order = (req.query.order || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+    const limit = Math.min(parseInt(req.query.limit, 10) || 50, SUPPORT_TICKETS_LIST_LIMIT);
+    const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+
+    const validSort = ['created_at', 'updated_at', 'status', 'email'].includes(sort)
+      ? sort
+      : 'created_at';
+    const orderBy = `ORDER BY st.${validSort} ${order}`;
+    const whereDeleted = ' WHERE (st.deleted_at IS NULL)';
+    const sql = `
+      SELECT st.id, st.email, st.subject, st.category, st.status, st.priority,
+             st.created_at, st.updated_at, st.shop_domain, st.tenant_id
+      FROM support_tickets st
+      ${whereDeleted}${status ? ' AND st.status = $3' : ''}
+      ${orderBy}
+      LIMIT $1 OFFSET $2
+    `;
+    const countSql = `
+      SELECT COUNT(*)::int AS total FROM support_tickets st
+      ${whereDeleted}${status ? ' AND st.status = $1' : ''}
+    `;
+    const queryParams = status ? [limit, offset, status] : [limit, offset];
+    let result;
+    let countResult;
+    try {
+      result = await query(sql, queryParams);
+      countResult = await query(countSql, status ? [status] : []);
+    } catch (err) {
+      if (err.message && /deleted_at|column.*does not exist/i.test(err.message)) {
+        const sqlNoDeleted = `
+          SELECT st.id, st.email, st.subject, st.category, st.status, st.priority,
+                 st.created_at, st.updated_at, st.shop_domain, st.tenant_id
+          FROM support_tickets st
+          ${status ? ' WHERE st.status = $3' : ''}
+          ${orderBy}
+          LIMIT $1 OFFSET $2
+        `;
+        const countNoDeleted = `SELECT COUNT(*)::int AS total FROM support_tickets st ${status ? ' WHERE st.status = $1' : ''}`;
+        result = await query(sqlNoDeleted, queryParams);
+        countResult = await query(countNoDeleted, status ? [status] : []);
+      } else {
+        throw err;
+      }
+    }
+
+    const total = countResult?.rows?.[0]?.total ?? 0;
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      tickets: result.rows.map(r => ({
+        id: r.id,
+        email: r.email,
+        subject: r.subject,
+        category: r.category,
+        status: r.status,
+        priority: r.priority,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+        shop_domain: r.shop_domain,
+        tenant_id: r.tenant_id,
+      })),
+      total,
+      limit,
+      offset,
+    });
+  })
+);
+
+/**
+ * POST /api/admin/support-tickets/bulk
+ * Bulk update ticket status. Body: { ticketIds: string[], action: 'close'|'resolve' }.
+ * Defined before :id so "bulk" is not interpreted as a ticket id.
+ */
+router.post(
+  '/support-tickets/bulk',
+  asyncHandler(async (req, res) => {
+    const ticketIds = Array.isArray(req.body?.ticketIds) ? req.body.ticketIds : [];
+    const action = (req.body?.action || '').toLowerCase();
+    const statusMap = { close: 'closed', resolve: 'resolved' };
+    const newStatus = statusMap[action];
+    if (!newStatus || ticketIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'ticketIds (non-empty array) and action (close|resolve) required',
+      });
+    }
+    const validIds = ticketIds.filter(id => typeof id === 'string' && /^[0-9a-f-]{36}$/i.test(id));
+    if (validIds.length === 0) {
+      return sendSuccess(res, HTTP_STATUS.OK, { updated: 0, ticketIds: [] });
+    }
+    const result = await query(
+      `UPDATE support_tickets SET status = $1, updated_at = NOW()
+       WHERE id = ANY($2::uuid[]) AND (deleted_at IS NULL)
+       RETURNING id`,
+      [newStatus, validIds]
+    ).catch(() => ({ rows: [] }));
+    const updated = result.rows.length;
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      updated,
+      ticketIds: result.rows.map(r => r.id),
+    });
+  })
+);
+
+/**
+ * PATCH /api/admin/support-tickets/:id
+ * Update ticket status. Body: { status } (open|closed|resolved).
+ */
+router.patch(
+  '/support-tickets/:id',
+  asyncHandler(async (req, res) => {
+    const id = req.params.id;
+    const newStatus =
+      typeof req.body?.status === 'string' ? req.body.status.trim().toLowerCase() : null;
+    if (!newStatus || !SUPPORT_TICKET_STATUSES.includes(newStatus)) {
+      return res.status(400).json({
+        success: false,
+        error: 'status must be one of: open, closed, resolved',
+      });
+    }
+    const result = await query(
+      `UPDATE support_tickets SET status = $1, updated_at = NOW()
+       WHERE id = $2::uuid AND (deleted_at IS NULL)
+       RETURNING id, status, updated_at`,
+      [newStatus, id]
+    ).catch(() => ({ rows: [] }));
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Ticket not found' });
+    }
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      id: result.rows[0].id,
+      status: result.rows[0].status,
+      updated_at: result.rows[0].updated_at,
+    });
+  })
+);
+
 module.exports = router;

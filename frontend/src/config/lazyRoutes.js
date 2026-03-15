@@ -17,6 +17,7 @@ export const Settings = lazy(() => import('../components/Settings/Settings'));
 export const SetupWizard = lazy(() => import('../components/SetupWizard/SetupWizard'));
 export const Profile = lazy(() => import('../components/Profile/Profile'));
 export const Documentation = lazy(() => import('../components/Documentation/Documentation'));
+export const Support = lazy(() => import('../components/Support/Support'));
 export const Export = lazy(() => import('../components/Export/Export'));
 export const PromoLinks = lazy(() => import('../components/PromoLinks/PromoLinks'));
 export const Notifications = lazy(() => import('../components/Notifications/Notifications'));
@@ -48,6 +49,7 @@ export const AdminRateLimitOverrides = lazy(
   () => import('../components/Admin/AdminRateLimitOverrides')
 );
 export const AdminNotifications = lazy(() => import('../components/Admin/AdminNotifications'));
+export const AdminSupportTickets = lazy(() => import('../components/Admin/AdminSupportTickets'));
 export const AdminSignificanceAlerts = lazy(
   () => import('../components/Admin/AdminSignificanceAlerts')
 );

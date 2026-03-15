@@ -26,6 +26,8 @@ export const STORAGE_KEYS = {
   ANNOUNCEMENT_DISMISSED: 'ripx_announcement_dismissed', // Dismissed announcement banner text
   /** Set before /auth/start so 401 interceptor does not overwrite Shopify OAuth redirect */
   OAUTH_REDIRECTING: 'ripx_oauth_redirecting',
+  /** Persisted variant colors (array of hex) – used in wizard, code editor, review, etc. */
+  VARIANT_COLORS: 'ripx_variant_colors',
 };
 
 /** Intervals (ms) */

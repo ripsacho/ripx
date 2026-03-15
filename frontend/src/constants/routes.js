@@ -44,6 +44,8 @@ export const ROUTES = {
   PROFILE: '/profile',
   NOTIFICATIONS: '/notifications',
   DOCS: '/docs',
+  SUPPORT: '/support',
+  appSupport: domain => `/app/${encodeURIComponent(domain)}/support`,
 
   // Email session (standalone user): domain list and auth callback
   DOMAINS: '/domains',
@@ -92,6 +94,7 @@ export const ROUTES = {
   ADMIN_ANNOUNCEMENT_BANNER: '/admin/announcement-banner',
   ADMIN_MAIL_PROCESSES: '/admin/mail-processes',
   ADMIN_USAGE_EXPORT: '/admin/usage-export',
+  ADMIN_SUPPORT_TICKETS: '/admin/support-tickets',
 
   // Dynamic routes (for navigation)
   TEST_DETAIL: id => `/tests/${id}`,
@@ -118,6 +121,7 @@ export const MAIN_APP_PATHS = [
   ROUTES.PROFILE,
   ROUTES.NOTIFICATIONS,
   ROUTES.DOCS,
+  ROUTES.SUPPORT,
 ];
 
 /** Universal app routes: Profile, Account settings, Notifications, Documentation. Shown with TopBar only (no sidebar). */
@@ -126,6 +130,7 @@ export const UNIVERSAL_APP_ROUTES = [
   ROUTES.SETTINGS,
   ROUTES.NOTIFICATIONS,
   ROUTES.DOCS,
+  ROUTES.SUPPORT,
 ];
 
 /** Path pattern for domain-scoped app; match pathname with this to detect "in app" routes */

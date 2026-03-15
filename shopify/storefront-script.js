@@ -324,6 +324,10 @@
       utm_source: urlParams.get('utm_source') || '',
       utm_medium: urlParams.get('utm_medium') || '',
     });
+    var cProductId = getCurrentProductId();
+    var cCollectionId = getCurrentCollectionId();
+    if (cProductId) params.set('current_product_id', cProductId);
+    if (cCollectionId) params.set('current_collection_id', cCollectionId);
     if (Object.keys(jsTargetingResults).length > 0) {
       params.set('js_targeting_results', JSON.stringify(jsTargetingResults));
     }
@@ -1177,7 +1181,7 @@
   }
 
   /**
-   * Get current product ID on PDP (Shopify or data attributes). Returns GID or null.
+   * Get current product ID on PDP (Shopify meta, data attributes, or theme JSON script). Returns GID or null.
    */
   function getCurrentProductId() {
     if (window.ShopifyAnalytics?.meta?.product?.id) {
@@ -1191,11 +1195,23 @@
       var id = el.getAttribute('data-product-id');
       if (id) return toProductGid(id);
     }
+    // Theme fallback: many themes put product JSON in a script tag (e.g. #ProductJson, [data-product-json])
+    var script = document.querySelector(
+      '#ProductJson, script[type="application/json"][data-product-json], script[data-section-type="product"]'
+    );
+    if (script && script.textContent) {
+      try {
+        var data = JSON.parse(script.textContent);
+        var id = data.id || data.product_id || (data.product && data.product.id);
+        if (id) return toProductGid(id);
+      } catch (e) {}
+    }
     return null;
   }
 
   /**
-   * Get current collection ID on collection page (Shopify meta or data attributes). Returns GID or null.
+   * Get current collection ID on collection page (Shopify meta, data attributes, or theme JSON script). Returns GID or null.
+   * Works when ShopifyAnalytics/Shopify.meta are not yet set (e.g. local dev, theme dev, or async script order).
    */
   function getCurrentCollectionId() {
     if (window.ShopifyAnalytics?.meta?.collection?.id) {
@@ -1204,10 +1220,44 @@
     if (window.Shopify?.meta?.collection?.id) {
       return toCollectionGid(window.Shopify.meta.collection.id);
     }
-    var el = document.querySelector('[data-collection-id]');
+    var el = document.querySelector(
+      '[data-collection-id], body[data-collection-id], html[data-collection-id]'
+    );
     if (el) {
       var id = el.getAttribute('data-collection-id');
       if (id) return toCollectionGid(id);
+    }
+    // Meta tag fallback (some themes set this)
+    var meta = document.querySelector('meta[name="collection-id"], meta[property="collection:id"]');
+    if (meta && meta.content) {
+      var id = meta.getAttribute('content');
+      if (id) return toCollectionGid(id);
+    }
+    // Theme fallback: many themes put collection JSON in a script tag (e.g. #CollectionJson, Dawn-style)
+    var script = document.querySelector(
+      '#CollectionJson, script[type="application/json"][data-collection-json], script[data-section-type="collection"]'
+    );
+    if (script && script.textContent) {
+      try {
+        var data = JSON.parse(script.textContent);
+        var id = data.id || data.collection_id || (data.collection && data.collection.id);
+        if (id) return toCollectionGid(id);
+      } catch (e) {}
+    }
+    // JSON-LD fallback: some themes output Collection in structured data
+    var jsonLd = document.querySelectorAll('script[type="application/ld+json"]');
+    for (var i = 0; i < jsonLd.length; i++) {
+      try {
+        var ld = JSON.parse(jsonLd[i].textContent);
+        var item = Array.isArray(ld) ? ld[0] : ld;
+        if (item && (item['@type'] === 'CollectionPage' || item['@type'] === 'ItemList')) {
+          var url = item.url || (item.mainEntity && item.mainEntity.url);
+          if (url && url.indexOf('/collections/') !== -1) {
+            var num = url.replace(/.*\/collections\/[^/]*\/?(\d+).*/, '$1').replace(/\D/g, '');
+            if (num) return toCollectionGid(num);
+          }
+        }
+      } catch (e) {}
     }
     return null;
   }

@@ -174,6 +174,7 @@ import {
   SetupWizard,
   Profile,
   Documentation,
+  Support,
   Export,
   PromoLinks,
   Notifications,
@@ -199,6 +200,7 @@ import {
   AdminShopSettingsOverrides,
   AdminRateLimitOverrides,
   AdminNotifications,
+  AdminSupportTickets,
   AdminSignificanceAlerts,
   AdminEventCatalog,
   AdminClientErrors,
@@ -512,9 +514,12 @@ function AppContent() {
     return <RouteLoading message="Loading…" fullScreen />;
   }
 
+  const isSupportPage = location.pathname === ROUTES.SUPPORT;
+
   return (
     <div
       className="app-layout"
+      data-support-page={isSupportPage ? true : undefined}
       style={{
         display: 'flex',
         minHeight: '100vh',
@@ -545,13 +550,19 @@ function AppContent() {
         </>
       )}
       <div
+        className={
+          location.pathname === ROUTES.SUPPORT
+            ? 'layout-content layout-content--support'
+            : 'layout-content'
+        }
         style={{
           marginLeft: showSidebar ? effectiveSidebarWidth : 0,
           width: showSidebar ? `calc(100% - ${effectiveSidebarWidth}px)` : '100%',
           transition:
             'margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-          minHeight: '100vh',
+          minHeight: location.pathname === ROUTES.SUPPORT ? undefined : '100vh',
           position: 'relative',
+          ...(isSupportPage && { overflow: 'visible', overflowX: 'hidden' }),
         }}
       >
         {showTopBar && !isAdminRoute && (
@@ -678,6 +689,16 @@ function AppContent() {
                   </Suspense>
                 }
               />
+              <Route
+                path={ROUTES.SUPPORT}
+                element={
+                  <Suspense fallback={<RouteLoading />}>
+                    <AuthGuard>
+                      <Support />
+                    </AuthGuard>
+                  </Suspense>
+                }
+              />
               {/* Redirect panel URLs to universal pages (Profile/Docs/Notifications only; Settings stays in panel for app config) */}
               <Route
                 path="/app/:domain/profile"
@@ -688,6 +709,10 @@ function AppContent() {
                 element={<Navigate to={ROUTES.NOTIFICATIONS} replace />}
               />
               <Route path="/app/:domain/docs" element={<Navigate to={ROUTES.DOCS} replace />} />
+              <Route
+                path="/app/:domain/support"
+                element={<Navigate to={ROUTES.SUPPORT} replace />}
+              />
               {/* Domain-scoped AB test app: /app/:domain/* */}
               <Route
                 path={ROUTE_PATTERNS.APP_DOMAIN}
@@ -851,6 +876,7 @@ function AppContent() {
                 <Route path="shop-settings-overrides" element={<AdminShopSettingsOverrides />} />
                 <Route path="rate-limit-overrides" element={<AdminRateLimitOverrides />} />
                 <Route path="notifications" element={<AdminNotifications />} />
+                <Route path="support-tickets" element={<AdminSupportTickets />} />
                 <Route path="significance-alerts" element={<AdminSignificanceAlerts />} />
                 <Route path="event-catalog" element={<AdminEventCatalog />} />
                 <Route path="client-errors" element={<AdminClientErrors />} />

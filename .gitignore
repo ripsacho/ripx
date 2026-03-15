@@ -36,6 +36,9 @@ yarn.lock
 service-account*.json
 GOOGLE_APPLICATION_CREDENTIALS
 
+# Support chat image uploads (local storage)
+uploads/
+
 # ============================================
 # Logs & Debug
 # ============================================

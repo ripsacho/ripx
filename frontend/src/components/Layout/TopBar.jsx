@@ -9,10 +9,12 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { InlineStack, Popover, Text, BlockStack, Button, Icon, Tooltip } from '@shopify/polaris';
 import {
   NotificationIcon,
-  SettingsIcon,
   ProfileIcon,
   CheckCircleIcon,
   LinkIcon,
+  ChevronDownIcon,
+  PlusIcon,
+  ChatIcon,
 } from '@shopify/polaris-icons';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -23,7 +25,7 @@ import {
   getConnectUrl,
   redirectToAppUrl,
 } from '../../services';
-import { ROUTES, UNIVERSAL_APP_ROUTES } from '../../constants';
+import { ROUTES } from '../../constants';
 import { useAdminMe } from '../../hooks';
 import { getBreadcrumb, getAppDomainFromPath } from '../../utils/breadcrumb';
 import {
@@ -61,7 +63,7 @@ function TopBar({
     adminMeData?.adminId && String(adminMeData.adminId).includes('@') ? adminMeData.adminId : null;
   const shopDomain = adminMeData?.shopDomain || (!userEmail && adminMeData?.adminId) || null;
   const [userMenuActive, setUserMenuActive] = useState(false);
-  const [settingsMenuActive, setSettingsMenuActive] = useState(false);
+  const [helpPopoverActive, setHelpPopoverActive] = useState(false);
   const [notificationsActive, setNotificationsActive] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -71,9 +73,9 @@ function TopBar({
   const profilePath = ROUTES.PROFILE;
   const notificationsPath = ROUTES.NOTIFICATIONS;
   const docsPath = ROUTES.DOCS;
+  const supportPath = ROUTES.SUPPORT;
   const appDomain = getAppDomainFromPath(location.pathname);
   const settingsPath = appDomain ? ROUTES.appSettings(appDomain) : ROUTES.SETTINGS;
-  const _isUniversalPage = UNIVERSAL_APP_ROUTES.includes(location.pathname);
 
   const isShopifyStore = Boolean(appDomain && isShopifyStoreDomain(appDomain));
   const {
@@ -104,7 +106,6 @@ function TopBar({
   }, [appDomain]);
 
   const toggleUserMenu = useCallback(() => setUserMenuActive(a => !a), []);
-  const toggleSettingsMenu = useCallback(() => setSettingsMenuActive(a => !a), []);
 
   const breadcrumb = useMemo(
     () => getBreadcrumb(location.pathname, location.search),
@@ -151,7 +152,6 @@ function TopBar({
   }, []);
 
   const closeUserMenu = useCallback(() => setUserMenuActive(false), []);
-  const closeSettingsMenu = useCallback(() => setSettingsMenuActive(false), []);
 
   const handleLogout = useCallback(() => {
     setUserMenuActive(false);
@@ -228,9 +228,87 @@ function TopBar({
       </div>
 
       <div className={styles.topBarRight}>
-        {/* Store switcher only in the app (per-store context); hidden on Home and universal pages */}
+        {/* 1) Store switcher + primary CTA (in app only) */}
         {appDomain ? <StoreSwitcher /> : null}
+        {appDomain && (
+          <button
+            type="button"
+            onClick={() => navigate(ROUTES.appCreateTest(appDomain))}
+            className={styles.newTestBtn}
+            aria-label="Create new A/B test"
+            title="Create a new A/B test"
+          >
+            <Icon source={PlusIcon} />
+            <span className={styles.newTestBtnLabel}>New Test</span>
+          </button>
+        )}
+        {/* Divider between primary actions (store + New Test) and utilities */}
+        {appDomain && <span className={styles.topBarRightDivider} aria-hidden="true" />}
+        {/* 2) Utilities: Help (?), Support, Open in new tab (embed only), Notifications, User menu */}
         <div className={styles.actionGroup}>
+          <Popover
+            active={helpPopoverActive}
+            activator={
+              <Tooltip content="Help" preferredPosition="below">
+                <button
+                  type="button"
+                  onClick={() => setHelpPopoverActive(a => !a)}
+                  aria-label="Help – Documentation and Support"
+                  aria-expanded={helpPopoverActive}
+                  aria-haspopup="true"
+                  className={`${styles.iconBtn} ${helpPopoverActive ? styles.active : ''}`}
+                  title="Help"
+                >
+                  <span className={styles.helpIcon} aria-hidden>
+                    ?
+                  </span>
+                </button>
+              </Tooltip>
+            }
+            onClose={() => setHelpPopoverActive(false)}
+            preferredAlignment="right"
+            preferredPosition="below"
+          >
+            <div className={styles.helpPopover}>
+              <Text variant="headingSm" as="h2">
+                Help
+              </Text>
+              <BlockStack gap="200">
+                <button
+                  type="button"
+                  className={styles.helpPopoverLink}
+                  onClick={() => {
+                    setHelpPopoverActive(false);
+                    navigate(docsPath);
+                  }}
+                >
+                  Documentation
+                </button>
+                <button
+                  type="button"
+                  className={styles.helpPopoverLink}
+                  onClick={() => {
+                    setHelpPopoverActive(false);
+                    navigate(supportPath);
+                  }}
+                >
+                  Support
+                </button>
+              </BlockStack>
+            </div>
+          </Popover>
+          <Tooltip content="Support" preferredPosition="below">
+            <button
+              type="button"
+              onClick={() => navigate(supportPath)}
+              aria-label="Go to Support"
+              aria-current={location.pathname === supportPath ? 'page' : undefined}
+              className={`${styles.iconBtn} ${location.pathname === supportPath ? styles.active : ''}`}
+              title="Support"
+            >
+              <Icon source={ChatIcon} />
+            </button>
+          </Tooltip>
           {isEmbeddedInShopify && (
             <Tooltip content="Open in new tab" preferredPosition="below">
               <button
@@ -246,19 +324,28 @@ function TopBar({
           <Popover
             active={notificationsActive}
             activator={
-              <button
-                type="button"
-                onClick={() => setNotificationsActive(a => !a)}
-                aria-label="Notifications"
-                className={`${styles.iconBtn} ${notificationsActive ? styles.active : ''}`}
+              <Tooltip
+                content={
+                  unreadCount > 0 ? `Notifications (${unreadCount} unread)` : 'Notifications'
+                }
+                preferredPosition="below"
               >
-                <Icon source={NotificationIcon} />
-                {unreadCount > 0 && (
-                  <span className={styles.notificationBadge} aria-label={`${unreadCount} unread`}>
-                    {unreadCount > 99 ? '99+' : unreadCount}
-                  </span>
-                )}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setNotificationsActive(a => !a)}
+                  aria-label={
+                    unreadCount > 0 ? `Notifications (${unreadCount} unread)` : 'Notifications'
+                  }
+                  className={`${styles.iconBtn} ${notificationsActive ? styles.active : ''}`}
+                >
+                  <Icon source={NotificationIcon} />
+                  {unreadCount > 0 && (
+                    <span className={styles.notificationBadge} aria-label={`${unreadCount} unread`}>
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
+                </button>
+              </Tooltip>
             }
             onClose={() => setNotificationsActive(false)}
             preferredAlignment="right"
@@ -337,80 +424,39 @@ function TopBar({
             </div>
           </Popover>
 
-          <Popover
-            active={settingsMenuActive}
-            activator={
-              <button
-                type="button"
-                onClick={toggleSettingsMenu}
-                aria-label="Settings menu"
-                className={`${styles.iconBtn} ${settingsMenuActive ? styles.active : ''}`}
-              >
-                <Icon source={SettingsIcon} />
-              </button>
-            }
-            onClose={() => setSettingsMenuActive(false)}
-            preferredAlignment="right"
-            preferredPosition="below"
-          >
-            <div className={styles.menuList} role="menu">
-              <button
-                type="button"
-                className={styles.menuItem}
-                role="menuitem"
-                onClick={() => {
-                  closeSettingsMenu();
-                  navigate(settingsPath);
-                }}
-              >
-                {appDomain ? 'App settings' : 'Account settings'}
-              </button>
-              <button
-                type="button"
-                className={styles.menuItem}
-                role="menuitem"
-                onClick={() => {
-                  closeSettingsMenu();
-                  navigate(notificationsPath);
-                }}
-              >
-                Notifications
-              </button>
-              <button
-                type="button"
-                className={styles.menuItem}
-                role="menuitem"
-                onClick={() => {
-                  closeSettingsMenu();
-                  navigate(profilePath + '?tab=account');
-                }}
-              >
-                API Keys
-              </button>
-            </div>
-          </Popover>
-
+          <span className={styles.actionGroupDivider} aria-hidden />
           <Popover
             active={userMenuActive}
             activator={
-              <button
-                type="button"
-                onClick={toggleUserMenu}
-                aria-label={userEmail ? `Account: ${userEmail}` : 'User menu'}
-                className={`${styles.userMenuTrigger} ${styles.iconBtn} ${userMenuActive ? styles.active : ''}`}
-                title={userEmail || shopDomain || 'Account menu'}
+              <Tooltip
+                content={userEmail || shopDomain || 'Account menu'}
+                preferredPosition="below"
               >
-                {(userEmail || shopDomain) && (
-                  <span className={styles.userMenuTriggerLabel} title={userEmail || shopDomain}>
-                    {userEmail
-                      ? userEmail.length > 28
-                        ? `${userEmail.slice(0, 12)}…${userEmail.slice(-10)}`
-                        : userEmail
-                      : shopDomain}
+                <button
+                  type="button"
+                  onClick={toggleUserMenu}
+                  aria-label={userEmail ? `Account: ${userEmail}` : 'User menu'}
+                  aria-expanded={userMenuActive}
+                  aria-haspopup="true"
+                  className={`${styles.userMenuTrigger} ${styles.iconBtn} ${userMenuActive ? styles.active : ''}`}
+                >
+                  <span className={styles.userMenuTriggerIconWrap}>
+                    <Icon source={ProfileIcon} />
                   </span>
-                )}
-                <Icon source={ProfileIcon} />
-              </button>
+                  {(userEmail || shopDomain) && (
+                    <span className={styles.userMenuTriggerLabel} title={userEmail || shopDomain}>
+                      {userEmail
+                        ? userEmail.length > 28
+                          ? `${userEmail.slice(0, 12)}…${userEmail.slice(-10)}`
+                          : userEmail
+                        : shopDomain}
+                    </span>
+                  )}
+                  <span className={styles.userMenuTriggerChevron} aria-hidden>
+                    <Icon source={ChevronDownIcon} />
+                  </span>
+                </button>
+              </Tooltip>
             }
             onClose={() => setUserMenuActive(false)}
             preferredAlignment="right"
@@ -425,7 +471,7 @@ function TopBar({
                   <span className={styles.userEmail}>{userEmail || shopDomain}</span>
                 </div>
               )}
-              {/* Shopify store only: connection status (never shown for standalone or non-Shopify domains) */}
+              {/* Shopify store only: connection status */}
               {isShopifyStore && connectionFetched && shopifyStoreHandle && (
                 <div
                   className={styles.userMenuConnection}
@@ -476,93 +522,130 @@ function TopBar({
                   ) : null}
                 </div>
               )}
-              <button
-                type="button"
-                className={styles.menuItem}
-                role="menuitem"
-                onClick={() => {
-                  closeUserMenu();
-                  navigate(ROUTES.USER_PANEL);
-                }}
-              >
-                Home
-              </button>
-              <button
-                type="button"
-                className={styles.menuItem}
-                role="menuitem"
-                onClick={() => {
-                  closeUserMenu();
-                  navigate(ROUTES.DOMAINS);
-                }}
-              >
-                My domains
-              </button>
-              {showAdminEntry && (
+
+              <div className={styles.menuSection}>
+                <span className={styles.menuSectionTitle}>Navigate</span>
                 <button
                   type="button"
                   className={styles.menuItem}
                   role="menuitem"
                   onClick={() => {
                     closeUserMenu();
-                    navigate(ROUTES.ADMIN);
+                    navigate(ROUTES.USER_PANEL);
                   }}
                 >
-                  Admin
+                  Home
                 </button>
-              )}
-              <button
-                type="button"
-                className={styles.menuItem}
-                role="menuitem"
-                onClick={() => {
-                  closeUserMenu();
-                  navigate(profilePath);
-                }}
-              >
-                My Profile
-              </button>
-              <button
-                type="button"
-                className={styles.menuItem}
-                role="menuitem"
-                onClick={() => {
-                  closeUserMenu();
-                  navigate(profilePath + '?tab=account');
-                }}
-              >
-                Account
-              </button>
-              <button
-                type="button"
-                className={styles.menuItem}
-                role="menuitem"
-                onClick={() => {
-                  closeUserMenu();
-                  navigate(profilePath + '?tab=preferences');
-                }}
-              >
-                Preferences
-              </button>
-              <button
-                type="button"
-                className={styles.menuItem}
-                role="menuitem"
-                onClick={() => {
-                  closeUserMenu();
-                  navigate(docsPath);
-                }}
-              >
-                Documentation
-              </button>
-              <button
-                type="button"
-                className={`${styles.menuItem} ${styles.menuItemDestructive}`}
-                role="menuitem"
-                onClick={handleLogout}
-              >
-                Logout
-              </button>
+                <button
+                  type="button"
+                  className={styles.menuItem}
+                  role="menuitem"
+                  onClick={() => {
+                    closeUserMenu();
+                    navigate(ROUTES.DOMAINS);
+                  }}
+                >
+                  My domains
+                </button>
+                {showAdminEntry && (
+                  <button
+                    type="button"
+                    className={styles.menuItem}
+                    role="menuitem"
+                    onClick={() => {
+                      closeUserMenu();
+                      navigate(ROUTES.ADMIN);
+                    }}
+                  >
+                    Admin
+                  </button>
+                )}
+              </div>
+
+              <div className={styles.menuSection}>
+                <span className={styles.menuSectionTitle}>Settings</span>
+                <button
+                  type="button"
+                  className={styles.menuItem}
+                  role="menuitem"
+                  onClick={() => {
+                    closeUserMenu();
+                    navigate(settingsPath);
+                  }}
+                >
+                  {appDomain ? 'App settings' : 'Account settings'}
+                </button>
+                <button
+                  type="button"
+                  className={styles.menuItem}
+                  role="menuitem"
+                  onClick={() => {
+                    closeUserMenu();
+                    navigate(notificationsPath);
+                  }}
+                >
+                  Notifications
+                </button>
+                <button
+                  type="button"
+                  className={styles.menuItem}
+                  role="menuitem"
+                  onClick={() => {
+                    closeUserMenu();
+                    navigate(profilePath + '?tab=account');
+                  }}
+                >
+                  Account & API keys
+                </button>
+              </div>
+
+              <div className={styles.menuSection}>
+                <span className={styles.menuSectionTitle}>Resources</span>
+                <button
+                  type="button"
+                  className={styles.menuItem}
+                  role="menuitem"
+                  onClick={() => {
+                    closeUserMenu();
+                    navigate(profilePath);
+                  }}
+                >
+                  My Profile
+                </button>
+                <button
+                  type="button"
+                  className={styles.menuItem}
+                  role="menuitem"
+                  onClick={() => {
+                    closeUserMenu();
+                    navigate(profilePath + '?tab=preferences');
+                  }}
+                >
+                  Preferences
+                </button>
+                <button
+                  type="button"
+                  className={styles.menuItem}
+                  role="menuitem"
+                  onClick={() => {
+                    closeUserMenu();
+                    navigate(docsPath);
+                  }}
+                >
+                  Documentation
+                </button>
+              </div>
+
+              <div className={styles.menuSection}>
+                <button
+                  type="button"
+                  className={`${styles.menuItem} ${styles.menuItemDestructive}`}
+                  role="menuitem"
+                  onClick={handleLogout}
+                >
+                  Logout
+                </button>
+              </div>
             </div>
           </Popover>
         </div>

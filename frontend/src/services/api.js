@@ -631,7 +631,8 @@ export function apiRequest(method, endpoint, data = null, config = {}) {
     (endpoint.startsWith('/admin/') ||
       endpoint.startsWith('/me/') ||
       endpoint.startsWith('/auth/start') ||
-      endpoint.startsWith('/account/stores'));
+      endpoint.startsWith('/account/stores') ||
+      endpoint.startsWith('/support/'));
   if (!shopDomain && !apiKey && !allowedWithoutShopOrKey) {
     throw new Error('Missing credentials. Open from Shopify Admin or set API key.');
   }
@@ -639,13 +640,14 @@ export function apiRequest(method, endpoint, data = null, config = {}) {
   // Extract params and headers from config to avoid conflicts
   const { params: configParams = {}, headers: configHeaders = {}, ...restConfig } = config;
 
-  // Use email session for admin/me, auth/start, and account/stores (list user's stores without sending shop)
+  // Use email session for admin/me, auth/start, account/stores, and support (so Bearer token is sent when logged in)
   const useEmailSession =
     getEmailToken() &&
     (endpoint.startsWith('/admin/') ||
       endpoint.startsWith('/me/') ||
       endpoint.startsWith('/auth/start') ||
-      endpoint.startsWith('/account/stores'));
+      endpoint.startsWith('/account/stores') ||
+      endpoint.startsWith('/support/'));
 
   // When on /app/:domain, pass store so /account/stores returns correct currentStore (StoreSwitcher highlights the right store)
   const storeParam = endpoint === '/account/stores' && shopDomain ? { store: shopDomain } : {};
@@ -720,6 +722,13 @@ export function apiPost(endpoint, data, config = {}) {
  */
 export function apiPut(endpoint, data, config = {}) {
   return apiRequest('PUT', endpoint, data, config);
+}
+
+/**
+ * PATCH request helper
+ */
+export function apiPatch(endpoint, data, config = {}) {
+  return apiRequest('PATCH', endpoint, data, config);
 }
 
 /**

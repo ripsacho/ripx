@@ -8,7 +8,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Text, Icon } from '@shopify/polaris';
+import { Text, Icon, Tooltip } from '@shopify/polaris';
 import {
   HomeIcon,
   ProfileIcon,
@@ -56,6 +56,7 @@ const adminNav = [
   { path: ROUTES.ADMIN_SHOP_SETTINGS_OVERRIDES, label: 'Shop settings overrides', icon: KeyIcon },
   { path: ROUTES.ADMIN_RATE_LIMIT_OVERRIDES, label: 'Rate limit overrides', icon: FlagIcon },
   { path: ROUTES.ADMIN_NOTIFICATIONS, label: 'Notifications', icon: ListBulletedIcon },
+  { path: ROUTES.ADMIN_SUPPORT_TICKETS, label: 'Support tickets', icon: EmailIcon },
   { path: ROUTES.ADMIN_SIGNIFICANCE_ALERTS, label: 'Significance alerts', icon: FlagIcon },
   { path: ROUTES.ADMIN_EVENT_CATALOG, label: 'Event catalog', icon: ListBulletedIcon },
   { path: ROUTES.ADMIN_CLIENT_ERRORS, label: 'Client errors', icon: ListBulletedIcon },
@@ -89,6 +90,7 @@ const pathToSection = {
   [ROUTES.ADMIN_SHOP_SETTINGS_OVERRIDES]: 'Shop settings overrides',
   [ROUTES.ADMIN_RATE_LIMIT_OVERRIDES]: 'Rate limit overrides',
   [ROUTES.ADMIN_NOTIFICATIONS]: 'Notifications',
+  [ROUTES.ADMIN_SUPPORT_TICKETS]: 'Support tickets',
   [ROUTES.ADMIN_SIGNIFICANCE_ALERTS]: 'Significance alerts',
   [ROUTES.ADMIN_EVENT_CATALOG]: 'Event catalog',
   [ROUTES.ADMIN_CLIENT_ERRORS]: 'Client errors',
@@ -205,38 +207,40 @@ function AdminLayout({ children }) {
                       height={32}
                     />
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setCollapsed(false)}
-                    className={styles.adminExpandBtnCollapsed}
-                    aria-label="Expand sidebar"
-                    title="Expand sidebar"
-                  >
-                    <svg
-                      className={styles.adminExpandBtnCollapsedSvg}
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden
+                  <Tooltip content="Expand sidebar" preferredPosition="right">
+                    <button
+                      type="button"
+                      onClick={() => setCollapsed(false)}
+                      className={styles.adminExpandBtnCollapsed}
+                      aria-label="Expand sidebar"
                     >
-                      <path d="M9 6l6 6-6 6" />
-                    </svg>
-                  </button>
+                      <svg
+                        className={styles.adminExpandBtnCollapsedSvg}
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden
+                      >
+                        <path d="M9 6l6 6-6 6" />
+                      </svg>
+                    </button>
+                  </Tooltip>
                 </>
               )}
               {!collapsed && (
-                <button
-                  type="button"
-                  onClick={() => setCollapsed(true)}
-                  className={styles.adminCollapseBtn}
-                  aria-label="Collapse sidebar"
-                  title="Collapse sidebar"
-                >
-                  <Icon source={ChevronLeftIcon} tone="base" />
-                </button>
+                <Tooltip content="Collapse sidebar" preferredPosition="right">
+                  <button
+                    type="button"
+                    onClick={() => setCollapsed(true)}
+                    className={styles.adminCollapseBtn}
+                    aria-label="Collapse sidebar"
+                  >
+                    <Icon source={ChevronLeftIcon} tone="base" />
+                  </button>
+                </Tooltip>
               )}
             </div>
           </div>
@@ -270,34 +274,36 @@ function AdminLayout({ children }) {
           </nav>
           <div className={styles.adminSidebarFooter}>
             <div className={styles.adminSidebarFooterActions}>
-              <button
-                type="button"
-                className={styles.adminBackToApp}
-                onClick={() => navigate(ROUTES.USER_PANEL)}
-                aria-label="Back to app"
-                title="Back to RipX app (Home)"
-              >
-                <span className={styles.adminSidebarBtnContent}>
-                  <span className={styles.adminSidebarBtnIcon}>
-                    <Icon source={ArrowLeftIcon} tone="base" />
+              <Tooltip content="Back to RipX app (Home)" preferredPosition="right">
+                <button
+                  type="button"
+                  className={styles.adminBackToApp}
+                  onClick={() => navigate(ROUTES.USER_PANEL)}
+                  aria-label="Back to app"
+                >
+                  <span className={styles.adminSidebarBtnContent}>
+                    <span className={styles.adminSidebarBtnIcon}>
+                      <Icon source={ArrowLeftIcon} tone="base" />
+                    </span>
+                    <span className={styles.adminSidebarBtnLabel}>Back to app</span>
                   </span>
-                  <span className={styles.adminSidebarBtnLabel}>Back to app</span>
-                </span>
-              </button>
-              <button
-                type="button"
-                className={styles.adminSidebarFooterLink}
-                onClick={() => navigate(ROUTES.DOMAINS)}
-                aria-label="My domains"
-                title="My domains"
-              >
-                <span className={styles.adminSidebarBtnContent}>
-                  <span className={styles.adminSidebarBtnIcon}>
-                    <Icon source={GlobeIcon} tone="base" />
+                </button>
+              </Tooltip>
+              <Tooltip content="My domains" preferredPosition="right">
+                <button
+                  type="button"
+                  className={styles.adminSidebarFooterLink}
+                  onClick={() => navigate(ROUTES.DOMAINS)}
+                  aria-label="My domains"
+                >
+                  <span className={styles.adminSidebarBtnContent}>
+                    <span className={styles.adminSidebarBtnIcon}>
+                      <Icon source={GlobeIcon} tone="base" />
+                    </span>
+                    <span className={styles.adminSidebarBtnLabel}>My domains</span>
                   </span>
-                  <span className={styles.adminSidebarBtnLabel}>My domains</span>
-                </span>
-              </button>
+                </button>
+              </Tooltip>
             </div>
             {!collapsed && <div className={styles.adminSidebarFooterBrand}>RipX Admin</div>}
           </div>
@@ -355,17 +361,18 @@ function AdminLayout({ children }) {
             <span className={styles.adminFloatingBackToTopLabel} aria-hidden="true">
               Back to top
             </span>
-            <button
-              type="button"
-              className={styles.adminFloatingBackToTop}
-              onClick={handleBackToTop}
-              title="Scroll to top"
-              aria-label="Scroll to top"
-            >
-              <span className={styles.adminFloatingBackToTopIcon}>
-                <Icon source={ArrowUpIcon} tone="base" />
-              </span>
-            </button>
+            <Tooltip content="Scroll to top" preferredPosition="above">
+              <button
+                type="button"
+                className={styles.adminFloatingBackToTop}
+                onClick={handleBackToTop}
+                aria-label="Scroll to top"
+              >
+                <span className={styles.adminFloatingBackToTopIcon}>
+                  <Icon source={ArrowUpIcon} tone="base" />
+                </span>
+              </button>
+            </Tooltip>
           </div>,
           document.body
         )}

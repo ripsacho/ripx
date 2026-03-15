@@ -40,11 +40,11 @@ function createSessionStore() {
 }
 
 /**
- * Create session store asynchronously. Awaits Redis connection before creating the store
- * so session operations do not race with an unconnected client.
+ * Create session store asynchronously. Returns a promise that resolves when the store
+ * is ready so session operations do not race with an unconnected client.
  * @returns {Promise<Object|null>} Resolves to Express-session store or null for MemoryStore
  */
-async function createSessionStoreAsync() {
+function createSessionStoreAsync() {
   if (storePromise) {
     return storePromise;
   }

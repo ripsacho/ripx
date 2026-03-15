@@ -1,8 +1,14 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
+  // Load .env from repo root so VITE_* and backend can share one .env when running npm run dev from root
+  envDir: path.resolve(__dirname, '..'),
   server: {
     host: true,
     port: Number(process.env.VITE_PORT) || Number(process.env.FRONTEND_PORT) || 3001,

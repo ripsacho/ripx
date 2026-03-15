@@ -28,6 +28,7 @@ import {
   LockIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
+  ChevronRightIcon,
   TargetIcon,
   ChartLineIcon,
   CheckCircleIcon,
@@ -52,6 +53,7 @@ import {
 } from '@shopify/polaris-icons';
 import { Icon } from '@shopify/polaris';
 import { TooltipWrapper } from '../Shared';
+import CodeEditorIDE from '../CodeEditorIDE/CodeEditorIDE';
 import SampleSizeCalculator from '../TestCreator/SampleSizeCalculator';
 import TrafficAllocationSlider from '../TestCreator/TrafficAllocationSlider';
 import Toast from '../Toast/Toast';
@@ -73,6 +75,7 @@ import {
   PREVIEW_PARAMS,
 } from '../../utils/previewUrl';
 import { inferTemplateKeyFromVariants } from '../../utils/testType';
+import { getVariantColor, getVariantColorLight } from '../../utils/variantColors';
 import { STANDALONE_TEST_TYPE_IDS } from '../../constants';
 import {
   TEST_TEMPLATES,
@@ -171,9 +174,31 @@ function TestWizard({
   const [savePresetModalOpen, setSavePresetModalOpen] = useState(false);
   const [savePresetAsFullTemplate, setSavePresetAsFullTemplate] = useState(false);
   const [sampleSizeExpanded, setSampleSizeExpanded] = useState(false);
-  const [configEditorMode, setConfigEditorMode] = useState('code'); // 'visual' | 'code'
+  const [visualEditorExpanded, setVisualEditorExpanded] = useState(false);
+  const [codeEditorExpanded, setCodeEditorExpanded] = useState(false);
   const [visualEditorDirty, setVisualEditorDirty] = useState(false);
   const [codeEditorDirty, setCodeEditorDirty] = useState(false);
+  const [codeEditorSubTab, setCodeEditorSubTab] = useState('css'); // 'css' | 'js' – IDE-style tab blend
+  const [variantDropdownOpen, setVariantDropdownOpen] = useState(false);
+  const variantDropdownRef = useRef(null);
+
+  useEffect(() => {
+    if (!variantDropdownOpen) return;
+    const handleClickOutside = e => {
+      if (variantDropdownRef.current && !variantDropdownRef.current.contains(e.target)) {
+        setVariantDropdownOpen(false);
+      }
+    };
+    const handleEscape = e => {
+      if (e.key === 'Escape') setVariantDropdownOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [variantDropdownOpen]);
   useEffect(() => {
     if (!isDirty) {
       setVisualEditorDirty(false);
@@ -192,12 +217,16 @@ function TestWizard({
   const visualSnippetPanelRef = useRef(null);
   const visualSnippetBackdropRef = useRef(null);
   const formDataRef = useRef(formData);
+  const variantCodesDataRef = useRef(variantCodesData);
   const visualPreviewVariantIndexRef = useRef(visualPreviewVariantIndex);
   const changingSelectorIndexRef = useRef(changingSelectorIndex);
   const selectedVariantIndexRef = useRef(selectedVariantIndex);
   useEffect(() => {
     formDataRef.current = formData;
   }, [formData]);
+  useEffect(() => {
+    variantCodesDataRef.current = variantCodesData;
+  }, [variantCodesData]);
   useEffect(() => {
     selectedVariantIndexRef.current = selectedVariantIndex;
   }, [selectedVariantIndex]);
@@ -652,10 +681,12 @@ function TestWizard({
   }, [mode, initialData, formData.name, formData.description, isDirty]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const normalizeVariantAllocations = vars => {
-    if (!vars || vars.length === 0) return vars;
-    const total = vars.reduce((sum, v) => sum + (Number(v.allocation) || 0), 0);
+    if (!vars || !Array.isArray(vars) || vars.length === 0) return vars;
+    const valid = vars.filter(v => v !== null && v !== undefined && typeof v === 'object');
+    if (valid.length === 0) return vars;
+    const total = valid.reduce((sum, v) => sum + (Number(v.allocation) || 0), 0);
     if (total === 0) return vars;
-    const scaled = vars.map(v => ({
+    const scaled = valid.map(v => ({
       ...v,
       allocation: ((Number(v.allocation) || 0) / total) * 100,
     }));
@@ -673,24 +704,22 @@ function TestWizard({
   };
 
   const buildPayload = (data = formData, codes = variantCodesData) => {
-    const variants = data.variants || [];
+    const variants = data?.variants || [];
     const codesList = Array.isArray(codes) ? codes : [];
     const variantsWithCode = variants.map((variant, index) => {
-      const combinedCode = buildCombinedCode(codesList[index]);
-      const existingCode = variant?.code || variant?.config?.code || '';
-      if (combinedCode) {
-        return {
-          ...variant,
-          code: combinedCode,
-        };
+      const codeItem = codesList[index];
+      const combinedCode =
+        codeItem && typeof codeItem.code === 'string' && codeItem.code.trim()
+          ? codeItem.code
+          : buildCombinedCode(codeItem);
+      const existingCode = variant?.code ?? variant?.config?.code ?? '';
+      if (combinedCode && String(combinedCode).trim()) {
+        return { ...variant, code: combinedCode };
       }
-      if (existingCode) {
-        return {
-          ...variant,
-          code: existingCode,
-        };
+      if (existingCode && String(existingCode).trim()) {
+        return { ...variant, code: existingCode };
       }
-      const { code: _code, ...rest } = variant;
+      const { code: _code, ...rest } = variant || {};
       return rest;
     });
 
@@ -804,18 +833,21 @@ function TestWizard({
   };
 
   const buildCodePayload = (data = formData, codes = variantCodesData) => {
-    const variants = data.variants || [];
+    const variants = data?.variants || [];
     const codesList = Array.isArray(codes) ? codes : [];
     return {
       variants: variants.map((variant, index) => {
-        const codeData = codesList[index] ?? codesList.find(item => item?.name === variant.name);
-        const code = codeData
-          ? buildCombinedCode(codeData)
+        const codeData = codesList[index] ?? codesList.find(item => item?.name === variant?.name);
+        const rawCode = codeData
+          ? typeof codeData.code === 'string' && codeData.code.trim()
+            ? codeData.code
+            : buildCombinedCode(codeData)
           : (variant?.code ?? variant?.config?.code ?? '');
+        const code = rawCode !== undefined && rawCode !== null ? String(rawCode) : '';
         return {
-          id: variant.id || null,
-          name: (variant.name || variant.config?.name || `Variant ${index + 1}`).trim(),
-          code: code !== undefined && code !== null ? String(code) : '',
+          id: variant?.id ?? null,
+          name: (variant?.name || variant?.config?.name || `Variant ${index + 1}`).trim(),
+          code,
         };
       }),
     };
@@ -876,9 +908,9 @@ function TestWizard({
     getPreviewPathForTarget,
   ]);
 
-  // Set visual preview loading when switching to visual tab or when preview URL changes
+  // Set visual preview loading when opening visual editor or when preview URL changes
   useEffect(() => {
-    if (configEditorMode !== 'visual') {
+    if (!visualEditorExpanded) {
       setVisualPreviewLoadState('idle');
       return;
     }
@@ -893,7 +925,7 @@ function TestWizard({
     });
     setVisualPreviewLoadState(resolved ? 'loading' : 'idle');
   }, [
-    configEditorMode,
+    visualEditorExpanded,
     formData.segments?.visual_editor_preview_url,
     formData.segments?.url_pattern,
     formData.target_type,
@@ -1131,10 +1163,11 @@ function TestWizard({
   };
 
   const stripCodeFromPayload = payload => {
-    if (!payload) return payload;
+    if (!payload || typeof payload !== 'object') return payload;
     const variants = (payload.variants || []).map(variant => {
+      if (!variant || typeof variant !== 'object') return variant;
       const { code: _code, ...rest } = variant;
-      if (rest.config && rest.config.code) {
+      if (rest.config && typeof rest.config === 'object' && rest.config.code !== undefined) {
         const { code: _c, ...configRest } = rest.config;
         return { ...rest, config: configRest };
       }
@@ -1162,10 +1195,30 @@ function TestWizard({
         const fromServer = serverVariants[index]
           ? (serverVariants[index].code ?? serverVariants[index].config?.code ?? '')
           : '';
-        const sourceCode =
-          (fromForm && String(fromForm).trim()) || (fromServer && String(fromServer).trim())
-            ? fromForm || fromServer
+        const existingCode =
+          existing && (existing.code?.trim() || buildCombinedCode(existing).trim())
+            ? existing.code?.trim()
+              ? existing.code
+              : buildCombinedCode(existing)
             : '';
+        const formC = fromForm && String(fromForm).trim() ? fromForm : '';
+        const srvC = fromServer && String(fromServer).trim() ? fromServer : '';
+        let sourceCode = '';
+        if (mode === 'edit') {
+          if (existingCode && formC && existingCode.trim() !== formC.trim()) {
+            sourceCode = existingCode;
+          } else if (formC) {
+            sourceCode = formC;
+          } else if (!formC && !existingCode) {
+            sourceCode = '';
+          } else if (srvC) {
+            sourceCode = srvC;
+          } else if (existingCode) {
+            sourceCode = existingCode;
+          }
+        } else {
+          sourceCode = formC || srvC || existingCode || '';
+        }
 
         if (sourceCode && String(sourceCode).trim()) {
           const parsed = parseVariantCode(sourceCode);
@@ -1231,6 +1284,8 @@ function TestWizard({
       };
     });
     setVariantCodesData(fromServer);
+    // Intentionally omit initialData.updated_at and isDirty to avoid overwriting local edits on tick
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, initialData?.id, initialData?.variants]);
 
   useEffect(() => {
@@ -1369,9 +1424,11 @@ function TestWizard({
     setError(null);
     setAutosaveState('saving');
     try {
-      const codePayload = buildCodePayload();
+      const form = formDataRef.current;
+      const codes = variantCodesDataRef.current;
+      const codePayload = buildCodePayload(form, codes);
       await onSaveCode(codePayload);
-      lastSavedSnapshotRef.current = JSON.stringify(buildPayload());
+      lastSavedSnapshotRef.current = JSON.stringify(buildPayload(form, codes));
       setIsDirty(false);
       setAutosaveState('saved');
       setLastSavedAt(new Date());
@@ -1401,7 +1458,10 @@ function TestWizard({
       }
     }
 
-    const payload = buildPayload();
+    // Use refs so we always send the latest edits (React state may not have committed yet when Save is clicked)
+    const form = formDataRef.current;
+    const codes = variantCodesDataRef.current;
+    const payload = buildPayload(form, codes);
     const nameToUse = (payload.name?.trim() || initialData?.name?.trim()) ?? '';
     if (!nameToUse) {
       setError('Test name is required.');
@@ -1433,7 +1493,7 @@ function TestWizard({
         }
       }
 
-      const codePayload = isCodeStep ? buildCodePayload() : null;
+      const codePayload = isCodeStep ? buildCodePayload(form, codes) : null;
       await onSubmit(payloadWithName, { ...options, isCodeStep, useCodeEndpoint, codePayload });
       const snapshot = JSON.stringify(payloadWithName);
       lastSavedSnapshotRef.current = snapshot;
@@ -1471,7 +1531,9 @@ function TestWizard({
 
     if (initialSnapshotPendingRef.current) {
       if (formData.variants?.length > 0 && variantCodesData.length === formData.variants.length) {
-        lastSavedSnapshotRef.current = JSON.stringify(buildPayload());
+        lastSavedSnapshotRef.current = JSON.stringify(
+          buildPayload(formDataRef.current, variantCodesDataRef.current)
+        );
         initialSnapshotPendingRef.current = false;
         setIsDirty(false);
       }
@@ -1563,6 +1625,19 @@ function TestWizard({
       const next = { ...current, [type]: value };
       next.code = buildCombinedCode(next);
       updated[index] = next;
+      setFormData(fd => {
+        const vars = [...(fd.variants || [])];
+        if (vars[index]) {
+          const cfg =
+            vars[index].config && typeof vars[index].config === 'object' ? vars[index].config : {};
+          vars[index] = {
+            ...vars[index],
+            code: next.code,
+            config: { ...cfg, code: next.code },
+          };
+        }
+        return { ...fd, variants: vars };
+      });
       return updated;
     });
 
@@ -1577,10 +1652,11 @@ function TestWizard({
 
   const handleVariantNavigation = direction => {
     hasVariantSelectionRef.current = true;
+    const maxIndex = Math.max(0, variantCodesData.length - 1);
     if (direction === 'prev') {
       setSelectedVariantIndex(prev => Math.max(0, prev - 1));
     } else {
-      setSelectedVariantIndex(prev => Math.min(variantCodesData.length - 1, prev + 1));
+      setSelectedVariantIndex(prev => Math.min(maxIndex, prev + 1));
     }
   };
 
@@ -5199,11 +5275,14 @@ function TestWizard({
 
   const variantConfigType = getVariantConfigType();
 
+  // Show variant config step as soon as we have data. In edit mode for code type, require
+  // variantCodesData to be in sync with formData.variants (or 0 variants); do not block on
+  // isInitialized so we avoid infinite "Loading configuration…" when effect order or key remounts delay it.
   const configStepContentReady =
     mode !== 'edit' ||
-    (isInitialized &&
-      (variantConfigType !== 'code' ||
-        (formData.variants?.length > 0 && variantCodesData.length === formData.variants?.length)));
+    (variantConfigType !== 'code' && isInitialized) ||
+    (variantConfigType === 'code' &&
+      (formData.variants?.length === 0 || variantCodesData.length === formData.variants?.length));
 
   const renderVariantUrlModule = () => (
     <BlockStack gap="400">
@@ -5474,545 +5553,567 @@ function TestWizard({
                 )}
               </InlineStack>
 
-              <div className="config-editor-tabs-wrap">
-                <div
-                  className="config-editor-tabs"
-                  role="tablist"
-                  aria-label="Configuration editor mode"
-                  onKeyDown={e => {
-                    if (e.key === 'ArrowLeft' || e.key === 'Home') {
-                      e.preventDefault();
-                      setConfigEditorMode('visual');
-                    } else if (e.key === 'ArrowRight' || e.key === 'End') {
-                      e.preventDefault();
-                      setConfigEditorMode('code');
-                    }
-                  }}
-                >
+              <div className="config-editor-accordion">
+                <div className="config-editor-accordion-item">
                   <button
                     type="button"
-                    role="tab"
-                    aria-selected={configEditorMode === 'visual'}
-                    aria-controls="config-editor-panel-visual"
-                    id="config-tab-visual"
-                    tabIndex={configEditorMode === 'visual' ? 0 : -1}
-                    className={`config-editor-tab ${configEditorMode === 'visual' ? 'config-editor-tab--active' : ''}`}
-                    onClick={() => setConfigEditorMode('visual')}
-                    aria-label="Visual editor: preview target page and element selector"
+                    className="config-editor-accordion-head"
+                    onClick={() => {
+                      const next = !visualEditorExpanded;
+                      setVisualEditorExpanded(next);
+                      if (next) setCodeEditorExpanded(false);
+                    }}
+                    aria-expanded={visualEditorExpanded}
+                    aria-controls="config-editor-accordion-visual-body"
+                    id="config-editor-accordion-visual-head"
                   >
-                    <span className="config-editor-tab-icon config-editor-tab-icon--visual">
+                    <span className="config-editor-accordion-head-icon config-editor-accordion-head-icon--visual">
                       <Icon source={ViewIcon} />
                     </span>
-                    <span className="config-editor-tab-label">Visual Editor</span>
+                    <span className="config-editor-accordion-head-label">Visual Editor</span>
                     {visualEditorDirty && (
-                      <span className="config-editor-tab-dirty" title="Unsaved changes" aria-hidden>
+                      <span
+                        className="config-editor-accordion-head-dirty"
+                        title="Unsaved changes"
+                        aria-hidden
+                      >
                         •
                       </span>
                     )}
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={configEditorMode === 'code'}
-                    aria-controls="config-editor-panel-code"
-                    id="config-tab-code"
-                    tabIndex={configEditorMode === 'code' ? 0 : -1}
-                    className={`config-editor-tab ${configEditorMode === 'code' ? 'config-editor-tab--active' : ''}`}
-                    onClick={() => setConfigEditorMode('code')}
-                    aria-label="Code editor: add CSS and JavaScript per variant"
-                  >
-                    <span className="config-editor-tab-icon">
-                      <Icon source={CodeIcon} />
+                    <span className="config-editor-accordion-head-chevron">
+                      {visualEditorExpanded ? (
+                        <Icon source={ChevronDownIcon} />
+                      ) : (
+                        <Icon source={ChevronRightIcon} />
+                      )}
                     </span>
-                    <span className="config-editor-tab-label">Code Editor</span>
-                    {codeEditorDirty && (
-                      <span className="config-editor-tab-dirty" title="Unsaved changes" aria-hidden>
-                        •
-                      </span>
-                    )}
                   </button>
-                </div>
-
-                <div className="config-editor-panels">
-                  <div
-                    id="config-editor-panel-visual"
-                    role="tabpanel"
-                    aria-labelledby="config-tab-visual"
-                    hidden={configEditorMode !== 'visual'}
-                    className={`config-editor-panel config-editor-panel--visual ${configEditorMode === 'visual' ? 'config-editor-panel--active' : ''}`}
+                  <Collapsible
+                    id="config-editor-accordion-visual-body"
+                    open={visualEditorExpanded}
+                    transition={{ duration: '200ms', timingFunction: 'ease' }}
                   >
-                    <div className="variant-visual-editor-content">
-                      <BlockStack gap="400">
-                        <div className="variant-visual-editor-default-page">
-                          <Text as="span" variant="bodySm" fontWeight="semibold">
-                            Default target page
-                          </Text>
-                          <Text
-                            as="p"
-                            variant="bodySm"
-                            color="subdued"
-                            style={{ marginTop: '0.25rem' }}
-                          >
-                            {(formData.segments?.url_pattern ?? '').trim()
-                              ? formData.segments.url_pattern
-                              : (formData.segments?.page_rules?.length ?? 0) > 0
-                                ? 'Page rules (from Targeting step)'
-                                : 'All pages'}
-                          </Text>
-                        </div>
-                        <TextField
-                          label="Preview URL"
-                          value={formData.segments?.visual_editor_preview_url ?? ''}
-                          onChange={value => {
-                            setIsDirty(true);
-                            setVisualEditorDirty(true);
-                            setFormData(prev => ({
-                              ...prev,
-                              segments: {
-                                ...(prev.segments || {}),
-                                visual_editor_preview_url: value,
-                              },
-                            }));
-                            setVisualPreviewLoadState('idle');
-                          }}
-                          placeholder={(() => {
-                            const d =
-                              initialData?.shop_domain ||
+                    <div className="config-editor-accordion-body config-editor-panel config-editor-panel--visual">
+                      <div className="variant-visual-editor-content">
+                        <BlockStack gap="400">
+                          <div className="variant-visual-editor-default-page">
+                            <Text as="span" variant="bodySm" fontWeight="semibold">
+                              Default target page
+                            </Text>
+                            <Text
+                              as="p"
+                              variant="bodySm"
+                              color="subdued"
+                              style={{ marginTop: '0.25rem' }}
+                            >
+                              {(formData.segments?.url_pattern ?? '').trim()
+                                ? formData.segments.url_pattern
+                                : (formData.segments?.page_rules?.length ?? 0) > 0
+                                  ? 'Page rules (from Targeting step)'
+                                  : 'All pages'}
+                            </Text>
+                          </div>
+                          <TextField
+                            label="Preview URL"
+                            value={formData.segments?.visual_editor_preview_url ?? ''}
+                            onChange={value => {
+                              setIsDirty(true);
+                              setVisualEditorDirty(true);
+                              setFormData(prev => ({
+                                ...prev,
+                                segments: {
+                                  ...(prev.segments || {}),
+                                  visual_editor_preview_url: value,
+                                },
+                              }));
+                              setVisualPreviewLoadState('idle');
+                            }}
+                            placeholder={(() => {
+                              const d =
+                                initialData?.shop_domain ||
+                                getPreviewDomain() ||
+                                getShopDomain() ||
+                                routeDomain;
+                              const path = getFirstTargetPreviewPath();
+                              const domainClean = d
+                                ? d
+                                    .replace(/^https?:\/\//i, '')
+                                    .replace(/\/+$/, '')
+                                    .split('/')[0]
+                                : '';
+                              return domainClean
+                                ? `https://${domainClean}${path.startsWith('/') ? path : `/${path}`}`
+                                : 'https://your-site.com/';
+                            })()}
+                            helpText="When empty, the first target page from Targeting is used automatically (e.g. first product, collection, or homepage). Add the RipX script to your store (App settings → Installation) to enable click-to-select."
+                            autoComplete="url"
+                          />
+                          {(() => {
+                            const veUrl = (
+                              formData.segments?.visual_editor_preview_url ?? ''
+                            ).trim();
+                            const hasOverride = veUrl.length > 0;
+                            const domainForPreview =
+                              (initialData?.shop_domain &&
+                                String(initialData.shop_domain).trim()) ||
                               getPreviewDomain() ||
                               getShopDomain() ||
                               routeDomain;
-                            const path = getFirstTargetPreviewPath();
-                            const domainClean = d
-                              ? d
-                                  .replace(/^https?:\/\//i, '')
-                                  .replace(/\/+$/, '')
-                                  .split('/')[0]
-                              : '';
-                            return domainClean
-                              ? `https://${domainClean}${path.startsWith('/') ? path : `/${path}`}`
-                              : 'https://your-site.com/';
-                          })()}
-                          helpText="When empty, the first target page from Targeting is used automatically (e.g. first product, collection, or homepage). Add the RipX script to your store (App settings → Installation) to enable click-to-select."
-                          autoComplete="url"
-                        />
-                        {(() => {
-                          const veUrl = (formData.segments?.visual_editor_preview_url ?? '').trim();
-                          const hasOverride = veUrl.length > 0;
-                          const domainForPreview =
-                            (initialData?.shop_domain && String(initialData.shop_domain).trim()) ||
-                            getPreviewDomain() ||
-                            getShopDomain() ||
-                            routeDomain;
-                          const pathForPreview = getFirstTargetPreviewPath();
-                          const baseUrl = resolvePreviewBaseUrl({
-                            variantUrl: null,
-                            overrideUrl: hasOverride ? veUrl : null,
-                            domain: domainForPreview || undefined,
-                            path: pathForPreview,
-                          });
-                          const variants = formData.variants ?? [];
-                          const safeVisualIndex = Math.min(
-                            Math.max(0, visualPreviewVariantIndex),
-                            Math.max(0, variants.length - 1)
-                          );
-                          const previewVariant = variants[safeVisualIndex];
-                          const testId = initialData?.id;
-                          const fullPreviewUrl =
-                            baseUrl && testId
-                              ? buildPreviewUrlUtil({
-                                  baseUrl,
-                                  testId,
-                                  variantId:
-                                    previewVariant?.id ||
-                                    previewVariant?.name ||
-                                    (previewVariant ? `variant-${safeVisualIndex + 1}` : ''),
-                                  variantName:
-                                    previewVariant?.name ||
-                                    (previewVariant ? `Variant ${safeVisualIndex + 1}` : ''),
-                                  visualEditor: true,
-                                })
-                              : null;
-                          const directPreviewUrl = fullPreviewUrl || baseUrl || '';
-                          let iframeSrc = '';
-                          if (directPreviewUrl) {
-                            const apiBase = (getApiBaseUrl() || '').replace(/\/+$/, '') || '/api';
-                            const previewDocPath = `${apiBase}/track/preview-document`;
-                            const isRelative =
-                              typeof window !== 'undefined' &&
-                              apiBase &&
-                              !/^https?:\/\//i.test(apiBase);
-                            const previewDoc = isRelative
-                              ? new URL(previewDocPath, window.location.origin)
-                              : new URL(previewDocPath);
-                            previewDoc.searchParams.set('url', directPreviewUrl);
-                            previewDoc.searchParams.set('ab_visual_editor', '1');
-                            if (fullPreviewUrl) {
-                              try {
-                                const u = new URL(fullPreviewUrl);
-                                [
-                                  PREVIEW_PARAMS.PREVIEW,
-                                  PREVIEW_PARAMS.TEST_ID,
-                                  PREVIEW_PARAMS.VARIANT_ID,
-                                  PREVIEW_PARAMS.VARIANT_NAME,
-                                ].forEach(k => {
-                                  const v = u.searchParams.get(k);
-                                  if (v !== undefined && v !== null && v !== '')
-                                    previewDoc.searchParams.set(k, v);
-                                });
-                              } catch (_) {
-                                /* ignore */
-                              }
-                            }
-                            iframeSrc = previewDoc.toString();
-                          }
-                          const _previewWithoutTestId = Boolean(baseUrl && !testId);
-                          if (!baseUrl) {
-                            return (
-                              <div className="variant-visual-editor-empty">
-                                <Text as="p" variant="bodySm" color="subdued">
-                                  Connect a shop or open this test from a store (e.g. My domains →
-                                  open store) so the preview can load the store URL. You can also
-                                  enter a Preview URL above.
-                                </Text>
-                                <Text
-                                  as="p"
-                                  variant="bodySm"
-                                  color="subdued"
-                                  style={{ marginTop: '0.5rem' }}
-                                >
-                                  The preview loads your store page with the RipX script injected so
-                                  you can click to select elements. Add the script in App settings →
-                                  Installation for your live store.
-                                </Text>
-                              </div>
-                            );
-                          }
-                          const showEmbedBlocked = visualPreviewLoadState === 'error';
-                          const rules = Array.from(
-                            { length: 5 },
-                            (_, i) =>
-                              (previewVariant?.config?.visual_editor_rules || [])[i] || {
-                                selector: '',
-                                css: '',
-                                js: '',
-                                position: 'after',
-                              }
-                          );
-                          const selectedCount = rules.filter(r => (r.selector || '').trim()).length;
-                          const atLimit = selectedCount >= 5;
-                          const updateCurrentVariantRules = updater => {
-                            setFormData(prev => {
-                              const variants = [...(prev.variants || [])];
-                              const v = variants[safeVisualIndex];
-                              const config = { ...(v?.config || {}) };
-                              const nextRules = Array.from(
-                                { length: 5 },
-                                (_, i) =>
-                                  rules[i] || { selector: '', css: '', js: '', position: 'after' }
-                              );
-                              updater(nextRules);
-                              config.visual_editor_rules = nextRules;
-                              variants[safeVisualIndex] = { ...v, config };
-                              return { ...prev, variants };
+                            const pathForPreview = getFirstTargetPreviewPath();
+                            const baseUrl = resolvePreviewBaseUrl({
+                              variantUrl: null,
+                              overrideUrl: hasOverride ? veUrl : null,
+                              domain: domainForPreview || undefined,
+                              path: pathForPreview,
                             });
-                            setIsDirty(true);
-                            setVisualEditorDirty(true);
-                          };
-                          const positionButtons = [
-                            { label: 'After', value: 'after', title: 'Insert after element' },
-                            { label: 'Before', value: 'before', title: 'Insert before element' },
-                            {
-                              label: 'Inside (first)',
-                              value: 'afterbegin',
-                              title: 'Insert as first child',
-                            },
-                            {
-                              label: 'Inside (last)',
-                              value: 'beforeend',
-                              title: 'Insert as last child',
-                            },
-                          ];
-                          const snippetTabs = [
-                            { id: 'selector', label: 'Selector' },
-                            { id: 'css', label: 'CSS' },
-                            { id: 'js', label: 'JavaScript' },
-                          ];
-                          return (
-                            <div className="variant-visual-editor-single-layout">
-                              <div className="variant-visual-editor-preview-section">
-                                <div className="variant-visual-editor-preview-hint" role="status">
-                                  <Text as="p" variant="bodySm" tone="subdued">
-                                    {!testId && 'Save the test to see variant styling. '}
-                                    The preview loads your store page with the RipX script so you
-                                    can click to select elements. For live tests, add the script via
-                                    App settings → Installation.
+                            const variants = formData.variants ?? [];
+                            const safeVisualIndex = Math.min(
+                              Math.max(0, visualPreviewVariantIndex),
+                              Math.max(0, variants.length - 1)
+                            );
+                            const previewVariant = variants[safeVisualIndex];
+                            const testId = initialData?.id;
+                            const fullPreviewUrl =
+                              baseUrl && testId
+                                ? buildPreviewUrlUtil({
+                                    baseUrl,
+                                    testId,
+                                    variantId:
+                                      previewVariant?.id ||
+                                      previewVariant?.name ||
+                                      (previewVariant ? `variant-${safeVisualIndex + 1}` : ''),
+                                    variantName:
+                                      previewVariant?.name ||
+                                      (previewVariant ? `Variant ${safeVisualIndex + 1}` : ''),
+                                    visualEditor: true,
+                                  })
+                                : null;
+                            const directPreviewUrl = fullPreviewUrl || baseUrl || '';
+                            let iframeSrc = '';
+                            if (directPreviewUrl) {
+                              const apiBase = (getApiBaseUrl() || '').replace(/\/+$/, '') || '/api';
+                              const previewDocPath = `${apiBase}/track/preview-document`;
+                              const isRelative =
+                                typeof window !== 'undefined' &&
+                                apiBase &&
+                                !/^https?:\/\//i.test(apiBase);
+                              const previewDoc = isRelative
+                                ? new URL(previewDocPath, window.location.origin)
+                                : new URL(previewDocPath);
+                              previewDoc.searchParams.set('url', directPreviewUrl);
+                              previewDoc.searchParams.set('ab_visual_editor', '1');
+                              if (fullPreviewUrl) {
+                                try {
+                                  const u = new URL(fullPreviewUrl);
+                                  [
+                                    PREVIEW_PARAMS.PREVIEW,
+                                    PREVIEW_PARAMS.TEST_ID,
+                                    PREVIEW_PARAMS.VARIANT_ID,
+                                    PREVIEW_PARAMS.VARIANT_NAME,
+                                  ].forEach(k => {
+                                    const v = u.searchParams.get(k);
+                                    if (v !== undefined && v !== null && v !== '')
+                                      previewDoc.searchParams.set(k, v);
+                                  });
+                                } catch (_) {
+                                  /* ignore */
+                                }
+                              }
+                              iframeSrc = previewDoc.toString();
+                            }
+                            const _previewWithoutTestId = Boolean(baseUrl && !testId);
+                            if (!baseUrl) {
+                              return (
+                                <div className="variant-visual-editor-empty">
+                                  <Text as="p" variant="bodySm" color="subdued">
+                                    Connect a shop or open this test from a store (e.g. My domains →
+                                    open store) so the preview can load the store URL. You can also
+                                    enter a Preview URL above.
+                                  </Text>
+                                  <Text
+                                    as="p"
+                                    variant="bodySm"
+                                    color="subdued"
+                                    style={{ marginTop: '0.5rem' }}
+                                  >
+                                    The preview loads your store page with the RipX script injected
+                                    so you can click to select elements. Add the script in App
+                                    settings → Installation for your live store.
                                   </Text>
                                 </div>
-                                {variants.length > 1 && (
-                                  <div className="variant-visual-editor-variant-tabs">
-                                    <Text as="span" variant="bodySm" fontWeight="semibold">
-                                      Variant:
-                                    </Text>
-                                    <div className="variant-visual-editor-variant-tabs-list">
-                                      {variants.map((v, idx) => (
-                                        <button
-                                          key={`visual-preview-${idx}-${v?.name ?? idx}`}
-                                          type="button"
-                                          className={`variant-visual-editor-variant-tab ${idx === safeVisualIndex ? 'variant-visual-editor-variant-tab--active' : ''}`}
-                                          onClick={() => {
-                                            setVisualPreviewVariantIndex(idx);
-                                            setVisualPreviewLoadState('loading');
-                                          }}
-                                        >
-                                          {v?.name || `Variant ${idx + 1}`}
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                                {showEmbedBlocked && (
-                                  <div
-                                    className="variant-visual-editor-embed-blocked-card"
-                                    role="alert"
-                                  >
+                              );
+                            }
+                            const showEmbedBlocked = visualPreviewLoadState === 'error';
+                            const rules = Array.from(
+                              { length: 5 },
+                              (_, i) =>
+                                (previewVariant?.config?.visual_editor_rules || [])[i] || {
+                                  selector: '',
+                                  css: '',
+                                  js: '',
+                                  position: 'after',
+                                }
+                            );
+                            const selectedCount = rules.filter(r =>
+                              (r.selector || '').trim()
+                            ).length;
+                            const atLimit = selectedCount >= 5;
+                            const updateCurrentVariantRules = updater => {
+                              setFormData(prev => {
+                                const variants = [...(prev.variants || [])];
+                                const v = variants[safeVisualIndex];
+                                const config = { ...(v?.config || {}) };
+                                const nextRules = Array.from(
+                                  { length: 5 },
+                                  (_, i) =>
+                                    rules[i] || { selector: '', css: '', js: '', position: 'after' }
+                                );
+                                updater(nextRules);
+                                config.visual_editor_rules = nextRules;
+                                variants[safeVisualIndex] = { ...v, config };
+                                return { ...prev, variants };
+                              });
+                              setIsDirty(true);
+                              setVisualEditorDirty(true);
+                            };
+                            const positionButtons = [
+                              { label: 'After', value: 'after', title: 'Insert after element' },
+                              { label: 'Before', value: 'before', title: 'Insert before element' },
+                              {
+                                label: 'Inside (first)',
+                                value: 'afterbegin',
+                                title: 'Insert as first child',
+                              },
+                              {
+                                label: 'Inside (last)',
+                                value: 'beforeend',
+                                title: 'Insert as last child',
+                              },
+                            ];
+                            const snippetTabs = [
+                              { id: 'selector', label: 'Selector' },
+                              { id: 'css', label: 'CSS' },
+                              { id: 'js', label: 'JavaScript' },
+                            ];
+                            return (
+                              <div className="variant-visual-editor-single-layout">
+                                <div className="variant-visual-editor-preview-section">
+                                  <div className="variant-visual-editor-preview-hint" role="status">
                                     <Text as="p" variant="bodySm" tone="subdued">
-                                      Preview could not be loaded. Check the preview URL above or
-                                      the store may be slow to respond.
+                                      {!testId && 'Save the test to see variant styling. '}
+                                      The preview loads your store page with the RipX script so you
+                                      can click to select elements. For live tests, add the script
+                                      via App settings → Installation.
                                     </Text>
-                                    <Button
-                                      size="slim"
-                                      onClick={() => {
-                                        setVisualPreviewLoadState('loading');
-                                        setVisualPreviewRetryKey(k => k + 1);
-                                      }}
-                                    >
-                                      Try again
-                                    </Button>
                                   </div>
-                                )}
-                                <div className="variant-visual-editor-preview-wrap">
-                                  {visualPreviewLoadState === 'loading' && (
-                                    <div
-                                      className="variant-visual-editor-preview-loading"
-                                      aria-hidden
-                                    >
-                                      <div className="variant-visual-editor-preview-spinner" />
-                                      <Text as="p" variant="bodySm" tone="subdued">
-                                        Loading preview…
+                                  {variants.length > 1 && (
+                                    <div className="variant-visual-editor-variant-tabs">
+                                      <Text as="span" variant="bodySm" fontWeight="semibold">
+                                        Variant:
                                       </Text>
-                                      {visualPreviewLoadingSlow && (
-                                        <Text as="p" variant="bodySm" tone="subdued">
-                                          Taking a while? Check the preview URL or try again in a
-                                          moment.
-                                        </Text>
-                                      )}
+                                      <div className="variant-visual-editor-variant-tabs-list">
+                                        {variants.map((v, idx) => (
+                                          <button
+                                            key={`visual-preview-${idx}-${v?.name ?? idx}`}
+                                            type="button"
+                                            className={`variant-visual-editor-variant-tab ${idx === safeVisualIndex ? 'variant-visual-editor-variant-tab--active' : ''}`}
+                                            onClick={() => {
+                                              setVisualPreviewVariantIndex(idx);
+                                              setVisualPreviewLoadState('loading');
+                                            }}
+                                          >
+                                            {v?.name || `Variant ${idx + 1}`}
+                                          </button>
+                                        ))}
+                                      </div>
                                     </div>
                                   )}
-                                  {!showEmbedBlocked && (
-                                    <iframe
-                                      key={`visual-preview-iframe-${safeVisualIndex}-${iframeSrc}-${visualPreviewRetryKey}`}
-                                      title={`Visual editor: ${previewVariant?.name || `Variant ${safeVisualIndex + 1}`}`}
-                                      src={iframeSrc}
-                                      className="variant-visual-editor-preview-iframe"
-                                      sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-                                      onLoad={() => setVisualPreviewLoadState('loaded')}
-                                      onError={() => setVisualPreviewLoadState('error')}
-                                    />
-                                  )}
-                                  {visualSnippetPanelExpanded && (
+                                  {showEmbedBlocked && (
                                     <div
-                                      className="variant-visual-editor-preview-blocking-overlay"
-                                      aria-hidden
-                                      role="presentation"
-                                      onClick={() => setVisualSnippetPanelExpanded(false)}
-                                      title="Click to close snippet panel"
+                                      className="variant-visual-editor-embed-blocked-card"
+                                      role="alert"
                                     >
-                                      <span className="variant-visual-editor-preview-blocking-text">
-                                        Click to close panel and select elements
-                                      </span>
+                                      <Text as="p" variant="bodySm" tone="subdued">
+                                        Preview could not be loaded. Check the preview URL above or
+                                        the store may be slow to respond.
+                                      </Text>
+                                      <Button
+                                        size="slim"
+                                        onClick={() => {
+                                          setVisualPreviewLoadState('loading');
+                                          setVisualPreviewRetryKey(k => k + 1);
+                                        }}
+                                      >
+                                        Try again
+                                      </Button>
                                     </div>
                                   )}
-                                </div>
-                              </div>
-                              <div className="variant-visual-editor-snippet-panel-wrap">
-                                <div
-                                  className={`variant-visual-editor-bottom-bar ${changingSelectorIndex !== null && !visualSnippetPanelExpanded ? 'variant-visual-editor-bottom-bar--change-mode' : ''}`}
-                                  style={{
-                                    paddingBottom: visualSnippetPanelExpanded ? 0 : undefined,
-                                  }}
-                                >
-                                  <button
-                                    type="button"
-                                    className="variant-visual-editor-bottom-bar-trigger"
-                                    onClick={() => setVisualSnippetPanelExpanded(prev => !prev)}
-                                    aria-expanded={visualSnippetPanelExpanded}
-                                    aria-label={
-                                      visualSnippetPanelExpanded
-                                        ? 'Collapse snippet panel'
-                                        : 'Expand snippet panel'
-                                    }
-                                  >
-                                    <div className="variant-visual-editor-bottom-bar-label-wrap">
-                                      <span className="variant-visual-editor-bottom-bar-count">
-                                        {selectedCount} element{selectedCount !== 1 ? 's' : ''}{' '}
-                                        selected
-                                      </span>
-                                      {changingSelectorIndex !== null &&
-                                        !visualSnippetPanelExpanded && (
-                                          <span className="variant-visual-editor-bottom-bar-change-hint">
-                                            Click in preview to replace selector
-                                          </span>
-                                        )}
-                                    </div>
-                                    <span
-                                      className={`variant-visual-editor-bottom-bar-chevron ${visualSnippetPanelExpanded ? 'variant-visual-editor-bottom-bar-chevron--up' : ''}`}
-                                      aria-hidden
-                                    >
-                                      <Icon source={ChevronDownIcon} />
-                                    </span>
-                                  </button>
-                                </div>
-                                {visualSnippetPanelExpanded && (
-                                  <>
-                                    <div
-                                      ref={visualSnippetBackdropRef}
-                                      className="variant-visual-editor-snippet-backdrop"
-                                      role="presentation"
-                                      onClick={() => setVisualSnippetPanelExpanded(false)}
-                                      onKeyDown={e =>
-                                        e.key === 'Escape' && setVisualSnippetPanelExpanded(false)
-                                      }
-                                    />
-                                    <div
-                                      ref={visualSnippetPanelRef}
-                                      className="variant-visual-editor-snippet-overlay"
-                                      role="dialog"
-                                      aria-label={
-                                        variants.length > 1
-                                          ? `Element snippets for ${previewVariant?.name || `Variant ${safeVisualIndex + 1}`}`
-                                          : 'Element snippets'
-                                      }
-                                    >
+                                  <div className="variant-visual-editor-preview-wrap">
+                                    {visualPreviewLoadState === 'loading' && (
                                       <div
-                                        className="variant-visual-editor-snippet-overlay-handle"
+                                        className="variant-visual-editor-preview-loading"
                                         aria-hidden
+                                      >
+                                        <div className="variant-visual-editor-preview-spinner" />
+                                        <Text as="p" variant="bodySm" tone="subdued">
+                                          Loading preview…
+                                        </Text>
+                                        {visualPreviewLoadingSlow && (
+                                          <Text as="p" variant="bodySm" tone="subdued">
+                                            Taking a while? Check the preview URL or try again in a
+                                            moment.
+                                          </Text>
+                                        )}
+                                      </div>
+                                    )}
+                                    {!showEmbedBlocked && (
+                                      <iframe
+                                        key={`visual-preview-iframe-${safeVisualIndex}-${iframeSrc}-${visualPreviewRetryKey}`}
+                                        title={`Visual editor: ${previewVariant?.name || `Variant ${safeVisualIndex + 1}`}`}
+                                        src={iframeSrc}
+                                        className="variant-visual-editor-preview-iframe"
+                                        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                                        onLoad={() => setVisualPreviewLoadState('loaded')}
+                                        onError={() => setVisualPreviewLoadState('error')}
                                       />
-                                      <div className="variant-visual-editor-snippet-overlay-header">
-                                        <div className="variant-visual-editor-snippet-overlay-header-inner">
-                                          <div className="variant-visual-editor-snippet-overlay-header-title">
-                                            {variants.length > 1 ? (
-                                              <>
+                                    )}
+                                    {visualSnippetPanelExpanded && (
+                                      <div
+                                        className="variant-visual-editor-preview-blocking-overlay"
+                                        aria-hidden
+                                        role="presentation"
+                                        onClick={() => setVisualSnippetPanelExpanded(false)}
+                                        title="Click to close snippet panel"
+                                      >
+                                        <span className="variant-visual-editor-preview-blocking-text">
+                                          Click to close panel and select elements
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="variant-visual-editor-snippet-panel-wrap">
+                                  <div
+                                    className={`variant-visual-editor-bottom-bar ${changingSelectorIndex !== null && !visualSnippetPanelExpanded ? 'variant-visual-editor-bottom-bar--change-mode' : ''}`}
+                                    style={{
+                                      paddingBottom: visualSnippetPanelExpanded ? 0 : undefined,
+                                    }}
+                                  >
+                                    <button
+                                      type="button"
+                                      className="variant-visual-editor-bottom-bar-trigger"
+                                      onClick={() => setVisualSnippetPanelExpanded(prev => !prev)}
+                                      aria-expanded={visualSnippetPanelExpanded}
+                                      aria-label={
+                                        visualSnippetPanelExpanded
+                                          ? 'Collapse snippet panel'
+                                          : 'Expand snippet panel'
+                                      }
+                                    >
+                                      <div className="variant-visual-editor-bottom-bar-label-wrap">
+                                        <span className="variant-visual-editor-bottom-bar-count">
+                                          {selectedCount} element{selectedCount !== 1 ? 's' : ''}{' '}
+                                          selected
+                                        </span>
+                                        {changingSelectorIndex !== null &&
+                                          !visualSnippetPanelExpanded && (
+                                            <span className="variant-visual-editor-bottom-bar-change-hint">
+                                              Click in preview to replace selector
+                                            </span>
+                                          )}
+                                      </div>
+                                      <span
+                                        className={`variant-visual-editor-bottom-bar-chevron ${visualSnippetPanelExpanded ? 'variant-visual-editor-bottom-bar-chevron--up' : ''}`}
+                                        aria-hidden
+                                      >
+                                        <Icon source={ChevronDownIcon} />
+                                      </span>
+                                    </button>
+                                  </div>
+                                  {visualSnippetPanelExpanded && (
+                                    <>
+                                      <div
+                                        ref={visualSnippetBackdropRef}
+                                        className="variant-visual-editor-snippet-backdrop"
+                                        role="presentation"
+                                        onClick={() => setVisualSnippetPanelExpanded(false)}
+                                        onKeyDown={e =>
+                                          e.key === 'Escape' && setVisualSnippetPanelExpanded(false)
+                                        }
+                                      />
+                                      <div
+                                        ref={visualSnippetPanelRef}
+                                        className="variant-visual-editor-snippet-overlay"
+                                        role="dialog"
+                                        aria-label={
+                                          variants.length > 1
+                                            ? `Element snippets for ${previewVariant?.name || `Variant ${safeVisualIndex + 1}`}`
+                                            : 'Element snippets'
+                                        }
+                                      >
+                                        <div
+                                          className="variant-visual-editor-snippet-overlay-handle"
+                                          aria-hidden
+                                        />
+                                        <div className="variant-visual-editor-snippet-overlay-header">
+                                          <div className="variant-visual-editor-snippet-overlay-header-inner">
+                                            <div className="variant-visual-editor-snippet-overlay-header-title">
+                                              {variants.length > 1 ? (
+                                                <>
+                                                  <Text
+                                                    as="span"
+                                                    variant="headingMd"
+                                                    fontWeight="semibold"
+                                                    className="variant-visual-editor-snippet-overlay-variant-title"
+                                                  >
+                                                    {previewVariant?.name ||
+                                                      `Variant ${safeVisualIndex + 1}`}
+                                                  </Text>
+                                                  <span
+                                                    className="variant-visual-editor-snippet-overlay-title-sep"
+                                                    aria-hidden
+                                                  >
+                                                    ·
+                                                  </span>
+                                                  <Text
+                                                    as="span"
+                                                    variant="bodySm"
+                                                    tone="subdued"
+                                                    className="variant-visual-editor-snippet-overlay-title-meta"
+                                                  >
+                                                    Element snippets
+                                                  </Text>
+                                                </>
+                                              ) : (
                                                 <Text
                                                   as="span"
                                                   variant="headingMd"
                                                   fontWeight="semibold"
-                                                  className="variant-visual-editor-snippet-overlay-variant-title"
-                                                >
-                                                  {previewVariant?.name ||
-                                                    `Variant ${safeVisualIndex + 1}`}
-                                                </Text>
-                                                <span
-                                                  className="variant-visual-editor-snippet-overlay-title-sep"
-                                                  aria-hidden
-                                                >
-                                                  ·
-                                                </span>
-                                                <Text
-                                                  as="span"
-                                                  variant="bodySm"
-                                                  tone="subdued"
-                                                  className="variant-visual-editor-snippet-overlay-title-meta"
                                                 >
                                                   Element snippets
                                                 </Text>
-                                              </>
-                                            ) : (
-                                              <Text
-                                                as="span"
-                                                variant="headingMd"
-                                                fontWeight="semibold"
-                                              >
-                                                Element snippets
-                                              </Text>
-                                            )}
-                                            <Badge tone="info" size="small">
-                                              {selectedCount}/5
-                                            </Badge>
+                                              )}
+                                              <Badge tone="info" size="small">
+                                                {selectedCount}/5
+                                              </Badge>
+                                            </div>
+                                            <Text
+                                              as="p"
+                                              variant="bodySm"
+                                              tone="subdued"
+                                              className="variant-visual-editor-snippet-overlay-subtitle"
+                                            >
+                                              Edit selectors, CSS, and JS for each selected element.
+                                            </Text>
                                           </div>
-                                          <Text
-                                            as="p"
-                                            variant="bodySm"
-                                            tone="subdued"
-                                            className="variant-visual-editor-snippet-overlay-subtitle"
+                                          <button
+                                            type="button"
+                                            className="variant-visual-editor-snippet-collapse-btn"
+                                            onClick={() => setVisualSnippetPanelExpanded(false)}
+                                            aria-label="Collapse panel"
                                           >
-                                            Edit selectors, CSS, and JS for each selected element.
-                                          </Text>
+                                            <Icon source={ChevronDownIcon} />
+                                          </button>
                                         </div>
-                                        <button
-                                          type="button"
-                                          className="variant-visual-editor-snippet-collapse-btn"
-                                          onClick={() => setVisualSnippetPanelExpanded(false)}
-                                          aria-label="Collapse panel"
-                                        >
-                                          <Icon source={ChevronDownIcon} />
-                                        </button>
-                                      </div>
-                                      <div className="variant-visual-editor-snippet-overlay-body">
-                                        {(() => {
-                                          const ruleIndicesWithSelectors = rules
-                                            .map((r, i) => ((r.selector || '').trim() ? i : null))
-                                            .filter(i => i !== null && i !== undefined);
-                                          const effectiveActiveIndex =
-                                            ruleIndicesWithSelectors.includes(
-                                              visualSnippetActiveElementIndex
-                                            )
-                                              ? visualSnippetActiveElementIndex
-                                              : (ruleIndicesWithSelectors[0] ?? 0);
-                                          const idx = effectiveActiveIndex;
-                                          const rule = rules[idx] || {
-                                            selector: '',
-                                            css: '',
-                                            js: '',
-                                            position: 'after',
-                                          };
-                                          const rawTab = visualRuleActiveTab[idx] || 'selector';
-                                          const activeTab =
-                                            rawTab === 'position' ? 'selector' : rawTab;
-                                          const handleRemoveElement = ruleIndexToRemove => {
-                                            updateCurrentVariantRules(nextRules => {
-                                              nextRules[ruleIndexToRemove] = {
-                                                selector: '',
-                                                css: '',
-                                                js: '',
-                                                position: 'after',
-                                              };
-                                            });
-                                            const remaining = ruleIndicesWithSelectors.filter(
-                                              i => i !== ruleIndexToRemove
-                                            );
-                                            setVisualSnippetActiveElementIndex(remaining[0] ?? 0);
-                                            setVisualRuleActiveTab(prev => {
-                                              const next = { ...prev };
-                                              delete next[ruleIndexToRemove];
-                                              return next;
-                                            });
-                                            if (changingSelectorIndex === ruleIndexToRemove)
-                                              setChangingSelectorIndex(null);
-                                          };
+                                        <div className="variant-visual-editor-snippet-overlay-body">
+                                          {(() => {
+                                            const ruleIndicesWithSelectors = rules
+                                              .map((r, i) => ((r.selector || '').trim() ? i : null))
+                                              .filter(i => i !== null && i !== undefined);
+                                            const effectiveActiveIndex =
+                                              ruleIndicesWithSelectors.includes(
+                                                visualSnippetActiveElementIndex
+                                              )
+                                                ? visualSnippetActiveElementIndex
+                                                : (ruleIndicesWithSelectors[0] ?? 0);
+                                            const idx = effectiveActiveIndex;
+                                            const rule = rules[idx] || {
+                                              selector: '',
+                                              css: '',
+                                              js: '',
+                                              position: 'after',
+                                            };
+                                            const rawTab = visualRuleActiveTab[idx] || 'selector';
+                                            const activeTab =
+                                              rawTab === 'position' ? 'selector' : rawTab;
+                                            const handleRemoveElement = ruleIndexToRemove => {
+                                              updateCurrentVariantRules(nextRules => {
+                                                nextRules[ruleIndexToRemove] = {
+                                                  selector: '',
+                                                  css: '',
+                                                  js: '',
+                                                  position: 'after',
+                                                };
+                                              });
+                                              const remaining = ruleIndicesWithSelectors.filter(
+                                                i => i !== ruleIndexToRemove
+                                              );
+                                              setVisualSnippetActiveElementIndex(remaining[0] ?? 0);
+                                              setVisualRuleActiveTab(prev => {
+                                                const next = { ...prev };
+                                                delete next[ruleIndexToRemove];
+                                                return next;
+                                              });
+                                              if (changingSelectorIndex === ruleIndexToRemove)
+                                                setChangingSelectorIndex(null);
+                                            };
 
-                                          const handleChangeSelector = ruleIdx => {
-                                            setChangingSelectorIndex(ruleIdx);
-                                            setVisualSnippetActiveElementIndex(ruleIdx);
-                                            setVisualRuleActiveTab(prev => ({
-                                              ...prev,
-                                              [ruleIdx]: 'selector',
-                                            }));
-                                            setVisualSnippetPanelExpanded(false);
-                                          };
+                                            const handleChangeSelector = ruleIdx => {
+                                              setChangingSelectorIndex(ruleIdx);
+                                              setVisualSnippetActiveElementIndex(ruleIdx);
+                                              setVisualRuleActiveTab(prev => ({
+                                                ...prev,
+                                                [ruleIdx]: 'selector',
+                                              }));
+                                              setVisualSnippetPanelExpanded(false);
+                                            };
 
-                                          if (ruleIndicesWithSelectors.length === 0) {
+                                            if (ruleIndicesWithSelectors.length === 0) {
+                                              return (
+                                                <div className="variant-visual-editor-snippet-empty">
+                                                  {changingSelectorIndex !== null && (
+                                                    <div className="variant-visual-editor-snippet-change-banner">
+                                                      <Text
+                                                        as="p"
+                                                        variant="bodySm"
+                                                        fontWeight="medium"
+                                                      >
+                                                        Click an element in the preview to replace
+                                                        the selector.
+                                                      </Text>
+                                                      <button
+                                                        type="button"
+                                                        className="variant-visual-editor-snippet-change-cancel"
+                                                        onClick={() =>
+                                                          setChangingSelectorIndex(null)
+                                                        }
+                                                      >
+                                                        Cancel
+                                                      </button>
+                                                    </div>
+                                                  )}
+                                                  <div
+                                                    className="variant-visual-editor-snippet-empty-icon"
+                                                    aria-hidden
+                                                  />
+                                                  <Text
+                                                    as="p"
+                                                    variant="bodyMd"
+                                                    fontWeight="medium"
+                                                    tone="subdued"
+                                                  >
+                                                    No elements selected
+                                                  </Text>
+                                                  <Text as="p" variant="bodySm" tone="subdued">
+                                                    Click an element in the preview above to add it
+                                                    (max 5 per variant).
+                                                  </Text>
+                                                </div>
+                                              );
+                                            }
+
                                             return (
-                                              <div className="variant-visual-editor-snippet-empty">
+                                              <>
                                                 {changingSelectorIndex !== null && (
                                                   <div className="variant-visual-editor-snippet-change-banner">
                                                     <Text
@@ -6020,8 +6121,8 @@ function TestWizard({
                                                       variant="bodySm"
                                                       fontWeight="medium"
                                                     >
-                                                      Click an element in the preview to replace the
-                                                      selector.
+                                                      Click an element in the preview to replace
+                                                      this selector.
                                                     </Text>
                                                     <button
                                                       type="button"
@@ -6032,447 +6133,450 @@ function TestWizard({
                                                     </button>
                                                   </div>
                                                 )}
-                                                <div
-                                                  className="variant-visual-editor-snippet-empty-icon"
-                                                  aria-hidden
-                                                />
-                                                <Text
-                                                  as="p"
-                                                  variant="bodyMd"
-                                                  fontWeight="medium"
-                                                  tone="subdued"
-                                                >
-                                                  No elements selected
-                                                </Text>
-                                                <Text as="p" variant="bodySm" tone="subdued">
-                                                  Click an element in the preview above to add it
-                                                  (max 5 per variant).
-                                                </Text>
-                                              </div>
-                                            );
-                                          }
-
-                                          return (
-                                            <>
-                                              {changingSelectorIndex !== null && (
-                                                <div className="variant-visual-editor-snippet-change-banner">
-                                                  <Text as="p" variant="bodySm" fontWeight="medium">
-                                                    Click an element in the preview to replace this
-                                                    selector.
-                                                  </Text>
-                                                  <button
-                                                    type="button"
-                                                    className="variant-visual-editor-snippet-change-cancel"
-                                                    onClick={() => setChangingSelectorIndex(null)}
+                                                {atLimit && (
+                                                  <div
+                                                    className="variant-visual-editor-snippet-limit-msg"
+                                                    role="alert"
                                                   >
-                                                    Cancel
-                                                  </button>
-                                                </div>
-                                              )}
-                                              {atLimit && (
-                                                <div
-                                                  className="variant-visual-editor-snippet-limit-msg"
-                                                  role="alert"
-                                                >
-                                                  <Text
-                                                    as="p"
-                                                    variant="bodySm"
-                                                    fontWeight="medium"
-                                                    tone="critical"
-                                                  >
-                                                    Maximum 5 elements per variant. Remove one to
-                                                    add another.
-                                                  </Text>
-                                                </div>
-                                              )}
-                                              <div className="variant-visual-editor-snippet-elements-section">
-                                                <Text
-                                                  as="span"
-                                                  variant="bodySm"
-                                                  fontWeight="semibold"
-                                                  tone="subdued"
-                                                  className="variant-visual-editor-snippet-elements-label"
-                                                >
-                                                  Selected elements ({selectedCount}/5)
-                                                </Text>
-                                                <div className="variant-visual-editor-snippet-element-tabs">
-                                                  {ruleIndicesWithSelectors.map(ruleIdx => (
-                                                    <div
-                                                      key={ruleIdx}
-                                                      className="variant-visual-editor-snippet-element-tab-wrap"
+                                                    <Text
+                                                      as="p"
+                                                      variant="bodySm"
+                                                      fontWeight="medium"
+                                                      tone="critical"
                                                     >
-                                                      <button
-                                                        type="button"
-                                                        className={`variant-visual-editor-snippet-element-tab ${effectiveActiveIndex === ruleIdx ? 'variant-visual-editor-snippet-element-tab--active' : ''}`}
-                                                        onClick={() =>
-                                                          setVisualSnippetActiveElementIndex(
-                                                            ruleIdx
-                                                          )
-                                                        }
-                                                      >
-                                                        Element {ruleIdx + 1}
-                                                      </button>
-                                                      <button
-                                                        type="button"
-                                                        className="variant-visual-editor-snippet-element-tab-remove"
-                                                        onClick={e => {
-                                                          e.stopPropagation();
-                                                          handleRemoveElement(ruleIdx);
-                                                        }}
-                                                        aria-label={`Remove element ${ruleIdx + 1}`}
-                                                        title="Remove element"
-                                                      >
-                                                        <Icon source={XIcon} />
-                                                      </button>
-                                                    </div>
-                                                  ))}
-                                                </div>
-                                              </div>
-                                              <div className="variant-visual-editor-snippet-card">
-                                                <div className="variant-visual-editor-snippet-card-header-row">
+                                                      Maximum 5 elements per variant. Remove one to
+                                                      add another.
+                                                    </Text>
+                                                  </div>
+                                                )}
+                                                <div className="variant-visual-editor-snippet-elements-section">
                                                   <Text
                                                     as="span"
-                                                    variant="bodyMd"
+                                                    variant="bodySm"
                                                     fontWeight="semibold"
+                                                    tone="subdued"
+                                                    className="variant-visual-editor-snippet-elements-label"
                                                   >
-                                                    Element {idx + 1}
+                                                    Selected elements ({selectedCount}/5)
                                                   </Text>
-                                                  <div className="variant-visual-editor-snippet-card-header-actions">
-                                                    <button
-                                                      type="button"
-                                                      className="variant-visual-editor-snippet-change-selector-btn"
-                                                      onClick={() => handleChangeSelector(idx)}
-                                                      aria-label="Change selector"
-                                                      title="Click in preview to pick a different element"
-                                                    >
-                                                      <span>Change</span>
-                                                    </button>
-                                                    <button
-                                                      type="button"
-                                                      className="variant-visual-editor-snippet-remove-element-btn"
-                                                      onClick={() => handleRemoveElement(idx)}
-                                                      aria-label="Remove this element"
-                                                    >
-                                                      <Icon source={XIcon} />
-                                                      <span>Remove</span>
-                                                    </button>
-                                                  </div>
-                                                </div>
-                                                <div className="variant-visual-editor-snippet-card-inner">
-                                                  <div className="variant-visual-editor-snippet-card-sidebar">
-                                                    {snippetTabs.map(tab => (
-                                                      <button
-                                                        key={tab.id}
-                                                        type="button"
-                                                        className={`variant-visual-editor-snippet-tab ${activeTab === tab.id ? 'variant-visual-editor-snippet-tab--active' : ''}`}
-                                                        onClick={() =>
-                                                          setVisualRuleActiveTab(prev => ({
-                                                            ...prev,
-                                                            [idx]: tab.id,
-                                                          }))
-                                                        }
+                                                  <div className="variant-visual-editor-snippet-element-tabs">
+                                                    {ruleIndicesWithSelectors.map(ruleIdx => (
+                                                      <div
+                                                        key={ruleIdx}
+                                                        className="variant-visual-editor-snippet-element-tab-wrap"
                                                       >
-                                                        {tab.label}
-                                                      </button>
+                                                        <button
+                                                          type="button"
+                                                          className={`variant-visual-editor-snippet-element-tab ${effectiveActiveIndex === ruleIdx ? 'variant-visual-editor-snippet-element-tab--active' : ''}`}
+                                                          onClick={() =>
+                                                            setVisualSnippetActiveElementIndex(
+                                                              ruleIdx
+                                                            )
+                                                          }
+                                                        >
+                                                          Element {ruleIdx + 1}
+                                                        </button>
+                                                        <button
+                                                          type="button"
+                                                          className="variant-visual-editor-snippet-element-tab-remove"
+                                                          onClick={e => {
+                                                            e.stopPropagation();
+                                                            handleRemoveElement(ruleIdx);
+                                                          }}
+                                                          aria-label={`Remove element ${ruleIdx + 1}`}
+                                                          title="Remove element"
+                                                        >
+                                                          <Icon source={XIcon} />
+                                                        </button>
+                                                      </div>
                                                     ))}
                                                   </div>
-                                                  <div className="variant-visual-editor-snippet-card-content">
-                                                    {activeTab === 'selector' && (
-                                                      <div className="variant-visual-editor-selector-tab-content">
-                                                        <div className="variant-visual-editor-selector-field-wrap">
-                                                          <Text
-                                                            as="label"
-                                                            variant="bodySm"
-                                                            fontWeight="medium"
-                                                            tone="subdued"
-                                                            className="variant-visual-editor-selector-label"
-                                                          >
-                                                            CSS selector
-                                                          </Text>
-                                                          <TextField
-                                                            label="Selector"
-                                                            labelHidden
-                                                            value={rule.selector}
-                                                            onChange={value => {
-                                                              updateCurrentVariantRules(
-                                                                nextRules => {
-                                                                  nextRules[idx] = {
-                                                                    ...nextRules[idx],
-                                                                    selector: value,
-                                                                  };
-                                                                }
-                                                              );
-                                                            }}
-                                                            placeholder="Click element in preview or type selector"
-                                                            autoComplete="off"
-                                                          />
-                                                        </div>
-                                                        <div className="variant-visual-editor-position-group">
-                                                          <Text
-                                                            as="span"
-                                                            variant="bodySm"
-                                                            fontWeight="medium"
-                                                            tone="subdued"
-                                                            className="variant-visual-editor-position-label"
-                                                          >
-                                                            Insert position
-                                                          </Text>
-                                                          <div
-                                                            className="variant-visual-editor-position-buttons"
-                                                            role="group"
-                                                            aria-label="Insert position"
-                                                          >
-                                                            {positionButtons.map(opt => (
-                                                              <button
-                                                                key={opt.value}
-                                                                type="button"
-                                                                title={opt.title}
-                                                                className={`variant-visual-editor-position-btn ${(rule.position || 'after') === opt.value ? 'variant-visual-editor-position-btn--active' : ''}`}
-                                                                onClick={() => {
-                                                                  updateCurrentVariantRules(
-                                                                    nextRules => {
-                                                                      nextRules[idx] = {
-                                                                        ...nextRules[idx],
-                                                                        position: opt.value,
-                                                                      };
-                                                                    }
-                                                                  );
-                                                                }}
-                                                              >
-                                                                {opt.label}
-                                                              </button>
-                                                            ))}
+                                                </div>
+                                                <div className="variant-visual-editor-snippet-card">
+                                                  <div className="variant-visual-editor-snippet-card-header-row">
+                                                    <Text
+                                                      as="span"
+                                                      variant="bodyMd"
+                                                      fontWeight="semibold"
+                                                    >
+                                                      Element {idx + 1}
+                                                    </Text>
+                                                    <div className="variant-visual-editor-snippet-card-header-actions">
+                                                      <button
+                                                        type="button"
+                                                        className="variant-visual-editor-snippet-change-selector-btn"
+                                                        onClick={() => handleChangeSelector(idx)}
+                                                        aria-label="Change selector"
+                                                        title="Click in preview to pick a different element"
+                                                      >
+                                                        <span>Change</span>
+                                                      </button>
+                                                      <button
+                                                        type="button"
+                                                        className="variant-visual-editor-snippet-remove-element-btn"
+                                                        onClick={() => handleRemoveElement(idx)}
+                                                        aria-label="Remove this element"
+                                                      >
+                                                        <Icon source={XIcon} />
+                                                        <span>Remove</span>
+                                                      </button>
+                                                    </div>
+                                                  </div>
+                                                  <div className="variant-visual-editor-snippet-card-inner">
+                                                    <div className="variant-visual-editor-snippet-card-sidebar">
+                                                      {snippetTabs.map(tab => (
+                                                        <button
+                                                          key={tab.id}
+                                                          type="button"
+                                                          className={`variant-visual-editor-snippet-tab ${activeTab === tab.id ? 'variant-visual-editor-snippet-tab--active' : ''}`}
+                                                          onClick={() =>
+                                                            setVisualRuleActiveTab(prev => ({
+                                                              ...prev,
+                                                              [idx]: tab.id,
+                                                            }))
+                                                          }
+                                                        >
+                                                          {tab.label}
+                                                        </button>
+                                                      ))}
+                                                    </div>
+                                                    <div className="variant-visual-editor-snippet-card-content">
+                                                      {activeTab === 'selector' && (
+                                                        <div className="variant-visual-editor-selector-tab-content">
+                                                          <div className="variant-visual-editor-selector-field-wrap">
+                                                            <Text
+                                                              as="label"
+                                                              variant="bodySm"
+                                                              fontWeight="medium"
+                                                              tone="subdued"
+                                                              className="variant-visual-editor-selector-label"
+                                                            >
+                                                              CSS selector
+                                                            </Text>
+                                                            <TextField
+                                                              label="Selector"
+                                                              labelHidden
+                                                              value={rule.selector}
+                                                              onChange={value => {
+                                                                updateCurrentVariantRules(
+                                                                  nextRules => {
+                                                                    nextRules[idx] = {
+                                                                      ...nextRules[idx],
+                                                                      selector: value,
+                                                                    };
+                                                                  }
+                                                                );
+                                                              }}
+                                                              placeholder="Click element in preview or type selector"
+                                                              autoComplete="off"
+                                                            />
+                                                          </div>
+                                                          <div className="variant-visual-editor-position-group">
+                                                            <Text
+                                                              as="span"
+                                                              variant="bodySm"
+                                                              fontWeight="medium"
+                                                              tone="subdued"
+                                                              className="variant-visual-editor-position-label"
+                                                            >
+                                                              Insert position
+                                                            </Text>
+                                                            <div
+                                                              className="variant-visual-editor-position-buttons"
+                                                              role="group"
+                                                              aria-label="Insert position"
+                                                            >
+                                                              {positionButtons.map(opt => (
+                                                                <button
+                                                                  key={opt.value}
+                                                                  type="button"
+                                                                  title={opt.title}
+                                                                  className={`variant-visual-editor-position-btn ${(rule.position || 'after') === opt.value ? 'variant-visual-editor-position-btn--active' : ''}`}
+                                                                  onClick={() => {
+                                                                    updateCurrentVariantRules(
+                                                                      nextRules => {
+                                                                        nextRules[idx] = {
+                                                                          ...nextRules[idx],
+                                                                          position: opt.value,
+                                                                        };
+                                                                      }
+                                                                    );
+                                                                  }}
+                                                                >
+                                                                  {opt.label}
+                                                                </button>
+                                                              ))}
+                                                            </div>
                                                           </div>
                                                         </div>
-                                                      </div>
-                                                    )}
-                                                    {activeTab === 'css' && (
-                                                      <TextField
-                                                        label="CSS"
-                                                        labelHidden
-                                                        value={rule.css}
-                                                        onChange={value => {
-                                                          updateCurrentVariantRules(nextRules => {
-                                                            nextRules[idx] = {
-                                                              ...nextRules[idx],
-                                                              css: value,
-                                                            };
-                                                          });
-                                                        }}
-                                                        placeholder="/* CSS for this element */"
-                                                        multiline={5}
-                                                        autoComplete="off"
-                                                      />
-                                                    )}
-                                                    {activeTab === 'js' && (
-                                                      <TextField
-                                                        label="JavaScript"
-                                                        labelHidden
-                                                        value={rule.js}
-                                                        onChange={value => {
-                                                          updateCurrentVariantRules(nextRules => {
-                                                            nextRules[idx] = {
-                                                              ...nextRules[idx],
-                                                              js: value,
-                                                            };
-                                                          });
-                                                        }}
-                                                        placeholder="// JS for this element"
-                                                        multiline={5}
-                                                        autoComplete="off"
-                                                      />
-                                                    )}
+                                                      )}
+                                                      {activeTab === 'css' && (
+                                                        <TextField
+                                                          label="CSS"
+                                                          labelHidden
+                                                          value={rule.css}
+                                                          onChange={value => {
+                                                            updateCurrentVariantRules(nextRules => {
+                                                              nextRules[idx] = {
+                                                                ...nextRules[idx],
+                                                                css: value,
+                                                              };
+                                                            });
+                                                          }}
+                                                          placeholder="/* CSS for this element */"
+                                                          multiline={5}
+                                                          autoComplete="off"
+                                                        />
+                                                      )}
+                                                      {activeTab === 'js' && (
+                                                        <TextField
+                                                          label="JavaScript"
+                                                          labelHidden
+                                                          value={rule.js}
+                                                          onChange={value => {
+                                                            updateCurrentVariantRules(nextRules => {
+                                                              nextRules[idx] = {
+                                                                ...nextRules[idx],
+                                                                js: value,
+                                                              };
+                                                            });
+                                                          }}
+                                                          placeholder="// JS for this element"
+                                                          multiline={5}
+                                                          autoComplete="off"
+                                                        />
+                                                      )}
+                                                    </div>
                                                   </div>
                                                 </div>
-                                              </div>
-                                            </>
-                                          );
-                                        })()}
+                                              </>
+                                            );
+                                          })()}
+                                        </div>
                                       </div>
-                                    </div>
-                                  </>
-                                )}
+                                    </>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          );
-                        })()}
-                      </BlockStack>
-                    </div>
-                  </div>
-
-                  <div
-                    id="config-editor-panel-code"
-                    role="tabpanel"
-                    aria-labelledby="config-tab-code"
-                    hidden={configEditorMode !== 'code'}
-                    className={`config-editor-panel config-editor-panel--code ${configEditorMode === 'code' ? 'config-editor-panel--active' : ''}`}
-                  >
-                    <div className="variant-selector-container">
-                      <div className="variant-selector-wrapper">
-                        <div className="variant-selector">
-                          {variantCodesData.map((variant, index) => {
-                            const COLORS = [
-                              '#06b6d4',
-                              '#8b5cf6',
-                              '#f49342',
-                              '#14b8a6',
-                              '#b98900',
-                              '#e91e63',
-                            ];
-                            const color = COLORS[index % COLORS.length];
-                            const isSelected = index === selectedVariantIndex;
-                            const hasCode =
-                              (variant?.css && variant.css.trim()) ||
-                              (variant?.js && variant.js.trim());
-
-                            return (
-                              <button
-                                key={`${variant.name}-${index}`}
-                                className={`variant-selector-button ${isSelected ? 'variant-selector-button--selected' : ''}`}
-                                onClick={() => {
-                                  hasVariantSelectionRef.current = true;
-                                  setSelectedVariantIndex(index);
-                                }}
-                                style={{
-                                  '--variant-color': color,
-                                }}
-                              >
-                                <div
-                                  className="variant-selector-color-indicator"
-                                  style={{ backgroundColor: color }}
-                                />
-                                <InlineStack gap="200" align="center">
-                                  <Text
-                                    variant="bodyMd"
-                                    fontWeight={isSelected ? 'semibold' : 'medium'}
-                                  >
-                                    {variant.name}
-                                  </Text>
-                                  {hasCode && <Badge tone="success">Code</Badge>}
-                                </InlineStack>
-                                {isSelected && (
-                                  <div className="variant-selector-check">
-                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                                      <path
-                                        d="M13.5 4L6 11.5L2.5 8"
-                                        stroke="currentColor"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                      />
-                                    </svg>
-                                  </div>
-                                )}
-                              </button>
                             );
-                          })}
-                        </div>
-                        {variantCodesData.length > 1 && (
-                          <div className="variant-navigation-buttons">
-                            <Button
-                              plain
-                              onClick={() => handleVariantNavigation('prev')}
-                              disabled={selectedVariantIndex === 0}
-                              aria-label="Previous variant"
-                            >
-                              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                                <path
-                                  d="M12.5 15L7.5 10L12.5 5"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                />
-                              </svg>
-                            </Button>
-                            <Text variant="bodySm" color="subdued" as="span">
-                              {selectedVariantIndex + 1} / {variantCodesData.length}
-                            </Text>
-                            <Button
-                              plain
-                              onClick={() => handleVariantNavigation('next')}
-                              disabled={selectedVariantIndex === variantCodesData.length - 1}
-                              aria-label="Next variant"
-                            >
-                              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                                <path
-                                  d="M7.5 5L12.5 10L7.5 15"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                />
-                              </svg>
-                            </Button>
-                          </div>
-                        )}
+                          })()}
+                        </BlockStack>
                       </div>
                     </div>
+                  </Collapsible>
+                </div>
 
-                    {variantCodesData[selectedVariantIndex] &&
-                      (() => {
-                        const currentVariant = variantCodesData[selectedVariantIndex];
-                        const COLORS = [
-                          '#06b6d4',
-                          '#8b5cf6',
-                          '#f49342',
-                          '#14b8a6',
-                          '#b98900',
-                          '#e91e63',
-                        ];
-                        const color = COLORS[selectedVariantIndex % COLORS.length];
-                        const cssLineCount = currentVariant.css
-                          ? currentVariant.css.split('\n').length
-                          : 0;
-                        const cssCharCount = currentVariant.css ? currentVariant.css.length : 0;
-                        const jsLineCount = currentVariant.js
-                          ? currentVariant.js.split('\n').length
-                          : 0;
-                        const jsCharCount = currentVariant.js ? currentVariant.js.length : 0;
+                <div className="config-editor-accordion-item">
+                  <button
+                    type="button"
+                    className="config-editor-accordion-head"
+                    onClick={() => {
+                      const next = !codeEditorExpanded;
+                      setCodeEditorExpanded(next);
+                      if (next) setVisualEditorExpanded(false);
+                    }}
+                    aria-expanded={codeEditorExpanded}
+                    aria-controls="config-editor-accordion-code-body"
+                    id="config-editor-accordion-code-head"
+                  >
+                    <span className="config-editor-accordion-head-icon config-editor-accordion-head-icon--code">
+                      <Icon source={CodeIcon} />
+                    </span>
+                    <span className="config-editor-accordion-head-label">Code Editor</span>
+                    {codeEditorDirty && (
+                      <span
+                        className="config-editor-accordion-head-dirty"
+                        title="Unsaved changes"
+                        aria-hidden
+                      >
+                        •
+                      </span>
+                    )}
+                    <span className="config-editor-accordion-head-chevron">
+                      {codeEditorExpanded ? (
+                        <Icon source={ChevronDownIcon} />
+                      ) : (
+                        <Icon source={ChevronRightIcon} />
+                      )}
+                    </span>
+                  </button>
+                  <Collapsible
+                    id="config-editor-accordion-code-body"
+                    open={codeEditorExpanded}
+                    transition={{ duration: '200ms', timingFunction: 'ease' }}
+                  >
+                    <div className="config-editor-accordion-body config-editor-panel config-editor-panel--code">
+                      <div className="variant-code-pane">
+                        <div className="variant-code-toolbar">
+                          <div className="variant-code-toolbar-variant" ref={variantDropdownRef}>
+                            {(() => {
+                              const current = variantCodesData[selectedVariantIndex];
+                              const currentColor = getVariantColor(selectedVariantIndex);
+                              return (
+                                <>
+                                  <div className="variant-code-dropdown">
+                                    <button
+                                      type="button"
+                                      className="variant-code-dropdown-trigger"
+                                      onClick={() => setVariantDropdownOpen(!variantDropdownOpen)}
+                                      aria-expanded={variantDropdownOpen}
+                                      aria-haspopup="listbox"
+                                      aria-label="Select variant to edit"
+                                      id="variant-code-dropdown-trigger"
+                                    >
+                                      <span
+                                        className="variant-code-dropdown-trigger-dot"
+                                        style={{ backgroundColor: currentColor }}
+                                      />
+                                      <span className="variant-code-dropdown-trigger-label">
+                                        {current?.name ?? `Variant ${selectedVariantIndex + 1}`}
+                                      </span>
+                                      <span className="variant-code-dropdown-trigger-chevron">
+                                        <Icon source={ChevronDownIcon} />
+                                      </span>
+                                    </button>
+                                    {variantDropdownOpen && (
+                                      <div
+                                        className="variant-code-dropdown-panel"
+                                        role="listbox"
+                                        aria-labelledby="variant-code-dropdown-trigger"
+                                        aria-activedescendant={`variant-code-option-${selectedVariantIndex}`}
+                                      >
+                                        {variantCodesData.map((v, i) => {
+                                          const isSelected = i === selectedVariantIndex;
+                                          const optionColor = getVariantColor(i);
+                                          const hasCode =
+                                            (v?.css && v.css.trim()) || (v?.js && v.js.trim());
+                                          return (
+                                            <button
+                                              key={`variant-opt-${i}`}
+                                              type="button"
+                                              role="option"
+                                              id={`variant-code-option-${i}`}
+                                              aria-selected={isSelected}
+                                              className={`variant-code-dropdown-option ${isSelected ? 'variant-code-dropdown-option--selected' : ''}`}
+                                              onClick={() => {
+                                                hasVariantSelectionRef.current = true;
+                                                setSelectedVariantIndex(i);
+                                                setVariantDropdownOpen(false);
+                                              }}
+                                              style={{ '--option-color': optionColor }}
+                                            >
+                                              <span
+                                                className="variant-code-dropdown-option-dot"
+                                                style={{ backgroundColor: optionColor }}
+                                              />
+                                              <span className="variant-code-dropdown-option-label">
+                                                {v.name}
+                                              </span>
+                                              {hasCode && (
+                                                <Badge tone="success" size="small">
+                                                  Code
+                                                </Badge>
+                                              )}
+                                              {isSelected && (
+                                                <span className="variant-code-dropdown-option-check">
+                                                  <Icon source={CheckCircleIcon} />
+                                                </span>
+                                              )}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                </>
+                              );
+                            })()}
+                            {variantCodesData.length > 1 && (
+                              <div className="variant-code-toolbar-nav">
+                                <Button
+                                  plain
+                                  size="slim"
+                                  onClick={() => handleVariantNavigation('prev')}
+                                  disabled={selectedVariantIndex === 0}
+                                  aria-label="Previous variant"
+                                  icon={ChevronLeftIcon}
+                                />
+                                <Text variant="bodySm" color="subdued" as="span">
+                                  {selectedVariantIndex + 1} / {variantCodesData.length}
+                                </Text>
+                                <Button
+                                  plain
+                                  size="slim"
+                                  onClick={() => handleVariantNavigation('next')}
+                                  disabled={selectedVariantIndex === variantCodesData.length - 1}
+                                  aria-label="Next variant"
+                                  icon={ChevronRightIcon}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </div>
 
-                        return (
-                          <div
-                            className="variant-code-editor-card"
-                            style={{
-                              '--variant-color': color,
-                            }}
-                          >
-                            <Card sectioned>
-                              <BlockStack gap="500">
-                                <InlineStack align="space-between" blockAlign="center">
-                                  <InlineStack gap="300" align="center">
-                                    <div
-                                      className="variant-code-color-indicator"
+                        {(() => {
+                          const currentVariant = variantCodesData[selectedVariantIndex] ?? {
+                            name: `Variant ${selectedVariantIndex + 1}`,
+                            css: '',
+                            js: '',
+                            code: '',
+                          };
+                          const color = getVariantColor(selectedVariantIndex);
+                          const colorLight = getVariantColorLight(color, 0.06);
+                          const colorLightStrong = getVariantColorLight(color, 0.12);
+                          const cssLineCount = currentVariant.css
+                            ? currentVariant.css.split('\n').length
+                            : 0;
+                          const jsLineCount = currentVariant.js
+                            ? currentVariant.js.split('\n').length
+                            : 0;
+
+                          return (
+                            <div
+                              className="variant-code-editor-card"
+                              style={{
+                                '--variant-color': color,
+                                '--variant-color-light': colorLight,
+                                '--variant-color-light-strong': colorLightStrong,
+                              }}
+                            >
+                              <Card sectioned>
+                                <BlockStack gap="400">
+                                  <div className="variant-code-summary">
+                                    <span
+                                      className="variant-code-summary-dot"
                                       style={{ backgroundColor: color }}
                                     />
-                                    <div>
-                                      <Text variant="headingSm" as="h4" fontWeight="semibold">
-                                        {currentVariant.name}
-                                      </Text>
-                                      <Text
-                                        variant="bodySm"
-                                        color="subdued"
-                                        as="p"
-                                        style={{ marginTop: '0.125rem' }}
-                                      >
-                                        CSS: {cssLineCount} {cssLineCount === 1 ? 'line' : 'lines'}{' '}
-                                        • JS: {jsLineCount} {jsLineCount === 1 ? 'line' : 'lines'}
-                                      </Text>
-                                    </div>
-                                  </InlineStack>
-                                </InlineStack>
+                                    <Text variant="bodyMd" fontWeight="semibold" as="span">
+                                      {currentVariant.name}
+                                    </Text>
+                                    <Text variant="bodySm" color="subdued" as="span">
+                                      CSS {cssLineCount} {cssLineCount === 1 ? 'line' : 'lines'} ·
+                                      JS {jsLineCount} {jsLineCount === 1 ? 'line' : 'lines'}
+                                    </Text>
+                                  </div>
 
-                                <div className="variant-code-split-container">
-                                  <div className="variant-code-split-panel css-panel">
-                                    <div className="variant-code-section-header">
-                                      <InlineStack gap="300" align="center" blockAlign="center">
-                                        <div className="code-type-icon css-icon">
+                                  <div className="variant-code-tabbed">
+                                    <div
+                                      className="variant-code-tab-bar"
+                                      role="tablist"
+                                      aria-label="CSS or JavaScript"
+                                    >
+                                      <button
+                                        type="button"
+                                        role="tab"
+                                        aria-selected={codeEditorSubTab === 'css'}
+                                        aria-controls="variant-code-panel-css"
+                                        id="variant-code-tab-css"
+                                        className={`variant-code-tab ${codeEditorSubTab === 'css' ? 'variant-code-tab--active' : ''}`}
+                                        onClick={() => setCodeEditorSubTab('css')}
+                                      >
+                                        <span className="code-type-icon css-icon">
                                           <svg
-                                            width="20"
-                                            height="20"
+                                            width="18"
+                                            height="18"
                                             viewBox="0 0 24 24"
                                             fill="none"
-                                            xmlns="http://www.w3.org/2000/svg"
                                           >
                                             <path
                                               d="M4 2L5.5 19.5L12 22L18.5 19.5L20 2H4Z"
@@ -6495,117 +6599,34 @@ function TestWizard({
                                               strokeLinejoin="round"
                                             />
                                           </svg>
-                                        </div>
-                                        <Text variant="headingSm" as="h5" fontWeight="semibold">
-                                          CSS
-                                        </Text>
-                                        <Text variant="bodySm" color="subdued" as="span">
-                                          {cssLineCount} {cssLineCount === 1 ? 'line' : 'lines'} •{' '}
-                                          {cssCharCount.toLocaleString()}{' '}
-                                          {cssCharCount === 1 ? 'char' : 'chars'}
-                                        </Text>
+                                        </span>
+                                        <span>CSS</span>
+                                        {cssLineCount > 0 && (
+                                          <span className="variant-code-tab-meta">
+                                            {cssLineCount} {cssLineCount === 1 ? 'line' : 'lines'}
+                                          </span>
+                                        )}
                                         {cssValidationErrors.length > 0 && (
-                                          <Badge status="critical" tone="critical">
-                                            {cssValidationErrors.length}{' '}
-                                            {cssValidationErrors.length === 1 ? 'error' : 'errors'}
+                                          <Badge tone="critical" size="small">
+                                            {cssValidationErrors.length}
                                           </Badge>
                                         )}
-                                        {cssValidationErrors.length === 0 &&
-                                          (currentVariant.css || '').trim() !== '' && (
-                                            <Badge status="success">✓ Valid</Badge>
-                                          )}
-                                      </InlineStack>
-                                    </div>
-                                    <div className="variant-code-editor-wrapper">
-                                      <TextField
-                                        label=""
-                                        value={currentVariant.css || ''}
-                                        onChange={value =>
-                                          handleVariantCodeChange(
-                                            'css',
-                                            value,
-                                            selectedVariantIndex
-                                          )
-                                        }
-                                        multiline={25}
-                                        autoComplete="off"
-                                        placeholder="/* Enter your CSS code here */&#10;&#10;.my-class {&#10;  color: #333;&#10;  font-size: 16px;&#10;}"
-                                        error={
-                                          cssValidationErrors.length > 0
-                                            ? cssValidationErrors[0]
-                                            : undefined
-                                        }
-                                      />
-                                      {cssValidationErrors.length > 0 && (
-                                        <div className="code-validation-errors">
-                                          <BlockStack gap="200">
-                                            {cssValidationErrors.map((errorItem, idx) => (
-                                              <div key={idx} className="validation-error-item">
-                                                <InlineStack gap="200" align="start">
-                                                  <svg
-                                                    width="16"
-                                                    height="16"
-                                                    viewBox="0 0 16 16"
-                                                    fill="none"
-                                                  >
-                                                    <circle
-                                                      cx="8"
-                                                      cy="8"
-                                                      r="7"
-                                                      stroke="currentColor"
-                                                      strokeWidth="1.5"
-                                                    />
-                                                    <path
-                                                      d="M8 5V8M8 11H8.01"
-                                                      stroke="currentColor"
-                                                      strokeWidth="1.5"
-                                                      strokeLinecap="round"
-                                                    />
-                                                  </svg>
-                                                  <Text variant="bodySm" color="critical" as="span">
-                                                    {errorItem}
-                                                  </Text>
-                                                </InlineStack>
-                                              </div>
-                                            ))}
-                                          </BlockStack>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  <div className="variant-code-split-divider">
-                                    <div className="split-divider-line" />
-                                    <div className="split-divider-handle">
-                                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                                        <path
-                                          d="M7.5 5L12.5 10L7.5 15"
-                                          stroke="currentColor"
-                                          strokeWidth="2"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                        />
-                                        <path
-                                          d="M12.5 5L7.5 10L12.5 15"
-                                          stroke="currentColor"
-                                          strokeWidth="2"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                        />
-                                      </svg>
-                                    </div>
-                                  </div>
-
-                                  <div className="variant-code-split-panel js-panel">
-                                    <div className="variant-code-section-header">
-                                      <InlineStack gap="300" align="center" blockAlign="center">
-                                        <div className="code-type-icon js-icon">
+                                      </button>
+                                      <button
+                                        type="button"
+                                        role="tab"
+                                        aria-selected={codeEditorSubTab === 'js'}
+                                        aria-controls="variant-code-panel-js"
+                                        id="variant-code-tab-js"
+                                        className={`variant-code-tab ${codeEditorSubTab === 'js' ? 'variant-code-tab--active' : ''}`}
+                                        onClick={() => setCodeEditorSubTab('js')}
+                                      >
+                                        <span className="code-type-icon js-icon">
                                           <svg
-                                            width="20"
-                                            height="20"
+                                            width="18"
+                                            height="18"
                                             viewBox="0 0 24 24"
                                             fill="none"
-                                            xmlns="http://www.w3.org/2000/svg"
                                           >
                                             <rect
                                               x="2"
@@ -6632,94 +6653,172 @@ function TestWizard({
                                               strokeLinecap="round"
                                             />
                                           </svg>
-                                        </div>
-                                        <Text variant="headingSm" as="h5" fontWeight="semibold">
-                                          JavaScript
-                                        </Text>
-                                        <Text variant="bodySm" color="subdued" as="span">
-                                          {jsLineCount} {jsLineCount === 1 ? 'line' : 'lines'} •{' '}
-                                          {jsCharCount.toLocaleString()}{' '}
-                                          {jsCharCount === 1 ? 'char' : 'chars'}
-                                        </Text>
+                                        </span>
+                                        <span>JavaScript</span>
+                                        {jsLineCount > 0 && (
+                                          <span className="variant-code-tab-meta">
+                                            {jsLineCount} {jsLineCount === 1 ? 'line' : 'lines'}
+                                          </span>
+                                        )}
                                         {jsValidationErrors.length > 0 && (
-                                          <Badge status="critical" tone="critical">
-                                            {jsValidationErrors.length}{' '}
-                                            {jsValidationErrors.length === 1 ? 'error' : 'errors'}
+                                          <Badge tone="critical" size="small">
+                                            {jsValidationErrors.length}
                                           </Badge>
                                         )}
-                                        {jsValidationErrors.length === 0 &&
-                                          (currentVariant.js || '').trim() !== '' && (
-                                            <Badge status="success">✓ Valid</Badge>
-                                          )}
-                                      </InlineStack>
+                                      </button>
                                     </div>
-                                    <div className="variant-code-editor-wrapper">
-                                      <TextField
-                                        label=""
-                                        value={currentVariant.js || ''}
-                                        onChange={value =>
-                                          handleVariantCodeChange('js', value, selectedVariantIndex)
-                                        }
-                                        multiline={25}
-                                        autoComplete="off"
-                                        placeholder="// Enter your JavaScript code here&#10;&#10;console.log('Hello, World!');&#10;document.querySelector('.my-class').style.display = 'block';"
-                                        error={
-                                          jsValidationErrors.length > 0
-                                            ? jsValidationErrors[0]
-                                            : undefined
-                                        }
-                                      />
-                                      {jsValidationErrors.length > 0 && (
-                                        <div className="code-validation-errors">
-                                          <BlockStack gap="200">
-                                            {jsValidationErrors.map((errorItem, idx) => (
-                                              <div key={idx} className="validation-error-item">
-                                                <InlineStack gap="200" align="start">
-                                                  <svg
-                                                    width="16"
-                                                    height="16"
-                                                    viewBox="0 0 16 16"
-                                                    fill="none"
-                                                  >
-                                                    <circle
-                                                      cx="8"
-                                                      cy="8"
-                                                      r="7"
-                                                      stroke="currentColor"
-                                                      strokeWidth="1.5"
-                                                    />
-                                                    <path
-                                                      d="M8 5V8M8 11H8.01"
-                                                      stroke="currentColor"
-                                                      strokeWidth="1.5"
-                                                      strokeLinecap="round"
-                                                    />
-                                                  </svg>
-                                                  <Text variant="bodySm" color="critical" as="span">
-                                                    {errorItem}
-                                                  </Text>
-                                                </InlineStack>
-                                              </div>
-                                            ))}
-                                          </BlockStack>
-                                        </div>
-                                      )}
+                                    <div
+                                      id="variant-code-panel-css"
+                                      role="tabpanel"
+                                      aria-labelledby="variant-code-tab-css"
+                                      hidden={codeEditorSubTab !== 'css'}
+                                      className={`variant-code-tab-panel ${codeEditorSubTab === 'css' ? 'variant-code-tab-panel--active' : ''}`}
+                                    >
+                                      <div className="variant-code-editor-wrapper">
+                                        <CodeEditorIDE
+                                          value={currentVariant.css || ''}
+                                          onChange={value =>
+                                            handleVariantCodeChange(
+                                              'css',
+                                              value,
+                                              selectedVariantIndex
+                                            )
+                                          }
+                                          language="css"
+                                          placeholder="/* Enter your CSS */&#10;&#10;.my-class {&#10;  color: #333;&#10;  font-size: 16px;&#10;}"
+                                          error={
+                                            cssValidationErrors.length > 0
+                                              ? cssValidationErrors[0]
+                                              : undefined
+                                          }
+                                          minHeight={360}
+                                          aria-label="CSS code"
+                                        />
+                                        {cssValidationErrors.length > 0 && (
+                                          <div className="code-validation-errors">
+                                            <BlockStack gap="200">
+                                              {cssValidationErrors.map((errorItem, idx) => (
+                                                <div key={idx} className="validation-error-item">
+                                                  <InlineStack gap="200" align="start">
+                                                    <svg
+                                                      width="16"
+                                                      height="16"
+                                                      viewBox="0 0 16 16"
+                                                      fill="none"
+                                                    >
+                                                      <circle
+                                                        cx="8"
+                                                        cy="8"
+                                                        r="7"
+                                                        stroke="currentColor"
+                                                        strokeWidth="1.5"
+                                                      />
+                                                      <path
+                                                        d="M8 5V8M8 11H8.01"
+                                                        stroke="currentColor"
+                                                        strokeWidth="1.5"
+                                                        strokeLinecap="round"
+                                                      />
+                                                    </svg>
+                                                    <Text
+                                                      variant="bodySm"
+                                                      color="critical"
+                                                      as="span"
+                                                    >
+                                                      {errorItem}
+                                                    </Text>
+                                                  </InlineStack>
+                                                </div>
+                                              ))}
+                                            </BlockStack>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div
+                                      id="variant-code-panel-js"
+                                      role="tabpanel"
+                                      aria-labelledby="variant-code-tab-js"
+                                      hidden={codeEditorSubTab !== 'js'}
+                                      className={`variant-code-tab-panel ${codeEditorSubTab === 'js' ? 'variant-code-tab-panel--active' : ''}`}
+                                    >
+                                      <div className="variant-code-editor-wrapper">
+                                        <CodeEditorIDE
+                                          value={currentVariant.js || ''}
+                                          onChange={value =>
+                                            handleVariantCodeChange(
+                                              'js',
+                                              value,
+                                              selectedVariantIndex
+                                            )
+                                          }
+                                          language="javascript"
+                                          placeholder="// Enter your JavaScript&#10;&#10;console.log('Hello');&#10;document.querySelector('.my-class').style.display = 'block';"
+                                          error={
+                                            jsValidationErrors.length > 0
+                                              ? jsValidationErrors[0]
+                                              : undefined
+                                          }
+                                          minHeight={360}
+                                          aria-label="JavaScript code"
+                                        />
+                                        {jsValidationErrors.length > 0 && (
+                                          <div className="code-validation-errors">
+                                            <BlockStack gap="200">
+                                              {jsValidationErrors.map((errorItem, idx) => (
+                                                <div key={idx} className="validation-error-item">
+                                                  <InlineStack gap="200" align="start">
+                                                    <svg
+                                                      width="16"
+                                                      height="16"
+                                                      viewBox="0 0 16 16"
+                                                      fill="none"
+                                                    >
+                                                      <circle
+                                                        cx="8"
+                                                        cy="8"
+                                                        r="7"
+                                                        stroke="currentColor"
+                                                        strokeWidth="1.5"
+                                                      />
+                                                      <path
+                                                        d="M8 5V8M8 11H8.01"
+                                                        stroke="currentColor"
+                                                        strokeWidth="1.5"
+                                                        strokeLinecap="round"
+                                                      />
+                                                    </svg>
+                                                    <Text
+                                                      variant="bodySm"
+                                                      color="critical"
+                                                      as="span"
+                                                    >
+                                                      {errorItem}
+                                                    </Text>
+                                                  </InlineStack>
+                                                </div>
+                                              ))}
+                                            </BlockStack>
+                                          </div>
+                                        )}
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
 
-                                <div className="variant-code-help-text">
-                                  <Text variant="bodySm" color="subdued" as="p">
-                                    💡 CSS and JavaScript will be automatically wrapped in
-                                    &lt;style&gt; and &lt;script&gt; tags when saved
-                                  </Text>
-                                </div>
-                              </BlockStack>
-                            </Card>
-                          </div>
-                        );
-                      })()}
-                  </div>
+                                  <div className="variant-code-help-text">
+                                    <Text variant="bodySm" color="subdued" as="p">
+                                      💡 CSS and JavaScript are wrapped in &lt;style&gt; and
+                                      &lt;script&gt; tags when saved.
+                                    </Text>
+                                  </div>
+                                </BlockStack>
+                              </Card>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </Collapsible>
                 </div>
               </div>
             </BlockStack>
@@ -6756,7 +6855,6 @@ function TestWizard({
     const reviewVariants = formData.variants?.length
       ? formData.variants
       : initialData?.variants || [];
-    const COLORS = ['#06b6d4', '#8b5cf6', '#f49342', '#14b8a6', '#b98900', '#e91e63'];
 
     const targetingParts = [
       (reviewSegments.page_rules || []).length > 0
@@ -6921,7 +7019,7 @@ function TestWizard({
               <div key={i} className={stepStyles.reviewVariantChip}>
                 <span
                   className={stepStyles.reviewVariantChipColor}
-                  style={{ backgroundColor: COLORS[i % COLORS.length] }}
+                  style={{ backgroundColor: getVariantColor(i) }}
                 />
                 {v.name}: {v.allocation}%
               </div>

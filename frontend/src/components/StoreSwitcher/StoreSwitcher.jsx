@@ -23,7 +23,7 @@ function StoreSwitcher() {
   const [active, setActive] = useState(false);
   const [stores, setStores] = useState([]);
   const [currentStore, setCurrentStore] = useState(null);
-  const [platform, setPlatform] = useState(null);
+  const [, setPlatform] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const fetchStores = useCallback(async () => {

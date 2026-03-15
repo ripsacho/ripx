@@ -149,6 +149,7 @@ const profileRoutes = require('./routes/profileRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
 const targetingPresetRoutes = require('./routes/targetingPresetRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const supportRoutes = require('./routes/supportRoutes');
 const tenantRoutes = require('./routes/tenantRoutes');
 const accountRoutes = require('./routes/accountRoutes');
 const authRoutes = require('./routes/authRoutes');
@@ -402,7 +403,8 @@ const apiLimiter = rateLimit({
     req.originalUrl?.startsWith('/api/track') ||
     req.originalUrl?.startsWith('/api/webhooks') ||
     req.originalUrl?.startsWith('/api/admin') ||
-    req.originalUrl?.startsWith('/api/auth'),
+    req.originalUrl?.startsWith('/api/auth') ||
+    req.originalUrl?.startsWith('/api/support'),
 });
 app.use('/api/', apiLimiter);
 
@@ -458,6 +460,26 @@ const tenantLimiter = rateLimit({
   legacyHeaders: false,
 });
 app.use('/api/tenants', tenantLimiter);
+
+const supportLimiter = rateLimit({
+  windowMs: RATE_LIMIT.WINDOW_MS,
+  max: parseInt(process.env.RATE_LIMIT_SUPPORT_MAX, 10) || 10,
+  message: { success: false, error: 'Too many support requests. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: req => req.path === '/chat' || (req.originalUrl && req.originalUrl.endsWith('/chat')),
+});
+app.use('/api/support', supportLimiter);
+
+// Stricter per-IP limit for support chat (more requests than tickets, but still bounded)
+const supportChatLimiter = rateLimit({
+  windowMs: RATE_LIMIT.WINDOW_MS,
+  max: parseInt(process.env.RATE_LIMIT_SUPPORT_CHAT_MAX, 10) || 40,
+  message: { success: false, error: 'Too many chat messages. Please try again in a few minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/support/chat', supportChatLimiter);
 
 // API docs (Swagger UI at /api-docs)
 app.use('/api-docs', apiDocsRoutes);
@@ -601,6 +623,7 @@ app.use('/api/profile', authenticate, profileRoutes);
 app.use('/api/settings', authenticate, settingsRoutes);
 app.use('/api/targeting-presets', authenticate, targetingPresetRoutes);
 app.use('/api/notifications', authenticate, notificationRoutes);
+app.use('/api/support', supportRoutes); // Ticket submit (public) + My tickets (authenticated)
 app.use('/api/admin', adminRoutes); // Admin panel (requireAdmin inside router)
 
 // 404 handler for API routes - return JSON for unmatched /api/* paths

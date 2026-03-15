@@ -369,9 +369,68 @@ async function authenticate(req, res, next) {
   return sendUnauthorized(res, 'Shop domain or API key required');
 }
 
+/**
+ * Optional authentication for routes that work with or without auth (e.g. support ticket submit).
+ * Tries the same resolution as authenticate; on success sets req.shopDomain, req.email, req.tenantId.
+ * Never sends 401 — always calls next(). Use when you want to attach user/tenant context when available.
+ */
+async function optionalAuthenticate(req, res, next) {
+  if (tryImpersonationToken(req)) {
+    return next();
+  }
+  if (tryEmailSessionToken(req)) {
+    return next();
+  }
+
+  const shop = req.query.shop || req.headers['x-shopify-shop-domain'];
+  const apiKey =
+    req.headers['x-ripx-api-key'] ||
+    req.headers['x-ripx-apikey'] ||
+    req.headers.authorization?.replace(/^Bearer\s+/i, '');
+
+  if (shop && isShopifyDomain(shop)) {
+    try {
+      const normalizedShop = shop.trim().toLowerCase();
+      const tenant = await getTenantByDomain(normalizedShop);
+      req.shopDomain = normalizedShop;
+      if (tenant) {
+        req.tenantId = tenant.id;
+      }
+      return next();
+    } catch (_) {
+      return next();
+    }
+  }
+  if (apiKey) {
+    try {
+      const trimmedKey = apiKey.trim();
+      const tenant = await getTenantByApiKey(trimmedKey);
+      if (tenant) {
+        req.shopDomain = tenant.domain;
+        req.tenantId = tenant.id;
+        return next();
+      }
+      const accountResult = await getAccountByApiKey(trimmedKey);
+      if (accountResult?.account) {
+        const first = await getFirstTenantForAccount(accountResult.account.id);
+        if (first) {
+          req.shopDomain = first.domain;
+          req.tenantId = first.id;
+        }
+        return next();
+      }
+    } catch (_) {
+      // ignore
+    }
+    return next();
+  }
+  next();
+}
+
 module.exports = {
   authenticateShopify,
   authenticateApiKey,
   authenticate,
+  optionalAuthenticate,
   verifyToken,
 };

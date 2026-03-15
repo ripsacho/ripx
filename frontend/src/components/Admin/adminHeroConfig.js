@@ -114,6 +114,11 @@ export const ADMIN_HERO_CONFIG = {
     subtitle: 'Platform notification settings and templates.',
     icon: ListBulletedIcon,
   },
+  [ROUTES.ADMIN_SUPPORT_TICKETS]: {
+    title: 'Support tickets',
+    subtitle: 'Triage and update support tickets from the Contact us form.',
+    icon: EmailIcon,
+  },
   [ROUTES.ADMIN_SIGNIFICANCE_ALERTS]: {
     title: 'Significance alerts',
     subtitle: 'Configure significance alert thresholds and delivery.',

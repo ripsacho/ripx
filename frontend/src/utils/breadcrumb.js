@@ -23,57 +23,55 @@ export function getAppDomainFromPath(pathname) {
  * @returns {{ current: string, parent?: string, parentPath?: string }}
  */
 export function getBreadcrumb(pathname, search = '') {
+  const path = typeof pathname === 'string' ? pathname : '';
   const view = new URLSearchParams(search || '').get('view');
-  const appDomain = getAppDomainFromPath(pathname);
+  const appDomain = getAppDomainFromPath(path);
   const appPrefix = appDomain ? `/app/${encodeURIComponent(appDomain)}` : '';
 
-  if (pathname === ROUTES.USER_PANEL) return { current: 'Home' };
-  if (
-    pathname === ROUTES.DASHBOARD ||
-    (appPrefix && (pathname === appPrefix || pathname === appPrefix + '/'))
-  )
+  if (path === ROUTES.USER_PANEL) return { current: 'Home' };
+  if (path === ROUTES.DASHBOARD || (appPrefix && (path === appPrefix || path === appPrefix + '/')))
     return { current: 'Dashboard' };
   const testsListPath = appPrefix ? `${appPrefix}/tests` : ROUTES.TESTS;
-  if (pathname === (appPrefix ? `${appPrefix}/tests` : ROUTES.TESTS)) {
+  if (path === (appPrefix ? `${appPrefix}/tests` : ROUTES.TESTS)) {
     return view === 'personalization'
       ? { parent: 'Tests', current: 'Personalization', parentPath: testsListPath }
       : { parent: 'Tests', current: 'All Tests', parentPath: testsListPath };
   }
   if (
-    (pathname.startsWith('/tests/') || pathname.startsWith(appPrefix + '/tests/')) &&
-    pathname.includes('/analytics')
+    (path.startsWith('/tests/') || path.startsWith(appPrefix + '/tests/')) &&
+    path.includes('/analytics')
   ) {
-    const testDetailPath = pathname.replace(/\/analytics$/, '');
+    const testDetailPath = path.replace(/\/analytics$/, '');
     return { parent: 'Tests', current: 'Analytics', parentPath: testDetailPath };
   }
   if (
-    (pathname.startsWith('/tests/') || pathname.startsWith(appPrefix + '/tests/')) &&
-    pathname.endsWith('/editor')
+    (path.startsWith('/tests/') || path.startsWith(appPrefix + '/tests/')) &&
+    path.endsWith('/editor')
   ) {
-    const testDetailPath = pathname.replace(/\/editor$/, '');
+    const testDetailPath = path.replace(/\/editor$/, '');
     return { parent: 'Test Details', current: 'Editor', parentPath: testDetailPath };
   }
   if (
-    (pathname.startsWith('/tests/') || pathname.startsWith(appPrefix + '/tests/')) &&
-    pathname.endsWith('/export')
+    (path.startsWith('/tests/') || path.startsWith(appPrefix + '/tests/')) &&
+    path.endsWith('/export')
   ) {
-    const testDetailPath = pathname.replace(/\/export$/, '');
+    const testDetailPath = path.replace(/\/export$/, '');
     return { parent: 'Test Details', current: 'Export', parentPath: testDetailPath };
   }
   if (
-    (pathname.startsWith('/tests/') || pathname.startsWith(appPrefix + '/tests/')) &&
-    pathname.endsWith('/promo-links')
+    (path.startsWith('/tests/') || path.startsWith(appPrefix + '/tests/')) &&
+    path.endsWith('/promo-links')
   ) {
-    const testDetailPath = pathname.replace(/\/promo-links$/, '');
+    const testDetailPath = path.replace(/\/promo-links$/, '');
     return { parent: 'Test Details', current: 'Promo links', parentPath: testDetailPath };
   }
   if (
-    (pathname.startsWith('/tests/') || pathname.startsWith(appPrefix + '/tests/')) &&
-    !pathname.includes('/analytics') &&
-    pathname !== '/tests/new' &&
-    pathname !== `${appPrefix}/tests/new`
+    (path.startsWith('/tests/') || path.startsWith(appPrefix + '/tests/')) &&
+    !path.includes('/analytics') &&
+    path !== '/tests/new' &&
+    path !== `${appPrefix}/tests/new`
   ) {
-    const segments = pathname.split('/');
+    const segments = path.split('/');
     const idIdx = appDomain ? segments.indexOf('tests') + 1 : 2;
     const testId = segments[idIdx];
     return {
@@ -82,25 +80,35 @@ export function getBreadcrumb(pathname, search = '') {
       parentPath: testsListPath,
     };
   }
-  if (pathname === (appPrefix ? `${appPrefix}/tests/new` : ROUTES.CREATE_TEST))
+  if (path === (appPrefix ? `${appPrefix}/tests/new` : ROUTES.CREATE_TEST))
     return { parent: 'Tests', current: 'Create Test', parentPath: testsListPath };
-  if (pathname === (appPrefix ? `${appPrefix}/analytics` : ROUTES.ANALYTICS))
+  if (path === (appPrefix ? `${appPrefix}/analytics` : ROUTES.ANALYTICS))
     return { current: 'Analytics' };
-  if (appPrefix && pathname === `${appPrefix}/settings`)
+  if (appPrefix && path === `${appPrefix}/settings`)
     return { parent: 'Dashboard', current: 'App settings', parentPath: appPrefix };
-  if (pathname === ROUTES.SETTINGS)
+  if (path === ROUTES.SETTINGS)
     return { parent: 'Home', current: 'Account settings', parentPath: ROUTES.USER_PANEL };
-  if (appPrefix && pathname === `${appPrefix}/setup`) return { current: 'Setup Wizard' };
-  if (pathname === ROUTES.PROFILE)
+  if (appPrefix && path === `${appPrefix}/setup`) return { current: 'Setup Wizard' };
+  if (path === ROUTES.PROFILE) {
+    const tab = new URLSearchParams(search || '').get('tab');
+    if (tab === 'account')
+      return { parent: 'Profile', current: 'Account', parentPath: ROUTES.PROFILE };
+    if (tab === 'preferences')
+      return { parent: 'Profile', current: 'Preferences', parentPath: ROUTES.PROFILE };
     return { parent: 'Home', current: 'Profile', parentPath: ROUTES.USER_PANEL };
-  if (pathname === ROUTES.NOTIFICATIONS)
+  }
+  if (path === ROUTES.NOTIFICATIONS)
     return { parent: 'Home', current: 'Notifications', parentPath: ROUTES.USER_PANEL };
-  if (pathname === ROUTES.DOCS)
+  if (path === ROUTES.DOCS)
     return { parent: 'Home', current: 'Documentation', parentPath: ROUTES.USER_PANEL };
-  if (pathname === ROUTES.SETUP) return { current: 'Setup Wizard' };
-  if (pathname === ROUTES.CONNECT) return { current: 'Connect' };
-  if (pathname === ROUTES.DOMAINS) return { current: 'My domains' };
-  if (pathname.startsWith(ROUTES.ADMIN)) {
+  if (path === ROUTES.SUPPORT)
+    return { parent: 'Home', current: 'Support', parentPath: ROUTES.USER_PANEL };
+  if (path === ROUTES.CONNECT_OAUTH_SUCCESS)
+    return { parent: 'Connect', current: 'Success', parentPath: ROUTES.CONNECT };
+  if (path === ROUTES.SETUP) return { current: 'Setup Wizard' };
+  if (path === ROUTES.CONNECT) return { current: 'Connect' };
+  if (path === ROUTES.DOMAINS) return { current: 'My domains' };
+  if (path.startsWith(ROUTES.ADMIN)) {
     const adminSectionLabels = {
       [ROUTES.ADMIN_OVERVIEW]: 'Overview',
       [ROUTES.ADMIN_USERS]: 'Users',
@@ -121,6 +129,7 @@ export function getBreadcrumb(pathname, search = '') {
       [ROUTES.ADMIN_SHOP_SETTINGS_OVERRIDES]: 'Shop settings overrides',
       [ROUTES.ADMIN_RATE_LIMIT_OVERRIDES]: 'Rate limit overrides',
       [ROUTES.ADMIN_NOTIFICATIONS]: 'Notifications',
+      [ROUTES.ADMIN_SUPPORT_TICKETS]: 'Support tickets',
       [ROUTES.ADMIN_SIGNIFICANCE_ALERTS]: 'Significance alerts',
       [ROUTES.ADMIN_EVENT_CATALOG]: 'Event catalog',
       [ROUTES.ADMIN_CLIENT_ERRORS]: 'Client errors',
@@ -133,20 +142,20 @@ export function getBreadcrumb(pathname, search = '') {
       [ROUTES.ADMIN_MAIL_PROCESSES]: 'Email delivery',
       [ROUTES.ADMIN_USAGE_EXPORT]: 'Usage export',
     };
-    const section = adminSectionLabels[pathname] || 'Admin';
-    if (pathname === ROUTES.ADMIN || pathname === ROUTES.ADMIN_OVERVIEW) {
+    const section = adminSectionLabels[path] || 'Admin';
+    if (path === ROUTES.ADMIN || path === ROUTES.ADMIN_OVERVIEW) {
       return { current: 'Admin' };
     }
     return { parent: 'Admin', current: section, parentPath: ROUTES.ADMIN_OVERVIEW };
   }
   const isKnown =
-    pathname === ROUTES.USER_PANEL ||
-    pathname.startsWith('/app/') ||
-    pathname.startsWith('/tests/') ||
-    pathname.startsWith(ROUTES.ADMIN) ||
-    [ROUTES.CONNECT, ROUTES.DOMAINS].includes(pathname);
+    path === ROUTES.USER_PANEL ||
+    path.startsWith('/app/') ||
+    path.startsWith('/tests/') ||
+    path.startsWith(ROUTES.ADMIN) ||
+    [ROUTES.CONNECT, ROUTES.DOMAINS].includes(path);
   if (!isKnown) return { current: 'Page not found' };
-  if (appPrefix && pathname.startsWith(appPrefix) && pathname.length > appPrefix.length) {
+  if (appPrefix && path.startsWith(appPrefix) && path.length > appPrefix.length) {
     return { parent: 'Dashboard', current: 'Page not found', parentPath: appPrefix };
   }
   const ROUTE_LABELS = {
@@ -161,5 +170,5 @@ export function getBreadcrumb(pathname, search = '') {
     [ROUTES.DOCS]: 'Documentation',
     '/tests/new': 'Create Test',
   };
-  return { current: ROUTE_LABELS[pathname] || 'RipX' };
+  return { current: ROUTE_LABELS[path] || 'RipX' };
 }

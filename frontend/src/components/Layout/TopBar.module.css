@@ -1,30 +1,32 @@
-/* TopBar - Premium design matching site UI */
+/* TopBar - Organized, user-friendly premium UI */
 
 .topBar {
   position: fixed;
   top: 0;
   left: var(--topbar-left, 280px);
   right: 0;
-  height: 56px;
+  height: 60px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 1.5rem 0 1.75rem;
+  padding: 0 1.75rem 0 2rem;
   background: linear-gradient(
     168deg,
     rgba(255, 255, 255, 0.99) 0%,
-    rgba(250, 252, 254, 0.97) 40%,
-    rgba(248, 250, 252, 0.95) 100%
+    rgba(250, 252, 254, 0.98) 40%,
+    rgba(248, 250, 252, 0.97) 100%
   );
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
   border-bottom: 1px solid rgba(6, 182, 212, 0.1);
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.7) inset,
-    0 2px 12px rgba(0, 0, 0, 0.04),
-    0 1px 3px rgba(6, 182, 212, 0.06);
+    0 1px 0 rgba(255, 255, 255, 0.85) inset,
+    0 2px 16px rgba(0, 0, 0, 0.03),
+    0 1px 2px rgba(6, 182, 212, 0.04);
   z-index: 1000;
   transition: left 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  font-family: var(--topbar-font, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+  letter-spacing: -0.02em;
 }
 
 /* Inline mode: inside admin right column, in flow beside admin sidebar (no fixed overlay) */
@@ -48,13 +50,14 @@
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(6, 182, 212, 0.9) 15%,
-    var(--futuristic-cyan) 35%,
-    var(--futuristic-violet) 65%,
-    rgba(167, 139, 250, 0.9) 85%,
+    rgba(6, 182, 212, 0.85) 12%,
+    var(--futuristic-cyan) 38%,
+    var(--futuristic-violet) 62%,
+    rgba(167, 139, 250, 0.85) 88%,
     transparent 100%
   );
-  opacity: 0.9;
+  opacity: 0.92;
+  border-radius: 0 0 2px 2px;
 }
 
 [data-theme='dark'] .topBar {
@@ -72,11 +75,11 @@
   opacity: 0.9;
 }
 
-/* Left: Mobile toggle + breadcrumb */
+/* Left: Mobile toggle + breadcrumb (clear hierarchy) */
 .topBarLeft {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 1.125rem;
   min-width: 0;
   flex: 1;
 }
@@ -85,20 +88,20 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   padding: 0;
-  border: 1px solid rgba(6, 182, 212, 0.15);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(6, 182, 212, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.8);
   color: var(--text-secondary);
   cursor: pointer;
   transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.15s ease;
 }
 
 .mobileToggle:hover {
-  background: rgba(6, 182, 212, 0.08);
-  border-color: rgba(6, 182, 212, 0.25);
+  background: rgba(6, 182, 212, 0.06);
+  border-color: rgba(6, 182, 212, 0.2);
   color: var(--futuristic-cyan);
 }
 
@@ -107,42 +110,49 @@
   box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--futuristic-cyan);
 }
 
+/* Breadcrumb: parent = subdued link, current = emphasized title */
 .breadcrumb {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.25rem;
-  font-size: 0.875rem;
+  gap: 0.375rem;
+  font-size: 0.9375rem;
   font-weight: 500;
   color: var(--text-secondary);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
+  line-height: 1.35;
 }
 
 .breadcrumbCurrent {
   color: var(--text-primary);
   font-weight: 600;
-  padding: 0.35rem 0.65rem;
-  border-radius: 8px;
+  font-size: 0.9375rem;
+  letter-spacing: -0.025em;
+  padding: 0.4rem 0.75rem;
+  border-radius: 10px;
   background: rgba(6, 182, 212, 0.06);
-  border: 1px solid rgba(6, 182, 212, 0.1);
+  border: 1px solid rgba(6, 182, 212, 0.08);
+  text-transform: capitalize;
 }
 
 .breadcrumbParent {
   background: none;
   border: none;
-  padding: 0.25rem 0.5rem;
-  margin: 0 -0.25rem;
+  padding: 0.3rem 0.5rem;
+  margin: 0 -0.2rem;
   font: inherit;
+  font-size: 0.875rem;
   font-weight: 500;
   color: var(--futuristic-cyan);
   cursor: pointer;
   text-decoration: none;
-  border-radius: 6px;
+  border-radius: 8px;
   transition: background 0.2s ease, color 0.2s ease;
+  letter-spacing: -0.01em;
 }
 
 .breadcrumbParent:hover {
-  background: rgba(6, 182, 212, 0.08);
+  background: rgba(6, 182, 212, 0.06);
   color: var(--futuristic-cyan);
 }
 
@@ -152,34 +162,125 @@
 }
 
 .breadcrumbSep {
-  margin: 0 0.15rem;
-  opacity: 0.4;
+  margin: 0 0.1rem;
+  opacity: 0.35;
   font-weight: 400;
+  font-size: 0.75rem;
   user-select: none;
+  letter-spacing: 0.02em;
 }
 
 [data-theme='dark'] .breadcrumbCurrent {
-  background: rgba(6, 182, 212, 0.12);
-  border-color: rgba(6, 182, 212, 0.2);
+  background: rgba(6, 182, 212, 0.1);
+  border-color: rgba(6, 182, 212, 0.18);
 }
 
-/* Divider between breadcrumb and actions (visible when both have content) */
+/* Right: Actions block – store switcher, CTA, notifications, account */
 .topBarRight {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.625rem;
   flex-shrink: 0;
-  padding-left: 1rem;
+  padding-left: 1.25rem;
   margin-left: 0.5rem;
-  border-left: 1px solid rgba(6, 182, 212, 0.12);
+  border-left: 1px solid rgba(6, 182, 212, 0.1);
 }
 
 [data-theme='dark'] .topBarRight {
-  border-left-color: rgba(6, 182, 212, 0.18);
+  border-left-color: rgba(6, 182, 212, 0.16);
 }
 
 .topBarRight > *:first-child {
-  margin-right: 0.125rem;
+  margin-right: 0.25rem;
+}
+
+/* Divider between primary actions (store + New Test) and action group (notifications + user) */
+.topBarRightDivider {
+  width: 1px;
+  height: 24px;
+  background: rgba(6, 182, 212, 0.12);
+  border-radius: 1px;
+  flex-shrink: 0;
+  margin: 0 0.25rem;
+}
+
+[data-theme='dark'] .topBarRightDivider {
+  background: rgba(6, 182, 212, 0.18);
+}
+
+/* Primary CTA: New Test (Title Case, prominent) */
+.newTestBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 40px;
+  padding: 0 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(6, 182, 212, 0.28);
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(139, 92, 246, 0.05));
+  color: var(--futuristic-cyan);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+  box-shadow: 0 1px 3px rgba(6, 182, 212, 0.08);
+}
+
+.newTestBtn:hover {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.18), rgba(139, 92, 246, 0.08));
+  border-color: rgba(6, 182, 212, 0.4);
+  color: var(--futuristic-cyan);
+  transform: translateY(-0.5px);
+  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.12);
+}
+
+.newTestBtn:active {
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .newTestBtn:hover,
+  .newTestBtn:active {
+    transform: none;
+  }
+}
+
+.newTestBtn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--futuristic-cyan);
+}
+
+.newTestBtn :global(svg) {
+  width: 18px;
+  height: 18px;
+}
+
+.newTestBtnLabel {
+  white-space: nowrap;
+  letter-spacing: -0.01em;
+}
+
+@media (max-width: 768px) {
+  .newTestBtnLabel {
+    display: none;
+  }
+  .newTestBtn {
+    padding: 0 0.5rem;
+    min-width: 40px;
+    height: 40px;
+    justify-content: center;
+  }
+}
+
+[data-theme='dark'] .newTestBtn {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.15), rgba(139, 92, 246, 0.08));
+  border-color: rgba(6, 182, 212, 0.3);
+}
+
+[data-theme='dark'] .newTestBtn:hover {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.22), rgba(139, 92, 246, 0.12));
+  border-color: rgba(6, 182, 212, 0.45);
 }
 
 /* Open in new tab button - spacing before store switcher */
@@ -187,33 +288,49 @@
   margin-right: 0.25rem;
 }
 
+/* Notifications + Account group (clear visual block) */
 .actionGroup {
   display: flex;
   align-items: center;
-  gap: 0.125rem;
-  padding: 0.35rem 0.25rem;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.6);
-  border: 1px solid rgba(6, 182, 212, 0.12);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  gap: 0.2rem;
+  padding: 0.35rem 0.4rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(6, 182, 212, 0.1);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.02),
+    0 0 0 1px rgba(255, 255, 255, 0.6) inset;
 }
 
 [data-theme='dark'] .actionGroup {
   background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(6, 182, 212, 0.18);
+  border-color: rgba(6, 182, 212, 0.16);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
-/* Icon buttons - match sidebar nav style */
+.actionGroupDivider {
+  width: 1px;
+  height: 24px;
+  background: rgba(6, 182, 212, 0.12);
+  border-radius: 1px;
+  flex-shrink: 0;
+  margin: 0 0.1rem;
+}
+
+[data-theme='dark'] .actionGroupDivider {
+  background: rgba(6, 182, 212, 0.18);
+}
+
+/* Icon buttons – consistent size and typography */
 .iconBtn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   padding: 0;
   border: none;
-  border-radius: 10px;
+  border-radius: 12px;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
@@ -230,34 +347,159 @@
   transform: scale(0.96);
 }
 
+.helpIcon {
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1;
+  color: inherit;
+}
+
+.helpPopover {
+  padding: 1rem 1.25rem;
+  min-width: 180px;
+}
+
+.helpPopover h2 {
+  margin: 0 0 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.helpPopoverLink {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0;
+  text-align: left;
+  background: none;
+  border: none;
+  font-size: 0.875rem;
+  color: var(--futuristic-cyan);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s ease;
+}
+
+.helpPopoverLink:hover {
+  background: rgba(6, 182, 212, 0.1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .iconBtn:active {
+    transform: none;
+  }
+  .userMenuTriggerChevron {
+    transition: none;
+  }
+  .userMenuTrigger.active .userMenuTriggerChevron {
+    transform: none;
+  }
+}
+
 .iconBtn:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--futuristic-cyan);
 }
 
-/* User menu trigger: pill with optional email/store label + icon */
+/* User menu trigger: pill with icon + label + chevron */
 .userMenuTrigger {
+  display: inline-flex;
+  align-items: center;
   gap: 0.5rem;
-  padding-left: 0.5rem;
-  padding-right: 0.5rem;
-  min-width: 38px;
-  max-width: 220px;
+  padding: 0 0.75rem 0 0.5rem;
+  min-width: 40px;
+  width: auto;
+  max-width: 260px;
+  height: 40px;
+  border-radius: 12px;
+}
+
+.userMenuTriggerIconWrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+}
+
+.userMenuTriggerIconWrap svg {
+  width: 20px;
+  height: 20px;
 }
 
 .userMenuTriggerLabel {
+  min-width: 0;
   max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 500;
+  letter-spacing: -0.01em;
   color: var(--text-secondary);
   flex-shrink: 1;
+}
+
+.userMenuTriggerChevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-left: 0.125rem;
+  opacity: 0.7;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.userMenuTriggerChevron svg {
+  width: 16px;
+  height: 16px;
 }
 
 .userMenuTrigger:hover .userMenuTriggerLabel,
 .userMenuTrigger.active .userMenuTriggerLabel {
   color: var(--futuristic-cyan);
+}
+
+.userMenuTrigger:hover .userMenuTriggerChevron,
+.userMenuTrigger.active .userMenuTriggerChevron {
+  opacity: 1;
+}
+
+.userMenuTrigger.active .userMenuTriggerChevron {
+  transform: rotate(180deg);
+}
+
+/* User trigger: subtle pill so account dropdown is visually distinct from icon-only buttons */
+.actionGroup .userMenuTrigger {
+  background: rgba(6, 182, 212, 0.05);
+  border: 1px solid rgba(6, 182, 212, 0.1);
+}
+
+.actionGroup .userMenuTrigger:hover {
+  background: rgba(6, 182, 212, 0.1);
+  border-color: rgba(6, 182, 212, 0.18);
+}
+
+.actionGroup .userMenuTrigger.active {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.14), rgba(139, 92, 246, 0.08));
+  border-color: rgba(6, 182, 212, 0.22);
+}
+
+[data-theme='dark'] .actionGroup .userMenuTrigger {
+  background: rgba(6, 182, 212, 0.06);
+  border-color: rgba(6, 182, 212, 0.14);
+}
+
+[data-theme='dark'] .actionGroup .userMenuTrigger:hover {
+  background: rgba(6, 182, 212, 0.12);
+  border-color: rgba(6, 182, 212, 0.2);
+}
+
+[data-theme='dark'] .actionGroup .userMenuTrigger.active {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.18), rgba(139, 92, 246, 0.1));
+  border-color: rgba(6, 182, 212, 0.28);
 }
 
 .iconBtn.active {
@@ -456,19 +698,23 @@
   border-top-color: rgba(6, 182, 212, 0.12);
 }
 
-/* TopBar dropdown menus - Link-based for reliable navigation (replaces ActionList in Popover) */
+/* TopBar dropdown menus – clear sections and readable typography */
 .menuList {
   position: relative;
-  min-width: 240px;
-  max-width: 340px;
-  padding: 0.5rem 0.25rem 0.5rem;
+  min-width: 272px;
+  max-width: 360px;
+  padding: 0.5rem 0.5rem 0.75rem;
   padding-top: 0.5rem;
   outline: none;
-  border-radius: 12px;
+  border-radius: 16px;
   background: var(--bg-secondary);
   border: 1px solid rgba(6, 182, 212, 0.12);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(255, 255, 255, 0.4) inset;
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.06),
+    0 0 0 1px rgba(255, 255, 255, 0.6) inset;
   overflow: hidden;
+  font-family: var(--topbar-font, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+  letter-spacing: -0.01em;
 }
 
 .menuList::before {
@@ -670,13 +916,14 @@
 .menuItem {
   display: block;
   width: 100%;
-  padding: 0.6rem 1.125rem;
-  margin: 0 0.25rem;
+  padding: 0.55rem 1rem;
+  margin: 0 0.2rem;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   text-align: left;
   font-size: 0.9375rem;
   font-weight: 500;
+  letter-spacing: -0.01em;
   color: var(--text-primary);
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
@@ -698,6 +945,41 @@
   margin-top: 0.25rem;
 }
 
+/* User menu sections (Navigate, Settings, Resources) */
+.menuSection {
+  padding: 0 0.2rem;
+  margin-bottom: 0.5rem;
+}
+
+.menuSection:last-child {
+  margin-bottom: 0;
+}
+
+.menuSectionTitle {
+  display: block;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  padding: 0.5rem 1rem 0.35rem;
+  margin: 0 0.2rem 0 0.15rem;
+  border-bottom: 1px solid rgba(6, 182, 212, 0.08);
+  opacity: 0.92;
+}
+
+.menuSection .menuItem {
+  margin-top: 0.1rem;
+}
+
+.menuSection .menuItem:first-of-type {
+  margin-top: 0.2rem;
+}
+
+[data-theme='dark'] .menuSectionTitle {
+  border-bottom-color: rgba(6, 182, 212, 0.12);
+}
+
 .menuItemDestructive {
   color: var(--status-error, #d82c0d);
 }
@@ -715,30 +997,30 @@
   background: rgba(239, 68, 68, 0.15);
 }
 
-/* Responsive */
+/* Responsive – keep hierarchy and touch targets */
 @media (max-width: 768px) {
   .topBar {
-    padding: 0 1rem;
-    height: 52px;
+    padding: 0 1.125rem;
+    height: 56px;
   }
 
   .topBarLeft {
-    gap: 0.75rem;
+    gap: 0.875rem;
   }
 
   .topBarRight {
-    padding-left: 0.75rem;
-    margin-left: 0.35rem;
-    gap: 0.35rem;
+    padding-left: 1rem;
+    margin-left: 0.5rem;
+    gap: 0.4rem;
   }
 
   .breadcrumb {
-    font-size: 0.8125rem;
+    font-size: 0.875rem;
   }
 
   .breadcrumbCurrent {
-    padding: 0.3rem 0.5rem;
-    font-size: 0.8125rem;
+    font-size: 0.875rem;
+    padding: 0.35rem 0.6rem;
   }
 
   .actionGroup {
@@ -755,13 +1037,16 @@
     height: 18px;
   }
 
-  .userMenuTriggerLabel {
+  .userMenuTriggerLabel,
+  .userMenuTriggerChevron {
     display: none;
   }
 
   .userMenuTrigger {
     max-width: 34px;
+    min-width: 34px;
     padding-left: 0;
     padding-right: 0;
+    justify-content: center;
   }
 }
