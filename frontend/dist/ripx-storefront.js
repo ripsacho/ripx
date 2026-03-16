@@ -587,9 +587,7 @@
     var el = document.querySelector('[data-shop-currency], [data-currency-code]');
     if (el) {
       return (
-        el.getAttribute('data-shop-currency') ||
-        el.getAttribute('data-currency-code') ||
-        'USD'
+        el.getAttribute('data-shop-currency') || el.getAttribute('data-currency-code') || 'USD'
       );
     }
     return 'USD';
@@ -636,8 +634,16 @@
           (variants.length ? variants[0] : null);
         if (selected && variants.length) {
           var selId = selected.id || selected.variant_id;
-          if (selId && !variants.find(function (v) { return String(v.id) === String(selId); })) {
-            selected = variants.find(function (v) { return String(v.id) === String(selId); }) || variants[0];
+          if (
+            selId &&
+            !variants.find(function (v) {
+              return String(v.id) === String(selId);
+            })
+          ) {
+            selected =
+              variants.find(function (v) {
+                return String(v.id) === String(selId);
+              }) || variants[0];
           }
         }
         return { product: product, variants: variants, selectedVariant: selected };
@@ -646,13 +652,19 @@
     if (window.ShopifyAnalytics?.meta?.product) {
       var p = window.ShopifyAnalytics.meta.product;
       var vs = p.variants || [];
-      var sel = vs.find(function (v) { return String(v.id) === String(p.selected_variant_id); }) || vs[0];
+      var sel =
+        vs.find(function (v) {
+          return String(v.id) === String(p.selected_variant_id);
+        }) || vs[0];
       return { product: p, variants: vs, selectedVariant: sel };
     }
     if (window.Shopify?.meta?.product) {
       var p2 = window.Shopify.meta.product;
       var vs2 = p2.variants || [];
-      var sel2 = vs2.find(function (v) { return String(v.id) === String(p2.selected_variant_id); }) || vs2[0];
+      var sel2 =
+        vs2.find(function (v) {
+          return String(v.id) === String(p2.selected_variant_id);
+        }) || vs2[0];
       return { product: p2, variants: vs2, selectedVariant: sel2 };
     }
     return null;
@@ -726,7 +738,7 @@
     var valueVariant = String(variantId);
     var forms = document.querySelectorAll('form[action*="cart/add"], form[action*="/cart/add"]');
     forms.forEach(function (form) {
-      if (!form || form.closest && form.closest('.cart-drawer,.mini-cart,#CartDrawer')) return;
+      if (!form || (form.closest && form.closest('.cart-drawer,.mini-cart,#CartDrawer'))) return;
       function setInput(name, value) {
         var existing = form.querySelector('input[name="attributes[' + name + ']"]');
         if (existing) {
@@ -769,14 +781,28 @@
     var override = byProduct[productId] || byProduct[pid] || (gid ? byProduct[gid] : null);
     if (!override || typeof override !== 'object') return cfg;
     var merged = {};
-    for (var k in cfg) if (k !== 'byProduct' && Object.prototype.hasOwnProperty.call(cfg, k)) merged[k] = cfg[k];
-    for (var j in override) if (j !== 'byVariant' && Object.prototype.hasOwnProperty.call(override, j)) merged[j] = override[j];
+    for (var k in cfg)
+      if (k !== 'byProduct' && Object.prototype.hasOwnProperty.call(cfg, k)) merged[k] = cfg[k];
+    for (var j in override)
+      if (j !== 'byVariant' && Object.prototype.hasOwnProperty.call(override, j))
+        merged[j] = override[j];
     var byVariant = override.byVariant;
-    if (currentVariantId != null && currentVariantId !== '' && byVariant && typeof byVariant === 'object') {
+    if (
+      currentVariantId != null &&
+      currentVariantId !== '' &&
+      byVariant &&
+      typeof byVariant === 'object'
+    ) {
       var vkey = toVariantIdKey(currentVariantId);
-      var variantOverride = vkey ? (byVariant[vkey] || byVariant[currentVariantId] || byVariant['gid://shopify/ProductVariant/' + vkey]) : null;
+      var variantOverride = vkey
+        ? byVariant[vkey] ||
+          byVariant[currentVariantId] ||
+          byVariant['gid://shopify/ProductVariant/' + vkey]
+        : null;
       if (variantOverride && typeof variantOverride === 'object') {
-        for (var v in variantOverride) if (Object.prototype.hasOwnProperty.call(variantOverride, v)) merged[v] = variantOverride[v];
+        for (var v in variantOverride)
+          if (Object.prototype.hasOwnProperty.call(variantOverride, v))
+            merged[v] = variantOverride[v];
       }
     }
     return merged;
@@ -822,7 +848,12 @@
         if (DEBUG) debugLog('applyPriceTest: amount mode but no catalog price on page');
         return;
       }
-      if (cfg.priceDelta === null || cfg.priceDelta === undefined || String(cfg.priceDelta).trim() === '') return;
+      if (
+        cfg.priceDelta === null ||
+        cfg.priceDelta === undefined ||
+        String(cfg.priceDelta).trim() === ''
+      )
+        return;
       var delta = parseFloat(cfg.priceDelta, 10);
       if (isNaN(delta)) return;
       priceNum = catalog + delta;
@@ -834,7 +865,12 @@
         if (DEBUG) debugLog('applyPriceTest: percent mode but no catalog price on page');
         return;
       }
-      if (cfg.pricePercent === null || cfg.pricePercent === undefined || String(cfg.pricePercent).trim() === '') return;
+      if (
+        cfg.pricePercent === null ||
+        cfg.pricePercent === undefined ||
+        String(cfg.pricePercent).trim() === ''
+      )
+        return;
       var pct = parseFloat(cfg.pricePercent, 10);
       if (isNaN(pct)) return;
       priceNum = catalogP * (1 - pct / 100);
@@ -891,7 +927,11 @@
     var pdpGid = getCurrentProductId();
     if (!pid || !pdpGid || toNumericProductId(pdpGid) !== pid) {
       if (DEBUG)
-        debugLog('applyPriceTest: skip (need PDP for this product)', pid, pdpGid ? 'mismatch' : 'no PDP');
+        debugLog(
+          'applyPriceTest: skip (need PDP for this product)',
+          pid,
+          pdpGid ? 'mismatch' : 'no PDP'
+        );
       return;
     }
 
@@ -971,7 +1011,9 @@
             if (ps && toNumericProductId(ps.getAttribute('data-product-id')) !== pid) return;
             if (
               el.closest &&
-              el.closest('.recommended-products,.related-products,[data-section-type="recently-viewed"],[id*="related"]')
+              el.closest(
+                '.recommended-products,.related-products,[data-section-type="recently-viewed"],[id*="related"]'
+              )
             )
               return;
             paintEl(el);
@@ -994,7 +1036,9 @@
                 return;
               if (
                 el.closest &&
-                el.closest('.recommended-products,.related-products,[data-section-type="recently-viewed"]')
+                el.closest(
+                  '.recommended-products,.related-products,[data-section-type="recently-viewed"]'
+                )
               )
                 return;
             }
@@ -1008,7 +1052,9 @@
 
     var root =
       mainProductRoot() ||
-      document.querySelector('product-info, [data-section-type="product-template"], main .product') ||
+      document.querySelector(
+        'product-info, [data-section-type="product-template"], main .product'
+      ) ||
       document.body;
     try {
       if (root && root !== document.body) root.setAttribute('data-ripx-price-test', String(testId));
@@ -1034,7 +1080,9 @@
         setTimeout(recomputeAndPaint, 50);
       });
     });
-    var variantInput = document.querySelector('input[name="id"], input[name="variant_id"], [data-variant-picker] input');
+    var variantInput = document.querySelector(
+      'input[name="id"], input[name="variant_id"], [data-variant-picker] input'
+    );
     if (variantInput) {
       variantInput.addEventListener('change', function () {
         setTimeout(recomputeAndPaint, 50);
@@ -1930,7 +1978,11 @@
             return;
           }
           // Split-URL: redirect when variant has a URL different from current page (run before other applications)
-          if (variant.config && typeof variant.config.url === 'string' && variant.config.url.trim()) {
+          if (
+            variant.config &&
+            typeof variant.config.url === 'string' &&
+            variant.config.url.trim()
+          ) {
             var rawUrl = variant.config.url.trim();
             try {
               var dest = new URL(rawUrl, window.location.href);

@@ -190,8 +190,6 @@ function validateEnvironment() {
 
   if (isStandaloneOnly) {
     logger.info('Running in standalone-only mode (Shopify disabled)');
-  } else if (!process.env.SHOPIFY_API_KEY) {
-    logger.warn('Shopify not configured; only standalone sites will work');
   }
 
   const jwtSecret = process.env.JWT_SECRET || '';
@@ -311,13 +309,14 @@ app.use(
     origin: (origin, callback) => {
       const isProduction = process.env.NODE_ENV === 'production';
 
-      // In development, allow any origin (Shopify dev tunnel + LAN).
+      // In development, allow any origin (Shopify dev tunnel + LAN) and requests with no origin (curl, etc.).
       if (!isProduction) {
         return callback(null, true);
       }
 
+      // In production, reject requests with no Origin header (non-browser clients, proxies).
       if (!origin) {
-        return callback(null, true);
+        return callback(new Error('Not allowed by CORS'));
       }
 
       if (allowedOrigins.indexOf(origin) !== -1) {
@@ -647,9 +646,21 @@ const frontendDist = path.join(__dirname, '../../frontend/dist');
 const distExists =
   fs.existsSync(frontendDist) && fs.existsSync(path.join(frontendDist, 'index.html'));
 if (distExists) {
+  // Serve /assets/* first so JS/CSS get correct MIME type (never fall through to SPA catch-all).
+  const assetsDir = path.join(frontendDist, 'assets');
+  if (fs.existsSync(assetsDir)) {
+    app.use('/assets', express.static(assetsDir));
+  }
   app.use(express.static(frontendDist));
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api')) {
+      return next();
+    }
+    // Do not send index.html for asset requests (avoids "MIME type text/html" for .js/.css).
+    if (
+      req.path.startsWith('/assets/') ||
+      /\.(js|mjs|css|ico|svg|png|woff2?)(\?|$)/i.test(req.path)
+    ) {
       return next();
     }
     res.sendFile(path.join(frontendDist, 'index.html'));

@@ -65,6 +65,8 @@ async function runMigrations() {
         console.warn('     To enable RAG support: install pgvector, then re-run npm run migrate.');
         console.warn('     macOS (Homebrew): brew install pgvector');
         console.warn('     See backend/migrations/050_pgvector_support_kb.sql or docs for more.');
+        await query('INSERT INTO schema_migrations (name) VALUES ($1)', [file]);
+        applied.add(file);
         continue;
       }
       console.error(`  ❌ Error in ${file}:`, error.message);
