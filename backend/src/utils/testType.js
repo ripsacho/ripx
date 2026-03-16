@@ -50,7 +50,12 @@ function inferTemplateKey(variants = [], testType = '') {
     if ('discount_type' in config || 'discount_value' in config) {
       return 'offer';
     }
-    if ('price' in config) {
+    if (
+      'price' in config ||
+      'priceMode' in config ||
+      'priceDelta' in config ||
+      'pricePercent' in config
+    ) {
       return type === 'pricing' ? 'pricing' : 'price';
     }
     if ('code' in config) {

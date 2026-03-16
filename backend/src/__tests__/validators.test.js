@@ -134,13 +134,28 @@ describe('validators.validateTestConfig', () => {
       name: 'Test',
       type: 'price',
       variants: [
-        { name: 'A', allocation: 50 },
-        { name: 'B', allocation: 50 },
+        { name: 'Control', allocation: 50, config: { priceMode: 'fixed', price: '' } },
+        { name: 'Variant A', allocation: 50, config: { priceMode: 'percent', pricePercent: 10 } },
       ],
     };
     const result = validators.validateTestConfig(config);
     expect(result.isValid).toBe(true);
     expect(result.errors).toHaveLength(0);
+  });
+
+  it('returns error for price test when no non-control variant has price configured', () => {
+    const result = validators.validateTestConfig({
+      name: 'Test',
+      type: 'price',
+      variants: [
+        { name: 'Control', allocation: 50, config: { priceMode: 'fixed' } },
+        { name: 'Variant A', allocation: 50, config: { priceMode: 'fixed', price: '' } },
+      ],
+    });
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some(e => e.includes('Price test') && e.includes('non-control'))).toBe(
+      true
+    );
   });
 
   it('returns errors for missing name', () => {

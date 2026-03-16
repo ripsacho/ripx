@@ -435,12 +435,16 @@ class TestModel {
       const goal = safeParseJSON(test.goal, {}, 'goal', test.id);
       const variants = normalizeVariantCode(safeParseJSON(test.variants, [], 'variants', test.id));
       const segments = safeParseJSON(test.segments, {}, 'segments', test.id);
+      const targetIds = Array.isArray(test.target_ids)
+        ? test.target_ids
+        : safeParseJSON(test.target_ids, null, 'target_ids', test.id);
 
       return {
         ...test,
         goal,
         variants,
         segments,
+        target_ids: Array.isArray(targetIds) && targetIds.length > 0 ? targetIds : null,
       };
     });
   }

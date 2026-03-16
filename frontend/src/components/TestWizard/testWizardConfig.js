@@ -9,7 +9,8 @@ export const TEST_TEMPLATES = {
   price: {
     name: 'Price Test',
     icon: '💰',
-    description: 'Test different product prices to find optimal pricing',
+    description:
+      'Test discounts or price increases per cohort. PDP display only (product targets). Use fixed price, $ off/on, or % off/on. Run 2–4 weeks with 200+ conversions per variant for significance. Use Revenue or Profit as primary metric (Goal step). Checkout = catalog unless you align it — see banner and Documentation (Price testing).',
     defaultConfig: {
       type: 'price',
       variants: [
@@ -21,7 +22,8 @@ export const TEST_TEMPLATES = {
   pricing: {
     name: 'Pricing',
     icon: '💰',
-    description: 'Test price points on one product, multiple products, or entire collections.',
+    description:
+      'Same PDP price display as Price Test. Target **products** (one or many); collection-only targets do not drive PDP price — see banner.',
     defaultConfig: {
       type: 'price',
       variants: [
@@ -58,7 +60,8 @@ export const TEST_TEMPLATES = {
   'split-url': {
     name: 'Split URL',
     icon: '🔀',
-    description: 'Send visitors to alternate URLs to test page-level changes.',
+    description:
+      'Send visitors to alternate URLs per variant (e.g. different landing pages). The storefront redirects to the variant URL when the test matches. Use full same-origin URLs.',
     defaultConfig: {
       type: 'content',
       variants: [
@@ -70,7 +73,8 @@ export const TEST_TEMPLATES = {
   template: {
     name: 'Template',
     icon: '📄',
-    description: 'Compare and test different homepage, product, and collections templates.',
+    description:
+      'Compare different theme templates per variant. Template choice is stored for reference; apply it in your theme (e.g. cookie) or use Split URL to send users to URLs that use each template.',
     defaultConfig: {
       type: 'content',
       variants: [
@@ -94,7 +98,8 @@ export const TEST_TEMPLATES = {
   shipping: {
     name: 'Shipping Test',
     icon: '🚚',
-    description: 'Test shipping rates and free shipping thresholds',
+    description:
+      'Test shipping rates or free-shipping thresholds. RipX assigns the variant for analytics; apply the actual rate via Shopify Plus or a Delivery Customization Function.',
     defaultConfig: {
       type: 'shipping',
       variants: [
@@ -106,7 +111,8 @@ export const TEST_TEMPLATES = {
   offer: {
     name: 'Offer Test',
     icon: '🎁',
-    description: 'Test discounts and promotional offers',
+    description:
+      'Test discount or free-shipping offers per variant. RipX assigns the variant; apply the discount at checkout via a Discount Function or discount codes.',
     defaultConfig: {
       type: 'offer',
       variants: [
@@ -126,7 +132,8 @@ export const TEST_TEMPLATES = {
   checkout: {
     name: 'Checkout Test',
     icon: '🛒',
-    description: 'Try checkout customizations like trust badges, guarantees, and custom images.',
+    description:
+      'Test checkout experience (e.g. trust badges, copy). RipX assigns the variant for analytics; change checkout content with a Checkout UI Extension that reads the variant.',
     defaultConfig: {
       type: 'checkout',
       variants: [
@@ -139,7 +146,7 @@ export const TEST_TEMPLATES = {
     name: 'Combination Test',
     icon: '🔬',
     description:
-      'Test multiple variables together (e.g., price + shipping) for interaction effects.',
+      'Test multiple factors together (e.g. price + shipping) for interaction effects. Each factor follows the same rules as single-factor tests (price: display + cart attr; shipping/offer: need Functions).',
     defaultConfig: {
       type: 'combination',
       variants: [

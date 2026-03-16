@@ -108,6 +108,13 @@ const SECTIONS = [
     keywords: 'lifecycle types traffic allocation variants',
   },
   {
+    id: 'price-testing',
+    title: 'Price testing (Shopify)',
+    icon: TargetIcon,
+    group: 'core',
+    keywords: 'price checkout catalog discount display pdp catalog alignment',
+  },
+  {
     id: 'data-flow',
     title: 'Data Flow & Variants',
     icon: ChartLineIcon,
@@ -546,6 +553,274 @@ npm run dev`}
               together
             </li>
           </ul>
+        </BlockStack>
+      );
+
+    case 'price-testing':
+      return (
+        <BlockStack gap="400">
+          <DocCallout type="warning" title="Key takeaway">
+            Price tests change only the <strong>visible price on the product page (PDP)</strong>.
+            Checkout uses your <strong>Shopify catalog price</strong> unless you align it (catalog =
+            highest test price + discounts or Functions).
+          </DocCallout>
+          <Text variant="headingMd" as="h4">
+            Where the test price appears
+          </Text>
+          <DocTable
+            headers={['Location', 'Test price applied?', 'Notes']}
+            rows={[
+              [
+                'Product page (PDP) — main block',
+                'Yes',
+                'Only place RipX reliably paints the test price',
+              ],
+              [
+                'Collection / PLP grids',
+                'No',
+                'Script does not change prices on collection or search result cards',
+              ],
+              [
+                'Cart drawer / mini-cart',
+                'Best-effort',
+                'Theme-dependent; script may not find line-item elements',
+              ],
+              [
+                'Checkout',
+                'No (unless you add alignment)',
+                'Customer pays catalog price unless you use options below',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Checkout alignment options
+          </Text>
+          <DocTable
+            headers={['Approach', 'Checkout matches test?', 'Who can use it']}
+            rows={[
+              [
+                'Catalog = highest + automatic discount',
+                'Yes (if discount applies the right amount per segment)',
+                'Any plan; you or an app create the discount',
+              ],
+              [
+                'Shopify Plus + Cart Transform',
+                'Yes; Function overrides line price at checkout',
+                'Plus only; one Cart Transform per store',
+              ],
+              [
+                'Discount Function + cart attribute',
+                'Yes; Function reads attributes and applies discount',
+                'Any plan; build/deploy a Discount Function (up to 25 per store)',
+              ],
+              [
+                'Display-only (RipX today, no Function)',
+                'No',
+                'Use for perception tests or combine with above',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Align checkout in 3 steps
+          </Text>
+          <StepList
+            steps={[
+              'Set your product catalog price to the highest price in the test (e.g. the highest variant).',
+              'Use automatic discounts (manual or app) to give $ or % off for lower arms, or use Shopify Plus Cart Transform or a Discount Function that reads cart attributes.',
+              'RipX injects attributes[_ripx_price_test] and attributes[_ripx_variant] into the cart — a Discount Function can read these at checkout and apply the correct discount so charged price matches the displayed price.',
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Discounts vs price increases
+          </Text>
+          <DocTable
+            headers={['Mode', 'Discount (lower price)', 'Increase (higher price)']}
+            rows={[
+              ['Fixed price', 'Set price < catalog', 'Set price > catalog'],
+              ['$ off/on (amount)', 'Negative delta (e.g. −5)', 'Positive delta (e.g. +5)'],
+              ['% off/on', 'Positive % (e.g. 10 = 10% off)', 'Negative % (e.g. −10 = 10% on)'],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Variant configuration (wizard)
+          </Text>
+          <p>
+            In the Test Wizard Traffic step, configure each variant: <strong>Fixed price</strong>,{' '}
+            <strong>$ off/on</strong> (amount), or <strong>% off/on</strong> (percent). Control =
+            leave empty for catalog price. Use <strong>Product scope</strong> to run on all products
+            or selected products only. Optional <strong>per-product overrides</strong> let you set
+            different prices or rules per product in one test (e.g. 10% off on premium SKUs, $5 off
+            on economy). When using selected products, you can add{' '}
+            <strong>per-variant (per-SKU) overrides</strong>: for each product, add variant
+            overrides with the Shopify variant ID (from Admin or API) and a price or rule for that
+            SKU so different sizes/options can have different test prices.
+          </p>
+          <Text variant="headingMd" as="h4">
+            Before you run
+          </Text>
+          <ul className={styles.bulletList}>
+            <li>
+              <strong>Checkout alignment:</strong> If charged price should match displayed price,
+              set catalog to the highest test price and use discounts or a Discount Function for
+              lower arms.
+            </li>
+            <li>
+              <strong>Feeds &amp; ads:</strong> Google Shopping, Meta, etc. use catalog price;
+              raising catalog to max test price affects what appears in feeds.
+            </li>
+            <li>
+              <strong>Bundles:</strong> If you use a bundle app with Cart Transform, only one
+              transform runs per store — prefer a Discount Function or display-only for price tests.
+            </li>
+            <li>
+              <strong>Subscriptions:</strong> Selling plans block Cart Transform price overrides;
+              use display-only with caution on subscription products.
+            </li>
+            <li>
+              <strong>Product targeting:</strong> RipX applies the test price only on product pages
+              for targeted products; collection-only targeting does not change PDP price.
+            </li>
+          </ul>
+          <Text variant="headingMd" as="h4">
+            Primary metric for price tests
+          </Text>
+          <p>
+            Use <strong>Revenue</strong> (or <strong>Profit</strong> if you track COGS) as the
+            primary success metric for price tests. Conversion rate alone tends to favor lower
+            prices; revenue and profit reflect the trade-off between price and volume and lead to
+            better long-term decisions.
+          </p>
+          <Text variant="headingMd" as="h4">
+            Sample size &amp; minimum detectable effect (MDE)
+          </Text>
+          <p>
+            <strong>MDE</strong> is the smallest change in a metric your test can reliably detect.
+            Lower MDE needs more conversions and a longer run. A common target:{' '}
+            <strong>~300 conversions per variant</strong> to detect a <strong>10%</strong> relative
+            change at <strong>90%</strong> confidence (and ~80% power). For a 5% effect you
+            typically need 4× or more. Avoid stopping early without a sequential design to prevent
+            inflated false positives.
+          </p>
+          <p>
+            Use a sample size calculator to plan: baseline conversion rate, desired MDE, confidence
+            level, and power → required conversions or days. Example:{' '}
+            <a
+              href="https://www.evanmiller.org/ab-testing/sample-size.html"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Evan Miller’s sample size calculator
+            </a>{' '}
+            (opens in new tab).
+          </p>
+          <Text variant="headingMd" as="h4">
+            Price test QA checklist
+          </Text>
+          <p>Before starting a price test, confirm:</p>
+          <ul className={styles.bulletList}>
+            <li>RipX script is live in your theme (App Proxy or embed with correct shop/site).</li>
+            <li>
+              Preview each variant on the product page and confirm the displayed price matches the
+              test design.
+            </li>
+            <li>
+              Check cart and checkout: if you want charged price = displayed price, set catalog to
+              the highest test price and use a Discount Function or automatic discounts.
+            </li>
+            <li>Product scope is correct (all products vs selected products).</li>
+            <li>
+              <strong>Incognito / private window:</strong> Test as a first-time visitor; verify
+              variant assignment and price on PDP, then add to cart and complete checkout (including
+              tax) for at least one variant.
+            </li>
+            <li>
+              <strong>Cross-device (optional):</strong> Spot-check on mobile and tablet.
+            </li>
+            <li>Optional: have another team member verify both variants independently.</li>
+          </ul>
+          <Text variant="headingMd" as="h4">
+            Interpreting test results
+          </Text>
+          <p>
+            RipX shows significance (e.g. p-value, confidence, lift). Use these guidelines when
+            reading results:
+          </p>
+          <ul className={styles.bulletList}>
+            <li>
+              <strong>Confidence level (e.g. 95%):</strong> Means a 5% risk of a false positive —
+              not “95% chance the winner is better.” Report the observed lift with context: “In our
+              sample, variant B had a 10% lift” rather than “This will increase revenue by 10%.”
+            </li>
+            <li>
+              <strong>Statistical vs practical significance:</strong> A result can be statistically
+              significant but have small real-world impact. Consider both the number (lift %) and
+              whether the change is worth implementing (e.g. 2% lift on a low-margin product).
+            </li>
+            <li>
+              <strong>Full picture:</strong> When sharing results, include lift, confidence level,
+              sample size (conversions per variant), and run duration so others can assess
+              reliability.
+            </li>
+            <li>
+              <strong>Multiple tests:</strong> If you run many tests, be aware that more tests
+              increase the chance of at least one false positive; interpret borderline results with
+              extra caution.
+            </li>
+          </ul>
+          <Text variant="headingMd" as="h4">
+            After the test / When you stop
+          </Text>
+          <p>
+            When you stop the test: document which variant won and why; note the primary metric and
+            any segment breakdown (e.g. by traffic source or device) if you have it. This helps
+            future tests and keeps decisions traceable. Use the test description or your own notes
+            to record your hypothesis (e.g. “If we show 10% off, then revenue per visitor will
+            increase because…”).
+          </p>
+          <p>
+            <strong>When you stop a price test:</strong> (1) Decide which variant’s prices to keep.
+            (2) Update your Shopify catalog to the winning prices (or use a CSV export if RipX
+            supports it) so checkout and feeds reflect the winner. (3) If you had set catalog to the
+            highest for checkout alignment, adjust discounts or catalog so the winning price is the
+            new baseline. (4) Document the outcome and any segment learnings for future tests.
+          </p>
+          <Text variant="headingMd" as="h4">
+            Price presentation (optional)
+          </Text>
+          <p>
+            Besides testing price <em>level</em>, you can run separate tests for{' '}
+            <strong>presentation</strong>: charm pricing ($19.99 vs $20), showing compare-at vs sale
+            price (anchoring), or formatting (decimals, currency). Isolate one variable per test for
+            clear results.
+          </p>
+          <Text variant="headingMd" as="h4">
+            Troubleshooting
+          </Text>
+          <DocTable
+            headers={['Symptom', 'What to check']}
+            rows={[
+              [
+                'Price doesn’t update on PDP',
+                'Test must target products (not collection-only). Confirm you’re on a product page for a targeted product and the RipX script loads (App Proxy or embed).',
+              ],
+              [
+                'Wrong price after variant change',
+                'Theme must expose variant in product JSON or input; RipX listens for variant:change and repaints. If catalog is missing for the new variant, the theme’s price stays visible.',
+              ],
+              [
+                'Amount/percent mode shows nothing',
+                'Catalog price is read from product JSON or Shopify meta. If the theme doesn’t expose it, use fixed price. Check script load and product scope.',
+              ],
+              [
+                'Checkout shows different price',
+                'Display-only tests don’t change checkout. Set catalog to the highest test price and use automatic discounts or a Discount Function so checkout matches.',
+              ],
+            ]}
+          />
+          <DocCallout type="info" title="Best practice">
+            Run price tests 2–4 weeks with 200+ conversions per variant. Set catalog to the highest
+            test price when using discounts or Functions so checkout matches the displayed price.
+          </DocCallout>
         </BlockStack>
       );
 

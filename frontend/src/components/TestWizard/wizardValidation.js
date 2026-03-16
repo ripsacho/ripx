@@ -95,6 +95,125 @@ export function getWizardStepErrors(stepId, options) {
         `Total traffic allocation must equal 100%. Current: ${totalAllocation.toFixed(2)}%.`
       );
     }
+    // Price test: validate variant price config on Traffic step (where it is edited)
+    const isPriceTestTraffic =
+      selectedTemplate === 'price' || selectedTemplate === 'pricing' || formData.type === 'price';
+    if (isPriceTestTraffic && Array.isArray(formData.variants)) {
+      let hasNonControlWithPrice = false;
+      formData.variants.forEach((v, i) => {
+        const cfg = v?.config || {};
+        const mode = (cfg.priceMode || 'fixed').toLowerCase();
+        const isControl =
+          i === 0 ||
+          (mode === 'fixed' &&
+            (cfg.price === null || cfg.price === undefined || String(cfg.price).trim() === ''));
+        const hasPrice =
+          (mode === 'fixed' &&
+            cfg.price !== null &&
+            cfg.price !== undefined &&
+            String(cfg.price).trim() !== '') ||
+          (mode === 'amount' &&
+            cfg.priceDelta !== null &&
+            cfg.priceDelta !== undefined &&
+            String(cfg.priceDelta).trim() !== '') ||
+          (mode === 'percent' &&
+            cfg.pricePercent !== null &&
+            cfg.pricePercent !== undefined &&
+            String(cfg.pricePercent).trim() !== '');
+        if (!isControl && hasPrice) {
+          hasNonControlWithPrice = true;
+        }
+        if (mode === 'fixed' && cfg.price !== null && cfg.price !== undefined && cfg.price !== '') {
+          const n = Number(cfg.price);
+          if (Number.isNaN(n) || n < 0) {
+            errors.push(`${v?.name || `Variant ${i + 1}`}: fixed price must be 0 or greater.`);
+          }
+        }
+        if (
+          mode === 'amount' &&
+          cfg.priceDelta !== null &&
+          cfg.priceDelta !== undefined &&
+          cfg.priceDelta !== ''
+        ) {
+          const n = Number(cfg.priceDelta);
+          if (Number.isNaN(n)) {
+            errors.push(
+              `${v?.name || `Variant ${i + 1}`}: amount ($ off/on) must be a valid number.`
+            );
+          }
+        }
+        if (
+          mode === 'percent' &&
+          cfg.pricePercent !== null &&
+          cfg.pricePercent !== undefined &&
+          cfg.pricePercent !== ''
+        ) {
+          const n = Number(cfg.pricePercent);
+          if (Number.isNaN(n) || n < -100 || n > 100) {
+            errors.push(
+              `${v?.name || `Variant ${i + 1}`}: percent must be between -100 and 100 (negative = increase, positive = discount).`
+            );
+          }
+        }
+      });
+      if (formData.variants.length > 1 && !hasNonControlWithPrice) {
+        errors.push(
+          'At least one test variant (non-control) must have a price or discount configured. Configure Variant A (or add a variant) in Variant configuration.'
+        );
+      }
+      // Per-product / per-variant overrides: validate nested price config
+      formData.variants.forEach((v, i) => {
+        const byProduct = v?.config?.byProduct;
+        if (!byProduct || typeof byProduct !== 'object') return;
+        Object.entries(byProduct).forEach(([_productId, override]) => {
+          const byVariant = override?.byVariant;
+          if (!byVariant || typeof byVariant !== 'object') return;
+          Object.entries(byVariant).forEach(([vKey, vCfg]) => {
+            if (!vCfg || typeof vCfg !== 'object') return;
+            const mode = (vCfg.priceMode || 'fixed').toLowerCase();
+            if (
+              mode === 'fixed' &&
+              vCfg.price !== null &&
+              vCfg.price !== undefined &&
+              vCfg.price !== ''
+            ) {
+              const n = Number(vCfg.price);
+              if (Number.isNaN(n) || n < 0) {
+                errors.push(
+                  `${v?.name || `Variant ${i + 1}`}: per-variant override (${vKey}) fixed price must be 0 or greater.`
+                );
+              }
+            }
+            if (
+              mode === 'amount' &&
+              vCfg.priceDelta !== null &&
+              vCfg.priceDelta !== undefined &&
+              vCfg.priceDelta !== ''
+            ) {
+              const n = Number(vCfg.priceDelta);
+              if (Number.isNaN(n)) {
+                errors.push(
+                  `${v?.name || `Variant ${i + 1}`}: per-variant override (${vKey}) amount must be a valid number.`
+                );
+              }
+            }
+            if (
+              mode === 'percent' &&
+              vCfg.pricePercent !== null &&
+              vCfg.pricePercent !== undefined &&
+              vCfg.pricePercent !== ''
+            ) {
+              const n = Number(vCfg.pricePercent);
+              if (Number.isNaN(n) || n < -100 || n > 100) {
+                errors.push(
+                  `${v?.name || `Variant ${i + 1}`}: per-variant override (${vKey}) percent must be between -100 and 100.`
+                );
+              }
+            }
+          });
+        });
+      });
+    }
   }
 
   // Code step
@@ -104,6 +223,119 @@ export function getWizardStepErrors(stepId, options) {
     }
     if (jsValidationErrors.length > 0) {
       errors.push('Fix JavaScript syntax errors before continuing.');
+    }
+    const isPriceTest =
+      selectedTemplate === 'price' || selectedTemplate === 'pricing' || formData.type === 'price';
+    if (isPriceTest && formData.target_type === 'product') {
+      const hasTargetId =
+        (formData.target_id && String(formData.target_id).trim()) ||
+        (Array.isArray(formData.target_ids) && formData.target_ids.length > 0);
+      if (!hasTargetId) {
+        errors.push(
+          'Price test is set to "Selected products only" but no products are selected. Select at least one product in Product scope.'
+        );
+      }
+    }
+    if (isPriceTest && Array.isArray(formData.variants)) {
+      let hasNonControlWithPriceCode = false;
+      formData.variants.forEach((v, i) => {
+        const cfg = v?.config || {};
+        const mode = (cfg.priceMode || 'fixed').toLowerCase();
+        const isControl =
+          i === 0 ||
+          (mode === 'fixed' &&
+            (cfg.price === null || cfg.price === undefined || String(cfg.price).trim() === ''));
+        const hasPrice =
+          (mode === 'fixed' &&
+            cfg.price !== null &&
+            cfg.price !== undefined &&
+            String(cfg.price).trim() !== '') ||
+          (mode === 'amount' &&
+            cfg.priceDelta !== null &&
+            cfg.priceDelta !== undefined &&
+            String(cfg.priceDelta).trim() !== '') ||
+          (mode === 'percent' &&
+            cfg.pricePercent !== null &&
+            cfg.pricePercent !== undefined &&
+            String(cfg.pricePercent).trim() !== '');
+        if (!isControl && hasPrice) {
+          hasNonControlWithPriceCode = true;
+        }
+        if (mode === 'fixed' && cfg.price !== null && cfg.price !== undefined && cfg.price !== '') {
+          const n = Number(cfg.price);
+          if (Number.isNaN(n) || n < 0) {
+            errors.push(`${v?.name || `Variant ${i + 1}`}: fixed price must be 0 or greater.`);
+          }
+        }
+        if (
+          mode === 'amount' &&
+          cfg.priceDelta !== null &&
+          cfg.priceDelta !== undefined &&
+          cfg.priceDelta !== ''
+        ) {
+          const n = Number(cfg.priceDelta);
+          if (Number.isNaN(n)) {
+            errors.push(
+              `${v?.name || `Variant ${i + 1}`}: amount ($ off/on) must be a valid number.`
+            );
+          }
+        }
+        if (
+          mode === 'percent' &&
+          cfg.pricePercent !== null &&
+          cfg.pricePercent !== undefined &&
+          cfg.pricePercent !== ''
+        ) {
+          const n = Number(cfg.pricePercent);
+          if (Number.isNaN(n) || n < -100 || n > 100) {
+            errors.push(
+              `${v?.name || `Variant ${i + 1}`}: percent must be between -100 and 100 (negative = increase, positive = discount).`
+            );
+          }
+        }
+      });
+      if (formData.variants.length > 1 && !hasNonControlWithPriceCode) {
+        errors.push(
+          'At least one test variant (non-control) must have a price or discount configured. Go to Traffic step → Variant configuration.'
+        );
+      }
+    }
+    // Split-URL: non-empty url must be valid
+    const isSplitUrl =
+      selectedTemplate === 'split-url' ||
+      (formData.variants || []).some(v => 'url' in (v?.config || {}));
+    if (isSplitUrl && Array.isArray(formData.variants)) {
+      formData.variants.forEach((v, i) => {
+        const url = (v?.config?.url ?? '').toString().trim();
+        if (!url) return;
+        try {
+          new URL(url, 'https://example.com');
+        } catch (_) {
+          errors.push(
+            `${v?.name || `Variant ${i + 1}`}: enter a valid URL (e.g. https://yoursite.com/pages/landing).`
+          );
+        }
+      });
+    }
+    // Offer: discount value validation
+    const isOfferTest = selectedTemplate === 'offer' || formData.type === 'offer';
+    if (isOfferTest && Array.isArray(formData.variants)) {
+      formData.variants.forEach((v, i) => {
+        const cfg = v?.config || {};
+        const dtype = (cfg.discount_type || 'percent').toLowerCase();
+        const val = cfg.discount_value;
+        if (dtype === 'free_shipping') return;
+        if (val !== null && val !== undefined && val !== '') {
+          const n = Number(val);
+          if (Number.isNaN(n) || n < 0) {
+            errors.push(`${v?.name || `Variant ${i + 1}`}: discount value must be 0 or greater.`);
+          } else if (dtype === 'percent' && n > 100) {
+            errors.push(
+              `${v?.name || `Variant ${i + 1}`}: percent discount must be between 0 and 100.`
+            );
+          }
+        }
+      });
     }
   }
 
@@ -128,6 +360,125 @@ export function getWizardStepErrors(stepId, options) {
     if (Math.abs(totalAllocation - 100) > 0.01) {
       errors.push(`Traffic allocation must equal 100%. Current: ${totalAllocation.toFixed(1)}%.`);
     }
+    // Price test: same variant price validation on review + at least one non-control with price
+    const isPriceTestReview =
+      (formData.type || '').toLowerCase() === 'price' ||
+      (formData.goal?.template_key || '').toLowerCase() === 'price' ||
+      (formData.goal?.template_key || '').toLowerCase() === 'pricing';
+    if (isPriceTestReview && Array.isArray(formData.variants)) {
+      let hasNonControlWithPriceReview = false;
+      formData.variants.forEach((v, i) => {
+        const cfg = v?.config || {};
+        const mode = (cfg.priceMode || 'fixed').toLowerCase();
+        const isControl =
+          i === 0 ||
+          (mode === 'fixed' &&
+            (cfg.price === null || cfg.price === undefined || String(cfg.price).trim() === ''));
+        const hasPrice =
+          (mode === 'fixed' &&
+            cfg.price !== null &&
+            cfg.price !== undefined &&
+            String(cfg.price).trim() !== '') ||
+          (mode === 'amount' &&
+            cfg.priceDelta !== null &&
+            cfg.priceDelta !== undefined &&
+            String(cfg.priceDelta).trim() !== '') ||
+          (mode === 'percent' &&
+            cfg.pricePercent !== null &&
+            cfg.pricePercent !== undefined &&
+            String(cfg.pricePercent).trim() !== '');
+        if (!isControl && hasPrice) {
+          hasNonControlWithPriceReview = true;
+        }
+        if (mode === 'fixed' && cfg.price !== null && cfg.price !== undefined && cfg.price !== '') {
+          const n = Number(cfg.price);
+          if (Number.isNaN(n) || n < 0) {
+            errors.push(`${v?.name || `Variant ${i + 1}`}: fixed price must be 0 or greater.`);
+          }
+        }
+        if (
+          mode === 'amount' &&
+          cfg.priceDelta !== null &&
+          cfg.priceDelta !== undefined &&
+          cfg.priceDelta !== ''
+        ) {
+          const n = Number(cfg.priceDelta);
+          if (Number.isNaN(n)) {
+            errors.push(
+              `${v?.name || `Variant ${i + 1}`}: amount ($ off/on) must be a valid number.`
+            );
+          }
+        }
+        if (
+          mode === 'percent' &&
+          cfg.pricePercent !== null &&
+          cfg.pricePercent !== undefined &&
+          cfg.pricePercent !== ''
+        ) {
+          const n = Number(cfg.pricePercent);
+          if (Number.isNaN(n) || n < -100 || n > 100) {
+            errors.push(`${v?.name || `Variant ${i + 1}`}: percent must be between -100 and 100.`);
+          }
+        }
+      });
+      if (formData.variants.length > 1 && !hasNonControlWithPriceReview) {
+        errors.push(
+          'At least one test variant (non-control) must have a price or discount configured. Go to Traffic step → Variant configuration to set prices.'
+        );
+      }
+      // Per-product / per-variant overrides: validate nested price config on review
+      formData.variants.forEach((v, i) => {
+        const byProduct = v?.config?.byProduct;
+        if (!byProduct || typeof byProduct !== 'object') return;
+        Object.entries(byProduct).forEach(([_productId, override]) => {
+          const byVariant = override?.byVariant;
+          if (!byVariant || typeof byVariant !== 'object') return;
+          Object.entries(byVariant).forEach(([vKey, vCfg]) => {
+            if (!vCfg || typeof vCfg !== 'object') return;
+            const mode = (vCfg.priceMode || 'fixed').toLowerCase();
+            if (
+              mode === 'fixed' &&
+              vCfg.price !== null &&
+              vCfg.price !== undefined &&
+              vCfg.price !== ''
+            ) {
+              const n = Number(vCfg.price);
+              if (Number.isNaN(n) || n < 0) {
+                errors.push(
+                  `${v?.name || `Variant ${i + 1}`}: per-variant override (${vKey}) fixed price must be 0 or greater.`
+                );
+              }
+            }
+            if (
+              mode === 'amount' &&
+              vCfg.priceDelta !== null &&
+              vCfg.priceDelta !== undefined &&
+              vCfg.priceDelta !== ''
+            ) {
+              const n = Number(vCfg.priceDelta);
+              if (Number.isNaN(n)) {
+                errors.push(
+                  `${v?.name || `Variant ${i + 1}`}: per-variant override (${vKey}) amount must be a valid number.`
+                );
+              }
+            }
+            if (
+              mode === 'percent' &&
+              vCfg.pricePercent !== null &&
+              vCfg.pricePercent !== undefined &&
+              vCfg.pricePercent !== ''
+            ) {
+              const n = Number(vCfg.pricePercent);
+              if (Number.isNaN(n) || n < -100 || n > 100) {
+                errors.push(
+                  `${v?.name || `Variant ${i + 1}`}: per-variant override (${vKey}) percent must be between -100 and 100.`
+                );
+              }
+            }
+          });
+        });
+      });
+    }
     const targetType = formData.target_type || initialData?.target_type;
     const pageRules = formData.segments?.page_rules || initialData?.segments?.page_rules || [];
     const hasCustomScope = pageRules.length > 0;
@@ -144,6 +495,38 @@ export function getWizardStepErrors(stepId, options) {
       );
     if (!hasCustomScope && needsTargetIdReview && !hasTargetId) {
       errors.push('Target ID is required for the selected scope in the Targeting step.');
+    }
+    // Split-URL URL format
+    const isSplitUrlReview = (formData.variants || []).some(v =>
+      (v?.config?.url ?? '').toString().trim()
+    );
+    if (isSplitUrlReview && Array.isArray(formData.variants)) {
+      formData.variants.forEach((v, i) => {
+        const url = (v?.config?.url ?? '').toString().trim();
+        if (!url) return;
+        try {
+          new URL(url, 'https://example.com');
+        } catch (_) {
+          errors.push(`${v?.name || `Variant ${i + 1}`}: enter a valid URL for Split URL test.`);
+        }
+      });
+    }
+    // Offer discount value
+    const isOfferReview = (formData.type || '').toLowerCase() === 'offer';
+    if (isOfferReview && Array.isArray(formData.variants)) {
+      formData.variants.forEach((v, i) => {
+        const cfg = v?.config || {};
+        const dtype = (cfg.discount_type || 'percent').toLowerCase();
+        const val = cfg.discount_value;
+        if (dtype === 'free_shipping') return;
+        if (val !== null && val !== undefined && val !== '') {
+          const n = Number(val);
+          if (Number.isNaN(n) || n < 0)
+            errors.push(`${v?.name || `Variant ${i + 1}`}: discount value must be ≥ 0.`);
+          else if (dtype === 'percent' && n > 100)
+            errors.push(`${v?.name || `Variant ${i + 1}`}: percent discount must be 0–100.`);
+        }
+      });
     }
   }
 

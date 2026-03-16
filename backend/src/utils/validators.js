@@ -219,6 +219,43 @@ class Validators {
           errors.push(`Variant ${index + 1} allocation must be between 0-100%`);
         }
       });
+
+      // Price test: at least one non-control variant must have a price/discount configured
+      const isPriceType =
+        (config.type || '').toLowerCase() === 'price' ||
+        (config.type || '').toLowerCase() === 'pricing';
+      if (isPriceType && config.variants.length > 1) {
+        let hasNonControlWithPrice = false;
+        config.variants.forEach((v, i) => {
+          const cfg = v?.config || {};
+          const mode = (cfg.priceMode || 'fixed').toLowerCase();
+          const isControl =
+            i === 0 ||
+            (mode === 'fixed' &&
+              (cfg.price === null || cfg.price === undefined || String(cfg.price).trim() === ''));
+          const hasPrice =
+            (mode === 'fixed' &&
+              cfg.price !== null &&
+              cfg.price !== undefined &&
+              String(cfg.price).trim() !== '') ||
+            (mode === 'amount' &&
+              cfg.priceDelta !== null &&
+              cfg.priceDelta !== undefined &&
+              String(cfg.priceDelta).trim() !== '') ||
+            (mode === 'percent' &&
+              cfg.pricePercent !== null &&
+              cfg.pricePercent !== undefined &&
+              String(cfg.pricePercent).trim() !== '');
+          if (!isControl && hasPrice) {
+            hasNonControlWithPrice = true;
+          }
+        });
+        if (!hasNonControlWithPrice) {
+          errors.push(
+            'Price test: at least one test variant (non-control) must have a price or discount configured.'
+          );
+        }
+      }
     }
 
     return {

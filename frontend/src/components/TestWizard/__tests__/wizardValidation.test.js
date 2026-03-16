@@ -178,6 +178,58 @@ describe('wizardValidation', () => {
         });
         expect(errors).toHaveLength(0);
       });
+
+      it('returns error for price test when per-variant override has invalid fixed price', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.traffic, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'price',
+            variants: [
+              { name: 'Control', allocation: 50, config: { priceMode: 'fixed', price: '' } },
+              {
+                name: 'Variant A',
+                allocation: 50,
+                config: {
+                  priceMode: 'fixed',
+                  price: '29',
+                  byProduct: {
+                    12345: {
+                      byVariant: {
+                        67890: { priceMode: 'fixed', price: -1 },
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'price',
+        });
+        expect(
+          errors.some(e => e.includes('per-variant override') && e.includes('0 or greater'))
+        ).toBe(true);
+      });
+
+      it('returns error for price test when fixed price is negative (on traffic step)', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.traffic, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'price',
+            variants: [
+              { name: 'Control', allocation: 50, config: { priceMode: 'fixed', price: null } },
+              { name: 'Variant A', allocation: 50, config: { priceMode: 'fixed', price: -5 } },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'price',
+        });
+        expect(errors.some(e => e.includes('fixed price must be 0 or greater'))).toBe(true);
+      });
     });
 
     describe('code step', () => {
@@ -205,6 +257,134 @@ describe('wizardValidation', () => {
           jsValidationErrors: ['Unexpected token'],
         });
         expect(errors).toContain('Fix JavaScript syntax errors before continuing.');
+      });
+
+      it('returns error for price test when fixed price is negative', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'price',
+            variants: [
+              { name: 'Control', config: { priceMode: 'fixed', price: null } },
+              { name: 'Variant A', config: { priceMode: 'fixed', price: -1 } },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'price',
+        });
+        expect(errors.some(e => e.includes('fixed price must be 0 or greater'))).toBe(true);
+      });
+
+      it('returns error for price test when percent is out of -100 to 100', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'price',
+            variants: [
+              { name: 'Control', config: { priceMode: 'percent' } },
+              { name: 'Variant A', config: { priceMode: 'percent', pricePercent: 150 } },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'price',
+        });
+        expect(errors.some(e => e.includes('percent must be between -100 and 100'))).toBe(true);
+      });
+
+      it('allows price test percent -100 to 100 (negative = increase)', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'price',
+            variants: [
+              { name: 'Control', config: { priceMode: 'fixed', price: null } },
+              { name: 'Variant A', config: { priceMode: 'percent', pricePercent: -10 } },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'price',
+        });
+        expect(errors.filter(e => e.includes('percent'))).toHaveLength(0);
+      });
+
+      it('returns error for price test when amount (priceDelta) is not a valid number', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'price',
+            variants: [
+              { name: 'Control', config: { priceMode: 'fixed', price: null } },
+              { name: 'Variant A', config: { priceMode: 'amount', priceDelta: 'abc' } },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'price',
+        });
+        expect(errors.some(e => e.includes('amount') && e.includes('valid number'))).toBe(true);
+      });
+
+      it('returns error for split-URL variant with invalid URL', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'content',
+            variants: [
+              { name: 'Control', config: { url: '' } },
+              { name: 'Variant A', config: { url: 'http://[invalid' } },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'split-url',
+        });
+        expect(errors.some(e => e.includes('valid URL'))).toBe(true);
+      });
+
+      it('returns no error for split-URL variant with valid URL', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'content',
+            variants: [
+              { name: 'Control', config: { url: '' } },
+              { name: 'Variant A', config: { url: 'https://example.com/pages/landing' } },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'split-url',
+        });
+        expect(errors.filter(e => e.includes('URL'))).toHaveLength(0);
+      });
+
+      it('returns error for offer variant with invalid discount value', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'offer',
+            variants: [
+              { name: 'Control', config: { discount_type: 'percent', discount_value: null } },
+              { name: 'Variant A', config: { discount_type: 'percent', discount_value: 150 } },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'offer',
+        });
+        expect(errors.some(e => e.includes('percent discount') && e.includes('0 and 100'))).toBe(
+          true
+        );
       });
     });
 
@@ -252,6 +432,50 @@ describe('wizardValidation', () => {
           showTemplateStep: true,
         });
         expect(errors).toHaveLength(0);
+      });
+
+      it('returns error when price test has no non-control variant with price configured', () => {
+        const errors = getWizardStepErrors(reviewStepId, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId,
+          formData: {
+            name: 'Price Test',
+            type: 'price',
+            goal: { metric: 'revenue' },
+            target_type: 'all-products',
+            variants: [
+              { name: 'Control', allocation: 50, config: { priceMode: 'fixed', price: '' } },
+              { name: 'Variant A', allocation: 50, config: { priceMode: 'fixed', price: '' } },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+        });
+        expect(errors.some(e => e.includes('At least one test variant'))).toBe(true);
+      });
+
+      it('returns no errors when price test has non-control variant with price', () => {
+        const errors = getWizardStepErrors(reviewStepId, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId,
+          formData: {
+            name: 'Price Test',
+            type: 'price',
+            goal: { metric: 'revenue' },
+            target_type: 'all-products',
+            variants: [
+              { name: 'Control', allocation: 50, config: { priceMode: 'fixed', price: '' } },
+              {
+                name: 'Variant A',
+                allocation: 50,
+                config: { priceMode: 'percent', pricePercent: 10 },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+        });
+        expect(errors.filter(e => e.includes('At least one test variant'))).toHaveLength(0);
       });
     });
 

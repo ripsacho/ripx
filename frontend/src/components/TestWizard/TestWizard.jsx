@@ -20,6 +20,7 @@ import {
   Modal,
   Spinner,
   Collapsible,
+  Banner,
 } from '@shopify/polaris';
 import {
   PageIcon,
@@ -59,7 +60,7 @@ import TrafficAllocationSlider from '../TestCreator/TrafficAllocationSlider';
 import Toast from '../Toast/Toast';
 import styles from './TargetingSection.module.css';
 import stepStyles from './WizardSteps.module.css';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import {
   getShopDomain,
   getPreviewDomain,
@@ -76,7 +77,7 @@ import {
 } from '../../utils/previewUrl';
 import { inferTemplateKeyFromVariants } from '../../utils/testType';
 import { getVariantColor, getVariantColorLight } from '../../utils/variantColors';
-import { STANDALONE_TEST_TYPE_IDS } from '../../constants';
+import { ROUTES, STANDALONE_TEST_TYPE_IDS } from '../../constants';
 import {
   TEST_TEMPLATES,
   TEST_TYPE_CATEGORIES,
@@ -96,6 +97,7 @@ const DEFAULT_FORM_DATA = {
   type: 'price',
   target_type: '',
   target_id: '',
+  pricePerProduct: false,
   goal: {
     type: 'conversion',
     metric: 'revenue',
@@ -213,6 +215,21 @@ function TestWizard({
   const [visualSnippetPanelExpanded, setVisualSnippetPanelExpanded] = useState(false);
   const [visualSnippetActiveElementIndex, setVisualSnippetActiveElementIndex] = useState(0); // which element (rule index 0–4) is shown in the snippet panel
   const [visualRuleActiveTab, setVisualRuleActiveTab] = useState({}); // { ruleIndex: 'selector'|'css'|'js' }
+  const [_priceCardExpanded, _setPriceCardExpanded] = useState({}); // { variantIndex: boolean } — missing key = expanded (reserved for future use)
+  const [priceAccordionExpandedIndices, setPriceAccordionExpandedIndices] = useState([]); // which variant accordions are open (array of indices; allows expand all)
+  const [quickFillRule, setQuickFillRule] = useState('percent_off'); // 'percent_off' | 'percent_on' | 'amount_off' | 'amount_on'
+  const [quickFillValue, setQuickFillValue] = useState('');
+  const [quickFillRoundTo, setQuickFillRoundTo] = useState(''); // '' | '0.01' | '0.25' | '0.50' | '1' — stored in variant config when applying
+  const [exampleCatalogPrice, setExampleCatalogPrice] = useState(''); // optional $ for live preview
+  const [catalogConfirmedForPriceTest, setCatalogConfirmedForPriceTest] = useState(false); // optional confirmation on Review (does not block submit)
+  useEffect(() => {
+    const n = formData.variants?.length ?? 0;
+    if (n === 0) {
+      setPriceAccordionExpandedIndices([]);
+      return;
+    }
+    setPriceAccordionExpandedIndices(prev => prev.filter(i => i >= 0 && i < n));
+  }, [formData.variants?.length]);
   const [changingSelectorIndex, setChangingSelectorIndex] = useState(null); // when set, next click in preview replaces this slot
   const visualSnippetPanelRef = useRef(null);
   const visualSnippetBackdropRef = useRef(null);
@@ -621,6 +638,13 @@ function TestWizard({
           return seg;
         })(),
         holdout_percent: initialData.holdout_percent ?? DEFAULT_FORM_DATA.holdout_percent,
+        pricePerProduct:
+          (initialData.variants || []).some(
+            v =>
+              v?.config?.byProduct &&
+              typeof v.config.byProduct === 'object' &&
+              Object.keys(v.config.byProduct).length > 0
+          ) ?? false,
         guardrail_config: initialData.guardrail_config ?? DEFAULT_FORM_DATA.guardrail_config,
         scheduled_start_at: initialData.scheduled_start_at || '',
         scheduled_stop_at: initialData.scheduled_stop_at || '',
@@ -1328,7 +1352,7 @@ function TestWizard({
     } else if (templateKey === 'shipping' || templateKey === 'combination') {
       targetType = 'cart';
       urlPattern = '/cart';
-    } else if (templateKey === 'pricing' || templateKey === 'offer') {
+    } else if (templateKey === 'price' || templateKey === 'pricing' || templateKey === 'offer') {
       targetType = 'all-products';
       urlPattern = '/products/';
     }
@@ -1380,6 +1404,11 @@ function TestWizard({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once when step/template available; handleTemplateSelect is stable
   }, [showTemplateStep, initialTemplate]);
+
+  const isPriceTestType =
+    selectedTemplate === 'price' ||
+    selectedTemplate === 'pricing' ||
+    (formData.type || '').toLowerCase() === 'price';
 
   const handleNext = () => {
     const stepErrors = getStepErrors(currentStep);
@@ -2109,6 +2138,7 @@ function TestWizard({
   };
 
   const renderTargetingStep = () => {
+    const targetingScopeFixedForPrice = isPriceTestType;
     const countriesValue = formData.segments?.countries?.join(', ') || '';
     const holdoutValue =
       formData.holdout_percent === null || formData.holdout_percent === undefined
@@ -2302,1002 +2332,1063 @@ function TestWizard({
                             className={styles.placementPanel}
                             id="targeting-scope"
                           >
-                            {!isStandalone && (
-                              <div className={styles.placementQuickPresetsStrip}>
-                                <div className={styles.placementQuickPresetsStripHead}>
-                                  <span className={styles.placementQuickPresetsStripLabel}>
-                                    <Icon source={FilterIcon} />
-                                    <span className={styles.placementQuickPresetsStripTitle}>
-                                      Combos
-                                    </span>
-                                  </span>
+                            {targetingScopeFixedForPrice ? (
+                              <BlockStack gap="300">
+                                <Banner tone="info" title="Price tests run site-wide">
+                                  <Text as="p" variant="bodySm">
+                                    Targeting is fixed to <strong>site-wide</strong>. Updated prices
+                                    can appear on product pages and, where supported by the theme,
+                                    in sidecart. To choose which products use the test price (all
+                                    products or selected products only), go to{' '}
+                                    <strong>Variant configuration</strong> → Product scope.
+                                  </Text>
+                                </Banner>
+                                <div className={styles.panelSection}>
+                                  <span className={styles.panelSectionTitle}>Scope (fixed)</span>
+                                  <div className={styles.scopeSelectGrid}>
+                                    <div
+                                      className={`${styles.scopeCard} ${styles.scopeCardActive}`}
+                                      style={{ cursor: 'default', opacity: 1 }}
+                                      aria-label="Site wide — no options to change"
+                                    >
+                                      <span className={styles.scopeCardIcon}>
+                                        <Icon source={ProductIcon} />
+                                      </span>
+                                      <span className={styles.scopeCardLabel}>Site wide</span>
+                                      <span className={styles.scopeCardDesc}>
+                                        Product scope (all vs selected) is in Variant configuration
+                                      </span>
+                                    </div>
+                                  </div>
                                 </div>
-                                <div className={styles.placementQuickPresetsStripChips}>
-                                  {[
-                                    {
-                                      label: 'Product + Mobile',
-                                      url: '/products/',
-                                      device: 'mobile',
-                                      customer: 'all',
-                                      tooltip: 'Products + Mobile',
-                                    },
-                                    {
-                                      label: 'Cart + New',
-                                      url: '/cart',
-                                      device: 'all',
-                                      customer: 'new',
-                                      tooltip: 'Cart + New visitors',
-                                    },
-                                    {
-                                      label: 'Homepage + All',
-                                      url: '^/$|^/index',
-                                      device: 'all',
-                                      customer: 'all',
-                                      tooltip: 'Homepage + All',
-                                    },
-                                    {
-                                      label: 'Reset',
-                                      url: '',
-                                      device: 'all',
-                                      customer: 'all',
-                                      tooltip: 'Reset to defaults',
-                                    },
-                                  ].map(({ label, url, device, customer, tooltip }) => {
-                                    const s = formData.segments || {};
-                                    const p = s.url_pattern ?? '';
-                                    const pr = s.page_rules || [];
-                                    const isAllPages =
-                                      pr.length === 0 && (!p || p === '' || p === ' ');
-                                    const urlMatches =
-                                      url === '' ? isAllPages : p === url && pr.length === 0;
-                                    const noAdvancedRules =
-                                      (s.device_rules || []).length +
-                                        (s.audience_rules || []).length ===
-                                      0;
-                                    const matches =
-                                      urlMatches &&
-                                      (s.device ?? 'all') === device &&
-                                      (s.customer ?? 'all') === customer &&
-                                      noAdvancedRules;
-                                    return (
-                                      <TooltipWrapper
-                                        key={label}
-                                        content={tooltip}
-                                        accessibilityLabel={label}
-                                      >
-                                        <button
-                                          type="button"
-                                          className={`${styles.quickPresetChip} ${matches ? styles.quickPresetChipActive : ''}`}
-                                          onClick={() => {
-                                            setCustomUrlModeActive(false);
-                                            const targetFromUrl =
-                                              url === '/products/'
-                                                ? 'all-products'
-                                                : url === '/collections/'
-                                                  ? 'all-collections'
-                                                  : url === '/cart'
-                                                    ? 'cart'
-                                                    : url === '/checkout'
-                                                      ? 'checkout'
-                                                      : url === '^/$|^/index'
-                                                        ? 'homepage'
-                                                        : null;
-                                            setFormData(prev => ({
-                                              ...prev,
-                                              ...(targetFromUrl !== null &&
-                                                targetFromUrl !== undefined && {
-                                                  target_type: targetFromUrl,
-                                                }),
-                                              segments: {
-                                                ...prev.segments,
-                                                url_pattern: url === '' ? '' : url,
-                                                page_rules: [],
-                                                device,
-                                                customer,
-                                                device_rules: [],
-                                                audience_rules: [],
-                                              },
-                                            }));
-                                          }}
-                                        >
-                                          {label}
-                                        </button>
-                                      </TooltipWrapper>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                            <div
-                              className={`${styles.panelSection} ${styles.panelSectionPageTargeting}`}
-                            >
-                              <span className={styles.panelSectionTitle}>
-                                Where should this test run?
-                                <TooltipWrapper
-                                  content="By default the test runs on all pages. Optionally select a scope to limit where it appears (e.g. product pages only)."
-                                  accessibilityLabel="Scope help"
+                              </BlockStack>
+                            ) : (
+                              <>
+                                {!isStandalone && (
+                                  <div className={styles.placementQuickPresetsStrip}>
+                                    <div className={styles.placementQuickPresetsStripHead}>
+                                      <span className={styles.placementQuickPresetsStripLabel}>
+                                        <Icon source={FilterIcon} />
+                                        <span className={styles.placementQuickPresetsStripTitle}>
+                                          Combos
+                                        </span>
+                                      </span>
+                                    </div>
+                                    <div className={styles.placementQuickPresetsStripChips}>
+                                      {[
+                                        {
+                                          label: 'Product + Mobile',
+                                          url: '/products/',
+                                          device: 'mobile',
+                                          customer: 'all',
+                                          tooltip: 'Products + Mobile',
+                                        },
+                                        {
+                                          label: 'Cart + New',
+                                          url: '/cart',
+                                          device: 'all',
+                                          customer: 'new',
+                                          tooltip: 'Cart + New visitors',
+                                        },
+                                        {
+                                          label: 'Homepage + All',
+                                          url: '^/$|^/index',
+                                          device: 'all',
+                                          customer: 'all',
+                                          tooltip: 'Homepage + All',
+                                        },
+                                        {
+                                          label: 'Reset',
+                                          url: '',
+                                          device: 'all',
+                                          customer: 'all',
+                                          tooltip: 'Reset to defaults',
+                                        },
+                                      ].map(({ label, url, device, customer, tooltip }) => {
+                                        const s = formData.segments || {};
+                                        const p = s.url_pattern ?? '';
+                                        const pr = s.page_rules || [];
+                                        const isAllPages =
+                                          pr.length === 0 && (!p || p === '' || p === ' ');
+                                        const urlMatches =
+                                          url === '' ? isAllPages : p === url && pr.length === 0;
+                                        const noAdvancedRules =
+                                          (s.device_rules || []).length +
+                                            (s.audience_rules || []).length ===
+                                          0;
+                                        const matches =
+                                          urlMatches &&
+                                          (s.device ?? 'all') === device &&
+                                          (s.customer ?? 'all') === customer &&
+                                          noAdvancedRules;
+                                        return (
+                                          <TooltipWrapper
+                                            key={label}
+                                            content={tooltip}
+                                            accessibilityLabel={label}
+                                          >
+                                            <button
+                                              type="button"
+                                              className={`${styles.quickPresetChip} ${matches ? styles.quickPresetChipActive : ''}`}
+                                              onClick={() => {
+                                                setCustomUrlModeActive(false);
+                                                const targetFromUrl =
+                                                  url === '/products/'
+                                                    ? 'all-products'
+                                                    : url === '/collections/'
+                                                      ? 'all-collections'
+                                                      : url === '/cart'
+                                                        ? 'cart'
+                                                        : url === '/checkout'
+                                                          ? 'checkout'
+                                                          : url === '^/$|^/index'
+                                                            ? 'homepage'
+                                                            : null;
+                                                setFormData(prev => ({
+                                                  ...prev,
+                                                  ...(targetFromUrl !== null &&
+                                                    targetFromUrl !== undefined && {
+                                                      target_type: targetFromUrl,
+                                                    }),
+                                                  segments: {
+                                                    ...prev.segments,
+                                                    url_pattern: url === '' ? '' : url,
+                                                    page_rules: [],
+                                                    device,
+                                                    customer,
+                                                    device_rules: [],
+                                                    audience_rules: [],
+                                                  },
+                                                }));
+                                              }}
+                                            >
+                                              {label}
+                                            </button>
+                                          </TooltipWrapper>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                                <div
+                                  className={`${styles.panelSection} ${styles.panelSectionPageTargeting}`}
                                 >
-                                  <span className={styles.panelSectionInfoIcon} aria-hidden="true">
-                                    <Icon source={InfoIcon} />
+                                  <span className={styles.panelSectionTitle}>
+                                    Where should this test run?
+                                    <TooltipWrapper
+                                      content="By default the test runs on all pages. Optionally select a scope to limit where it appears (e.g. product pages only)."
+                                      accessibilityLabel="Scope help"
+                                    >
+                                      <span
+                                        className={styles.panelSectionInfoIcon}
+                                        aria-hidden="true"
+                                      >
+                                        <Icon source={InfoIcon} />
+                                      </span>
+                                    </TooltipWrapper>
                                   </span>
-                                </TooltipWrapper>
-                              </span>
-                              <p className={styles.panelSectionHint}>
-                                {!formData.target_type || formData.target_type === ''
-                                  ? 'Your test runs on all pages by default. You can click Next without choosing a scope, or select one below to limit where the test runs.'
-                                  : 'Scope selected. Click another option to change.'}
-                              </p>
-                              {(!formData.target_type || formData.target_type === '') && (
-                                <div className={styles.scopeSelectPrompt}>
-                                  <span className={styles.scopeSelectPromptIcon}>
-                                    <Icon source={TargetIcon} />
-                                  </span>
-                                  <span className={styles.scopeSelectPromptText}>
-                                    Choose where to run this test
-                                  </span>
-                                </div>
-                              )}
-                              <div className={styles.scopeSelectGrid}>
-                                {[
-                                  {
-                                    label: 'Homepage',
-                                    desc: isStandalone
-                                      ? 'Root path (/, /index, /index.html, etc.)'
-                                      : 'Landing page only',
-                                    scope: 'homepage',
-                                    target_type: 'homepage',
-                                    url_pattern: isStandalone
-                                      ? HOMEPAGE_URL_PATTERN_STANDALONE
-                                      : HOMEPAGE_URL_PATTERN_SHOPIFY,
-                                    needsId: false,
-                                    icon: HomeIcon,
-                                    tooltip: isStandalone
-                                      ? 'Runs on site root and common index paths (/, /index, /index.html, /index.php, /default.html)'
-                                      : 'Homepage',
-                                    standalone: true,
-                                  },
-                                  {
-                                    label: 'Cart',
-                                    desc: 'Cart page',
-                                    scope: 'cart',
-                                    target_type: 'cart',
-                                    url_pattern: '/cart',
-                                    needsId: false,
-                                    icon: CartIcon,
-                                    tooltip: 'Cart page',
-                                    standalone: false,
-                                  },
-                                  {
-                                    label: 'Checkout',
-                                    desc: 'Checkout flow',
-                                    scope: 'checkout',
-                                    target_type: 'checkout',
-                                    url_pattern: '/checkout',
-                                    needsId: false,
-                                    icon: CreditCardIcon,
-                                    tooltip: 'Checkout',
-                                    standalone: false,
-                                  },
-                                  {
-                                    label: 'All products',
-                                    desc: 'Every product page',
-                                    scope: 'all-products',
-                                    target_type: 'all-products',
-                                    url_pattern: '/products/',
-                                    needsId: false,
-                                    icon: ProductIcon,
-                                    tooltip: 'All product pages',
-                                    standalone: false,
-                                  },
-                                  {
-                                    label: 'All collections',
-                                    desc: 'Every collection page',
-                                    scope: 'all-collections',
-                                    target_type: 'all-collections',
-                                    url_pattern: '/collections/',
-                                    needsId: false,
-                                    icon: CollectionIcon,
-                                    tooltip: 'All collection pages',
-                                    standalone: false,
-                                  },
-                                  {
-                                    label: 'Product(s)',
-                                    desc: 'Choose from store',
-                                    scope: 'product-id',
-                                    target_type: 'product',
-                                    url_pattern: '/products/',
-                                    needsId: true,
-                                    icon: ProductIcon,
-                                    tooltip: 'Select product(s) from your store',
-                                    standalone: false,
-                                  },
-                                  {
-                                    label: 'Collection(s)',
-                                    desc: 'Choose from store',
-                                    scope: 'collection-id',
-                                    target_type: 'collection',
-                                    url_pattern: '/collections/',
-                                    needsId: true,
-                                    icon: CollectionIcon,
-                                    tooltip: 'Select collection(s) from your store',
-                                    standalone: false,
-                                  },
-                                  {
-                                    label: 'Page(s)',
-                                    desc: 'Choose from store',
-                                    scope: 'page-id',
-                                    target_type: 'page',
-                                    url_pattern: '',
-                                    needsId: true,
-                                    icon: PageIcon,
-                                    tooltip: 'Select page(s) from your store',
-                                    standalone: false,
-                                  },
-                                  {
-                                    label: 'Custom URL',
-                                    desc: 'Regex or path rules',
-                                    scope: '__custom__',
-                                    target_type: null,
-                                    url_pattern: null,
-                                    needsId: false,
-                                    icon: CodeIcon,
-                                    tooltip: 'Custom URL or regex',
-                                    standalone: true,
-                                  },
-                                ]
-                                  .filter(opt => !isStandalone || opt.standalone)
-                                  .map(
-                                    ({
-                                      label,
-                                      desc,
-                                      scope,
-                                      target_type: tt,
-                                      url_pattern: up,
-                                      needsId,
-                                      icon: ChipIcon,
-                                      tooltip,
-                                    }) => {
-                                      const p = formData.segments?.url_pattern ?? '';
-                                      const pr = formData.segments?.page_rules || [];
-                                      const t = formData.target_type;
-                                      const isCustom =
-                                        scope === '__custom__' &&
-                                        (customUrlModeActive || pr.length > 0);
-                                      const isHomepagePattern =
-                                        p === HOMEPAGE_URL_PATTERN_SHOPIFY ||
-                                        p === HOMEPAGE_URL_PATTERN_STANDALONE;
-                                      const active =
-                                        scope === '__custom__'
-                                          ? isCustom
-                                          : t === tt &&
-                                            (needsId
-                                              ? true
-                                              : tt === 'homepage'
-                                                ? isHomepagePattern
-                                                : up !== null && up !== undefined && up !== ''
-                                                  ? p === up
-                                                  : !p && pr.length === 0);
-                                      return (
-                                        <button
-                                          key={scope || 'all'}
-                                          type="button"
-                                          title={tooltip}
-                                          className={`${styles.scopeCard} ${active ? styles.scopeCardActive : ''}`}
-                                          onClick={e => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            handleScopeSelect(scope, tt, up, needsId);
-                                          }}
-                                          onPointerDown={e => e.stopPropagation()}
-                                          aria-pressed={active}
-                                          aria-label={label}
-                                        >
-                                          <span className={styles.scopeCardIcon}>
-                                            <Icon source={ChipIcon} />
-                                          </span>
-                                          <span className={styles.scopeCardLabel}>{label}</span>
-                                          {desc && (
-                                            <span className={styles.scopeCardDesc}>{desc}</span>
-                                          )}
-                                        </button>
-                                      );
-                                    }
+                                  <p className={styles.panelSectionHint}>
+                                    {!formData.target_type || formData.target_type === ''
+                                      ? 'Your test runs on all pages by default. You can click Next without choosing a scope, or select one below to limit where the test runs.'
+                                      : 'Scope selected. Click another option to change.'}
+                                  </p>
+                                  {(!formData.target_type || formData.target_type === '') && (
+                                    <div className={styles.scopeSelectPrompt}>
+                                      <span className={styles.scopeSelectPromptIcon}>
+                                        <Icon source={TargetIcon} />
+                                      </span>
+                                      <span className={styles.scopeSelectPromptText}>
+                                        Choose where to run this test
+                                      </span>
+                                    </div>
                                   )}
-                              </div>
-                              {['product', 'collection', 'page'].includes(formData.target_type) && (
-                                <div className={styles.panelSection} style={{ marginTop: '1rem' }}>
-                                  {isStandalone ? (
-                                    <TextField
-                                      label="Target ID(s)"
-                                      value={
-                                        Array.isArray(formData.target_ids) &&
-                                        formData.target_ids.length > 0
-                                          ? formData.target_ids.join('\n')
-                                          : formData.target_id || ''
-                                      }
-                                      onChange={value => {
-                                        const raw = value
-                                          .split(/[\n,]+/)
-                                          .map(s => s.trim())
-                                          .filter(Boolean);
-                                        const normalize = id => {
-                                          if (!id) return '';
-                                          if (id.startsWith('gid://')) return id;
-                                          const num = id.replace(/\D/g, '');
-                                          if (!num) return id;
-                                          if (formData.target_type === 'product')
-                                            return `gid://shopify/Product/${num}`;
-                                          if (formData.target_type === 'collection')
-                                            return `gid://shopify/Collection/${num}`;
-                                          if (formData.target_type === 'page')
-                                            return `gid://shopify/OnlineStorePage/${num}`;
-                                          return id;
-                                        };
-                                        const ids = raw.map(normalize);
-                                        if (ids.length > 1) {
-                                          setFormData({
-                                            ...formData,
-                                            target_ids: ids,
-                                            target_id: ids[0] || '',
-                                          });
-                                        } else if (ids.length === 1) {
-                                          setFormData({
-                                            ...formData,
-                                            target_id: ids[0],
-                                            target_ids: null,
-                                          });
-                                        } else {
-                                          setFormData({
-                                            ...formData,
-                                            target_id: '',
-                                            target_ids: null,
-                                          });
-                                        }
-                                      }}
-                                      multiline={3}
-                                      helpText="Enter ID(s). One per line. Standalone mode: no store list available."
-                                      autoComplete="off"
-                                    />
-                                  ) : (
-                                    <BlockStack gap="400">
-                                      <div className={styles.storeResourceList}>
-                                        <div className={styles.storeResourceListHeader}>
-                                          <div className={styles.storeResourceListSearch}>
-                                            <TextField
-                                              label={`Select ${formData.target_type === 'product' ? 'product(s)' : formData.target_type === 'collection' ? 'collection(s)' : 'page(s)'} from your store`}
-                                              labelHidden
-                                              value={storeResourceSearch}
-                                              onChange={setStoreResourceSearch}
-                                              placeholder={`Search ${formData.target_type === 'product' ? 'products' : formData.target_type === 'collection' ? 'collections' : 'pages'}…`}
-                                              autoComplete="off"
-                                              clearButton
-                                              onClearButtonClick={() => setStoreResourceSearch('')}
-                                            />
-                                          </div>
-                                          {(() => {
-                                            const selectedIds =
-                                              Array.isArray(formData.target_ids) &&
-                                              formData.target_ids.length > 0
-                                                ? formData.target_ids
-                                                : formData.target_id
-                                                  ? [formData.target_id]
-                                                  : [];
-                                            if (selectedIds.length === 0) return null;
-                                            return (
-                                              <span className={styles.storeResourceSelectedBadge}>
-                                                {selectedIds.length} selected
+                                  <div className={styles.scopeSelectGrid}>
+                                    {[
+                                      {
+                                        label: 'Homepage',
+                                        desc: isStandalone
+                                          ? 'Root path (/, /index, /index.html, etc.)'
+                                          : 'Landing page only',
+                                        scope: 'homepage',
+                                        target_type: 'homepage',
+                                        url_pattern: isStandalone
+                                          ? HOMEPAGE_URL_PATTERN_STANDALONE
+                                          : HOMEPAGE_URL_PATTERN_SHOPIFY,
+                                        needsId: false,
+                                        icon: HomeIcon,
+                                        tooltip: isStandalone
+                                          ? 'Runs on site root and common index paths (/, /index, /index.html, /index.php, /default.html)'
+                                          : 'Homepage',
+                                        standalone: true,
+                                      },
+                                      {
+                                        label: 'Cart',
+                                        desc: 'Cart page',
+                                        scope: 'cart',
+                                        target_type: 'cart',
+                                        url_pattern: '/cart',
+                                        needsId: false,
+                                        icon: CartIcon,
+                                        tooltip: 'Cart page',
+                                        standalone: false,
+                                      },
+                                      {
+                                        label: 'Checkout',
+                                        desc: 'Checkout flow',
+                                        scope: 'checkout',
+                                        target_type: 'checkout',
+                                        url_pattern: '/checkout',
+                                        needsId: false,
+                                        icon: CreditCardIcon,
+                                        tooltip: 'Checkout',
+                                        standalone: false,
+                                      },
+                                      {
+                                        label: 'All products',
+                                        desc: 'Every product page',
+                                        scope: 'all-products',
+                                        target_type: 'all-products',
+                                        url_pattern: '/products/',
+                                        needsId: false,
+                                        icon: ProductIcon,
+                                        tooltip: 'All product pages',
+                                        standalone: false,
+                                      },
+                                      {
+                                        label: 'All collections',
+                                        desc: 'Every collection page',
+                                        scope: 'all-collections',
+                                        target_type: 'all-collections',
+                                        url_pattern: '/collections/',
+                                        needsId: false,
+                                        icon: CollectionIcon,
+                                        tooltip: 'All collection pages',
+                                        standalone: false,
+                                      },
+                                      {
+                                        label: 'Product(s)',
+                                        desc: 'Choose from store',
+                                        scope: 'product-id',
+                                        target_type: 'product',
+                                        url_pattern: '/products/',
+                                        needsId: true,
+                                        icon: ProductIcon,
+                                        tooltip: 'Select product(s) from your store',
+                                        standalone: false,
+                                      },
+                                      {
+                                        label: 'Collection(s)',
+                                        desc: 'Choose from store',
+                                        scope: 'collection-id',
+                                        target_type: 'collection',
+                                        url_pattern: '/collections/',
+                                        needsId: true,
+                                        icon: CollectionIcon,
+                                        tooltip: 'Select collection(s) from your store',
+                                        standalone: false,
+                                      },
+                                      {
+                                        label: 'Page(s)',
+                                        desc: 'Choose from store',
+                                        scope: 'page-id',
+                                        target_type: 'page',
+                                        url_pattern: '',
+                                        needsId: true,
+                                        icon: PageIcon,
+                                        tooltip: 'Select page(s) from your store',
+                                        standalone: false,
+                                      },
+                                      {
+                                        label: 'Custom URL',
+                                        desc: 'Regex or path rules',
+                                        scope: '__custom__',
+                                        target_type: null,
+                                        url_pattern: null,
+                                        needsId: false,
+                                        icon: CodeIcon,
+                                        tooltip: 'Custom URL or regex',
+                                        standalone: true,
+                                      },
+                                    ]
+                                      .filter(opt => !isStandalone || opt.standalone)
+                                      .map(
+                                        ({
+                                          label,
+                                          desc,
+                                          scope,
+                                          target_type: tt,
+                                          url_pattern: up,
+                                          needsId,
+                                          icon: ChipIcon,
+                                          tooltip,
+                                        }) => {
+                                          const p = formData.segments?.url_pattern ?? '';
+                                          const pr = formData.segments?.page_rules || [];
+                                          const t = formData.target_type;
+                                          const isCustom =
+                                            scope === '__custom__' &&
+                                            (customUrlModeActive || pr.length > 0);
+                                          const isHomepagePattern =
+                                            p === HOMEPAGE_URL_PATTERN_SHOPIFY ||
+                                            p === HOMEPAGE_URL_PATTERN_STANDALONE;
+                                          const active =
+                                            scope === '__custom__'
+                                              ? isCustom
+                                              : t === tt &&
+                                                (needsId
+                                                  ? true
+                                                  : tt === 'homepage'
+                                                    ? isHomepagePattern
+                                                    : up !== null && up !== undefined && up !== ''
+                                                      ? p === up
+                                                      : !p && pr.length === 0);
+                                          return (
+                                            <button
+                                              key={scope || 'all'}
+                                              type="button"
+                                              title={tooltip}
+                                              className={`${styles.scopeCard} ${active ? styles.scopeCardActive : ''}`}
+                                              onClick={e => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                handleScopeSelect(scope, tt, up, needsId);
+                                              }}
+                                              onPointerDown={e => e.stopPropagation()}
+                                              aria-pressed={active}
+                                              aria-label={label}
+                                            >
+                                              <span className={styles.scopeCardIcon}>
+                                                <Icon source={ChipIcon} />
                                               </span>
-                                            );
-                                          })()}
-                                        </div>
-                                        {storeResourcesLoading ? (
-                                          <div className={styles.storeResourceListLoading}>
-                                            <div className={styles.storeResourceListLoadingIcon}>
-                                              <Spinner size="small" />
+                                              <span className={styles.scopeCardLabel}>{label}</span>
+                                              {desc && (
+                                                <span className={styles.scopeCardDesc}>{desc}</span>
+                                              )}
+                                            </button>
+                                          );
+                                        }
+                                      )}
+                                  </div>
+                                  {['product', 'collection', 'page'].includes(
+                                    formData.target_type
+                                  ) && (
+                                    <div
+                                      className={styles.panelSection}
+                                      style={{ marginTop: '1rem' }}
+                                    >
+                                      {isStandalone ? (
+                                        <TextField
+                                          label="Target ID(s)"
+                                          value={
+                                            Array.isArray(formData.target_ids) &&
+                                            formData.target_ids.length > 0
+                                              ? formData.target_ids.join('\n')
+                                              : formData.target_id || ''
+                                          }
+                                          onChange={value => {
+                                            const raw = value
+                                              .split(/[\n,]+/)
+                                              .map(s => s.trim())
+                                              .filter(Boolean);
+                                            const normalize = id => {
+                                              if (!id) return '';
+                                              if (id.startsWith('gid://')) return id;
+                                              const num = id.replace(/\D/g, '');
+                                              if (!num) return id;
+                                              if (formData.target_type === 'product')
+                                                return `gid://shopify/Product/${num}`;
+                                              if (formData.target_type === 'collection')
+                                                return `gid://shopify/Collection/${num}`;
+                                              if (formData.target_type === 'page')
+                                                return `gid://shopify/OnlineStorePage/${num}`;
+                                              return id;
+                                            };
+                                            const ids = raw.map(normalize);
+                                            if (ids.length > 1) {
+                                              setFormData({
+                                                ...formData,
+                                                target_ids: ids,
+                                                target_id: ids[0] || '',
+                                              });
+                                            } else if (ids.length === 1) {
+                                              setFormData({
+                                                ...formData,
+                                                target_id: ids[0],
+                                                target_ids: null,
+                                              });
+                                            } else {
+                                              setFormData({
+                                                ...formData,
+                                                target_id: '',
+                                                target_ids: null,
+                                              });
+                                            }
+                                          }}
+                                          multiline={3}
+                                          helpText="Enter ID(s). One per line. Standalone mode: no store list available."
+                                          autoComplete="off"
+                                        />
+                                      ) : (
+                                        <BlockStack gap="400">
+                                          <div className={styles.storeResourceList}>
+                                            <div className={styles.storeResourceListHeader}>
+                                              <div className={styles.storeResourceListSearch}>
+                                                <TextField
+                                                  label={`Select ${formData.target_type === 'product' ? 'product(s)' : formData.target_type === 'collection' ? 'collection(s)' : 'page(s)'} from your store`}
+                                                  labelHidden
+                                                  value={storeResourceSearch}
+                                                  onChange={setStoreResourceSearch}
+                                                  placeholder={`Search ${formData.target_type === 'product' ? 'products' : formData.target_type === 'collection' ? 'collections' : 'pages'}…`}
+                                                  autoComplete="off"
+                                                  clearButton
+                                                  onClearButtonClick={() =>
+                                                    setStoreResourceSearch('')
+                                                  }
+                                                />
+                                              </div>
+                                              {(() => {
+                                                const selectedIds =
+                                                  Array.isArray(formData.target_ids) &&
+                                                  formData.target_ids.length > 0
+                                                    ? formData.target_ids
+                                                    : formData.target_id
+                                                      ? [formData.target_id]
+                                                      : [];
+                                                if (selectedIds.length === 0) return null;
+                                                return (
+                                                  <span
+                                                    className={styles.storeResourceSelectedBadge}
+                                                  >
+                                                    {selectedIds.length} selected
+                                                  </span>
+                                                );
+                                              })()}
                                             </div>
-                                            <Text as="span" variant="bodySm" tone="subdued">
-                                              Loading from your store…
-                                            </Text>
-                                          </div>
-                                        ) : storeResources.length === 0 ? (
-                                          <div className={styles.storeResourceListEmpty}>
-                                            <div className={styles.storeResourceListEmptyIcon}>
-                                              <Icon
-                                                source={
+                                            {storeResourcesLoading ? (
+                                              <div className={styles.storeResourceListLoading}>
+                                                <div
+                                                  className={styles.storeResourceListLoadingIcon}
+                                                >
+                                                  <Spinner size="small" />
+                                                </div>
+                                                <Text as="span" variant="bodySm" tone="subdued">
+                                                  Loading from your store…
+                                                </Text>
+                                              </div>
+                                            ) : storeResources.length === 0 ? (
+                                              <div className={styles.storeResourceListEmpty}>
+                                                <div className={styles.storeResourceListEmptyIcon}>
+                                                  <Icon
+                                                    source={
+                                                      formData.target_type === 'product'
+                                                        ? ProductIcon
+                                                        : formData.target_type === 'collection'
+                                                          ? CollectionIcon
+                                                          : PageIcon
+                                                    }
+                                                  />
+                                                </div>
+                                                <Text as="p" variant="bodySm" tone="subdued">
+                                                  {storeResourcesError
+                                                    ? storeResourcesError
+                                                    : storeResourceSearch
+                                                      ? 'No matches. Try a different search.'
+                                                      : formData.target_type === 'page'
+                                                        ? 'No pages found.'
+                                                        : formData.target_type === 'product' ||
+                                                            formData.target_type === 'collection'
+                                                          ? 'No products or collections found. Use the connection status in the top bar to reconnect the store if needed.'
+                                                          : 'No items in your store yet, or the list is still loading.'}
+                                                </Text>
+                                              </div>
+                                            ) : (
+                                              (() => {
+                                                const selectedIds =
+                                                  Array.isArray(formData.target_ids) &&
+                                                  formData.target_ids.length > 0
+                                                    ? formData.target_ids
+                                                    : formData.target_id
+                                                      ? [formData.target_id]
+                                                      : [];
+                                                const resourceIds = new Set(
+                                                  storeResources.map(r => r.id)
+                                                );
+                                                const missingIds = selectedIds.filter(
+                                                  id => !resourceIds.has(id)
+                                                );
+                                                const ResourceIcon =
                                                   formData.target_type === 'product'
                                                     ? ProductIcon
                                                     : formData.target_type === 'collection'
                                                       ? CollectionIcon
-                                                      : PageIcon
-                                                }
-                                              />
-                                            </div>
-                                            <Text as="p" variant="bodySm" tone="subdued">
-                                              {storeResourcesError
-                                                ? storeResourcesError
-                                                : storeResourceSearch
-                                                  ? 'No matches. Try a different search.'
-                                                  : formData.target_type === 'page'
-                                                    ? 'No pages found.'
-                                                    : formData.target_type === 'product' ||
-                                                        formData.target_type === 'collection'
-                                                      ? 'No products or collections found. Use the connection status in the top bar to reconnect the store if needed.'
-                                                      : 'No items in your store yet, or the list is still loading.'}
-                                            </Text>
-                                          </div>
-                                        ) : (
-                                          (() => {
-                                            const selectedIds =
-                                              Array.isArray(formData.target_ids) &&
-                                              formData.target_ids.length > 0
-                                                ? formData.target_ids
-                                                : formData.target_id
-                                                  ? [formData.target_id]
-                                                  : [];
-                                            const resourceIds = new Set(
-                                              storeResources.map(r => r.id)
-                                            );
-                                            const missingIds = selectedIds.filter(
-                                              id => !resourceIds.has(id)
-                                            );
-                                            const ResourceIcon =
-                                              formData.target_type === 'product'
-                                                ? ProductIcon
-                                                : formData.target_type === 'collection'
-                                                  ? CollectionIcon
-                                                  : PageIcon;
-                                            const toggleSelection = id => {
-                                              setIsDirty(true);
-                                              const next = selectedIds.includes(id)
-                                                ? selectedIds.filter(x => x !== id)
-                                                : [...selectedIds, id];
-                                              if (next.length > 1) {
-                                                setFormData(prev => ({
-                                                  ...prev,
-                                                  target_ids: next,
-                                                  target_id: next[0] || '',
-                                                }));
-                                              } else if (next.length === 1) {
-                                                setFormData(prev => ({
-                                                  ...prev,
-                                                  target_id: next[0],
-                                                  target_ids: null,
-                                                }));
-                                              } else {
-                                                setFormData(prev => ({
-                                                  ...prev,
-                                                  target_id: '',
-                                                  target_ids: null,
-                                                }));
-                                              }
-                                            };
-                                            return (
-                                              <div className={styles.storeResourceListScroll}>
-                                                {storeResources.map(r => (
-                                                  <button
-                                                    key={r.id}
-                                                    type="button"
-                                                    className={`${styles.storeResourceItem} ${selectedIds.includes(r.id) ? styles.storeResourceItemSelected : ''}`}
-                                                    onClick={() => toggleSelection(r.id)}
-                                                  >
-                                                    <span
-                                                      className={styles.storeResourceItemIcon}
-                                                      aria-hidden
-                                                    >
-                                                      <Icon source={ResourceIcon} />
-                                                    </span>
-                                                    <span
-                                                      className={styles.storeResourceItemContent}
-                                                    >
-                                                      <span
-                                                        className={styles.storeResourceItemTitle}
+                                                      : PageIcon;
+                                                const toggleSelection = id => {
+                                                  setIsDirty(true);
+                                                  const next = selectedIds.includes(id)
+                                                    ? selectedIds.filter(x => x !== id)
+                                                    : [...selectedIds, id];
+                                                  if (next.length > 1) {
+                                                    setFormData(prev => ({
+                                                      ...prev,
+                                                      target_ids: next,
+                                                      target_id: next[0] || '',
+                                                    }));
+                                                  } else if (next.length === 1) {
+                                                    setFormData(prev => ({
+                                                      ...prev,
+                                                      target_id: next[0],
+                                                      target_ids: null,
+                                                    }));
+                                                  } else {
+                                                    setFormData(prev => ({
+                                                      ...prev,
+                                                      target_id: '',
+                                                      target_ids: null,
+                                                    }));
+                                                  }
+                                                };
+                                                return (
+                                                  <div className={styles.storeResourceListScroll}>
+                                                    {storeResources.map(r => (
+                                                      <button
+                                                        key={r.id}
+                                                        type="button"
+                                                        className={`${styles.storeResourceItem} ${selectedIds.includes(r.id) ? styles.storeResourceItemSelected : ''}`}
+                                                        onClick={() => toggleSelection(r.id)}
                                                       >
-                                                        {r.title}
-                                                      </span>
-                                                      {r.handle && (
                                                         <span
-                                                          className={styles.storeResourceItemHandle}
+                                                          className={styles.storeResourceItemIcon}
+                                                          aria-hidden
                                                         >
-                                                          /{r.handle}
+                                                          <Icon source={ResourceIcon} />
                                                         </span>
-                                                      )}
-                                                    </span>
-                                                    <span
-                                                      className={styles.storeResourceItemCheck}
-                                                      onClick={e => e.stopPropagation()}
-                                                    >
-                                                      <Checkbox
-                                                        label=""
-                                                        labelHidden
-                                                        checked={selectedIds.includes(r.id)}
-                                                        onChange={() => toggleSelection(r.id)}
-                                                        id={`store-resource-${String(r.id).replace(/[^a-zA-Z0-9-]/g, '_')}`}
-                                                      />
-                                                    </span>
-                                                  </button>
-                                                ))}
-                                                {missingIds.map(id => (
-                                                  <button
-                                                    key={id}
-                                                    type="button"
-                                                    className={`${styles.storeResourceItem} ${styles.storeResourceItemSelected}`}
-                                                    onClick={() => toggleSelection(id)}
-                                                  >
-                                                    <span
-                                                      className={styles.storeResourceItemIcon}
-                                                      aria-hidden
-                                                    >
-                                                      <Icon source={ResourceIcon} />
-                                                    </span>
-                                                    <span
-                                                      className={styles.storeResourceItemContent}
-                                                    >
-                                                      <span
-                                                        className={styles.storeResourceItemTitle}
+                                                        <span
+                                                          className={
+                                                            styles.storeResourceItemContent
+                                                          }
+                                                        >
+                                                          <span
+                                                            className={
+                                                              styles.storeResourceItemTitle
+                                                            }
+                                                          >
+                                                            {r.title}
+                                                          </span>
+                                                          {r.handle && (
+                                                            <span
+                                                              className={
+                                                                styles.storeResourceItemHandle
+                                                              }
+                                                            >
+                                                              /{r.handle}
+                                                            </span>
+                                                          )}
+                                                        </span>
+                                                        <span
+                                                          className={styles.storeResourceItemCheck}
+                                                          onClick={e => e.stopPropagation()}
+                                                        >
+                                                          <Checkbox
+                                                            label=""
+                                                            labelHidden
+                                                            checked={selectedIds.includes(r.id)}
+                                                            onChange={() => toggleSelection(r.id)}
+                                                            id={`store-resource-${String(r.id).replace(/[^a-zA-Z0-9-]/g, '_')}`}
+                                                          />
+                                                        </span>
+                                                      </button>
+                                                    ))}
+                                                    {missingIds.map(id => (
+                                                      <button
+                                                        key={id}
+                                                        type="button"
+                                                        className={`${styles.storeResourceItem} ${styles.storeResourceItemSelected}`}
+                                                        onClick={() => toggleSelection(id)}
                                                       >
-                                                        {id.replace(/.*\//, '')} (saved)
-                                                      </span>
-                                                      <span
-                                                        className={styles.storeResourceItemHandle}
-                                                      >
-                                                        Previously selected
-                                                      </span>
-                                                    </span>
-                                                    <span
-                                                      className={styles.storeResourceItemCheck}
-                                                      onClick={e => e.stopPropagation()}
-                                                    >
-                                                      <Checkbox
-                                                        label=""
-                                                        labelHidden
-                                                        checked
-                                                        onChange={() => toggleSelection(id)}
-                                                        id={`store-resource-saved-${String(id).replace(/[^a-zA-Z0-9-]/g, '_')}`}
-                                                      />
-                                                    </span>
-                                                  </button>
-                                                ))}
-                                              </div>
-                                            );
-                                          })()
-                                        )}
-                                      </div>
-                                      {(!formData.target_id || !formData.target_id.trim()) &&
-                                        (!formData.target_ids ||
-                                          formData.target_ids.length === 0) &&
-                                        (!initialData?.target_id ||
-                                          !initialData.target_id.trim()) &&
-                                        (!initialData?.target_ids ||
-                                          initialData.target_ids.length === 0) && (
-                                          <Text as="p" variant="bodySm" tone="critical">
-                                            Select at least one{' '}
-                                            {formData.target_type === 'product'
-                                              ? 'product'
-                                              : formData.target_type === 'collection'
-                                                ? 'collection'
-                                                : 'page'}{' '}
-                                            to target.
-                                          </Text>
-                                        )}
-                                    </BlockStack>
+                                                        <span
+                                                          className={styles.storeResourceItemIcon}
+                                                          aria-hidden
+                                                        >
+                                                          <Icon source={ResourceIcon} />
+                                                        </span>
+                                                        <span
+                                                          className={
+                                                            styles.storeResourceItemContent
+                                                          }
+                                                        >
+                                                          <span
+                                                            className={
+                                                              styles.storeResourceItemTitle
+                                                            }
+                                                          >
+                                                            {id.replace(/.*\//, '')} (saved)
+                                                          </span>
+                                                          <span
+                                                            className={
+                                                              styles.storeResourceItemHandle
+                                                            }
+                                                          >
+                                                            Previously selected
+                                                          </span>
+                                                        </span>
+                                                        <span
+                                                          className={styles.storeResourceItemCheck}
+                                                          onClick={e => e.stopPropagation()}
+                                                        >
+                                                          <Checkbox
+                                                            label=""
+                                                            labelHidden
+                                                            checked
+                                                            onChange={() => toggleSelection(id)}
+                                                            id={`store-resource-saved-${String(id).replace(/[^a-zA-Z0-9-]/g, '_')}`}
+                                                          />
+                                                        </span>
+                                                      </button>
+                                                    ))}
+                                                  </div>
+                                                );
+                                              })()
+                                            )}
+                                          </div>
+                                          {(!formData.target_id || !formData.target_id.trim()) &&
+                                            (!formData.target_ids ||
+                                              formData.target_ids.length === 0) &&
+                                            (!initialData?.target_id ||
+                                              !initialData.target_id.trim()) &&
+                                            (!initialData?.target_ids ||
+                                              initialData.target_ids.length === 0) && (
+                                              <Text as="p" variant="bodySm" tone="critical">
+                                                Select at least one{' '}
+                                                {formData.target_type === 'product'
+                                                  ? 'product'
+                                                  : formData.target_type === 'collection'
+                                                    ? 'collection'
+                                                    : 'page'}{' '}
+                                                to target.
+                                              </Text>
+                                            )}
+                                        </BlockStack>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
-                              )}
-                            </div>
-                            {customUrlModeActive &&
-                              (() => {
-                                return (
-                                  <div
-                                    className={`${styles.panelSection} ${styles.panelSectionFull} ${styles.panelSectionCustomUrl}`}
-                                  >
-                                    <div className={styles.customUrlHeader}>
-                                      <span className={styles.customUrlHeaderIcon}>
-                                        <Icon source={CodeIcon} />
-                                      </span>
-                                      <div>
-                                        <span className={styles.panelSectionTitle}>
-                                          Custom URL rules
-                                          <TooltipWrapper
-                                            content={
-                                              isStandalone
-                                                ? 'Rules match the page path (e.g. /blog), not the full URL. Use paths starting with / for reliable targeting. Include = show on matching pages; Exclude = hide on matching pages.'
-                                                : 'Include = show test on matching pages. Exclude = hide on matching pages. Multiple includes = ANY match. Multiple excludes = hide if ANY match.'
-                                            }
-                                            accessibilityLabel="Custom URL help"
-                                          >
-                                            <span
-                                              className={styles.panelSectionInfoIcon}
-                                              aria-hidden="true"
-                                            >
-                                              <Icon source={InfoIcon} />
+                                {customUrlModeActive &&
+                                  (() => {
+                                    return (
+                                      <div
+                                        className={`${styles.panelSection} ${styles.panelSectionFull} ${styles.panelSectionCustomUrl}`}
+                                      >
+                                        <div className={styles.customUrlHeader}>
+                                          <span className={styles.customUrlHeaderIcon}>
+                                            <Icon source={CodeIcon} />
+                                          </span>
+                                          <div>
+                                            <span className={styles.panelSectionTitle}>
+                                              Custom URL rules
+                                              <TooltipWrapper
+                                                content={
+                                                  isStandalone
+                                                    ? 'Rules match the page path (e.g. /blog), not the full URL. Use paths starting with / for reliable targeting. Include = show on matching pages; Exclude = hide on matching pages.'
+                                                    : 'Include = show test on matching pages. Exclude = hide on matching pages. Multiple includes = ANY match. Multiple excludes = hide if ANY match.'
+                                                }
+                                                accessibilityLabel="Custom URL help"
+                                              >
+                                                <span
+                                                  className={styles.panelSectionInfoIcon}
+                                                  aria-hidden="true"
+                                                >
+                                                  <Icon source={InfoIcon} />
+                                                </span>
+                                              </TooltipWrapper>
                                             </span>
-                                          </TooltipWrapper>
-                                        </span>
-                                        <p className={styles.panelSectionHint}>
-                                          {isStandalone
-                                            ? 'Define where your test runs using page paths (e.g. /blog, /pricing). Rules match the path only, not query or hash.'
-                                            : 'Define where your test runs using URL patterns. Include rules target pages; exclude rules hide them.'}
-                                        </p>
-                                      </div>
-                                    </div>
-                                    <div className={styles.customUrlLogicCallout}>
-                                      <span className={styles.customUrlLogicLabel}>
-                                        How it works
-                                      </span>
-                                      <span className={styles.customUrlLogicText}>
-                                        {isStandalone
-                                          ? 'Include: show test when page path matches any include rule. Exclude: hide when path matches any exclude rule. Path = part after domain (e.g. /blog).'
-                                          : 'Include: show test when URL matches any include rule. Exclude: hide test when URL matches any exclude rule.'}
-                                      </span>
-                                    </div>
-                                    {(formData.segments?.page_rules || []).length === 0 ? (
-                                      <div className={styles.customUrlEmptyState}>
-                                        <p className={styles.customUrlEmptyTitle}>
-                                          No URL rules yet
-                                        </p>
-                                        <p className={styles.customUrlEmptyDesc}>
-                                          {isStandalone
-                                            ? 'Add rules using page paths (e.g. /blog, /pricing) or regex. Click Add rule below and enter your path or pattern.'
-                                            : 'Add rules to target or exclude specific pages. Or use quick-add examples below.'}
-                                        </p>
-                                        <div className={styles.customUrlQuickAdd}>
-                                          {!isStandalone &&
-                                            [
-                                              {
-                                                label: 'Product pages',
-                                                pattern: '/products/',
-                                                match_type: 'starts_with',
-                                                type: 'include',
-                                              },
-                                              {
-                                                label: 'Sale collection',
-                                                pattern: '/collections/sale',
-                                                match_type: 'contains',
-                                                type: 'include',
-                                              },
-                                              {
-                                                label: 'Exclude checkout',
-                                                pattern: '/checkout',
-                                                match_type: 'starts_with',
-                                                type: 'exclude',
-                                              },
-                                            ].map(q => (
+                                            <p className={styles.panelSectionHint}>
+                                              {isStandalone
+                                                ? 'Define where your test runs using page paths (e.g. /blog, /pricing). Rules match the path only, not query or hash.'
+                                                : 'Define where your test runs using URL patterns. Include rules target pages; exclude rules hide them.'}
+                                            </p>
+                                          </div>
+                                        </div>
+                                        <div className={styles.customUrlLogicCallout}>
+                                          <span className={styles.customUrlLogicLabel}>
+                                            How it works
+                                          </span>
+                                          <span className={styles.customUrlLogicText}>
+                                            {isStandalone
+                                              ? 'Include: show test when page path matches any include rule. Exclude: hide when path matches any exclude rule. Path = part after domain (e.g. /blog).'
+                                              : 'Include: show test when URL matches any include rule. Exclude: hide test when URL matches any exclude rule.'}
+                                          </span>
+                                        </div>
+                                        {(formData.segments?.page_rules || []).length === 0 ? (
+                                          <div className={styles.customUrlEmptyState}>
+                                            <p className={styles.customUrlEmptyTitle}>
+                                              No URL rules yet
+                                            </p>
+                                            <p className={styles.customUrlEmptyDesc}>
+                                              {isStandalone
+                                                ? 'Add rules using page paths (e.g. /blog, /pricing) or regex. Click Add rule below and enter your path or pattern.'
+                                                : 'Add rules to target or exclude specific pages. Or use quick-add examples below.'}
+                                            </p>
+                                            <div className={styles.customUrlQuickAdd}>
+                                              {!isStandalone &&
+                                                [
+                                                  {
+                                                    label: 'Product pages',
+                                                    pattern: '/products/',
+                                                    match_type: 'starts_with',
+                                                    type: 'include',
+                                                  },
+                                                  {
+                                                    label: 'Sale collection',
+                                                    pattern: '/collections/sale',
+                                                    match_type: 'contains',
+                                                    type: 'include',
+                                                  },
+                                                  {
+                                                    label: 'Exclude checkout',
+                                                    pattern: '/checkout',
+                                                    match_type: 'starts_with',
+                                                    type: 'exclude',
+                                                  },
+                                                ].map(q => (
+                                                  <button
+                                                    key={q.label}
+                                                    type="button"
+                                                    className={styles.customUrlQuickAddChip}
+                                                    onClick={() => {
+                                                      setIsDirty(true);
+                                                      setFormData(prev => ({
+                                                        ...prev,
+                                                        segments: {
+                                                          ...prev.segments,
+                                                          page_rules: [
+                                                            ...(prev.segments?.page_rules || []),
+                                                            {
+                                                              type: q.type,
+                                                              pattern: q.pattern,
+                                                              match_type: q.match_type,
+                                                            },
+                                                          ],
+                                                        },
+                                                      }));
+                                                    }}
+                                                  >
+                                                    {q.label}
+                                                  </button>
+                                                ))}
+                                              {isStandalone && (
+                                                <p className={styles.customUrlEmptyDesc}>
+                                                  Use &quot;Add rule&quot; below to define path or
+                                                  regex rules. No fixed presets — enter any path
+                                                  (e.g. /blog, /pricing) or regex.
+                                                </p>
+                                              )}
+                                            </div>
+                                          </div>
+                                        ) : null}
+                                        {(formData.segments?.page_rules || []).length > 0 ? (
+                                          <div className={styles.customUrlRulesList}>
+                                            <span className={styles.customUrlRulesLabel}>
+                                              {(formData.segments?.page_rules || []).length} rule
+                                              {(formData.segments?.page_rules || []).length !== 1
+                                                ? 's'
+                                                : ''}
+                                            </span>
+                                          </div>
+                                        ) : null}
+                                        {(formData.segments?.page_rules || []).map((rule, idx) => {
+                                          const presets = !isStandalone
+                                            ? [
+                                                '/products/',
+                                                '/collections/',
+                                                '/cart',
+                                                HOMEPAGE_URL_PATTERN_SHOPIFY,
+                                                HOMEPAGE_URL_PATTERN_STANDALONE,
+                                                '',
+                                              ]
+                                            : [];
+                                          const matchTypeOptions = isStandalone
+                                            ? [
+                                                { label: 'Path contains', value: 'contains' },
+                                                { label: 'Path starts with', value: 'starts_with' },
+                                                { label: 'Path ends with', value: 'ends_with' },
+                                                { label: 'Path equals', value: 'equals' },
+                                                { label: 'Regex', value: 'regex' },
+                                              ]
+                                            : [
+                                                { label: 'Contains', value: 'contains' },
+                                                { label: 'Starts with', value: 'starts_with' },
+                                                { label: 'Ends with', value: 'ends_with' },
+                                                { label: 'Equals', value: 'equals' },
+                                                { label: 'Regex', value: 'regex' },
+                                              ];
+                                          const presetMatchTypes = !isStandalone
+                                            ? {
+                                                '': 'regex',
+                                                '/products/': 'starts_with',
+                                                '/collections/': 'starts_with',
+                                                '/cart': 'equals',
+                                                [HOMEPAGE_URL_PATTERN_SHOPIFY]: 'regex',
+                                                [HOMEPAGE_URL_PATTERN_STANDALONE]: 'regex',
+                                              }
+                                            : {};
+                                          return (
+                                            <div key={idx} className={styles.customRuleRow}>
+                                              <span className={styles.customRuleNumber} aria-hidden>
+                                                {idx + 1}
+                                              </span>
+                                              <div className={styles.ruleTypeToggle}>
+                                                <button
+                                                  type="button"
+                                                  className={`${styles.ruleTypeBadge} ${(rule.type || 'include') === 'include' ? styles.ruleTypeBadgeInclude : styles.ruleTypeBadgeInactive}`}
+                                                  onClick={() => {
+                                                    setIsDirty(true);
+                                                    setFormData(prev => ({
+                                                      ...prev,
+                                                      segments: {
+                                                        ...prev.segments,
+                                                        page_rules: [
+                                                          ...(
+                                                            prev.segments?.page_rules || []
+                                                          ).slice(0, idx),
+                                                          { ...rule, type: 'include' },
+                                                          ...(
+                                                            prev.segments?.page_rules || []
+                                                          ).slice(idx + 1),
+                                                        ],
+                                                      },
+                                                    }));
+                                                  }}
+                                                >
+                                                  Include
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  className={`${styles.ruleTypeBadge} ${(rule.type || 'include') === 'exclude' ? styles.ruleTypeBadgeExclude : styles.ruleTypeBadgeInactive}`}
+                                                  onClick={() => {
+                                                    setIsDirty(true);
+                                                    setFormData(prev => ({
+                                                      ...prev,
+                                                      segments: {
+                                                        ...prev.segments,
+                                                        page_rules: [
+                                                          ...(
+                                                            prev.segments?.page_rules || []
+                                                          ).slice(0, idx),
+                                                          { ...rule, type: 'exclude' },
+                                                          ...(
+                                                            prev.segments?.page_rules || []
+                                                          ).slice(idx + 1),
+                                                        ],
+                                                      },
+                                                    }));
+                                                  }}
+                                                >
+                                                  Exclude
+                                                </button>
+                                              </div>
+                                              {!isStandalone && (
+                                                <Select
+                                                  label=""
+                                                  labelHidden
+                                                  options={[
+                                                    { label: 'All pages', value: '' },
+                                                    { label: 'Product pages', value: '/products/' },
+                                                    {
+                                                      label: 'Collection pages',
+                                                      value: '/collections/',
+                                                    },
+                                                    { label: 'Cart', value: '/cart' },
+                                                    {
+                                                      label: 'Homepage',
+                                                      value: HOMEPAGE_URL_PATTERN_SHOPIFY,
+                                                    },
+                                                    { label: 'Custom URL…', value: '__custom__' },
+                                                  ]}
+                                                  value={
+                                                    presets.includes(rule.pattern || '')
+                                                      ? rule.pattern || ''
+                                                      : rule.pattern === ' ' || rule.pattern
+                                                        ? '__custom__'
+                                                        : ''
+                                                  }
+                                                  onChange={v => {
+                                                    setIsDirty(true);
+                                                    const newPattern =
+                                                      v === '__custom__'
+                                                        ? presets.includes(rule.pattern || '') ||
+                                                          rule.pattern === ' '
+                                                          ? ' '
+                                                          : rule.pattern || ' '
+                                                        : v;
+                                                    const newMatchType =
+                                                      v === '__custom__'
+                                                        ? rule.match_type || 'contains'
+                                                        : presetMatchTypes[v] || 'regex';
+                                                    setFormData(prev => ({
+                                                      ...prev,
+                                                      segments: {
+                                                        ...prev.segments,
+                                                        page_rules: [
+                                                          ...(
+                                                            prev.segments?.page_rules || []
+                                                          ).slice(0, idx),
+                                                          {
+                                                            ...rule,
+                                                            pattern: newPattern,
+                                                            match_type: newMatchType,
+                                                          },
+                                                          ...(
+                                                            prev.segments?.page_rules || []
+                                                          ).slice(idx + 1),
+                                                        ],
+                                                      },
+                                                    }));
+                                                  }}
+                                                />
+                                              )}
+                                              <div className={styles.matchTypeSelect}>
+                                                <Select
+                                                  label=""
+                                                  labelHidden
+                                                  options={matchTypeOptions}
+                                                  value={
+                                                    rule.match_type ||
+                                                    (isStandalone
+                                                      ? 'starts_with'
+                                                      : presets.includes(rule.pattern || '')
+                                                        ? presetMatchTypes[rule.pattern]
+                                                        : 'contains')
+                                                  }
+                                                  onChange={v => {
+                                                    setIsDirty(true);
+                                                    setFormData(prev => ({
+                                                      ...prev,
+                                                      segments: {
+                                                        ...prev.segments,
+                                                        page_rules: [
+                                                          ...(
+                                                            prev.segments?.page_rules || []
+                                                          ).slice(0, idx),
+                                                          { ...rule, match_type: v },
+                                                          ...(
+                                                            prev.segments?.page_rules || []
+                                                          ).slice(idx + 1),
+                                                        ],
+                                                      },
+                                                    }));
+                                                  }}
+                                                />
+                                              </div>
+                                              <div className={styles.customUrlInputWrap}>
+                                                <TextField
+                                                  label={
+                                                    isStandalone ? 'Path or regex' : 'URL pattern'
+                                                  }
+                                                  labelHidden
+                                                  value={
+                                                    rule.pattern === ' ' ? '' : rule.pattern || ''
+                                                  }
+                                                  onChange={v => {
+                                                    setIsDirty(true);
+                                                    setFormData(prev => ({
+                                                      ...prev,
+                                                      segments: {
+                                                        ...prev.segments,
+                                                        page_rules: [
+                                                          ...(
+                                                            prev.segments?.page_rules || []
+                                                          ).slice(0, idx),
+                                                          { ...rule, pattern: v === '' ? ' ' : v },
+                                                          ...(
+                                                            prev.segments?.page_rules || []
+                                                          ).slice(idx + 1),
+                                                        ],
+                                                      },
+                                                    }));
+                                                  }}
+                                                  placeholder={
+                                                    isStandalone
+                                                      ? (rule.match_type || 'starts_with') ===
+                                                        'regex'
+                                                        ? 'e.g. ^/blog, ^/en/.*'
+                                                        : 'e.g. /blog, /pricing, /docs'
+                                                      : (rule.match_type || 'contains') === 'regex'
+                                                        ? 'e.g. ^/products/.* or /collections/sale'
+                                                        : (rule.match_type || 'contains') ===
+                                                            'contains'
+                                                          ? 'e.g. /products/ or sale'
+                                                          : (rule.match_type || 'contains') ===
+                                                              'starts_with'
+                                                            ? 'e.g. /products/ or /collections/'
+                                                            : (rule.match_type || 'contains') ===
+                                                                'ends_with'
+                                                              ? 'e.g. .html or /checkout'
+                                                              : 'e.g. /cart or /pages/about'
+                                                  }
+                                                  autoComplete="off"
+                                                  helpText={
+                                                    (rule.match_type || 'starts_with') ===
+                                                      'regex' && isStandalone
+                                                      ? 'JavaScript regex. Path-based patterns (e.g. starting with /) match the page path only.'
+                                                      : (rule.match_type || 'contains') ===
+                                                            'regex' && !isStandalone
+                                                        ? 'JavaScript regex. Use ^ for start, $ for end.'
+                                                        : null
+                                                  }
+                                                />
+                                              </div>
                                               <button
-                                                key={q.label}
                                                 type="button"
-                                                className={styles.customUrlQuickAddChip}
+                                                className={styles.removeRuleBtn}
                                                 onClick={() => {
                                                   setIsDirty(true);
                                                   setFormData(prev => ({
                                                     ...prev,
                                                     segments: {
                                                       ...prev.segments,
-                                                      page_rules: [
-                                                        ...(prev.segments?.page_rules || []),
-                                                        {
-                                                          type: q.type,
-                                                          pattern: q.pattern,
-                                                          match_type: q.match_type,
-                                                        },
-                                                      ],
+                                                      page_rules: (
+                                                        prev.segments?.page_rules || []
+                                                      ).filter((_, i) => i !== idx),
                                                     },
                                                   }));
                                                 }}
                                               >
-                                                {q.label}
+                                                Remove
                                               </button>
-                                            ))}
-                                          {isStandalone && (
-                                            <p className={styles.customUrlEmptyDesc}>
-                                              Use &quot;Add rule&quot; below to define path or regex
-                                              rules. No fixed presets — enter any path (e.g. /blog,
-                                              /pricing) or regex.
-                                            </p>
-                                          )}
-                                        </div>
-                                      </div>
-                                    ) : null}
-                                    {(formData.segments?.page_rules || []).length > 0 ? (
-                                      <div className={styles.customUrlRulesList}>
-                                        <span className={styles.customUrlRulesLabel}>
-                                          {(formData.segments?.page_rules || []).length} rule
-                                          {(formData.segments?.page_rules || []).length !== 1
-                                            ? 's'
-                                            : ''}
-                                        </span>
-                                      </div>
-                                    ) : null}
-                                    {(formData.segments?.page_rules || []).map((rule, idx) => {
-                                      const presets = !isStandalone
-                                        ? [
-                                            '/products/',
-                                            '/collections/',
-                                            '/cart',
-                                            HOMEPAGE_URL_PATTERN_SHOPIFY,
-                                            HOMEPAGE_URL_PATTERN_STANDALONE,
-                                            '',
-                                          ]
-                                        : [];
-                                      const matchTypeOptions = isStandalone
-                                        ? [
-                                            { label: 'Path contains', value: 'contains' },
-                                            { label: 'Path starts with', value: 'starts_with' },
-                                            { label: 'Path ends with', value: 'ends_with' },
-                                            { label: 'Path equals', value: 'equals' },
-                                            { label: 'Regex', value: 'regex' },
-                                          ]
-                                        : [
-                                            { label: 'Contains', value: 'contains' },
-                                            { label: 'Starts with', value: 'starts_with' },
-                                            { label: 'Ends with', value: 'ends_with' },
-                                            { label: 'Equals', value: 'equals' },
-                                            { label: 'Regex', value: 'regex' },
-                                          ];
-                                      const presetMatchTypes = !isStandalone
-                                        ? {
-                                            '': 'regex',
-                                            '/products/': 'starts_with',
-                                            '/collections/': 'starts_with',
-                                            '/cart': 'equals',
-                                            [HOMEPAGE_URL_PATTERN_SHOPIFY]: 'regex',
-                                            [HOMEPAGE_URL_PATTERN_STANDALONE]: 'regex',
-                                          }
-                                        : {};
-                                      return (
-                                        <div key={idx} className={styles.customRuleRow}>
-                                          <span className={styles.customRuleNumber} aria-hidden>
-                                            {idx + 1}
-                                          </span>
-                                          <div className={styles.ruleTypeToggle}>
-                                            <button
-                                              type="button"
-                                              className={`${styles.ruleTypeBadge} ${(rule.type || 'include') === 'include' ? styles.ruleTypeBadgeInclude : styles.ruleTypeBadgeInactive}`}
-                                              onClick={() => {
-                                                setIsDirty(true);
-                                                setFormData(prev => ({
-                                                  ...prev,
-                                                  segments: {
-                                                    ...prev.segments,
-                                                    page_rules: [
-                                                      ...(prev.segments?.page_rules || []).slice(
-                                                        0,
-                                                        idx
-                                                      ),
-                                                      { ...rule, type: 'include' },
-                                                      ...(prev.segments?.page_rules || []).slice(
-                                                        idx + 1
-                                                      ),
-                                                    ],
+                                            </div>
+                                          );
+                                        })}
+                                        <button
+                                          type="button"
+                                          className={styles.addRuleBtn}
+                                          onClick={() => {
+                                            setIsDirty(true);
+                                            setFormData(prev => ({
+                                              ...prev,
+                                              segments: {
+                                                ...prev.segments,
+                                                page_rules: [
+                                                  ...(prev.segments?.page_rules || []),
+                                                  {
+                                                    type: 'include',
+                                                    pattern: ' ',
+                                                    match_type: isStandalone
+                                                      ? 'starts_with'
+                                                      : 'contains',
                                                   },
-                                                }));
-                                              }}
-                                            >
-                                              Include
-                                            </button>
-                                            <button
-                                              type="button"
-                                              className={`${styles.ruleTypeBadge} ${(rule.type || 'include') === 'exclude' ? styles.ruleTypeBadgeExclude : styles.ruleTypeBadgeInactive}`}
-                                              onClick={() => {
-                                                setIsDirty(true);
-                                                setFormData(prev => ({
-                                                  ...prev,
-                                                  segments: {
-                                                    ...prev.segments,
-                                                    page_rules: [
-                                                      ...(prev.segments?.page_rules || []).slice(
-                                                        0,
-                                                        idx
-                                                      ),
-                                                      { ...rule, type: 'exclude' },
-                                                      ...(prev.segments?.page_rules || []).slice(
-                                                        idx + 1
-                                                      ),
-                                                    ],
-                                                  },
-                                                }));
-                                              }}
-                                            >
-                                              Exclude
-                                            </button>
-                                          </div>
-                                          {!isStandalone && (
-                                            <Select
-                                              label=""
-                                              labelHidden
-                                              options={[
-                                                { label: 'All pages', value: '' },
-                                                { label: 'Product pages', value: '/products/' },
-                                                {
-                                                  label: 'Collection pages',
-                                                  value: '/collections/',
-                                                },
-                                                { label: 'Cart', value: '/cart' },
-                                                {
-                                                  label: 'Homepage',
-                                                  value: HOMEPAGE_URL_PATTERN_SHOPIFY,
-                                                },
-                                                { label: 'Custom URL…', value: '__custom__' },
-                                              ]}
-                                              value={
-                                                presets.includes(rule.pattern || '')
-                                                  ? rule.pattern || ''
-                                                  : rule.pattern === ' ' || rule.pattern
-                                                    ? '__custom__'
-                                                    : ''
-                                              }
-                                              onChange={v => {
-                                                setIsDirty(true);
-                                                const newPattern =
-                                                  v === '__custom__'
-                                                    ? presets.includes(rule.pattern || '') ||
-                                                      rule.pattern === ' '
-                                                      ? ' '
-                                                      : rule.pattern || ' '
-                                                    : v;
-                                                const newMatchType =
-                                                  v === '__custom__'
-                                                    ? rule.match_type || 'contains'
-                                                    : presetMatchTypes[v] || 'regex';
-                                                setFormData(prev => ({
-                                                  ...prev,
-                                                  segments: {
-                                                    ...prev.segments,
-                                                    page_rules: [
-                                                      ...(prev.segments?.page_rules || []).slice(
-                                                        0,
-                                                        idx
-                                                      ),
-                                                      {
-                                                        ...rule,
-                                                        pattern: newPattern,
-                                                        match_type: newMatchType,
-                                                      },
-                                                      ...(prev.segments?.page_rules || []).slice(
-                                                        idx + 1
-                                                      ),
-                                                    ],
-                                                  },
-                                                }));
-                                              }}
-                                            />
-                                          )}
-                                          <div className={styles.matchTypeSelect}>
-                                            <Select
-                                              label=""
-                                              labelHidden
-                                              options={matchTypeOptions}
-                                              value={
-                                                rule.match_type ||
-                                                (isStandalone
-                                                  ? 'starts_with'
-                                                  : presets.includes(rule.pattern || '')
-                                                    ? presetMatchTypes[rule.pattern]
-                                                    : 'contains')
-                                              }
-                                              onChange={v => {
-                                                setIsDirty(true);
-                                                setFormData(prev => ({
-                                                  ...prev,
-                                                  segments: {
-                                                    ...prev.segments,
-                                                    page_rules: [
-                                                      ...(prev.segments?.page_rules || []).slice(
-                                                        0,
-                                                        idx
-                                                      ),
-                                                      { ...rule, match_type: v },
-                                                      ...(prev.segments?.page_rules || []).slice(
-                                                        idx + 1
-                                                      ),
-                                                    ],
-                                                  },
-                                                }));
-                                              }}
-                                            />
-                                          </div>
-                                          <div className={styles.customUrlInputWrap}>
-                                            <TextField
-                                              label={isStandalone ? 'Path or regex' : 'URL pattern'}
-                                              labelHidden
-                                              value={rule.pattern === ' ' ? '' : rule.pattern || ''}
-                                              onChange={v => {
-                                                setIsDirty(true);
-                                                setFormData(prev => ({
-                                                  ...prev,
-                                                  segments: {
-                                                    ...prev.segments,
-                                                    page_rules: [
-                                                      ...(prev.segments?.page_rules || []).slice(
-                                                        0,
-                                                        idx
-                                                      ),
-                                                      { ...rule, pattern: v === '' ? ' ' : v },
-                                                      ...(prev.segments?.page_rules || []).slice(
-                                                        idx + 1
-                                                      ),
-                                                    ],
-                                                  },
-                                                }));
-                                              }}
-                                              placeholder={
-                                                isStandalone
-                                                  ? (rule.match_type || 'starts_with') === 'regex'
-                                                    ? 'e.g. ^/blog, ^/en/.*'
-                                                    : 'e.g. /blog, /pricing, /docs'
-                                                  : (rule.match_type || 'contains') === 'regex'
-                                                    ? 'e.g. ^/products/.* or /collections/sale'
-                                                    : (rule.match_type || 'contains') === 'contains'
-                                                      ? 'e.g. /products/ or sale'
-                                                      : (rule.match_type || 'contains') ===
-                                                          'starts_with'
-                                                        ? 'e.g. /products/ or /collections/'
-                                                        : (rule.match_type || 'contains') ===
-                                                            'ends_with'
-                                                          ? 'e.g. .html or /checkout'
-                                                          : 'e.g. /cart or /pages/about'
-                                              }
-                                              autoComplete="off"
-                                              helpText={
-                                                (rule.match_type || 'starts_with') === 'regex' &&
-                                                isStandalone
-                                                  ? 'JavaScript regex. Path-based patterns (e.g. starting with /) match the page path only.'
-                                                  : (rule.match_type || 'contains') === 'regex' &&
-                                                      !isStandalone
-                                                    ? 'JavaScript regex. Use ^ for start, $ for end.'
-                                                    : null
-                                              }
-                                            />
-                                          </div>
-                                          <button
-                                            type="button"
-                                            className={styles.removeRuleBtn}
-                                            onClick={() => {
-                                              setIsDirty(true);
-                                              setFormData(prev => ({
-                                                ...prev,
-                                                segments: {
-                                                  ...prev.segments,
-                                                  page_rules: (
-                                                    prev.segments?.page_rules || []
-                                                  ).filter((_, i) => i !== idx),
-                                                },
-                                              }));
-                                            }}
-                                          >
-                                            Remove
-                                          </button>
-                                        </div>
-                                      );
-                                    })}
-                                    <button
-                                      type="button"
-                                      className={styles.addRuleBtn}
-                                      onClick={() => {
-                                        setIsDirty(true);
-                                        setFormData(prev => ({
-                                          ...prev,
-                                          segments: {
-                                            ...prev.segments,
-                                            page_rules: [
-                                              ...(prev.segments?.page_rules || []),
-                                              {
-                                                type: 'include',
-                                                pattern: ' ',
-                                                match_type: isStandalone
-                                                  ? 'starts_with'
-                                                  : 'contains',
+                                                ],
                                               },
-                                            ],
-                                          },
-                                        }));
-                                      }}
-                                    >
-                                      <Icon source={PlusIcon} />
-                                      Add rule
-                                    </button>
-                                  </div>
-                                );
-                              })()}
+                                            }));
+                                          }}
+                                        >
+                                          <Icon source={PlusIcon} />
+                                          Add rule
+                                        </button>
+                                      </div>
+                                    );
+                                  })()}
+                              </>
+                            )}
                           </div>,
                         ]
                       : null}
@@ -4879,6 +4970,12 @@ function TestWizard({
                       );
                     })}
                   </div>
+                  {(formData.type || '').toLowerCase() === 'price' && (
+                    <p className={styles.goalPriceMetricHint}>
+                      For price tests, <strong>Revenue</strong> (or Profit with COGS) is usually the
+                      best primary metric; conversion-only can bias toward lower prices.
+                    </p>
+                  )}
                 </div>
 
                 {formData.goal?.metric === 'revenue' && (
@@ -5189,7 +5286,7 @@ function TestWizard({
                             },
                           })
                         }
-                        helpText="Threshold for declaring a winner"
+                        helpText="95% = 5% risk of false positive (not '95% chance winner is better'). See Documentation → Price testing for interpreting results."
                       />
                     </div>
                     <div style={{ minWidth: 140 }}>
@@ -5259,13 +5356,29 @@ function TestWizard({
   );
 
   const getVariantConfigType = () => {
+    const testType = (formData.type || '').toLowerCase();
+    const template = selectedTemplate || formData.goal?.template_key || '';
+
+    if (testType === 'price' || template === 'price' || template === 'pricing') return 'price';
+    if (testType === 'shipping' || template === 'shipping') return 'shipping';
+    if (testType === 'offer' || template === 'offer') return 'offer';
+    if (template === 'split-url') return 'url';
+    if (template === 'template') return 'template';
+    if (template === 'onsite-edit' || template === 'theme' || template === 'content') return 'code';
+
     const source =
       mode === 'edit' && initialData?.variants?.[0]?.config
         ? initialData.variants[0].config
         : formData.variants?.[0]?.config;
     if (!source) return 'code';
     if ('url' in source) return 'url';
-    if ('price' in source) return 'price';
+    if (
+      'price' in source ||
+      'priceMode' in source ||
+      'priceDelta' in source ||
+      'pricePercent' in source
+    )
+      return 'price';
     if ('rate' in source) return 'shipping';
     if ('template' in source) return 'template';
     if ('discount' in source || 'discount_type' in source || 'discount_value' in source)
@@ -5286,6 +5399,13 @@ function TestWizard({
 
   const renderVariantUrlModule = () => (
     <BlockStack gap="400">
+      <Banner tone="info" title="Split URL test">
+        <Text as="p" variant="bodySm">
+          Visitors matching this test will be redirected to the variant URL. Use full same-origin
+          URLs (e.g. https://yoursite.com/pages/landing) for best results. Control can leave URL
+          empty to stay on the current page.
+        </Text>
+      </Banner>
       <Text variant="bodyMd" color="subdued" as="p">
         Set the URL for each variant. Visitors will be redirected to the assigned variant URL.
       </Text>
@@ -5310,41 +5430,1404 @@ function TestWizard({
     </BlockStack>
   );
 
-  const renderVariantPriceModule = () => (
-    <BlockStack gap="400">
-      <Text variant="bodyMd" color="subdued" as="p">
-        Set the price for each variant. Use empty or 0 for control (original price).
-      </Text>
-      {(formData.variants || []).map((variant, index) => (
-        <Card key={`price-${index}`} sectioned>
-          <FormLayout>
-            <TextField
-              label={variant.name}
-              type="number"
-              value={
-                variant.config?.price !== null && variant.config?.price !== undefined
-                  ? String(variant.config.price)
-                  : ''
-              }
-              onChange={value => {
-                const parsed = value === '' ? null : parseFloat(value);
-                const next = [...(formData.variants || [])];
-                next[index] = { ...next[index], config: { ...next[index].config, price: parsed } };
-                setFormData({ ...formData, variants: next });
-              }}
-              placeholder="Original price (leave empty)"
-              prefix="$"
-              helpText="Override price (e.g. 19.99) or leave empty for control"
-              autoComplete="off"
-            />
-          </FormLayout>
-        </Card>
-      ))}
-    </BlockStack>
-  );
+  const PRICE_MODES = [
+    { value: 'fixed', label: 'Fixed price' },
+    { value: 'amount', label: '$ off/on (amount)' },
+    { value: 'percent', label: '% off/on (percent change)' },
+  ];
+  const PRICE_BASE_OPTIONS = [
+    { value: 'price', label: 'Selling price' },
+    { value: 'compare_at', label: 'Compare-at price (list)' },
+  ];
+
+  const getPricePreview = (cfg, _variantName) => {
+    const m = (cfg?.priceMode || 'fixed').toLowerCase();
+    if (m === 'fixed') {
+      if (cfg.price !== null && cfg.price !== undefined && cfg.price !== '') {
+        const n = Number(cfg.price);
+        return Number.isNaN(n) ? '—' : `$${n.toFixed(2)}`;
+      }
+      return 'Catalog (control)';
+    }
+    if (
+      m === 'amount' &&
+      cfg.priceDelta !== null &&
+      cfg.priceDelta !== undefined &&
+      cfg.priceDelta !== ''
+    ) {
+      const d = Number(cfg.priceDelta);
+      if (!Number.isNaN(d))
+        return d < 0 ? `Catalog − $${Math.abs(d).toFixed(2)}` : `Catalog + $${d.toFixed(2)}`;
+    }
+    if (
+      m === 'percent' &&
+      cfg.pricePercent !== null &&
+      cfg.pricePercent !== undefined &&
+      cfg.pricePercent !== ''
+    ) {
+      const p = Number(cfg.pricePercent);
+      if (!Number.isNaN(p)) {
+        const base = cfg.priceBase === 'compare_at' ? ' compare-at' : '';
+        if (p > 0) return `${p}% off${base}`;
+        if (p < 0) return `${Math.abs(p)}% on${base}`;
+        return `0%${base}`;
+      }
+    }
+    return '—';
+  };
+
+  const getPriceTypeLabel = cfg => {
+    const m = (cfg?.priceMode || 'fixed').toLowerCase();
+    if (m === 'fixed' && (cfg?.price === null || cfg?.price === undefined || cfg?.price === ''))
+      return 'Control';
+    if (m === 'fixed') return 'Fixed';
+    if (m === 'amount') return '$ off/on';
+    if (m === 'percent') return '% off/on';
+    return '—';
+  };
+
+  const getPriceValueCell = variant => {
+    const cfg = variant.config || {};
+    const m = (cfg.priceMode || 'fixed').toLowerCase();
+    if (m === 'fixed' && cfg.price !== null && cfg.price !== undefined && cfg.price !== '') {
+      const n = Number(cfg.price);
+      return Number.isNaN(n) ? '—' : `$${n.toFixed(2)}`;
+    }
+    if (
+      m === 'amount' &&
+      cfg.priceDelta !== null &&
+      cfg.priceDelta !== undefined &&
+      cfg.priceDelta !== ''
+    ) {
+      const d = Number(cfg.priceDelta);
+      if (Number.isNaN(d)) return '—';
+      return d < 0 ? `−$${Math.abs(d).toFixed(2)}` : `+$${d.toFixed(2)}`;
+    }
+    if (
+      m === 'percent' &&
+      cfg.pricePercent !== null &&
+      cfg.pricePercent !== undefined &&
+      cfg.pricePercent !== ''
+    ) {
+      const p = Number(cfg.pricePercent);
+      if (!Number.isNaN(p)) return p >= 0 ? `−${p}%` : `+${Math.abs(p)}%`;
+    }
+    return '—';
+  };
+
+  /** Given variant config and an example catalog price, return the effective displayed price (for preview). */
+  const computeEffectivePrice = (cfg, catalogPrice) => {
+    if (
+      catalogPrice === null ||
+      catalogPrice === undefined ||
+      !Number.isFinite(Number(catalogPrice))
+    )
+      return null;
+    const catalog = Number(catalogPrice);
+    const m = (cfg?.priceMode || 'fixed').toLowerCase();
+    if (m === 'fixed') {
+      if (cfg.price !== null && cfg.price !== undefined && cfg.price !== '') {
+        const n = Number(cfg.price);
+        return Number.isNaN(n) ? catalog : n;
+      }
+      return catalog;
+    }
+    if (
+      m === 'amount' &&
+      cfg.priceDelta !== null &&
+      cfg.priceDelta !== undefined &&
+      cfg.priceDelta !== ''
+    ) {
+      const d = Number(cfg.priceDelta);
+      return Number.isNaN(d) ? catalog : Math.max(0, catalog + d);
+    }
+    if (
+      m === 'percent' &&
+      cfg.pricePercent !== null &&
+      cfg.pricePercent !== undefined &&
+      cfg.pricePercent !== ''
+    ) {
+      const p = Number(cfg.pricePercent);
+      if (Number.isNaN(p)) return catalog;
+      const factor = p >= 0 ? 1 - p / 100 : 1 + Math.abs(p) / 100;
+      return Math.max(0, catalog * factor);
+    }
+    return catalog;
+  };
+
+  const PRICE_AMOUNT_PRESETS = [-10, -5, -2, 2, 5];
+  const PRICE_PERCENT_PRESETS = [-10, -5, 5, 10, 15, 20];
+
+  const getProductLabelFromId = id => {
+    if (!id) return 'Product';
+    const s = String(id);
+    const m = s.match(/Product\/(\d+)/);
+    return m ? `Product ${m[1]}` : s;
+  };
+
+  const renderVariantPriceModule = () => {
+    const variants = formData.variants || [];
+    const priceTargetProductIds =
+      formData.target_type === 'product'
+        ? formData.target_ids?.length
+          ? formData.target_ids
+          : formData.target_id
+            ? [formData.target_id]
+            : []
+        : [];
+
+    const renderPriceVariantEditor = index => {
+      const variant = variants[index] || {};
+      const mode = variant.config?.priceMode || 'fixed';
+      const isFixed = mode === 'fixed';
+      const isAmount = mode === 'amount';
+      const isPercent = mode === 'percent';
+      return (
+        <div
+          className={styles.priceEditorPanel}
+          style={{ ['--price-editor-accent']: getVariantColor(index) }}
+        >
+          <BlockStack gap="400">
+            <div className={styles.priceEditorHeader}>
+              <div className={styles.priceEditorHeaderRow}>
+                <Text as="span" variant="bodySm" fontWeight="medium" tone="subdued">
+                  Price configuration · {variant.name || `Variant ${index + 1}`} ({index + 1} of{' '}
+                  {variants.length})
+                </Text>
+                {index > 0 && variants[index - 1] && (
+                  <Button
+                    size="slim"
+                    variant="plain"
+                    onClick={() => {
+                      const source = variants[index - 1];
+                      if (!source?.config) return;
+                      setFormData(prev => {
+                        const next = [...(prev.variants || [])];
+                        next[index] = { ...next[index], config: { ...source.config } };
+                        return { ...prev, variants: next };
+                      });
+                    }}
+                  >
+                    Copy from {variants[index - 1].name || `Variant ${index}`}
+                  </Button>
+                )}
+              </div>
+            </div>
+            {(isAmount || isPercent) && (
+              <div className={styles.priceQuickSetStrip}>
+                <Text as="span" variant="bodySm" fontWeight="medium">
+                  Quick set:
+                </Text>
+                {isAmount &&
+                  PRICE_AMOUNT_PRESETS.map(d => (
+                    <Button
+                      key={d}
+                      size="slim"
+                      onClick={() => {
+                        setFormData(prev => {
+                          const next = [...(prev.variants || [])];
+                          next[index] = {
+                            ...next[index],
+                            config: { ...next[index].config, priceDelta: d },
+                          };
+                          return { ...prev, variants: next };
+                        });
+                      }}
+                    >
+                      {d >= 0 ? `+$${d}` : `−$${Math.abs(d)}`}
+                    </Button>
+                  ))}
+                {isPercent &&
+                  PRICE_PERCENT_PRESETS.map(p => (
+                    <Button
+                      key={p}
+                      size="slim"
+                      onClick={() => {
+                        setFormData(prev => {
+                          const next = [...(prev.variants || [])];
+                          next[index] = {
+                            ...next[index],
+                            config: { ...next[index].config, pricePercent: p },
+                          };
+                          return { ...prev, variants: next };
+                        });
+                      }}
+                    >
+                      {p >= 0 ? `${p}% off` : `${Math.abs(p)}% on`}
+                    </Button>
+                  ))}
+              </div>
+            )}
+            {formData.pricePerProduct && priceTargetProductIds.length >= 1 ? (
+              <BlockStack gap="400">
+                <Text as="p" variant="bodySm" fontWeight="semibold">
+                  Price per product
+                </Text>
+                <div className={styles.pricePerProductGrid}>
+                  {priceTargetProductIds.map(productId => {
+                    const baseCfg = variant.config || {};
+                    const over = baseCfg.byProduct && baseCfg.byProduct[productId];
+                    const cfg =
+                      over && typeof over === 'object' ? { ...baseCfg, ...over } : baseCfg;
+                    const pMode = cfg.priceMode || 'fixed';
+                    const pFixed = pMode === 'fixed';
+                    const pAmount = pMode === 'amount';
+                    const pPercent = pMode === 'percent';
+                    const updateByProduct = (key, value) => {
+                      setFormData(prev => {
+                        const next = [...(prev.variants || [])];
+                        const c = next[index]?.config || {};
+                        const byProduct = { ...(c.byProduct || {}) };
+                        byProduct[productId] = { ...(byProduct[productId] || {}), [key]: value };
+                        next[index] = { ...next[index], config: { ...c, byProduct } };
+                        return { ...prev, variants: next };
+                      });
+                    };
+                    return (
+                      <div key={productId} className={styles.pricePerProductCard}>
+                        <Card sectioned>
+                          <BlockStack gap="300">
+                            <Text as="p" variant="headingSm" fontWeight="semibold">
+                              {getProductLabelFromId(productId)}
+                            </Text>
+                            <FormLayout>
+                              <Select
+                                label="Price mode"
+                                options={PRICE_MODES}
+                                value={pMode}
+                                onChange={value => updateByProduct('priceMode', value)}
+                              />
+                              {(pAmount || pPercent) && (
+                                <Select
+                                  label="Price base"
+                                  options={PRICE_BASE_OPTIONS}
+                                  value={cfg.priceBase || 'price'}
+                                  onChange={value => updateByProduct('priceBase', value)}
+                                />
+                              )}
+                              {pFixed && (
+                                <TextField
+                                  label="Fixed price"
+                                  type="number"
+                                  value={
+                                    cfg.price !== null &&
+                                    cfg.price !== undefined &&
+                                    cfg.price !== ''
+                                      ? String(cfg.price)
+                                      : ''
+                                  }
+                                  onChange={value =>
+                                    updateByProduct(
+                                      'price',
+                                      value === '' ? null : parseFloat(value)
+                                    )
+                                  }
+                                  placeholder="e.g. 24.99"
+                                  prefix="$"
+                                  min={0}
+                                  step={0.01}
+                                />
+                              )}
+                              {pAmount && (
+                                <TextField
+                                  label="Amount ($)"
+                                  type="number"
+                                  value={
+                                    cfg.priceDelta !== null &&
+                                    cfg.priceDelta !== undefined &&
+                                    cfg.priceDelta !== ''
+                                      ? String(cfg.priceDelta)
+                                      : ''
+                                  }
+                                  onChange={value =>
+                                    updateByProduct(
+                                      'priceDelta',
+                                      value === '' ? null : parseFloat(value)
+                                    )
+                                  }
+                                  placeholder="e.g. -5 or +2"
+                                />
+                              )}
+                              {pPercent && (
+                                <TextField
+                                  label="Percent"
+                                  type="number"
+                                  value={
+                                    cfg.pricePercent !== null &&
+                                    cfg.pricePercent !== undefined &&
+                                    cfg.pricePercent !== ''
+                                      ? String(cfg.pricePercent)
+                                      : ''
+                                  }
+                                  onChange={value =>
+                                    updateByProduct(
+                                      'pricePercent',
+                                      value === '' ? null : parseFloat(value)
+                                    )
+                                  }
+                                  placeholder="e.g. 10 or -10"
+                                  suffix="%"
+                                  min={-100}
+                                  max={100}
+                                />
+                              )}
+                            </FormLayout>
+                            <div className={styles.pricePerVariantSection}>
+                              <Text as="p" variant="bodySm" fontWeight="medium">
+                                Per-variant overrides (optional)
+                              </Text>
+                              <Text as="p" variant="bodySm" tone="subdued">
+                                Set a different price for specific product variants (SKUs). Use the
+                                variant ID from Shopify Admin (product → variant ID in URL or API),
+                                e.g. 40123456789.
+                              </Text>
+                              {(over?.byVariant && typeof over.byVariant === 'object'
+                                ? Object.entries(over.byVariant)
+                                : []
+                              ).map(([vKey, vCfg]) => {
+                                const vMode = (vCfg?.priceMode || 'fixed').toLowerCase();
+                                const vFixed = vMode === 'fixed';
+                                const vAmount = vMode === 'amount';
+                                const vPercent = vMode === 'percent';
+                                const updateByVariant = (key, value) => {
+                                  setFormData(prev => {
+                                    const next = [...(prev.variants || [])];
+                                    const c = next[index]?.config || {};
+                                    const byProduct = { ...(c.byProduct || {}) };
+                                    const productOver = {
+                                      ...(byProduct[productId] || {}),
+                                      byVariant: { ...(byProduct[productId]?.byVariant || {}) },
+                                    };
+                                    productOver.byVariant[vKey] = {
+                                      ...(productOver.byVariant[vKey] || {}),
+                                      [key]: value,
+                                    };
+                                    byProduct[productId] = productOver;
+                                    next[index] = { ...next[index], config: { ...c, byProduct } };
+                                    return { ...prev, variants: next };
+                                  });
+                                };
+                                const removeVariantOverride = () => {
+                                  setFormData(prev => {
+                                    const next = [...(prev.variants || [])];
+                                    const c = next[index]?.config || {};
+                                    const byProduct = { ...(c.byProduct || {}) };
+                                    const productOver = { ...(byProduct[productId] || {}) };
+                                    const byVariant = { ...(productOver.byVariant || {}) };
+                                    delete byVariant[vKey];
+                                    byProduct[productId] = {
+                                      ...productOver,
+                                      byVariant: Object.keys(byVariant).length
+                                        ? byVariant
+                                        : undefined,
+                                    };
+                                    next[index] = { ...next[index], config: { ...c, byProduct } };
+                                    return { ...prev, variants: next };
+                                  });
+                                };
+                                const setVariantId = (oldKey, newValue) => {
+                                  const normalized =
+                                    String(newValue || '')
+                                      .trim()
+                                      .replace(/^gid:\/\/shopify\/ProductVariant\/\s*/i, '') ||
+                                    null;
+                                  if (!normalized || normalized === oldKey) return;
+                                  setFormData(prev => {
+                                    const next = [...(prev.variants || [])];
+                                    const c = next[index]?.config || {};
+                                    const byProduct = { ...(c.byProduct || {}) };
+                                    const productOver = { ...(byProduct[productId] || {}) };
+                                    const byVariant = { ...(productOver.byVariant || {}) };
+                                    const config = byVariant[oldKey];
+                                    delete byVariant[oldKey];
+                                    byVariant[normalized] = config;
+                                    byProduct[productId] = { ...productOver, byVariant };
+                                    next[index] = { ...next[index], config: { ...c, byProduct } };
+                                    return { ...prev, variants: next };
+                                  });
+                                };
+                                return (
+                                  <div key={vKey} className={styles.pricePerVariantRow}>
+                                    <TextField
+                                      label="Variant ID"
+                                      value={vKey.startsWith('__new_') ? '' : vKey}
+                                      onChange={val => {
+                                        if (val !== undefined && val !== null && String(val).trim())
+                                          setVariantId(vKey, val);
+                                      }}
+                                      placeholder="e.g. 40123456789"
+                                      autoComplete="off"
+                                    />
+                                    <Select
+                                      label="Price mode"
+                                      options={PRICE_MODES}
+                                      value={vMode}
+                                      onChange={value => updateByVariant('priceMode', value)}
+                                    />
+                                    {(vAmount || vPercent) && (
+                                      <Select
+                                        label="Base"
+                                        options={PRICE_BASE_OPTIONS}
+                                        value={vCfg.priceBase || 'price'}
+                                        onChange={value => updateByVariant('priceBase', value)}
+                                      />
+                                    )}
+                                    {vFixed && (
+                                      <TextField
+                                        label="Fixed price"
+                                        type="number"
+                                        value={
+                                          vCfg.price !== null &&
+                                          vCfg.price !== undefined &&
+                                          vCfg.price !== ''
+                                            ? String(vCfg.price)
+                                            : ''
+                                        }
+                                        onChange={v =>
+                                          updateByVariant('price', v === '' ? null : parseFloat(v))
+                                        }
+                                        placeholder="e.g. 24.99"
+                                        prefix="$"
+                                        min={0}
+                                        step={0.01}
+                                      />
+                                    )}
+                                    {vAmount && (
+                                      <TextField
+                                        label="Amount ($)"
+                                        type="number"
+                                        value={
+                                          vCfg.priceDelta !== null &&
+                                          vCfg.priceDelta !== undefined &&
+                                          vCfg.priceDelta !== ''
+                                            ? String(vCfg.priceDelta)
+                                            : ''
+                                        }
+                                        onChange={v =>
+                                          updateByVariant(
+                                            'priceDelta',
+                                            v === '' ? null : parseFloat(v)
+                                          )
+                                        }
+                                        placeholder="-5 or +2"
+                                      />
+                                    )}
+                                    {vPercent && (
+                                      <TextField
+                                        label="Percent"
+                                        type="number"
+                                        value={
+                                          vCfg.pricePercent !== null &&
+                                          vCfg.pricePercent !== undefined &&
+                                          vCfg.pricePercent !== ''
+                                            ? String(vCfg.pricePercent)
+                                            : ''
+                                        }
+                                        onChange={v =>
+                                          updateByVariant(
+                                            'pricePercent',
+                                            v === '' ? null : parseFloat(v)
+                                          )
+                                        }
+                                        placeholder="10 or -10"
+                                        suffix="%"
+                                        min={-100}
+                                        max={100}
+                                      />
+                                    )}
+                                    <Button
+                                      size="slim"
+                                      variant="plain"
+                                      tone="critical"
+                                      onClick={removeVariantOverride}
+                                    >
+                                      Remove
+                                    </Button>
+                                  </div>
+                                );
+                              })}
+                              <Button
+                                size="slim"
+                                variant="secondary"
+                                onClick={() => {
+                                  setFormData(prev => {
+                                    const next = [...(prev.variants || [])];
+                                    const c = next[index]?.config || {};
+                                    const byProduct = { ...(c.byProduct || {}) };
+                                    const productOver = {
+                                      ...(byProduct[productId] || {}),
+                                      byVariant: { ...(byProduct[productId]?.byVariant || {}) },
+                                    };
+                                    productOver.byVariant['__new_' + Date.now()] = {
+                                      priceMode: 'fixed',
+                                    };
+                                    byProduct[productId] = productOver;
+                                    next[index] = { ...next[index], config: { ...c, byProduct } };
+                                    return { ...prev, variants: next };
+                                  });
+                                }}
+                              >
+                                Add variant override
+                              </Button>
+                            </div>
+                          </BlockStack>
+                        </Card>
+                      </div>
+                    );
+                  })}
+                </div>
+              </BlockStack>
+            ) : (
+              <>
+                <div className={styles.priceSectionBlock}>
+                  <div className={styles.priceSectionBlockTitle}>
+                    <span className={styles.priceSectionBlockTitleText}>Price type</span>
+                    <TooltipWrapper
+                      content="Price mode: Control (catalog), Fixed, $ off/on, or % off. Price base (for $ or %): selling price or compare-at. Compare-at may be missing in some themes."
+                      accessibilityLabel="Price type info"
+                      preferredPosition="above"
+                    >
+                      <span
+                        className={styles.priceSectionTitleInfoIcon}
+                        aria-hidden="true"
+                        tabIndex={0}
+                      >
+                        <Icon source={InfoIcon} />
+                      </span>
+                    </TooltipWrapper>
+                  </div>
+                  <div className={styles.priceFormRow}>
+                    <Select
+                      label="Price mode"
+                      options={PRICE_MODES}
+                      value={mode}
+                      onChange={value => {
+                        setFormData(prev => {
+                          const next = [...(prev.variants || [])];
+                          const c = { ...next[index].config, priceMode: value };
+                          if (value === 'amount')
+                            c.priceDelta = next[index].config?.priceDelta ?? null;
+                          if (value === 'percent')
+                            c.pricePercent = next[index].config?.pricePercent ?? null;
+                          next[index] = { ...next[index], config: c };
+                          return { ...prev, variants: next };
+                        });
+                      }}
+                    />
+                    {(isAmount || isPercent) && (
+                      <Select
+                        label="Price base"
+                        options={PRICE_BASE_OPTIONS}
+                        value={variant.config?.priceBase || 'price'}
+                        onChange={value => {
+                          setFormData(prev => {
+                            const next = [...(prev.variants || [])];
+                            next[index] = {
+                              ...next[index],
+                              config: { ...next[index].config, priceBase: value },
+                            };
+                            return { ...prev, variants: next };
+                          });
+                        }}
+                      />
+                    )}
+                  </div>
+                </div>
+                <div className={styles.priceSectionBlock}>
+                  <div className={styles.priceSectionBlockTitle}>
+                    <span className={styles.priceSectionBlockTitleText}>Price value</span>
+                    <TooltipWrapper
+                      content="Fixed: exact price on PDP. Amount: catalog price + value (negative = off). Percent: positive = discount, negative = increase (e.g. 10 = 10% off, −10 = 10% on)."
+                      accessibilityLabel="Price value info"
+                      preferredPosition="above"
+                    >
+                      <span
+                        className={styles.priceSectionTitleInfoIcon}
+                        aria-hidden="true"
+                        tabIndex={0}
+                      >
+                        <Icon source={InfoIcon} />
+                      </span>
+                    </TooltipWrapper>
+                  </div>
+                  <div className={styles.priceSectionBlockContent}>
+                    <FormLayout>
+                      {isFixed && (
+                        <TextField
+                          label="Fixed price"
+                          type="number"
+                          value={
+                            variant.config?.price !== null &&
+                            variant.config?.price !== undefined &&
+                            variant.config?.price !== ''
+                              ? String(variant.config.price)
+                              : ''
+                          }
+                          onChange={value => {
+                            const parsed = value === '' ? null : parseFloat(value);
+                            setFormData(prev => {
+                              const next = [...(prev.variants || [])];
+                              next[index] = {
+                                ...next[index],
+                                config: { ...next[index].config, price: parsed },
+                              };
+                              return { ...prev, variants: next };
+                            });
+                          }}
+                          placeholder="e.g. 24.99 (leave empty for control)"
+                          prefix="$"
+                          autoComplete="off"
+                          min={0}
+                          step={0.01}
+                        />
+                      )}
+                      {isAmount && (
+                        <TextField
+                          label="Amount ($) to add or subtract"
+                          type="number"
+                          value={
+                            variant.config?.priceDelta !== null &&
+                            variant.config?.priceDelta !== undefined &&
+                            variant.config?.priceDelta !== ''
+                              ? String(variant.config.priceDelta)
+                              : ''
+                          }
+                          onChange={value => {
+                            const parsed = value === '' ? null : parseFloat(value);
+                            setFormData(prev => {
+                              const next = [...(prev.variants || [])];
+                              next[index] = {
+                                ...next[index],
+                                config: { ...next[index].config, priceDelta: parsed },
+                              };
+                              return { ...prev, variants: next };
+                            });
+                          }}
+                          placeholder="e.g. -5 for $5 off, 2 for $2 on"
+                          autoComplete="off"
+                        />
+                      )}
+                      {isPercent && (
+                        <TextField
+                          label="Percent off"
+                          type="number"
+                          value={
+                            variant.config?.pricePercent !== null &&
+                            variant.config?.pricePercent !== undefined
+                              ? String(variant.config.pricePercent)
+                              : ''
+                          }
+                          onChange={value => {
+                            const parsed = value === '' ? null : parseFloat(value);
+                            setFormData(prev => {
+                              const next = [...(prev.variants || [])];
+                              next[index] = {
+                                ...next[index],
+                                config: { ...next[index].config, pricePercent: parsed },
+                              };
+                              return { ...prev, variants: next };
+                            });
+                          }}
+                          placeholder="e.g. 10 for 10% off, −10 for 10% on"
+                          suffix="%"
+                          autoComplete="off"
+                          min={-100}
+                          max={100}
+                          step={1}
+                        />
+                      )}
+                    </FormLayout>
+                  </div>
+                </div>
+              </>
+            )}
+          </BlockStack>
+        </div>
+      );
+    };
+
+    const _priceSummaryRows = variants.map((v, _i) => {
+      const cfg = v.config || {};
+      const base = (cfg.priceBase || 'price') === 'compare_at' ? 'Compare-at' : 'Selling';
+      const isPerProduct =
+        formData.pricePerProduct && cfg.byProduct && Object.keys(cfg.byProduct).length > 0;
+      return [
+        v.name,
+        `${v.allocation ?? 0}%`,
+        getPriceTypeLabel(cfg),
+        cfg.priceMode === 'amount' || cfg.priceMode === 'percent' ? base : '—',
+        getPriceValueCell(v),
+        isPerProduct ? 'Per product' : getPricePreview(cfg, v.name),
+      ];
+    });
+
+    const maxFixedPrice = variants.reduce((m, v) => {
+      const cfg = v.config || {};
+      const p = cfg.price;
+      if (p !== null && p !== undefined && p !== '' && !Number.isNaN(Number(p)))
+        m = Math.max(m, Number(p));
+      const byProduct = cfg.byProduct;
+      if (byProduct && typeof byProduct === 'object') {
+        Object.values(byProduct).forEach(ov => {
+          const op = ov?.price;
+          if (op !== null && op !== undefined && op !== '' && !Number.isNaN(Number(op)))
+            m = Math.max(m, Number(op));
+        });
+      }
+      return m;
+    }, 0);
+
+    return (
+      <BlockStack gap="400">
+        <div className={styles.priceStepRoot}>
+          <div className={styles.priceBannerGroup}>
+            <Banner tone="warning" title="Checkout uses catalog price — product page display only">
+              <div className={styles.priceBannerContent}>
+                <Text as="p" variant="bodySm" fontWeight="medium">
+                  RipX changes only the <strong>visible price on the product page</strong>. At
+                  checkout the customer pays your <strong>Shopify catalog price</strong> unless you
+                  align it.
+                </Text>
+                <ul className={styles.priceBannerBullets}>
+                  <li>
+                    To charge the test price: set catalog to the <strong>highest</strong> test
+                    price, then use automatic discounts or Shopify Plus/Functions.
+                  </li>
+                  <li>
+                    Use Fixed price, $ off/on, or % off/on. Run <strong>2–4 weeks</strong>,{' '}
+                    <strong>200–300+ conversions per variant</strong>, 95% significance.
+                  </li>
+                </ul>
+                <p className={styles.priceBannerDocRow}>
+                  <Link
+                    to={`${ROUTES.DOCS}#price-testing`}
+                    className={styles.priceDocLink}
+                    rel="noopener noreferrer"
+                  >
+                    Open Price testing guide in Documentation →
+                  </Link>
+                </p>
+              </div>
+            </Banner>
+
+            {maxFixedPrice > 0 && (
+              <Banner tone="warning" title="Checkout alignment">
+                <BlockStack gap="200">
+                  <Text as="p" variant="bodySm">
+                    Set your Shopify product catalog price to at least{' '}
+                    <strong>${maxFixedPrice.toFixed(2)}</strong> (highest fixed price in this test),
+                    then use discounts or Plus/Functions for lower arms.
+                  </Text>
+                  <p className={styles.priceBannerDocRow}>
+                    <Link
+                      to={`${ROUTES.DOCS}#price-testing`}
+                      className={styles.priceDocLink}
+                      rel="noopener noreferrer"
+                    >
+                      Open Price testing guide →
+                    </Link>
+                  </p>
+                </BlockStack>
+              </Banner>
+            )}
+
+            <Banner tone="info" title="Sample size and run duration">
+              <BlockStack gap="200">
+                <Text as="p" variant="bodySm">
+                  For reliable results: aim for <strong>~300 conversions per variant</strong> to
+                  detect a 10% change at 90% confidence. Run <strong>2–4 weeks</strong> and avoid
+                  stopping early to reduce false positives.{' '}
+                  <Link
+                    to={`${ROUTES.DOCS}#price-testing`}
+                    className={styles.priceDocLink}
+                    rel="noopener noreferrer"
+                  >
+                    Price testing guide →
+                  </Link>
+                </Text>
+                <Text as="p" variant="bodySm">
+                  <a
+                    href="https://www.evanmiller.org/ab-testing/sample-size.html"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={styles.priceDocLink}
+                  >
+                    Sample size calculator (opens in new tab) →
+                  </a>
+                </Text>
+              </BlockStack>
+            </Banner>
+          </div>
+
+          <Card className={styles.productScopeCard}>
+            <div className={styles.productScopeSection}>
+              <div className={styles.productScopeHeader}>
+                <Text variant="headingMd" as="h3" fontWeight="semibold">
+                  Product scope
+                </Text>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Price tests run site-wide; this setting controls <strong>which products</strong>{' '}
+                  get the test price. All products = every product page and sidecart can show the
+                  test price. Selected products only = test price applies only on the chosen
+                  products&apos; pages (and in sidecart for those items where supported).
+                </Text>
+              </div>
+              <div className={styles.productScopeOptionsWrap}>
+                <span className={styles.productScopeOptionsLabel}>Choose scope</span>
+                <div
+                  className={styles.productScopeOptionsRow}
+                  role="group"
+                  aria-label="Product scope"
+                >
+                  <div
+                    className={`${styles.scopeCard} ${styles.scopeCardOption} ${(formData.target_type || 'all-products') !== 'product' ? styles.scopeCardActive : ''}`}
+                    style={{ cursor: 'pointer', margin: 0 }}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      setFormData(prev => ({
+                        ...prev,
+                        target_type: 'all-products',
+                        target_id: '',
+                        target_ids: null,
+                        segments: {
+                          ...prev.segments,
+                          url_pattern: '/products/',
+                          page_rules: prev.segments?.page_rules || [],
+                        },
+                      }));
+                    }}
+                    onKeyDown={e => {
+                      if (e.key !== 'Enter') return;
+                      if ((formData.target_type || 'all-products') === 'all-products') return;
+                      setFormData(prev => ({
+                        ...prev,
+                        target_type: 'all-products',
+                        target_id: '',
+                        target_ids: null,
+                        segments: {
+                          ...prev.segments,
+                          url_pattern: '/products/',
+                          page_rules: prev.segments?.page_rules || [],
+                        },
+                      }));
+                    }}
+                    aria-pressed={(formData.target_type || 'all-products') !== 'product'}
+                    aria-label="All products (site-wide)"
+                  >
+                    <span className={styles.scopeCardIcon}>
+                      <Icon source={ProductIcon} />
+                    </span>
+                    <span className={styles.scopeCardContent}>
+                      <span className={styles.scopeCardLabel}>All products (site-wide)</span>
+                      <span className={styles.scopeCardDesc}>
+                        Run price test on every product page
+                      </span>
+                    </span>
+                  </div>
+                  <div
+                    className={`${styles.scopeCard} ${styles.scopeCardOption} ${formData.target_type === 'product' ? styles.scopeCardActive : ''}`}
+                    style={{ cursor: 'pointer', margin: 0 }}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      setFormData(prev => ({
+                        ...prev,
+                        target_type: 'product',
+                        segments: {
+                          ...prev.segments,
+                          url_pattern: '/products/',
+                          page_rules: prev.segments?.page_rules || [],
+                        },
+                      }));
+                    }}
+                    onKeyDown={e => {
+                      if (e.key !== 'Enter') return;
+                      if (formData.target_type === 'product') return;
+                      setFormData(prev => ({
+                        ...prev,
+                        target_type: 'product',
+                        segments: {
+                          ...prev.segments,
+                          url_pattern: '/products/',
+                          page_rules: prev.segments?.page_rules || [],
+                        },
+                      }));
+                    }}
+                    aria-pressed={formData.target_type === 'product'}
+                    aria-label="Selected products only"
+                  >
+                    <span className={styles.scopeCardIcon}>
+                      <Icon source={TargetIcon} />
+                    </span>
+                    <span className={styles.scopeCardContent}>
+                      <span className={styles.scopeCardLabel}>Selected products only</span>
+                      <span className={styles.scopeCardDesc}>
+                        Apply price test only on chosen products
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+              {formData.target_type === 'product' && (
+                <div className={styles.productScopeSelectPanel}>
+                  <p className={styles.productScopeSelectTitle}>Select products</p>
+                  <p className={styles.productScopeSelectHelp}>
+                    Enter product IDs (one per line) or search and pick from your store below. The
+                    price test and discount apply only on these products&apos; pages.
+                  </p>
+                  {!isStandalone ? (
+                    <BlockStack gap="400">
+                      <div className={styles.storeResourceList}>
+                        <div className={styles.storeResourceListHeader}>
+                          <div className={styles.storeResourceListSearch}>
+                            <TextField
+                              label="Search products"
+                              labelHidden
+                              value={storeResourceSearch}
+                              onChange={setStoreResourceSearch}
+                              placeholder="Search products…"
+                              autoComplete="off"
+                              clearButton
+                              onClearButtonClick={() => setStoreResourceSearch('')}
+                            />
+                          </div>
+                          {priceTargetProductIds.length > 0 && (
+                            <span className={styles.storeResourceSelectedBadge}>
+                              {priceTargetProductIds.length} selected
+                            </span>
+                          )}
+                        </div>
+                        {storeResourcesLoading ? (
+                          <div className={styles.storeResourceListLoading}>
+                            <div className={styles.storeResourceListLoadingIcon}>
+                              <Spinner size="small" />
+                            </div>
+                            <Text as="span" variant="bodySm" tone="subdued">
+                              Loading from your store…
+                            </Text>
+                          </div>
+                        ) : storeResources.length === 0 ? (
+                          <div className={styles.storeResourceListEmpty}>
+                            <div className={styles.storeResourceListEmptyIcon}>
+                              <Icon source={ProductIcon} />
+                            </div>
+                            <Text as="p" variant="bodySm" tone="subdued">
+                              {storeResourcesError ||
+                                (storeResourceSearch
+                                  ? 'No matches. Try a different search.'
+                                  : 'Search to load products. Use connection in the top bar if needed.')}
+                            </Text>
+                          </div>
+                        ) : (
+                          <div className={styles.storeResourceListScroll}>
+                            {storeResources.map(r => {
+                              const selectedIds = priceTargetProductIds;
+                              const isSelected = selectedIds.includes(r.id);
+                              return (
+                                <button
+                                  key={r.id}
+                                  type="button"
+                                  className={`${styles.storeResourceItem} ${isSelected ? styles.storeResourceItemSelected : ''}`}
+                                  onClick={() => {
+                                    setIsDirty(true);
+                                    const next = isSelected
+                                      ? selectedIds.filter(id => id !== r.id)
+                                      : [...selectedIds, r.id];
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      target_ids: next.length > 1 ? next : null,
+                                      target_id:
+                                        next.length === 1 ? next[0] : next.length ? next[0] : '',
+                                    }));
+                                  }}
+                                >
+                                  <span className={styles.storeResourceItemIcon} aria-hidden>
+                                    <Icon source={ProductIcon} />
+                                  </span>
+                                  <span className={styles.storeResourceItemContent}>
+                                    <span className={styles.storeResourceItemTitle}>
+                                      {r.title || r.name || r.handle || r.id}
+                                    </span>
+                                    {r.handle && (
+                                      <span className={styles.storeResourceItemHandle}>
+                                        {r.handle}
+                                      </span>
+                                    )}
+                                  </span>
+                                  {isSelected && (
+                                    <span className={styles.storeResourceItemCheck}>
+                                      <Icon source={CheckCircleIcon} />
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </BlockStack>
+                  ) : (
+                    <TextField
+                      label="Product IDs"
+                      value={
+                        formData.target_ids?.length
+                          ? formData.target_ids.join('\n')
+                          : formData.target_id || ''
+                      }
+                      onChange={value => {
+                        const raw = (value || '')
+                          .split(/[\n,]+/)
+                          .map(s => s.trim())
+                          .filter(Boolean);
+                        const normalize = id => {
+                          if (!id) return '';
+                          if (id.startsWith('gid://')) return id;
+                          const num = id.replace(/\D/g, '');
+                          return num ? `gid://shopify/Product/${num}` : id;
+                        };
+                        const ids = raw.map(normalize);
+                        setFormData(prev => ({
+                          ...prev,
+                          target_ids: ids.length > 1 ? ids : null,
+                          target_id: ids.length >= 1 ? ids[0] : '',
+                        }));
+                      }}
+                      multiline={3}
+                      placeholder="gid://shopify/Product/123 or 123"
+                      helpText="One product ID per line (GID or numeric)"
+                      autoComplete="off"
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+          </Card>
+
+          {priceTargetProductIds.length >= 1 && (
+            <div className={styles.priceOptionCard}>
+              <Card>
+                <BlockStack gap="200">
+                  <Checkbox
+                    label="Set different price per product"
+                    helpText="Use when each targeted product should have a different price (or % / amount) for this variant. Same price for all products when unchecked."
+                    checked={!!formData.pricePerProduct}
+                    onChange={checked => {
+                      setFormData(prev => {
+                        const next = { ...prev, pricePerProduct: !!checked };
+                        if (!!checked && Array.isArray(prev.variants)) {
+                          next.variants = prev.variants.map(v => {
+                            const config = { ...(v.config || {}) };
+                            if (!config.byProduct || typeof config.byProduct !== 'object')
+                              config.byProduct = {};
+                            priceTargetProductIds.forEach(pid => {
+                              if (!config.byProduct[pid])
+                                config.byProduct[pid] = {
+                                  priceMode: config.priceMode || 'fixed',
+                                  price: config.price,
+                                  priceDelta: config.priceDelta,
+                                  pricePercent: config.pricePercent,
+                                  priceBase: config.priceBase || 'price',
+                                };
+                            });
+                            return { ...v, config };
+                          });
+                        }
+                        return next;
+                      });
+                    }}
+                  />
+                </BlockStack>
+              </Card>
+            </div>
+          )}
+
+          <div className={styles.priceConfigWrap}>
+            <Card className={styles.priceSummaryCard}>
+              <BlockStack gap="0">
+                <div className={styles.priceSummaryHeader}>
+                  <div className={styles.priceSummaryHeaderIcon}>
+                    <Icon source={CreditCardIcon} />
+                  </div>
+                  <BlockStack gap="100">
+                    <Text variant="headingMd" as="h3" fontWeight="semibold">
+                      Price summary
+                    </Text>
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      Overview of all variants. Expand a row to configure its price.
+                    </Text>
+                  </BlockStack>
+                  <TooltipWrapper content="Type: Control (catalog) or Fixed / $ off/on / % off. Base: selling or compare-at price for $/% modes. Value: entered amount. Preview: what visitors see on PDP.">
+                    <span style={{ display: 'inline-flex', cursor: 'help', marginLeft: 'auto' }}>
+                      <Icon source={InfoIcon} />
+                    </span>
+                  </TooltipWrapper>
+                </div>
+                {variants.length > 0 && (
+                  <div className={styles.priceQuickFillStrip}>
+                    <Text as="span" variant="bodySm" fontWeight="medium">
+                      Quick fill (non-control variants):
+                    </Text>
+                    <InlineStack gap="200" blockAlign="center" wrap>
+                      <Select
+                        label="Rule"
+                        labelHidden
+                        options={[
+                          { label: '% off control', value: 'percent_off' },
+                          { label: '% on control', value: 'percent_on' },
+                          { label: '$ off control', value: 'amount_off' },
+                          { label: '$ on control', value: 'amount_on' },
+                        ]}
+                        value={quickFillRule}
+                        onChange={setQuickFillRule}
+                      />
+                      <div style={{ minWidth: '80px' }}>
+                        <TextField
+                          label="Value"
+                          labelHidden
+                          type="number"
+                          value={quickFillValue}
+                          onChange={setQuickFillValue}
+                          placeholder={quickFillRule.startsWith('percent') ? 'e.g. 10' : 'e.g. 5'}
+                          autoComplete="off"
+                        />
+                      </div>
+                      <Select
+                        label="Round to nearest"
+                        labelHidden
+                        options={[
+                          { label: 'No rounding', value: '' },
+                          { label: '$0.01', value: '0.01' },
+                          { label: '$0.25', value: '0.25' },
+                          { label: '$0.50', value: '0.50' },
+                          { label: '$1', value: '1' },
+                        ]}
+                        value={quickFillRoundTo}
+                        onChange={setQuickFillRoundTo}
+                      />
+                      <Button
+                        size="slim"
+                        onClick={() => {
+                          const num = parseFloat(quickFillValue, 10);
+                          if (!Number.isFinite(num)) return;
+                          const isPercent = quickFillRule.startsWith('percent');
+                          const isOff = quickFillRule.endsWith('_off');
+                          const roundToVal = quickFillRoundTo
+                            ? parseFloat(quickFillRoundTo, 10)
+                            : null;
+                          setFormData(prev => {
+                            const nextVariants = (prev.variants || []).map(v => {
+                              if (getPriceTypeLabel(v.config) === 'Control') return v;
+                              const cfg = { ...(v.config || {}), priceBase: 'price' };
+                              if (isPercent) {
+                                cfg.priceMode = 'percent';
+                                cfg.pricePercent = isOff ? num : -num;
+                                cfg.price = null;
+                                cfg.priceDelta = null;
+                              } else {
+                                cfg.priceMode = 'amount';
+                                cfg.priceDelta = isOff ? -num : num;
+                                cfg.price = null;
+                                cfg.pricePercent = null;
+                              }
+                              if (Number.isFinite(roundToVal) && roundToVal > 0)
+                                cfg.roundTo = roundToVal;
+                              return { ...v, config: cfg };
+                            });
+                            return { ...prev, variants: nextVariants };
+                          });
+                        }}
+                      >
+                        Apply
+                      </Button>
+                    </InlineStack>
+                  </div>
+                )}
+                {variants.length > 0 && (
+                  <div className={styles.priceAtAGlance}>
+                    <Text as="span" variant="bodySm" fontWeight="medium" tone="subdued">
+                      At a glance:{' '}
+                    </Text>
+                    <Text as="span" variant="bodySm" tone="subdued">
+                      {variants
+                        .map((v, _i) => `${v.name}: ${getPricePreview(v.config, v.name)}`)
+                        .join(' · ')}
+                    </Text>
+                  </div>
+                )}
+                {variants.length > 0 && (
+                  <div className={styles.priceExamplePreview}>
+                    <InlineStack gap="200" blockAlign="center" wrap>
+                      <div style={{ minWidth: '140px' }}>
+                        <TextField
+                          label="Example catalog price"
+                          helpText="See what each variant would show for a given catalog price"
+                          type="number"
+                          value={exampleCatalogPrice}
+                          onChange={setExampleCatalogPrice}
+                          placeholder="e.g. 50"
+                          prefix="$"
+                          autoComplete="off"
+                          min={0}
+                          step={0.01}
+                        />
+                      </div>
+                      {exampleCatalogPrice !== '' &&
+                        Number.isFinite(parseFloat(exampleCatalogPrice, 10)) &&
+                        (() => {
+                          const catalog = parseFloat(exampleCatalogPrice, 10);
+                          const parts = variants.map(v => {
+                            const effective = computeEffectivePrice(v.config, catalog);
+                            const label = v.name;
+                            if (effective === null || effective === undefined) return `${label}: —`;
+                            const rounded =
+                              v.config?.roundTo && Number.isFinite(v.config.roundTo)
+                                ? (
+                                    Math.round(effective / v.config.roundTo) * v.config.roundTo
+                                  ).toFixed(2)
+                                : effective.toFixed(2);
+                            return `${label}: $${rounded}`;
+                          });
+                          return (
+                            <span className={styles.priceExamplePreviewResult}>
+                              If catalog is ${catalog.toFixed(2)}: {parts.join(' · ')}
+                            </span>
+                          );
+                        })()}
+                    </InlineStack>
+                  </div>
+                )}
+                {variants.length > 0 && (
+                  <div className={styles.priceAccordionActions}>
+                    <InlineStack gap="200" blockAlign="center">
+                      <Button
+                        size="slim"
+                        variant="plain"
+                        onClick={() =>
+                          setPriceAccordionExpandedIndices(variants.map((_, idx) => idx))
+                        }
+                      >
+                        Expand all
+                      </Button>
+                      <Button
+                        size="slim"
+                        variant="plain"
+                        onClick={() => setPriceAccordionExpandedIndices([])}
+                      >
+                        Collapse all
+                      </Button>
+                    </InlineStack>
+                  </div>
+                )}
+                <BlockStack gap="0">
+                  {variants.length === 0 ? (
+                    <div className={styles.priceEmptyState}>
+                      <div className={styles.priceEmptyStateIcon}>
+                        <Icon source={ProductIcon} />
+                      </div>
+                      <Text as="p" variant="bodyMd" tone="subdued">
+                        Add variants in the <strong>Traffic</strong> step to configure prices.
+                      </Text>
+                    </div>
+                  ) : (
+                    <div className={styles.priceSummaryList}>
+                      <div className={styles.priceSummaryRowHead} aria-hidden="true">
+                        <span className={styles.priceSummaryColVariant}>Variant</span>
+                        <span className={styles.priceSummaryColAllocation}>Allocation</span>
+                        <span className={styles.priceSummaryColType}>Type</span>
+                        <span className={styles.priceSummaryColBase}>Base</span>
+                        <span className={styles.priceSummaryColValue}>Value</span>
+                        <span className={styles.priceSummaryColPreview}>Preview</span>
+                        <span className={styles.priceSummaryColChevron} />
+                      </div>
+                      {variants.map((v, i) => {
+                        const isControl = getPriceTypeLabel(v.config) === 'Control';
+                        const previewText =
+                          formData.pricePerProduct &&
+                          v.config?.byProduct &&
+                          Object.keys(v.config.byProduct || {}).length > 0
+                            ? 'Per product'
+                            : getPricePreview(v.config, v.name);
+                        const base =
+                          (v.config?.priceBase || 'price') === 'compare_at'
+                            ? 'Compare-at'
+                            : 'Selling';
+                        const isExpanded = priceAccordionExpandedIndices.includes(i);
+                        return (
+                          <div key={i} className={styles.priceSummaryAccordionItem}>
+                            <button
+                              type="button"
+                              className={`${styles.priceSummaryRow} ${styles.priceSummaryRowClickable} ${isExpanded ? styles.priceSummaryRowExpanded : ''}`}
+                              onClick={() =>
+                                setPriceAccordionExpandedIndices(prev =>
+                                  prev.includes(i) ? prev.filter(idx => idx !== i) : [...prev, i]
+                                )
+                              }
+                              aria-expanded={isExpanded}
+                              aria-controls={`price-accordion-body-${i}`}
+                              id={`price-accordion-head-${i}`}
+                            >
+                              <span className={styles.priceSummaryColVariant}>
+                                <span className={styles.priceSummaryRowVariant}>
+                                  {v.name}
+                                  <Badge tone={isControl ? 'info' : 'success'} size="small">
+                                    {getPriceTypeLabel(v.config)}
+                                  </Badge>
+                                </span>
+                              </span>
+                              <span className={styles.priceSummaryColAllocation}>
+                                {v.allocation ?? 0}%
+                              </span>
+                              <span className={styles.priceSummaryColType}>
+                                {getPriceTypeLabel(v.config)}
+                              </span>
+                              <span className={styles.priceSummaryColBase}>
+                                {v.config?.priceMode === 'amount' ||
+                                v.config?.priceMode === 'percent'
+                                  ? base
+                                  : '—'}
+                              </span>
+                              <span className={styles.priceSummaryColValue}>
+                                {getPriceValueCell(v)}
+                              </span>
+                              <span className={styles.priceSummaryColPreview} title={previewText}>
+                                {previewText}
+                              </span>
+                              <span className={styles.priceSummaryAccordionChevron} aria-hidden>
+                                <Icon source={ChevronDownIcon} />
+                              </span>
+                            </button>
+                            <Collapsible id={`price-accordion-body-${i}`} open={isExpanded}>
+                              <div className={styles.priceAccordionBody}>
+                                {renderPriceVariantEditor(i)}
+                              </div>
+                            </Collapsible>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </BlockStack>
+              </BlockStack>
+            </Card>
+          </div>
+        </div>
+      </BlockStack>
+    );
+  };
 
   const renderVariantShippingModule = () => (
     <BlockStack gap="400">
+      <Banner tone="warning" title="Shipping rates are not applied automatically">
+        <Text as="p" variant="bodySm">
+          RipX assigns the variant for analytics. To change the actual shipping rate or
+          free-shipping threshold at checkout, use Shopify Plus delivery Scripts or a{' '}
+          <strong>Delivery Customization Function</strong> that reads a cart attribute.{' '}
+          <Link to={`${ROUTES.DOCS}#tests`} rel="noopener noreferrer">
+            Test types &amp; docs →
+          </Link>
+        </Text>
+      </Banner>
       <Text variant="bodyMd" color="subdued" as="p">
         Set the shipping rate for each variant. Use empty for control (default rate).
       </Text>
@@ -5378,6 +6861,16 @@ function TestWizard({
 
   const renderVariantOfferModule = () => (
     <BlockStack gap="400">
+      <Banner tone="warning" title="Offers are not applied at checkout automatically">
+        <Text as="p" variant="bodySm">
+          RipX assigns the variant for analytics. To apply the discount at checkout, use a{' '}
+          <strong>Discount Function</strong> that reads cart attributes, or create discount codes
+          per variant and share them.{' '}
+          <Link to={`${ROUTES.DOCS}#tests`} rel="noopener noreferrer">
+            Test types &amp; docs →
+          </Link>
+        </Text>
+      </Banner>
       <Text variant="bodyMd" color="subdued" as="p">
         Configure the discount or offer for each variant.
       </Text>
@@ -5443,6 +6936,13 @@ function TestWizard({
 
   const renderVariantTemplateModule = () => (
     <BlockStack gap="400">
+      <Banner tone="info" title="Template is for reference or theme use">
+        <Text as="p" variant="bodySm">
+          Shopify chooses the template at request time. To serve a different template per variant,
+          implement the switch in your theme (e.g. read a cookie) or use a{' '}
+          <strong>Split URL</strong> test and point each variant to a URL that uses that template.
+        </Text>
+      </Banner>
       <Text variant="bodyMd" color="subdued" as="p">
         Select the template for each variant.
       </Text>
@@ -6888,6 +8388,41 @@ function TestWizard({
             </p>
           </div>
         </div>
+
+        {(formData.type || initialData?.type || '').toLowerCase() === 'price' && (
+          <div className={stepStyles.reviewSection} style={{ marginBottom: '1rem' }}>
+            <Banner tone="warning" title="Before you start: set catalog to highest test price">
+              <BlockStack gap="200">
+                <Text as="p" variant="bodySm">
+                  To charge the test price at checkout, set your Shopify product catalog to the{' '}
+                  <strong>highest</strong> price in this test before starting. Otherwise the
+                  customer sees the test price on the product page but pays the catalog price at
+                  checkout.
+                </Text>
+                <Text as="p" variant="bodySm">
+                  Use the{' '}
+                  <Link to={`${ROUTES.DOCS}#price-testing`} rel="noopener noreferrer">
+                    Price testing guide
+                  </Link>{' '}
+                  for the pre-launch QA checklist (script live, preview each variant, incognito
+                  test, full journey to checkout).
+                </Text>
+                <div style={{ marginTop: 12 }}>
+                  <Checkbox
+                    label="I've set my catalog to the highest test price (or I'm running display-only)"
+                    checked={catalogConfirmedForPriceTest}
+                    onChange={setCatalogConfirmedForPriceTest}
+                  />
+                </div>
+                <Text as="p" variant="bodySm" tone="subdued" style={{ marginTop: 12 }}>
+                  Tip: document your hypothesis in the test description (e.g. “If we show 10% off,
+                  then revenue will increase because…”). It keeps decisions traceable after the
+                  test.
+                </Text>
+              </BlockStack>
+            </Banner>
+          </div>
+        )}
 
         <div className={stepStyles.reviewSection}>
           <div className={stepStyles.reviewSectionTitle}>

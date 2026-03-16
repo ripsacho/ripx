@@ -567,27 +567,532 @@
   }
 
   /**
-   * Apply price test
+   * Numeric Shopify product id for data-product-id attributes (themes use number, not GID).
+   */
+  function toNumericProductId(id) {
+    if (id == null || id === '') return '';
+    var s = String(id).trim();
+    var m = s.match(/Product\/(\d+)/);
+    if (m) return m[1];
+    return s.replace(/\D/g, '') || s;
+  }
+
+  /**
+   * Active store currency (Shopify.theme or currency meta).
+   */
+  function getShopCurrency() {
+    if (window.Shopify && window.Shopify.currency && window.Shopify.currency.active) {
+      return String(window.Shopify.currency.active);
+    }
+    var el = document.querySelector('[data-shop-currency], [data-currency-code]');
+    if (el) {
+      return (
+        el.getAttribute('data-shop-currency') || el.getAttribute('data-currency-code') || 'USD'
+      );
+    }
+    return 'USD';
+  }
+
+  /**
+   * Format price for display (theme money format when available).
+   */
+  function formatShopPrice(amount) {
+    var n = parseFloat(amount, 10);
+    if (isNaN(n) || n < 0) return '';
+    if (typeof Shopify !== 'undefined' && typeof Shopify.formatMoney === 'function') {
+      try {
+        return Shopify.formatMoney(Math.round(n * 100));
+      } catch (e) {}
+    }
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency: getShopCurrency(),
+      }).format(n);
+    } catch (e) {
+      return String(n);
+    }
+  }
+
+  /**
+   * Get product JSON from page (Dawn #ProductJson, theme script, or meta).
+   * Returns { product, variants, selectedVariant } or null.
+   */
+  function getProductJson() {
+    var script = document.querySelector(
+      '#ProductJson, script[type="application/json"][data-product-json], script[data-section-type="product-template"]'
+    );
+    if (script && script.textContent) {
+      try {
+        var data = JSON.parse(script.textContent);
+        var product = data.product || data;
+        var variants = product.variants || data.variants || [];
+        if (!variants.length && product && product.variants) variants = product.variants;
+        var selected =
+          product.selected_or_first_available_variant ||
+          data.selected_or_first_available_variant ||
+          (variants.length ? variants[0] : null);
+        if (selected && variants.length) {
+          var selId = selected.id || selected.variant_id;
+          if (
+            selId &&
+            !variants.find(function (v) {
+              return String(v.id) === String(selId);
+            })
+          ) {
+            selected =
+              variants.find(function (v) {
+                return String(v.id) === String(selId);
+              }) || variants[0];
+          }
+        }
+        return { product: product, variants: variants, selectedVariant: selected };
+      } catch (e) {}
+    }
+    if (window.ShopifyAnalytics?.meta?.product) {
+      var p = window.ShopifyAnalytics.meta.product;
+      var vs = p.variants || [];
+      var sel =
+        vs.find(function (v) {
+          return String(v.id) === String(p.selected_variant_id);
+        }) || vs[0];
+      return { product: p, variants: vs, selectedVariant: sel };
+    }
+    if (window.Shopify?.meta?.product) {
+      var p2 = window.Shopify.meta.product;
+      var vs2 = p2.variants || [];
+      var sel2 =
+        vs2.find(function (v) {
+          return String(v.id) === String(p2.selected_variant_id);
+        }) || vs2[0];
+      return { product: p2, variants: vs2, selectedVariant: sel2 };
+    }
+    return null;
+  }
+
+  /**
+   * Get currently selected variant ID (form input or product JSON).
+   */
+  function getSelectedVariantId() {
+    var input = document.querySelector('input[name="id"], input[name="variant_id"], [name="id"]');
+    if (input && input.value) return input.value.trim();
+    var json = getProductJson();
+    if (json && json.selectedVariant && json.selectedVariant.id) {
+      return String(json.selectedVariant.id);
+    }
+    return null;
+  }
+
+  /**
+   * Parse variant price or compare_at_price from JSON (Shopify uses subunits/cents when integer).
+   */
+  function parseVariantPrice(raw) {
+    if (raw === null || raw === undefined) return null;
+    var num = parseFloat(String(raw).replace(/[^0-9.-]/g, ''), 10);
+    if (isNaN(num)) return null;
+    if (typeof raw === 'number' && Number.isInteger(raw)) num = raw / 100;
+    else if (String(raw).indexOf('.') === -1 && num >= 100) num = num / 100;
+    return num;
+  }
+
+  /**
+   * Get catalog selling price for current (or given) variant in dollars.
+   */
+  function getCatalogPriceFromPage(preferredVariantId) {
+    var json = getProductJson();
+    if (!json || !json.variants || !json.variants.length) return null;
+    var vid = preferredVariantId || getSelectedVariantId();
+    var v = json.variants.find(function (x) {
+      return String(x.id) === String(vid);
+    });
+    if (!v) v = json.selectedVariant || json.variants[0];
+    if (!v) return null;
+    return parseVariantPrice(v.price);
+  }
+
+  /**
+   * Get catalog compare_at_price for current variant in dollars (for "percent off list").
+   * Returns null if not present; themes/API may omit it.
+   */
+  function getCatalogCompareAtFromPage(preferredVariantId) {
+    var json = getProductJson();
+    if (!json || !json.variants || !json.variants.length) return null;
+    var vid = preferredVariantId || getSelectedVariantId();
+    var v = json.variants.find(function (x) {
+      return String(x.id) === String(vid);
+    });
+    if (!v) v = json.selectedVariant || json.variants[0];
+    if (!v || v.compare_at_price == null) return null;
+    return parseVariantPrice(v.compare_at_price);
+  }
+
+  /**
+   * Inject cart attributes into add-to-cart forms so a Discount Function can align checkout price with the test.
+   * Uses attributes[_ripx_price_test] and attributes[_ripx_variant] (underscore prefix = private at checkout).
+   */
+  function injectPriceTestCartAttributes(testId, variantId) {
+    if (!testId || variantId == null || String(variantId).trim() === '') return;
+    var keyTest = '_ripx_price_test';
+    var keyVariant = '_ripx_variant';
+    var valueTest = String(testId);
+    var valueVariant = String(variantId);
+    var forms = document.querySelectorAll('form[action*="cart/add"], form[action*="/cart/add"]');
+    forms.forEach(function (form) {
+      if (!form || (form.closest && form.closest('.cart-drawer,.mini-cart,#CartDrawer'))) return;
+      function setInput(name, value) {
+        var existing = form.querySelector('input[name="attributes[' + name + ']"]');
+        if (existing) {
+          existing.value = value;
+          return;
+        }
+        var input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'attributes[' + name + ']';
+        input.value = value;
+        form.appendChild(input);
+      }
+      setInput(keyTest, valueTest);
+      setInput(keyVariant, valueVariant);
+    });
+    if (DEBUG) debugLog('injectPriceTestCartAttributes:', valueTest, valueVariant);
+  }
+
+  /**
+   * Normalize variant ID for lookup (numeric string or gid). Used for byVariant keys.
+   */
+  function toVariantIdKey(variantId) {
+    if (variantId == null || variantId === '') return null;
+    var s = String(variantId).trim();
+    var m = s.match(/ProductVariant\/\s*(\d+)/i) || s.match(/\b(\d{10,})\b/);
+    if (m) return m[1];
+    return s;
+  }
+
+  /**
+   * Get effective price config for current product (and optionally product variant/SKU).
+   * cfg.byProduct[productId] overrides base; cfg.byProduct[productId].byVariant[variantId] overrides per SKU.
+   */
+  function getEffectivePriceConfig(cfg, productId, currentVariantId) {
+    if (!cfg || typeof cfg !== 'object') return cfg;
+    var byProduct = cfg.byProduct;
+    if (!byProduct || typeof byProduct !== 'object') return cfg;
+    var pid = toNumericProductId(productId);
+    var gid = pid ? 'gid://shopify/Product/' + pid : '';
+    var override = byProduct[productId] || byProduct[pid] || (gid ? byProduct[gid] : null);
+    if (!override || typeof override !== 'object') return cfg;
+    var merged = {};
+    for (var k in cfg)
+      if (k !== 'byProduct' && Object.prototype.hasOwnProperty.call(cfg, k)) merged[k] = cfg[k];
+    for (var j in override)
+      if (j !== 'byVariant' && Object.prototype.hasOwnProperty.call(override, j))
+        merged[j] = override[j];
+    var byVariant = override.byVariant;
+    if (
+      currentVariantId != null &&
+      currentVariantId !== '' &&
+      byVariant &&
+      typeof byVariant === 'object'
+    ) {
+      var vkey = toVariantIdKey(currentVariantId);
+      var variantOverride = vkey
+        ? byVariant[vkey] ||
+          byVariant[currentVariantId] ||
+          byVariant['gid://shopify/ProductVariant/' + vkey]
+        : null;
+      if (variantOverride && typeof variantOverride === 'object') {
+        for (var v in variantOverride)
+          if (Object.prototype.hasOwnProperty.call(variantOverride, v))
+            merged[v] = variantOverride[v];
+      }
+    }
+    return merged;
+  }
+
+  /**
+   * Parse roundTo from config (number or string, e.g. 0.25 or "0.25"). Returns a positive number or 0 if invalid.
+   */
+  function parseRoundTo(roundTo) {
+    if (roundTo == null) return 0;
+    var n = typeof roundTo === 'number' ? roundTo : parseFloat(roundTo, 10);
+    return typeof n === 'number' && isFinite(n) && n > 0 ? n : 0;
+  }
+
+  /**
+   * Apply price test — PDP only; scoped to main product (avoids cart, recs, collection cards).
+   * Supports priceMode: 'fixed' (default), 'amount' (catalog + priceDelta), 'percent' (catalog * (1 - pricePercent/100); negative pricePercent = increase, e.g. -10 = 10% on).
+   * When variant.config.byProduct[productId] exists, uses that override for this product (different price per product).
+   * Note: Display only; checkout = catalog unless Plus/Functions/discounts. Injects cart attributes so a Discount Function can align checkout.
+   * Sidecart: line-item prices in cart drawer/mini-cart are not painted here (theme-dependent DOM); Discount Function aligns charged price at checkout.
    */
   async function applyPriceTest(testId, productId, variantId, providedVariant) {
-    const variant = providedVariant || (await getVariant(testId));
+    var variant = providedVariant || (await getVariant(testId));
+    if (!variant || !variant.config) return;
 
-    if (!variant) return;
+    var variantIdForCart = variant.variantId != null ? variant.variantId : variant.id;
+    var currentPdpVariantId = getSelectedVariantId();
+    var cfg = getEffectivePriceConfig(variant.config, productId, currentPdpVariantId);
+    var priceMode = (cfg.priceMode || 'fixed').toLowerCase();
+    if (priceMode === 'control') return;
 
-    // Find the price element and update it
-    const selectors = [
-      `.product-price[data-product-id="${productId}"]`,
-      variantId ? `.price[data-variant-id="${variantId}"]` : null,
-      `.product__price`,
-    ].filter(Boolean);
+    var priceNum = null;
 
-    selectors.forEach(selector => {
-      const element = document.querySelector(selector);
-      if (element && variant.config && variant.config.price) {
-        element.textContent = formatPrice(variant.config.price);
-        element.setAttribute('data-test-variant', variant.variantId);
+    if (priceMode === 'fixed') {
+      var rawPrice = cfg.price;
+      if (rawPrice === null || rawPrice === undefined || rawPrice === '') return;
+      priceNum = parseFloat(rawPrice, 10);
+    } else if (priceMode === 'amount') {
+      var useCompareAt = (cfg.priceBase || 'price').toLowerCase() === 'compare_at';
+      var catalog = useCompareAt ? getCatalogCompareAtFromPage() : null;
+      if (catalog === null) catalog = getCatalogPriceFromPage();
+      if (catalog === null) {
+        if (DEBUG) debugLog('applyPriceTest: amount mode but no catalog price on page');
+        return;
       }
+      if (
+        cfg.priceDelta === null ||
+        cfg.priceDelta === undefined ||
+        String(cfg.priceDelta).trim() === ''
+      )
+        return;
+      var delta = parseFloat(cfg.priceDelta, 10);
+      if (isNaN(delta)) return;
+      priceNum = catalog + delta;
+    } else if (priceMode === 'percent') {
+      var useCompareAtPct = (cfg.priceBase || 'price').toLowerCase() === 'compare_at';
+      var catalogP = useCompareAtPct ? getCatalogCompareAtFromPage() : null;
+      if (catalogP === null) catalogP = getCatalogPriceFromPage();
+      if (catalogP === null) {
+        if (DEBUG) debugLog('applyPriceTest: percent mode but no catalog price on page');
+        return;
+      }
+      if (
+        cfg.pricePercent === null ||
+        cfg.pricePercent === undefined ||
+        String(cfg.pricePercent).trim() === ''
+      )
+        return;
+      var pct = parseFloat(cfg.pricePercent, 10);
+      if (isNaN(pct)) return;
+      priceNum = catalogP * (1 - pct / 100);
+    } else {
+      return;
+    }
+
+    if (isNaN(priceNum) || !isFinite(priceNum)) return;
+    priceNum = Math.max(0, Math.round(priceNum * 100) / 100);
+    var roundToVal = parseRoundTo(cfg.roundTo);
+    if (roundToVal > 0) {
+      priceNum = Math.round(priceNum / roundToVal) * roundToVal;
+      priceNum = Math.max(0, Math.round(priceNum * 100) / 100);
+    }
+
+    var display = formatShopPrice(priceNum);
+    if (!display) return;
+
+    var currentDisplay = display;
+
+    function recomputeDisplay() {
+      if (priceMode === 'fixed') return currentDisplay;
+      if (priceMode === 'amount') {
+        var useCompareAt = (cfg.priceBase || 'price').toLowerCase() === 'compare_at';
+        var catalogAmt = useCompareAt ? getCatalogCompareAtFromPage() : null;
+        if (catalogAmt === null) catalogAmt = getCatalogPriceFromPage();
+        if (catalogAmt === null) return null;
+        var deltaAmt = parseFloat(cfg.priceDelta, 10);
+        if (isNaN(deltaAmt)) return null;
+        var numAmt = Math.max(0, Math.round((catalogAmt + deltaAmt) * 100) / 100);
+        var roundAmt = parseRoundTo(cfg.roundTo);
+        if (roundAmt > 0) numAmt = Math.round(numAmt / roundAmt) * roundAmt;
+        if (!isFinite(numAmt)) return null;
+        return formatShopPrice(numAmt) || null;
+      }
+      if (priceMode === 'percent') {
+        var useCompareAtPct = (cfg.priceBase || 'price').toLowerCase() === 'compare_at';
+        var catalogPct = useCompareAtPct ? getCatalogCompareAtFromPage() : null;
+        if (catalogPct === null) catalogPct = getCatalogPriceFromPage();
+        if (catalogPct === null) return null;
+        var pctVal = parseFloat(cfg.pricePercent, 10);
+        if (isNaN(pctVal)) return null;
+        var numPct = catalogPct * (1 - pctVal / 100);
+        numPct = Math.max(0, Math.round(numPct * 100) / 100);
+        var roundPct = parseRoundTo(cfg.roundTo);
+        if (roundPct > 0) numPct = Math.round(numPct / roundPct) * roundPct;
+        if (!isFinite(numPct)) return null;
+        return formatShopPrice(numPct) || null;
+      }
+      return currentDisplay;
+    }
+
+    var pid = toNumericProductId(productId);
+    var pdpGid = getCurrentProductId();
+    if (!pid || !pdpGid || toNumericProductId(pdpGid) !== pid) {
+      if (DEBUG)
+        debugLog(
+          'applyPriceTest: skip (need PDP for this product)',
+          pid,
+          pdpGid ? 'mismatch' : 'no PDP'
+        );
+      return;
+    }
+
+    var vid = variantId ? String(variantId).replace(/\D/g, '') : '';
+
+    var cartUi =
+      '.cart-drawer,.cart-notification,#CartDrawer,#mini-cart,.mini-cart,[data-cart-drawer],.drawer--cart,aside.mini-cart,cart-drawer,.header__cart,.site-header__cart,predictive-search';
+
+    function inCartUi(el) {
+      return el.closest && el.closest(cartUi);
+    }
+
+    var specificSelectors = [];
+    if (pid) {
+      specificSelectors.push(
+        '.product-price[data-product-id="' + pid + '"]',
+        '[data-product-id="' + pid + '"] .price',
+        '[data-product-id="' + pid + '"] .product__price',
+        '[data-product-id="' + pid + '"] .price-item--regular .price',
+        '[data-product-id="' + pid + '"] .price-item__regular',
+        '[data-product-id="' + pid + '"] [data-price-container] .money',
+        'product-info[data-product-id="' + pid + '"] .price',
+        'product-price[data-product-id="' + pid + '"]'
+      );
+    }
+    if (vid) {
+      specificSelectors.push(
+        '.price[data-variant-id="' + vid + '"]',
+        '[data-variant-id="' + vid + '"] .money',
+        '.product-form [data-variant-id="' + vid + '"] .price'
+      );
+    }
+
+    var broadSelectors = [
+      '.product__price',
+      '.product-single__price',
+      '#ProductPrice',
+      '#productPrice',
+      '.product .price:not(.price--compare)',
+      '.price-item--sale .price-item__sale .money',
+      '.price-item--regular .price-item__regular .money',
+      '[data-product-price]',
+      '.product-price .money',
+      'sale-price .money',
+      '.price--large',
+      'span[data-type="price"]',
+    ];
+
+    function mainProductRoot() {
+      return (
+        document.querySelector('product-info[data-product-id="' + pid + '"]') ||
+        document.querySelector('.product-single[data-product-id="' + pid + '"]') ||
+        document.querySelector('[data-section-type="product-template"]') ||
+        document.querySelector('#MainProduct-template') ||
+        document.querySelector('main .product[data-product-id="' + pid + '"]') ||
+        document.querySelector('main .product-single') ||
+        document.querySelector('.product-template__container')
+      );
+    }
+
+    function paint() {
+      var seen = new WeakSet();
+      function paintEl(el) {
+        if (!el || seen.has(el) || inCartUi(el)) return;
+        seen.add(el);
+        el.textContent = currentDisplay;
+        el.setAttribute('data-test-variant', String(variantIdForCart));
+        el.setAttribute('data-test-id', String(testId));
+        el.setAttribute('data-ripx-price', '1');
+      }
+      specificSelectors.forEach(function (sel) {
+        try {
+          document.querySelectorAll(sel).forEach(function (el) {
+            var pinfo = el.closest('product-info[data-product-id]');
+            if (pinfo && toNumericProductId(pinfo.getAttribute('data-product-id')) !== pid) return;
+            var ps = el.closest('.product-single[data-product-id]');
+            if (ps && toNumericProductId(ps.getAttribute('data-product-id')) !== pid) return;
+            if (
+              el.closest &&
+              el.closest(
+                '.recommended-products,.related-products,[data-section-type="recently-viewed"],[id*="related"]'
+              )
+            )
+              return;
+            paintEl(el);
+          });
+        } catch (e) {}
+      });
+      var root = mainProductRoot();
+      var broadRoot = root || document.querySelector('main') || document.body;
+      broadSelectors.forEach(function (sel) {
+        try {
+          broadRoot.querySelectorAll(sel).forEach(function (el) {
+            if (root && !root.contains(el)) return;
+            if (!root) {
+              var holder = el.closest('[data-product-id]');
+              if (
+                holder &&
+                holder.getAttribute('data-product-id') &&
+                toNumericProductId(holder.getAttribute('data-product-id')) !== pid
+              )
+                return;
+              if (
+                el.closest &&
+                el.closest(
+                  '.recommended-products,.related-products,[data-section-type="recently-viewed"]'
+                )
+              )
+                return;
+            }
+            paintEl(el);
+          });
+        } catch (e) {}
+      });
+    }
+
+    paint();
+
+    var root =
+      mainProductRoot() ||
+      document.querySelector(
+        'product-info, [data-section-type="product-template"], main .product'
+      ) ||
+      document.body;
+    try {
+      if (root && root !== document.body) root.setAttribute('data-ripx-price-test', String(testId));
+    } catch (e) {}
+    setTimeout(paint, 400);
+
+    var t = null;
+    try {
+      var obs = new MutationObserver(function () {
+        if (t) clearTimeout(t);
+        t = setTimeout(paint, 80);
+      });
+      obs.observe(root, { childList: true, subtree: true, characterData: false });
+    } catch (e) {}
+
+    function recomputeAndPaint() {
+      var next = recomputeDisplay();
+      if (next) currentDisplay = next;
+      if (currentDisplay) paint();
+    }
+    ['variant:change', 'shopify:section:load', 'product:update'].forEach(function (evt) {
+      document.addEventListener(evt, function () {
+        setTimeout(recomputeAndPaint, 50);
+      });
     });
+    var variantInput = document.querySelector(
+      'input[name="id"], input[name="variant_id"], [data-variant-picker] input'
+    );
+    if (variantInput) {
+      variantInput.addEventListener('change', function () {
+        setTimeout(recomputeAndPaint, 50);
+      });
+    }
+
+    if (variantIdForCart != null && String(variantIdForCart).trim() !== '') {
+      window.__RIPX_PRICE_TEST_CTX__ = { testId: testId, variantId: variantIdForCart };
+      injectPriceTestCartAttributes(testId, variantIdForCart);
+    }
   }
 
   function parseCombinedCode(code) {
@@ -1148,14 +1653,9 @@
     return null;
   }
 
-  /**
-   * Format price
-   */
+  /** @deprecated use formatShopPrice */
   function formatPrice(price) {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(price);
+    return formatShopPrice(price);
   }
 
   /**
@@ -1477,16 +1977,67 @@
               );
             return;
           }
+          // Split-URL: redirect when variant has a URL different from current page (run before other applications)
+          if (
+            variant.config &&
+            typeof variant.config.url === 'string' &&
+            variant.config.url.trim()
+          ) {
+            var rawUrl = variant.config.url.trim();
+            try {
+              var dest = new URL(rawUrl, window.location.href);
+              var cur = window.location;
+              var sameOriginPath =
+                dest.origin === cur.origin &&
+                dest.pathname === cur.pathname &&
+                (dest.search || '') === (cur.search || '');
+              if (!sameOriginPath) {
+                if (DEBUG) debugLog('Split-URL redirect', dest.toString());
+                window.location.href = dest.toString();
+                return;
+              }
+            } catch (e) {
+              if (DEBUG) debugLog('Split-URL invalid URL', rawUrl);
+            }
+          }
           applyCustomCode(test.id, variant);
 
           if (test.type === 'price') {
-            var productId =
-              test.targetIds && test.targetIds.length > 0 && currentProductId
-                ? currentProductId
-                : test.targetId || test.target_id;
-            if (productId) {
-              applyPriceTest(test.id, productId, test.targetVariantId || null, variant);
+            if (!currentProductId) {
+              if (DEBUG)
+                debugLog(
+                  'Price test skipped: runs on product pages only (not collection grids). Target products explicitly.'
+                );
+              return;
             }
+            var tt = (test.targetType || test.target_type || '').toLowerCase();
+            if (tt === 'collection') {
+              if (DEBUG)
+                debugLog(
+                  'Price test skipped: collection targeting does not match PDP. Add product target(s) for price display.'
+                );
+              return;
+            }
+            var tids =
+              test.targetIds ||
+              (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
+            if (tt === 'product' && (!tids || tids.length === 0)) {
+              if (DEBUG)
+                debugLog(
+                  'Price test skipped: target_type is product but no target_ids (select at least one product in Product scope).'
+                );
+              return;
+            }
+            if (
+              tt === 'product' &&
+              tids.length &&
+              !tids.some(function (id) {
+                return id && gidMatches(id, currentProductId);
+              })
+            ) {
+              return;
+            }
+            applyPriceTest(test.id, currentProductId, test.targetVariantId || null, variant);
           }
         });
       });

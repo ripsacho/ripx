@@ -1394,6 +1394,14 @@
   margin-bottom: 0;
 }
 
+.goalPriceMetricHint {
+  margin-top: 10px;
+  margin-bottom: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--p-color-text-subdued, #6d7175);
+}
+
 .goalBestPractice {
   display: flex;
   align-items: flex-start;
@@ -4430,6 +4438,364 @@
   outline-offset: 2px;
 }
 
+/* Product scope section (price test variant config) – layout and UI */
+.productScopeSection {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.productScopeCard {
+  margin-bottom: 12px;
+}
+
+.productScopeSection .productScopeHeader {
+  position: relative;
+  padding: 18px 0 10px 26px;
+  border-left: 4px solid rgba(6, 182, 212, 0.42);
+  border-radius: 0 10px 10px 0;
+  background: linear-gradient(90deg, rgba(6, 182, 212, 0.06) 0%, transparent 100%);
+}
+
+.productScopeSection .productScopeHeader h3 {
+  margin: 0 0 10px 0;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  letter-spacing: 0.025em;
+  color: var(--p-color-text, #202223);
+  line-height: 1.35;
+}
+
+.productScopeSection .productScopeHeader p {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--p-color-text-subdued, #6d7175);
+  max-width: 52em;
+}
+
+/* Wrapper for "Choose scope" label + options row */
+.productScopeOptionsWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.productScopeOptionsLabel {
+  display: inline-block;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--p-color-text-subdued, #6d7175);
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.04);
+  width: fit-content;
+}
+
+/* Options row: toggle-group container + equal option cards */
+.productScopeOptionsRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  align-items: stretch;
+  padding: 20px 22px;
+  border-radius: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-left: 4px solid rgba(6, 182, 212, 0.28);
+  background: linear-gradient(180deg, rgba(250, 251, 252, 0.99) 0%, rgba(248, 250, 252, 0.97) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.98), 0 2px 8px rgba(0, 0, 0, 0.04);
+  position: relative;
+  z-index: 0;
+}
+
+/* Vertical divider between options (desktop only) */
+@media (min-width: 641px) {
+  .productScopeOptionsRow::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 22%;
+    bottom: 22%;
+    width: 1px;
+    background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.07), transparent);
+    pointer-events: none;
+    transform: translateX(-50%);
+    z-index: 0;
+  }
+}
+
+/* Option card: row layout = icon left, label + description right */
+.productScopeOptionsRow .scopeCard.scopeCardOption {
+  min-height: 84px;
+  padding: 20px 22px;
+  border-radius: 13px;
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 18px;
+  text-align: left;
+  border: 1px solid rgba(0, 0, 0, 0.065);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  transition: border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease, transform 0.2s ease;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  z-index: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .productScopeOptionsRow .scopeCard.scopeCardOption {
+    transition: border-color 0.1s ease, box-shadow 0.1s ease, background 0.1s ease;
+  }
+  .productScopeOptionsRow .scopeCard.scopeCardOption:hover {
+    transform: none;
+  }
+}
+
+.productScopeOptionsRow .scopeCard.scopeCardOption::before {
+  width: 4px;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 13px 0 0 13px;
+  background: linear-gradient(180deg, var(--futuristic-cyan), var(--futuristic-violet));
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+
+.productScopeOptionsRow .scopeCard.scopeCardOption:hover {
+  border-color: rgba(6, 182, 212, 0.4);
+  background: rgba(255, 255, 255, 1);
+  box-shadow: 0 6px 20px rgba(6, 182, 212, 0.1), 0 1px 3px rgba(0, 0, 0, 0.04);
+  transform: translateY(-2px);
+}
+
+.productScopeOptionsRow .scopeCard.scopeCardOption:hover::before {
+  opacity: 0.7;
+}
+
+.productScopeOptionsRow .scopeCard.scopeCardOption.scopeCardActive {
+  border-color: rgba(6, 182, 212, 0.55);
+  border-width: 1.5px;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%);
+  box-shadow: 0 4px 16px rgba(6, 182, 212, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.98), 0 0 0 1px rgba(6, 182, 212, 0.15);
+}
+
+.productScopeOptionsRow .scopeCard.scopeCardOption.scopeCardActive::before {
+  opacity: 1;
+  width: 5px;
+  border-radius: 13px 0 0 13px;
+}
+
+.productScopeOptionsRow .scopeCard.scopeCardOption.scopeCardActive::after {
+  content: '';
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(6, 182, 212, 0.22);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%2306b6d4' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 10l3 3 7-7'/%3E%3C/svg%3E");
+  background-size: 10px 10px;
+  background-repeat: no-repeat;
+  background-position: center;
+  opacity: 1;
+}
+
+.productScopeOptionsRow .scopeCard.scopeCardOption:focus-visible {
+  outline: 2px solid var(--futuristic-cyan);
+  outline-offset: 2px;
+}
+
+/* Icon: fixed size, left side */
+.productScopeOptionsRow .scopeCard.scopeCardOption .scopeCardIcon {
+  width: 46px;
+  height: 46px;
+  min-width: 46px;
+  min-height: 46px;
+  border-radius: 12px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 182, 212, 0.08);
+  color: var(--p-color-text-subdued, #6d7175);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.productScopeOptionsRow .scopeCard.scopeCardOption .scopeCardIcon svg {
+  width: 23px;
+  height: 23px;
+}
+
+.productScopeOptionsRow .scopeCard.scopeCardOption:hover .scopeCardIcon,
+.productScopeOptionsRow .scopeCard.scopeCardOption.scopeCardActive .scopeCardIcon {
+  background: rgba(6, 182, 212, 0.18);
+  color: var(--futuristic-cyan);
+}
+
+/* Content block: label + description stacked */
+.productScopeOptionsRow .scopeCard.scopeCardOption .scopeCardContent {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+  justify-content: center;
+}
+
+.productScopeOptionsRow .scopeCard.scopeCardOption .scopeCardLabel {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.3;
+  color: var(--p-color-text, #202223);
+  word-break: break-word;
+}
+
+.productScopeOptionsRow .scopeCard.scopeCardOption .scopeCardDesc {
+  font-size: 0.8125rem;
+  line-height: 1.42;
+  color: var(--p-color-text-subdued, #6d7175);
+  word-break: break-word;
+}
+
+.productScopeOptionsRow .scopeCard.scopeCardOption.scopeCardActive .scopeCardLabel {
+  color: var(--p-color-text, #202223);
+}
+
+.productScopeOptionsRow .scopeCard.scopeCardOption.scopeCardActive .scopeCardDesc {
+  color: var(--p-color-text-subdued, #6d7175);
+}
+
+.productScopeSelectPanel {
+  margin-top: 10px;
+  padding: 24px 26px 26px 28px;
+  border-radius: 16px;
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  border-left: 5px solid rgba(6, 182, 212, 0.55);
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.99) 0%, rgba(241, 245, 249, 0.95) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.96), 0 2px 12px rgba(6, 182, 212, 0.07);
+  position: relative;
+}
+
+.productScopeSelectPanel .productScopeSelectTitle {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  margin: 0 0 8px 0;
+  color: var(--p-color-text, #202223);
+  letter-spacing: 0.015em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.productScopeSelectPanel .productScopeSelectTitle::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--futuristic-cyan);
+  flex-shrink: 0;
+  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.2);
+}
+
+.productScopeSelectPanel .productScopeSelectHelp {
+  font-size: 0.8125rem;
+  color: var(--p-color-text-subdued, #6d7175);
+  margin: 0 0 20px 0;
+  line-height: 1.5;
+}
+
+.productScopeSelectPanel .storeResourceList {
+  border-radius: 12px;
+}
+
+@media (max-width: 640px) {
+  .productScopeSection .productScopeHeader {
+    padding: 12px 0 4px 18px;
+    border-left-width: 3px;
+  }
+
+  .productScopeSection .productScopeHeader h3 {
+    font-size: 1rem;
+  }
+
+  .productScopeOptionsWrap {
+    gap: 10px;
+  }
+
+  .productScopeOptionsLabel {
+    font-size: 0.625rem;
+    letter-spacing: 0.1em;
+    padding: 5px 10px;
+  }
+
+  .productScopeOptionsRow {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    padding: 14px 16px;
+    border-left-width: 3px;
+  }
+
+  .productScopeOptionsRow .scopeCard.scopeCardOption {
+    min-height: 78px;
+    padding: 18px 20px;
+    gap: 16px;
+    border-radius: 12px;
+  }
+
+  .productScopeOptionsRow .scopeCard.scopeCardOption .scopeCardIcon {
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    min-height: 42px;
+  }
+
+  .productScopeOptionsRow .scopeCard.scopeCardOption .scopeCardIcon svg {
+    width: 21px;
+    height: 21px;
+  }
+
+  .productScopeSelectPanel {
+    padding: 20px 22px 22px 24px;
+    border-left-width: 4px;
+    border-radius: 14px;
+    margin-top: 8px;
+  }
+
+  .productScopeSelectPanel .productScopeSelectHelp {
+    margin-bottom: 16px;
+  }
+}
+
+@media (min-width: 768px) {
+  .productScopeSection {
+    gap: 32px;
+  }
+
+  .productScopeOptionsRow {
+    gap: 20px;
+    padding: 22px 24px;
+  }
+
+  .productScopeOptionsRow .scopeCard.scopeCardOption {
+    min-height: 86px;
+    padding: 22px 24px;
+    gap: 20px;
+  }
+
+  .productScopeSelectPanel {
+    padding: 26px 28px 28px 30px;
+    margin-top: 12px;
+  }
+}
+
 /* Store resource list - advanced card list UI */
 .storeResourceList {
   border-radius: var(--radius-md);
@@ -6442,4 +6808,1464 @@
     transform: none;
     animation: none;
   }
+}
+
+/* Price test variant configuration - advanced UI */
+.priceStepRoot {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.priceConfigWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.priceStepAccent {
+  height: 4px;
+  background: linear-gradient(90deg, #0d9488 0%, #0891b2 50%, #06b6d4 100%);
+  border-radius: 12px 12px 0 0;
+  flex-shrink: 0;
+}
+.priceSummaryCard {
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(6, 182, 212, 0.18);
+  background: var(--p-color-bg-surface, #fff);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06), 0 1px 0 rgba(255, 255, 255, 0.6) inset;
+}
+.priceSummaryHeader {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 20px 26px;
+  background: linear-gradient(180deg, rgba(6, 182, 212, 0.09) 0%, rgba(13, 148, 136, 0.05) 100%);
+  border-bottom: 1px solid rgba(6, 182, 212, 0.12);
+}
+.priceSummaryHeaderIcon {
+  width: 46px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #0d9488 0%, #06b6d4 100%);
+  color: #fff;
+  flex-shrink: 0;
+  box-shadow: 0 3px 10px rgba(6, 182, 212, 0.35);
+}
+.priceSummaryHeaderIcon svg,
+.priceSummaryHeaderIcon .Polaris-Icon {
+  width: 22px;
+  height: 22px;
+  color: #fff;
+}
+.priceQuickFillStrip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 26px 14px 22px;
+  margin-left: 4px;
+  background: rgba(0, 0, 0, 0.02);
+  border-left: 3px solid rgba(6, 182, 212, 0.35);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 0 0 0 8px;
+}
+.priceQuickFillStrip .Polaris-Select,
+.priceQuickFillStrip .Polaris-TextField {
+  min-width: 0;
+}
+.priceAtAGlance {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 26px;
+  background: rgba(6, 182, 212, 0.04);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  font-size: 0.8125rem;
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+.priceAtAGlance .Polaris-Text {
+  flex-shrink: 0;
+}
+.priceAtAGlance .Polaris-Text:last-of-type {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.priceExamplePreview {
+  padding: 12px 26px;
+  background: rgba(139, 92, 246, 0.04);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+.priceExamplePreview .Polaris-TextField {
+  max-width: 160px;
+}
+.priceExamplePreviewResult {
+  display: inline-block;
+  padding: 6px 12px;
+  margin-left: 4px;
+  background: rgba(139, 92, 246, 0.08);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--p-color-text, #202223);
+}
+.priceAccordionActions {
+  padding: 12px 26px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+@media (max-width: 640px) {
+  .priceQuickFillStrip {
+    margin-left: 0;
+    padding-left: 18px;
+    border-radius: 0;
+  }
+}
+.priceSummaryTableWrap {
+  overflow-x: auto;
+  border-radius: 0;
+}
+.priceSummaryTableWrap table {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+}
+.priceSummaryTableWrap thead th {
+  text-align: left;
+  padding: 12px 16px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--p-color-text-subdued, #6d7175);
+  background: var(--p-color-bg-surface-secondary, #f6f6f7);
+  border-bottom: 2px solid var(--p-color-border-secondary, #e1e3e5);
+}
+.priceSummaryTableWrap tbody tr {
+  transition: background 0.15s ease;
+}
+.priceSummaryTableWrap tbody tr:hover {
+  background: rgba(6, 182, 212, 0.04);
+}
+.priceSummaryTableWrap tbody td {
+  padding: 14px 16px;
+  font-size: 0.875rem;
+  border-bottom: 1px solid var(--p-color-border-secondary, #e1e3e5);
+}
+.priceSummaryTableWrap tbody tr:last-child td {
+  border-bottom: none;
+}
+.priceConfigCard {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--p-color-border-secondary, #e1e3e5);
+  background: var(--p-color-bg-surface, #fff);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+.priceConfigCardHeader {
+  padding: 18px 24px;
+  background: linear-gradient(180deg, rgba(6, 182, 212, 0.05) 0%, transparent 100%);
+  border-bottom: 1px solid var(--p-color-border-secondary, #e1e3e5);
+}
+.priceTabBarWrap {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  border-bottom: 2px solid var(--p-color-border-secondary, #e1e3e5);
+  background: var(--p-color-bg-surface-secondary, #f6f6f7);
+  padding: 8px 12px 0;
+  min-height: 52px;
+}
+.priceTabBar {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 0 4px 2px;
+  scrollbar-width: thin;
+  flex: 1;
+  min-width: 0;
+}
+.priceTabBar::-webkit-scrollbar {
+  height: 6px;
+}
+.priceTabBar::-webkit-scrollbar-thumb {
+  background: var(--p-color-border, #8c9196);
+  border-radius: 3px;
+}
+.priceTabNavBtn {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 8px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--p-color-text-subdued, #6d7175);
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.priceTabNavBtn:hover:not(:disabled) {
+  color: var(--p-color-text, #202223);
+  background: var(--p-color-bg-surface-hover, #e1e3e5);
+}
+.priceTabNavBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.priceTab {
+  padding: 12px 16px 12px 14px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 10px 10px 0 0;
+  background: transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  font-weight: 500;
+  color: var(--p-color-text-subdued, #6d7175);
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  min-height: 40px;
+  position: relative;
+}
+.priceTab::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 20px;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.35;
+  transition: opacity 0.15s ease, height 0.15s ease;
+}
+.priceTab:hover {
+  color: var(--p-color-text, #202223);
+  background: rgba(255, 255, 255, 0.7);
+  border-color: var(--p-color-border, #8c9196);
+}
+.priceTab:hover::before {
+  opacity: 0.5;
+}
+.priceTabActive {
+  color: var(--p-color-text, #202223);
+  font-weight: 600;
+  background: var(--p-color-bg-surface, #fff);
+  border-color: var(--p-color-border-secondary, #e1e3e5);
+  border-bottom: 1px solid var(--p-color-bg-surface, #fff);
+  margin-bottom: -2px;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.04);
+}
+.priceTabActive::before {
+  opacity: 1;
+  height: 24px;
+  background: var(--price-tab-accent, var(--p-color-border-emphasis, #2c6ecb));
+}
+.priceTabLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.priceTabMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--p-color-text-subdued, #6d7175);
+}
+.priceTabPreview {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--p-color-text-secondary, #6d7175);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.priceEditorPanel {
+  padding: 28px 28px 32px 32px;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.03) 0%, var(--p-color-bg-surface, #fff) 20%);
+  border-radius: 16px;
+  position: relative;
+  border-left: 4px solid var(--price-editor-accent, #06b6d4);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.8);
+}
+.priceEditorHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--p-color-border-secondary, #e1e3e5);
+}
+.priceEditorHeaderRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+.priceEditorHeader span {
+  font-size: 0.8125rem;
+  letter-spacing: 0.01em;
+}
+.priceSectionBlock {
+  padding: 22px 24px;
+  background: var(--p-color-bg-surface-secondary, #f9fafb);
+  border: 1px solid var(--p-color-border-secondary, #e1e3e5);
+  border-radius: 14px;
+  margin-bottom: 24px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.priceSectionBlock:last-of-type {
+  margin-bottom: 0;
+}
+.priceSectionBlock:focus-within {
+  border-color: rgba(6, 182, 212, 0.4);
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.08);
+}
+.priceSectionBlockTitle {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--p-color-text-subdued, #6d7175);
+  margin-bottom: 16px;
+  display: block;
+}
+.priceQuickSetStrip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 18px 20px;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.1) 0%, rgba(6, 182, 212, 0.04) 100%);
+  border: 1px solid rgba(6, 182, 212, 0.22);
+  border-radius: 14px;
+  margin-bottom: 24px;
+}
+.priceQuickSetStrip .Polaris-Button {
+  border-radius: 10px;
+  font-weight: 600;
+  padding: 8px 14px;
+  min-height: 36px;
+}
+.priceFormRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 640px) {
+  .priceFormRow {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+.pricePerProductGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+}
+.pricePerProductCard {
+  border-radius: 14px;
+  border: 1px solid var(--p-color-border-secondary, #e1e3e5);
+  background: var(--p-color-bg-surface, #fff);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+  overflow: hidden;
+}
+.pricePerProductCard:hover {
+  border-color: rgba(6, 182, 212, 0.4);
+  box-shadow: 0 4px 16px rgba(6, 182, 212, 0.1);
+}
+.pricePerProductCard .Polaris-Card {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+.pricePerVariantSection {
+  margin-top: 20px;
+  padding-top: 20px;
+  margin-bottom: 4px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+.pricePerVariantSection .Polaris-Button {
+  margin-top: 12px;
+}
+.pricePerVariantRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 14px;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+.pricePerVariantRow .Polaris-TextField,
+.pricePerVariantRow .Polaris-Select {
+  min-width: 0;
+  flex: 1 1 120px;
+}
+.pricePerVariantRow .Polaris-Button {
+  flex-shrink: 0;
+  align-self: center;
+}
+@media (max-width: 640px) {
+  .pricePerVariantRow {
+    padding: 12px;
+    gap: 10px;
+  }
+}
+.priceEmptyState {
+  text-align: center;
+  padding: 48px 28px;
+  color: var(--p-color-text-subdued, #6d7175);
+  background: linear-gradient(180deg, var(--p-color-bg-surface-secondary, #f9fafb) 0%, var(--p-color-bg-surface, #fff) 100%);
+  border-radius: 16px;
+  border: 2px dashed var(--p-color-border, #8c9196);
+}
+.priceEmptyStateIcon {
+  margin-bottom: 16px;
+  opacity: 0.7;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: rgba(6, 182, 212, 0.12);
+}
+.priceBannerGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.priceBannerContent {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.priceBannerBullets {
+  margin: 0;
+  padding-left: 1.25em;
+  list-style: disc;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: inherit;
+}
+.priceBannerBullets li {
+  margin-bottom: 4px;
+}
+.priceBannerBullets li:last-child {
+  margin-bottom: 0;
+}
+
+.priceBannerDocRow {
+  margin: 12px 0 0 0;
+  padding: 12px 0 0 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* Doc link inside banners: clear CTA styling */
+.priceDocLink {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--p-color-text-link, #2c6ecb);
+  text-decoration: none;
+  padding: 6px 12px;
+  margin: -6px -12px;
+  border-radius: 8px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.priceDocLink:hover {
+  color: var(--p-color-text-link-hover, #1a4a8a);
+  text-decoration: underline;
+  background-color: rgba(44, 110, 203, 0.08);
+}
+.priceDocLink:focus-visible {
+  outline: 2px solid var(--p-color-border-focus, #2c6ecb);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+.priceOptionCard {
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--p-color-border-secondary, #e1e3e5);
+  background: var(--p-color-bg-surface, #fff);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+}
+
+/* Price config bottom sheet — portaled to body so it stacks above sidebar and progress bar */
+.priceDrawerBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  z-index: 9998;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.28s ease, visibility 0.28s ease;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.priceDrawerBackdropOpen {
+  opacity: 1;
+  visibility: visible;
+}
+.priceDrawerPanel {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translate(-50%, 100%);
+  width: 100%;
+  max-width: 800px;
+  min-width: 340px;
+  max-height: 90vh;
+  background: var(--p-color-bg-surface, #fff);
+  border-radius: 28px 28px 0 0;
+  box-shadow:
+    0 -24px 56px rgba(0, 0, 0, 0.22),
+    0 -8px 24px rgba(0, 0, 0, 0.14),
+    0 0 0 1px rgba(0, 0, 0, 0.06);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  transition:
+    transform 0.38s cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 0.3s ease;
+  overflow: hidden;
+}
+.priceDrawerPanel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #0d9488 0%, #06b6d4 50%, #0891b2 100%);
+  border-radius: 28px 28px 0 0;
+  z-index: 1;
+}
+.priceDrawerPanelOpen {
+  transform: translate(-50%, 0);
+}
+
+@media (max-width: 840px) {
+  .priceDrawerPanel {
+    max-width: 100%;
+    border-radius: 24px 24px 0 0;
+  }
+  .priceDrawerPanel::before {
+    border-radius: 24px 24px 0 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .priceDrawerPanel {
+    max-height: 92vh;
+    min-width: 0;
+  }
+}
+
+.priceDrawerHandle {
+  flex-shrink: 0;
+  padding: 16px 0 12px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.priceDrawerHandle::before {
+  content: '';
+  width: 56px;
+  height: 5px;
+  background: var(--p-color-border, #8c9196);
+  border-radius: 100px;
+  opacity: 0.45;
+}
+.priceDrawerHeader {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 24px 32px 26px;
+  border-bottom: 1px solid var(--p-color-border-secondary, #e1e3e5);
+  background: linear-gradient(180deg, rgba(6, 182, 212, 0.06) 0%, transparent 100%);
+}
+.priceDrawerHeaderTitle {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  flex: 1;
+}
+.priceDrawerCloseBtn {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 12px;
+  background: var(--p-color-bg-surface-secondary, #f6f6f7);
+  color: var(--p-color-text, #202223);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.15s ease;
+}
+.priceDrawerCloseBtn:hover {
+  background: var(--p-color-bg-surface-hover, #e1e3e5);
+}
+.priceDrawerCloseBtn:active {
+  transform: scale(0.96);
+}
+.priceDrawerBody {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 32px 32px 40px;
+  -webkit-overflow-scrolling: touch;
+  min-height: 0;
+}
+.priceDrawerBody::-webkit-scrollbar {
+  width: 8px;
+}
+.priceDrawerBody::-webkit-scrollbar-track {
+  background: var(--p-color-bg-surface-secondary, #f6f6f7);
+  border-radius: 4px;
+}
+.priceDrawerBody::-webkit-scrollbar-thumb {
+  background: var(--p-color-border, #8c9196);
+  border-radius: 4px;
+}
+.priceDrawerBody::-webkit-scrollbar-thumb:hover {
+  background: var(--p-color-text-subdued, #6d7175);
+}
+
+/* Summary row + accordion – column layout, refined UI */
+.priceSummaryList {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  background: rgba(255, 255, 255, 0.6);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  --price-head-col-variant: minmax(120px, 1.35fr);
+  --price-head-col-allocation: minmax(72px, 0.85fr);
+  --price-head-col-type: minmax(88px, 1fr);
+  --price-head-col-base: minmax(72px, 0.8fr);
+  --price-head-col-value: minmax(80px, 1fr);
+  --price-head-col-preview: minmax(100px, 1.2fr);
+  --price-head-col-chevron: 48px;
+}
+/* Header row: column labels with subtle dividers */
+.priceSummaryRowHead {
+  display: grid;
+  grid-template-columns: var(--price-head-col-variant) var(--price-head-col-allocation) var(--price-head-col-type) var(--price-head-col-base) var(--price-head-col-value) var(--price-head-col-preview) var(--price-head-col-chevron);
+  gap: 12px 16px;
+  padding: 12px 20px 12px 36px;
+  min-height: 44px;
+  align-items: center;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.05) 0%, rgba(0, 0, 0, 0.02) 100%);
+  border-bottom: 2px solid rgba(0, 0, 0, 0.06);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--p-color-text-subdued, #6d7175);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+.priceSummaryRowHead .priceSummaryColVariant,
+.priceSummaryRowHead .priceSummaryColAllocation,
+.priceSummaryRowHead .priceSummaryColType,
+.priceSummaryRowHead .priceSummaryColBase,
+.priceSummaryRowHead .priceSummaryColValue,
+.priceSummaryRowHead .priceSummaryColPreview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.priceSummaryRowHead .priceSummaryColAllocation,
+.priceSummaryRowHead .priceSummaryColType,
+.priceSummaryRowHead .priceSummaryColBase,
+.priceSummaryRowHead .priceSummaryColValue,
+.priceSummaryRowHead .priceSummaryColPreview {
+  border-left: 1px solid rgba(0, 0, 0, 0.07);
+}
+.priceSummaryAccordionItem {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  transition: background 0.2s ease;
+}
+.priceSummaryAccordionItem:last-child {
+  border-bottom: none;
+}
+.priceSummaryAccordionItem:has(.priceSummaryRowExpanded) {
+  background: rgba(6, 182, 212, 0.03);
+  border-radius: 0 0 12px 12px;
+}
+.priceSummaryAccordionItem:has(.priceSummaryRowExpanded) + .priceSummaryAccordionItem {
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+.priceSummaryAccordionItem .priceSummaryRow {
+  border-bottom: none;
+}
+/* Data row: same grid as header */
+.priceSummaryRow {
+  display: grid;
+  grid-template-columns: var(--price-head-col-variant) var(--price-head-col-allocation) var(--price-head-col-type) var(--price-head-col-base) var(--price-head-col-value) var(--price-head-col-preview) var(--price-head-col-chevron);
+  gap: 12px 16px;
+  align-items: center;
+  padding: 16px 20px 16px 36px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  transition: background 0.25s ease, box-shadow 0.25s ease;
+  position: relative;
+  min-height: 58px;
+  box-sizing: border-box;
+}
+.priceSummaryRow::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, #06b6d4 0%, #0d9488 40%, #0891b2 100%);
+  opacity: 0;
+  transition: opacity 0.25s ease, width 0.2s ease;
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.35);
+}
+.priceSummaryAccordionItem:has(.priceSummaryRowExpanded) .priceSummaryRow::before {
+  opacity: 1;
+  width: 5px;
+}
+.priceSummaryRow:last-child {
+  border-bottom: none;
+}
+/* Column cells */
+.priceSummaryColVariant,
+.priceSummaryColAllocation,
+.priceSummaryColType,
+.priceSummaryColBase,
+.priceSummaryColValue,
+.priceSummaryColPreview {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.priceSummaryColVariant {
+  display: flex;
+  align-items: center;
+}
+.priceSummaryColAllocation,
+.priceSummaryColType,
+.priceSummaryColBase,
+.priceSummaryColValue {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--p-color-text, #202223);
+}
+.priceSummaryColAllocation {
+  font-weight: 600;
+  color: var(--p-color-text-secondary, #6d7175);
+}
+.priceSummaryColType,
+.priceSummaryColBase,
+.priceSummaryColValue {
+  color: var(--p-color-text-secondary, #6d7175);
+}
+.priceSummaryColChevron {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+.priceSummaryRowClickable {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  margin: 0;
+  border-radius: 0;
+  padding: 16px 20px 16px 36px;
+  display: grid;
+  grid-template-columns: var(--price-head-col-variant) var(--price-head-col-allocation) var(--price-head-col-type) var(--price-head-col-base) var(--price-head-col-value) var(--price-head-col-preview) var(--price-head-col-chevron);
+  gap: 12px 16px;
+  align-items: center;
+  min-height: 58px;
+  transition: background 0.25s ease;
+}
+.priceSummaryRowClickable:hover {
+  background: linear-gradient(90deg, rgba(6, 182, 212, 0.06) 0%, transparent 55%);
+}
+.priceSummaryRowClickable:focus-visible {
+  outline: 2px solid rgba(6, 182, 212, 0.6);
+  outline-offset: 2px;
+}
+.priceSummaryRowExpanded {
+  background: linear-gradient(90deg, rgba(6, 182, 212, 0.08) 0%, rgba(6, 182, 212, 0.04) 50%, transparent 100%);
+  border-bottom: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+.priceSummaryAccordionChevron {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: linear-gradient(145deg, rgba(6, 182, 212, 0.12) 0%, rgba(6, 182, 212, 0.05) 100%);
+  color: var(--p-color-text-subdued, #6d7175);
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  transition: transform 0.35s cubic-bezier(0.34, 1.2, 0.64, 1), background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  justify-self: end;
+}
+.priceSummaryRowClickable:hover .priceSummaryAccordionChevron {
+  background: linear-gradient(145deg, rgba(6, 182, 212, 0.2) 0%, rgba(6, 182, 212, 0.1) 100%);
+  color: #0d9488;
+  border-color: rgba(6, 182, 212, 0.35);
+  box-shadow: 0 2px 10px rgba(6, 182, 212, 0.2);
+}
+.priceSummaryRowExpanded .priceSummaryAccordionChevron {
+  transform: rotate(180deg);
+  background: linear-gradient(145deg, rgba(6, 182, 212, 0.25) 0%, rgba(6, 182, 212, 0.12) 100%);
+  color: #0d9488;
+  border-color: rgba(6, 182, 212, 0.4);
+  box-shadow: 0 2px 12px rgba(6, 182, 212, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+/* Accordion body – inset and rounded when expanded */
+.priceAccordionBody {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 22px 28px 26px 32px;
+  margin: 0 8px 12px 8px;
+  border-radius: 0 0 10px 10px;
+  background: linear-gradient(180deg, var(--p-color-bg-surface-secondary, #f4f5f6) 0%, var(--p-color-bg-surface-secondary, #f0f1f2) 100%);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-top: none;
+  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.03), 0 1px 0 rgba(255, 255, 255, 0.5);
+  transition: box-shadow 0.2s ease;
+}
+.priceSummaryAccordionItem:last-child .priceAccordionBody {
+  border-bottom: none;
+  border-radius: 0 0 12px 12px;
+  margin-bottom: 8px;
+}
+/* Editor panel: full width, blends with accordion body */
+.priceAccordionBody .priceEditorPanel {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 20px 24px 24px 26px;
+  border-radius: 14px;
+  max-width: none;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-left: 3px solid rgba(6, 182, 212, 0.35);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  position: relative;
+  overflow: hidden;
+}
+.priceAccordionBody .priceEditorPanel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(6, 182, 212, 0.2) 0%, transparent 100%);
+  opacity: 0.8;
+}
+.priceAccordionBody .priceEditorPanel::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.04);
+  opacity: 0.8;
+}
+/* Layout: responsive – two columns on wide, single column on narrow */
+.priceAccordionBody .priceEditorPanel > div {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px 20px;
+  counter-reset: price-step;
+}
+.priceAccordionBody .priceEditorPanel > div > .priceEditorHeader,
+.priceAccordionBody .priceEditorPanel > div > .priceQuickSetStrip,
+.priceAccordionBody .priceEditorPanel > div > .Polaris-BlockStack:has(.pricePerProductGrid) {
+  grid-column: 1 / -1;
+}
+/* Wide: Price type and Price value side by side */
+@media (min-width: 768px) {
+  .priceAccordionBody .priceEditorPanel > div {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 18px 28px;
+  }
+}
+.priceAccordionBody .priceEditorPanel > div > .priceEditorHeader {
+  margin-bottom: 0;
+}
+.priceAccordionBody .priceEditorPanel > div > .priceQuickSetStrip {
+  margin-bottom: 4px;
+}
+/* Header: blends with panel, clear hierarchy */
+.priceAccordionBody .priceEditorHeader {
+  margin-bottom: 16px;
+  padding: 14px 18px 14px 22px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.02) 0%, rgba(0, 0, 0, 0.04) 100%);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+.priceAccordionBody .priceEditorHeader span {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--p-color-text-subdued, #6d7175);
+}
+/* Section blocks: card with title on top (full width), content below */
+.priceAccordionBody .priceSectionBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0;
+  border-radius: 16px;
+  margin-bottom: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0.7) 100%);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transition: border-color 0.22s ease, box-shadow 0.22s ease, background 0.2s ease, transform 0.2s ease;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+  counter-increment: price-step;
+}
+.priceAccordionBody .priceSectionBlock:hover {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%);
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 1);
+}
+.priceAccordionBody .priceSectionBlock::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, rgba(6, 182, 212, 0.45) 0%, rgba(6, 182, 212, 0.2) 50%, rgba(6, 182, 212, 0.12) 100%);
+  opacity: 1;
+}
+.priceAccordionBody .priceSectionBlock:focus-within {
+  border-color: rgba(6, 182, 212, 0.25);
+  box-shadow: 0 0 0 1px rgba(6, 182, 212, 0.15), 0 2px 8px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+/* Section title: full-width header bar so text is never cut off */
+.priceAccordionBody .priceSectionBlockTitle {
+  margin-bottom: 0;
+  padding: 16px 20px 16px 24px;
+  min-height: 56px;
+  width: 100%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.03) 0%, rgba(0, 0, 0, 0.015) 100%);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-right: none;
+  position: relative;
+  box-sizing: border-box;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), inset 0 -1px 0 rgba(0, 0, 0, 0.03);
+}
+.priceAccordionBody .priceSectionBlockTitle::before {
+  content: counter(price-step);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: linear-gradient(145deg, rgba(6, 182, 212, 0.22) 0%, rgba(6, 182, 212, 0.08) 100%);
+  color: var(--price-editor-accent, #06b6d4);
+  font-size: 0.8125rem;
+  font-weight: 800;
+  flex-shrink: 0;
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  letter-spacing: 0.02em;
+}
+.priceAccordionBody .priceSectionBlockTitleText {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--p-color-text, #202223);
+  line-height: 1.3;
+}
+.priceAccordionBody .priceSectionTitleInfoIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-left: 8px;
+  padding-left: 14px;
+  border-left: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 50%;
+  color: var(--p-color-text-subdued, #6d7175);
+  cursor: help;
+  transition: color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+  outline: none;
+  flex-shrink: 0;
+}
+.priceAccordionBody .priceSectionTitleInfoIcon:hover {
+  color: var(--price-editor-accent, #06b6d4);
+  background: rgba(6, 182, 212, 0.1);
+}
+.priceAccordionBody .priceSectionTitleInfoIcon:focus-visible {
+  color: var(--price-editor-accent, #06b6d4);
+  background: rgba(6, 182, 212, 0.12);
+  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.3);
+}
+.priceAccordionBody .priceSectionTitleInfoIcon .Polaris-Icon,
+.priceAccordionBody .priceSectionTitleInfoIcon svg {
+  width: 14px;
+  height: 14px;
+}
+.priceAccordionBody .priceSectionBlock .priceFormRow,
+.priceAccordionBody .priceSectionBlock .priceSectionBlockContent {
+  flex: 1 1 auto;
+  padding: 20px 22px 22px 24px;
+  margin-top: 0;
+  min-width: 0;
+  min-height: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.5) 0%, rgba(248, 250, 252, 0.6) 100%);
+  border-radius: 0 0 16px 16px;
+  border-top: 1px solid rgba(0, 0, 0, 0.04);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+/* Price value section: wrapper has padding; FormLayout inside uses gap */
+.priceAccordionBody .priceSectionBlock .priceSectionBlockContent {
+  display: flex;
+  flex-direction: column;
+}
+.priceAccordionBody .priceSectionBlock .priceSectionBlockContent :global(.Polaris-FormLayout) {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.priceAccordionBody .priceFormRow {
+  gap: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.priceAccordionBody .priceFormRow > * {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+.priceAccordionBody .priceSectionBlock .priceSectionBlockContent :global(.Polaris-FormLayout__Item) {
+  margin-bottom: 0;
+}
+.priceAccordionBody .priceSectionBlock .priceSectionBlockContent :global(.Polaris-FormLayout__Item:last-child) {
+  margin-bottom: 0;
+}
+.priceAccordionBody .priceSectionBlock label,
+.priceAccordionBody .priceSectionBlock .Polaris-Label {
+  font-size: 0.6875rem !important;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--p-color-text, #202223);
+}
+.priceAccordionBody .priceSectionBlock .Polaris-HelpText,
+.priceAccordionBody .priceSectionBlock .priceSectionBlockContent :global(.Polaris-FormLayout__HelpText) {
+  font-size: 0.6875rem;
+  color: var(--p-color-text-subdued, #6d7175);
+  margin-top: 6px;
+  line-height: 1.35;
+}
+/* Inputs: subtle borders, blend with section */
+.priceAccordionBody .Polaris-TextField__Input,
+.priceAccordionBody .Polaris-Select__Input {
+  border-radius: 10px;
+  border-color: rgba(0, 0, 0, 0.1);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.priceAccordionBody .Polaris-TextField__Input:hover,
+.priceAccordionBody .Polaris-Select__Input:hover {
+  border-color: rgba(0, 0, 0, 0.16);
+}
+.priceAccordionBody .Polaris-TextField__Input:focus,
+.priceAccordionBody .Polaris-Select__Input:focus {
+  border-color: rgba(6, 182, 212, 0.5);
+  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.12);
+}
+/* Quick set: toolbar-style strip */
+.priceAccordionBody .priceQuickSetStrip {
+  padding: 14px 18px;
+  border-radius: 14px;
+  margin-bottom: 16px;
+  gap: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.02) 0%, rgba(0, 0, 0, 0.04) 100%);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  border-left: 3px solid rgba(6, 182, 212, 0.25);
+}
+.priceAccordionBody .priceQuickSetStrip .Polaris-Text {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--p-color-text-subdued, #6d7175);
+  margin-right: 8px;
+}
+.priceAccordionBody .priceQuickSetStrip .Polaris-Button {
+  padding: 8px 16px;
+  min-height: 34px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  background: rgba(255, 255, 255, 0.95);
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.priceAccordionBody .priceQuickSetStrip .Polaris-Button:hover {
+  background: rgba(6, 182, 212, 0.1);
+  border-color: rgba(6, 182, 212, 0.45);
+  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.12);
+}
+.priceAccordionBody .priceQuickSetStrip .Polaris-Button:active {
+  transform: scale(0.98);
+}
+/* Per-product grid: card tiles */
+.priceAccordionBody .pricePerProductGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
+  gap: 18px;
+}
+.priceAccordionBody .pricePerProductCard {
+  border-radius: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  overflow: hidden;
+  transition: border-color 0.22s ease, box-shadow 0.22s ease, background 0.2s ease, transform 0.2s ease;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0.7) 100%);
+}
+.priceAccordionBody .pricePerProductCard:hover {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%);
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 1);
+}
+.priceAccordionBody .pricePerProductCard:focus-within {
+  border-color: rgba(6, 182, 212, 0.25);
+  box-shadow: 0 0 0 1px rgba(6, 182, 212, 0.2), 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+.priceAccordionBody .pricePerProductCard .Polaris-Card {
+  padding: 18px 20px;
+  border-radius: 14px;
+  border: none;
+  background: transparent;
+}
+.priceAccordionBody .pricePerProductCard .Polaris-Text--headingSm {
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.025em;
+  color: var(--p-color-text, #202223);
+}
+.priceAccordionBody .Polaris-FormLayout__Item {
+  margin-bottom: 0.5rem;
+}
+.priceAccordionBody .Polaris-FormLayout__Item:last-child {
+  margin-bottom: 0;
+}
+/* "Price per product" section title above grid */
+.priceAccordionBody .priceEditorPanel > div > .Polaris-BlockStack:has(.pricePerProductGrid) > .Polaris-Text {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--p-color-text, #202223);
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+/* Responsive: tablet – two columns; section title stays full width of its cell */
+@media (max-width: 900px) and (min-width: 768px) {
+  .priceAccordionBody .priceSectionBlockTitle {
+    padding: 14px 16px 14px 20px;
+    min-height: 52px;
+  }
+  .priceAccordionBody .priceSectionBlockTitle::before {
+    width: 26px;
+    height: 26px;
+    font-size: 0.75rem;
+  }
+  .priceAccordionBody .priceSectionBlockTitleText {
+    font-size: 0.75rem;
+  }
+  .priceAccordionBody .priceSectionTitleInfoIcon {
+    width: 26px;
+    height: 26px;
+    padding-left: 12px;
+  }
+}
+/* Responsive: single column stack */
+@media (max-width: 767px) {
+  .priceAccordionBody {
+    padding: 18px 20px 20px;
+  }
+  .priceAccordionBody .priceEditorPanel {
+    padding: 18px 20px 20px 22px;
+  }
+  .priceAccordionBody .priceEditorPanel > div {
+    gap: 10px;
+  }
+  .priceAccordionBody .priceSectionBlockTitle {
+    padding: 12px 14px 12px 18px;
+    min-height: 48px;
+  }
+  .priceAccordionBody .priceSectionBlock .priceFormRow,
+  .priceAccordionBody .priceSectionBlock .priceSectionBlockContent {
+    padding: 16px 18px 18px 20px;
+    border-radius: 0 0 16px 16px;
+    border-top: none;
+  }
+  .priceAccordionBody .pricePerProductGrid {
+    grid-template-columns: 1fr;
+  }
+}
+/* Responsive: small phones – tighter padding */
+@media (max-width: 480px) {
+  .priceAccordionBody {
+    padding: 14px 16px 18px;
+  }
+  .priceAccordionBody .priceEditorPanel {
+    padding: 14px 16px 16px 18px;
+  }
+  .priceAccordionBody .priceEditorHeader {
+    padding: 8px 12px 8px 14px;
+    margin-bottom: 8px;
+  }
+  .priceAccordionBody .priceEditorPanel > div {
+    gap: 8px;
+  }
+  .priceAccordionBody .priceSectionBlockTitle {
+    padding: 12px 14px 12px 16px;
+  }
+  .priceAccordionBody .priceSectionBlockTitleText {
+    font-size: 0.6875rem;
+  }
+  .priceAccordionBody .priceSectionBlockTitle::before {
+    width: 24px;
+    height: 24px;
+    font-size: 0.6875rem;
+  }
+  .priceAccordionBody .priceSectionTitleInfoIcon {
+    width: 22px;
+    height: 22px;
+    margin-left: 6px;
+    padding-left: 8px;
+  }
+  .priceAccordionBody .priceSectionTitleInfoIcon .Polaris-Icon,
+  .priceAccordionBody .priceSectionTitleInfoIcon svg {
+    width: 12px;
+    height: 12px;
+  }
+  .priceAccordionBody .priceSectionBlock .priceFormRow,
+  .priceAccordionBody .priceSectionBlock .priceSectionBlockContent {
+    padding: 10px 12px 12px 14px;
+  }
+  .priceAccordionBody .priceQuickSetStrip {
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    gap: 8px;
+  }
+}
+/* Responsive: very small – minimal padding */
+@media (max-width: 360px) {
+  .priceAccordionBody {
+    padding: 12px 14px 16px;
+  }
+  .priceAccordionBody .priceEditorPanel {
+    padding: 12px 14px 14px 16px;
+  }
+  .priceAccordionBody .priceSectionBlockTitle {
+    padding: 10px 12px 10px 14px;
+  }
+  .priceAccordionBody .priceSectionBlockTitleText {
+    font-size: 0.5625rem;
+  }
+  .priceAccordionBody .priceSectionBlockTitle::before {
+    width: 22px;
+    height: 22px;
+    font-size: 0.625rem;
+  }
+  .priceAccordionBody .priceSectionTitleInfoIcon {
+    width: 20px;
+    height: 20px;
+    margin-left: 4px;
+    padding-left: 6px;
+  }
+  .priceAccordionBody .priceSectionTitleInfoIcon .Polaris-Icon,
+  .priceAccordionBody .priceSectionTitleInfoIcon svg {
+    width: 10px;
+    height: 10px;
+  }
+  .priceAccordionBody .priceSectionBlock .priceFormRow,
+  .priceAccordionBody .priceSectionBlock .priceSectionBlockContent {
+    padding: 8px 10px 10px 12px;
+  }
+}
+.priceSummaryRow:hover {
+  background: transparent;
+}
+.priceSummaryRowVariant {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 0.875rem;
+  letter-spacing: 0.02em;
+  color: var(--p-color-text, #202223);
+  min-width: 0;
+  overflow: hidden;
+}
+.priceSummaryRowVariant .Polaris-Badge {
+  flex-shrink: 0;
+}
+.priceSummaryColPreview {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--p-color-text-secondary, #6d7175);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: rgba(6, 182, 212, 0.08);
+  border: 1px solid rgba(6, 182, 212, 0.15);
+}
+/* Responsive: narrow columns / hide some labels on small screens */
+@media (max-width: 900px) {
+  .priceSummaryList {
+    --price-head-col-variant: minmax(100px, 1.4fr);
+    --price-head-col-allocation: 56px;
+    --price-head-col-type: minmax(72px, 0.9fr);
+    --price-head-col-base: minmax(56px, 0.65fr);
+    --price-head-col-value: minmax(64px, 0.9fr);
+    --price-head-col-preview: minmax(80px, 1fr);
+    --price-head-col-chevron: 44px;
+  }
+  .priceSummaryRowHead,
+  .priceSummaryRow,
+  .priceSummaryRowClickable {
+    padding-left: 28px;
+    gap: 8px 12px;
+  }
+  .priceSummaryRowHead {
+    font-size: 0.625rem;
+    padding: 12px 16px 12px 28px;
+    min-height: 40px;
+  }
+  .priceSummaryRow,
+  .priceSummaryRowClickable {
+    padding: 14px 16px 14px 28px;
+    min-height: 54px;
+  }
+  .priceAccordionBody {
+    padding: 18px 20px 22px 24px;
+    margin: 0 6px 10px 6px;
+  }
+  .priceSummaryAccordionChevron {
+    width: 32px;
+    height: 32px;
+  }
+}
+@media (max-width: 640px) {
+  .priceSummaryList {
+    --price-head-col-variant: 1fr;
+    --price-head-col-allocation: 52px;
+    --price-head-col-type: minmax(0, 1fr);
+    --price-head-col-base: 0fr;
+    --price-head-col-value: minmax(0, 1fr);
+    --price-head-col-preview: minmax(0, 1fr);
+    --price-head-col-chevron: 40px;
+  }
+  .priceSummaryColBase {
+    overflow: hidden;
+    max-width: 0;
+    padding: 0;
+    visibility: hidden;
+  }
+  .priceSummaryRowHead .priceSummaryColBase {
+    overflow: hidden;
+    max-width: 0;
+    padding: 0;
+    visibility: hidden;
+  }
+}
+.priceSummaryEditBtn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 12px;
+  border: 1px solid var(--p-color-border-secondary, #e1e3e5);
+  background: var(--p-color-bg-surface, #fff);
+  color: var(--p-color-text, #202223);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.15s ease;
+}
+.priceSummaryEditBtn:hover {
+  background: rgba(6, 182, 212, 0.1);
+  border-color: rgba(6, 182, 212, 0.4);
+  color: #0d9488;
+}
+.priceSummaryEditBtn:active {
+  transform: scale(0.98);
+}
+.priceSummaryEditBtnIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
 }
