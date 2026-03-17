@@ -314,9 +314,9 @@ app.use(
         return callback(null, true);
       }
 
-      // In production, reject requests with no Origin header (non-browser clients, proxies).
+      // In production, allow requests with no Origin (e.g. direct navigation to / or /favicon.ico; browser often omits Origin for document requests).
       if (!origin) {
-        return callback(new Error('Not allowed by CORS'));
+        return callback(null, true);
       }
 
       if (allowedOrigins.indexOf(origin) !== -1) {
