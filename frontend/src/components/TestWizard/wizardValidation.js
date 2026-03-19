@@ -30,6 +30,34 @@ export function getWizardStepErrors(stepId, options) {
 
   const errors = [];
 
+  /** Returns true if config has a valid price/discount value for price test variants */
+  function configHasPrice(cfg) {
+    if (!cfg || typeof cfg !== 'object') return false;
+    const mode = (cfg.priceMode || 'fixed').toLowerCase();
+    const hasFixed =
+      mode === 'fixed' &&
+      cfg.price !== null &&
+      cfg.price !== undefined &&
+      (typeof cfg.price === 'number'
+        ? Number.isFinite(cfg.price)
+        : String(cfg.price).trim() !== '');
+    const hasAmount =
+      mode === 'amount' &&
+      cfg.priceDelta !== null &&
+      cfg.priceDelta !== undefined &&
+      (typeof cfg.priceDelta === 'number'
+        ? Number.isFinite(cfg.priceDelta)
+        : String(cfg.priceDelta).trim() !== '');
+    const hasPercent =
+      mode === 'percent' &&
+      cfg.pricePercent !== null &&
+      cfg.pricePercent !== undefined &&
+      (typeof cfg.pricePercent === 'number'
+        ? Number.isFinite(cfg.pricePercent)
+        : String(cfg.pricePercent).trim() !== '');
+    return hasFixed || hasAmount || hasPercent;
+  }
+
   // Step 1 (template step) – only when showTemplateStep
   if (showTemplateStep && stepId === 1) {
     const nameToCheck = formData.name?.trim() || initialData?.name?.trim();
@@ -84,7 +112,7 @@ export function getWizardStepErrors(stepId, options) {
     }
   }
 
-  // Traffic step
+  // Traffic step: only validate allocation. Variant price config is required on Code and Review.
   if (stepId === stepIds.traffic) {
     const totalAllocation = (formData.variants || []).reduce(
       (sum, v) => sum + (v.allocation || 0),
@@ -95,34 +123,16 @@ export function getWizardStepErrors(stepId, options) {
         `Total traffic allocation must equal 100%. Current: ${totalAllocation.toFixed(2)}%.`
       );
     }
-    // Price test: validate variant price config on Traffic step (where it is edited)
+    // Price test on Traffic: validate only numeric ranges when user has entered values (no blocking "must have price" here)
+    const templateKey = selectedTemplate || formData.goal?.template_key || formData.type || '';
     const isPriceTestTraffic =
-      selectedTemplate === 'price' || selectedTemplate === 'pricing' || formData.type === 'price';
+      templateKey === 'price' ||
+      templateKey === 'pricing' ||
+      (typeof templateKey === 'string' && templateKey.toLowerCase() === 'price');
     if (isPriceTestTraffic && Array.isArray(formData.variants)) {
-      let hasNonControlWithPrice = false;
       formData.variants.forEach((v, i) => {
         const cfg = v?.config || {};
         const mode = (cfg.priceMode || 'fixed').toLowerCase();
-        const isControl =
-          i === 0 ||
-          (mode === 'fixed' &&
-            (cfg.price === null || cfg.price === undefined || String(cfg.price).trim() === ''));
-        const hasPrice =
-          (mode === 'fixed' &&
-            cfg.price !== null &&
-            cfg.price !== undefined &&
-            String(cfg.price).trim() !== '') ||
-          (mode === 'amount' &&
-            cfg.priceDelta !== null &&
-            cfg.priceDelta !== undefined &&
-            String(cfg.priceDelta).trim() !== '') ||
-          (mode === 'percent' &&
-            cfg.pricePercent !== null &&
-            cfg.pricePercent !== undefined &&
-            String(cfg.pricePercent).trim() !== '');
-        if (!isControl && hasPrice) {
-          hasNonControlWithPrice = true;
-        }
         if (mode === 'fixed' && cfg.price !== null && cfg.price !== undefined && cfg.price !== '') {
           const n = Number(cfg.price);
           if (Number.isNaN(n) || n < 0) {
@@ -156,12 +166,7 @@ export function getWizardStepErrors(stepId, options) {
           }
         }
       });
-      if (formData.variants.length > 1 && !hasNonControlWithPrice) {
-        errors.push(
-          'At least one test variant (non-control) must have a price or discount configured. Configure Variant A (or add a variant) in Variant configuration.'
-        );
-      }
-      // Per-product / per-variant overrides: validate nested price config
+      // Per-product / per-variant overrides: validate nested numeric ranges only
       formData.variants.forEach((v, i) => {
         const byProduct = v?.config?.byProduct;
         if (!byProduct || typeof byProduct !== 'object') return;
@@ -170,9 +175,9 @@ export function getWizardStepErrors(stepId, options) {
           if (!byVariant || typeof byVariant !== 'object') return;
           Object.entries(byVariant).forEach(([vKey, vCfg]) => {
             if (!vCfg || typeof vCfg !== 'object') return;
-            const mode = (vCfg.priceMode || 'fixed').toLowerCase();
+            const vMode = (vCfg.priceMode || 'fixed').toLowerCase();
             if (
-              mode === 'fixed' &&
+              vMode === 'fixed' &&
               vCfg.price !== null &&
               vCfg.price !== undefined &&
               vCfg.price !== ''
@@ -185,7 +190,7 @@ export function getWizardStepErrors(stepId, options) {
               }
             }
             if (
-              mode === 'amount' &&
+              vMode === 'amount' &&
               vCfg.priceDelta !== null &&
               vCfg.priceDelta !== undefined &&
               vCfg.priceDelta !== ''
@@ -198,7 +203,7 @@ export function getWizardStepErrors(stepId, options) {
               }
             }
             if (
-              mode === 'percent' &&
+              vMode === 'percent' &&
               vCfg.pricePercent !== null &&
               vCfg.pricePercent !== undefined &&
               vCfg.pricePercent !== ''
@@ -224,8 +229,11 @@ export function getWizardStepErrors(stepId, options) {
     if (jsValidationErrors.length > 0) {
       errors.push('Fix JavaScript syntax errors before continuing.');
     }
+    const templateKeyCode = selectedTemplate || formData.goal?.template_key || formData.type || '';
     const isPriceTest =
-      selectedTemplate === 'price' || selectedTemplate === 'pricing' || formData.type === 'price';
+      templateKeyCode === 'price' ||
+      templateKeyCode === 'pricing' ||
+      (typeof templateKeyCode === 'string' && templateKeyCode.toLowerCase() === 'price');
     if (isPriceTest && formData.target_type === 'product') {
       const hasTargetId =
         (formData.target_id && String(formData.target_id).trim()) ||
@@ -245,20 +253,7 @@ export function getWizardStepErrors(stepId, options) {
           i === 0 ||
           (mode === 'fixed' &&
             (cfg.price === null || cfg.price === undefined || String(cfg.price).trim() === ''));
-        const hasPrice =
-          (mode === 'fixed' &&
-            cfg.price !== null &&
-            cfg.price !== undefined &&
-            String(cfg.price).trim() !== '') ||
-          (mode === 'amount' &&
-            cfg.priceDelta !== null &&
-            cfg.priceDelta !== undefined &&
-            String(cfg.priceDelta).trim() !== '') ||
-          (mode === 'percent' &&
-            cfg.pricePercent !== null &&
-            cfg.pricePercent !== undefined &&
-            String(cfg.pricePercent).trim() !== '');
-        if (!isControl && hasPrice) {
+        if (!isControl && configHasPrice(cfg)) {
           hasNonControlWithPriceCode = true;
         }
         if (mode === 'fixed' && cfg.price !== null && cfg.price !== undefined && cfg.price !== '') {
@@ -361,10 +356,12 @@ export function getWizardStepErrors(stepId, options) {
       errors.push(`Traffic allocation must equal 100%. Current: ${totalAllocation.toFixed(1)}%.`);
     }
     // Price test: same variant price validation on review + at least one non-control with price
+    const templateKeyReview =
+      formData.type || formData.goal?.template_key || selectedTemplate || '';
     const isPriceTestReview =
-      (formData.type || '').toLowerCase() === 'price' ||
-      (formData.goal?.template_key || '').toLowerCase() === 'price' ||
-      (formData.goal?.template_key || '').toLowerCase() === 'pricing';
+      templateKeyReview === 'price' ||
+      templateKeyReview === 'pricing' ||
+      (typeof templateKeyReview === 'string' && templateKeyReview.toLowerCase() === 'price');
     if (isPriceTestReview && Array.isArray(formData.variants)) {
       let hasNonControlWithPriceReview = false;
       formData.variants.forEach((v, i) => {
@@ -374,20 +371,7 @@ export function getWizardStepErrors(stepId, options) {
           i === 0 ||
           (mode === 'fixed' &&
             (cfg.price === null || cfg.price === undefined || String(cfg.price).trim() === ''));
-        const hasPrice =
-          (mode === 'fixed' &&
-            cfg.price !== null &&
-            cfg.price !== undefined &&
-            String(cfg.price).trim() !== '') ||
-          (mode === 'amount' &&
-            cfg.priceDelta !== null &&
-            cfg.priceDelta !== undefined &&
-            String(cfg.priceDelta).trim() !== '') ||
-          (mode === 'percent' &&
-            cfg.pricePercent !== null &&
-            cfg.pricePercent !== undefined &&
-            String(cfg.pricePercent).trim() !== '');
-        if (!isControl && hasPrice) {
+        if (!isControl && configHasPrice(cfg)) {
           hasNonControlWithPriceReview = true;
         }
         if (mode === 'fixed' && cfg.price !== null && cfg.price !== undefined && cfg.price !== '') {
