@@ -27,6 +27,34 @@ export function getHealthUrl() {
 }
 
 /**
+ * Public GET — no auth. Shopify checkout price pipeline QA (batch URL, HTTPS, secret mode).
+ * @param {string} [shopDomain] — e.g. store.myshopify.com (must be registered if passed)
+ * @returns {string}
+ */
+export function getPriceCheckoutDiagnosticsUrl(shopDomain) {
+  const path = `${API_BASE_URL}/track/price-checkout-diagnostics`;
+  const s = shopDomain && String(shopDomain).trim();
+  return s ? `${path}?shop=${encodeURIComponent(s)}` : path;
+}
+
+/**
+ * Fetch checkout price diagnostics via public track URL (no cookies).
+ * From the RipX app, prefer `apiGet('/settings/checkout-price-diagnostics')` (same JSON, session auth, no CORS issues).
+ * @param {string} [shopDomain]
+ * @returns {Promise<object>}
+ */
+export async function fetchPriceCheckoutDiagnostics(shopDomain) {
+  const url = getPriceCheckoutDiagnosticsUrl(shopDomain);
+  const res = await fetch(url, { method: 'GET', credentials: 'omit' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = data.error || data.message || res.statusText || 'Request failed';
+    throw new Error(typeof msg === 'string' ? msg : 'Request failed');
+  }
+  return data;
+}
+
+/**
  * Call backend logout to clear email session cookie (so OAuth start doesn't use stale session).
  * Fire-and-forget; does not block. Call clearAuthStorage() and redirect after.
  */

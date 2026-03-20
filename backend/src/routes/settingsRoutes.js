@@ -15,6 +15,7 @@ const { getTenantByDomain } = require('../models/tenant');
 const userModel = require('../models/user');
 const userDomainAccess = require('../models/userDomainAccess');
 const { SETTINGS_BOUNDS } = require('../constants');
+const { buildCheckoutPriceDiagnostics } = require('../services/priceCheckoutDiagnostics');
 
 function escapeHtmlAttr(str) {
   if (typeof str !== 'string') {
@@ -352,6 +353,39 @@ ${resourceHints}<script src="${scriptUrl}" defer crossorigin="anonymous" fetchpr
     next(error);
   }
 });
+
+/**
+ * GET /api/settings/checkout-price-diagnostics
+ * Same payload as GET /api/track/price-checkout-diagnostics?shop=… but uses the authenticated
+ * shop domain (no query param). Use from the RipX app UI to avoid cross-origin fetch/CORS issues.
+ */
+router.get(
+  '/checkout-price-diagnostics',
+  asyncHandler(async (req, res) => {
+    const shopDomain = req.shopDomain;
+    if (!shopDomain) {
+      return sendError(res, 401, 'Shop domain required');
+    }
+
+    const countRes = await query(
+      `SELECT COUNT(*)::int AS c FROM tests
+       WHERE LOWER(TRIM(shop_domain)) = LOWER(TRIM($1))
+         AND LOWER(TRIM(status)) = 'running'
+         AND type = $2`,
+      [shopDomain, 'price']
+    );
+    const runningPriceTests = countRes.rows[0]?.c ?? 0;
+
+    const body = buildCheckoutPriceDiagnostics({
+      shopDomain,
+      tenantRegistered: true,
+      runningPriceTests,
+    });
+
+    res.set('Cache-Control', 'no-store');
+    return res.json(body);
+  })
+);
 
 /**
  * GET /api/settings/integrations

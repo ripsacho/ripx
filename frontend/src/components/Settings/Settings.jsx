@@ -23,6 +23,8 @@ import {
   Select,
   Icon,
   Banner,
+  Spinner,
+  Divider,
 } from '@shopify/polaris';
 import {
   ChartVerticalIcon,
@@ -228,6 +230,9 @@ function Settings() {
   const [webhookError, setWebhookError] = useState(null);
   const [presetApplyingKey, setPresetApplyingKey] = useState(null);
   const [deletePresetLoading, setDeletePresetLoading] = useState(false);
+  const [checkoutDiagLoading, setCheckoutDiagLoading] = useState(false);
+  const [checkoutDiag, setCheckoutDiag] = useState(null);
+  const [checkoutDiagError, setCheckoutDiagError] = useState(null);
 
   const fetchSettings = useCallback(async () => {
     setSettingsLoadError(false);
@@ -308,6 +313,25 @@ function Settings() {
       setInstallationLoading(false);
     }
   }, []);
+
+  const runCheckoutDiagnostics = useCallback(async () => {
+    if (!installation?.domain) return;
+    setCheckoutDiagLoading(true);
+    setCheckoutDiagError(null);
+    setCheckoutDiag(null);
+    try {
+      const res = await apiGet('/settings/checkout-price-diagnostics');
+      const data = unwrapData(res);
+      if (!data || data.success === false) {
+        throw new Error(data?.error || 'Invalid diagnostics response');
+      }
+      setCheckoutDiag(data);
+    } catch (e) {
+      setCheckoutDiagError(e?.message || 'Could not load diagnostics');
+    } finally {
+      setCheckoutDiagLoading(false);
+    }
+  }, [installation?.domain]);
 
   const handleRefreshIntegrations = useCallback(async () => {
     setIntegrationsRefreshing(true);
@@ -842,6 +866,219 @@ function Settings() {
                           </Box>
                         </Card>
                       )}
+
+                      {installation &&
+                        installation.platform === 'shopify' &&
+                        !installationLoading &&
+                        !installationError && (
+                          <Card
+                            className={`${styles.settingsPanelCard} ${styles.checkoutDiagCard}`}
+                          >
+                            <Box padding="500">
+                              <BlockStack gap="400">
+                                <div className={styles.sectionHeader}>
+                                  <div className={styles.sectionHeaderIcon}>
+                                    <TargetIcon />
+                                  </div>
+                                  <div className={styles.sectionHeaderContent}>
+                                    <Text variant="headingMd" as="h2">
+                                      Checkout price test health
+                                    </Text>
+                                    <Text as="p" variant="bodySm" tone="subdued">
+                                      Verifies your RipX API is ready for the Shopify Discount
+                                      Function that aligns <strong>charged</strong> checkout prices
+                                      with running price tests (Plus / network access + app
+                                      extension). Run this after changing <code>APP_URL</code> or
+                                      secrets.
+                                    </Text>
+                                  </div>
+                                </div>
+                                <InlineStack gap="300" blockAlign="center">
+                                  <Button
+                                    onClick={runCheckoutDiagnostics}
+                                    loading={checkoutDiagLoading}
+                                    disabled={checkoutDiagLoading}
+                                  >
+                                    Run check
+                                  </Button>
+                                  {checkoutDiag?.summary && (
+                                    <Badge
+                                      tone={
+                                        checkoutDiag.summary.overall_ok
+                                          ? 'success'
+                                          : checkoutDiag.summary.overall_status === 'error'
+                                            ? 'critical'
+                                            : 'warning'
+                                      }
+                                    >
+                                      {checkoutDiag.summary.overall_ok
+                                        ? 'All checks passed'
+                                        : `${checkoutDiag.summary.checks_passed}/${checkoutDiag.summary.checks_total} checks OK`}
+                                    </Badge>
+                                  )}
+                                </InlineStack>
+                                {checkoutDiagLoading && (
+                                  <InlineStack gap="200" blockAlign="center">
+                                    <Spinner size="small" />
+                                    <Text as="span" variant="bodySm" tone="subdued">
+                                      Checking API configuration…
+                                    </Text>
+                                  </InlineStack>
+                                )}
+                                {checkoutDiagError && (
+                                  <Banner
+                                    tone="critical"
+                                    onDismiss={() => setCheckoutDiagError(null)}
+                                  >
+                                    {checkoutDiagError}
+                                  </Banner>
+                                )}
+                                {checkoutDiag?.infrastructure && (
+                                  <>
+                                    <Divider />
+                                    <Text variant="headingSm" as="h3">
+                                      Batch resolver
+                                    </Text>
+                                    <Text as="p" variant="bodySm" tone="subdued">
+                                      Shopify calls this URL from your discount function (
+                                      {checkoutDiag.infrastructure.batch_url_source}).
+                                    </Text>
+                                    <div className={styles.checkoutDiagMono}>
+                                      {checkoutDiag.infrastructure.batch_resolve_url ||
+                                        '(not configured)'}
+                                    </div>
+                                    <InlineStack gap="200" wrap>
+                                      <Text as="span" variant="bodySm">
+                                        HTTPS:{' '}
+                                        {checkoutDiag.infrastructure.uses_https ? 'yes' : 'no'}
+                                      </Text>
+                                      <Text as="span" variant="bodySm">
+                                        Secret required:{' '}
+                                        {checkoutDiag.infrastructure.checkout_price_secret_required
+                                          ? 'yes'
+                                          : 'no'}
+                                      </Text>
+                                      <Text as="span" variant="bodySm">
+                                        Max lines / batch:{' '}
+                                        {checkoutDiag.infrastructure.price_resolve_batch_max}
+                                      </Text>
+                                      <Text as="span" variant="bodySm">
+                                        Max response (bytes):{' '}
+                                        {checkoutDiag.infrastructure
+                                          .price_resolve_batch_response_max_bytes ?? '—'}
+                                      </Text>
+                                      <Text as="span" variant="bodySm">
+                                        Compact batch JSON:{' '}
+                                        {checkoutDiag.infrastructure.batch_compact_response ===
+                                        false
+                                          ? 'no (full)'
+                                          : checkoutDiag.infrastructure.batch_compact_response ===
+                                              true
+                                            ? 'yes'
+                                            : '—'}
+                                      </Text>
+                                      <Text as="span" variant="bodySm">
+                                        Slow batch log (ms):{' '}
+                                        {checkoutDiag.infrastructure.price_batch_slow_log_ms ?? '—'}
+                                      </Text>
+                                    </InlineStack>
+                                    {checkoutDiag.shop && (
+                                      <Text as="p" variant="bodySm">
+                                        Running <strong>price</strong> tests for this shop:{' '}
+                                        <strong>
+                                          {checkoutDiag.shop.running_price_tests ?? '—'}
+                                        </strong>
+                                      </Text>
+                                    )}
+                                  </>
+                                )}
+                                {Array.isArray(checkoutDiag?.checklist) &&
+                                  checkoutDiag.checklist.length > 0 && (
+                                    <>
+                                      <Divider />
+                                      <Text variant="headingSm" as="h3">
+                                        Checklist
+                                      </Text>
+                                      <BlockStack gap="200">
+                                        {checkoutDiag.checklist.map(item => (
+                                          <div
+                                            key={item.id}
+                                            className={styles.checkoutDiagCheckRow}
+                                          >
+                                            <Badge
+                                              tone={
+                                                item.ok
+                                                  ? 'success'
+                                                  : item.severity === 'error'
+                                                    ? 'critical'
+                                                    : 'warning'
+                                              }
+                                            >
+                                              {item.ok ? 'OK' : 'Fix'}
+                                            </Badge>
+                                            <Text as="span" variant="bodySm">
+                                              {item.message}
+                                            </Text>
+                                          </div>
+                                        ))}
+                                      </BlockStack>
+                                    </>
+                                  )}
+                                {Array.isArray(checkoutDiag?.recommendations) &&
+                                  checkoutDiag.recommendations.length > 0 && (
+                                    <>
+                                      <Divider />
+                                      <Text variant="headingSm" as="h3">
+                                        Next steps
+                                      </Text>
+                                      <ul className={styles.installSteps}>
+                                        {checkoutDiag.recommendations.map((line, i) => (
+                                          <li key={i}>
+                                            <Text as="span" variant="bodySm">
+                                              {line}
+                                            </Text>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </>
+                                  )}
+                                <Text as="p" variant="bodySm" tone="subdued">
+                                  Docs: extension{' '}
+                                  <code className={styles.checkoutDiagMono}>
+                                    extensions/ripx-checkout-discount/README.md
+                                  </code>{' '}
+                                  · roadmap{' '}
+                                  <code className={styles.checkoutDiagMono}>
+                                    backend/docs/PRODUCT_EXCELLENCE_ROADMAP.md
+                                  </code>
+                                </Text>
+                              </BlockStack>
+                            </Box>
+                          </Card>
+                        )}
+
+                      {installation &&
+                        installation.platform === 'standalone' &&
+                        !installationLoading &&
+                        !installationError && (
+                          <Card
+                            className={`${styles.settingsPanelCard} ${styles.checkoutDiagCard}`}
+                          >
+                            <Box padding="500">
+                              <Banner tone="info">
+                                <BlockStack gap="200">
+                                  <Text as="p" variant="bodyMd">
+                                    <strong>Checkout price alignment</strong> (matching charged
+                                    checkout to a price test) uses Shopify&apos;s Discount Function
+                                    API and applies to <strong>Shopify</strong> stores, not
+                                    standalone sites. On standalone, RipX still runs price tests on
+                                    your storefront via the script.
+                                  </Text>
+                                </BlockStack>
+                              </Banner>
+                            </Box>
+                          </Card>
+                        )}
                     </div>
                   )}
 

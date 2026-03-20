@@ -351,13 +351,14 @@ class TestModel {
     const result = await query(sql, params);
     const map = new Map();
     for (const row of result.rows) {
+      const idKey = String(row.id);
       const test = {
         ...row,
-        goal: safeParseJSON(row.goal, {}, 'goal', row.id),
-        variants: normalizeVariantCode(safeParseJSON(row.variants, [], 'variants', row.id)),
-        segments: safeParseJSON(row.segments, {}, 'segments', row.id),
+        goal: safeParseJSON(row.goal, {}, 'goal', idKey),
+        variants: normalizeVariantCode(safeParseJSON(row.variants, [], 'variants', idKey)),
+        segments: safeParseJSON(row.segments, {}, 'segments', idKey),
       };
-      map.set(row.id, test);
+      map.set(idKey, test);
     }
     return map;
   }
@@ -501,12 +502,45 @@ class TestModel {
       throw new Error('No fields to update');
     }
 
+    // Only update columns that exist on tests table (ignore frontend-only fields like pricePerProduct)
+    const ALLOWED_UPDATE_COLUMNS = new Set([
+      'goal',
+      'variants',
+      'segments',
+      'guardrail_config',
+      'target_ids',
+      'rollout_schedule',
+      'name',
+      'description',
+      'type',
+      'target_type',
+      'target_id',
+      'status',
+      'holdout_percent',
+      'scheduled_start_at',
+      'scheduled_stop_at',
+      'auto_start',
+      'auto_stop',
+      'timezone',
+      'winner_variant_index',
+      'winner_variant_id',
+      'personalization_mode',
+      'rollout_percent',
+      'rollout_started_at',
+      'started_at',
+      'stopped_at',
+      'tenant_id',
+    ]);
+
     const fields = [];
     const values = [];
     let paramIndex = 1;
 
     // Handle JSON fields and regular fields
     Object.keys(updates).forEach(key => {
+      if (!ALLOWED_UPDATE_COLUMNS.has(key)) {
+        return;
+      }
       if (
         key === 'goal' ||
         key === 'variants' ||
@@ -546,8 +580,8 @@ class TestModel {
                   : safeStringifyJSON(val, '[]')
                 : safeStringifyJSON(val, fallback)
         );
-      } else if (key !== 'id' && key !== 'shop_domain' && key !== 'created_at') {
-        // Allow updating most fields, but protect certain ones
+      } else {
+        // Scalar column
         let val = updates[key];
         if (key === 'name' && val !== undefined && val !== null) {
           const trimmed = typeof val === 'string' ? val.trim() : String(val).trim();

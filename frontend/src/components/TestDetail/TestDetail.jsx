@@ -119,6 +119,7 @@ function TestDetail() {
     setErrorMessage(null);
     try {
       await startMutation.mutateAsync(id);
+      setSuccessMessage('Test started successfully.');
     } catch (err) {
       setErrorMessage('Failed to start test');
     } finally {

@@ -1,0 +1,14 @@
+query RipxCartLinesRun {
+  fetchResult {
+    jsonBody
+    status
+  }
+  discount {
+    discountClasses
+  }
+  cart {
+    lines {
+      id
+    }
+  }
+}

@@ -58,6 +58,7 @@ function TestList() {
   const [viewMode, setViewMode] = useState('list');
   const [actionLoading, setActionLoading] = useState({});
   const [errorMessage, setErrorMessage] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const viewFilter = searchParams.get('view') || 'all';
@@ -104,6 +105,11 @@ function TestList() {
     try {
       await Promise.all(selectedTests.map(testId => startMutation.mutateAsync(testId)));
       setSelectedTests([]);
+      setSuccessMessage(
+        selectedTests.length === 1
+          ? 'Test started successfully.'
+          : `${selectedTests.length} tests started successfully.`
+      );
     } catch (err) {
       setErrorMessage('Failed to start some tests');
     } finally {
@@ -163,6 +169,7 @@ function TestList() {
       setErrorMessage(null);
       try {
         await startMutation.mutateAsync(testId);
+        setSuccessMessage('Test started successfully.');
       } catch (err) {
         setErrorMessage(err.response?.data?.error || 'Failed to start test');
       } finally {
@@ -810,6 +817,14 @@ function TestList() {
         onClose={() => setErrorMessage(null)}
         duration={5000}
       />
+      {successMessage && (
+        <Toast
+          message={successMessage}
+          type="success"
+          onClose={() => setSuccessMessage(null)}
+          duration={3000}
+        />
+      )}
 
       <Page title="" subtitle="">
         <div className={styles.testsLayout}>

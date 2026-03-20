@@ -1,0 +1,4 @@
+{
+  "name": "RipX checkout price alignment",
+  "description": "Applies line discounts so checkout matches RipX price tests (requires network access + POST /api/track/price-resolve-batch)."
+}

@@ -1,0 +1,9 @@
+query RipxDeliveryRun {
+  fetchResult {
+    jsonBody
+    status
+  }
+  discount {
+    discountClasses
+  }
+}

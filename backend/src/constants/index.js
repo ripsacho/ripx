@@ -176,6 +176,19 @@ const KV_KEYS = {
 // Track/heatmap limits (DoS protection)
 const HEATMAP_EVENTS_BATCH_MAX = parseInt(process.env.HEATMAP_EVENTS_BATCH_MAX, 10) || 500;
 
+/** Max cart lines per POST /api/track/price-resolve-batch (Discount Function batch resolver) */
+const PRICE_RESOLVE_BATCH_MAX = parseInt(process.env.PRICE_RESOLVE_BATCH_MAX, 10) || 80;
+
+/**
+ * Max UTF-8 bytes for JSON body of price-resolve-batch success response (Shopify ~100KB total limit).
+ * Default 95KB margin for headers / framing. Override with PRICE_RESOLVE_BATCH_RESPONSE_MAX_BYTES.
+ */
+const PRICE_RESOLVE_BATCH_RESPONSE_MAX_BYTES =
+  parseInt(process.env.PRICE_RESOLVE_BATCH_RESPONSE_MAX_BYTES, 10) || 95 * 1024;
+
+/** Log warn when price-resolve-batch handler exceeds this duration (ms); default 800 (Shopify fetch budget 2000ms). */
+const PRICE_BATCH_SLOW_LOG_MS = parseInt(process.env.PRICE_BATCH_SLOW_LOG_MS, 10) || 800;
+
 // Validation limits (test name, etc.)
 const MAX_TEST_NAME_LENGTH = 255;
 
@@ -207,6 +220,9 @@ module.exports = {
   PAGINATION,
   KV_KEYS,
   HEATMAP_EVENTS_BATCH_MAX,
+  PRICE_RESOLVE_BATCH_MAX,
+  PRICE_RESOLVE_BATCH_RESPONSE_MAX_BYTES,
+  PRICE_BATCH_SLOW_LOG_MS,
   MAX_TEST_NAME_LENGTH,
   KV_VALUE_MAX_BYTES,
 };

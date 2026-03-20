@@ -1,0 +1,35 @@
+query RipxCartLinesFetch {
+  cart {
+    shopAttr: attribute(key: "_ripx_shop") {
+      value
+    }
+    lines {
+      id
+      quantity
+      cost {
+        subtotalAmount {
+          amount
+          currencyCode
+        }
+      }
+      ripxShop: attribute(key: "_ripx_shop") {
+        value
+      }
+      ripxTest: attribute(key: "_ripx_price_test") {
+        value
+      }
+      ripxVariant: attribute(key: "_ripx_variant") {
+        value
+      }
+      merchandise {
+        __typename
+        ... on ProductVariant {
+          id
+          product {
+            id
+          }
+        }
+      }
+    }
+  }
+}

@@ -845,8 +845,11 @@ function TestWizard({
       allocation: Number(v.allocation) || 0,
     }));
 
+    // Omit frontend-only fields that are not columns on tests (e.g. pricePerProduct is UI state; per-product config lives in variants[].config.byProduct)
+    const { pricePerProduct: _pricePerProduct, ...dataForApi } = data;
+
     return {
-      ...data,
+      ...dataForApi,
       goal,
       holdout_percent: holdoutPercent,
       segments: normalizedSegments,

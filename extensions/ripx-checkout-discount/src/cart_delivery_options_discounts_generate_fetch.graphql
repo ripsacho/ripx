@@ -1,0 +1,9 @@
+query RipxDeliveryFetch {
+  cart {
+    cost {
+      totalAmount {
+        amount
+      }
+    }
+  }
+}

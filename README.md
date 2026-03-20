@@ -20,7 +20,7 @@ npm run dev
 ssh -i /Users/m.a.k.ripon/Downloads/RipX-kp.pem ubuntu@3.11.139.224
 npm run build
 git add .
-git commit -m "New Update"
+git commit -m "Fixing Issues"
 git push
 
 cd ~/RipX
@@ -31,6 +31,8 @@ pm2 restart ripx --update-env
 **Test & validate:** `npm run test` (backend + frontend), `npm run validate` (lint + test), `npm run build` (frontend). **Audit:** `npm run audit` (root + frontend).
 
 **Health:** `GET /health` or `GET /api/health` returns app status and DB/Redis checks (503 when DB is down).
+
+**Checkout price QA:** **Settings → Installation → Checkout price test health** (calls `GET /api/settings/checkout-price-diagnostics`). Public: `GET /api/track/price-checkout-diagnostics?shop=store.myshopify.com`. See `extensions/ripx-checkout-discount/README.md`. Roadmap: `backend/docs/PRODUCT_EXCELLENCE_ROADMAP.md`.
 
 **Local admin:** In `.env` set `RIPX_ADMIN_SHOP_DOMAINS=your-store.myshopify.com` to access the Admin panel at `/admin` without setting DB roles. Production: see [docs/getting-started/ADMIN_SETUP.md](docs/getting-started/ADMIN_SETUP.md).
 

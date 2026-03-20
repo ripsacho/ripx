@@ -11,7 +11,7 @@ const fs = require('fs');
 const router = express.Router();
 const validators = require('../utils/validators');
 const { trackEvent } = require('../models/analytics');
-const { getActiveTestsForStorefront, getTestById } = require('../models/test');
+const { getActiveTestsForStorefront, getTestById, getTestsByIds } = require('../models/test');
 const abTestEngine = require('../services/abTestEngine');
 const {
   tenantExists,
@@ -27,11 +27,28 @@ const {
 } = require('../utils/maintenanceMode');
 const logger = require('../utils/logger');
 const { asyncHandler } = require('../middleware/asyncHandler');
-const { HEATMAP_EVENTS_BATCH_MAX, ERROR_MESSAGES } = require('../constants');
+const {
+  HEATMAP_EVENTS_BATCH_MAX,
+  PRICE_RESOLVE_BATCH_MAX,
+  PRICE_BATCH_SLOW_LOG_MS,
+  ERROR_MESSAGES,
+} = require('../constants');
+const {
+  resolvePriceTestLineDiscount,
+  resolveCheckoutPriceBatchForDomain,
+} = require('../services/priceTestCheckoutResolve');
+const { buildCheckoutPriceDiagnostics } = require('../services/priceCheckoutDiagnostics');
+const { query } = require('../utils/database');
+const {
+  batchResolveJsonUtf8Bytes,
+  batchResolveResponseTooLarge,
+  shapePriceResolveBatchLinesForCheckout,
+} = require('../utils/priceResolveBatchResponse');
+const { checkoutPriceSecretsMatch } = require('../utils/checkoutPriceSecret');
 
 /** Middleware: return 403 when domain is on block list (key_value_store key block_list.<domain>) */
 async function blockListCheck(req, res, next) {
-  const shop = req.query.shop || req.body?.shop_domain;
+  const shop = req.query.shop || req.body?.shop_domain || req.body?.shop;
   const site = req.query.site || req.body?.site;
   const raw = (shop || site || '').toString().trim();
   if (!raw) {
@@ -54,7 +71,7 @@ async function maintenanceCheck(req, res, next) {
   if (!maintenanceValue) {
     return next();
   }
-  const shop = req.query.shop || req.body?.shop_domain;
+  const shop = req.query.shop || req.body?.shop_domain || req.body?.shop;
   const site = req.query.site || req.body?.site;
   const domain = await resolveTenantDomain(shop, site);
   if (isMaintenanceActiveForDomain(domain, maintenanceValue)) {
@@ -69,6 +86,27 @@ async function maintenanceCheck(req, res, next) {
 
 function _isValidShopDomain(shop) {
   return /^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/.test(shop);
+}
+
+/** Shared secret check for checkout price resolver (GET + POST). Body `secret` supported for JSON callers. */
+function requireCheckoutPriceAuth(req, res) {
+  const checkoutSecret = (process.env.RIPX_CHECKOUT_PRICE_SECRET || '').trim();
+  if (!checkoutSecret) {
+    return true;
+  }
+  const b = req.body || {};
+  const headerSecret = req.get('x-ripx-price-secret');
+  const raw =
+    (b.secret !== undefined && b.secret !== null && String(b.secret)) ||
+    (req.query.secret !== undefined && req.query.secret !== null && String(req.query.secret)) ||
+    (headerSecret !== undefined && headerSecret !== null && String(headerSecret)) ||
+    '';
+  const provided = raw.trim();
+  if (!checkoutPriceSecretsMatch(checkoutSecret, provided)) {
+    res.status(403).json({ success: false, error: 'Forbidden' });
+    return false;
+  }
+  return true;
 }
 
 async function resolveTenantDomain(shop, site) {
@@ -923,11 +961,16 @@ router.get(
 
     const variants = Array.isArray(test.variants) ? test.variants : [];
     const variant = variants.find(item => {
-      if (variant_id && item?.id) {
-        return item.id === variant_id;
+      if (variant_id) {
+        if (item?.id && item.id === variant_id) {
+          return true;
+        }
+        if (item?.name && String(item.name).trim() === String(variant_id).trim()) {
+          return true;
+        }
       }
       if (variant_name && item?.name) {
-        return item.name === variant_name;
+        return String(item.name).trim() === String(variant_name).trim();
       }
       return false;
     });
@@ -949,6 +992,249 @@ router.get(
         config,
       },
     });
+  })
+);
+
+/**
+ * GET /api/track/price-checkout-diagnostics
+ * Operator / merchant QA: verifies batch resolver URL (APP_URL / RIPX_PRICE_RESOLVE_BATCH_URL),
+ * HTTPS, optional RIPX_CHECKOUT_PRICE_SECRET mode, PRICE_RESOLVE_BATCH_MAX.
+ *
+ * Query (optional): shop (Shopify) or site (standalone). When provided, must be a **registered** tenant;
+ * response includes count of running tests with type `price`. Omit shop/site for server-only checks.
+ *
+ * Does not require RIPX_CHECKOUT_PRICE_SECRET (this is for setup verification, not the resolver itself).
+ *
+ * Authenticated alternative (same JSON, no CORS from the app UI): GET /api/settings/checkout-price-diagnostics
+ */
+router.get(
+  '/price-checkout-diagnostics',
+  asyncHandler(async (req, res) => {
+    const shop = req.query.shop;
+    const site = req.query.site;
+
+    /** @type {{ shopDomain: string|null, tenantRegistered: boolean|null, runningPriceTests: number|null }} */
+    let shopOpts = {
+      shopDomain: null,
+      tenantRegistered: null,
+      runningPriceTests: null,
+    };
+
+    if (shop || site) {
+      const domain = await resolveTenantDomain(shop, site);
+      if (!domain) {
+        return res.status(400).json({
+          success: false,
+          error:
+            'Invalid or unregistered shop/site. Omit shop and site for server-only diagnostics, or use a registered domain.',
+        });
+      }
+      const countRes = await query(
+        `SELECT COUNT(*)::int AS c FROM tests
+         WHERE LOWER(TRIM(shop_domain)) = LOWER(TRIM($1))
+           AND LOWER(TRIM(status)) = 'running'
+           AND type = $2`,
+        [domain, 'price']
+      );
+      shopOpts = {
+        shopDomain: domain,
+        tenantRegistered: true,
+        runningPriceTests: countRes.rows[0]?.c ?? 0,
+      };
+    }
+
+    const body = buildCheckoutPriceDiagnostics({
+      shopDomain: shopOpts.shopDomain,
+      tenantRegistered: shopOpts.tenantRegistered,
+      runningPriceTests: shopOpts.runningPriceTests,
+    });
+
+    res.set('Cache-Control', 'no-store');
+    return res.json(body);
+  })
+);
+
+/**
+ * GET /api/track/price-resolve
+ * Compute per-line discount so checkout can match RipX price-test display (fixed / amount / percent).
+ * Intended for a Shopify Product Discount Function with network access (fetch), or server-side cart tools.
+ * Cart line must include attributes _ripx_price_test (test UUID) and _ripx_variant (assigned variant id/name).
+ *
+ * Query: shop|site, test_id, assignment_variant, product_id, line_total, optional variant_id, qty, currency, secret
+ * When RIPX_CHECKOUT_PRICE_SECRET is set, pass secret as query param or X-RipX-Price-Secret header.
+ */
+router.get(
+  '/price-resolve',
+  asyncHandler(async (req, res) => {
+    if (!requireCheckoutPriceAuth(req, res)) {
+      return;
+    }
+
+    const { shop, site, test_id, assignment_variant, product_id, variant_id, line_total, qty } =
+      req.query;
+
+    const domain = await resolveTenantDomain(shop, site);
+    if (!domain) {
+      return res.status(400).json({ success: false, error: 'Invalid shop or site' });
+    }
+    const tenantPr = await getTenantByDomain(domain);
+    if (tenantPr && isTenantSuspendedOrBlocked(tenantPr)) {
+      return res.status(403).json({ success: false, error: 'Access suspended' });
+    }
+
+    if (!test_id || !validators.isValidUUID(String(test_id))) {
+      return res.status(400).json({ success: false, error: 'Invalid or missing test_id' });
+    }
+    if (!assignment_variant || !String(assignment_variant).trim()) {
+      return res.status(400).json({ success: false, error: 'Missing assignment_variant' });
+    }
+    if (!product_id || !String(product_id).trim()) {
+      return res.status(400).json({ success: false, error: 'Missing product_id' });
+    }
+    const lineTotal = Number.parseFloat(String(line_total || '').trim());
+    if (!Number.isFinite(lineTotal) || lineTotal <= 0) {
+      return res.status(400).json({ success: false, error: 'Invalid line_total' });
+    }
+    const quantity = Math.max(1, Number.parseInt(String(qty || '1'), 10) || 1);
+
+    const test = await getTestById(String(test_id), domain);
+    if (!test) {
+      return res.status(404).json({ success: false, error: 'Test not found' });
+    }
+
+    const result = resolvePriceTestLineDiscount({
+      test,
+      assignmentVariantId: String(assignment_variant).trim(),
+      productId: String(product_id).trim(),
+      variantId: variant_id ? String(variant_id).trim() : null,
+      linePresentmentTotal: lineTotal,
+      quantity,
+    });
+
+    res.set('Cache-Control', 'no-store');
+    return res.json({
+      success: true,
+      applies: result.applies,
+      discountDecimal: result.discountDecimal || null,
+      targetLineDecimal: result.targetLineDecimal || null,
+      currencyCode: req.query.currency ? String(req.query.currency).trim() : null,
+      reason: result.reason || null,
+    });
+  })
+);
+
+/**
+ * POST /api/track/price-resolve-batch
+ * Batch resolver for Shopify Discount Function `cart.lines.discounts.generate.fetch` (single HTTP round-trip).
+ *
+ * Body JSON: { shop|site, secret? (if RIPX_CHECKOUT_PRICE_SECRET set), lines: [{ line_id, test_id, assignment_variant, product_id, variant_id?, line_total, qty? }] }
+ *
+ * Response `lines` default shape: `{ line_id, applies, discountDecimal }` (compact for Shopify size limits).
+ * Set env `RIPX_PRICE_BATCH_FULL_RESPONSE=true` to include `targetLineDecimal` and `reason` per line.
+ */
+router.post(
+  '/price-resolve-batch',
+  asyncHandler(async (req, res) => {
+    if (!requireCheckoutPriceAuth(req, res)) {
+      return;
+    }
+
+    const body = req.body || {};
+    const shop = body.shop || body.shop_domain;
+    const site = body.site;
+
+    const domain = await resolveTenantDomain(shop, site);
+    if (!domain) {
+      return res.status(400).json({ success: false, error: 'Invalid shop or site' });
+    }
+    const tenantPr = await getTenantByDomain(domain);
+    if (tenantPr && isTenantSuspendedOrBlocked(tenantPr)) {
+      return res.status(403).json({ success: false, error: 'Access suspended' });
+    }
+
+    const lines = body.lines;
+    if (!Array.isArray(lines) || lines.length === 0) {
+      return res.status(400).json({ success: false, error: 'lines must be a non-empty array' });
+    }
+    if (lines.length > PRICE_RESOLVE_BATCH_MAX) {
+      return res.status(400).json({
+        success: false,
+        error: `Too many lines. Maximum ${PRICE_RESOLVE_BATCH_MAX} per request.`,
+      });
+    }
+
+    for (let i = 0; i < lines.length; i++) {
+      const row = lines[i];
+      if (!row || typeof row !== 'object') {
+        return res.status(400).json({ success: false, error: `Invalid line at index ${i}` });
+      }
+      const tid = row.test_id;
+      if (
+        tid !== undefined &&
+        tid !== null &&
+        String(tid).trim() !== '' &&
+        !validators.isValidUUID(String(tid).trim())
+      ) {
+        return res.status(400).json({ success: false, error: `Invalid test_id at index ${i}` });
+      }
+    }
+
+    const t0 = Date.now();
+    const resolved = await resolveCheckoutPriceBatchForDomain(
+      domain,
+      lines,
+      getTestById,
+      getTestsByIds
+    );
+    const linesOut = shapePriceResolveBatchLinesForCheckout(resolved);
+    const payload = { success: true, lines: linesOut };
+    const approxBytes = batchResolveJsonUtf8Bytes(payload);
+
+    if (batchResolveResponseTooLarge(payload)) {
+      logger.warn('price_resolve_batch_response_too_large', {
+        shopDomain: domain,
+        lineCount: lines.length,
+        approxResponseBytes: approxBytes,
+        durationMs: Date.now() - t0,
+      });
+      return res.status(413).json({
+        success: false,
+        error:
+          'Batch JSON response exceeds the safe size for Shopify Function network fetch (~100KB). Reduce PRICE_RESOLVE_BATCH_MAX, cart lines per checkout, or line_id payload size.',
+      });
+    }
+
+    const uniqueTestCount = new Set(
+      lines
+        .map(r => {
+          const tid = r?.test_id;
+          return tid === undefined || tid === null ? '' : String(tid).trim();
+        })
+        .filter(Boolean)
+    ).size;
+    const durationMs = Date.now() - t0;
+    if (durationMs > PRICE_BATCH_SLOW_LOG_MS) {
+      logger.warn('price_resolve_batch_slow', {
+        shopDomain: domain,
+        lineCount: lines.length,
+        uniqueTests: uniqueTestCount,
+        durationMs,
+        thresholdMs: PRICE_BATCH_SLOW_LOG_MS,
+        approxResponseBytes: approxBytes,
+      });
+    }
+    logger.info('price_resolve_batch', {
+      shopDomain: domain,
+      lineCount: lines.length,
+      uniqueTests: uniqueTestCount,
+      durationMs,
+      approxResponseBytes: approxBytes,
+      batchFullResponse: process.env.RIPX_PRICE_BATCH_FULL_RESPONSE === 'true',
+    });
+
+    res.set('Cache-Control', 'no-store');
+    res.set('Content-Type', 'application/json; charset=utf-8');
+    return res.json(payload);
   })
 );
 
@@ -989,7 +1275,6 @@ router.post(
     });
 
     try {
-      const { query } = require('../utils/database');
       const errMsg = String(error).slice(0, 5000);
       const stackVal = stack !== null && stack !== undefined ? String(stack).slice(0, 10000) : null;
       const compStack =

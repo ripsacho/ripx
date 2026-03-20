@@ -1,0 +1,390 @@
+/**
+ * Resolve RipX price-test line discount for Shopify checkout (Discount Function / Cart UI).
+ * Uses same config shape as storefront script: priceMode, price, priceDelta, pricePercent, byProduct, byVariant.
+ */
+
+function toNumericProductId(id) {
+  if (id === undefined || id === null || id === '') {
+    return '';
+  }
+  const s = String(id).trim();
+  const m = s.match(/Product\/(\d+)/);
+  if (m) {
+    return m[1];
+  }
+  return s.replace(/\D/g, '') || s;
+}
+
+function toVariantIdKey(variantId) {
+  if (variantId === undefined || variantId === null || variantId === '') {
+    return null;
+  }
+  const s = String(variantId).trim();
+  const m = s.match(/ProductVariant\/\s*(\d+)/i) || s.match(/\b(\d{10,})\b/);
+  if (m) {
+    return m[1];
+  }
+  return s;
+}
+
+function getEffectivePriceConfig(cfg, productId, currentVariantId) {
+  if (!cfg || typeof cfg !== 'object') {
+    return cfg;
+  }
+  const byProduct = cfg.byProduct;
+  if (!byProduct || typeof byProduct !== 'object') {
+    return cfg;
+  }
+  const pid = toNumericProductId(productId);
+  const gid = pid ? `gid://shopify/Product/${pid}` : '';
+  const override = byProduct[productId] || byProduct[pid] || (gid ? byProduct[gid] : null);
+  if (!override || typeof override !== 'object') {
+    return cfg;
+  }
+  const merged = {};
+  for (const k of Object.keys(cfg)) {
+    if (k !== 'byProduct') {
+      merged[k] = cfg[k];
+    }
+  }
+  for (const j of Object.keys(override)) {
+    if (j !== 'byVariant') {
+      merged[j] = override[j];
+    }
+  }
+  const byVariant = override.byVariant;
+  if (
+    currentVariantId !== undefined &&
+    currentVariantId !== null &&
+    currentVariantId !== '' &&
+    byVariant &&
+    typeof byVariant === 'object'
+  ) {
+    const vkey = toVariantIdKey(currentVariantId);
+    const variantOverride = vkey
+      ? byVariant[vkey] ||
+        byVariant[currentVariantId] ||
+        byVariant[`gid://shopify/ProductVariant/${vkey}`]
+      : null;
+    if (variantOverride && typeof variantOverride === 'object') {
+      for (const v of Object.keys(variantOverride)) {
+        merged[v] = variantOverride[v];
+      }
+    }
+  }
+  return merged;
+}
+
+function assignmentMatchesVariant(test, assignmentVariantId) {
+  if (!test || !assignmentVariantId) {
+    return false;
+  }
+  const vid = String(assignmentVariantId).trim();
+  const variants = Array.isArray(test.variants) ? test.variants : [];
+  return variants.some(v => {
+    if (!v) {
+      return false;
+    }
+    const id = v.id !== undefined && v.id !== null ? String(v.id) : '';
+    const name = v.name !== undefined && v.name !== null ? String(v.name) : '';
+    return id === vid || name === vid;
+  });
+}
+
+function findTestVariant(test, assignmentVariantId) {
+  const vid = String(assignmentVariantId || '').trim();
+  const variants = Array.isArray(test.variants) ? test.variants : [];
+  return variants.find(v => {
+    if (!v) {
+      return false;
+    }
+    const id = v.id !== undefined && v.id !== null ? String(v.id) : '';
+    const name = v.name !== undefined && v.name !== null ? String(v.name) : '';
+    return id === vid || name === vid;
+  });
+}
+
+function productInTargetList(test, productGidOrNumeric) {
+  const ids = Array.isArray(test.target_ids)
+    ? test.target_ids
+    : test.target_id
+      ? [test.target_id]
+      : [];
+  if (!ids.length) {
+    return true;
+  }
+  const pid = toNumericProductId(productGidOrNumeric);
+  if (!pid) {
+    return false;
+  }
+  return ids.some(id => id && toNumericProductId(id) === pid);
+}
+
+/**
+ * @param {object} params
+ * @param {object} params.test - row from DB (variants, target_ids, type, status, target_type)
+ * @param {string} params.assignmentVariantId - value of cart _ripx_variant
+ * @param {string} params.productId - Shopify product GID or numeric
+ * @param {string} [params.variantId] - Shopify variant GID or numeric (for byVariant)
+ * @param {number} params.linePresentmentTotal - line subtotal in presentment money (major units e.g. 29.99)
+ * @param {number} params.quantity - line qty (>=1)
+ * @returns {{ applies: boolean, discountDecimal?: string, reason?: string }}
+ */
+function resolvePriceTestLineDiscount({
+  test,
+  assignmentVariantId,
+  productId,
+  variantId,
+  linePresentmentTotal,
+  quantity,
+}) {
+  if (!test || test.type !== 'price') {
+    return { applies: false, reason: 'not_price_test' };
+  }
+  if (test.status !== 'running') {
+    return { applies: false, reason: 'test_not_running' };
+  }
+  const tt = String(test.target_type || '').toLowerCase();
+  if (tt !== 'product') {
+    return { applies: false, reason: 'unsupported_target_type' };
+  }
+  if (!assignmentMatchesVariant(test, assignmentVariantId)) {
+    return { applies: false, reason: 'unknown_assignment_variant' };
+  }
+  if (!productInTargetList(test, productId)) {
+    return { applies: false, reason: 'product_not_in_test' };
+  }
+  const vRow = findTestVariant(test, assignmentVariantId);
+  if (!vRow || !vRow.config) {
+    return { applies: false, reason: 'no_variant_config' };
+  }
+  const qty = Math.max(1, Number(quantity) || 1);
+  const lineTotal = Number(linePresentmentTotal);
+  if (!Number.isFinite(lineTotal) || lineTotal <= 0) {
+    return { applies: false, reason: 'invalid_line_total' };
+  }
+  const catalogUnit = lineTotal / qty;
+
+  const cfg = getEffectivePriceConfig(vRow.config, productId, variantId || null);
+  const priceMode = String(cfg.priceMode || 'fixed').toLowerCase();
+  if (priceMode === 'control') {
+    return { applies: false, reason: 'control_variant' };
+  }
+
+  let targetUnit = null;
+  if (priceMode === 'fixed') {
+    if (cfg.price === null || cfg.price === undefined || cfg.price === '') {
+      return { applies: false, reason: 'no_fixed_price' };
+    }
+    targetUnit = parseFloat(cfg.price, 10);
+  } else if (priceMode === 'amount') {
+    if (
+      cfg.priceDelta === null ||
+      cfg.priceDelta === undefined ||
+      String(cfg.priceDelta).trim() === ''
+    ) {
+      return { applies: false, reason: 'no_price_delta' };
+    }
+    const delta = parseFloat(cfg.priceDelta, 10);
+    if (!Number.isFinite(delta)) {
+      return { applies: false, reason: 'bad_delta' };
+    }
+    targetUnit = Math.max(0, catalogUnit + delta);
+  } else if (priceMode === 'percent') {
+    if (
+      cfg.pricePercent === null ||
+      cfg.pricePercent === undefined ||
+      String(cfg.pricePercent).trim() === ''
+    ) {
+      return { applies: false, reason: 'no_price_percent' };
+    }
+    const pct = parseFloat(cfg.pricePercent, 10);
+    if (!Number.isFinite(pct)) {
+      return { applies: false, reason: 'bad_percent' };
+    }
+    targetUnit = Math.max(0, catalogUnit * (1 - pct / 100));
+  } else {
+    return { applies: false, reason: 'unknown_price_mode' };
+  }
+
+  if (!Number.isFinite(targetUnit) || targetUnit < 0) {
+    return { applies: false, reason: 'bad_target_unit' };
+  }
+
+  const targetLine = Math.round(targetUnit * qty * 100) / 100;
+  const roundedLineTotal = Math.round(lineTotal * 100) / 100;
+  const discount = Math.round((roundedLineTotal - targetLine) * 100) / 100;
+  if (discount <= 0.0001) {
+    return { applies: false, reason: 'no_discount_needed' };
+  }
+
+  return {
+    applies: true,
+    discountDecimal: discount.toFixed(2),
+    targetLineDecimal: targetLine.toFixed(2),
+  };
+}
+
+/**
+ * Resolve many cart lines in one round-trip (Shopify Discount Function fetch target).
+ *
+ * @param {string} domain - normalized tenant domain (shop/site)
+ * @param {Array<{
+ *   line_id?: string,
+ *   test_id: string,
+ *   assignment_variant: string,
+ *   product_id: string,
+ *   variant_id?: string|null,
+ *   line_total: number|string,
+ *   qty?: number|string
+ * }>} lines
+ * @param {(testId: string, dom: string) => Promise<object|null>} getTestById
+ * @param {(ids: string[], dom: string) => Promise<Map<string, object>>} [getTestsByIds] — when provided (e.g. `getTestsByIds` from models/test), loads all unique tests in **one** SQL round-trip instead of N parallel queries.
+ * @returns {Promise<Array<{
+ *   line_id: string,
+ *   applies: boolean,
+ *   discountDecimal: string|null,
+ *   targetLineDecimal: string|null,
+ *   reason: string|null
+ * }>>}
+ */
+async function resolveCheckoutPriceBatchForDomain(domain, lines, getTestById, getTestsByIds) {
+  const testCache = new Map();
+  /** Prefetch unique tests — single query when getTestsByIds is available (best under Shopify Function readTimeoutMs). */
+  const uniqueTestIds = new Set();
+  for (const row of lines) {
+    if (!row || typeof row !== 'object') {
+      continue;
+    }
+    const tid = row.test_id === undefined || row.test_id === null ? '' : String(row.test_id).trim();
+    if (tid) {
+      uniqueTestIds.add(tid);
+    }
+  }
+  const ids = [...uniqueTestIds];
+  if (ids.length > 0) {
+    if (typeof getTestsByIds === 'function') {
+      const batchMap = await getTestsByIds(ids, domain);
+      for (const id of ids) {
+        testCache.set(id, batchMap.get(id) ?? null);
+      }
+    } else {
+      await Promise.all(
+        ids.map(async id => {
+          const t = await getTestById(id, domain);
+          testCache.set(id, t);
+        })
+      );
+    }
+  }
+
+  const results = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const row = lines[i] || {};
+    const rawLineId = row.line_id;
+    const lineId =
+      rawLineId !== undefined && rawLineId !== null && String(rawLineId).trim() !== ''
+        ? String(rawLineId)
+        : String(i);
+    const testId =
+      row.test_id === undefined || row.test_id === null ? '' : String(row.test_id).trim();
+    const assignmentVariant =
+      row.assignment_variant === undefined || row.assignment_variant === null
+        ? ''
+        : String(row.assignment_variant).trim();
+    const productId =
+      row.product_id === undefined || row.product_id === null ? '' : String(row.product_id).trim();
+
+    if (!testId) {
+      results.push({
+        line_id: lineId,
+        applies: false,
+        discountDecimal: null,
+        targetLineDecimal: null,
+        reason: 'missing_test_id',
+      });
+      continue;
+    }
+    if (!assignmentVariant) {
+      results.push({
+        line_id: lineId,
+        applies: false,
+        discountDecimal: null,
+        targetLineDecimal: null,
+        reason: 'missing_assignment_variant',
+      });
+      continue;
+    }
+    if (!productId) {
+      results.push({
+        line_id: lineId,
+        applies: false,
+        discountDecimal: null,
+        targetLineDecimal: null,
+        reason: 'missing_product_id',
+      });
+      continue;
+    }
+
+    const lineTotalRaw =
+      row.line_total === undefined || row.line_total === null ? '' : row.line_total;
+    const lineTotal = Number.parseFloat(String(lineTotalRaw).trim());
+    if (!Number.isFinite(lineTotal) || lineTotal <= 0) {
+      results.push({
+        line_id: lineId,
+        applies: false,
+        discountDecimal: null,
+        targetLineDecimal: null,
+        reason: 'invalid_line_total',
+      });
+      continue;
+    }
+    const qtyRaw = row.qty === undefined || row.qty === null ? '1' : row.qty;
+    const quantity = Math.max(1, Number.parseInt(String(qtyRaw), 10) || 1);
+
+    const test = testCache.get(testId);
+    if (!test) {
+      results.push({
+        line_id: lineId,
+        applies: false,
+        discountDecimal: null,
+        targetLineDecimal: null,
+        reason: 'test_not_found',
+      });
+      continue;
+    }
+
+    const rawVid = row.variant_id;
+    const variantId =
+      rawVid !== undefined && rawVid !== null && String(rawVid).trim() !== ''
+        ? String(rawVid).trim()
+        : null;
+
+    const result = resolvePriceTestLineDiscount({
+      test,
+      assignmentVariantId: assignmentVariant,
+      productId,
+      variantId,
+      linePresentmentTotal: lineTotal,
+      quantity,
+    });
+
+    results.push({
+      line_id: lineId,
+      applies: !!result.applies,
+      discountDecimal: result.discountDecimal || null,
+      targetLineDecimal: result.targetLineDecimal || null,
+      reason: result.reason || null,
+    });
+  }
+
+  return results;
+}
+
+module.exports = {
+  resolvePriceTestLineDiscount,
+  resolveCheckoutPriceBatchForDomain,
+  toNumericProductId,
+  getEffectivePriceConfig,
+};

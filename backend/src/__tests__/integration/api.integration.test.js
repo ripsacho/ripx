@@ -65,6 +65,28 @@ describe('API integration', () => {
     });
   });
 
+  describe('GET /api/track/price-checkout-diagnostics', () => {
+    it('returns 200 with infrastructure and checklist (no shop)', async () => {
+      const res = await request(app).get('/api/track/price-checkout-diagnostics');
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('success', true);
+      expect(res.body).toHaveProperty('infrastructure');
+      expect(res.body.infrastructure).toHaveProperty('batch_resolve_url');
+      expect(res.body.infrastructure).toHaveProperty('price_resolve_batch_response_max_bytes');
+      expect(res.body.infrastructure).toHaveProperty('batch_compact_response');
+      expect(res.body.infrastructure).toHaveProperty('price_batch_slow_log_ms');
+      expect(res.body).toHaveProperty('checklist');
+      expect(Array.isArray(res.body.checklist)).toBe(true);
+      expect(res.body.shop).toBe(null);
+      expect(res.body.summary).toMatchObject({
+        overall_status: expect.any(String),
+        overall_ok: expect.any(Boolean),
+        checks_passed: expect.any(Number),
+        checks_total: expect.any(Number),
+      });
+    });
+  });
+
   describe('GET /api/config/legal', () => {
     it('returns 200 and legal config shape (termsUrl, privacyUrl)', async () => {
       const res = await request(app).get('/api/config/legal');

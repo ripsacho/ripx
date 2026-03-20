@@ -12,6 +12,8 @@ yarn.lock
 
 # Shopify
 .shopify/
+extensions/**/generated/
+extensions/**/schema.graphql
 
 # Coverage
 coverage/

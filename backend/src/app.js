@@ -451,6 +451,20 @@ const clientErrorLimiter = rateLimit({
 });
 app.use('/api/track/client-error', clientErrorLimiter);
 
+// Public QA endpoint — stricter than generic track bucket to limit enumeration / DB work
+const priceCheckoutDiagnosticsLimiter = rateLimit({
+  windowMs: RATE_LIMIT.WINDOW_MS,
+  max: parseInt(process.env.RATE_LIMIT_PRICE_DIAGNOSTICS_MAX, 10) || 120,
+  message: {
+    success: false,
+    error:
+      'Too many checkout diagnostics requests. Try again later or use Settings → Installation from the app.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/track/price-checkout-diagnostics', priceCheckoutDiagnosticsLimiter);
+
 const tenantLimiter = rateLimit({
   windowMs: RATE_LIMIT.WINDOW_MS,
   max: parseInt(process.env.RATE_LIMIT_TENANT_MAX, 10) || 10,

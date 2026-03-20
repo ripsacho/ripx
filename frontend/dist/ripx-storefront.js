@@ -727,34 +727,47 @@
   }
 
   /**
-   * Inject cart attributes into add-to-cart forms so a Discount Function can align checkout price with the test.
-   * Uses attributes[_ripx_price_test] and attributes[_ripx_variant] (underscore prefix = private at checkout).
+   * Inject line item properties on product /cart/add forms so checkout Discount Functions can read CartLine attributes.
+   * Shopify expects properties[_key] (not attributes[]) for line-level data. Leading underscore = hidden from buyers in most themes.
+   * See docs/SHOPIFY_CHECKOUT_PRICE_RESOLVER.md
    */
   function injectPriceTestCartAttributes(testId, variantId) {
     if (!testId || variantId == null || String(variantId).trim() === '') return;
     var keyTest = '_ripx_price_test';
     var keyVariant = '_ripx_variant';
+    var keyShop = '_ripx_shop';
     var valueTest = String(testId);
     var valueVariant = String(variantId);
+    var valueShop =
+      (CONFIG.shopDomain && String(CONFIG.shopDomain).trim()) ||
+      (typeof window !== 'undefined' &&
+        window.Shopify &&
+        window.Shopify.shop &&
+        String(window.Shopify.shop).trim()) ||
+      '';
     var forms = document.querySelectorAll('form[action*="cart/add"], form[action*="/cart/add"]');
     forms.forEach(function (form) {
-      if (!form || (form.closest && form.closest('.cart-drawer,.mini-cart,#CartDrawer'))) return;
-      function setInput(name, value) {
-        var existing = form.querySelector('input[name="attributes[' + name + ']"]');
-        if (existing) {
-          existing.value = value;
-          return;
+      if (!form) return;
+      function setProperty(propKey, value) {
+        var fullName = 'properties[' + propKey + ']';
+        var inputs = form.querySelectorAll('input[type="hidden"]');
+        for (var hi = 0; hi < inputs.length; hi++) {
+          if (inputs[hi].name === fullName) {
+            inputs[hi].value = value;
+            return;
+          }
         }
         var input = document.createElement('input');
         input.type = 'hidden';
-        input.name = 'attributes[' + name + ']';
+        input.name = fullName;
         input.value = value;
         form.appendChild(input);
       }
-      setInput(keyTest, valueTest);
-      setInput(keyVariant, valueVariant);
+      setProperty(keyTest, valueTest);
+      setProperty(keyVariant, valueVariant);
+      if (valueShop) setProperty(keyShop, valueShop);
     });
-    if (DEBUG) debugLog('injectPriceTestCartAttributes:', valueTest, valueVariant);
+    if (DEBUG) debugLog('injectPriceTestCartAttributes:', valueTest, valueVariant, valueShop || '(no shop)');
   }
 
   /**
@@ -1092,6 +1105,223 @@
     if (variantIdForCart != null && String(variantIdForCart).trim() !== '') {
       window.__RIPX_PRICE_TEST_CTX__ = { testId: testId, variantId: variantIdForCart };
       injectPriceTestCartAttributes(testId, variantIdForCart);
+    }
+  }
+
+  /**
+   * Parse numeric price from displayed string or element (e.g. "$29.99", "€29,99", "1.234,56").
+   */
+  function parsePriceFromDisplay(val) {
+    if (val == null) return null;
+    var s = typeof val === 'string' ? val : (val.textContent || val.innerText || '');
+    if (typeof s !== 'string') return null;
+    s = s.trim().replace(/\s/g, '');
+    if (!s) return null;
+    var lastComma = s.lastIndexOf(',');
+    var lastDot = s.lastIndexOf('.');
+    var normalized =
+      lastComma > lastDot && lastComma >= 0
+        ? s.replace(/\./g, '').replace(',', '.')
+        : s.replace(/,/g, '');
+    var num = parseFloat(normalized.replace(/[^0-9.-]/g, ''), 10);
+    if (isNaN(num)) return null;
+    if (s.indexOf('.') === -1 && s.indexOf(',') === -1 && num >= 100) num = num / 100;
+    return num;
+  }
+
+  /**
+   * Apply price test to product cards on collection/homepage/search (non-PDP).
+   * Prefers elements with data-product-id / data-variant-id (Intelligems-style tagging) for reliable targeting.
+   * Finds [data-product-id] cards matching test targets and paints variant price.
+   */
+  function applyPriceTestToProductCards(testId, variant, targetIds) {
+    if (!variant || !variant.config || !targetIds || !targetIds.length) return;
+    var variantIdForCart = variant.variantId != null ? variant.variantId : variant.id;
+    var cartUi =
+      '.cart-drawer,.cart-notification,#CartDrawer,#mini-cart,.mini-cart,[data-cart-drawer],.drawer--cart,aside.mini-cart,cart-drawer,.header__cart,.site-header__cart,predictive-search';
+    function inCartUi(el) {
+      return el.closest && el.closest(cartUi);
+    }
+    targetIds.forEach(function (targetId) {
+      if (!targetId) return;
+      var pid = toNumericProductId(targetId);
+      if (!pid) return;
+      var cfg = getEffectivePriceConfig(variant.config, targetId, null);
+      var priceMode = (cfg && cfg.priceMode) ? String(cfg.priceMode).toLowerCase() : 'fixed';
+      if (priceMode === 'control') return;
+      var priceNum = null;
+      if (priceMode === 'fixed') {
+        var raw = cfg.price;
+        if (raw === null || raw === undefined || raw === '') return;
+        priceNum = parseFloat(raw, 10);
+      } else if (priceMode === 'amount' || priceMode === 'percent') {
+        priceNum = 0;
+      }
+      if (priceNum == null || isNaN(priceNum) || !isFinite(priceNum)) return;
+      priceNum = Math.max(0, Math.round(priceNum * 100) / 100);
+      var roundToVal = parseRoundTo(cfg.roundTo);
+      if (roundToVal > 0) {
+        priceNum = Math.round(priceNum / roundToVal) * roundToVal;
+        priceNum = Math.max(0, Math.round(priceNum * 100) / 100);
+      }
+      var display = formatShopPrice(priceNum);
+      if (!display && priceMode === 'fixed') return;
+      var allWithProductId = document.querySelectorAll(
+        '[data-product-id], .product-card, .grid-product__content, [data-product], .card--product, product-card, .product-card-wrapper, .product-item, .grid__item .card, .collection-list__product'
+      );
+      allWithProductId.forEach(function (card) {
+        if (!card || inCartUi(card)) return;
+        var attr = card.getAttribute('data-product-id') || (card.querySelector && card.querySelector('[data-product-id]') && card.querySelector('[data-product-id]').getAttribute('data-product-id'));
+        if (!attr || toNumericProductId(attr) !== pid) return;
+        var cardPriceNum = priceNum;
+        var cardDisplay = display || formatShopPrice(0);
+        if (priceMode === 'amount' || priceMode === 'percent') {
+          var priceEl = card.querySelector('.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price, [data-price]');
+          if (priceEl) {
+            var catalog = parsePriceFromDisplay(priceEl);
+            if (catalog != null) {
+              if (priceMode === 'amount' && cfg.priceDelta != null) {
+                var delta = parseFloat(cfg.priceDelta, 10);
+                if (!isNaN(delta)) cardPriceNum = Math.max(0, catalog + delta);
+              } else if (priceMode === 'percent' && cfg.pricePercent != null) {
+                var pct = parseFloat(cfg.pricePercent, 10);
+                if (!isNaN(pct)) cardPriceNum = Math.max(0, catalog * (1 - pct / 100));
+              }
+              cardPriceNum = Math.round(cardPriceNum * 100) / 100;
+              cardDisplay = formatShopPrice(cardPriceNum);
+            }
+          }
+        }
+        var priceEls = card.querySelectorAll('.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price .money, .price-item, [data-price]');
+        priceEls.forEach(function (el) {
+          if (!el || inCartUi(el)) return;
+          el.textContent = cardDisplay;
+          el.setAttribute('data-test-variant', String(variantIdForCart));
+          el.setAttribute('data-test-id', String(testId));
+          el.setAttribute('data-ripx-price', '1');
+        });
+      });
+    });
+  }
+
+  /**
+   * Apply price test to cart line items (drawer, cart page). Display only; checkout uses catalog unless Discount Function.
+   * Matches rows by data-product-id (and product id in selector) or by data-variant-id when present (best effort for themes without product id on line).
+   */
+  function applyPriceTestToCart(testId, variant, targetIds) {
+    if (!variant || !variant.config || !targetIds || !targetIds.length) return;
+    var variantIdForCart = variant.variantId != null ? variant.variantId : variant.id;
+    var cartContainers =
+      '.cart-drawer, #CartDrawer, .drawer--cart, [data-cart-drawer], #cart-form, form[action*="/cart"], .cart-items, main .cart';
+    var containers = document.querySelectorAll(cartContainers);
+    if (!containers.length) return;
+    var cartPriceSelectors =
+      '.price .money, .price, .line-item__price, [data-line-item-price], .cart-item__price .money, .cart-item__price, .line-item-price, [data-price], .money';
+    function paintCartRow(row, rowDisplay, skipIfPainted) {
+      var priceEls = row.querySelectorAll(cartPriceSelectors);
+      if (skipIfPainted && priceEls.length) {
+        var first = priceEls[0];
+        if (first && first.getAttribute('data-ripx-price') === '1') return;
+      }
+      priceEls.forEach(function (el) {
+        el.textContent = rowDisplay;
+        el.setAttribute('data-test-variant', String(variantIdForCart));
+        el.setAttribute('data-test-id', String(testId));
+        el.setAttribute('data-ripx-price', '1');
+      });
+    }
+    targetIds.forEach(function (targetId) {
+      if (!targetId) return;
+      var pid = toNumericProductId(targetId);
+      if (!pid) return;
+      var cfg = getEffectivePriceConfig(variant.config, targetId, null);
+      var priceMode = (cfg && cfg.priceMode) ? String(cfg.priceMode).toLowerCase() : 'fixed';
+      if (priceMode === 'control') return;
+      var priceNum = null;
+      if (priceMode === 'fixed') {
+        var raw = cfg.price;
+        if (raw === null || raw === undefined || raw === '') return;
+        priceNum = parseFloat(raw, 10);
+      } else if (priceMode === 'amount' || priceMode === 'percent') {
+        priceNum = 0;
+      }
+      if (priceNum == null || isNaN(priceNum) || !isFinite(priceNum)) return;
+      priceNum = Math.max(0, Math.round(priceNum * 100) / 100);
+      var display = formatShopPrice(priceNum);
+      if (!display && priceMode === 'fixed') return;
+      containers.forEach(function (container) {
+        var rows = container.querySelectorAll(
+          '[data-product-id="' + pid + '"], [data-product-id*="' + pid + '"], [data-line-item-key], .cart-item, [data-cart-item]'
+        );
+        rows.forEach(function (row) {
+          var linePid = row.getAttribute('data-product-id') || (row.querySelector('[data-product-id]') && row.querySelector('[data-product-id]').getAttribute('data-product-id'));
+          if (!linePid || toNumericProductId(linePid) !== pid) return;
+          var rowDisplay = display || formatShopPrice(0);
+          var priceEls = row.querySelectorAll(cartPriceSelectors);
+          if (priceMode !== 'fixed' && priceEls.length) {
+            var catalog = parsePriceFromDisplay(priceEls[0]);
+            if (catalog != null && cfg) {
+              var rowPrice = priceNum;
+              if (priceMode === 'amount' && cfg.priceDelta != null) {
+                var delta = parseFloat(cfg.priceDelta, 10);
+                if (!isNaN(delta)) rowPrice = Math.max(0, catalog + delta);
+              } else if (priceMode === 'percent' && cfg.pricePercent != null) {
+                var pct = parseFloat(cfg.pricePercent, 10);
+                if (!isNaN(pct)) rowPrice = Math.max(0, catalog * (1 - pct / 100));
+              }
+              rowDisplay = formatShopPrice(Math.round(rowPrice * 100) / 100);
+            }
+          }
+          paintCartRow(row, rowDisplay, false);
+        });
+      });
+    });
+    if (variantIdForCart != null && String(variantIdForCart).trim() !== '') {
+      var firstTargetId = targetIds[0];
+      if (firstTargetId) {
+        var cfg = getEffectivePriceConfig(variant.config, firstTargetId, null);
+        var priceMode = (cfg && cfg.priceMode) ? String(cfg.priceMode).toLowerCase() : 'fixed';
+        if (priceMode !== 'control') {
+          var priceNum = null;
+          if (priceMode === 'fixed' && cfg.price != null) {
+            priceNum = parseFloat(cfg.price, 10);
+          } else if (priceMode === 'amount' || priceMode === 'percent') {
+            priceNum = 0;
+          }
+          if (priceNum != null && !isNaN(priceNum) && isFinite(priceNum)) {
+            priceNum = Math.max(0, Math.round(priceNum * 100) / 100);
+            var displayByVariant = formatShopPrice(priceNum);
+            var escapedVid = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(String(variantIdForCart)) : String(variantIdForCart).replace(/"|\\/g, '\\$&');
+            containers.forEach(function (container) {
+              var variantRows = container.querySelectorAll('[data-variant-id="' + escapedVid + '"]');
+              variantRows.forEach(function (row) {
+                var linePid = row.getAttribute('data-product-id') || (row.querySelector('[data-product-id]') && row.querySelector('[data-product-id]').getAttribute('data-product-id'));
+                var linePidNum = linePid ? toNumericProductId(linePid) : '';
+                if (linePidNum && !targetIds.some(function (id) { return id && toNumericProductId(id) === linePidNum; })) return;
+                var rowDisplay = displayByVariant;
+                if (priceMode === 'amount' || priceMode === 'percent') {
+                  var priceEls = row.querySelectorAll(cartPriceSelectors);
+                  if (priceEls.length) {
+                    var catalog = parsePriceFromDisplay(priceEls[0]);
+                    if (catalog != null && cfg) {
+                      var rowPrice = catalog;
+                      if (priceMode === 'amount' && cfg.priceDelta != null) {
+                        var d = parseFloat(cfg.priceDelta, 10);
+                        if (!isNaN(d)) rowPrice = Math.max(0, catalog + d);
+                      } else if (priceMode === 'percent' && cfg.pricePercent != null) {
+                        var p = parseFloat(cfg.pricePercent, 10);
+                        if (!isNaN(p)) rowPrice = Math.max(0, catalog * (1 - p / 100));
+                      }
+                      rowDisplay = formatShopPrice(Math.round(rowPrice * 100) / 100);
+                    }
+                  }
+                }
+                paintCartRow(row, rowDisplay, true);
+              });
+            });
+          }
+        }
+      }
     }
   }
 
@@ -1802,6 +2032,32 @@
   }
 
   /**
+   * URLs where product cards may appear (collection, home, search, CMS pages with grids).
+   * Path-based so we still run price listing when meta product id is missing or wrong.
+   */
+  function isProductListingSurface() {
+    var p = (window.location.pathname || '').trim() || '/';
+    if (p === '/' || p === '') return true;
+    if (p.indexOf('/collections/') === 0) return true;
+    if (p.indexOf('/search') === 0) return true;
+    if (p.indexOf('/pages/') === 0) return true;
+    return false;
+  }
+
+  /**
+   * Product-targeted price test: may show test prices on listing surfaces even when matchesTarget is false (no PDP product id).
+   */
+  function shouldRunPriceTestOnListingSurface(test) {
+    if (!test || test.type !== 'price') return false;
+    var tt = (test.targetType || test.target_type || '').toLowerCase();
+    if (tt !== 'product') return false;
+    var tids =
+      test.targetIds || (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
+    if (!tids || !tids.length) return false;
+    return isProductListingSurface();
+  }
+
+  /**
    * Check if current page matches test target (single or multiple); supports product and collection.
    */
   function matchesTarget(test) {
@@ -1949,7 +2205,8 @@
       }
 
       activeTests.forEach(test => {
-        if (!matchesTarget(test)) {
+        var priceOnListing = shouldRunPriceTestOnListingSurface(test);
+        if (!matchesTarget(test) && !priceOnListing) {
           if (DEBUG) {
             var targetType = test.targetType || test.target_type || 'page';
             var ids =
@@ -1977,67 +2234,54 @@
               );
             return;
           }
-          // Split-URL: redirect when variant has a URL different from current page (run before other applications)
-          if (
-            variant.config &&
-            typeof variant.config.url === 'string' &&
-            variant.config.url.trim()
-          ) {
-            var rawUrl = variant.config.url.trim();
-            try {
-              var dest = new URL(rawUrl, window.location.href);
-              var cur = window.location;
-              var sameOriginPath =
-                dest.origin === cur.origin &&
-                dest.pathname === cur.pathname &&
-                (dest.search || '') === (cur.search || '');
-              if (!sameOriginPath) {
-                if (DEBUG) debugLog('Split-URL redirect', dest.toString());
-                window.location.href = dest.toString();
-                return;
-              }
-            } catch (e) {
-              if (DEBUG) debugLog('Split-URL invalid URL', rawUrl);
-            }
-          }
-          applyCustomCode(test.id, variant);
-
-          if (test.type === 'price') {
-            if (!currentProductId) {
-              if (DEBUG)
-                debugLog(
-                  'Price test skipped: runs on product pages only (not collection grids). Target products explicitly.'
-                );
-              return;
-            }
-            var tt = (test.targetType || test.target_type || '').toLowerCase();
-            if (tt === 'collection') {
-              if (DEBUG)
-                debugLog(
-                  'Price test skipped: collection targeting does not match PDP. Add product target(s) for price display.'
-                );
-              return;
-            }
-            var tids =
-              test.targetIds ||
-              (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
-            if (tt === 'product' && (!tids || tids.length === 0)) {
-              if (DEBUG)
-                debugLog(
-                  'Price test skipped: target_type is product but no target_ids (select at least one product in Product scope).'
-                );
-              return;
-            }
+          var matched = matchesTarget(test);
+          if (matched) {
             if (
-              tt === 'product' &&
-              tids.length &&
-              !tids.some(function (id) {
-                return id && gidMatches(id, currentProductId);
-              })
+              variant.config &&
+              typeof variant.config.url === 'string' &&
+              variant.config.url.trim()
             ) {
-              return;
+              var rawUrl = variant.config.url.trim();
+              try {
+                var dest = new URL(rawUrl, window.location.href);
+                var cur = window.location;
+                var sameOriginPath =
+                  dest.origin === cur.origin &&
+                  dest.pathname === cur.pathname &&
+                  (dest.search || '') === (cur.search || '');
+                if (!sameOriginPath) {
+                  if (DEBUG) debugLog('Split-URL redirect', dest.toString());
+                  window.location.href = dest.toString();
+                  return;
+                }
+              } catch (e) {
+                if (DEBUG) debugLog('Split-URL invalid URL', rawUrl);
+              }
             }
-            applyPriceTest(test.id, currentProductId, test.targetVariantId || null, variant);
+            applyCustomCode(test.id, variant);
+          }
+
+          var tt = (test.targetType || test.target_type || '').toLowerCase();
+          var tids =
+            test.targetIds ||
+            (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
+          if (test.type === 'price') {
+            if (matched && currentProductId && tt !== 'collection' && tids.length) {
+              if (
+                tt === 'product' &&
+                tids.some(function (id) {
+                  return id && gidMatches(id, currentProductId);
+                })
+              ) {
+                applyPriceTest(test.id, currentProductId, test.targetVariantId || null, variant);
+              }
+            }
+            if (variant && variant.config && tids.length && tt === 'product') {
+              if (isProductListingSurface()) {
+                applyPriceTestToProductCards(test.id, variant, tids);
+              }
+              applyPriceTestToCart(test.id, variant, tids);
+            }
           }
         });
       });
@@ -2053,6 +2297,67 @@
       }
 
       initHeatmap();
+
+      // Re-apply price tests after delays so dynamically loaded content (cart drawer, AJAX sections, predictive search) shows test prices (Intelligems-style: price everywhere).
+      function reapplyPriceTestsOnly() {
+        if (!hasValidConfig || PREVIEW_MODE || !CONFIG.activeTests || CONFIG.activeTests.length === 0) return;
+        CONFIG.activeTests.forEach(function (test) {
+          if (test.type !== 'price') return;
+          if (!matchesTarget(test) && !shouldRunPriceTestOnListingSurface(test)) return;
+          var tt = (test.targetType || test.target_type || '').toLowerCase();
+          var tids =
+            test.targetIds ||
+            (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
+          if (tids.length === 0 || tt !== 'product') return;
+          getVariant(test.id).then(function (variant) {
+            if (!variant || !variant.config) return;
+            var curPid = getCurrentProductId();
+            if (
+              matchesTarget(test) &&
+              curPid &&
+              tids.some(function (id) {
+                return id && gidMatches(id, curPid);
+              })
+            ) {
+              applyPriceTest(test.id, curPid, test.targetVariantId || null, variant);
+            }
+            if (isProductListingSurface()) applyPriceTestToProductCards(test.id, variant, tids);
+            applyPriceTestToCart(test.id, variant, tids);
+          });
+        });
+      }
+      setTimeout(reapplyPriceTestsOnly, 1200);
+      setTimeout(reapplyPriceTestsOnly, 3500);
+      setTimeout(reapplyPriceTestsOnly, 6000);
+      setTimeout(reapplyPriceTestsOnly, 10000);
+      document.addEventListener('shopify:section:load', function () {
+        setTimeout(reapplyPriceTestsOnly, 300);
+      });
+      var lastCartReapplyAt = 0;
+      var cartReapply = function () {
+        var now = Date.now();
+        if (now - lastCartReapplyAt < 400) return;
+        lastCartReapplyAt = now;
+        setTimeout(reapplyPriceTestsOnly, 100);
+        setTimeout(reapplyPriceTestsOnly, 500);
+      };
+      if (document.body) {
+        document.body.addEventListener('click', function (e) {
+          var t = e.target;
+          if (!t || !t.closest) return;
+          if (t.closest('a[href*="/cart"], .cart-icon, #cart-icon-bubble, [data-cart-drawer-toggle], .header__icon--cart, .site-header__cart, [data-cart-toggle], .js-drawer-open-cart, button[aria-label*="cart" i]')) {
+            cartReapply();
+          }
+        });
+      }
+      ['cart:open', 'cart-drawer:open', 'cart:updated', 'shopify:cart:change'].forEach(function (evt) {
+        try {
+          document.addEventListener(evt, cartReapply, false);
+        } catch (e) {}
+      });
+      if (window.RipX) {
+        window.RipX.reapplyPriceTests = reapplyPriceTestsOnly;
+      }
     }
 
     whenConsent(run);
@@ -2100,6 +2405,7 @@
     trackConversion,
     trackEvent,
     applyPriceTest,
+    reapplyPriceTests: null,
     version: SCRIPT_VERSION,
   };
   window.ABTestTracker = api;
