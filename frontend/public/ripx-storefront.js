@@ -1214,6 +1214,88 @@
   }
 
   /**
+   * Collection-targeted price test on a matching collection (or listing) page: paint every visible product card.
+   * Uses each card's product id for getEffectivePriceConfig (byProduct / variant picker).
+   */
+  function applyPriceTestToCollectionListingCards(testId, variant) {
+    if (!variant || !variant.config) return;
+    var variantIdForCart = variant.variantId != null ? variant.variantId : variant.id;
+    var cartUi =
+      '.cart-drawer,.cart-notification,#CartDrawer,#mini-cart,.mini-cart,[data-cart-drawer],.drawer--cart,aside.mini-cart,cart-drawer,.header__cart,.site-header__cart,predictive-search';
+    function inCartUi(el) {
+      return el.closest && el.closest(cartUi);
+    }
+    var seenPid = Object.create(null);
+    var allWithProductId = document.querySelectorAll(
+      '[data-product-id], .product-card, .grid-product__content, [data-product], .card--product, product-card, .product-card-wrapper, .product-item, .grid__item .card, .collection-list__product'
+    );
+    allWithProductId.forEach(function (card) {
+      if (!card || inCartUi(card)) return;
+      var attr =
+        card.getAttribute('data-product-id') ||
+        (card.querySelector &&
+          card.querySelector('[data-product-id]') &&
+          card.querySelector('[data-product-id]').getAttribute('data-product-id'));
+      if (!attr) return;
+      var pid = toNumericProductId(attr);
+      if (!pid || seenPid[pid]) return;
+      seenPid[pid] = true;
+      var targetId = toProductGid(attr) || attr;
+      var cfg = getEffectivePriceConfig(variant.config, targetId, null);
+      var priceMode = cfg && cfg.priceMode ? String(cfg.priceMode).toLowerCase() : 'fixed';
+      if (priceMode === 'control') return;
+      var priceNum = null;
+      if (priceMode === 'fixed') {
+        var raw = cfg.price;
+        if (raw === null || raw === undefined || raw === '') return;
+        priceNum = parseFloat(raw, 10);
+      } else if (priceMode === 'amount' || priceMode === 'percent') {
+        priceNum = 0;
+      }
+      if (priceNum == null || isNaN(priceNum) || !isFinite(priceNum)) return;
+      priceNum = Math.max(0, Math.round(priceNum * 100) / 100);
+      var roundToVal = parseRoundTo(cfg.roundTo);
+      if (roundToVal > 0) {
+        priceNum = Math.round(priceNum / roundToVal) * roundToVal;
+        priceNum = Math.max(0, Math.round(priceNum * 100) / 100);
+      }
+      var display = formatShopPrice(priceNum);
+      if (!display && priceMode === 'fixed') return;
+      var cardPriceNum = priceNum;
+      var cardDisplay = display || formatShopPrice(0);
+      if (priceMode === 'amount' || priceMode === 'percent') {
+        var priceEl = card.querySelector(
+          '.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price, [data-price]'
+        );
+        if (priceEl) {
+          var catalog = parsePriceFromDisplay(priceEl);
+          if (catalog != null) {
+            if (priceMode === 'amount' && cfg.priceDelta != null) {
+              var delta = parseFloat(cfg.priceDelta, 10);
+              if (!isNaN(delta)) cardPriceNum = Math.max(0, catalog + delta);
+            } else if (priceMode === 'percent' && cfg.pricePercent != null) {
+              var pct = parseFloat(cfg.pricePercent, 10);
+              if (!isNaN(pct)) cardPriceNum = Math.max(0, catalog * (1 - pct / 100));
+            }
+            cardPriceNum = Math.round(cardPriceNum * 100) / 100;
+            cardDisplay = formatShopPrice(cardPriceNum);
+          }
+        }
+      }
+      var priceEls = card.querySelectorAll(
+        '.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price .money, .price-item, [data-price]'
+      );
+      priceEls.forEach(function (el) {
+        if (!el || inCartUi(el)) return;
+        el.textContent = cardDisplay;
+        el.setAttribute('data-test-variant', String(variantIdForCart));
+        el.setAttribute('data-test-id', String(testId));
+        el.setAttribute('data-ripx-price', '1');
+      });
+    });
+  }
+
+  /**
    * Apply price test to cart line items (drawer, cart page). Display only; checkout uses catalog unless Discount Function.
    * Matches rows by data-product-id (and product id in selector) or by data-variant-id when present (best effort for themes without product id on line).
    */
@@ -2111,6 +2193,79 @@
   }
 
   /**
+   * Collection GIDs linked to the current PDP product (theme Product JSON / meta). Empty if unknown.
+   */
+  function getCollectionGidsLinkedToCurrentProduct() {
+    var out = [];
+    function pushUnique(g) {
+      if (!g) return;
+      var i = 0;
+      for (; i < out.length; i++) {
+        if (gidMatches(out[i], g)) return;
+      }
+      out.push(g);
+    }
+    try {
+      var script = document.querySelector(
+        '#ProductJson, script[type="application/json"][data-product-json], script[data-section-type="product"]'
+      );
+      if (script && script.textContent) {
+        var data = JSON.parse(script.textContent);
+        var cols = data.collections || (data.product && data.product.collections);
+        if (Array.isArray(cols)) {
+          cols.forEach(function (c) {
+            if (c == null) return;
+            if (typeof c === 'number' || typeof c === 'string') pushUnique(toCollectionGid(c));
+            else if (typeof c === 'object' && c.id != null) pushUnique(toCollectionGid(c.id));
+          });
+        }
+      }
+    } catch (e) {}
+    try {
+      var p =
+        window.ShopifyAnalytics &&
+        window.ShopifyAnalytics.meta &&
+        window.ShopifyAnalytics.meta.product;
+      if (p && p.collectionId) pushUnique(toCollectionGid(p.collectionId));
+    } catch (e2) {}
+    return out;
+  }
+
+  /**
+   * True if current product (PDP) belongs to any of the test's target collections.
+   */
+  function productBelongsToPriceTestCollections(collectionTargetIds) {
+    if (!collectionTargetIds || !collectionTargetIds.length) return false;
+    var onProduct = getCollectionGidsLinkedToCurrentProduct();
+    if (!onProduct.length) return false;
+    return collectionTargetIds.some(function (tid) {
+      if (!tid) return false;
+      return onProduct.some(function (c) {
+        return gidMatches(tid, c);
+      });
+    });
+  }
+
+  /**
+   * Whether this test's storefront logic should run (target match, product cards on listings, or collection test on PDP with product-in-collection data).
+   */
+  function shouldRunPriceTestOnCurrentPage(test) {
+    if (!test) return false;
+    if (matchesTarget(test)) return true;
+    if (shouldRunPriceTestOnListingSurface(test)) return true;
+    if (test.type === 'price') {
+      var tt = (test.targetType || test.target_type || '').toLowerCase();
+      if (tt === 'collection' && getCurrentProductId()) {
+        var cids =
+          test.targetIds ||
+          (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
+        if (productBelongsToPriceTestCollections(cids)) return true;
+      }
+    }
+    return false;
+  }
+
+  /**
    * Heatmap: buffer and flush click/scroll events
    */
   const heatmapBuffer = [];
@@ -2235,8 +2390,7 @@
       }
 
       activeTests.forEach(test => {
-        var priceOnListing = shouldRunPriceTestOnListingSurface(test);
-        if (!matchesTarget(test) && !priceOnListing) {
+        if (!shouldRunPriceTestOnCurrentPage(test)) {
           if (DEBUG) {
             var targetType = test.targetType || test.target_type || 'page';
             var ids =
@@ -2296,21 +2450,31 @@
             test.targetIds ||
             (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
           if (test.type === 'price') {
-            if (matched && currentProductId && tt !== 'collection' && tids.length) {
-              if (
-                tt === 'product' &&
-                tids.some(function (id) {
-                  return id && gidMatches(id, currentProductId);
-                })
-              ) {
-                applyPriceTest(test.id, currentProductId, test.targetVariantId || null, variant);
-              }
+            var pdpProductMatch =
+              tt === 'product' &&
+              matched &&
+              currentProductId &&
+              tids.length &&
+              tids.some(function (id) {
+                return id && gidMatches(id, currentProductId);
+              });
+            var pdpCollectionMatch =
+              tt === 'collection' &&
+              currentProductId &&
+              tids.length &&
+              productBelongsToPriceTestCollections(tids);
+            if (pdpProductMatch || pdpCollectionMatch) {
+              applyPriceTest(test.id, currentProductId, test.targetVariantId || null, variant);
             }
-            if (variant && variant.config && tids.length && tt === 'product') {
-              if (isProductListingSurface()) {
+            if (variant && variant.config && tids.length) {
+              if (tt === 'product' && isProductListingSurface()) {
                 applyPriceTestToProductCards(test.id, variant, tids);
+              } else if (tt === 'collection' && matched && isProductListingSurface()) {
+                applyPriceTestToCollectionListingCards(test.id, variant);
               }
-              applyPriceTestToCart(test.id, variant, tids);
+              if (tt === 'product') {
+                applyPriceTestToCart(test.id, variant, tids);
+              }
             }
           }
         });
@@ -2339,17 +2503,19 @@
           return;
         CONFIG.activeTests.forEach(function (test) {
           if (test.type !== 'price') return;
-          if (!matchesTarget(test) && !shouldRunPriceTestOnListingSurface(test)) return;
+          if (!shouldRunPriceTestOnCurrentPage(test)) return;
           var tt = (test.targetType || test.target_type || '').toLowerCase();
           var tids =
             test.targetIds ||
             (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
-          if (tids.length === 0 || tt !== 'product') return;
+          if (tids.length === 0) return;
           getVariant(test.id).then(function (variant) {
             if (!variant || !variant.config) return;
             var curPid = getCurrentProductId();
+            var matchedNow = matchesTarget(test);
             if (
-              matchesTarget(test) &&
+              tt === 'product' &&
+              matchedNow &&
               curPid &&
               tids.some(function (id) {
                 return id && gidMatches(id, curPid);
@@ -2357,8 +2523,15 @@
             ) {
               applyPriceTest(test.id, curPid, test.targetVariantId || null, variant);
             }
-            if (isProductListingSurface()) applyPriceTestToProductCards(test.id, variant, tids);
-            applyPriceTestToCart(test.id, variant, tids);
+            if (tt === 'collection' && curPid && productBelongsToPriceTestCollections(tids)) {
+              applyPriceTest(test.id, curPid, test.targetVariantId || null, variant);
+            }
+            if (tt === 'product' && isProductListingSurface()) {
+              applyPriceTestToProductCards(test.id, variant, tids);
+            } else if (tt === 'collection' && matchedNow && isProductListingSurface()) {
+              applyPriceTestToCollectionListingCards(test.id, variant);
+            }
+            if (tt === 'product') applyPriceTestToCart(test.id, variant, tids);
           });
         });
       }

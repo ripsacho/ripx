@@ -14,19 +14,11 @@ cp .env.example .env
 npm run dev:db && npm run migrate
 # If the DB already had migrations applied before tracking: npm run migrate:mark-applied (once)
 npm run dev
-# Regular Commands
-shopify app dev --reset
-npm run dev
-ssh -i /Users/m.a.k.ripon/Downloads/RipX-kp.pem ubuntu@3.11.139.224
-npm run build
-git add .
-git commit -m "Fixing Issues"
-git push
-
-cd ~/RipX
-git pull
-pm2 restart ripx --update-env
+npm run shopify:dev   # or: shopify app dev --reset
+npm run build         # production frontend build
 ```
+
+Production deploy (host, SSH key, IP, and process manager) is environment-specific — keep those steps in your private runbook, not in the repo.
 
 **Test & validate:** `npm run test` (backend + frontend), `npm run validate` (lint + test), `npm run build` (frontend). **Audit:** `npm run audit` (root + frontend).
 

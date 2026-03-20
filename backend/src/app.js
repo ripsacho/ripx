@@ -20,6 +20,25 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const logger = require('./utils/logger');
 
+/**
+ * CSP / CORS: normalize env URLs to an origin (scheme + host + port only).
+ * APP_URL or FRONTEND_URL may include a path (e.g. .../api); browsers expect origins without paths.
+ * @param {string|null|undefined} raw
+ * @param {string|null} fallback
+ * @returns {string|null}
+ */
+function normalizeOriginFromUrl(raw, fallback = null) {
+  if (raw === undefined || raw === null || String(raw).trim() === '') {
+    return fallback;
+  }
+  try {
+    const u = new URL(String(raw).trim());
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return fallback;
+  }
+}
+
 const APP_VERSION = process.env.APP_VERSION || '1.0.0';
 const startTime = Date.now();
 
@@ -270,12 +289,20 @@ app.use((req, res, next) => {
   const validShop = shop && SHOP_DOMAIN_REGEX.test(shop);
 
   // Per-shop when we have it; otherwise allow all Shopify (iframe often has no ?shop= or Referer on first load)
-  // Include app origin so the app can embed its own pages (e.g. visual editor preview-document iframe)
-  const appUrl = process.env.APP_URL || 'http://localhost:3000';
-  const appOrigin = appUrl.replace(/\/+$/, '');
+  const appCspOrigin = normalizeOriginFromUrl(process.env.APP_URL, 'http://localhost:3000');
+  const frontendCspOrigin = normalizeOriginFromUrl(process.env.FRONTEND_URL, null);
+  const connectSrcParts = [
+    "'self'",
+    appCspOrigin,
+    'https://*.myshopify.com',
+    'https://*.shopify.com',
+  ];
+  if (frontendCspOrigin && frontendCspOrigin !== appCspOrigin) {
+    connectSrcParts.push(frontendCspOrigin);
+  }
   const frameAncestors = validShop
-    ? `https://${shop} https://admin.shopify.com ${appOrigin}`
-    : `https://admin.shopify.com https://*.myshopify.com ${appOrigin}`;
+    ? `https://${shop} https://admin.shopify.com ${appCspOrigin}`
+    : `https://admin.shopify.com https://*.myshopify.com ${appCspOrigin}`;
 
   const csp = [
     "default-src 'self'",
@@ -284,7 +311,7 @@ app.use((req, res, next) => {
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data: https:",
-    `connect-src 'self' ${appUrl} https://*.myshopify.com https://*.shopify.com`,
+    `connect-src ${connectSrcParts.join(' ')}`,
     "base-uri 'self'",
     "form-action 'self'",
     `frame-ancestors ${frameAncestors}`,
@@ -294,11 +321,26 @@ app.use((req, res, next) => {
   next();
 });
 
-// CORS configuration
+// CORS configuration (origins only; normalize APP_URL/FRONTEND_URL/list entries that include paths)
+const defaultAppOrigin = normalizeOriginFromUrl(process.env.APP_URL, 'http://localhost:3000');
+const defaultFrontendOrigin = normalizeOriginFromUrl(process.env.FRONTEND_URL, null);
 const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+  ? [
+      ...new Set(
+        process.env.ALLOWED_ORIGINS.split(',').map(entry => {
+          const t = entry.trim();
+          if (!t) {
+            return null;
+          }
+          return normalizeOriginFromUrl(t, t);
+        })
+      ),
+    ].filter(Boolean)
   : [
-      process.env.APP_URL || 'http://localhost:3000',
+      defaultAppOrigin,
+      ...(defaultFrontendOrigin && defaultFrontendOrigin !== defaultAppOrigin
+        ? [defaultFrontendOrigin]
+        : []),
       'http://localhost:3001', // Frontend dev server
       'http://localhost:5173', // Vite default port (if different)
       'http://localhost:5174', // Vite alternate port
