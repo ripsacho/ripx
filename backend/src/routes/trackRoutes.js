@@ -21,6 +21,11 @@ const {
 } = require('../models/tenant');
 const { insertHeatmapEventsBatch } = require('../models/heatmap');
 const {
+  SCRIPT_VERSION,
+  buildStorefrontRuntimeConfig,
+  getStorefrontScriptCacheControl,
+} = require('../utils/storefrontScriptRuntime');
+const {
   getMaintenanceMode,
   isMaintenanceActiveForDomain,
   getBlockListMessage,
@@ -154,42 +159,6 @@ function getStorefrontScriptPath() {
   return path.join(__dirname, '../../..', 'shopify', 'storefront-script.js');
 }
 
-const SCRIPT_VERSION = '1';
-
-function buildRuntimeConfig(shop, tests, req) {
-  const appUrl = (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(
-    /\/+$/,
-    ''
-  );
-
-  return {
-    apiUrl: `${appUrl}/api`,
-    shopDomain: shop,
-    version: SCRIPT_VERSION,
-    consentRequired: process.env.RIPX_CONSENT_REQUIRED === 'true',
-    activeTests: (tests || []).map(test => {
-      const ids =
-        test.target_ids && Array.isArray(test.target_ids)
-          ? test.target_ids.filter(Boolean)
-          : test.target_id
-            ? [test.target_id]
-            : [];
-      const jsTargeting = test.segments?.js_targeting;
-      return {
-        id: test.id,
-        type: test.type,
-        targetType: test.target_type,
-        targetId: test.target_id || null,
-        targetIds: ids.length > 0 ? ids : null,
-        jsTargeting:
-          jsTargeting?.enabled && jsTargeting?.code
-            ? { enabled: true, code: jsTargeting.code }
-            : null,
-      };
-    }),
-  };
-}
-
 router.use(blockListCheck);
 router.use(maintenanceCheck);
 
@@ -266,21 +235,18 @@ router.get(
       }
 
       const tests = await getActiveTestsForStorefront(domain);
-      runtimeConfig = buildRuntimeConfig(domain, tests, req);
+      runtimeConfig = buildStorefrontRuntimeConfig(domain, tests, req);
     }
 
     const scriptPath = getStorefrontScriptPath();
     const scriptContents = fs.readFileSync(scriptPath, 'utf8');
 
-    const version = req.query.v || SCRIPT_VERSION;
-    const cacheSeconds = version ? 31536000 : 300;
-    const cacheControl = version
-      ? `public, max-age=${cacheSeconds}, immutable`
-      : `public, max-age=${cacheSeconds}`;
+    const cacheControl = getStorefrontScriptCacheControl();
+    const versionLabel = req.query.v ? String(req.query.v) : SCRIPT_VERSION;
 
     res.set('Content-Type', 'application/javascript; charset=utf-8');
     res.set('X-Content-Type-Options', 'nosniff');
-    res.set('X-Script-Version', version);
+    res.set('X-Script-Version', versionLabel);
     res.set('Cache-Control', cacheControl);
     res.send(`window.AB_TEST_RUNTIME_CONFIG=${JSON.stringify(runtimeConfig)};\n${scriptContents}`);
   })
@@ -451,6 +417,8 @@ router.get(
       const runtimeConfig = {
         apiUrl: `${appUrl.replace(/\/+$/, '')}/api`,
         shopDomain: hostname,
+        version: SCRIPT_VERSION,
+        consentRequired: process.env.RIPX_CONSENT_REQUIRED === 'true',
         activeTests: [],
         visualEditor: true, // preview-document is only used for visual editor iframe
         previewTestId: req.query.ab_preview_test || null,

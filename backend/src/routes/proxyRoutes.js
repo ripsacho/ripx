@@ -12,47 +12,16 @@ const querystring = require('querystring');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const { getActiveTestsForStorefront } = require('../models/test');
 const logger = require('../utils/logger');
+const {
+  SCRIPT_VERSION,
+  buildStorefrontRuntimeConfig,
+  getStorefrontScriptCacheControl,
+} = require('../utils/storefrontScriptRuntime');
 
 const router = express.Router();
 
 function isValidShopDomain(shop) {
   return /^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/.test(shop);
-}
-
-const SCRIPT_VERSION = '1';
-
-function buildRuntimeConfig(shop, tests, req) {
-  const appUrl = (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(
-    /\/+$/,
-    ''
-  );
-
-  return {
-    apiUrl: `${appUrl}/api`,
-    shopDomain: shop,
-    version: SCRIPT_VERSION,
-    activeTests: (tests || []).map(test => {
-      const ids =
-        test.target_ids && Array.isArray(test.target_ids)
-          ? test.target_ids.filter(Boolean)
-          : test.target_id
-            ? [test.target_id]
-            : [];
-      const segments = test.segments || {};
-      const jsTargeting = segments.js_targeting;
-      return {
-        id: test.id,
-        type: test.type,
-        targetType: test.target_type,
-        targetId: test.target_id || null,
-        targetIds: ids.length > 0 ? ids : null,
-        jsTargeting:
-          jsTargeting?.enabled && jsTargeting?.code
-            ? { enabled: true, code: jsTargeting.code }
-            : null,
-      };
-    }),
-  };
 }
 
 function getStorefrontScriptPath() {
@@ -170,7 +139,7 @@ async function serveScript(req, res) {
   }
 
   const tests = await getActiveTestsForStorefront(shop);
-  const runtimeConfig = buildRuntimeConfig(shop, tests, req);
+  const runtimeConfig = buildStorefrontRuntimeConfig(shop, tests, req);
   const scriptPath = getStorefrontScriptPath();
 
   let scriptContents;
@@ -186,12 +155,12 @@ async function serveScript(req, res) {
     return;
   }
 
-  const version = req.query.v;
-  const cacheSeconds = version ? 31536000 : 300;
+  const versionLabel = req.query.v ? String(req.query.v) : SCRIPT_VERSION;
 
   res.set('Content-Type', 'application/javascript; charset=utf-8');
   res.set('X-Content-Type-Options', 'nosniff');
-  res.set('Cache-Control', `public, max-age=${cacheSeconds}`);
+  res.set('X-Script-Version', versionLabel);
+  res.set('Cache-Control', getStorefrontScriptCacheControl());
   res.send(`window.AB_TEST_RUNTIME_CONFIG=${JSON.stringify(runtimeConfig)};\n${scriptContents}`);
 }
 

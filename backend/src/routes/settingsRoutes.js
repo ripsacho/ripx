@@ -16,6 +16,7 @@ const userModel = require('../models/user');
 const userDomainAccess = require('../models/userDomainAccess');
 const { SETTINGS_BOUNDS } = require('../constants');
 const { buildCheckoutPriceDiagnostics } = require('../services/priceCheckoutDiagnostics');
+const { SCRIPT_VERSION } = require('../utils/storefrontScriptRuntime');
 
 function escapeHtmlAttr(str) {
   if (typeof str !== 'string') {
@@ -271,7 +272,6 @@ router.get('/installation', async (req, res, next) => {
 
     const appUrl = (process.env.APP_URL || '').replace(/\/$/, '');
     const isShopify = /\.myshopify\.com$/.test(shopDomain);
-    const SCRIPT_VERSION = '1';
 
     let scriptUrl;
     let snippetHtml;

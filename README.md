@@ -30,6 +30,8 @@ Production deploy (host, SSH key, IP, and process manager) is environment-specif
 
 **Shopify app dev:** Run `npm run shopify:dev` (or `shopify app dev`). If the Cloudflare tunnel fails ("Could not start Cloudflare tunnel: max retries reached"), use localhost instead: `npm run shopify:dev:localhost` or `shopify app dev --use-localhost`. Localhost mode uses a local HTTPS proxy (no webhooks from Shopify to your machine).
 
+**Storefront script (`script.js`):** The file embeds the current `activeTests` list. It is served with a **short cache** (default 120s, `RIPX_SCRIPT_CACHE_MAX_AGE` in `.env`) so new/updated tests show up quickly—older builds used a 1-year immutable cache and could hide live tests. After upgrading, do a hard refresh on the shop or wait for cache expiry.
+
 ## License
 
 MIT

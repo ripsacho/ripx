@@ -15,6 +15,7 @@
  * getVariant/getVariantCachePromise return null or {} so the page shows the control variant
  * and does not break. Track (conversion/event) failures are logged but do not throw.
  * Do not cache the script per-user; assignment is fetched per session/page as needed.
+ * The server sends short Cache-Control for script.js (activeTests are embedded); hard-refresh or wait for max-age after starting/stopping tests.
  *
  * Debug: Set window.__RIPX_DEBUG__ = true before the script loads to enable console logs (no PII).
  * Version: Exposed as window.RipX.version / window.ABTestTracker.version for support.
@@ -54,6 +55,12 @@
   const consentRequired = !!CONFIG.consentRequired;
   const SCRIPT_VERSION = (CONFIG.version && String(CONFIG.version)) || '1.0.0';
   const DEBUG = !!(typeof window !== 'undefined' && window.__RIPX_DEBUG__);
+  /** Backend may send type "pricing"; treat same as "price" for storefront logic. */
+  function testTypeIsPrice(test) {
+    if (!test || test.type === undefined || test.type === null) return false;
+    var ty = String(test.type).toLowerCase();
+    return ty === 'price' || ty === 'pricing';
+  }
   function debugLog() {
     if (DEBUG && typeof console !== 'undefined' && console.log) {
       console.log.apply(console, ['[RipX]'].concat(Array.prototype.slice.call(arguments)));
@@ -2160,7 +2167,7 @@
    * Product-targeted price test: may show test prices on listing surfaces even when matchesTarget is false (no PDP product id).
    */
   function shouldRunPriceTestOnListingSurface(test) {
-    if (!test || test.type !== 'price') return false;
+    if (!testTypeIsPrice(test)) return false;
     var tt = (test.targetType || test.target_type || '').toLowerCase();
     if (tt !== 'product') return false;
     var tids =
@@ -2222,7 +2229,10 @@
       }
     } catch (e) {}
     try {
-      var p = window.ShopifyAnalytics && window.ShopifyAnalytics.meta && window.ShopifyAnalytics.meta.product;
+      var p =
+        window.ShopifyAnalytics &&
+        window.ShopifyAnalytics.meta &&
+        window.ShopifyAnalytics.meta.product;
       if (p && p.collectionId) pushUnique(toCollectionGid(p.collectionId));
     } catch (e2) {}
     return out;
@@ -2250,7 +2260,7 @@
     if (!test) return false;
     if (matchesTarget(test)) return true;
     if (shouldRunPriceTestOnListingSurface(test)) return true;
-    if (test.type === 'price') {
+    if (testTypeIsPrice(test)) {
       var tt = (test.targetType || test.target_type || '').toLowerCase();
       if (tt === 'collection' && getCurrentProductId()) {
         var cids =
@@ -2446,7 +2456,7 @@
           var tids =
             test.targetIds ||
             (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
-          if (test.type === 'price') {
+          if (testTypeIsPrice(test)) {
             var pdpProductMatch =
               tt === 'product' &&
               matched &&
@@ -2499,7 +2509,7 @@
         )
           return;
         CONFIG.activeTests.forEach(function (test) {
-          if (test.type !== 'price') return;
+          if (!testTypeIsPrice(test)) return;
           if (!shouldRunPriceTestOnCurrentPage(test)) return;
           var tt = (test.targetType || test.target_type || '').toLowerCase();
           var tids =
