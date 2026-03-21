@@ -51,6 +51,11 @@ See also **`backend/docs/PRODUCT_EXCELLENCE_ROADMAP.md`** for the long-term prod
 
 ## Behavior notes
 
+- **Product targets only at checkout** — The batch resolver applies discounts when `target_type === 'product'` and the line’s product is in `target_ids`. **Collection-targeted** price tests are supported on the storefront for display/cards, but checkout alignment requires **product-level** targeting (or add products explicitly) for the discount function.
+- **`priceBase: compare_at`** — The fetch query loads `compareAtAmountPerQuantity` from `CartLineCost` and sends **`compare_at_unit`** per line so the API matches storefront **amount/percent** math off compare-at. If Shopify hides compare-at for the buyer, the API returns `compare_at_unavailable` for that mode (no discount).
+- **Personalization / rollout** — Tests with status `stopped` or `completed` but `personalization_mode` `personalized` or `rollout` are treated as active for checkout (same as storefront `activeTests`).
+- **`pricing` vs `price`** — Both types are accepted in the resolver and in running-test counts.
+
 - **Selection strategy `ALL`**: multiple cart lines each get their own fixed-amount discount. (`FIRST` would only apply one candidate.)
 - **HTTP errors**: if the batch URL returns a non-2xx status, or JSON without `success` / `lines`, the function applies no discounts.
 - **Header** `X-RipX-Client: ripx-checkout-discount` is sent for server log filtering.

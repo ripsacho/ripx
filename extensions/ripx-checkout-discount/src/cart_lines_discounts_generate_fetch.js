@@ -50,6 +50,9 @@ export function cartLinesDiscountsGenerateFetch(input) {
       continue;
     }
 
+    const compareAtAmt = line.cost?.compareAtAmountPerQuantity?.amount;
+    const compareAtCurrency = line.cost?.compareAtAmountPerQuantity?.currencyCode;
+
     lines.push({
       line_id: line.id,
       test_id: testId,
@@ -59,6 +62,12 @@ export function cartLinesDiscountsGenerateFetch(input) {
       line_total: String(amount),
       qty: line.quantity,
       currency: currencyCode || null,
+      ...(compareAtAmt != null && String(compareAtAmt).trim() !== ''
+        ? {
+            compare_at_unit: String(compareAtAmt),
+            compare_at_currency: compareAtCurrency || null,
+          }
+        : {}),
     });
   }
 

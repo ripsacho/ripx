@@ -300,15 +300,16 @@ router.get('/installation', async (req, res, next) => {
 <link rel="dns-prefetch" href="${escapeHtmlAttr(scriptOrigin)}">
 `
         : '';
-      snippetHtml = `<!-- RipX A/B Testing - Shopify. Place in <head> for earliest execution. -->
-${resourceHints}<script src="${scriptUrl}" defer crossorigin="anonymous" fetchpriority="low"></script>
+      snippetHtml = `<!-- RipX A/B Testing - Shopify. Place in <head> with defer (matches Theme App Embed). -->
+${resourceHints}<script src="${scriptUrl}" defer crossorigin="anonymous" fetchpriority="high"></script>
+<!-- fetchpriority=high reduces A/B flicker; switch to low if LCP/image loading regresses. -->
 <!-- Alternative (direct API): <script src="${directUrl}" defer crossorigin="anonymous" fetchpriority="low"></script> -->`;
       instructions = {
         method: 'App Proxy + App Embed (recommended)',
         steps: [
           'Configure App Proxy in Partner Dashboard: subpath prefix "apps", subpath "ripx", proxy to your app',
-          'Enable RipX App Embed in theme editor',
-          'Script loads automatically at /apps/ripx/script.js',
+          'Enable RipX App Embed in theme editor (injects in <head> with defer + fetchpriority=high, same intent as manual snippet below)',
+          `Script URL includes ?v=${SCRIPT_VERSION} so theme/CDN caches refresh when RipX updates the embed`,
         ],
         altMethod: 'Direct script',
         altSnippet: `<script src="${directUrl}" defer crossorigin="anonymous" fetchpriority="low"></script>`,
@@ -371,8 +372,8 @@ router.get(
       `SELECT COUNT(*)::int AS c FROM tests
        WHERE LOWER(TRIM(shop_domain)) = LOWER(TRIM($1))
          AND LOWER(TRIM(status)) = 'running'
-         AND type = $2`,
-      [shopDomain, 'price']
+         AND LOWER(TRIM(type)) IN ('price', 'pricing')`,
+      [shopDomain]
     );
     const runningPriceTests = countRes.rows[0]?.c ?? 0;
 

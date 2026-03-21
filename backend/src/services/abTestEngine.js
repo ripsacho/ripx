@@ -717,6 +717,7 @@ class ABTestEngine {
     // Check test type
     const validTypes = [
       'price',
+      'pricing',
       'content',
       'shipping',
       'offer',

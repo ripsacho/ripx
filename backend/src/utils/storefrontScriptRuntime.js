@@ -3,6 +3,7 @@
  * activeTests and consent flags are embedded in the response — avoid long-lived immutable cache.
  */
 
+/** Bump when embedded runtime config or script contract changes. Keep ?v= in sync: extensions/ripx-theme/blocks/ripx-app-embed.liquid + frontend RIPX_STOREFRONT_SCRIPT_VERSION. */
 const SCRIPT_VERSION = '2';
 
 /**

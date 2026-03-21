@@ -248,6 +248,22 @@
   }
 
   /**
+   * Match /track/ping: Shopify tenants use shop_domain=, standalone uses site= (both resolve the same tenant).
+   * @param {URLSearchParams} params
+   */
+  function appendTrackTenantParams(params) {
+    var d = getShopDomain();
+    if (!d || !params) return params;
+    var dom = String(d).toLowerCase();
+    if (dom.indexOf('.myshopify.com') !== -1) {
+      params.set('shop_domain', d);
+    } else {
+      params.set('site', d);
+    }
+    return params;
+  }
+
+  /**
    * Evaluate JS targeting code safely. Code must return boolean.
    * Has access to: location, document, navigator, window, Shopify, getDeviceType, getCountryCode, etc.
    */
@@ -282,9 +298,18 @@
 
   // Batch variant cache: pre-fetch all assignments in one request (reduces flicker)
   var _variantCachePromise = null;
+  /** Single in-flight GET /track/preview per page (main loop + visual preview + reapply share it). */
+  var _previewVariantInflight = null;
+  var _previewVariantInflightKey = '';
+
   function getVariantCachePromise() {
     if (_variantCachePromise) return _variantCachePromise;
-    if (!hasValidConfig || PREVIEW_MODE || !CONFIG.activeTests || CONFIG.activeTests.length === 0) {
+    // Preview never uses batch /track/variants; cache empty map once to avoid redundant promises.
+    if (PREVIEW_MODE) {
+      _variantCachePromise = Promise.resolve({});
+      return _variantCachePromise;
+    }
+    if (!hasValidConfig || !CONFIG.activeTests || CONFIG.activeTests.length === 0) {
       return Promise.resolve({});
     }
     if (consentRequired && !hasConsent()) {
@@ -364,8 +389,12 @@
     if (!hasValidConfig) {
       return null;
     }
-    if (PREVIEW_MODE && PREVIEW_TEST_ID === String(testId) && PREVIEW_VARIANT_ID) {
-      const previewVariant = await fetchPreviewVariant(testId);
+    if (
+      PREVIEW_MODE &&
+      PREVIEW_TEST_ID === String(testId) &&
+      (PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME)
+    ) {
+      const previewVariant = await getPreviewVariantSingleFlight(testId);
       if (previewVariant) {
         return {
           ...previewVariant,
@@ -373,8 +402,13 @@
         };
       }
 
+      if (DEBUG) {
+        debugLog(
+          'Preview variant fetch failed or empty config — check Network for /track/preview (CORS, 404).'
+        );
+      }
       return {
-        variantId: PREVIEW_VARIANT_ID,
+        variantId: PREVIEW_VARIANT_ID || null,
         variantName: PREVIEW_VARIANT_NAME || 'Preview',
         isPreview: true,
       };
@@ -384,7 +418,13 @@
 
     try {
       const cache = await getVariantCachePromise();
-      if (cache[id]) return cache[id];
+      if (cache && typeof cache === 'object') {
+        var fromCache = cache[id];
+        if (fromCache === undefined || fromCache === null) {
+          fromCache = cache[testId];
+        }
+        if (fromCache !== undefined && fromCache !== null) return fromCache;
+      }
     } catch (e) {
       console.error('Error getting variant from cache:', e);
     }
@@ -421,7 +461,7 @@
         utm_medium: urlParams.get('utm_medium') || '',
       });
       const testConfig = CONFIG.activeTests.find(function (t) {
-        return t.id === id;
+        return String(t.id) === id;
       });
       if (
         testConfig &&
@@ -451,17 +491,42 @@
     return null;
   }
 
+  /**
+   * Coalesce parallel preview variant requests (same test + variant params).
+   * @param {string} testId
+   * @returns {Promise<object|null>}
+   */
+  function getPreviewVariantSingleFlight(testId) {
+    var key =
+      String(testId) +
+      '\u0000' +
+      (PREVIEW_VARIANT_ID || '') +
+      '\u0000' +
+      (PREVIEW_VARIANT_NAME || '');
+    if (_previewVariantInflight && _previewVariantInflightKey === key) {
+      return _previewVariantInflight;
+    }
+    var p = fetchPreviewVariant(testId);
+    _previewVariantInflightKey = key;
+    var wrapped = p.finally(function () {
+      if (_previewVariantInflight === wrapped) {
+        _previewVariantInflight = null;
+        _previewVariantInflightKey = '';
+      }
+    });
+    _previewVariantInflight = wrapped;
+    return wrapped;
+  }
+
   async function fetchPreviewVariant(testId) {
     if (!hasValidConfig) {
       return null;
     }
-    const shopDomain = getShopDomain();
 
     try {
-      const params = new URLSearchParams({
-        test_id: testId,
-        shop_domain: shopDomain,
-      });
+      const params = new URLSearchParams();
+      params.set('test_id', testId);
+      appendTrackTenantParams(params);
 
       if (PREVIEW_VARIANT_ID) {
         params.set('variant_id', PREVIEW_VARIANT_ID);
@@ -484,6 +549,32 @@
       console.error('Error getting preview variant:', error);
     }
 
+    return null;
+  }
+
+  /**
+   * Fetch minimal test payload for preview when the test is draft/paused (not in script.js activeTests).
+   */
+  async function fetchPreviewStorefrontTestShape(testId) {
+    if (!hasValidConfig || !testId) {
+      return null;
+    }
+    try {
+      const params = new URLSearchParams();
+      params.set('test_id', String(testId));
+      appendTrackTenantParams(params);
+      const response = await fetchWithTimeout(
+        `${CONFIG.apiUrl}/track/preview-storefront-test?${params.toString()}`,
+        { method: 'GET' },
+        8000
+      );
+      if (response.ok) {
+        const data = await response.json();
+        return data.test || null;
+      }
+    } catch (error) {
+      console.error('Error fetching preview storefront test:', error);
+    }
     return null;
   }
 
@@ -2269,6 +2360,18 @@
         if (productBelongsToPriceTestCollections(cids)) return true;
       }
     }
+    // Preview on PDP: product JSON / meta can load after first paint — still run the pipeline so
+    // getVariant + price apply can fire once ids exist (reapply timers also help).
+    if (
+      PREVIEW_MODE &&
+      testTypeIsPrice(test) &&
+      (test.targetType || test.target_type || '').toLowerCase() === 'product'
+    ) {
+      var pathPv = (window.location.pathname || '').toLowerCase();
+      if (pathPv.indexOf('/products/') !== -1 && pathPv.length > '/products/'.length + 1) {
+        return true;
+      }
+    }
     return false;
   }
 
@@ -2388,198 +2491,223 @@
       }
 
       const activeTests = CONFIG.activeTests || [];
-      const currentProductId = getCurrentProductId();
 
-      if (DEBUG && activeTests.length === 0) {
+      if (DEBUG && activeTests.length === 0 && !(PREVIEW_MODE && PREVIEW_TEST_ID)) {
         debugLog(
           'No active tests in config. Ensure the test is Running and the script is loaded with the correct shop (e.g. App Proxy or ?shop=xxx.myshopify.com).'
         );
       }
 
-      activeTests.forEach(test => {
-        if (!shouldRunPriceTestOnCurrentPage(test)) {
-          if (DEBUG) {
-            var targetType = test.targetType || test.target_type || 'page';
-            var ids =
-              test.targetIds ||
-              (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
-            debugLog(
-              'Test skipped (target mismatch):',
-              test.id,
-              'targetType=' + targetType,
-              'targetIds=' + (ids.length ? ids.join(',') : 'any'),
-              'current product=' + (getCurrentProductId() || 'none'),
-              'current collection=' + (getCurrentCollectionId() || 'none')
-            );
+      (async function runWithPreviewTestMerge() {
+        var testsToRun = activeTests.slice();
+        if (PREVIEW_MODE && PREVIEW_TEST_ID) {
+          var hasPreview = testsToRun.some(function (t) {
+            return String(t.id) === String(PREVIEW_TEST_ID);
+          });
+          if (!hasPreview) {
+            var extraTest = await fetchPreviewStorefrontTestShape(PREVIEW_TEST_ID);
+            if (extraTest) {
+              testsToRun.push(extraTest);
+            } else if (DEBUG) {
+              debugLog(
+                'Preview: test not in activeTests and preview-storefront-test fetch failed — is the test saved for this shop? Open DevTools → Network for /track/preview-storefront-test.'
+              );
+            }
           }
-          return;
+          CONFIG.activeTests = testsToRun;
         }
 
-        getVariant(test.id).then(variant => {
-          if (!variant) {
-            if (DEBUG)
+        testsToRun.forEach(function (test) {
+          if (!shouldRunPriceTestOnCurrentPage(test)) {
+            if (DEBUG) {
+              var targetType = test.targetType || test.target_type || 'page';
+              var ids =
+                test.targetIds ||
+                (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
               debugLog(
-                'Test skipped (no variant assigned):',
+                'Test skipped (target mismatch):',
                 test.id,
-                '- URL/segment may not match. Check targeting (URL pattern, device, etc.) or open with ?ab_preview=1 for preview.'
+                'targetType=' + targetType,
+                'targetIds=' + (ids.length ? ids.join(',') : 'any'),
+                'current product=' + (getCurrentProductId() || 'none'),
+                'current collection=' + (getCurrentCollectionId() || 'none')
               );
+            }
             return;
           }
-          var matched = matchesTarget(test);
-          if (matched) {
-            if (
-              variant.config &&
-              typeof variant.config.url === 'string' &&
-              variant.config.url.trim()
-            ) {
-              var rawUrl = variant.config.url.trim();
-              try {
-                var dest = new URL(rawUrl, window.location.href);
-                var cur = window.location;
-                var sameOriginPath =
-                  dest.origin === cur.origin &&
-                  dest.pathname === cur.pathname &&
-                  (dest.search || '') === (cur.search || '');
-                if (!sameOriginPath) {
-                  if (DEBUG) debugLog('Split-URL redirect', dest.toString());
-                  window.location.href = dest.toString();
-                  return;
-                }
-              } catch (e) {
-                if (DEBUG) debugLog('Split-URL invalid URL', rawUrl);
-              }
-            }
-            applyCustomCode(test.id, variant);
-          }
 
-          var tt = (test.targetType || test.target_type || '').toLowerCase();
-          var tids =
-            test.targetIds ||
-            (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
-          if (testTypeIsPrice(test)) {
-            var pdpProductMatch =
-              tt === 'product' &&
-              matched &&
-              currentProductId &&
-              tids.length &&
-              tids.some(function (id) {
-                return id && gidMatches(id, currentProductId);
-              });
-            var pdpCollectionMatch =
-              tt === 'collection' &&
-              currentProductId &&
-              tids.length &&
-              productBelongsToPriceTestCollections(tids);
-            if (pdpProductMatch || pdpCollectionMatch) {
-              applyPriceTest(test.id, currentProductId, test.targetVariantId || null, variant);
-            }
-            if (variant && variant.config && tids.length) {
-              if (tt === 'product' && isProductListingSurface()) {
-                applyPriceTestToProductCards(test.id, variant, tids);
-              } else if (tt === 'collection' && matched && isProductListingSurface()) {
-                applyPriceTestToCollectionListingCards(test.id, variant);
-              }
-              if (tt === 'product') {
-                applyPriceTestToCart(test.id, variant, tids);
-              }
-            }
-          }
-        });
-      });
-
-      // Preview mode: apply the preview variant's CSS/JS and visual editor rules
-      if (PREVIEW_MODE && PREVIEW_TEST_ID) {
-        getVariant(PREVIEW_TEST_ID).then(function (variant) {
-          if (variant) {
-            applyCustomCode(PREVIEW_TEST_ID, variant);
-            applyVisualEditorRules(PREVIEW_TEST_ID, variant);
-          }
-        });
-      }
-
-      initHeatmap();
-
-      // Re-apply price tests after delays so dynamically loaded content (cart drawer, AJAX sections, predictive search) shows test prices (Intelligems-style: price everywhere).
-      function reapplyPriceTestsOnly() {
-        if (
-          !hasValidConfig ||
-          PREVIEW_MODE ||
-          !CONFIG.activeTests ||
-          CONFIG.activeTests.length === 0
-        )
-          return;
-        CONFIG.activeTests.forEach(function (test) {
-          if (!testTypeIsPrice(test)) return;
-          if (!shouldRunPriceTestOnCurrentPage(test)) return;
-          var tt = (test.targetType || test.target_type || '').toLowerCase();
-          var tids =
-            test.targetIds ||
-            (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
-          if (tids.length === 0) return;
           getVariant(test.id).then(function (variant) {
-            if (!variant || !variant.config) return;
-            var curPid = getCurrentProductId();
-            var matchedNow = matchesTarget(test);
-            if (
-              tt === 'product' &&
-              matchedNow &&
-              curPid &&
-              tids.some(function (id) {
-                return id && gidMatches(id, curPid);
-              })
-            ) {
-              applyPriceTest(test.id, curPid, test.targetVariantId || null, variant);
+            if (!variant) {
+              if (DEBUG) {
+                debugLog(
+                  'Test skipped (no variant assigned):',
+                  test.id,
+                  '- URL/segment may not match. Check targeting (URL pattern, device, etc.) or open with ?ab_preview=1 for preview.'
+                );
+              }
+              return;
             }
-            if (tt === 'collection' && curPid && productBelongsToPriceTestCollections(tids)) {
-              applyPriceTest(test.id, curPid, test.targetVariantId || null, variant);
+            var tt = (test.targetType || test.target_type || '').toLowerCase();
+            var matched = matchesTarget(test);
+            if (!matched && PREVIEW_MODE && testTypeIsPrice(test) && tt === 'product') {
+              var pathM = (window.location.pathname || '').toLowerCase();
+              if (pathM.indexOf('/products/') !== -1 && pathM.length > '/products/'.length + 1) {
+                matched = true;
+              }
             }
-            if (tt === 'product' && isProductListingSurface()) {
-              applyPriceTestToProductCards(test.id, variant, tids);
-            } else if (tt === 'collection' && matchedNow && isProductListingSurface()) {
-              applyPriceTestToCollectionListingCards(test.id, variant);
+            if (matched) {
+              if (
+                variant.config &&
+                typeof variant.config.url === 'string' &&
+                variant.config.url.trim()
+              ) {
+                var rawUrl = variant.config.url.trim();
+                try {
+                  var dest = new URL(rawUrl, window.location.href);
+                  var cur = window.location;
+                  var sameOriginPath =
+                    dest.origin === cur.origin &&
+                    dest.pathname === cur.pathname &&
+                    (dest.search || '') === (cur.search || '');
+                  if (!sameOriginPath) {
+                    if (DEBUG) debugLog('Split-URL redirect', dest.toString());
+                    window.location.href = dest.toString();
+                    return;
+                  }
+                } catch (e) {
+                  if (DEBUG) debugLog('Split-URL invalid URL', rawUrl);
+                }
+              }
+              var previewFocusTest = PREVIEW_MODE && String(test.id) === String(PREVIEW_TEST_ID);
+              if (!previewFocusTest) {
+                applyCustomCode(test.id, variant);
+              }
             }
-            if (tt === 'product') applyPriceTestToCart(test.id, variant, tids);
+
+            var tids =
+              test.targetIds ||
+              (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
+            if (testTypeIsPrice(test)) {
+              // Read after async preview merge / deferred Product JSON (avoids stale null on PDP).
+              var curProductId = getCurrentProductId();
+              var pdpProductMatch =
+                tt === 'product' &&
+                matched &&
+                curProductId &&
+                tids.length &&
+                tids.some(function (id) {
+                  return id && gidMatches(id, curProductId);
+                });
+              var pdpCollectionMatch =
+                tt === 'collection' &&
+                curProductId &&
+                tids.length &&
+                productBelongsToPriceTestCollections(tids);
+              if (pdpProductMatch || pdpCollectionMatch) {
+                applyPriceTest(test.id, curProductId, test.targetVariantId || null, variant);
+              }
+              if (variant && variant.config && tids.length) {
+                if (tt === 'product' && isProductListingSurface()) {
+                  applyPriceTestToProductCards(test.id, variant, tids);
+                } else if (tt === 'collection' && matched && isProductListingSurface()) {
+                  applyPriceTestToCollectionListingCards(test.id, variant);
+                }
+                if (tt === 'product') {
+                  applyPriceTestToCart(test.id, variant, tids);
+                }
+              }
+            }
           });
         });
-      }
-      setTimeout(reapplyPriceTestsOnly, 1200);
-      setTimeout(reapplyPriceTestsOnly, 3500);
-      setTimeout(reapplyPriceTestsOnly, 6000);
-      setTimeout(reapplyPriceTestsOnly, 10000);
-      document.addEventListener('shopify:section:load', function () {
-        setTimeout(reapplyPriceTestsOnly, 300);
-      });
-      var lastCartReapplyAt = 0;
-      var cartReapply = function () {
-        var now = Date.now();
-        if (now - lastCartReapplyAt < 400) return;
-        lastCartReapplyAt = now;
-        setTimeout(reapplyPriceTestsOnly, 100);
-        setTimeout(reapplyPriceTestsOnly, 500);
-      };
-      if (document.body) {
-        document.body.addEventListener('click', function (e) {
-          var t = e.target;
-          if (!t || !t.closest) return;
-          if (
-            t.closest(
-              'a[href*="/cart"], .cart-icon, #cart-icon-bubble, [data-cart-drawer-toggle], .header__icon--cart, .site-header__cart, [data-cart-toggle], .js-drawer-open-cart, button[aria-label*="cart" i]'
-            )
-          ) {
-            cartReapply();
-          }
-        });
-      }
-      ['cart:open', 'cart-drawer:open', 'cart:updated', 'shopify:cart:change'].forEach(
-        function (evt) {
-          try {
-            document.addEventListener(evt, cartReapply, false);
-          } catch (e) {}
+
+        // Preview mode: apply the preview variant's CSS/JS and visual editor rules
+        if (PREVIEW_MODE && PREVIEW_TEST_ID) {
+          getVariant(PREVIEW_TEST_ID).then(function (variant) {
+            if (variant) {
+              applyCustomCode(PREVIEW_TEST_ID, variant);
+              applyVisualEditorRules(PREVIEW_TEST_ID, variant);
+            }
+          });
         }
-      );
-      if (window.RipX) {
-        window.RipX.reapplyPriceTests = reapplyPriceTestsOnly;
-      }
+
+        initHeatmap();
+
+        // Re-apply price tests after delays so dynamically loaded content (cart drawer, AJAX sections, predictive search) shows test prices (Intelligems-style: price everywhere).
+        function reapplyPriceTestsOnly() {
+          if (!hasValidConfig || !CONFIG.activeTests || CONFIG.activeTests.length === 0) return;
+          CONFIG.activeTests.forEach(function (test) {
+            if (!testTypeIsPrice(test)) return;
+            if (!shouldRunPriceTestOnCurrentPage(test)) return;
+            var tt = (test.targetType || test.target_type || '').toLowerCase();
+            var tids =
+              test.targetIds ||
+              (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
+            if (tids.length === 0) return;
+            getVariant(test.id).then(function (variant) {
+              if (!variant || !variant.config) return;
+              var curPid = getCurrentProductId();
+              var matchedNow = matchesTarget(test);
+              if (
+                tt === 'product' &&
+                matchedNow &&
+                curPid &&
+                tids.some(function (id) {
+                  return id && gidMatches(id, curPid);
+                })
+              ) {
+                applyPriceTest(test.id, curPid, test.targetVariantId || null, variant);
+              }
+              if (tt === 'collection' && curPid && productBelongsToPriceTestCollections(tids)) {
+                applyPriceTest(test.id, curPid, test.targetVariantId || null, variant);
+              }
+              if (tt === 'product' && isProductListingSurface()) {
+                applyPriceTestToProductCards(test.id, variant, tids);
+              } else if (tt === 'collection' && matchedNow && isProductListingSurface()) {
+                applyPriceTestToCollectionListingCards(test.id, variant);
+              }
+              if (tt === 'product') applyPriceTestToCart(test.id, variant, tids);
+            });
+          });
+        }
+        setTimeout(reapplyPriceTestsOnly, 1200);
+        setTimeout(reapplyPriceTestsOnly, 3500);
+        setTimeout(reapplyPriceTestsOnly, 6000);
+        setTimeout(reapplyPriceTestsOnly, 10000);
+        document.addEventListener('shopify:section:load', function () {
+          setTimeout(reapplyPriceTestsOnly, 300);
+        });
+        var lastCartReapplyAt = 0;
+        var cartReapply = function () {
+          var now = Date.now();
+          if (now - lastCartReapplyAt < 400) return;
+          lastCartReapplyAt = now;
+          setTimeout(reapplyPriceTestsOnly, 100);
+          setTimeout(reapplyPriceTestsOnly, 500);
+        };
+        if (document.body) {
+          document.body.addEventListener('click', function (e) {
+            var t = e.target;
+            if (!t || !t.closest) return;
+            if (
+              t.closest(
+                'a[href*="/cart"], .cart-icon, #cart-icon-bubble, [data-cart-drawer-toggle], .header__icon--cart, .site-header__cart, [data-cart-toggle], .js-drawer-open-cart, button[aria-label*="cart" i]'
+              )
+            ) {
+              cartReapply();
+            }
+          });
+        }
+        ['cart:open', 'cart-drawer:open', 'cart:updated', 'shopify:cart:change'].forEach(
+          function (evt) {
+            try {
+              document.addEventListener(evt, cartReapply, false);
+            } catch (e) {}
+          }
+        );
+        if (window.RipX) {
+          window.RipX.reapplyPriceTests = reapplyPriceTestsOnly;
+        }
+      })();
     }
 
     whenConsent(run);

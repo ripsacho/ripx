@@ -1,7 +1,45 @@
 /**
  * Resolve RipX price-test line discount for Shopify checkout (Discount Function / Cart UI).
- * Uses same config shape as storefront script: priceMode, price, priceDelta, pricePercent, byProduct, byVariant.
+ * Uses same config shape as storefront script: priceMode, price, priceDelta, pricePercent, priceBase, roundTo, byProduct, byVariant.
  */
+
+function isPriceTestRowType(type) {
+  const t = String(type || '').toLowerCase();
+  return t === 'price' || t === 'pricing';
+}
+
+/** Align with getActiveTestsForStorefront: running, or stopped/completed with personalization rollout. */
+function isPriceTestActiveForCheckout(test) {
+  if (!test) {
+    return false;
+  }
+  const s = String(test.status || '').toLowerCase();
+  if (s === 'running') {
+    return true;
+  }
+  const mode = String(test.personalization_mode || '').toLowerCase();
+  if ((s === 'stopped' || s === 'completed') && (mode === 'personalized' || mode === 'rollout')) {
+    return true;
+  }
+  return false;
+}
+
+function parseRoundTo(roundTo) {
+  if (roundTo === undefined || roundTo === null) {
+    return 0;
+  }
+  const n = typeof roundTo === 'number' ? roundTo : parseFloat(String(roundTo).trim(), 10);
+  return typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function applyRoundToUnitPrice(unitPrice, roundToVal) {
+  let n = Math.max(0, Math.round(unitPrice * 100) / 100);
+  if (roundToVal > 0) {
+    n = Math.round(n / roundToVal) * roundToVal;
+    n = Math.max(0, Math.round(n * 100) / 100);
+  }
+  return n;
+}
 
 function toNumericProductId(id) {
   if (id === undefined || id === null || id === '') {
@@ -105,8 +143,16 @@ function findTestVariant(test, assignmentVariantId) {
 }
 
 function productInTargetList(test, productGidOrNumeric) {
-  const ids = Array.isArray(test.target_ids)
-    ? test.target_ids
+  let rawIds = test.target_ids;
+  if (typeof rawIds === 'string') {
+    try {
+      rawIds = JSON.parse(rawIds);
+    } catch {
+      rawIds = null;
+    }
+  }
+  const ids = Array.isArray(rawIds)
+    ? rawIds.filter(Boolean)
     : test.target_id
       ? [test.target_id]
       : [];
@@ -137,11 +183,13 @@ function resolvePriceTestLineDiscount({
   variantId,
   linePresentmentTotal,
   quantity,
+  /** Per-unit compare-at from CartLineCost.compareAtAmountPerQuantity (Shopify); required for priceBase compare_at parity with storefront. */
+  compareAtUnitPrice = null,
 }) {
-  if (!test || test.type !== 'price') {
+  if (!test || !isPriceTestRowType(test.type)) {
     return { applies: false, reason: 'not_price_test' };
   }
-  if (test.status !== 'running') {
+  if (!isPriceTestActiveForCheckout(test)) {
     return { applies: false, reason: 'test_not_running' };
   }
   const tt = String(test.target_type || '').toLowerCase();
@@ -164,9 +212,23 @@ function resolvePriceTestLineDiscount({
     return { applies: false, reason: 'invalid_line_total' };
   }
   const catalogUnit = lineTotal / qty;
+  const compareAtParsed =
+    compareAtUnitPrice === undefined || compareAtUnitPrice === null || compareAtUnitPrice === ''
+      ? null
+      : Number.parseFloat(String(compareAtUnitPrice).trim());
+  const hasValidCompareAt = Number.isFinite(compareAtParsed) && compareAtParsed > 0;
 
   const cfg = getEffectivePriceConfig(vRow.config, productId, variantId || null);
   const priceMode = String(cfg.priceMode || 'fixed').toLowerCase();
+  const priceBase = String(cfg.priceBase || 'price').toLowerCase();
+  const useCompareAtBase =
+    (priceMode === 'amount' || priceMode === 'percent') && priceBase === 'compare_at';
+  const basisUnit = useCompareAtBase && hasValidCompareAt ? compareAtParsed : catalogUnit;
+
+  if (useCompareAtBase && !hasValidCompareAt) {
+    return { applies: false, reason: 'compare_at_unavailable' };
+  }
+
   if (priceMode === 'control') {
     return { applies: false, reason: 'control_variant' };
   }
@@ -176,7 +238,7 @@ function resolvePriceTestLineDiscount({
     if (cfg.price === null || cfg.price === undefined || cfg.price === '') {
       return { applies: false, reason: 'no_fixed_price' };
     }
-    targetUnit = parseFloat(cfg.price, 10);
+    targetUnit = parseFloat(String(cfg.price).trim(), 10);
   } else if (priceMode === 'amount') {
     if (
       cfg.priceDelta === null ||
@@ -185,11 +247,11 @@ function resolvePriceTestLineDiscount({
     ) {
       return { applies: false, reason: 'no_price_delta' };
     }
-    const delta = parseFloat(cfg.priceDelta, 10);
+    const delta = parseFloat(String(cfg.priceDelta).trim(), 10);
     if (!Number.isFinite(delta)) {
       return { applies: false, reason: 'bad_delta' };
     }
-    targetUnit = Math.max(0, catalogUnit + delta);
+    targetUnit = Math.max(0, basisUnit + delta);
   } else if (priceMode === 'percent') {
     if (
       cfg.pricePercent === null ||
@@ -198,11 +260,11 @@ function resolvePriceTestLineDiscount({
     ) {
       return { applies: false, reason: 'no_price_percent' };
     }
-    const pct = parseFloat(cfg.pricePercent, 10);
+    const pct = parseFloat(String(cfg.pricePercent).trim(), 10);
     if (!Number.isFinite(pct)) {
       return { applies: false, reason: 'bad_percent' };
     }
-    targetUnit = Math.max(0, catalogUnit * (1 - pct / 100));
+    targetUnit = Math.max(0, basisUnit * (1 - pct / 100));
   } else {
     return { applies: false, reason: 'unknown_price_mode' };
   }
@@ -210,6 +272,8 @@ function resolvePriceTestLineDiscount({
   if (!Number.isFinite(targetUnit) || targetUnit < 0) {
     return { applies: false, reason: 'bad_target_unit' };
   }
+
+  targetUnit = applyRoundToUnitPrice(targetUnit, parseRoundTo(cfg.roundTo));
 
   const targetLine = Math.round(targetUnit * qty * 100) / 100;
   const roundedLineTotal = Math.round(lineTotal * 100) / 100;
@@ -361,6 +425,14 @@ async function resolveCheckoutPriceBatchForDomain(domain, lines, getTestById, ge
         ? String(rawVid).trim()
         : null;
 
+    const compareRaw =
+      row.compare_at_unit !== undefined && row.compare_at_unit !== null
+        ? row.compare_at_unit
+        : row.compare_at_amount_per_quantity !== undefined &&
+            row.compare_at_amount_per_quantity !== null
+          ? row.compare_at_amount_per_quantity
+          : null;
+
     const result = resolvePriceTestLineDiscount({
       test,
       assignmentVariantId: assignmentVariant,
@@ -368,6 +440,7 @@ async function resolveCheckoutPriceBatchForDomain(domain, lines, getTestById, ge
       variantId,
       linePresentmentTotal: lineTotal,
       quantity,
+      compareAtUnitPrice: compareRaw,
     });
 
     results.push({
@@ -387,4 +460,6 @@ module.exports = {
   resolveCheckoutPriceBatchForDomain,
   toNumericProductId,
   getEffectivePriceConfig,
+  isPriceTestRowType,
+  isPriceTestActiveForCheckout,
 };

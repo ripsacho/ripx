@@ -326,6 +326,11 @@ class TestModel {
     test.goal = safeParseJSON(test.goal, {}, 'goal', testId);
     test.variants = normalizeVariantCode(safeParseJSON(test.variants, [], 'variants', testId));
     test.segments = safeParseJSON(test.segments, {}, 'segments', testId);
+    const targetIdsParsed = Array.isArray(test.target_ids)
+      ? test.target_ids
+      : safeParseJSON(test.target_ids, null, 'target_ids', testId);
+    test.target_ids =
+      Array.isArray(targetIdsParsed) && targetIdsParsed.length > 0 ? targetIdsParsed : null;
 
     return test;
   }
@@ -352,11 +357,16 @@ class TestModel {
     const map = new Map();
     for (const row of result.rows) {
       const idKey = String(row.id);
+      const targetIdsParsed = Array.isArray(row.target_ids)
+        ? row.target_ids
+        : safeParseJSON(row.target_ids, null, 'target_ids', idKey);
       const test = {
         ...row,
         goal: safeParseJSON(row.goal, {}, 'goal', idKey),
         variants: normalizeVariantCode(safeParseJSON(row.variants, [], 'variants', idKey)),
         segments: safeParseJSON(row.segments, {}, 'segments', idKey),
+        target_ids:
+          Array.isArray(targetIdsParsed) && targetIdsParsed.length > 0 ? targetIdsParsed : null,
       };
       map.set(idKey, test);
     }

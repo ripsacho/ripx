@@ -43,6 +43,12 @@ export const INTERVALS = {
   AUTH_CHECK_TIMEOUT_MS: 10_000,
 };
 
+/**
+ * Cache-bust query for storefront script.js — keep in sync with
+ * `backend/src/utils/storefrontScriptRuntime.js` SCRIPT_VERSION when the runtime embed contract changes.
+ */
+export const RIPX_STOREFRONT_SCRIPT_VERSION = '2';
+
 /** App metadata */
 export const APP_META = {
   VERSION: '1.0.0',

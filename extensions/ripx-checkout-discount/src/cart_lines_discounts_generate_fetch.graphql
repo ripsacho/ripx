@@ -11,6 +11,10 @@ query RipxCartLinesFetch {
           amount
           currencyCode
         }
+        compareAtAmountPerQuantity {
+          amount
+          currencyCode
+        }
       }
       ripxShop: attribute(key: "_ripx_shop") {
         value

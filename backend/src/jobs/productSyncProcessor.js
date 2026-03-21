@@ -56,12 +56,14 @@ async function processProductSyncJob(job) {
   }
 
   const tests = await getTestsByShop(shop, 'running');
-  const affected = tests.filter(
-    t =>
-      t.type === 'price' &&
+  const affected = tests.filter(t => {
+    const ty = String(t.type || '').toLowerCase();
+    return (
+      (ty === 'price' || ty === 'pricing') &&
       (t.target_type === 'product' || t.target_type === 'all-products') &&
       (t.target_id === String(productId) || !t.target_id)
-  );
+    );
+  });
 
   logger.info('Product sync completed', {
     shop,

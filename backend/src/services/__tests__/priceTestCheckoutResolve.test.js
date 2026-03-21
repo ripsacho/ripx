@@ -216,4 +216,100 @@ describe('priceTestCheckoutResolve', () => {
     expect(out).toHaveLength(1);
     expect(out[0].applies).toBe(true);
   });
+
+  it('accepts type pricing like price', () => {
+    const test = { ...baseTest, type: 'pricing' };
+    const r = resolvePriceTestLineDiscount({
+      test,
+      assignmentVariantId: 'var-b',
+      productId: '111',
+      linePresentmentTotal: 29.99,
+      quantity: 1,
+    });
+    expect(r.applies).toBe(true);
+  });
+
+  it('allows stopped test in rollout personalization mode', () => {
+    const test = {
+      ...baseTest,
+      status: 'stopped',
+      personalization_mode: 'rollout',
+    };
+    const r = resolvePriceTestLineDiscount({
+      test,
+      assignmentVariantId: 'var-b',
+      productId: '111',
+      linePresentmentTotal: 29.99,
+      quantity: 1,
+    });
+    expect(r.applies).toBe(true);
+  });
+
+  it('applies roundTo to target unit', () => {
+    const test = {
+      ...baseTest,
+      variants: [
+        {
+          id: 'var-b',
+          name: 'Variant B',
+          config: { priceMode: 'fixed', price: 19.33, roundTo: 0.25 },
+        },
+      ],
+    };
+    const r = resolvePriceTestLineDiscount({
+      test,
+      assignmentVariantId: 'var-b',
+      productId: '111',
+      linePresentmentTotal: 29.99,
+      quantity: 1,
+    });
+    expect(r.applies).toBe(true);
+    expect(parseFloat(r.targetLineDecimal, 10)).toBeCloseTo(19.25, 2);
+  });
+
+  it('compare_at percent uses compareAtUnitPrice when priceBase is compare_at', () => {
+    const test = {
+      ...baseTest,
+      variants: [
+        {
+          id: 'var-b',
+          name: 'Variant B',
+          config: { priceMode: 'percent', pricePercent: 10, priceBase: 'compare_at' },
+        },
+      ],
+    };
+    const r = resolvePriceTestLineDiscount({
+      test,
+      assignmentVariantId: 'var-b',
+      productId: '111',
+      linePresentmentTotal: 50,
+      quantity: 1,
+      compareAtUnitPrice: '40',
+    });
+    expect(r.applies).toBe(true);
+    expect(parseFloat(r.targetLineDecimal, 10)).toBeCloseTo(36, 2);
+    expect(parseFloat(r.discountDecimal, 10)).toBeCloseTo(14, 2);
+  });
+
+  it('compare_at without compareAtUnitPrice returns compare_at_unavailable', () => {
+    const test = {
+      ...baseTest,
+      variants: [
+        {
+          id: 'var-b',
+          name: 'Variant B',
+          config: { priceMode: 'percent', pricePercent: 10, priceBase: 'compare_at' },
+        },
+      ],
+    };
+    const r = resolvePriceTestLineDiscount({
+      test,
+      assignmentVariantId: 'var-b',
+      productId: '111',
+      linePresentmentTotal: 20,
+      quantity: 1,
+    });
+    expect(r.applies).toBe(false);
+    expect(r.reason).toBe('compare_at_unavailable');
+  });
 });

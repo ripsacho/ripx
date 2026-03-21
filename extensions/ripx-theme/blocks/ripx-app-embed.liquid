@@ -1,17 +1,20 @@
 {% comment %}
-  RipX App Embed
-  Loads the storefront script via Shopify App Proxy.
+  RipX App Embed — loads via Shopify App Proxy (/apps/ripx/script.js).
+  target: head — earlier fetch than body embeds; defer avoids blocking HTML parse.
+  fetchpriority="high" reduces A/B flicker (use low if LCP regresses on image-heavy themes).
+  ?v= must stay in sync with backend storefrontScriptRuntime.js SCRIPT_VERSION (currently 2).
 {% endcomment %}
 
 <script
-  src="https://{{ request.host }}/apps/ripx/script.js?v=1"
+  src="https://{{ request.host }}/apps/ripx/script.js?v=2"
   defer
+  fetchpriority="high"
 ></script>
 
 {% schema %}
 {
   "name": "RipX App Embed",
-  "target": "body",
+  "target": "head",
   "settings": []
 }
 {% endschema %}

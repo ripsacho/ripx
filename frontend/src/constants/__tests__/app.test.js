@@ -5,7 +5,13 @@
  * and are documented by tests (useSessionCheck, theme, etc. depend on these).
  */
 
-import { BREAKPOINTS, STORAGE_KEYS, INTERVALS, APP_META } from '../app';
+import {
+  BREAKPOINTS,
+  STORAGE_KEYS,
+  INTERVALS,
+  APP_META,
+  RIPX_STOREFRONT_SCRIPT_VERSION,
+} from '../app';
 
 describe('app constants', () => {
   describe('BREAKPOINTS', () => {
@@ -64,6 +70,14 @@ describe('app constants', () => {
 
     it('SESSION_CHECK_INITIAL_DELAY is 25 seconds', () => {
       expect(INTERVALS.SESSION_CHECK_INITIAL_DELAY).toBe(25 * 1000);
+    });
+  });
+
+  describe('RIPX_STOREFRONT_SCRIPT_VERSION', () => {
+    it('is a non-empty string (sync with backend storefrontScriptRuntime SCRIPT_VERSION)', () => {
+      expect(typeof RIPX_STOREFRONT_SCRIPT_VERSION).toBe('string');
+      expect(RIPX_STOREFRONT_SCRIPT_VERSION.length).toBeGreaterThan(0);
+      expect(RIPX_STOREFRONT_SCRIPT_VERSION).toMatch(/^\d+$/);
     });
   });
 

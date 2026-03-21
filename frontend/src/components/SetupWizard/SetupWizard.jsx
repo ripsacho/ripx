@@ -28,6 +28,7 @@ import { apiGet, getShopDomain, isStandaloneMode } from '../../services';
 import { isShopifyStoreDomain } from '../../utils/shopifyAdmin';
 import { PageShell } from '../Shared';
 import { ROUTES } from '../../constants';
+import { RIPX_STOREFRONT_SCRIPT_VERSION } from '../../constants/app';
 import styles from './SetupWizard.module.css';
 
 const StepIcon = ({ type }) => {
@@ -78,9 +79,12 @@ function SetupWizard() {
   const appUrl = setupStatus?.appUrl || '';
   const proxyTargetUrl = setupStatus?.proxyTargetUrl || '';
   const proxyScriptUrl = useMemo(() => {
+    if (installation?.scriptUrl) {
+      return installation.scriptUrl;
+    }
     if (!shopDomain) return '';
-    return `https://${shopDomain}/apps/ripx/script.js?v=1`;
-  }, [shopDomain]);
+    return `https://${shopDomain}/apps/ripx/script.js?v=${RIPX_STOREFRONT_SCRIPT_VERSION}`;
+  }, [shopDomain, installation?.scriptUrl]);
 
   const proxyOk = setupStatus?.proxyStatus?.ok;
   const proxyStatusCode = setupStatus?.proxyStatus?.statusCode;
@@ -740,7 +744,9 @@ function SetupWizard() {
                             </div>
                             <List type="bullet">
                               <List.Item>Online Store → Themes → Customize</List.Item>
-                              <List.Item>App Embeds → Enable “RipX App Embed”</List.Item>
+                              <List.Item>
+                                App Embeds → Enable “RipX App Embed” (injects in head)
+                              </List.Item>
                               <List.Item>Save the theme</List.Item>
                             </List>
                             {embedBlockedByPassword && (

@@ -47,6 +47,7 @@ import {
 import pageShell from '../Shared/PageShell.module.css';
 import styles from './Documentation.module.css';
 import { ROUTES } from '../../constants';
+import { RIPX_STOREFRONT_SCRIPT_VERSION } from '../../constants/app';
 import {
   CodeBlock,
   StepList,
@@ -341,14 +342,17 @@ function DocSectionContent({ sectionId }) {
           </Text>
           <p>
             Use App Proxy + App Embed (recommended) or direct script. Configure App Proxy in Partner
-            Dashboard: subpath <code>apps/ripx</code>. Enable RipX App Embed in theme editor.
+            Dashboard: subpath <code>apps/ripx</code>. Enable <strong>RipX App Embed</strong> in the
+            theme editor (it injects in <code>&lt;head&gt;</code> with <code>defer</code> and{' '}
+            <code>fetchpriority=&quot;high&quot;</code> to reduce flicker). Settings → Installation
+            shows the exact snippet for your store (including <code>?v=</code> cache bust).
           </p>
           <CodeBlock
-            code={`<!-- App Proxy (recommended) -->
-<script src="https://your-shop.myshopify.com/apps/ripx/script.js?v=1"></script>
+            code={`<!-- App Proxy (recommended) — <head>, defer; v matches RipX runtime embed -->
+<script src="https://your-shop.myshopify.com/apps/ripx/script.js?v=${RIPX_STOREFRONT_SCRIPT_VERSION}" defer crossorigin="anonymous" fetchpriority="high"></script>
 
-<!-- Or direct -->
-<script src="https://your-app.com/api/track/script.js?shop=your-shop.myshopify.com"></script>`}
+<!-- Or direct API -->
+<script src="https://your-app.com/api/track/script.js?shop=your-shop.myshopify.com" defer crossorigin="anonymous" fetchpriority="low"></script>`}
             language="html"
           />
           <Text variant="headingMd" as="h4">

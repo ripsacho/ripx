@@ -24,6 +24,7 @@ const {
   SCRIPT_VERSION,
   buildStorefrontRuntimeConfig,
   getStorefrontScriptCacheControl,
+  mapTestToStorefrontPayload,
 } = require('../utils/storefrontScriptRuntime');
 const {
   getMaintenanceMode,
@@ -964,6 +965,44 @@ router.get(
 );
 
 /**
+ * GET /api/track/preview-storefront-test
+ * Minimal test row for storefront script (same shape as activeTests[]).
+ * Used when previewing draft/paused tests that are not embedded in script.js activeTests.
+ */
+router.get(
+  '/preview-storefront-test',
+  asyncHandler(async (req, res) => {
+    const { test_id, shop_domain, site } = req.query;
+    const domain = await resolveTenantDomain(shop_domain, site);
+
+    if (!test_id || !domain) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameters: test_id and shop_domain or site',
+      });
+    }
+    const tenantPs = await getTenantByDomain(domain);
+    if (tenantPs && isTenantSuspendedOrBlocked(tenantPs)) {
+      return res.status(403).json({ success: false, error: 'Access suspended. Contact support.' });
+    }
+
+    if (!validators.isValidUUID(test_id)) {
+      return res.status(400).json({ success: false, error: 'Invalid test_id format' });
+    }
+
+    const testRow = await getTestById(test_id, domain);
+    if (!testRow) {
+      return res.status(404).json({ success: false, error: 'Test not found' });
+    }
+
+    return res.json({
+      success: true,
+      test: mapTestToStorefrontPayload(testRow),
+    });
+  })
+);
+
+/**
  * GET /api/track/price-checkout-diagnostics
  * Operator / merchant QA: verifies batch resolver URL (APP_URL / RIPX_PRICE_RESOLVE_BATCH_URL),
  * HTTPS, optional RIPX_CHECKOUT_PRICE_SECRET mode, PRICE_RESOLVE_BATCH_MAX.
@@ -1001,8 +1040,8 @@ router.get(
         `SELECT COUNT(*)::int AS c FROM tests
          WHERE LOWER(TRIM(shop_domain)) = LOWER(TRIM($1))
            AND LOWER(TRIM(status)) = 'running'
-           AND type = $2`,
-        [domain, 'price']
+           AND LOWER(TRIM(type)) IN ('price', 'pricing')`,
+        [domain]
       );
       shopOpts = {
         shopDomain: domain,
@@ -1028,7 +1067,7 @@ router.get(
  * Intended for a Shopify Product Discount Function with network access (fetch), or server-side cart tools.
  * Cart line must include attributes _ripx_price_test (test UUID) and _ripx_variant (assigned variant id/name).
  *
- * Query: shop|site, test_id, assignment_variant, product_id, line_total, optional variant_id, qty, currency, secret
+ * Query: shop|site, test_id, assignment_variant, product_id, line_total, optional variant_id, qty, compare_at_unit (for priceBase=compare_at), currency, secret
  * When RIPX_CHECKOUT_PRICE_SECRET is set, pass secret as query param or X-RipX-Price-Secret header.
  */
 router.get(
@@ -1038,8 +1077,17 @@ router.get(
       return;
     }
 
-    const { shop, site, test_id, assignment_variant, product_id, variant_id, line_total, qty } =
-      req.query;
+    const {
+      shop,
+      site,
+      test_id,
+      assignment_variant,
+      product_id,
+      variant_id,
+      line_total,
+      qty,
+      compare_at_unit,
+    } = req.query;
 
     const domain = await resolveTenantDomain(shop, site);
     if (!domain) {
@@ -1077,6 +1125,12 @@ router.get(
       variantId: variant_id ? String(variant_id).trim() : null,
       linePresentmentTotal: lineTotal,
       quantity,
+      compareAtUnitPrice:
+        compare_at_unit !== undefined &&
+        compare_at_unit !== null &&
+        String(compare_at_unit).trim() !== ''
+          ? String(compare_at_unit).trim()
+          : null,
     });
 
     res.set('Cache-Control', 'no-store');
@@ -1095,7 +1149,7 @@ router.get(
  * POST /api/track/price-resolve-batch
  * Batch resolver for Shopify Discount Function `cart.lines.discounts.generate.fetch` (single HTTP round-trip).
  *
- * Body JSON: { shop|site, secret? (if RIPX_CHECKOUT_PRICE_SECRET set), lines: [{ line_id, test_id, assignment_variant, product_id, variant_id?, line_total, qty? }] }
+ * Body JSON: { shop|site, secret?, lines: [{ line_id, test_id, assignment_variant, product_id, variant_id?, line_total, qty?, compare_at_unit? }] } — compare_at_unit from CartLineCost.compareAtAmountPerQuantity when using priceBase compare_at.
  *
  * Response `lines` default shape: `{ line_id, applies, discountDecimal }` (compact for Shopify size limits).
  * Set env `RIPX_PRICE_BATCH_FULL_RESPONSE=true` to include `targetLineDecimal` and `reason` per line.

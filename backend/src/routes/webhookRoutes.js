@@ -201,12 +201,14 @@ router.post(
     }
 
     const tests = await getTestsByShop(shop, 'running');
-    const affectedTests = tests.filter(
-      test =>
-        test.type === 'price' &&
+    const affectedTests = tests.filter(test => {
+      const ty = String(test.type || '').toLowerCase();
+      return (
+        (ty === 'price' || ty === 'pricing') &&
         test.target_type === 'product' &&
         test.target_id === String(product.id)
-    );
+      );
+    });
     logger.info('Product updated', {
       productId: product.id,
       shop,
