@@ -24,6 +24,12 @@
   flex-direction: column;
   min-height: 100vh;
   overflow: hidden;
+  background: var(--bg-primary);
+  box-shadow: inset 1px 0 0 rgba(6, 182, 212, 0.07);
+}
+
+[data-theme='dark'] .adminRightColumn {
+  box-shadow: inset 1px 0 0 rgba(6, 182, 212, 0.1);
 }
 
 @media (max-width: 768px) {
@@ -37,13 +43,22 @@
     width: 100%;
     max-height: 45vh;
     flex-shrink: 0;
-    border-radius: 0;
+    border-radius: 0 0 14px 14px;
     border-left: none;
     border-right: none;
+    border-bottom: 1px solid var(--border-primary);
+    box-shadow:
+      2px 0 20px -4px var(--shadow-lg),
+      0 0 0 1px var(--border-secondary),
+      0 8px 28px rgba(0, 0, 0, 0.06);
   }
 
   .adminSidebar.collapsed {
     width: 100%;
+  }
+
+  .adminRightColumn {
+    box-shadow: none;
   }
 
   .adminHoverDrawer {
@@ -51,10 +66,10 @@
   }
 }
 
-/* Sidebar: full-height, edge-to-edge left */
+/* Sidebar: match main app .sidebar (glass, accent border, Inter / system stack) */
 .adminSidebar {
   flex-shrink: 0;
-  width: 260px;
+  width: 280px;
   position: sticky;
   top: 0;
   align-self: flex-start;
@@ -62,12 +77,17 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.95) 100%);
-  border-right: 1px solid var(--border-secondary);
+  font-family: inherit;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+  backdrop-filter: blur(12px) saturate(1.1);
+  -webkit-backdrop-filter: blur(12px) saturate(1.1);
+  border-right: 1px solid rgba(6, 182, 212, 0.1);
   border-radius: 0;
-  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.04);
+  box-shadow: 2px 0 20px -4px var(--shadow-lg), 0 0 0 1px var(--border-secondary);
   overflow: hidden;
-  transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1), background-color var(--transition-slow, 0.2s ease);
 }
 
 .adminSidebar.collapsed {
@@ -86,6 +106,10 @@
 
 .adminSidebar.collapsed .adminNavIcon {
   margin: 0;
+}
+
+.adminSidebar.collapsed .adminNavItem.active::after {
+  display: none;
 }
 
 .adminNavItemWrapper {
@@ -129,7 +153,8 @@
 }
 
 .adminHoverDrawerTitle {
-  font-size: 0.875rem;
+  font-family: inherit;
+  font-size: 0.8125rem;
   font-weight: 600;
   line-height: 1.25;
   white-space: nowrap;
@@ -171,20 +196,22 @@
   top: 0;
   left: 0;
   right: 0;
-  height: 4px;
+  height: 2px;
   background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
-  opacity: 0.85;
+  opacity: 0.7;
+  z-index: 1;
 }
 
 [data-theme='dark'] .adminSidebar {
-  background: linear-gradient(180deg, rgba(26, 26, 26, 0.7) 0%, rgba(18, 18, 18, 0.6) 100%);
-  border-color: rgba(255, 255, 255, 0.06);
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, #0f0f0f 100%);
+  border-right-color: rgba(6, 182, 212, 0.12);
 }
 
 .adminSidebarHeader {
   flex-shrink: 0;
   padding: 1rem 1.25rem;
   border-bottom: 1px solid var(--border-primary);
+  background: transparent;
 }
 
 .adminSidebarHeaderRow {
@@ -205,12 +232,12 @@
   background: none;
   cursor: pointer;
   text-align: left;
-  border-radius: var(--radius-md);
-  transition: opacity 0.2s ease;
+  border-radius: 8px;
+  transition: background 0.2s ease;
 }
 
 .adminSidebarBrand:hover {
-  opacity: 0.9;
+  background: rgba(6, 182, 212, 0.06);
 }
 
 .adminSidebarBrand:focus-visible {
@@ -219,16 +246,16 @@
 }
 
 .adminSidebarLogoCollapsedBtn {
-  padding: 0;
+  padding: 0.25rem;
   border: none;
   background: none;
   cursor: pointer;
-  border-radius: var(--radius-sm);
-  transition: opacity 0.2s ease;
+  border-radius: 10px;
+  transition: background 0.2s ease, opacity 0.2s ease;
 }
 
 .adminSidebarLogoCollapsedBtn:hover {
-  opacity: 0.9;
+  background: rgba(6, 182, 212, 0.08);
 }
 
 .adminSidebarLogoCollapsedBtn:focus-visible {
@@ -259,12 +286,9 @@
   min-width: 0;
 }
 
-.adminSidebarAppName {
-  font-size: 1.125rem;
-  font-weight: 700;
-  color: var(--text-primary);
+.adminSidebarBrandText :global(.Polaris-Text--headingLg) {
   letter-spacing: -0.02em;
-  line-height: 1.2;
+  line-height: 1.15;
 }
 
 .adminSidebar.collapsed .adminSidebarHeader {
@@ -343,6 +367,7 @@
   color: var(--futuristic-cyan);
 }
 
+/* Match main .sidebar-collapse-button */
 .adminCollapseBtn {
   display: flex;
   align-items: center;
@@ -352,22 +377,37 @@
   padding: 0;
   border: 1.5px solid var(--border-secondary);
   border-radius: var(--radius-md);
-  background: var(--bg-secondary);
+  background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all var(--transition-smooth);
+  transition: all var(--transition-smooth, 0.2s ease);
   flex-shrink: 0;
+  position: relative;
+  box-shadow: 0 2px 4px var(--shadow-sm);
 }
 
 .adminCollapseBtn:hover {
-  background: rgba(6, 182, 212, 0.08);
-  border-color: var(--futuristic-cyan);
-  color: var(--futuristic-cyan);
+  background: linear-gradient(135deg, var(--bg-hover) 0%, var(--bg-secondary) 100%);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px var(--shadow-md), 0 0 0 1px rgba(6, 182, 212, 0.3);
 }
 
 .adminCollapseBtn :global(svg) {
   width: 18px;
   height: 18px;
+}
+
+[data-theme='dark'] .adminCollapseBtn {
+  background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+  border-color: var(--border-primary);
+}
+
+[data-theme='dark'] .adminCollapseBtn:hover {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.15) 0%, var(--bg-secondary) 100%);
+  border-color: var(--accent-primary);
+  box-shadow: 0 4px 16px rgba(6, 182, 212, 0.2), 0 0 0 2px var(--accent-primary);
 }
 
 .adminSidebarTitle {
@@ -380,12 +420,8 @@
 }
 
 .adminSidebarSubtitle {
-  font-size: 0.6875rem;
-  font-weight: 600;
-  margin: 0;
-  color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  margin: 0 !important;
+  line-height: 1.35;
 }
 
 /* Nav column: search (fixed) + scrollable grouped links */
@@ -399,14 +435,47 @@
 
 .adminNavSearch {
   flex-shrink: 0;
-  padding: 0.5rem 0.75rem 0.625rem;
+  padding: 0.625rem 0.75rem 0.75rem;
   border-bottom: 1px solid var(--border-primary);
-  background: linear-gradient(180deg, rgba(6, 182, 212, 0.04) 0%, transparent 100%);
+  background: transparent;
 }
 
 [data-theme='dark'] .adminNavSearch {
-  background: linear-gradient(180deg, rgba(6, 182, 212, 0.07) 0%, transparent 100%);
   border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+.adminNavSearchCard {
+  border: 1px solid var(--border-secondary);
+  border-radius: 12px;
+  padding: 0.5rem 0.5rem 0.55rem;
+  background: linear-gradient(
+    165deg,
+    rgba(6, 182, 212, 0.06) 0%,
+    var(--bg-primary) 42%,
+    var(--bg-secondary) 100%
+  );
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+[data-theme='dark'] .adminNavSearchCard {
+  background: linear-gradient(
+    165deg,
+    rgba(6, 182, 212, 0.09) 0%,
+    rgba(18, 18, 18, 0.85) 55%,
+    var(--bg-secondary) 100%
+  );
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.adminNavSearchCard :global(.Polaris-TextField__Input) {
+  background: var(--bg-primary);
+}
+
+[data-theme='dark'] .adminNavSearchCard :global(.Polaris-TextField__Input) {
+  background: rgba(0, 0, 0, 0.2);
 }
 
 .adminNavSearch :global(.Polaris-Labelled__LabelWrapper) {
@@ -440,7 +509,7 @@
 }
 
 .adminNavSearchHint {
-  font-size: 0.625rem;
+  font-size: 0.65rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -475,8 +544,12 @@
   flex-wrap: wrap;
   gap: 0.25rem;
   margin-top: 0.45rem;
-  padding-top: 0.45rem;
-  border-top: 1px dashed var(--border-secondary);
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(6, 182, 212, 0.12);
+}
+
+[data-theme='dark'] .adminNavBulk {
+  border-top-color: rgba(6, 182, 212, 0.18);
 }
 
 .adminNavBulkBtn {
@@ -484,8 +557,9 @@
   border: none;
   background: none;
   cursor: pointer;
-  font-size: 0.6875rem;
-  font-weight: 600;
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-family: inherit;
   color: var(--futuristic-cyan);
   text-decoration: none;
   transition: opacity 0.15s ease, color 0.15s ease;
@@ -516,25 +590,20 @@
 .adminNav {
   flex: 1;
   min-height: 0;
-  padding: 0.5rem 0.5rem 0.625rem;
+  padding: 0.75rem 0.5rem;
   overflow-y: auto;
   overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 1.125rem;
   scrollbar-width: thin;
   scrollbar-color: rgba(6, 182, 212, 0.25) transparent;
 }
 
 .adminNavGroup {
-  margin-bottom: 0.125rem;
-}
-
-.adminNavGroup + .adminNavGroup {
-  margin-top: 0.35rem;
-  padding-top: 0.35rem;
-  border-top: 1px solid var(--border-primary);
-}
-
-[data-theme='dark'] .adminNavGroup + .adminNavGroup {
-  border-top-color: rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 
 .adminNavGroupToggle {
@@ -543,14 +612,15 @@
   justify-content: space-between;
   width: 100%;
   gap: 0.5rem;
-  padding: 0.4rem 0.5rem 0.5rem;
-  margin-bottom: 0.125rem;
+  padding: 0 0.75rem 0.35rem;
+  margin: 0;
   border: none;
   border-radius: 8px;
   background: transparent;
   cursor: pointer;
   color: var(--text-tertiary);
   text-align: left;
+  font-family: inherit;
   transition: background 0.15s ease, color 0.15s ease;
 }
 
@@ -564,20 +634,23 @@
 
 .adminNavGroupCount {
   flex-shrink: 0;
-  min-width: 1.125rem;
-  padding: 0.1rem 0.35rem;
-  font-size: 0.5625rem;
-  font-weight: 700;
-  line-height: 1.2;
-  color: var(--text-tertiary);
-  background: rgba(6, 182, 212, 0.08);
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1;
   border-radius: 999px;
-  text-align: center;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.25), rgba(139, 92, 246, 0.2));
+  color: var(--futuristic-cyan);
 }
 
 [data-theme='dark'] .adminNavGroupCount {
-  background: rgba(6, 182, 212, 0.14);
-  color: var(--text-secondary);
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.22), rgba(139, 92, 246, 0.15));
+  color: var(--futuristic-cyan);
 }
 
 .adminNavGroupToggle:hover {
@@ -600,12 +673,13 @@
   outline-offset: 2px;
 }
 
+/* Match .sidebar-nav-group-label */
 .adminNavGroupLabel {
-  font-size: 0.625rem;
-  font-weight: 700;
+  font-size: 0.65rem;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  line-height: 1.3;
+  letter-spacing: 0.06em;
+  line-height: 1.35;
 }
 
 .adminNavGroupChevron {
@@ -624,27 +698,87 @@
 .adminNavGroupItems {
   display: flex;
   flex-direction: column;
-  gap: 0;
-  padding-left: 0.45rem;
-  margin-left: 0.2rem;
-  border-left: 2px solid rgba(6, 182, 212, 0.22);
+  gap: 0.25rem;
 }
 
 .adminNavGroupItemsFlat {
-  border-left: none;
-  margin-left: 0;
-  padding-left: 0;
+  gap: 0.25rem;
 }
 
-[data-theme='dark'] .adminNavGroupItems {
-  border-left-color: rgba(6, 182, 212, 0.28);
+.adminNavEmptyState {
+  margin: 0.75rem 0.5rem 1rem;
+  padding: 1.25rem 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.35rem;
+  border-radius: 12px;
+  border: 1px dashed var(--border-secondary);
+  background: linear-gradient(180deg, rgba(6, 182, 212, 0.04) 0%, transparent 100%);
 }
 
-.adminNavEmpty {
-  margin: 1rem 0.5rem;
-  font-size: 0.8125rem;
+[data-theme='dark'] .adminNavEmptyState {
+  background: linear-gradient(180deg, rgba(6, 182, 212, 0.07) 0%, transparent 100%);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.adminNavEmptyIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 0.25rem;
+  border-radius: 10px;
+  background: rgba(6, 182, 212, 0.1);
   color: var(--text-tertiary);
-  line-height: 1.4;
+}
+
+.adminNavEmptyIcon :global(svg) {
+  width: 22px;
+  height: 22px;
+}
+
+.adminNavEmptyTitle {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.adminNavEmptyHint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  line-height: 1.45;
+  max-width: 16rem;
+}
+
+.adminNavEmptyClear {
+  margin-top: 0.35rem;
+  padding: 0.4rem 0.85rem;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--futuristic-cyan);
+  background: rgba(6, 182, 212, 0.1);
+  border: 1px solid rgba(6, 182, 212, 0.28);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.adminNavEmptyClear:hover {
+  background: rgba(6, 182, 212, 0.16);
+  border-color: rgba(6, 182, 212, 0.45);
+  color: var(--text-primary);
+}
+
+.adminNavEmptyClear:focus-visible {
+  outline: 2px solid var(--futuristic-cyan);
+  outline-offset: 2px;
 }
 
 .adminNav::-webkit-scrollbar {
@@ -664,6 +798,7 @@
   background: rgba(6, 182, 212, 0.35);
 }
 
+/* Match .sidebar-nav-item (main app) */
 .adminNavItem {
   position: relative;
   display: flex;
@@ -671,29 +806,19 @@
   gap: 0.75rem;
   width: 100%;
   padding: 0.5rem 0.75rem;
-  margin-bottom: 2px;
+  margin: 0 0.25rem;
   border-radius: 10px;
   cursor: pointer;
-  transition: background 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   background: transparent;
   border: none;
   color: var(--text-secondary);
   text-align: left;
-  font-size: 0.9375rem;
-}
-
-.adminNavItem.active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 3px;
-  height: 1.35rem;
-  border-radius: 0 3px 3px 0;
-  background: linear-gradient(180deg, var(--futuristic-cyan), var(--futuristic-violet));
-  box-shadow: 0 0 10px rgba(6, 182, 212, 0.35);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
 }
 
 .adminNavItem:hover {
@@ -715,6 +840,19 @@
 .adminNavItem.active .adminNavIcon {
   background: rgba(6, 182, 212, 0.2);
   color: var(--futuristic-cyan);
+}
+
+/* Match main sidebar active affordance */
+.adminNavItem.active::after {
+  content: '';
+  position: absolute;
+  right: 0.65rem;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--futuristic-cyan), var(--futuristic-violet));
+  box-shadow: 0 0 8px rgba(6, 182, 212, 0.45);
+  pointer-events: none;
 }
 
 .adminNavIcon {
@@ -740,21 +878,18 @@
 .adminSidebarFooter {
   flex-shrink: 0;
   margin-top: auto;
-  padding: 1rem 1.25rem;
+  padding: 0.75rem 1rem;
   border-top: 1px solid var(--border-primary);
-  background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.02) 100%);
-}
-
-[data-theme='dark'] .adminSidebarFooter {
-  background: linear-gradient(180deg, transparent 0%, rgba(255, 255, 255, 0.02) 100%);
+  background: transparent;
 }
 
 .adminSidebarFooterBrand {
-  font-size: 0.6875rem;
-  font-weight: 600;
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 500;
+  font-family: inherit;
   color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.02em;
 }
 
 /* Floating Back to top: bottom-right of viewport, visible only after scroll */
@@ -888,6 +1023,10 @@
   .adminNavItem {
     transition-duration: 0.01ms;
   }
+
+  .adminCollapseBtn:hover {
+    transform: none;
+  }
 }
 
 @media (max-width: 768px) {
@@ -957,8 +1096,10 @@
   background: transparent;
   border: 1px solid transparent;
   color: var(--text-secondary);
+  font-family: inherit;
   font-size: 0.8125rem;
   font-weight: 500;
+  letter-spacing: 0.01em;
   cursor: pointer;
   transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
@@ -1038,8 +1179,10 @@
   background: transparent;
   border: 1px solid var(--border-secondary);
   color: var(--text-secondary);
+  font-family: inherit;
   font-size: 0.8125rem;
   font-weight: 500;
+  letter-spacing: 0.01em;
   cursor: pointer;
   transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
@@ -1090,6 +1233,8 @@
   flex-direction: column;
   overflow-x: hidden;
   padding-top: 0.75rem;
+  font-family: inherit;
+  line-height: 1.6;
 }
 
 .adminContent::before {
@@ -1176,54 +1321,64 @@
   min-height: 280px; /* ensure overview content is visible */
   padding: 1.25rem 1.5rem 2rem;
   overflow-y: auto;
+  font-family: inherit;
 }
 
 /* Content area footer */
 .adminContentFoot {
   flex-shrink: 0;
   margin-top: auto;
-  padding: 0.75rem 1.5rem 1rem;
+  padding: 0.65rem 1.5rem 0.85rem;
   border-top: 1px solid var(--border-secondary);
-  background: var(--bg-secondary, rgba(255, 255, 255, 0.5));
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
 }
 
 [data-theme='dark'] .adminContentFoot {
-  background: var(--bg-secondary);
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, rgba(0, 0, 0, 0.15) 100%);
 }
 
 .adminFooterInner {
   display: flex;
   align-items: center;
-  gap: var(--spacing-lg);
+  gap: 0.5rem 1rem;
   flex-wrap: wrap;
 }
 
 .adminFooterCopy {
   font-size: 0.8125rem;
+  font-weight: 500;
   color: var(--text-tertiary);
+  letter-spacing: 0.01em;
 }
 
 .adminFooterLink,
 .adminFooterLinkBtn {
   font-size: 0.8125rem;
+  font-weight: 500;
+  font-family: inherit;
   color: var(--futuristic-cyan);
   text-decoration: none;
-  background: none;
-  border: none;
-  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 0.35rem 0.65rem;
+  border-radius: 8px;
   cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .adminFooterLink:hover,
 .adminFooterLinkBtn:hover {
-  text-decoration: underline;
+  text-decoration: none;
+  background: rgba(6, 182, 212, 0.08);
+  border-color: rgba(6, 182, 212, 0.22);
+  color: var(--futuristic-cyan);
 }
 
 .adminFooterLink:focus-visible,
 .adminFooterLinkBtn:focus-visible {
   outline: 2px solid var(--futuristic-cyan);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: 8px;
 }
 
 /* Hide only the Polaris Page header when using AdminHero (single source for title/actions).

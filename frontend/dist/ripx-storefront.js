@@ -10,7 +10,10 @@
  * Shopify: Load via app proxy or GET /api/track/script.js?shop=xxx.myshopify.com
  * Standalone: Load via GET /api/track/script.js?site=example.com
  *
- * Best practices: Load in <head> with defer for non-blocking execution. Script runs after DOM is ready.
+ * Best practices: Load in <head> with defer (Theme App Embed target: head). Deferred scripts run in order
+ * after document parse, before DOMContentLoaded — earlier fetch than body-bottom tags reduces flicker.
+ * Standalone preview: /track/preview and /track/preview-storefront-test use the same tenant param as ping
+ * (shop_domain for .myshopify.com, else site=).
  * Graceful degradation: If the assignment API fails (network error, 5xx, or 503 maintenance),
  * getVariant/getVariantCachePromise return null or {} so the page shows the control variant
  * and does not break. Track (conversion/event) failures are logged but do not throw.

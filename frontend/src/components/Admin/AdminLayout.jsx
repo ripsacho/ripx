@@ -327,7 +327,9 @@ function AdminLayout({ children }) {
                     height={36}
                   />
                   <div className={styles.adminSidebarBrandText}>
-                    <span className={styles.adminSidebarAppName}>RipX</span>
+                    <Text as="span" variant="headingLg" fontWeight="bold" tone="base">
+                      RipX
+                    </Text>
                     <Text
                       as="p"
                       variant="bodySm"
@@ -395,44 +397,46 @@ function AdminLayout({ children }) {
           <div className={styles.adminNavShell}>
             {!collapsed && (
               <div className={styles.adminNavSearch}>
-                <TextField
-                  id={ADMIN_NAV_FILTER_ID}
-                  label="Filter admin pages"
-                  labelHidden
-                  placeholder="Search pages…"
-                  value={navSearch}
-                  onChange={setNavSearch}
-                  autoComplete="off"
-                  clearButton
-                  onClearButtonClick={() => setNavSearch('')}
-                  prefix={<Icon source={SearchIcon} tone="subdued" />}
-                />
-                <div className={styles.adminNavSearchMeta} aria-hidden="true">
-                  <span className={styles.adminNavSearchHint}>Filter</span>
-                  <kbd className={styles.adminNavKbd}>{searchShortcutLabel}</kbd>
-                  <kbd className={styles.adminNavKbd}>/</kbd>
-                </div>
-                {!isSearching ? (
-                  <div className={styles.adminNavBulk}>
-                    <button
-                      type="button"
-                      className={styles.adminNavBulkBtn}
-                      onClick={expandAllGroups}
-                    >
-                      Expand all
-                    </button>
-                    <span className={styles.adminNavBulkSep} aria-hidden>
-                      ·
-                    </span>
-                    <button
-                      type="button"
-                      className={styles.adminNavBulkBtn}
-                      onClick={collapseAllGroups}
-                    >
-                      Collapse all
-                    </button>
+                <div className={styles.adminNavSearchCard}>
+                  <TextField
+                    id={ADMIN_NAV_FILTER_ID}
+                    label="Filter admin pages"
+                    labelHidden
+                    placeholder="Search pages…"
+                    value={navSearch}
+                    onChange={setNavSearch}
+                    autoComplete="off"
+                    clearButton
+                    onClearButtonClick={() => setNavSearch('')}
+                    prefix={<Icon source={SearchIcon} tone="subdued" />}
+                  />
+                  <div className={styles.adminNavSearchMeta} aria-hidden="true">
+                    <span className={styles.adminNavSearchHint}>Filter</span>
+                    <kbd className={styles.adminNavKbd}>{searchShortcutLabel}</kbd>
+                    <kbd className={styles.adminNavKbd}>/</kbd>
                   </div>
-                ) : null}
+                  {!isSearching ? (
+                    <div className={styles.adminNavBulk}>
+                      <button
+                        type="button"
+                        className={styles.adminNavBulkBtn}
+                        onClick={expandAllGroups}
+                      >
+                        Expand all
+                      </button>
+                      <span className={styles.adminNavBulkSep} aria-hidden>
+                        ·
+                      </span>
+                      <button
+                        type="button"
+                        className={styles.adminNavBulkBtn}
+                        onClick={collapseAllGroups}
+                      >
+                        Collapse all
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
               </div>
             )}
             <nav ref={navScrollRef} className={styles.adminNav} aria-label="Admin navigation">
@@ -523,7 +527,22 @@ function AdminLayout({ children }) {
                     );
                   })}
               {!collapsed && filteredNavGroups.length === 0 ? (
-                <p className={styles.adminNavEmpty}>No pages match your search.</p>
+                <div className={styles.adminNavEmptyState}>
+                  <div className={styles.adminNavEmptyIcon} aria-hidden>
+                    <Icon source={SearchIcon} tone="subdued" />
+                  </div>
+                  <p className={styles.adminNavEmptyTitle}>No matching pages</p>
+                  <p className={styles.adminNavEmptyHint}>
+                    Try a different term or clear the filter.
+                  </p>
+                  <button
+                    type="button"
+                    className={styles.adminNavEmptyClear}
+                    onClick={() => setNavSearch('')}
+                  >
+                    Clear search
+                  </button>
+                </div>
               ) : null}
             </nav>
           </div>
@@ -566,7 +585,7 @@ function AdminLayout({ children }) {
         <div className={styles.adminRightColumn}>
           <TopBar
             inline
-            sidebarWidth={collapsed ? 80 : 260}
+            sidebarWidth={collapsed ? 80 : 280}
             sidebarCollapsed={collapsed}
             showMobileToggle={false}
           />
