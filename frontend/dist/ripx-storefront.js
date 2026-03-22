@@ -2549,12 +2549,7 @@
             }
             var tt = (test.targetType || test.target_type || '').toLowerCase();
             var matched = matchesTarget(test);
-            if (
-              !matched &&
-              PREVIEW_MODE &&
-              testTypeIsPrice(test) &&
-              tt === 'product'
-            ) {
+            if (!matched && PREVIEW_MODE && testTypeIsPrice(test) && tt === 'product') {
               var pathM = (window.location.pathname || '').toLowerCase();
               if (pathM.indexOf('/products/') !== -1 && pathM.length > '/products/'.length + 1) {
                 matched = true;
@@ -2583,8 +2578,7 @@
                   if (DEBUG) debugLog('Split-URL invalid URL', rawUrl);
                 }
               }
-              var previewFocusTest =
-                PREVIEW_MODE && String(test.id) === String(PREVIEW_TEST_ID);
+              var previewFocusTest = PREVIEW_MODE && String(test.id) === String(PREVIEW_TEST_ID);
               if (!previewFocusTest) {
                 applyCustomCode(test.id, variant);
               }
@@ -2638,78 +2632,78 @@
 
         initHeatmap();
 
-      // Re-apply price tests after delays so dynamically loaded content (cart drawer, AJAX sections, predictive search) shows test prices (Intelligems-style: price everywhere).
-      function reapplyPriceTestsOnly() {
-        if (!hasValidConfig || !CONFIG.activeTests || CONFIG.activeTests.length === 0) return;
-        CONFIG.activeTests.forEach(function (test) {
-          if (!testTypeIsPrice(test)) return;
-          if (!shouldRunPriceTestOnCurrentPage(test)) return;
-          var tt = (test.targetType || test.target_type || '').toLowerCase();
-          var tids =
-            test.targetIds ||
-            (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
-          if (tids.length === 0) return;
-          getVariant(test.id).then(function (variant) {
-            if (!variant || !variant.config) return;
-            var curPid = getCurrentProductId();
-            var matchedNow = matchesTarget(test);
-            if (
-              tt === 'product' &&
-              matchedNow &&
-              curPid &&
-              tids.some(function (id) {
-                return id && gidMatches(id, curPid);
-              })
-            ) {
-              applyPriceTest(test.id, curPid, test.targetVariantId || null, variant);
-            }
-            if (tt === 'collection' && curPid && productBelongsToPriceTestCollections(tids)) {
-              applyPriceTest(test.id, curPid, test.targetVariantId || null, variant);
-            }
-            if (tt === 'product' && isProductListingSurface()) {
-              applyPriceTestToProductCards(test.id, variant, tids);
-            } else if (tt === 'collection' && matchedNow && isProductListingSurface()) {
-              applyPriceTestToCollectionListingCards(test.id, variant);
-            }
-            if (tt === 'product') applyPriceTestToCart(test.id, variant, tids);
+        // Re-apply price tests after delays so dynamically loaded content (cart drawer, AJAX sections, predictive search) shows test prices (Intelligems-style: price everywhere).
+        function reapplyPriceTestsOnly() {
+          if (!hasValidConfig || !CONFIG.activeTests || CONFIG.activeTests.length === 0) return;
+          CONFIG.activeTests.forEach(function (test) {
+            if (!testTypeIsPrice(test)) return;
+            if (!shouldRunPriceTestOnCurrentPage(test)) return;
+            var tt = (test.targetType || test.target_type || '').toLowerCase();
+            var tids =
+              test.targetIds ||
+              (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
+            if (tids.length === 0) return;
+            getVariant(test.id).then(function (variant) {
+              if (!variant || !variant.config) return;
+              var curPid = getCurrentProductId();
+              var matchedNow = matchesTarget(test);
+              if (
+                tt === 'product' &&
+                matchedNow &&
+                curPid &&
+                tids.some(function (id) {
+                  return id && gidMatches(id, curPid);
+                })
+              ) {
+                applyPriceTest(test.id, curPid, test.targetVariantId || null, variant);
+              }
+              if (tt === 'collection' && curPid && productBelongsToPriceTestCollections(tids)) {
+                applyPriceTest(test.id, curPid, test.targetVariantId || null, variant);
+              }
+              if (tt === 'product' && isProductListingSurface()) {
+                applyPriceTestToProductCards(test.id, variant, tids);
+              } else if (tt === 'collection' && matchedNow && isProductListingSurface()) {
+                applyPriceTestToCollectionListingCards(test.id, variant);
+              }
+              if (tt === 'product') applyPriceTestToCart(test.id, variant, tids);
+            });
           });
-        });
-      }
-      setTimeout(reapplyPriceTestsOnly, 1200);
-      setTimeout(reapplyPriceTestsOnly, 3500);
-      setTimeout(reapplyPriceTestsOnly, 6000);
-      setTimeout(reapplyPriceTestsOnly, 10000);
-      document.addEventListener('shopify:section:load', function () {
-        setTimeout(reapplyPriceTestsOnly, 300);
-      });
-      var lastCartReapplyAt = 0;
-      var cartReapply = function () {
-        var now = Date.now();
-        if (now - lastCartReapplyAt < 400) return;
-        lastCartReapplyAt = now;
-        setTimeout(reapplyPriceTestsOnly, 100);
-        setTimeout(reapplyPriceTestsOnly, 500);
-      };
-      if (document.body) {
-        document.body.addEventListener('click', function (e) {
-          var t = e.target;
-          if (!t || !t.closest) return;
-          if (
-            t.closest(
-              'a[href*="/cart"], .cart-icon, #cart-icon-bubble, [data-cart-drawer-toggle], .header__icon--cart, .site-header__cart, [data-cart-toggle], .js-drawer-open-cart, button[aria-label*="cart" i]'
-            )
-          ) {
-            cartReapply();
-          }
-        });
-      }
-      ['cart:open', 'cart-drawer:open', 'cart:updated', 'shopify:cart:change'].forEach(
-        function (evt) {
-          try {
-            document.addEventListener(evt, cartReapply, false);
-          } catch (e) {}
         }
-      );
+        setTimeout(reapplyPriceTestsOnly, 1200);
+        setTimeout(reapplyPriceTestsOnly, 3500);
+        setTimeout(reapplyPriceTestsOnly, 6000);
+        setTimeout(reapplyPriceTestsOnly, 10000);
+        document.addEventListener('shopify:section:load', function () {
+          setTimeout(reapplyPriceTestsOnly, 300);
+        });
+        var lastCartReapplyAt = 0;
+        var cartReapply = function () {
+          var now = Date.now();
+          if (now - lastCartReapplyAt < 400) return;
+          lastCartReapplyAt = now;
+          setTimeout(reapplyPriceTestsOnly, 100);
+          setTimeout(reapplyPriceTestsOnly, 500);
+        };
+        if (document.body) {
+          document.body.addEventListener('click', function (e) {
+            var t = e.target;
+            if (!t || !t.closest) return;
+            if (
+              t.closest(
+                'a[href*="/cart"], .cart-icon, #cart-icon-bubble, [data-cart-drawer-toggle], .header__icon--cart, .site-header__cart, [data-cart-toggle], .js-drawer-open-cart, button[aria-label*="cart" i]'
+              )
+            ) {
+              cartReapply();
+            }
+          });
+        }
+        ['cart:open', 'cart-drawer:open', 'cart:updated', 'shopify:cart:change'].forEach(
+          function (evt) {
+            try {
+              document.addEventListener(evt, cartReapply, false);
+            } catch (e) {}
+          }
+        );
         if (window.RipX) {
           window.RipX.reapplyPriceTests = reapplyPriceTestsOnly;
         }
