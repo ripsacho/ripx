@@ -80,6 +80,8 @@ export const ROUTES = {
   ADMIN_SHOP_SESSIONS: '/admin/shop-sessions',
   ADMIN_CONFLICTS: '/admin/conflicts',
   ADMIN_TEST_HEALTH: '/admin/test-health',
+  /** In-app UI for GET /health (JSON remains on /health for monitors). */
+  ADMIN_SYSTEM_HEALTH: '/admin/system-health',
   ADMIN_SHOP_SETTINGS_OVERRIDES: '/admin/shop-settings-overrides',
   ADMIN_RATE_LIMIT_OVERRIDES: '/admin/rate-limit-overrides',
   ADMIN_NOTIFICATIONS: '/admin/notifications',

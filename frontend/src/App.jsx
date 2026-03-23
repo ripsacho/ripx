@@ -197,6 +197,7 @@ import {
   AdminShopSessions,
   AdminConflicts,
   AdminTestHealth,
+  AdminSystemHealth,
   AdminShopSettingsOverrides,
   AdminRateLimitOverrides,
   AdminNotifications,
@@ -628,6 +629,11 @@ function AppContent() {
                   </Suspense>
                 }
               />
+              {/* SPA-only: avoid dev server showing raw JSON from API /health when users open frontend-origin /health */}
+              <Route
+                path="/health"
+                element={<Navigate to={ROUTES.ADMIN_SYSTEM_HEALTH} replace />}
+              />
               <Route
                 path={ROUTES.DOMAINS}
                 element={
@@ -873,6 +879,7 @@ function AppContent() {
                 <Route path="shop-sessions" element={<AdminShopSessions />} />
                 <Route path="conflicts" element={<AdminConflicts />} />
                 <Route path="test-health" element={<AdminTestHealth />} />
+                <Route path="system-health" element={<AdminSystemHealth />} />
                 <Route path="shop-settings-overrides" element={<AdminShopSettingsOverrides />} />
                 <Route path="rate-limit-overrides" element={<AdminRateLimitOverrides />} />
                 <Route path="notifications" element={<AdminNotifications />} />

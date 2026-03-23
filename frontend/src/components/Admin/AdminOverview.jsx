@@ -153,7 +153,6 @@ export default function AdminOverview() {
       })
     : null;
 
-  const healthUrl = getHealthUrl();
   const handleExportAuditCsv = () => {
     const baseUrl = getApiBaseUrl();
     const url = `${baseUrl}/admin/audit-log/export?limit=5000`;
@@ -275,14 +274,13 @@ export default function AdminOverview() {
                 </span>
               )}
               <span className={styles.adminQuickActionItem}>
-                <a
-                  href={healthUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={styles.adminQuickActionLink}
+                <button
+                  type="button"
+                  className={styles.adminQuickActionBtn}
+                  onClick={() => navigate(ROUTES.ADMIN_SYSTEM_HEALTH)}
                 >
                   System health
-                </a>
+                </button>
               </span>
               <span className={styles.adminQuickActionItem}>
                 <button

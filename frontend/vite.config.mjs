@@ -19,7 +19,8 @@ export default defineConfig({
         target: 'http://localhost:3000',
         changeOrigin: true
       },
-      '/health': { target: 'http://localhost:3000', changeOrigin: true }
+      // Do not proxy /health: same-origin /health is handled by React Router → /admin/system-health.
+      // JSON health: GET /api/health (proxied) or backend :3000/health directly.
     }
   },
   build: {

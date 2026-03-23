@@ -150,6 +150,9 @@ const SUCCESS_MESSAGES = {
 const RATE_LIMIT = {
   WINDOW_MS: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 15 * 60 * 1000, // 15 min default
   MAX_REQUESTS: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 400,
+  /** Health family: /live, /ready, /health, /api/* (separate bucket from general /api/) */
+  HEALTH_WINDOW_MS: parseInt(process.env.RATE_LIMIT_HEALTH_WINDOW_MS, 10) || 60 * 1000,
+  HEALTH_MAX: parseInt(process.env.RATE_LIMIT_HEALTH_MAX, 10) || 300,
 };
 
 // Pagination

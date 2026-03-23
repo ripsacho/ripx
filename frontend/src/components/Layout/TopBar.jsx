@@ -21,9 +21,11 @@ import {
   getShopDomain,
   apiGet,
   apiPut,
-  getUrlWithEmbedParams,
   getConnectUrl,
   redirectToAppUrl,
+  logout,
+  clearAuthStorage,
+  resetRedirectingToLogin,
 } from '../../services';
 import { ROUTES } from '../../constants';
 import { useAdminMe } from '../../hooks';
@@ -155,12 +157,10 @@ function TopBar({
 
   const handleLogout = useCallback(() => {
     setUserMenuActive(false);
-    const shopDomain = getShopDomain();
-    if (shopDomain) {
-      window.location.href = `https://${shopDomain}/admin`;
-    } else {
-      window.location.href = getUrlWithEmbedParams(ROUTES.USER_PANEL);
-    }
+    logout();
+    clearAuthStorage();
+    resetRedirectingToLogin();
+    redirectToAppUrl(getConnectUrl());
   }, []);
 
   const effectiveLeft = inline ? 0 : sidebarCollapsed ? 80 : sidebarWidth;

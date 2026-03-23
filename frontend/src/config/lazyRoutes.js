@@ -42,6 +42,7 @@ export const AdminWebhooks = lazy(() => import('../components/Admin/AdminWebhook
 export const AdminShopSessions = lazy(() => import('../components/Admin/AdminShopSessions'));
 export const AdminConflicts = lazy(() => import('../components/Admin/AdminConflicts'));
 export const AdminTestHealth = lazy(() => import('../components/Admin/AdminTestHealth'));
+export const AdminSystemHealth = lazy(() => import('../components/Admin/AdminSystemHealth'));
 export const AdminShopSettingsOverrides = lazy(
   () => import('../components/Admin/AdminShopSettingsOverrides')
 );

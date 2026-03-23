@@ -438,14 +438,23 @@ const apiLimiter = rateLimit({
   message: { success: false, error: 'Too many requests from this IP, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: req =>
-    req.path === '/health' ||
-    req.originalUrl?.startsWith('/api/health') ||
-    req.originalUrl?.startsWith('/api/track') ||
-    req.originalUrl?.startsWith('/api/webhooks') ||
-    req.originalUrl?.startsWith('/api/admin') ||
-    req.originalUrl?.startsWith('/api/auth') ||
-    req.originalUrl?.startsWith('/api/support'),
+  skip: req => {
+    const p = req.path || '';
+    const orig = req.originalUrl || '';
+    return (
+      p === '/health' ||
+      p === '/live' ||
+      p === '/ready' ||
+      orig.startsWith('/api/health') ||
+      orig.startsWith('/api/live') ||
+      orig.startsWith('/api/ready') ||
+      orig.startsWith('/api/track') ||
+      orig.startsWith('/api/webhooks') ||
+      orig.startsWith('/api/admin') ||
+      orig.startsWith('/api/auth') ||
+      orig.startsWith('/api/support')
+    );
+  },
 });
 app.use('/api/', apiLimiter);
 
@@ -557,6 +566,110 @@ async function getHealthRedisClient() {
 }
 
 // Health check endpoints (unauthenticated, for monitoring)
+//
+// Best practice split:
+// - /live, /api/live — liveness: process up, no DB/Redis (cheap for frequent probes)
+// - /ready, /api/ready — readiness: DB + Redis only, minimal JSON (503 when DB down)
+// - /health, /api/health — full payload for app + operators (version, uptime, maintenance, banner)
+//
+// Dedicated per-IP rate limit (RATE_LIMIT_HEALTH_*), separate from general /api/ bucket.
+const healthLimiter = rateLimit({
+  windowMs: RATE_LIMIT.HEALTH_WINDOW_MS,
+  max: RATE_LIMIT.HEALTH_MAX,
+  message: { success: false, error: 'Too many health requests from this IP.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+async function runReadinessChecks() {
+  let dbStatus = 'unknown';
+  let redisStatus = 'skipped';
+  try {
+    const { ping } = require('./utils/database');
+    await ping();
+    dbStatus = 'ok';
+  } catch (_err) {
+    dbStatus = 'error';
+  }
+  if (process.env.REDIS_URL) {
+    try {
+      const client = await getHealthRedisClient();
+      await client.ping();
+      redisStatus = 'ok';
+    } catch (_err) {
+      redisStatus = 'error';
+      healthRedisClient = null; // allow reconnect on next check
+    }
+  }
+  const overall =
+    dbStatus === 'ok' && (redisStatus === 'skipped' || redisStatus === 'ok') ? 'ok' : 'degraded';
+  return { dbStatus, redisStatus, overall };
+}
+
+async function loadHealthKvExtras() {
+  let maintenanceValue = null;
+  let maintenanceMessage = null;
+  let announcementBanner = null;
+  try {
+    const { query } = require('./utils/database');
+    const { getMaintenanceMode } = require('./utils/maintenanceMode');
+    maintenanceValue = await getMaintenanceMode();
+    const kv = await query('SELECT key, value FROM key_value_store WHERE key IN ($1, $2)', [
+      KV_KEYS.ANNOUNCEMENT_BANNER,
+      KV_KEYS.MAINTENANCE_MESSAGE,
+    ]);
+    for (const row of kv.rows || []) {
+      const v =
+        row.value !== null && row.value !== undefined && String(row.value).trim() !== ''
+          ? String(row.value).trim()
+          : null;
+      if (row.key === KV_KEYS.ANNOUNCEMENT_BANNER && v) {
+        announcementBanner = v;
+      }
+      if (row.key === KV_KEYS.MAINTENANCE_MESSAGE && v) {
+        maintenanceMessage = v;
+      }
+    }
+  } catch (_kvErr) {
+    // Optional table or KV failure; do not mark DB unhealthy
+  }
+  return { maintenanceValue, maintenanceMessage, announcementBanner };
+}
+
+const liveHandler = async (req, res) => {
+  if (isShuttingDown) {
+    res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
+      status: 'shutting_down',
+      timestamp: new Date().toISOString(),
+    });
+    return;
+  }
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+  });
+};
+
+const readyHandler = async (req, res) => {
+  if (isShuttingDown) {
+    res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
+      status: 'shutting_down',
+      checks: { db: 'skipped', redis: 'skipped' },
+      timestamp: new Date().toISOString(),
+    });
+    return;
+  }
+  const { dbStatus, redisStatus, overall } = await runReadinessChecks();
+  if (dbStatus === 'error') {
+    res.status(HTTP_STATUS.SERVICE_UNAVAILABLE);
+  }
+  res.json({
+    status: overall,
+    checks: { db: dbStatus, redis: redisStatus },
+    timestamp: new Date().toISOString(),
+  });
+};
+
 const healthHandler = async (req, res) => {
   if (isShuttingDown) {
     res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
@@ -566,54 +679,16 @@ const healthHandler = async (req, res) => {
     });
     return;
   }
-  let dbStatus = 'unknown';
-  let redisStatus = 'skipped';
+  const { dbStatus, redisStatus, overall } = await runReadinessChecks();
   let maintenanceValue = null;
   let maintenanceMessage = null;
   let announcementBanner = null;
-  try {
-    const { ping, query } = require('./utils/database');
-    await ping();
-    dbStatus = 'ok';
-    // key_value_store may not exist on very old DBs; only ping determines DB health
-    try {
-      const { getMaintenanceMode } = require('./utils/maintenanceMode');
-      maintenanceValue = await getMaintenanceMode();
-      const kv = await query('SELECT key, value FROM key_value_store WHERE key IN ($1, $2)', [
-        KV_KEYS.ANNOUNCEMENT_BANNER,
-        KV_KEYS.MAINTENANCE_MESSAGE,
-      ]);
-      for (const row of kv.rows || []) {
-        const v =
-          row.value !== null && row.value !== undefined && String(row.value).trim() !== ''
-            ? String(row.value).trim()
-            : null;
-        if (row.key === KV_KEYS.ANNOUNCEMENT_BANNER && v) {
-          announcementBanner = v;
-        }
-        if (row.key === KV_KEYS.MAINTENANCE_MESSAGE && v) {
-          maintenanceMessage = v;
-        }
-      }
-    } catch (_kvErr) {
-      // Optional table or KV failure; do not mark DB unhealthy
-    }
-  } catch (err) {
-    dbStatus = 'error';
+  if (dbStatus === 'ok') {
+    const extras = await loadHealthKvExtras();
+    maintenanceValue = extras.maintenanceValue;
+    maintenanceMessage = extras.maintenanceMessage;
+    announcementBanner = extras.announcementBanner;
   }
-  if (process.env.REDIS_URL) {
-    try {
-      const client = await getHealthRedisClient();
-      await client.ping();
-      redisStatus = 'ok';
-    } catch (err) {
-      redisStatus = 'error';
-      healthRedisClient = null; // allow reconnect on next check
-    }
-  }
-  const overall =
-    dbStatus === 'ok' && (redisStatus === 'skipped' || redisStatus === 'ok') ? 'ok' : 'degraded';
-  // 503 when DB is down so load balancers/orchestrators can mark instance unhealthy
   if (dbStatus === 'error') {
     res.status(HTTP_STATUS.SERVICE_UNAVAILABLE);
   }
@@ -633,8 +708,13 @@ const healthHandler = async (req, res) => {
   }
   res.json(payload);
 };
-app.get('/health', asyncHandler(healthHandler));
-app.get('/api/health', asyncHandler(healthHandler));
+
+app.get('/live', healthLimiter, asyncHandler(liveHandler));
+app.get('/api/live', healthLimiter, asyncHandler(liveHandler));
+app.get('/ready', healthLimiter, asyncHandler(readyHandler));
+app.get('/api/ready', healthLimiter, asyncHandler(readyHandler));
+app.get('/health', healthLimiter, asyncHandler(healthHandler));
+app.get('/api/health', healthLimiter, asyncHandler(healthHandler));
 
 // Public config (Terms/Privacy URLs for app footer)
 app.get(
@@ -771,7 +851,7 @@ if (require.main === module) {
         /\.ngrok\.(io|app)$/i.test(base);
       if (isDynamicTunnel) {
         logger.warn(
-          'Shopify OAuth: RIPX_OAUTH_REDIRECT_BASE or APP_URL is a dynamic tunnel URL. It changes when the tunnel restarts, so Partner Dashboard will mismatch and OAuth will fail. Use a stable custom domain (e.g. splitter.echologyx.com) and set it in Partner Dashboard and RIPX_OAUTH_REDIRECT_BASE. See docs/OAUTH_ADD_STORE.md and docs/OAUTH_FIX.md.'
+          'Shopify OAuth: APP_URL/RIPX_OAUTH_REDIRECT_BASE is a dynamic tunnel (*.trycloudflare.com). It changes when the tunnel restarts. Also: shopify.app.toml redirect_urls (e.g. splitter.echologyx.com) do NOT auto-add the tunnel — add this exact callback in Partner Dashboard → Apps → [app] → URLs → Allowed redirection URL(s), and set Application URL to the same host. Or use a stable domain in RIPX_OAUTH_REDIRECT_BASE + Dashboard. See .env.example (Shopify OAuth / tunnel).'
         );
       }
       logger.info(

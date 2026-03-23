@@ -22,6 +22,7 @@ describe('priceCheckoutDiagnostics', () => {
     expect(d.infrastructure.batch_compact_response).toBe(true);
     expect(typeof d.infrastructure.price_batch_slow_log_ms).toBe('number');
     expect(d.checklist.find(c => c.id === 'batch_url_configured')?.ok).toBe(true);
+    expect(d.checklist.find(c => c.id === 'batch_path_matches_ripx_handler')?.ok).toBe(true);
     expect(d.checklist.find(c => c.id === 'https_public_url')?.ok).toBe(true);
     expect(d.summary?.overall_ok).toBe(true);
     expect(d.summary?.checks_total).toBeGreaterThan(0);
@@ -82,6 +83,27 @@ describe('priceCheckoutDiagnostics', () => {
     expect(d.summary.overall_status).toBe('warning');
   });
 
+  it('warns when RIPX_PRICE_RESOLVE_BATCH_URL path is not RipX batch endpoint', () => {
+    process.env.APP_URL = 'https://ignored.example.com';
+    process.env.RIPX_PRICE_RESOLVE_BATCH_URL = 'https://gateway.example.com/custom-batch';
+    const { buildCheckoutPriceDiagnostics } = require('../priceCheckoutDiagnostics');
+    const d = buildCheckoutPriceDiagnostics();
+    const pathCheck = d.checklist.find(c => c.id === 'batch_path_matches_ripx_handler');
+    expect(pathCheck?.ok).toBe(true);
+    expect(pathCheck?.severity).toBe('warning');
+    expect(pathCheck?.message).toContain('custom-batch');
+  });
+
+  it('errors when batch URL is not parseable', () => {
+    process.env.APP_URL = '';
+    process.env.RIPX_PRICE_RESOLVE_BATCH_URL = 'not-a-valid-url';
+    const { buildCheckoutPriceDiagnostics } = require('../priceCheckoutDiagnostics');
+    const d = buildCheckoutPriceDiagnostics();
+    const pathCheck = d.checklist.find(c => c.id === 'batch_path_matches_ripx_handler');
+    expect(pathCheck?.ok).toBe(false);
+    expect(pathCheck?.severity).toBe('error');
+  });
+
   it('detects ngrok batch host as ephemeral tunnel in production', () => {
     process.env.NODE_ENV = 'production';
     process.env.APP_URL = 'https://abc123.ngrok-free.app';
@@ -93,5 +115,67 @@ describe('priceCheckoutDiagnostics', () => {
     expect(tunnel).toBeDefined();
     expect(tunnel.ok).toBe(false);
     expect(d.summary.overall_ok).toBe(false);
+  });
+
+  it('parseRipxCheckoutExtensionConfig reads synced ripxConfig.js shape', () => {
+    const { parseRipxCheckoutExtensionConfig } = require('../priceCheckoutDiagnostics');
+    const src = `
+export const RIPX_PRICE_RESOLVE_BATCH_URL = ${JSON.stringify('https://api.example.com/api/track/price-resolve-batch')};
+export const RIPX_CHECKOUT_PRICE_SECRET = ${JSON.stringify('secret-one')};
+`;
+    const p = parseRipxCheckoutExtensionConfig(src);
+    expect(p).toMatchObject({
+      batchUrl: 'https://api.example.com/api/track/price-resolve-batch',
+      secret: 'secret-one',
+    });
+  });
+
+  it('extensionConfig present + matching env passes extension_config_matches_env', () => {
+    process.env.APP_URL = 'https://api.example.com';
+    delete process.env.RIPX_PRICE_RESOLVE_BATCH_URL;
+    delete process.env.RIPX_CHECKOUT_PRICE_SECRET;
+    const { buildCheckoutPriceDiagnostics } = require('../priceCheckoutDiagnostics');
+    const contents = `export const RIPX_PRICE_RESOLVE_BATCH_URL = ${JSON.stringify(
+      'https://api.example.com/api/track/price-resolve-batch'
+    )};
+export const RIPX_CHECKOUT_PRICE_SECRET = ${JSON.stringify('')};
+`;
+    const d = buildCheckoutPriceDiagnostics({
+      extensionConfig: { source: 'present', contents },
+    });
+    const ext = d.checklist.find(c => c.id === 'extension_config_matches_env');
+    expect(ext).toBeDefined();
+    expect(ext.ok).toBe(true);
+    expect(d.infrastructure.extension_batch_url_matches_env).toBe(true);
+  });
+
+  it('extensionConfig reports error when checkout secret differs from .env', () => {
+    process.env.APP_URL = 'https://api.example.com';
+    process.env.RIPX_CHECKOUT_PRICE_SECRET = 'server-secret';
+    const { buildCheckoutPriceDiagnostics } = require('../priceCheckoutDiagnostics');
+    const contents = `export const RIPX_PRICE_RESOLVE_BATCH_URL = ${JSON.stringify(
+      'https://api.example.com/api/track/price-resolve-batch'
+    )};
+export const RIPX_CHECKOUT_PRICE_SECRET = ${JSON.stringify('other-secret')};
+`;
+    const d = buildCheckoutPriceDiagnostics({
+      extensionConfig: { source: 'present', contents },
+    });
+    const ext = d.checklist.find(c => c.id === 'extension_config_matches_env');
+    expect(ext?.ok).toBe(false);
+    expect(ext?.severity).toBe('error');
+    expect(d.summary.overall_status).toBe('error');
+  });
+
+  it('extensionConfig missing file adds informational checklist item', () => {
+    process.env.APP_URL = 'https://api.example.com';
+    const { buildCheckoutPriceDiagnostics } = require('../priceCheckoutDiagnostics');
+    const d = buildCheckoutPriceDiagnostics({
+      extensionConfig: { source: 'missing' },
+    });
+    const row = d.checklist.find(c => c.id === 'extension_config_file');
+    expect(row).toBeDefined();
+    expect(row?.ok).toBe(true);
+    expect(d.infrastructure.extension_config_status).toBe('missing');
   });
 });

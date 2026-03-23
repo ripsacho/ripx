@@ -44,7 +44,7 @@ RipX cannot click Shopify Admin for you. Work through this once per production a
 Before debugging checkout, verify the backend is configured for the Discount Function:
 
 - **RipX app UI:** **Settings → Installation** → **Checkout price test health** → **Run check** — uses **`GET /api/settings/checkout-price-diagnostics`** (session auth, same JSON as the public route; avoids browser CORS when the UI is on another origin).
-- **`GET /api/track/price-checkout-diagnostics`** — no auth; batch URL, HTTPS, secret mode, batch max.
+- **`GET /api/track/price-checkout-diagnostics`** — no auth; batch URL, HTTPS, secret mode, batch max, and (when `src/ripxConfig.js` exists on the API filesystem) **drift vs server `.env`** — batch URL + `RIPX_CHECKOUT_PRICE_SECRET`. Omit with **`RIPX_DIAGNOSTICS_SKIP_EXTENSION_CONFIG=true`** in minimal images.
 - **`GET /api/track/price-checkout-diagnostics?shop=your-store.myshopify.com`** — same, plus registered-tenant check and count of **running** tests with `type=price`.
 
 See also **`backend/docs/PRODUCT_EXCELLENCE_ROADMAP.md`** for the long-term product strategy.

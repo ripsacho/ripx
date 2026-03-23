@@ -43,7 +43,11 @@ const {
   resolvePriceTestLineDiscount,
   resolveCheckoutPriceBatchForDomain,
 } = require('../services/priceTestCheckoutResolve');
-const { buildCheckoutPriceDiagnostics } = require('../services/priceCheckoutDiagnostics');
+const {
+  buildCheckoutPriceDiagnostics,
+  readRipxCheckoutExtensionConfigFile,
+  extensionConfigInputFromReadResult,
+} = require('../services/priceCheckoutDiagnostics');
 const { query } = require('../utils/database');
 const {
   batchResolveJsonUtf8Bytes,
@@ -1011,6 +1015,7 @@ router.get(
  * response includes count of running tests with type `price`. Omit shop/site for server-only checks.
  *
  * Does not require RIPX_CHECKOUT_PRICE_SECRET (this is for setup verification, not the resolver itself).
+ * When the repo file `extensions/ripx-checkout-discount/src/ripxConfig.js` is readable from the API process, the response includes extension-vs-env drift checks. Set RIPX_DIAGNOSTICS_SKIP_EXTENSION_CONFIG=true to skip (e.g. API-only container).
  *
  * Authenticated alternative (same JSON, no CORS from the app UI): GET /api/settings/checkout-price-diagnostics
  */
@@ -1050,10 +1055,17 @@ router.get(
       };
     }
 
+    const skipExtDiag =
+      (process.env.RIPX_DIAGNOSTICS_SKIP_EXTENSION_CONFIG || '').toLowerCase() === 'true';
+    const extensionConfig = skipExtDiag
+      ? { source: 'omit' }
+      : extensionConfigInputFromReadResult(readRipxCheckoutExtensionConfigFile());
+
     const body = buildCheckoutPriceDiagnostics({
       shopDomain: shopOpts.shopDomain,
       tenantRegistered: shopOpts.tenantRegistered,
       runningPriceTests: shopOpts.runningPriceTests,
+      extensionConfig,
     });
 
     res.set('Cache-Control', 'no-store');

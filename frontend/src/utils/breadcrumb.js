@@ -126,6 +126,7 @@ export function getBreadcrumb(pathname, search = '') {
       [ROUTES.ADMIN_SHOP_SESSIONS]: 'Shop sessions',
       [ROUTES.ADMIN_CONFLICTS]: 'Conflicts',
       [ROUTES.ADMIN_TEST_HEALTH]: 'Test health',
+      [ROUTES.ADMIN_SYSTEM_HEALTH]: 'System health',
       [ROUTES.ADMIN_SHOP_SETTINGS_OVERRIDES]: 'Shop settings overrides',
       [ROUTES.ADMIN_RATE_LIMIT_OVERRIDES]: 'Rate limit overrides',
       [ROUTES.ADMIN_NOTIFICATIONS]: 'Notifications',

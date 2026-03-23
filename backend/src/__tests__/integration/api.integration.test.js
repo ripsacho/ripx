@@ -56,6 +56,41 @@ describe('API integration', () => {
     });
   });
 
+  describe('GET /live and /api/live', () => {
+    it('returns 200 and minimal liveness JSON', async () => {
+      const res = await request(app).get('/live');
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ status: 'ok' });
+      expect(res.body).toHaveProperty('timestamp');
+      expect(res.body).not.toHaveProperty('checks');
+    });
+
+    it('mirrors on /api/live', async () => {
+      const res = await request(app).get('/api/live');
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('ok');
+    });
+  });
+
+  describe('GET /ready and /api/ready', () => {
+    it('returns checks without version or uptime', async () => {
+      const res = await request(app).get('/ready');
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('status');
+      expect(res.body).toHaveProperty('checks');
+      expect(res.body.checks).toHaveProperty('db');
+      expect(res.body).toHaveProperty('timestamp');
+      expect(res.body).not.toHaveProperty('version');
+      expect(res.body).not.toHaveProperty('uptime');
+    });
+
+    it('mirrors on /api/ready', async () => {
+      const res = await request(app).get('/api/ready');
+      expect(res.status).toBe(200);
+      expect(res.body.checks.db).toBe('ok');
+    });
+  });
+
   describe('GET /api non-existent', () => {
     it('returns 404 JSON for unknown API path', async () => {
       const res = await request(app).get('/api/nonexistent');

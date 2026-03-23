@@ -4,6 +4,6 @@
  * Do not commit real secrets if this file is public; use CI env + sync before build.
  */
 export const RIPX_PRICE_RESOLVE_BATCH_URL =
-  'https://bond-infrastructure-all-tour.trycloudflare.com/api/track/price-resolve-batch';
+  'https://scanner-smart-tops-bikes.trycloudflare.com/api/track/price-resolve-batch';
 
 export const RIPX_CHECKOUT_PRICE_SECRET = '';

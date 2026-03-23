@@ -17,7 +17,6 @@ import {
   ListBulletedIcon,
   ChevronLeftIcon,
   ChevronDownIcon,
-  ChevronRightIcon,
   ArrowUpIcon,
   ArrowLeftIcon,
   KeyIcon,
@@ -27,9 +26,9 @@ import {
   ChartVerticalIcon,
   EmailIcon,
   SearchIcon,
+  ShieldCheckMarkIcon,
 } from '@shopify/polaris-icons';
 import { ROUTES, APP_META } from '../../constants';
-import { getHealthUrl } from '../../services/api';
 import TopBar from '../Layout/TopBar';
 import styles from './Admin.module.css';
 
@@ -102,6 +101,7 @@ const adminNavGroups = [
     label: 'Monitoring & support',
     collapsible: true,
     items: [
+      { path: ROUTES.ADMIN_SYSTEM_HEALTH, label: 'System health', icon: ShieldCheckMarkIcon },
       { path: ROUTES.ADMIN_TEST_HEALTH, label: 'Test health', icon: ClipboardChecklistIcon },
       { path: ROUTES.ADMIN_NOTIFICATIONS, label: 'Notifications', icon: ListBulletedIcon },
       { path: ROUTES.ADMIN_SUPPORT_TICKETS, label: 'Support tickets', icon: EmailIcon },
@@ -128,6 +128,8 @@ const adminNavGroups = [
 const pathToSection = Object.fromEntries(
   adminNavGroups.flatMap(g => g.items.map(i => [i.path, i.label]))
 );
+
+const TOTAL_ADMIN_NAV_ITEMS = adminNavGroups.reduce((n, g) => n + g.items.length, 0);
 
 const initialExpandedGroups = () =>
   Object.fromEntries(adminNavGroups.filter(g => g.collapsible).map(g => [g.id, true]));
@@ -181,8 +183,8 @@ function AdminLayout({ children }) {
   const [expandedGroups, setExpandedGroups] = useState(loadExpandedGroupsFromStorage);
   const [hoverDrawer, setHoverDrawer] = useState(null); // { label, groupLabel?, top, height, left }
   const [showBackToTop, setShowBackToTop] = useState(false);
+  const [navListScrolled, setNavListScrolled] = useState(false);
   const navScrollRef = useRef(null);
-  const healthUrl = getHealthUrl();
   const SCROLL_THRESHOLD = 280;
 
   const searchShortcutLabel = useMemo(() => {
@@ -226,6 +228,11 @@ function AdminLayout({ children }) {
     [navSearch]
   );
 
+  const filteredItemCount = useMemo(
+    () => filteredNavGroups.reduce((n, g) => n + g.items.length, 0),
+    [filteredNavGroups]
+  );
+
   const isSearching = navSearch.trim().length > 0;
 
   const toggleGroup = useCallback(id => {
@@ -258,6 +265,19 @@ function AdminLayout({ children }) {
       setExpandedGroups(prev => ({ ...prev, [gid]: true }));
     }
   }, [location.pathname]);
+
+  useEffect(() => {
+    if (collapsed) {
+      setNavListScrolled(false);
+      return;
+    }
+    const el = navScrollRef.current;
+    if (!el) return;
+    const onNavScroll = () => setNavListScrolled(el.scrollTop > 8);
+    onNavScroll();
+    el.addEventListener('scroll', onNavScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onNavScroll);
+  }, [collapsed, filteredNavGroups]);
 
   useEffect(() => {
     if (collapsed) return;
@@ -394,48 +414,101 @@ function AdminLayout({ children }) {
               )}
             </div>
           </div>
-          <div className={styles.adminNavShell}>
+          <div
+            className={`${styles.adminNavShell} ${!collapsed && navListScrolled ? styles.adminNavShellScrolled : ''}`}
+          >
             {!collapsed && (
               <div className={styles.adminNavSearch}>
-                <div className={styles.adminNavSearchCard}>
-                  <TextField
-                    id={ADMIN_NAV_FILTER_ID}
-                    label="Filter admin pages"
-                    labelHidden
-                    placeholder="Search pages…"
-                    value={navSearch}
-                    onChange={setNavSearch}
-                    autoComplete="off"
-                    clearButton
-                    onClearButtonClick={() => setNavSearch('')}
-                    prefix={<Icon source={SearchIcon} tone="subdued" />}
-                  />
-                  <div className={styles.adminNavSearchMeta} aria-hidden="true">
-                    <span className={styles.adminNavSearchHint}>Filter</span>
-                    <kbd className={styles.adminNavKbd}>{searchShortcutLabel}</kbd>
-                    <kbd className={styles.adminNavKbd}>/</kbd>
-                  </div>
-                  {!isSearching ? (
-                    <div className={styles.adminNavBulk}>
-                      <button
-                        type="button"
-                        className={styles.adminNavBulkBtn}
-                        onClick={expandAllGroups}
-                      >
-                        Expand all
-                      </button>
-                      <span className={styles.adminNavBulkSep} aria-hidden>
-                        ·
-                      </span>
-                      <button
-                        type="button"
-                        className={styles.adminNavBulkBtn}
-                        onClick={collapseAllGroups}
-                      >
-                        Collapse all
-                      </button>
+                <div
+                  className={`${styles.adminNavSearchCard} ${isSearching ? styles.adminNavSearchCardQuery : ''}`}
+                >
+                  <div className={styles.adminNavSearchCardInner}>
+                    <div className={styles.adminNavSearchHead}>
+                      <div className={styles.adminNavSearchHeadMain}>
+                        <span className={styles.adminNavSearchHeadTitle}>Route navigator</span>
+                        <span
+                          className={styles.adminNavSearchHeadStat}
+                          aria-live="polite"
+                          aria-atomic="true"
+                        >
+                          {isSearching ? (
+                            <>
+                              <span className={styles.adminNavSearchMatchCount}>
+                                {filteredItemCount}
+                              </span>
+                              <span className={styles.adminNavSearchMatchLabel}>
+                                {filteredItemCount === 1 ? 'page' : 'pages'}
+                              </span>
+                            </>
+                          ) : (
+                            <span className={styles.adminNavSearchIndexed}>
+                              {TOTAL_ADMIN_NAV_ITEMS} indexed
+                            </span>
+                          )}
+                        </span>
+                      </div>
                     </div>
-                  ) : null}
+                    <div className={styles.adminNavSearchFieldWrap}>
+                      <TextField
+                        id={ADMIN_NAV_FILTER_ID}
+                        label="Filter admin pages"
+                        labelHidden
+                        placeholder="Type to filter pages…"
+                        value={navSearch}
+                        onChange={setNavSearch}
+                        autoComplete="off"
+                        clearButton
+                        onClearButtonClick={() => setNavSearch('')}
+                        prefix={<Icon source={SearchIcon} tone="subdued" />}
+                      />
+                    </div>
+                    <div className={styles.adminNavSearchMeta} aria-hidden="true">
+                      <span className={styles.adminNavSearchHint}>
+                        <span className={styles.adminNavSearchPulse} />
+                        Quick focus
+                      </span>
+                      <span className={styles.adminNavSearchShortcuts}>
+                        <kbd className={styles.adminNavKbd}>{searchShortcutLabel}</kbd>
+                        <kbd className={styles.adminNavKbd}>/</kbd>
+                      </span>
+                    </div>
+                    {!isSearching ? (
+                      <div className={styles.adminNavBulk}>
+                        <span className={styles.adminNavBulkLabel} id="admin-nav-bulk-label">
+                          Sections
+                        </span>
+                        <div
+                          className={styles.adminNavBulkChips}
+                          role="group"
+                          aria-labelledby="admin-nav-bulk-label"
+                        >
+                          <button
+                            type="button"
+                            className={styles.adminNavBulkChip}
+                            onClick={expandAllGroups}
+                          >
+                            <span className={styles.adminNavBulkChipIcon} aria-hidden>
+                              <Icon source={ChevronDownIcon} tone="base" />
+                            </span>
+                            <span className={styles.adminNavBulkChipText}>Expand</span>
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.adminNavBulkChip}
+                            onClick={collapseAllGroups}
+                          >
+                            <span
+                              className={`${styles.adminNavBulkChipIcon} ${styles.adminNavBulkChipIconFlip}`}
+                              aria-hidden
+                            >
+                              <Icon source={ChevronDownIcon} tone="base" />
+                            </span>
+                            <span className={styles.adminNavBulkChipText}>Collapse</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             )}
@@ -471,38 +544,74 @@ function AdminLayout({ children }) {
                     const open = !group.collapsible || isSearching || expandedGroups[group.id];
                     const groupHasActive = group.items.some(i => i.path === location.pathname);
                     return (
-                      <div key={group.id} className={styles.adminNavGroup}>
+                      <div
+                        key={group.id}
+                        className={`${styles.adminNavGroup} ${group.collapsible ? styles.adminNavGroupCollapsible : ''} ${open && group.collapsible ? styles.adminNavGroupOpen : ''} ${group.id === 'overview' ? styles.adminNavGroupSpotlight : ''}`}
+                      >
                         {group.collapsible ? (
-                          <button
-                            type="button"
-                            className={`${styles.adminNavGroupToggle} ${groupHasActive ? styles.adminNavGroupToggleActive : ''}`}
-                            onClick={() => toggleGroup(group.id)}
-                            aria-expanded={open}
-                            aria-controls={`admin-nav-group-${group.id}`}
-                            id={`admin-nav-heading-${group.id}`}
-                          >
-                            <span className={styles.adminNavGroupLabelRow}>
-                              <span className={styles.adminNavGroupLabel}>{group.label}</span>
-                              <span className={styles.adminNavGroupCount}>
-                                {group.items.length}
+                          <>
+                            <button
+                              type="button"
+                              className={`${styles.adminNavGroupToggle} ${groupHasActive ? styles.adminNavGroupToggleActive : ''}`}
+                              onClick={() => toggleGroup(group.id)}
+                              aria-expanded={open}
+                              aria-controls={`admin-nav-group-${group.id}`}
+                              id={`admin-nav-heading-${group.id}`}
+                            >
+                              <span className={styles.adminNavGroupToggleGlow} aria-hidden />
+                              <span className={styles.adminNavGroupLabelRow}>
+                                <span className={styles.adminNavGroupLabel}>{group.label}</span>
+                                <span className={styles.adminNavGroupCount}>
+                                  {group.items.length}
+                                </span>
                               </span>
-                            </span>
-                            <span className={styles.adminNavGroupChevron} aria-hidden>
-                              <Icon
-                                source={open ? ChevronDownIcon : ChevronRightIcon}
-                                tone="subdued"
-                              />
-                            </span>
-                          </button>
-                        ) : null}
-                        {open ? (
+                              <span
+                                className={`${styles.adminNavGroupChevron} ${open ? styles.adminNavGroupChevronOpen : ''}`}
+                                aria-hidden
+                              >
+                                <Icon source={ChevronDownIcon} tone="subdued" />
+                              </span>
+                            </button>
+                            <div
+                              className={`${styles.adminNavGroupPanel} ${open ? styles.adminNavGroupPanelOpen : ''}`}
+                              aria-hidden={!open}
+                            >
+                              <div className={styles.adminNavGroupPanelInner}>
+                                <div
+                                  className={styles.adminNavGroupItems}
+                                  id={`admin-nav-group-${group.id}`}
+                                  role="group"
+                                  aria-labelledby={`admin-nav-heading-${group.id}`}
+                                >
+                                  {group.items.map(item => {
+                                    const isActive = location.pathname === item.path;
+                                    return (
+                                      <button
+                                        key={item.path}
+                                        type="button"
+                                        tabIndex={open ? undefined : -1}
+                                        onClick={() => navigate(item.path)}
+                                        className={`${styles.adminNavItem} ${isActive ? styles.active : ''}`}
+                                        aria-current={isActive ? 'page' : undefined}
+                                      >
+                                        <span className={styles.adminNavIcon}>
+                                          <Icon source={item.icon} tone="base" />
+                                        </span>
+                                        <span className={styles.adminNavItemText}>
+                                          {item.label}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </div>
+                          </>
+                        ) : (
                           <div
-                            className={`${styles.adminNavGroupItems} ${!group.collapsible ? styles.adminNavGroupItemsFlat : ''}`}
+                            className={`${styles.adminNavGroupItems} ${styles.adminNavGroupItemsFlat}`}
                             id={`admin-nav-group-${group.id}`}
                             role="group"
-                            aria-labelledby={
-                              group.collapsible ? `admin-nav-heading-${group.id}` : undefined
-                            }
                           >
                             {group.items.map(item => {
                               const isActive = location.pathname === item.path;
@@ -522,7 +631,7 @@ function AdminLayout({ children }) {
                               );
                             })}
                           </div>
-                        ) : null}
+                        )}
                       </div>
                     );
                   })}
@@ -594,14 +703,13 @@ function AdminLayout({ children }) {
             <footer className={styles.adminContentFoot}>
               <div className={styles.adminFooterInner}>
                 <span className={styles.adminFooterCopy}>RipX Admin</span>
-                <a
-                  href={healthUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  type="button"
                   className={styles.adminFooterLink}
+                  onClick={() => navigate(ROUTES.ADMIN_SYSTEM_HEALTH)}
                 >
                   System health
-                </a>
+                </button>
                 <button
                   type="button"
                   className={styles.adminFooterLinkBtn}

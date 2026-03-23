@@ -5,8 +5,8 @@
  * Shows dropdown with current store and list of stores.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Popover, ActionList, Text, BlockStack, Icon } from '@shopify/polaris';
 import { StoreIcon } from '@shopify/polaris-icons';
 import {
@@ -15,16 +15,65 @@ import {
   getUrlWithEmbedParams,
   isEmbeddedInIframe,
 } from '../../services';
-import { ROUTES } from '../../constants';
+import { ROUTES, STORAGE_KEYS, RIPX_STORE_SWITCHED_EVENT } from '../../constants';
+import { getAppDomainFromPath } from '../../utils/breadcrumb';
 import styles from './StoreSwitcher.module.css';
+
+const STORE_SWITCH_TOAST_TTL_MS = 60_000;
+
+function queueStoreSwitchToast(domain) {
+  if (!domain || typeof domain !== 'string') return;
+  try {
+    const label = domain.replace(/^www\./, '');
+    sessionStorage.setItem(
+      STORAGE_KEYS.STORE_SWITCH_TOAST,
+      JSON.stringify({
+        domain,
+        label,
+        exp: Date.now() + STORE_SWITCH_TOAST_TTL_MS,
+      })
+    );
+  } catch (_) {
+    /* ignore quota / private mode */
+  }
+}
+
+function domainsMatch(a, b) {
+  if (!a || !b) return false;
+  return String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+}
 
 function StoreSwitcher() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const domainFromUrl = getAppDomainFromPath(location.pathname);
   const [active, setActive] = useState(false);
   const [stores, setStores] = useState([]);
   const [currentStore, setCurrentStore] = useState(null);
   const [, setPlatform] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [justSwitched, setJustSwitched] = useState(false);
+  const switchPulseTimerRef = useRef(null);
+
+  useEffect(() => {
+    const onStoreSwitched = () => {
+      if (switchPulseTimerRef.current) {
+        window.clearTimeout(switchPulseTimerRef.current);
+      }
+      setJustSwitched(true);
+      switchPulseTimerRef.current = window.setTimeout(() => {
+        setJustSwitched(false);
+        switchPulseTimerRef.current = null;
+      }, 3200);
+    };
+    window.addEventListener(RIPX_STORE_SWITCHED_EVENT, onStoreSwitched);
+    return () => {
+      window.removeEventListener(RIPX_STORE_SWITCHED_EVENT, onStoreSwitched);
+      if (switchPulseTimerRef.current) {
+        window.clearTimeout(switchPulseTimerRef.current);
+      }
+    };
+  }, []);
 
   const fetchStores = useCallback(async () => {
     try {
@@ -47,6 +96,9 @@ function StoreSwitcher() {
     fetchStores();
   }, [fetchStores]);
 
+  /** URL updates immediately on navigate; /account/stores currentStore only updates on refetch */
+  const activeStore = domainFromUrl || currentStore;
+
   const handleActivatorClick = useCallback(() => {
     setActive(a => {
       if (!a) {
@@ -58,11 +110,12 @@ function StoreSwitcher() {
 
   const handleStoreSelect = useCallback(
     domain => {
-      if (domain === currentStore) {
+      if (domainsMatch(domain, activeStore)) {
         setActive(false);
         return;
       }
       persistCurrentStore(domain);
+      queueStoreSwitchToast(domain);
       setActive(false);
       if (isEmbeddedInIframe()) {
         window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(domain), { shop: domain });
@@ -70,7 +123,7 @@ function StoreSwitcher() {
         navigate(ROUTES.appDashboard(domain));
       }
     },
-    [currentStore, navigate]
+    [activeStore, navigate]
   );
 
   const multiStore = stores.length > 1;
@@ -82,10 +135,10 @@ function StoreSwitcher() {
     return null;
   }
 
-  const displayLabel = currentStore
-    ? currentStore.replace(/^www\./, '').split('.')[0]
+  const displayLabel = activeStore
+    ? activeStore.replace(/^www\./, '').split('.')[0]
     : 'Select store';
-  const displayLabelFull = currentStore ? currentStore.replace(/^www\./, '') : displayLabel;
+  const displayLabelFull = activeStore ? activeStore.replace(/^www\./, '') : displayLabel;
 
   const actionItems = [
     ...stores.map(store => {
@@ -94,7 +147,7 @@ function StoreSwitcher() {
       return {
         content: `${store.domain} · ${badge}`,
         onAction: () => handleStoreSelect(store.domain),
-        active: store.domain === currentStore,
+        active: domainsMatch(store.domain, activeStore),
       };
     }),
     ...(stores.length > 0 && hasStandaloneStore
@@ -119,7 +172,7 @@ function StoreSwitcher() {
           type="button"
           onClick={handleActivatorClick}
           aria-label="Switch store"
-          className={`${styles.storeSwitcher} ${active ? styles.active : ''}`}
+          className={`${styles.storeSwitcher} ${active ? styles.active : ''} ${justSwitched ? styles.justSwitched : ''}`}
         >
           <Icon source={StoreIcon} />
           <span className={styles.storeLabel} title={displayLabelFull}>

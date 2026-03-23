@@ -22,9 +22,9 @@ Production deploy (host, SSH key, IP, and process manager) is environment-specif
 
 **Test & validate:** `npm run test` (backend + frontend), `npm run validate` (lint + test), `npm run build` (frontend). **Audit:** `npm run audit` (root + frontend).
 
-**Health:** `GET /health` or `GET /api/health` returns app status and DB/Redis checks (503 when DB is down).
+**Health (unauthenticated, rate-limited):** `GET /live` or `GET /api/live` — liveness (no DB). `GET /ready` or `GET /api/ready` — readiness (DB + Redis, minimal JSON; 503 when DB is down). `GET /health` or `GET /api/health` — full JSON for the app (maintenance/announcement, version, uptime). Tune with `RATE_LIMIT_HEALTH_WINDOW_MS` and `RATE_LIMIT_HEALTH_MAX`.
 
-**Checkout price QA:** **Settings → Installation → Checkout price test health** (calls `GET /api/settings/checkout-price-diagnostics`). Public: `GET /api/track/price-checkout-diagnostics?shop=store.myshopify.com`. See `extensions/ripx-checkout-discount/README.md`. Roadmap: `backend/docs/PRODUCT_EXCELLENCE_ROADMAP.md`.
+**Checkout price QA:** **Settings → Installation → Checkout price test health** (calls `GET /api/settings/checkout-price-diagnostics`). Public: `GET /api/track/price-checkout-diagnostics?shop=store.myshopify.com`. **CLI (same checks, uses `.env`):** `npm run verify:price-pipeline` — optional `RIPX_VERIFY_SHOP=store.myshopify.com` with DB for tenant + running price-test count. See `extensions/ripx-checkout-discount/README.md`. **Docs:** [backend/docs/PRICE_TEST_READINESS_CHECKLIST.md](backend/docs/PRICE_TEST_READINESS_CHECKLIST.md) · [backend/docs/PRICE_TEST_PIPELINE_RESEARCH.md](backend/docs/PRICE_TEST_PIPELINE_RESEARCH.md). Roadmap: `backend/docs/PRODUCT_EXCELLENCE_ROADMAP.md`.
 
 **Local admin:** In `.env` set `RIPX_ADMIN_SHOP_DOMAINS=your-store.myshopify.com` to access the Admin panel at `/admin` without setting DB roles. Production: see [docs/getting-started/ADMIN_SETUP.md](docs/getting-started/ADMIN_SETUP.md).
 

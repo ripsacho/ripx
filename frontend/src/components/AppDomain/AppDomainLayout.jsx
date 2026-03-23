@@ -9,7 +9,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, Navigate, Outlet } from 'react-router-dom';
 import { BlockStack } from '@shopify/polaris';
 import { useQuery } from '@tanstack/react-query';
-import { ROUTES } from '../../constants';
+import { ROUTES, STORAGE_KEYS, RIPX_STORE_SWITCHED_EVENT } from '../../constants';
 import {
   setCurrentStore,
   getApiKey,
@@ -21,6 +21,7 @@ import {
 import { isShopifyStoreDomain, normalizeShopifyDomain } from '../../utils/shopifyAdmin';
 import { RouteLoading } from '../LoadingSkeleton/RouteLoading';
 import ShopifyConnectionBanner from './ShopifyConnectionBanner';
+import Toast from '../Toast/Toast';
 
 /** OAuth start URL to connect a Shopify store */
 function getShopifyConnectUrl(shopDomain) {
@@ -40,6 +41,7 @@ function isValidDomainParam(domain) {
 function AppDomainLayout() {
   const { domain } = useParams();
   const [storeSynced, setStoreSynced] = useState(false);
+  const [storeSwitchToast, setStoreSwitchToast] = useState(null);
   const redirectAttempted = useRef(false);
 
   const validDomain = domain && isValidDomainParam(domain);
@@ -88,6 +90,57 @@ function AppDomainLayout() {
     window.location.href = getShopifyConnectUrl(domain);
   }, [notConnected, domain]);
 
+  useEffect(() => {
+    if (!validDomain || !domain) return;
+    try {
+      const raw = sessionStorage.getItem(STORAGE_KEYS.STORE_SWITCH_TOAST);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (typeof parsed.exp === 'number' && parsed.exp < Date.now()) {
+        sessionStorage.removeItem(STORAGE_KEYS.STORE_SWITCH_TOAST);
+        return;
+      }
+      const urlDom = domain.trim().toLowerCase();
+      const storedDom = (parsed.domain || '').trim().toLowerCase();
+      if (!storedDom || storedDom !== urlDom) return;
+      const label = parsed.label || parsed.domain;
+      setStoreSwitchToast({ label });
+      try {
+        window.dispatchEvent(
+          new CustomEvent(RIPX_STORE_SWITCHED_EVENT, { detail: { domain: parsed.domain } })
+        );
+      } catch (_) {
+        /* ignore */
+      }
+    } catch {
+      try {
+        sessionStorage.removeItem(STORAGE_KEYS.STORE_SWITCH_TOAST);
+      } catch (_) {
+        /* ignore */
+      }
+    }
+  }, [domain, validDomain]);
+
+  const storeSwitchToastEl = storeSwitchToast ? (
+    <Toast
+      title="Now viewing"
+      detail={storeSwitchToast.label}
+      type="success"
+      icon="store-switch"
+      className="toast-store-switch"
+      showProgress
+      duration={5500}
+      onClose={() => {
+        try {
+          sessionStorage.removeItem(STORAGE_KEYS.STORE_SWITCH_TOAST);
+        } catch (_) {
+          /* ignore */
+        }
+        setStoreSwitchToast(null);
+      }}
+    />
+  ) : null;
+
   if (!validDomain) {
     return <Navigate to={ROUTES.USER_PANEL} replace />;
   }
@@ -98,18 +151,31 @@ function AppDomainLayout() {
 
   if (needsShopifySessionCheck) {
     if (!storeSynced || isLoading || (storeSynced && !isFetched)) {
-      return <RouteLoading message="Checking connection…" fullScreen />;
+      return (
+        <>
+          {storeSwitchToastEl}
+          <RouteLoading message="Checking connection…" fullScreen />
+        </>
+      );
     }
     if (notConnected) {
-      return <RouteLoading message="Redirecting to connect store…" fullScreen />;
+      return (
+        <>
+          {storeSwitchToastEl}
+          <RouteLoading message="Redirecting to connect store…" fullScreen />
+        </>
+      );
     }
   }
 
   return (
-    <BlockStack gap="400">
-      {isShopify && <ShopifyConnectionBanner />}
-      <Outlet />
-    </BlockStack>
+    <>
+      {storeSwitchToastEl}
+      <BlockStack gap="400">
+        {isShopify && <ShopifyConnectionBanner />}
+        <Outlet />
+      </BlockStack>
+    </>
   );
 }
 

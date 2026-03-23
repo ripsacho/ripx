@@ -15,7 +15,11 @@ const { getTenantByDomain } = require('../models/tenant');
 const userModel = require('../models/user');
 const userDomainAccess = require('../models/userDomainAccess');
 const { SETTINGS_BOUNDS } = require('../constants');
-const { buildCheckoutPriceDiagnostics } = require('../services/priceCheckoutDiagnostics');
+const {
+  buildCheckoutPriceDiagnostics,
+  readRipxCheckoutExtensionConfigFile,
+  extensionConfigInputFromReadResult,
+} = require('../services/priceCheckoutDiagnostics');
 const { SCRIPT_VERSION } = require('../utils/storefrontScriptRuntime');
 
 function escapeHtmlAttr(str) {
@@ -377,10 +381,17 @@ router.get(
     );
     const runningPriceTests = countRes.rows[0]?.c ?? 0;
 
+    const skipExtDiag =
+      (process.env.RIPX_DIAGNOSTICS_SKIP_EXTENSION_CONFIG || '').toLowerCase() === 'true';
+    const extensionConfig = skipExtDiag
+      ? { source: 'omit' }
+      : extensionConfigInputFromReadResult(readRipxCheckoutExtensionConfigFile());
+
     const body = buildCheckoutPriceDiagnostics({
       shopDomain,
       tenantRegistered: true,
       runningPriceTests,
+      extensionConfig,
     });
 
     res.set('Cache-Control', 'no-store');

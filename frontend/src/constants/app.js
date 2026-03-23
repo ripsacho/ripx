@@ -23,6 +23,8 @@ export const STORAGE_KEYS = {
   ACCOUNT: 'ripx_account',
   SHOP_DOMAIN: 'shopDomain',
   CURRENT_STORE: 'ripx_current_store', // Multi-store: selected domain when account has multiple
+  /** Set by StoreSwitcher before navigation; AppDomainLayout reads to show “switched store” toast */
+  STORE_SWITCH_TOAST: 'ripx_store_switch_toast',
   ANNOUNCEMENT_DISMISSED: 'ripx_announcement_dismissed', // Dismissed announcement banner text
   /** Set before /auth/start so 401 interceptor does not overwrite Shopify OAuth redirect */
   OAUTH_REDIRECTING: 'ripx_oauth_redirecting',
@@ -48,6 +50,9 @@ export const INTERVALS = {
  * `backend/src/utils/storefrontScriptRuntime.js` SCRIPT_VERSION when the runtime embed contract changes.
  */
 export const RIPX_STOREFRONT_SCRIPT_VERSION = '2';
+
+/** CustomEvent: fired when the app navigates to a new store from the store switcher (TopBar can highlight). */
+export const RIPX_STORE_SWITCHED_EVENT = 'ripx:store-switched';
 
 /** App metadata */
 export const APP_META = {

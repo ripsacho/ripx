@@ -15,6 +15,7 @@ import {
   LinkIcon,
   ChartVerticalIcon,
   EmailIcon,
+  ShieldCheckMarkIcon,
 } from '@shopify/polaris-icons';
 
 export const ADMIN_HERO_CONFIG = {
@@ -98,6 +99,12 @@ export const ADMIN_HERO_CONFIG = {
     title: 'Test health',
     subtitle: 'Health scores and issues for running tests.',
     icon: ClipboardChecklistIcon,
+  },
+  [ROUTES.ADMIN_SYSTEM_HEALTH]: {
+    title: 'System health',
+    subtitle:
+      'Full /health payload (DB, Redis, version, uptime, banners). Use /live and /ready for load-balancer probes.',
+    icon: ShieldCheckMarkIcon,
   },
   [ROUTES.ADMIN_SHOP_SETTINGS_OVERRIDES]: {
     title: 'Shop settings overrides',

@@ -487,7 +487,7 @@ router.get('/oauth-redirect-uri', (req, res) => {
     source: strictBase ? 'RIPX_OAUTH_REDIRECT_BASE' : 'request_or_app_url',
     isDynamicTunnel,
     mismatchWarning: isDynamicTunnel
-      ? 'This base is a dynamic tunnel URL that changes when the tunnel restarts. Shopify requires redirect_uri and Application URL to have the same host. Set RIPX_OAUTH_REDIRECT_BASE to a STABLE domain (e.g. from shopify.app.toml application_url) and use that same URL in Partner Dashboard. See docs/OAUTH_FIX.md.'
+      ? 'Tunnel host changes on restart. shopify.app.toml redirect_urls (e.g. production) are pushed by CLI but do not include this tunnel — add redirectUri below to Partner Dashboard Allowed redirection URL(s) and matching Application URL host, or use RIPX_OAUTH_REDIRECT_BASE + Dashboard with a stable domain.'
       : null,
     partnerDashboard: {
       applicationUrl: base,

@@ -11,6 +11,7 @@ import {
   INTERVALS,
   APP_META,
   RIPX_STOREFRONT_SCRIPT_VERSION,
+  RIPX_STORE_SWITCHED_EVENT,
 } from '../app';
 
 describe('app constants', () => {
@@ -37,6 +38,7 @@ describe('app constants', () => {
       expect(STORAGE_KEYS).toHaveProperty('EMAIL_TOKEN');
       expect(STORAGE_KEYS).toHaveProperty('SHOP_DOMAIN');
       expect(STORAGE_KEYS).toHaveProperty('CURRENT_STORE');
+      expect(STORAGE_KEYS).toHaveProperty('STORE_SWITCH_TOAST');
       expect(STORAGE_KEYS).toHaveProperty('PREFERENCES');
       expect(STORAGE_KEYS).toHaveProperty('ANNOUNCEMENT_DISMISSED');
     });
@@ -78,6 +80,13 @@ describe('app constants', () => {
       expect(typeof RIPX_STOREFRONT_SCRIPT_VERSION).toBe('string');
       expect(RIPX_STOREFRONT_SCRIPT_VERSION.length).toBeGreaterThan(0);
       expect(RIPX_STOREFRONT_SCRIPT_VERSION).toMatch(/^\d+$/);
+    });
+  });
+
+  describe('RIPX_STORE_SWITCHED_EVENT', () => {
+    it('is a stable CustomEvent name for store switcher UI', () => {
+      expect(typeof RIPX_STORE_SWITCHED_EVENT).toBe('string');
+      expect(RIPX_STORE_SWITCHED_EVENT).toBe('ripx:store-switched');
     });
   });
 

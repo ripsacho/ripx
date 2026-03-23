@@ -3,6 +3,9 @@
  * Aligns URL derivation with scripts/write-ripx-checkout-config.js
  */
 
+const fs = require('fs');
+const path = require('path');
+
 const {
   PRICE_RESOLVE_BATCH_MAX,
   PRICE_RESOLVE_BATCH_RESPONSE_MAX_BYTES,
@@ -37,6 +40,204 @@ function parseUrlSafe(urlString) {
   }
 }
 
+/** Relative to repo root — documented for operators (see write-ripx-checkout-config.js). */
+const RIPX_EXTENSION_CONFIG_RELATIVE_PATH = 'extensions/ripx-checkout-discount/src/ripxConfig.js';
+
+/**
+ * Read checkout discount extension config from repo layout (backend/src/services → repo root).
+ * @returns {{ source: 'present', contents: string, absolutePath: string } | { source: 'missing', absolutePath: string } | { source: 'present', contents: string, readError: string, absolutePath: string }}
+ */
+function readRipxCheckoutExtensionConfigFile() {
+  const absolutePath = path.join(__dirname, '../../../', RIPX_EXTENSION_CONFIG_RELATIVE_PATH);
+  try {
+    const contents = fs.readFileSync(absolutePath, 'utf8');
+    return { source: 'present', contents, absolutePath };
+  } catch (e) {
+    if (e && e.code === 'ENOENT') {
+      return { source: 'missing', absolutePath };
+    }
+    return { source: 'present', contents: '', readError: e.message || String(e), absolutePath };
+  }
+}
+
+/**
+ * @param {ReturnType<typeof readRipxCheckoutExtensionConfigFile>} readResult
+ * @returns {{ source: 'omit'|'missing'|'present', contents?: string }}
+ */
+function extensionConfigInputFromReadResult(readResult) {
+  if (!readResult) {
+    return { source: 'omit' };
+  }
+  if (readResult.source === 'missing') {
+    return { source: 'missing' };
+  }
+  return { source: 'present', contents: readResult.contents };
+}
+
+/**
+ * Parse batch URL + secret from generated ripxConfig.js (ESM export const ... = JSON.stringify(...)).
+ * @param {string} source
+ * @returns {{ batchUrl: string, secret: string } | { error: string }}
+ */
+function parseRipxCheckoutExtensionConfig(source) {
+  if (!source || typeof source !== 'string') {
+    return { error: 'empty_source' };
+  }
+  const batchRe = /export\s+const\s+RIPX_PRICE_RESOLVE_BATCH_URL\s*=\s*([^;]+);/m;
+  const secretRe = /export\s+const\s+RIPX_CHECKOUT_PRICE_SECRET\s*=\s*([^;]+);/m;
+  const batchM = source.match(batchRe);
+  const secretM = source.match(secretRe);
+  if (!batchM) {
+    return { error: 'missing_batch_export' };
+  }
+  let batchUrl;
+  let secret = '';
+  try {
+    batchUrl = JSON.parse(batchM[1].trim());
+  } catch {
+    return { error: 'invalid_batch_literal' };
+  }
+  if (typeof batchUrl !== 'string' || !batchUrl.trim()) {
+    return { error: 'invalid_batch_value' };
+  }
+  if (secretM) {
+    try {
+      const s = JSON.parse(secretM[1].trim());
+      if (typeof s === 'string') {
+        secret = s;
+      }
+    } catch {
+      return { error: 'invalid_secret_literal' };
+    }
+  }
+  return {
+    batchUrl: stripTrailingSlashes(batchUrl.trim()),
+    secret: secret.trim(),
+  };
+}
+
+/**
+ * @param {object} params
+ * @param {string} params.envBatchUrl — from getConfiguredBatchResolveUrls
+ * @param {string} params.envSecret — trimmed RIPX_CHECKOUT_PRICE_SECRET
+ * @param {'omit'|'missing'|'present'} params.extensionSource
+ * @param {string} [params.extensionContents] — file source when present
+ */
+function buildExtensionConfigDiagnostics(params) {
+  const { envBatchUrl, envSecret, extensionSource, extensionContents } = params;
+  const envSecretTrim = (envSecret || '').trim();
+  const secretRequired = Boolean(envSecretTrim);
+  const envNorm = envBatchUrl ? stripTrailingSlashes(String(envBatchUrl).trim()) : '';
+
+  /** @type {Record<string, unknown>} */
+  const infra = {
+    extension_config_path: RIPX_EXTENSION_CONFIG_RELATIVE_PATH,
+    extension_config_status: extensionSource,
+  };
+
+  if (extensionSource === 'omit') {
+    return { infrastructurePatch: infra, checklist: [], recommendations: [] };
+  }
+
+  if (extensionSource === 'missing') {
+    return {
+      infrastructurePatch: infra,
+      checklist: [
+        {
+          id: 'extension_config_file',
+          ok: true,
+          severity: 'ok',
+          message: `Checkout extension config file not found (${RIPX_EXTENSION_CONFIG_RELATIVE_PATH}). Cannot verify drift vs .env; run npm run shopify:checkout-discount:sync-config after changing APP_URL or secrets.`,
+        },
+      ],
+      recommendations: [
+        `After changing APP_URL or RIPX_CHECKOUT_PRICE_SECRET, run: npm run shopify:checkout-discount:sync-config (writes ${RIPX_EXTENSION_CONFIG_RELATIVE_PATH}).`,
+      ],
+    };
+  }
+
+  const parsed = parseRipxCheckoutExtensionConfig(extensionContents || '');
+  if ('error' in parsed) {
+    return {
+      infrastructurePatch: {
+        ...infra,
+        extension_config_parse_error: parsed.error,
+      },
+      checklist: [
+        {
+          id: 'extension_config_matches_env',
+          ok: false,
+          severity: 'warning',
+          message: `Could not parse ${RIPX_EXTENSION_CONFIG_RELATIVE_PATH} (${parsed.error}). Re-run sync-config or fix the file.`,
+        },
+      ],
+      recommendations: [],
+    };
+  }
+
+  const extBatch = parsed.batchUrl;
+  const extSecret = parsed.secret;
+  const batchMatches = Boolean(envNorm) && extBatch === envNorm;
+  const secretMatches = envSecretTrim === extSecret;
+
+  const infraOut = {
+    ...infra,
+    extension_batch_url: extBatch,
+    extension_secret_configured: Boolean(extSecret),
+    extension_batch_url_matches_env: envNorm ? batchMatches : null,
+    extension_secret_matches_env: secretRequired || Boolean(extSecret) ? secretMatches : null,
+  };
+
+  /** @type {{ level: 'error'|'warning', text: string }[]} */
+  const issues = [];
+  if (secretRequired && !secretMatches) {
+    issues.push({
+      level: 'error',
+      text: `RIPX_CHECKOUT_PRICE_SECRET mismatch: server .env and ${RIPX_EXTENSION_CONFIG_RELATIVE_PATH} must match or batch calls return 401. Run npm run shopify:checkout-discount:sync-config.`,
+    });
+  } else if (!secretRequired && extSecret) {
+    issues.push({
+      level: 'warning',
+      text: 'Extension ripxConfig.js sets a checkout secret but server .env does not — align .env and sync-config before deploy.',
+    });
+  }
+  if (Boolean(envNorm) && !batchMatches) {
+    issues.push({
+      level: 'warning',
+      text: `Batch URL drift: extension "${extBatch}" vs server .env "${envNorm}". Run npm run shopify:checkout-discount:sync-config and redeploy the checkout discount extension.`,
+    });
+  } else if (!envNorm && extBatch) {
+    issues.push({
+      level: 'warning',
+      text: 'Server .env has no batch URL but extension ripxConfig.js defines one — set APP_URL or RIPX_PRICE_RESOLVE_BATCH_URL.',
+    });
+  }
+
+  const hasError = issues.some(i => i.level === 'error');
+  const ok = issues.length === 0;
+  const severity = hasError ? 'error' : ok ? 'ok' : 'warning';
+  const message = ok
+    ? `Extension ripxConfig.js matches server .env (batch URL${secretRequired || extSecret ? ' and checkout secret' : ''}).`
+    : issues.map(i => i.text).join(' ');
+
+  return {
+    infrastructurePatch: infraOut,
+    checklist: [
+      {
+        id: 'extension_config_matches_env',
+        ok,
+        severity,
+        message,
+      },
+    ],
+    recommendations: ok
+      ? []
+      : [
+          'Drift fix: npm run shopify:checkout-discount:sync-config from repo root with the same .env as production, then rebuild/deploy extensions/ripx-checkout-discount.',
+        ],
+  };
+}
+
 /** Dev tunnels — hostnames change or are not suitable as production API bases for Shopify Functions. */
 function isEphemeralTunnelHost(hostname) {
   if (!hostname || typeof hostname !== 'string') {
@@ -58,6 +259,7 @@ function isEphemeralTunnelHost(hostname) {
  * @param {string|null} [opts.shopDomain] — normalized tenant domain if known
  * @param {boolean} [opts.tenantRegistered]
  * @param {number} [opts.runningPriceTests]
+ * @param {{ source: 'omit'|'missing'|'present', contents?: string }} [opts.extensionConfig] — R5 drift: compare ripxConfig.js to .env (callers read file)
  */
 function buildCheckoutPriceDiagnostics(opts = {}) {
   const { batchUrl, appUrl, usedExplicitBatchUrl } = getConfiguredBatchResolveUrls();
@@ -82,6 +284,38 @@ function buildCheckoutPriceDiagnostics(opts = {}) {
       ? 'Batch resolver URL is set (APP_URL or RIPX_PRICE_RESOLVE_BATCH_URL).'
       : 'Set APP_URL or RIPX_PRICE_RESOLVE_BATCH_URL so the Discount Function can reach your API.',
   });
+
+  const EXPECTED_BATCH_PATH = '/api/track/price-resolve-batch';
+  if (batchConfigured) {
+    let batchPathOk = true;
+    let batchPathSeverity = 'ok';
+    let batchPathMessage = '';
+    if (parsed) {
+      const rawPath = (parsed.pathname || '').replace(/\/+$/, '') || '/';
+      const pathOk = rawPath === EXPECTED_BATCH_PATH || rawPath.endsWith(EXPECTED_BATCH_PATH);
+      if (pathOk) {
+        batchPathMessage = `Batch URL path ends with ${EXPECTED_BATCH_PATH}.`;
+      } else if (!usedExplicitBatchUrl) {
+        batchPathOk = false;
+        batchPathSeverity = 'error';
+        batchPathMessage = `When using APP_URL alone, the batch URL must end with ${EXPECTED_BATCH_PATH}. Current path: "${rawPath}". Fix APP_URL (no extra path segments before /api).`;
+      } else {
+        batchPathOk = true;
+        batchPathSeverity = 'warning';
+        batchPathMessage = `Custom batch path "${rawPath}" (RIPX_PRICE_RESOLVE_BATCH_URL). Ensure it forwards POST to RipX ${EXPECTED_BATCH_PATH}.`;
+      }
+    } else {
+      batchPathOk = false;
+      batchPathSeverity = 'error';
+      batchPathMessage = 'Batch URL is not a valid absolute URL.';
+    }
+    checklist.push({
+      id: 'batch_path_matches_ripx_handler',
+      ok: batchPathOk,
+      severity: batchPathSeverity,
+      message: batchPathMessage,
+    });
+  }
 
   checklist.push({
     id: 'https_public_url',
@@ -149,7 +383,26 @@ function buildCheckoutPriceDiagnostics(opts = {}) {
     'Checkout price secret is compared with a timing-safe check; use a long random value (e.g. openssl rand -hex 32). Server logs a warning when a batch request exceeds PRICE_BATCH_SLOW_LOG_MS (default 800ms) — tune DB/indexes if you see this under load.'
   );
 
-  const { shopDomain = null, tenantRegistered = null, runningPriceTests = null } = opts;
+  const {
+    shopDomain = null,
+    tenantRegistered = null,
+    runningPriceTests = null,
+    extensionConfig,
+  } = opts;
+
+  /** @type {Record<string, unknown>} */
+  let infrastructureExtension = {};
+  if (extensionConfig && extensionConfig.source && extensionConfig.source !== 'omit') {
+    const extDiag = buildExtensionConfigDiagnostics({
+      envBatchUrl: batchUrl,
+      envSecret: checkoutSecret,
+      extensionSource: extensionConfig.source,
+      extensionContents: extensionConfig.contents,
+    });
+    checklist.push(...extDiag.checklist);
+    recommendations.push(...extDiag.recommendations);
+    infrastructureExtension = extDiag.infrastructurePatch;
+  }
 
   const anyNotOk = checklist.some(c => !c.ok);
   const anyErrorSeverity = checklist.some(c => !c.ok && c.severity === 'error');
@@ -176,6 +429,7 @@ function buildCheckoutPriceDiagnostics(opts = {}) {
       batch_compact_response: process.env.RIPX_PRICE_BATCH_FULL_RESPONSE !== 'true',
       price_batch_slow_log_ms: PRICE_BATCH_SLOW_LOG_MS,
       node_env: nodeEnv,
+      ...infrastructureExtension,
     },
     checklist,
     recommendations,
@@ -194,4 +448,9 @@ module.exports = {
   getConfiguredBatchResolveUrls,
   buildCheckoutPriceDiagnostics,
   isEphemeralTunnelHost,
+  parseRipxCheckoutExtensionConfig,
+  buildExtensionConfigDiagnostics,
+  readRipxCheckoutExtensionConfigFile,
+  extensionConfigInputFromReadResult,
+  RIPX_EXTENSION_CONFIG_RELATIVE_PATH,
 };

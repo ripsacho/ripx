@@ -33,11 +33,69 @@
   background: var(--bg-secondary);
 }
 
+.toast.toast-with-progress {
+  position: relative;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+
 .toast-content {
   display: flex;
   align-items: center;
   gap: 0.75rem;
   padding: 1rem 1.25rem;
+}
+
+.toast-message-stack {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.toast-title {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  line-height: 1.3;
+}
+
+.toast-detail {
+  display: block;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.toast-progress {
+  height: 3px;
+  width: 100%;
+  margin-top: 0;
+  background: linear-gradient(
+    90deg,
+    var(--futuristic-cyan),
+    var(--futuristic-teal, #14b8a6),
+    var(--futuristic-violet, #8b5cf6)
+  );
+  transform-origin: left center;
+  animation: toastProgressShrink linear forwards;
+  animation-duration: var(--toast-duration-ms, 4500ms);
+  border-radius: 0 0 15px 15px;
+}
+
+@keyframes toastProgressShrink {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
 }
 
 .toast-icon {
@@ -127,6 +185,134 @@
   to {
     transform: translateX(0);
     opacity: 1;
+  }
+}
+
+/* Store switch: entrance + glow ring */
+.toast.toast-store-switch {
+  animation: storeSwitchEnter 0.6s cubic-bezier(0.22, 1.25, 0.36, 1) both,
+    storeSwitchGlow 2.4s ease-out 0.15s both;
+  border-left-width: 4px;
+}
+
+@keyframes storeSwitchEnter {
+  from {
+    transform: translateX(calc(100% + 16px)) scale(0.94);
+    opacity: 0;
+  }
+  65% {
+    transform: translateX(-6px) scale(1.02);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes storeSwitchGlow {
+  0% {
+    box-shadow: 0 8px 36px rgba(6, 182, 212, 0.14), 0 0 0 0 rgba(6, 182, 212, 0.35);
+  }
+  40% {
+    box-shadow: 0 12px 40px rgba(6, 182, 212, 0.22), 0 0 0 10px rgba(6, 182, 212, 0);
+  }
+  100% {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 0 0 0 rgba(6, 182, 212, 0);
+  }
+}
+
+[data-theme='dark'] .toast.toast-store-switch {
+  animation: storeSwitchEnter 0.6s cubic-bezier(0.22, 1.25, 0.36, 1) both,
+    storeSwitchGlowDark 2.4s ease-out 0.15s both;
+}
+
+@keyframes storeSwitchGlowDark {
+  0% {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 0 rgba(6, 182, 212, 0.4);
+  }
+  40% {
+    box-shadow: 0 12px 40px rgba(6, 182, 212, 0.15), 0 0 0 12px rgba(6, 182, 212, 0);
+  }
+  100% {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 0 rgba(6, 182, 212, 0);
+  }
+}
+
+/* Store icon + check badge */
+.toast-icon-store-switch {
+  position: relative;
+  width: 44px !important;
+  height: 44px !important;
+  border-radius: 12px !important;
+  background: linear-gradient(
+    145deg,
+    rgba(6, 182, 212, 0.18),
+    rgba(139, 92, 246, 0.12)
+  ) !important;
+  color: var(--futuristic-cyan) !important;
+  box-shadow: 0 2px 10px rgba(6, 182, 212, 0.2) !important;
+}
+
+.toast-store-svg {
+  width: 26px;
+  height: 26px;
+  opacity: 0.95;
+}
+
+.toast-store-check {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--futuristic-cyan), var(--futuristic-teal, #14b8a6));
+  color: var(--text-inverse, #fff);
+  font-size: 10px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.45);
+  animation: storeCheckPop 0.5s cubic-bezier(0.34, 1.4, 0.64, 1) 0.2s both;
+}
+
+@keyframes storeCheckPop {
+  from {
+    transform: scale(0);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast,
+  .toast.toast-store-switch {
+    animation: toastReducedIn 0.2s ease-out both !important;
+  }
+
+  @keyframes toastReducedIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  .toast-progress {
+    animation: none !important;
+    transform: scaleX(0.35);
+    opacity: 0.5;
+  }
+
+  .toast-store-check {
+    animation: none !important;
   }
 }
 
