@@ -6,9 +6,15 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { apiGet, unwrapData } from '../services';
+import { apiGet, unwrapData, getShopDomain } from '../services';
 
-const DASHBOARD_STATS_KEY = ['dashboard', 'stats'];
+function dashboardStatsQueryKey(shopDomain) {
+  const shop =
+    shopDomain !== undefined && shopDomain !== null && shopDomain !== ''
+      ? String(shopDomain).trim()
+      : getShopDomain();
+  return ['dashboard', 'stats', shop || '_'];
+}
 
 async function fetchDashboardStats() {
   const response = await apiGet('/dashboard/stats');
@@ -25,8 +31,9 @@ async function fetchDashboardStats() {
 }
 
 export function useDashboardStats(options = {}) {
+  const shop = getShopDomain();
   return useQuery({
-    queryKey: DASHBOARD_STATS_KEY,
+    queryKey: dashboardStatsQueryKey(shop),
     queryFn: fetchDashboardStats,
     staleTime: 30 * 1000,
     ...options,

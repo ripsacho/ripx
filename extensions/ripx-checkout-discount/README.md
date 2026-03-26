@@ -4,8 +4,10 @@ JavaScript Shopify Function (**Discount API**, `cart.lines.discounts.generate.fe
 
 ## Requirements
 
+- **[Shopify CLI](https://shopify.dev/docs/api/shopify-cli)** 3.x on your machine for `shopify app function build` / `typegen` / `deploy` (or use `npm exec shopify` from `extensions/ripx-checkout-discount` after `npm install` there).
 - **Shopify Plus / Enterprise** with **network access** enabled for discount functions ([docs](https://shopify.dev/docs/apps/build/discounts/network-access)).
 - RipX storefront script must inject **`properties[_ripx_*]`** on add-to-cart (see `docs/SHOPIFY_CHECKOUT_PRICE_RESOLVER.md`).
+- **`shopify.extension.toml` `api_version`** must be a supported Functions API release for your CLI; after changing it, run `shopify app function schema --path extensions/ripx-checkout-discount` then `typegen` and `build` (aligned with root `shopify.app.toml` webhook API where practical).
 
 ## Go-live checklist (what you must do)
 

@@ -345,7 +345,7 @@ type CartLine {
   gift wrapping requests, or custom product details. Attributes are stored as key-value pairs.
 
   Cart line attributes are equivalent to the
-  [`line_item`](https://shopify.dev/docs/apps/build/purchase-options/subscriptions/selling-plans)
+  [`line_item`](https://shopify.dev/docs/api/liquid/objects/line_item)
   object in Liquid.
   """
   attribute(
@@ -515,6 +515,13 @@ input CartOperation @oneOf {
   validate discount codes from external systems.
   """
   enteredDiscountCodesAccept: EnteredDiscountCodesAcceptOperation
+
+  """
+  An operation that rejects entered discount codes with a custom message. Use
+  this to conditionally reject discount codes based on business logic. This
+  operation can only be used if the function is backed by an automatic discount.
+  """
+  enteredDiscountCodesReject: EnteredDiscountCodesRejectOperation
 
   """
   An operation that applies order discounts to a cart that share a selection strategy.
@@ -2950,7 +2957,7 @@ type DeliverableCartLine {
   gift wrapping requests, or custom product details. Attributes are stored as key-value pairs.
 
   Cart line attributes are equivalent to the
-  [`line_item`](https://shopify.dev/docs/apps/build/purchase-options/subscriptions/selling-plans)
+  [`line_item`](https://shopify.dev/docs/api/liquid/objects/line_item)
   object in Liquid.
   """
   attribute(
@@ -3141,6 +3148,13 @@ input DeliveryOperation @oneOf {
   validate discount codes from external systems.
   """
   enteredDiscountCodesAccept: EnteredDiscountCodesAcceptOperation
+
+  """
+  An operation that rejects entered discount codes with a custom message. Use
+  this to conditionally reject discount codes based on business logic. This
+  operation can only be used if the function is backed by an automatic discount.
+  """
+  enteredDiscountCodesReject: EnteredDiscountCodesRejectOperation
 }
 
 """
@@ -3233,6 +3247,13 @@ type EnteredDiscountCode {
   The discount code.
   """
   code: String!
+
+  """
+  Indicates whether the entered discount code can be rejected.
+
+  A discount code can't be rejected if it's associated with a discount that has already been applied to the cart.
+  """
+  rejectable: Boolean!
 }
 
 """
@@ -3243,6 +3264,23 @@ input EnteredDiscountCodesAcceptOperation {
   The list of discount codes to accept.
   """
   codes: [DiscountCode!]!
+}
+
+"""
+An operation that rejects entered discount codes with a custom message. Use this
+to conditionally reject discount codes based on business logic. This operation
+can only be used if the function is backed by an automatic discount.
+"""
+input EnteredDiscountCodesRejectOperation {
+  """
+  The list of discount codes to reject.
+  """
+  codes: [RejectedDiscountCode!]!
+
+  """
+  The custom message to display to the customer when the discount codes are rejected.
+  """
+  message: String!
 }
 
 """
@@ -3477,18 +3515,12 @@ type Input {
   discount: Discount!
 
   """
-  The discount codes that customers enter at checkout, excluding gift cards.
-  Codes aren't validated in any way other than to verify they aren't gift cards.
-  This input is only available in the `cart.lines.discounts.generate.fetch` and
-  `cart.delivery-options.discounts.generate.fetch` extension targets.
+  Discount codes entered by the buyer at checkout, excluding gift cards. For
+  cart.lines.discounts.generate.run and cart.delivery-options.discounts.generate.run targets, these
+  discount codes are validated to ensure they are not deleted, maintain an active status, and are eligible
+  for the current cart. For fetch targets, all entered discount codes are included, excluding gift cards.
   """
   enteredDiscountCodes: [EnteredDiscountCode!]!
-    @restrictTarget(
-      only: [
-        "cart.lines.discounts.generate.fetch"
-        "cart.delivery-options.discounts.generate.fetch"
-      ]
-    )
 
   """
   The result of the fetch target. Refer to [network access](https://shopify.dev/apps/build/functions/input-output/network-access/graphql)
@@ -3496,13 +3528,7 @@ type Input {
   `cart.lines.discounts.generate.run` and
   `cart.delivery-options.discounts.generate.run` extension targets.
   """
-  fetchResult: HttpResponse
-    @restrictTarget(
-      only: [
-        "cart.lines.discounts.generate.run"
-        "cart.delivery-options.discounts.generate.run"
-      ]
-    )
+  fetchResult: HttpResponse @restrictTarget(only: ["cart.lines.discounts.generate.run", "cart.delivery-options.discounts.generate.run"])
 
   """
   The regional and language settings that determine how the Function
@@ -3531,13 +3557,7 @@ type Input {
   This input is only available in the `cart.lines.discounts.generate.run` and
   `cart.delivery-options.discounts.generate.run` extension targets.
   """
-  triggeringDiscountCode: String
-    @restrictTarget(
-      only: [
-        "cart.lines.discounts.generate.run"
-        "cart.delivery-options.discounts.generate.run"
-      ]
-    )
+  triggeringDiscountCode: String @restrictTarget(only: ["cart.lines.discounts.generate.run", "cart.delivery-options.discounts.generate.run"])
 }
 
 """
@@ -4382,10 +4402,7 @@ type Localization {
   """
   The market of the active localized experience.
   """
-  market: Market!
-    @deprecated(
-      reason: "This `market` field will be removed in a future version of the API."
-    )
+  market: Market! @deprecated(reason: "This `market` field will be removed in a future version of the API.")
 }
 
 """
@@ -4766,10 +4783,7 @@ type MailingAddress {
   """
   The market of the address.
   """
-  market: Market
-    @deprecated(
-      reason: "This `market` field will be removed in a future version of the API."
-    )
+  market: Market @deprecated(reason: "This `market` field will be removed in a future version of the API.")
 
   """
   The full name of the customer, based on firstName and lastName.
@@ -5440,6 +5454,16 @@ type PurchasingCompany {
   The company location associated to the order or draft order.
   """
   location: CompanyLocation!
+}
+
+"""
+A discount code to be rejected.
+"""
+input RejectedDiscountCode {
+  """
+  The discount code to reject.
+  """
+  code: String!
 }
 
 """

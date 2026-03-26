@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Popover, ActionList, Text, BlockStack, Icon } from '@shopify/polaris';
+import { Popover, ActionList, Text, BlockStack, Icon, Badge } from '@shopify/polaris';
 import { StoreIcon } from '@shopify/polaris-icons';
 import {
   apiGet,
@@ -94,7 +94,7 @@ function StoreSwitcher() {
 
   useEffect(() => {
     fetchStores();
-  }, [fetchStores]);
+  }, [fetchStores, domainFromUrl]);
 
   /** URL updates immediately on navigate; /account/stores currentStore only updates on refetch */
   const activeStore = domainFromUrl || currentStore;
@@ -117,6 +117,11 @@ function StoreSwitcher() {
       persistCurrentStore(domain);
       queueStoreSwitchToast(domain);
       setActive(false);
+      try {
+        window.dispatchEvent(new CustomEvent(RIPX_STORE_SWITCHED_EVENT, { detail: { domain } }));
+      } catch (_) {
+        /* ignore */
+      }
       if (isEmbeddedInIframe()) {
         window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(domain), { shop: domain });
       } else {
@@ -144,10 +149,14 @@ function StoreSwitcher() {
     ...stores.map(store => {
       const plat = (store.platform || '').toLowerCase();
       const badge = plat === 'shopify' ? 'Shopify' : 'Standalone';
+      const host = store.domain.replace(/^www\./, '');
+      const isActive = domainsMatch(store.domain, activeStore);
       return {
-        content: `${store.domain} · ${badge}`,
+        content: host,
+        helpText: badge,
+        suffix: isActive ? <Badge tone="success">Current</Badge> : undefined,
         onAction: () => handleStoreSelect(store.domain),
-        active: domainsMatch(store.domain, activeStore),
+        active: isActive,
       };
     }),
     ...(stores.length > 0 && hasStandaloneStore
@@ -201,10 +210,22 @@ function StoreSwitcher() {
       preferredPosition="below"
     >
       <div className={styles.storePopover}>
-        <BlockStack gap="200">
-          <Text variant="headingSm" as="h2">
-            Switch store
-          </Text>
+        <BlockStack gap="300">
+          <div className={styles.storePopoverHeader}>
+            <Text variant="headingSm" as="h2">
+              Switch website
+            </Text>
+            {activeStore && (
+              <BlockStack gap="050">
+                <Text variant="bodySm" tone="subdued" as="p">
+                  Viewing
+                </Text>
+                <Text variant="bodyMd" fontWeight="semibold" as="p" truncate>
+                  {displayLabelFull}
+                </Text>
+              </BlockStack>
+            )}
+          </div>
           {loading ? (
             <Text variant="bodySm" tone="subdued">
               Loading...

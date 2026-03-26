@@ -1,4 +1,8 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+#
+# Extensions: the Shopify CLI discovers sibling folders under extensions/ (this app includes
+# ripx-checkout-discount — Discount Function, and ripx-theme — theme app extension). Run
+# shopify app dev / shopify app deploy from the repo root so they bundle with this app.
 
 client_id = "be18ce24d0354b555ea1a0b8af0bbcbe"
 name = "RipperX"

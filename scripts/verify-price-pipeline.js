@@ -15,9 +15,15 @@
  * Optional: RIPX_VERIFY_SHOP + DATABASE_URL → tenant check + running price test count.
  * Reads extensions/ripx-checkout-discount/src/ripxConfig.js when present (drift vs .env). RIPX_DIAGNOSTICS_SKIP_EXTENSION_CONFIG=true skips.
  */
+const fs = require('fs');
 const path = require('path');
 
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
+
+const CHECKOUT_FN_WASM = path.join(
+  __dirname,
+  '../extensions/ripx-checkout-discount/dist/function.wasm'
+);
 
 const jsonMode = process.argv.includes('--json');
 
@@ -114,6 +120,13 @@ async function main() {
   }
 
   console.log('\n=== RipX price pipeline (config diagnostics) ===\n');
+  const wasmOk = fs.existsSync(CHECKOUT_FN_WASM);
+  console.log(
+    'Checkout discount WASM:',
+    wasmOk
+      ? 'dist/function.wasm present'
+      : 'missing — run npm run shopify:checkout-discount:build (needs Shopify CLI)'
+  );
   console.log(
     'Overall:',
     body.summary?.overall_status,

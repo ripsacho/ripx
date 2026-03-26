@@ -1,11 +1,32 @@
 /**
  * useTests - TanStack Query hook for tests data
+ *
+ * Query keys include the current shop/domain so switching stores does not show
+ * another domain's cached list or detail.
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPost, apiDelete, unwrapData } from '../services';
+import { apiGet, apiPost, apiDelete, unwrapData, getShopDomain } from '../services';
 
-const TESTS_QUERY_KEY = ['tests'];
+const TESTS_ROOT = 'tests';
+
+function scopeShop(shopDomain) {
+  const s =
+    shopDomain !== undefined && shopDomain !== null && shopDomain !== ''
+      ? String(shopDomain).trim()
+      : getShopDomain();
+  return s || '_';
+}
+
+/** @param {string} [shopDomain] — omit to use getShopDomain() */
+export function testsListQueryKey(shopDomain) {
+  return [TESTS_ROOT, scopeShop(shopDomain), 'list'];
+}
+
+/** @param {string} [shopDomain] — omit to use getShopDomain() */
+export function testDetailQueryKey(shopDomain, id) {
+  return [TESTS_ROOT, scopeShop(shopDomain), id];
+}
 
 async function fetchTests() {
   const response = await apiGet('/tests');
@@ -15,8 +36,9 @@ async function fetchTests() {
 }
 
 export function useTests(options = {}) {
+  const shop = getShopDomain();
   return useQuery({
-    queryKey: TESTS_QUERY_KEY,
+    queryKey: testsListQueryKey(shop),
     queryFn: fetchTests,
     staleTime: 30 * 1000, // 30 seconds
     ...options,
@@ -24,8 +46,9 @@ export function useTests(options = {}) {
 }
 
 export function useTest(id, options = {}) {
+  const shop = getShopDomain();
   return useQuery({
-    queryKey: ['tests', id],
+    queryKey: testDetailQueryKey(shop, id),
     queryFn: async () => {
       const response = await apiGet(`/tests/${id}`);
       const data = unwrapData(response);
@@ -46,9 +69,10 @@ export function useTest(id, options = {}) {
 export function useInvalidateTests() {
   const queryClient = useQueryClient();
   return (testId = null) => {
-    queryClient.invalidateQueries({ queryKey: TESTS_QUERY_KEY });
+    const shop = getShopDomain();
+    queryClient.invalidateQueries({ queryKey: testsListQueryKey(shop) });
     if (testId) {
-      queryClient.invalidateQueries({ queryKey: ['tests', testId] });
+      queryClient.invalidateQueries({ queryKey: testDetailQueryKey(shop, testId) });
     }
   };
 }
@@ -58,19 +82,21 @@ export function useStartTest() {
   return useMutation({
     mutationFn: testId => apiPost(`/tests/${testId}/start`, {}),
     onMutate: async testId => {
-      await queryClient.cancelQueries({ queryKey: TESTS_QUERY_KEY });
-      const prev = queryClient.getQueryData(TESTS_QUERY_KEY);
-      queryClient.setQueryData(TESTS_QUERY_KEY, old =>
+      const listKey = testsListQueryKey();
+      await queryClient.cancelQueries({ queryKey: listKey });
+      const prev = queryClient.getQueryData(listKey);
+      queryClient.setQueryData(listKey, old =>
         Array.isArray(old) ? old.map(t => (t.id === testId ? { ...t, status: 'running' } : t)) : old
       );
-      return { prev };
+      return { prev, listKey };
     },
-    onError: (_err, _testId, { prev }) => {
-      if (prev) queryClient.setQueryData(TESTS_QUERY_KEY, prev);
+    onError: (_err, _testId, ctx) => {
+      if (ctx?.prev && ctx?.listKey) queryClient.setQueryData(ctx.listKey, ctx.prev);
     },
     onSettled: (_data, _error, testId) => {
-      queryClient.invalidateQueries({ queryKey: TESTS_QUERY_KEY });
-      if (testId) queryClient.invalidateQueries({ queryKey: ['tests', testId] });
+      const shop = getShopDomain();
+      queryClient.invalidateQueries({ queryKey: testsListQueryKey(shop) });
+      if (testId) queryClient.invalidateQueries({ queryKey: testDetailQueryKey(shop, testId) });
     },
   });
 }
@@ -80,19 +106,21 @@ export function useStopTest() {
   return useMutation({
     mutationFn: testId => apiPost(`/tests/${testId}/stop`, {}),
     onMutate: async testId => {
-      await queryClient.cancelQueries({ queryKey: TESTS_QUERY_KEY });
-      const prev = queryClient.getQueryData(TESTS_QUERY_KEY);
-      queryClient.setQueryData(TESTS_QUERY_KEY, old =>
+      const listKey = testsListQueryKey();
+      await queryClient.cancelQueries({ queryKey: listKey });
+      const prev = queryClient.getQueryData(listKey);
+      queryClient.setQueryData(listKey, old =>
         Array.isArray(old) ? old.map(t => (t.id === testId ? { ...t, status: 'stopped' } : t)) : old
       );
-      return { prev };
+      return { prev, listKey };
     },
-    onError: (_err, _testId, { prev }) => {
-      if (prev) queryClient.setQueryData(TESTS_QUERY_KEY, prev);
+    onError: (_err, _testId, ctx) => {
+      if (ctx?.prev && ctx?.listKey) queryClient.setQueryData(ctx.listKey, ctx.prev);
     },
     onSettled: (_data, _error, testId) => {
-      queryClient.invalidateQueries({ queryKey: TESTS_QUERY_KEY });
-      if (testId) queryClient.invalidateQueries({ queryKey: ['tests', testId] });
+      const shop = getShopDomain();
+      queryClient.invalidateQueries({ queryKey: testsListQueryKey(shop) });
+      if (testId) queryClient.invalidateQueries({ queryKey: testDetailQueryKey(shop, testId) });
     },
   });
 }
@@ -106,8 +134,9 @@ export function usePersonalizeTest() {
         variantIndex !== null && variantIndex !== undefined ? { variantIndex } : {}
       ),
     onSuccess: (_data, { testId }) => {
-      queryClient.invalidateQueries({ queryKey: ['tests', testId] });
-      queryClient.invalidateQueries({ queryKey: TESTS_QUERY_KEY });
+      const shop = getShopDomain();
+      queryClient.invalidateQueries({ queryKey: testDetailQueryKey(shop, testId) });
+      queryClient.invalidateQueries({ queryKey: testsListQueryKey(shop) });
     },
   });
 }
@@ -121,8 +150,9 @@ export function useRolloutTest() {
         ...(schedule && { schedule }),
       }),
     onSuccess: (_data, { testId }) => {
-      queryClient.invalidateQueries({ queryKey: ['tests', testId] });
-      queryClient.invalidateQueries({ queryKey: TESTS_QUERY_KEY });
+      const shop = getShopDomain();
+      queryClient.invalidateQueries({ queryKey: testDetailQueryKey(shop, testId) });
+      queryClient.invalidateQueries({ queryKey: testsListQueryKey(shop) });
     },
   });
 }
@@ -132,8 +162,9 @@ export function useDisablePersonalization() {
   return useMutation({
     mutationFn: testId => apiPost(`/tests/${testId}/personalization/disable`, {}),
     onSuccess: (_data, testId) => {
-      queryClient.invalidateQueries({ queryKey: ['tests', testId] });
-      queryClient.invalidateQueries({ queryKey: TESTS_QUERY_KEY });
+      const shop = getShopDomain();
+      queryClient.invalidateQueries({ queryKey: testDetailQueryKey(shop, testId) });
+      queryClient.invalidateQueries({ queryKey: testsListQueryKey(shop) });
     },
   });
 }
@@ -143,8 +174,9 @@ export function useDeleteTest() {
   return useMutation({
     mutationFn: testId => apiDelete(`/tests/${testId}`),
     onSuccess: (_data, testId) => {
-      queryClient.invalidateQueries({ queryKey: TESTS_QUERY_KEY });
-      if (testId) queryClient.removeQueries({ queryKey: ['tests', testId] });
+      const shop = getShopDomain();
+      queryClient.invalidateQueries({ queryKey: testsListQueryKey(shop) });
+      if (testId) queryClient.removeQueries({ queryKey: testDetailQueryKey(shop, testId) });
     },
   });
 }

@@ -7,7 +7,7 @@
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "nodemon",
     "dev:frontend": "cd frontend && npm run dev",
-    "install:all": "npm install && cd frontend && npm install && cd ..",
+    "install:all": "npm install && cd frontend && npm install && cd .. && cd extensions/ripx-checkout-discount && npm install && cd ../..",
     "dev:db": "docker compose -f docker-compose.dev.yml up -d",
     "dev:db:stop": "docker compose -f docker-compose.dev.yml down",
     "build": "npm run build:frontend",
@@ -60,7 +60,7 @@
   "author": "",
   "license": "MIT",
   "engines": {
-    "node": ">=18.0.0",
+    "node": ">=20.17.0",
     "npm": ">=9.0.0"
   },
   "repository": {

@@ -7,15 +7,20 @@ import React, { useCallback, useEffect } from 'react';
 import { Page, Button, BlockStack, Text, Spinner, Banner, Icon } from '@shopify/polaris';
 import { NotificationIcon } from '@shopify/polaris-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPut, unwrapData } from '../../services';
+import { apiGet, apiPut, unwrapData, getShopDomain } from '../../services';
 import { PageShell } from '../Shared';
 import styles from './Notifications.module.css';
 
+function notificationsQueryKey(shop) {
+  return ['notifications', shop || '_'];
+}
+
 function Notifications() {
   const queryClient = useQueryClient();
+  const shop = getShopDomain();
 
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['notifications'],
+    queryKey: notificationsQueryKey(shop),
     queryFn: async () => {
       const res = await apiGet('/notifications', { limit: 50 });
       const d = unwrapData(res);
@@ -30,7 +35,7 @@ function Notifications() {
     async id => {
       try {
         await apiPut(`/notifications/${id}/read`);
-        queryClient.setQueryData(['notifications'], prev => ({
+        queryClient.setQueryData(notificationsQueryKey(shop), prev => ({
           ...prev,
           notifications: (prev?.notifications ?? []).map(n =>
             n.id === id ? { ...n, read: true } : n
@@ -41,13 +46,13 @@ function Notifications() {
         // ignore
       }
     },
-    [queryClient]
+    [queryClient, shop]
   );
 
   const markAllRead = useCallback(async () => {
     try {
       await apiPut('/notifications/read-all');
-      queryClient.setQueryData(['notifications'], prev => ({
+      queryClient.setQueryData(notificationsQueryKey(shop), prev => ({
         ...prev,
         notifications: (prev?.notifications ?? []).map(n => ({ ...n, read: true })),
         unreadCount: 0,
@@ -55,7 +60,7 @@ function Notifications() {
     } catch {
       // ignore
     }
-  }, [queryClient]);
+  }, [queryClient, shop]);
 
   const notifications = data?.notifications ?? [];
   const unreadCount = data?.unreadCount ?? 0;

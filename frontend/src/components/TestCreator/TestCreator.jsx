@@ -10,7 +10,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { PageShell } from '../Shared';
 import { apiPost, isStandaloneMode, unwrapData } from '../../services';
 import { isShopifyStoreDomain } from '../../utils/shopifyAdmin';
-import { useInvalidateTests, useAppRoutes } from '../../hooks';
+import { useInvalidateTests, useAppRoutes, testDetailQueryKey } from '../../hooks';
+import { getShopDomain } from '../../services';
 import { STANDALONE_TEST_TYPE_IDS } from '../../constants';
 import TestWizard from '../TestWizard/TestWizard';
 import styles from './TestCreator.module.css';
@@ -60,7 +61,7 @@ function TestCreator() {
       const testData = unwrapData(response)?.test ?? unwrapData(response);
       if (testData?.id) {
         // Pre-populate cache so TestDetail shows correct data immediately (avoids stale variant count)
-        queryClient.setQueryData(['tests', testData.id], testData);
+        queryClient.setQueryData(testDetailQueryKey(getShopDomain(), testData.id), testData);
         invalidateTests();
         navigate(routes.testDetail(testData.id), { state: { createdTest: testData } });
       } else {

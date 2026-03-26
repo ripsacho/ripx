@@ -97,9 +97,10 @@ function parseRipxCheckoutExtensionConfig(source) {
   } catch {
     return { error: 'invalid_batch_literal' };
   }
-  if (typeof batchUrl !== 'string' || !batchUrl.trim()) {
+  if (typeof batchUrl !== 'string') {
     return { error: 'invalid_batch_value' };
   }
+  // Empty string is valid: clone-safe default until sync-config runs
   if (secretM) {
     try {
       const s = JSON.parse(secretM[1].trim());
@@ -204,12 +205,17 @@ function buildExtensionConfigDiagnostics(params) {
   if (Boolean(envNorm) && !batchMatches) {
     issues.push({
       level: 'warning',
-      text: `Batch URL drift: extension "${extBatch}" vs server .env "${envNorm}". Run npm run shopify:checkout-discount:sync-config and redeploy the checkout discount extension.`,
+      text: `Batch URL drift: extension "${extBatch || '(empty)'}" vs server .env "${envNorm}". Run npm run shopify:checkout-discount:sync-config and redeploy the checkout discount extension.`,
     });
   } else if (!envNorm && extBatch) {
     issues.push({
       level: 'warning',
       text: 'Server .env has no batch URL but extension ripxConfig.js defines one — set APP_URL or RIPX_PRICE_RESOLVE_BATCH_URL.',
+    });
+  } else if (!envNorm && !extBatch) {
+    issues.push({
+      level: 'warning',
+      text: 'Extension batch URL and server .env are both unset — set APP_URL (or RIPX_PRICE_RESOLVE_BATCH_URL), run npm run shopify:checkout-discount:sync-config, then rebuild the function.',
     });
   }
 

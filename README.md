@@ -6,6 +6,8 @@ RipX is an A/B testing platform for Shopify and standalone e-commerce sites. Tes
 
 **Full documentation:** [docs/README.md](docs/README.md) — quick start, project structure, scripts, and links to all specs and guides.
 
+**Production `.env` / deploy steps:** [docs/PRODUCTION_ENV_UPDATE_GUIDE.md](docs/PRODUCTION_ENV_UPDATE_GUIDE.md).
+
 ## Quick commands
 
 ```bash
@@ -16,6 +18,8 @@ npm run dev:db && npm run migrate
 npm run dev
 npm run shopify:dev   # or: shopify app dev --reset
 npm run build         # production frontend build
+# Checkout price function (Shopify Plus + network access): set APP_URL / secrets in .env, then:
+# npm run shopify:checkout-discount:prepare && shopify app deploy
 ```
 
 Production deploy (host, SSH key, IP, and process manager) is environment-specific — keep those steps in your private runbook, not in the repo.

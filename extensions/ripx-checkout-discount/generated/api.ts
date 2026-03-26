@@ -341,7 +341,7 @@ export type CartLine = {
    * gift wrapping requests, or custom product details. Attributes are stored as key-value pairs.
    *
    * Cart line attributes are equivalent to the
-   * [`line_item`](https://shopify.dev/docs/apps/build/purchase-options/subscriptions/selling-plans)
+   * [`line_item`](https://shopify.dev/docs/api/liquid/objects/line_item)
    * object in Liquid.
    */
   attribute?: Maybe<Attribute>;
@@ -475,11 +475,17 @@ export type CartOperation =
    * An operation that selects which entered discount codes to accept. Use this to
    * validate discount codes from external systems.
    */
-  { enteredDiscountCodesAccept: EnteredDiscountCodesAcceptOperation; orderDiscountsAdd?: never; productDiscountsAdd?: never; }
+  { enteredDiscountCodesAccept: EnteredDiscountCodesAcceptOperation; enteredDiscountCodesReject?: never; orderDiscountsAdd?: never; productDiscountsAdd?: never; }
+  |  /**
+   * An operation that rejects entered discount codes with a custom message. Use
+   * this to conditionally reject discount codes based on business logic. This
+   * operation can only be used if the function is backed by an automatic discount.
+   */
+  { enteredDiscountCodesAccept?: never; enteredDiscountCodesReject: EnteredDiscountCodesRejectOperation; orderDiscountsAdd?: never; productDiscountsAdd?: never; }
   |  /** An operation that applies order discounts to a cart that share a selection strategy. */
-  { enteredDiscountCodesAccept?: never; orderDiscountsAdd: OrderDiscountsAddOperation; productDiscountsAdd?: never; }
+  { enteredDiscountCodesAccept?: never; enteredDiscountCodesReject?: never; orderDiscountsAdd: OrderDiscountsAddOperation; productDiscountsAdd?: never; }
   |  /** An operation that applies product discounts to a cart that share a selection strategy. */
-  { enteredDiscountCodesAccept?: never; orderDiscountsAdd?: never; productDiscountsAdd: ProductDiscountsAddOperation; };
+  { enteredDiscountCodesAccept?: never; enteredDiscountCodesReject?: never; orderDiscountsAdd?: never; productDiscountsAdd: ProductDiscountsAddOperation; };
 
 /**
  * Whether the product is in the specified collection.
@@ -1564,7 +1570,7 @@ export type DeliverableCartLine = {
    * gift wrapping requests, or custom product details. Attributes are stored as key-value pairs.
    *
    * Cart line attributes are equivalent to the
-   * [`line_item`](https://shopify.dev/docs/apps/build/purchase-options/subscriptions/selling-plans)
+   * [`line_item`](https://shopify.dev/docs/api/liquid/objects/line_item)
    * object in Liquid.
    */
   attribute?: Maybe<Attribute>;
@@ -1693,12 +1699,18 @@ export type DeliveryOperation =
    * Applies delivery discounts to a cart that share a method for determining which
    * shipping and delivery discounts to apply when multiple discounts are eligible.
    */
-  { deliveryDiscountsAdd: DeliveryDiscountsAddOperation; enteredDiscountCodesAccept?: never; }
+  { deliveryDiscountsAdd: DeliveryDiscountsAddOperation; enteredDiscountCodesAccept?: never; enteredDiscountCodesReject?: never; }
   |  /**
    * An operation that selects which entered discount codes to accept. Use this to
    * validate discount codes from external systems.
    */
-  { deliveryDiscountsAdd?: never; enteredDiscountCodesAccept: EnteredDiscountCodesAcceptOperation; };
+  { deliveryDiscountsAdd?: never; enteredDiscountCodesAccept: EnteredDiscountCodesAcceptOperation; enteredDiscountCodesReject?: never; }
+  |  /**
+   * An operation that rejects entered discount codes with a custom message. Use
+   * this to conditionally reject discount codes based on business logic. This
+   * operation can only be used if the function is backed by an automatic discount.
+   */
+  { deliveryDiscountsAdd?: never; enteredDiscountCodesAccept?: never; enteredDiscountCodesReject: EnteredDiscountCodesRejectOperation; };
 
 /**
  * A method for applying a discount to a delivery option within a delivery group.
@@ -1768,12 +1780,30 @@ export type EnteredDiscountCode = {
   __typename?: 'EnteredDiscountCode';
   /** The discount code. */
   code: Scalars['String']['output'];
+  /**
+   * Indicates whether the entered discount code can be rejected.
+   *
+   * A discount code can't be rejected if it's associated with a discount that has already been applied to the cart.
+   */
+  rejectable: Scalars['Boolean']['output'];
 };
 
 /** An operation that selects which entered discount codes to accept. Use this to validate discount codes from external systems. */
 export type EnteredDiscountCodesAcceptOperation = {
   /** The list of discount codes to accept. */
   codes: Array<DiscountCode>;
+};
+
+/**
+ * An operation that rejects entered discount codes with a custom message. Use this
+ * to conditionally reject discount codes based on business logic. This operation
+ * can only be used if the function is backed by an automatic discount.
+ */
+export type EnteredDiscountCodesRejectOperation = {
+  /** The list of discount codes to reject. */
+  codes: Array<RejectedDiscountCode>;
+  /** The custom message to display to the customer when the discount codes are rejected. */
+  message: Scalars['String']['input'];
 };
 
 /** A fixed amount value. */
@@ -1929,10 +1959,10 @@ export type Input = {
    */
   discount: Discount;
   /**
-   * The discount codes that customers enter at checkout, excluding gift cards.
-   * Codes aren't validated in any way other than to verify they aren't gift cards.
-   * This input is only available in the `cart.lines.discounts.generate.fetch` and
-   * `cart.delivery-options.discounts.generate.fetch` extension targets.
+   * Discount codes entered by the buyer at checkout, excluding gift cards. For
+   * cart.lines.discounts.generate.run and cart.delivery-options.discounts.generate.run targets, these
+   * discount codes are validated to ensure they are not deleted, maintain an active status, and are eligible
+   * for the current cart. For fetch targets, all entered discount codes are included, excluding gift cards.
    */
   enteredDiscountCodes: Array<EnteredDiscountCode>;
   /**
@@ -3083,6 +3113,12 @@ export type PurchasingCompany = {
   contact?: Maybe<CompanyContact>;
   /** The company location associated to the order or draft order. */
   location: CompanyLocation;
+};
+
+/** A discount code to be rejected. */
+export type RejectedDiscountCode = {
+  /** The discount code to reject. */
+  code: Scalars['String']['input'];
 };
 
 /** Represents how products and variants can be sold and purchased. */

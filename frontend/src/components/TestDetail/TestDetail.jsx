@@ -18,7 +18,7 @@ import {
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import Toast from '../Toast/Toast';
 import LoadingSkeleton from '../LoadingSkeleton/LoadingSkeleton';
-import { apiPost, apiPut, unwrapData } from '../../services';
+import { apiPost, apiPut, unwrapData, getShopDomain } from '../../services';
 import TestWizard from '../TestWizard/TestWizard';
 import { PageShell } from '../Shared';
 import {
@@ -31,6 +31,8 @@ import {
   useRolloutTest,
   useDisablePersonalization,
   useAppRoutes,
+  testsListQueryKey,
+  testDetailQueryKey,
 } from '../../hooks';
 import { useQueryClient } from '@tanstack/react-query';
 import { getTestTypeDisplay, getVariantCount } from '../../utils/testType';
@@ -77,6 +79,7 @@ function TestDetail() {
 
   // When navigating from create, list, or clone, pre-populate cache so we show correct variants immediately
   useEffect(() => {
+    const shop = getShopDomain();
     const toCache = createdTest?.id === id ? createdTest : listTest?.id === id ? listTest : null;
     if (!toCache?.id) return;
     // Always set for created/cloned; for list set when we have variants (full data from GET /tests)
@@ -84,13 +87,14 @@ function TestDetail() {
     const isFromListWithVariants =
       toCache === listTest && Array.isArray(toCache.variants) && toCache.variants.length > 0;
     if (isFromCreateOrClone || isFromListWithVariants) {
-      queryClient.setQueryData(['tests', id], toCache);
+      queryClient.setQueryData(testDetailQueryKey(shop, id), toCache);
     }
   }, [id, createdTest, listTest, queryClient]);
 
   useEffect(() => {
     if (!test?.id) return;
-    queryClient.setQueryData(['tests'], old => {
+    const shop = getShopDomain();
+    queryClient.setQueryData(testsListQueryKey(shop), old => {
       if (!Array.isArray(old)) return old;
       const idx = old.findIndex(t => t.id === test.id);
       if (idx < 0) return old;
@@ -229,7 +233,7 @@ function TestDetail() {
       const response = await apiPost(`/tests/${id}/clone`, {});
       const testData = unwrapData(response)?.test ?? unwrapData(response);
       if (testData?.id) {
-        queryClient.setQueryData(['tests', testData.id], testData);
+        queryClient.setQueryData(testDetailQueryKey(getShopDomain(), testData.id), testData);
         invalidateTests();
         navigate(routes.testDetail(testData.id), { state: { createdTest: testData } });
       }
@@ -244,7 +248,7 @@ function TestDetail() {
     const response = await apiPut(`/tests/${id}/variants/codes`, codePayload);
     const updatedTest = unwrapData(response)?.test ?? unwrapData(response);
     if (updatedTest) {
-      queryClient.setQueryData(['tests', id], updatedTest);
+      queryClient.setQueryData(testDetailQueryKey(getShopDomain(), id), updatedTest);
     }
     invalidateTests(id);
     setSuccessMessage('Code saved successfully');
@@ -271,7 +275,7 @@ function TestDetail() {
       }
       const updatedTest = unwrapData(response)?.test ?? unwrapData(response);
       if (updatedTest) {
-        queryClient.setQueryData(['tests', id], updatedTest);
+        queryClient.setQueryData(testDetailQueryKey(getShopDomain(), id), updatedTest);
       }
       invalidateTests(id);
       if (!options.silent) {

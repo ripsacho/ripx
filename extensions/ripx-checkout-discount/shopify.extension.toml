@@ -1,6 +1,6 @@
 # RipX: align checkout line prices with running price tests (network access / Shopify Plus Enterprise).
 # See docs/SHOPIFY_CHECKOUT_PRICE_RESOLVER.md
-api_version = "2025-10"
+api_version = "2026-01"
 
 [[extensions]]
 name = "t:name"

@@ -28,7 +28,7 @@ import {
   useCursorGlow,
   useAppRoutes,
 } from '../../hooks';
-import { isStandaloneMode } from '../../services';
+import { isStandaloneMode, getShopDomain } from '../../services';
 import ProgressRing from './ProgressRing';
 
 function getTimeGreeting() {
@@ -91,6 +91,15 @@ function Dashboard() {
   const testsPerPage = 5;
   const navigate = useNavigate();
   const routes = useAppRoutes();
+  const activeShopDomain = getShopDomain();
+
+  useEffect(() => {
+    setCurrentPage(1);
+    setStatusFilter('all');
+    setSortBy('recent');
+    setErrorDismissed(false);
+    setCommandPaletteOpen(false);
+  }, [activeShopDomain]);
 
   const {
     data: tests = [],

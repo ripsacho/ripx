@@ -130,6 +130,28 @@ export const RIPX_CHECKOUT_PRICE_SECRET = ${JSON.stringify('secret-one')};
     });
   });
 
+  it('parseRipxCheckoutExtensionConfig allows empty batch URL (clone default before sync-config)', () => {
+    const { parseRipxCheckoutExtensionConfig } = require('../priceCheckoutDiagnostics');
+    const p = parseRipxCheckoutExtensionConfig(
+      'export const RIPX_PRICE_RESOLVE_BATCH_URL = "";\nexport const RIPX_CHECKOUT_PRICE_SECRET = "";'
+    );
+    expect(p).toMatchObject({ batchUrl: '', secret: '' });
+  });
+
+  it('extensionConfig empty batch URL with env set reports drift', () => {
+    process.env.APP_URL = 'https://api.example.com';
+    delete process.env.RIPX_PRICE_RESOLVE_BATCH_URL;
+    const { buildCheckoutPriceDiagnostics } = require('../priceCheckoutDiagnostics');
+    const contents =
+      'export const RIPX_PRICE_RESOLVE_BATCH_URL = "";\nexport const RIPX_CHECKOUT_PRICE_SECRET = "";';
+    const d = buildCheckoutPriceDiagnostics({
+      extensionConfig: { source: 'present', contents },
+    });
+    const ext = d.checklist.find(c => c.id === 'extension_config_matches_env');
+    expect(ext?.ok).toBe(false);
+    expect(ext?.message).toMatch(/drift|empty/i);
+  });
+
   it('extensionConfig present + matching env passes extension_config_matches_env', () => {
     process.env.APP_URL = 'https://api.example.com';
     delete process.env.RIPX_PRICE_RESOLVE_BATCH_URL;
