@@ -108,10 +108,10 @@ try {
 
   if (useRedisSession) {
     const sessionStorePromise = createSessionStoreAsync();
-    // Start with in-memory session middleware immediately; swap to Redis when ready.
-    // This avoids request queue races during async store initialization.
-    let cachedSessionMiddleware = session({ ...sessionOptions, store: undefined });
-    sessionStorePromise
+    // Do not create sessions until store initialization finishes, otherwise early
+    // sessions can land in memory and disappear once middleware is swapped to Redis.
+    let cachedSessionMiddleware = null;
+    const sessionMiddlewareReady = sessionStorePromise
       .then(store => {
         cachedSessionMiddleware = session({ ...sessionOptions, store: store || undefined });
         return cachedSessionMiddleware;
@@ -119,9 +119,14 @@ try {
       .catch(err => {
         logger.error('Session store init failed, using memory fallback', { error: err.message });
         cachedSessionMiddleware = session({ ...sessionOptions, store: undefined });
+        return cachedSessionMiddleware;
       });
     sessionMiddleware = (req, res, next) => {
-      cachedSessionMiddleware(req, res, next);
+      if (cachedSessionMiddleware) {
+        cachedSessionMiddleware(req, res, next);
+        return;
+      }
+      sessionMiddlewareReady.then(mw => mw(req, res, next)).catch(next);
     };
   } else {
     const sessionStore = createSessionStore();

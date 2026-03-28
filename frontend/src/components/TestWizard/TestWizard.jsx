@@ -1354,8 +1354,46 @@ function TestWizard({
     if (firstWithCode >= 0) {
       setSelectedVariantIndex(firstWithCode);
       hasVariantSelectionRef.current = true;
+      return;
     }
-  }, [variantCodesData]);
+
+    // Price tests commonly keep Control empty by design. On reload, auto-focus the
+    // first variant that has an actual saved price config so users don't see a blank form.
+    const looksLikePriceTest = String(formData?.type || '').toLowerCase() === 'price';
+    if (!looksLikePriceTest) {
+      return;
+    }
+    const hasSavedPriceConfig = cfg => {
+      if (!cfg || typeof cfg !== 'object') return false;
+      const mode = String(cfg.priceMode || 'fixed').toLowerCase();
+      if (mode === 'fixed') {
+        return cfg.price !== null && cfg.price !== undefined && String(cfg.price).trim() !== '';
+      }
+      if (mode === 'amount') {
+        return (
+          cfg.priceDelta !== null &&
+          cfg.priceDelta !== undefined &&
+          String(cfg.priceDelta).trim() !== ''
+        );
+      }
+      if (mode === 'percent') {
+        return (
+          cfg.pricePercent !== null &&
+          cfg.pricePercent !== undefined &&
+          String(cfg.pricePercent).trim() !== ''
+        );
+      }
+      return false;
+    };
+
+    const firstWithPriceConfig = (formData?.variants || []).findIndex(v =>
+      hasSavedPriceConfig(v?.config || {})
+    );
+    if (firstWithPriceConfig >= 0) {
+      setSelectedVariantIndex(firstWithPriceConfig);
+      hasVariantSelectionRef.current = true;
+    }
+  }, [variantCodesData, formData?.type, formData?.variants]);
 
   useEffect(() => {
     const current = variantCodesData[selectedVariantIndex];

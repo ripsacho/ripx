@@ -28,13 +28,13 @@ test-results
 *.log
 *.map
 
-# Docs (keep README for image metadata if desired)
-# *.md
+# Docs (keep README for image metadata)
+*.md
+!README.md
 
 # Misc
 .husky
 .github
 Dockerfile
 docker-compose*.yml
-*.md
 
