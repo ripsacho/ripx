@@ -1087,7 +1087,7 @@ router.get(
 router.get(
   '/preview',
   asyncHandler(async (req, res) => {
-    const { test_id, variant_id, variant_name, shop_domain, site } = req.query;
+    const { test_id, variant_id, variant_name, shop_domain, site, user_id } = req.query;
     const domain = await resolveTenantDomain(shop_domain, site);
 
     if (!test_id || !domain) {
@@ -1136,13 +1136,22 @@ router.get(
       config.code = variant.code;
     }
 
+    const previewVariant = {
+      variantId: variant.id,
+      variantName: variant.name,
+      config,
+    };
+    const previewUserId = user_id !== undefined && user_id !== null ? String(user_id).trim() : '';
+    const signedPreviewVariant = withAssignmentSignature(
+      previewVariant,
+      String(test_id).trim(),
+      previewUserId,
+      domain
+    );
+
     return res.json({
       success: true,
-      variant: {
-        variantId: variant.id,
-        variantName: variant.name,
-        config,
-      },
+      variant: signedPreviewVariant,
     });
   })
 );

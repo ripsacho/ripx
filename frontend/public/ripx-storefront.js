@@ -597,6 +597,17 @@
       const params = new URLSearchParams();
       params.set('test_id', testId);
       appendTrackTenantParams(params);
+      var previewUserId = getUserId();
+      if (!previewUserId) {
+        if (!window.__RIPX_PREVIEW_USER_ID__) {
+          window.__RIPX_PREVIEW_USER_ID__ =
+            'ripx_preview_' + Math.random().toString(36).slice(2, 12);
+        }
+        previewUserId = window.__RIPX_PREVIEW_USER_ID__;
+      }
+      if (previewUserId && String(previewUserId).trim()) {
+        params.set('user_id', String(previewUserId).trim());
+      }
 
       if (PREVIEW_VARIANT_ID) {
         params.set('variant_id', PREVIEW_VARIANT_ID);
@@ -1650,7 +1661,10 @@
       function paintEl(el) {
         if (!el || seen.has(el) || inCartUi(el)) return;
         seen.add(el);
-        el.textContent = currentDisplay;
+        // Avoid continuous mutation churn by writing only when value changed.
+        if (el.textContent !== currentDisplay) {
+          el.textContent = currentDisplay;
+        }
         el.setAttribute('data-test-variant', String(variantIdForCart));
         el.setAttribute('data-test-id', String(testId));
         el.setAttribute('data-ripx-price', '1');
