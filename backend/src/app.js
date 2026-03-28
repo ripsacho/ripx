@@ -243,7 +243,13 @@ app.use('/api', (req, res, next) => {
 if (process.env.NODE_ENV === 'production') {
   const path = require('path');
   const frontendDist = path.join(__dirname, '../../frontend/dist');
-  app.use('/assets', express.static(path.join(frontendDist, 'assets')));
+  app.use(
+    '/assets',
+    express.static(path.join(frontendDist, 'assets'), {
+      maxAge: '1y',
+      immutable: true,
+    })
+  );
 }
 
 // Security middleware
@@ -775,9 +781,26 @@ if (distExists) {
   // Serve /assets/* first so JS/CSS get correct MIME type (never fall through to SPA catch-all).
   const assetsDir = path.join(frontendDist, 'assets');
   if (fs.existsSync(assetsDir)) {
-    app.use('/assets', express.static(assetsDir));
+    app.use(
+      '/assets',
+      express.static(assetsDir, {
+        maxAge: '1y',
+        immutable: true,
+      })
+    );
   }
-  app.use(express.static(frontendDist));
+  app.use(
+    express.static(frontendDist, {
+      index: false,
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('index.html')) {
+          res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+          res.setHeader('Pragma', 'no-cache');
+          res.setHeader('Expires', '0');
+        }
+      },
+    })
+  );
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api')) {
       return next();
@@ -789,6 +812,9 @@ if (distExists) {
     ) {
       return next();
     }
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.sendFile(path.join(frontendDist, 'index.html'));
   });
 }
