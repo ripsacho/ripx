@@ -148,6 +148,13 @@ const DEFAULT_FORM_DATA = {
   guardrail_config: { enabled: false, minDropPercent: 10 },
 };
 
+function isPriceLikeTestType(typeValue) {
+  const t = String(typeValue || '')
+    .toLowerCase()
+    .trim();
+  return t === 'price' || t === 'pricing';
+}
+
 function TestWizard({
   mode = 'create',
   showTemplateStep = true,
@@ -1359,7 +1366,7 @@ function TestWizard({
 
     // Price tests commonly keep Control empty by design. On reload, auto-focus the
     // first variant that has an actual saved price config so users don't see a blank form.
-    const looksLikePriceTest = String(formData?.type || '').toLowerCase() === 'price';
+    const looksLikePriceTest = isPriceLikeTestType(formData?.type);
     if (!looksLikePriceTest) {
       return;
     }
@@ -1476,7 +1483,7 @@ function TestWizard({
   const isPriceTestType =
     selectedTemplate === 'price' ||
     selectedTemplate === 'pricing' ||
-    (formData.type || '').toLowerCase() === 'price';
+    isPriceLikeTestType(formData.type);
 
   const handleNext = () => {
     const stepErrors = getStepErrors(currentStep);
@@ -5138,7 +5145,7 @@ function TestWizard({
                       );
                     })}
                   </div>
-                  {(formData.type || '').toLowerCase() === 'price' && (
+                  {isPriceLikeTestType(formData.type) && (
                     <p className={styles.goalPriceMetricHint}>
                       For price tests, <strong>Revenue</strong> (or Profit with COGS) is usually the
                       best primary metric; conversion-only can bias toward lower prices.
@@ -8634,7 +8641,7 @@ function TestWizard({
     const reviewVariants = formData.variants?.length
       ? formData.variants
       : initialData?.variants || [];
-    const isPriceReview = (formData.type || initialData?.type || '').toLowerCase() === 'price';
+    const isPriceReview = isPriceLikeTestType(formData.type || initialData?.type);
     const reviewTargetProductIds =
       (formData.target_type || initialData?.target_type) === 'product'
         ? formData.target_ids?.length
