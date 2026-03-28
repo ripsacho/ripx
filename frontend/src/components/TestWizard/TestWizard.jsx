@@ -155,6 +155,65 @@ function isPriceLikeTestType(typeValue) {
   return t === 'price' || t === 'pricing';
 }
 
+function hasSavedPriceConfigValue(cfg) {
+  if (!cfg || typeof cfg !== 'object') return false;
+  const mode = String(cfg.priceMode || 'fixed').toLowerCase();
+  if (mode === 'fixed') {
+    if (cfg.price !== null && cfg.price !== undefined && String(cfg.price).trim() !== '')
+      return true;
+  } else if (mode === 'amount') {
+    if (
+      cfg.priceDelta !== null &&
+      cfg.priceDelta !== undefined &&
+      String(cfg.priceDelta).trim() !== ''
+    )
+      return true;
+  } else if (mode === 'percent') {
+    if (
+      cfg.pricePercent !== null &&
+      cfg.pricePercent !== undefined &&
+      String(cfg.pricePercent).trim() !== ''
+    )
+      return true;
+  }
+  // Per-product / per-variant overrides can be fully valid even when base mode/value is blank.
+  if (cfg.byProduct && typeof cfg.byProduct === 'object' && Object.keys(cfg.byProduct).length > 0) {
+    return true;
+  }
+  if (cfg.byVariant && typeof cfg.byVariant === 'object' && Object.keys(cfg.byVariant).length > 0) {
+    return true;
+  }
+  return false;
+}
+
+function normalizeVariantPriceConfigShape(variant) {
+  if (!variant || typeof variant !== 'object') {
+    return variant;
+  }
+  const config = variant.config && typeof variant.config === 'object' ? { ...variant.config } : {};
+  const rootKeys = [
+    'priceMode',
+    'price',
+    'priceDelta',
+    'pricePercent',
+    'priceBase',
+    'roundTo',
+    'byProduct',
+    'byVariant',
+  ];
+  let changed = false;
+  rootKeys.forEach(key => {
+    if (config[key] === undefined && variant[key] !== undefined) {
+      config[key] = variant[key];
+      changed = true;
+    }
+  });
+  if (!changed && variant.config && typeof variant.config === 'object') {
+    return variant;
+  }
+  return { ...variant, config };
+}
+
 function TestWizard({
   mode = 'create',
   showTemplateStep = true,
@@ -605,7 +664,8 @@ function TestWizard({
             ? [...initialData.goal.secondary]
             : [],
         },
-        variants: (initialData.variants || DEFAULT_FORM_DATA.variants).map((variant, vIdx) => {
+        variants: (initialData.variants || DEFAULT_FORM_DATA.variants).map((rawVariant, vIdx) => {
+          const variant = normalizeVariantPriceConfigShape(rawVariant);
           const config =
             variant.config && typeof variant.config === 'object' ? { ...variant.config } : {};
           const serverCode = variant?.code ?? variant?.config?.code ?? config?.code ?? '';
@@ -713,7 +773,8 @@ function TestWizard({
     if (variantCountMismatch && serverVariants.length > 0) {
       setFormData(prev => ({
         ...prev,
-        variants: serverVariants.map(v => {
+        variants: serverVariants.map(rawVariant => {
+          const v = normalizeVariantPriceConfigShape(rawVariant);
           const serverCode = v?.code ?? v?.config?.code ?? '';
           const config = v?.config && typeof v.config === 'object' ? { ...v.config } : {};
           return {
@@ -761,7 +822,7 @@ function TestWizard({
   };
 
   const buildPayload = (data = formData, codes = variantCodesData) => {
-    const variants = data?.variants || [];
+    const variants = (data?.variants || []).map(v => normalizeVariantPriceConfigShape(v));
     const codesList = Array.isArray(codes) ? codes : [];
     const variantsWithCode = variants.map((variant, index) => {
       const codeItem = codesList[index];
@@ -1370,37 +1431,27 @@ function TestWizard({
     if (!looksLikePriceTest) {
       return;
     }
-    const hasSavedPriceConfig = cfg => {
-      if (!cfg || typeof cfg !== 'object') return false;
-      const mode = String(cfg.priceMode || 'fixed').toLowerCase();
-      if (mode === 'fixed') {
-        return cfg.price !== null && cfg.price !== undefined && String(cfg.price).trim() !== '';
-      }
-      if (mode === 'amount') {
-        return (
-          cfg.priceDelta !== null &&
-          cfg.priceDelta !== undefined &&
-          String(cfg.priceDelta).trim() !== ''
-        );
-      }
-      if (mode === 'percent') {
-        return (
-          cfg.pricePercent !== null &&
-          cfg.pricePercent !== undefined &&
-          String(cfg.pricePercent).trim() !== ''
-        );
-      }
-      return false;
-    };
-
     const firstWithPriceConfig = (formData?.variants || []).findIndex(v =>
-      hasSavedPriceConfig(v?.config || {})
+      hasSavedPriceConfigValue(v?.config || {})
     );
     if (firstWithPriceConfig >= 0) {
       setSelectedVariantIndex(firstWithPriceConfig);
       hasVariantSelectionRef.current = true;
     }
   }, [variantCodesData, formData?.type, formData?.variants]);
+
+  useEffect(() => {
+    if (!isPriceLikeTestType(formData?.type)) return;
+    if (currentStep !== stepIds.traffic) return;
+    const variants = Array.isArray(formData?.variants) ? formData.variants : [];
+    if (variants.length === 0) return;
+    const currentCfg = variants[selectedVariantIndex]?.config || {};
+    if (hasSavedPriceConfigValue(currentCfg)) return;
+    const firstConfigured = variants.findIndex(v => hasSavedPriceConfigValue(v?.config || {}));
+    if (firstConfigured >= 0 && firstConfigured !== selectedVariantIndex) {
+      setSelectedVariantIndex(firstConfigured);
+    }
+  }, [currentStep, stepIds.traffic, formData?.type, formData?.variants, selectedVariantIndex]);
 
   useEffect(() => {
     const current = variantCodesData[selectedVariantIndex];
