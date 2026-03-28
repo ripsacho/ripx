@@ -233,6 +233,9 @@ function Settings() {
   const [checkoutDiagLoading, setCheckoutDiagLoading] = useState(false);
   const [checkoutDiag, setCheckoutDiag] = useState(null);
   const [checkoutDiagError, setCheckoutDiagError] = useState(null);
+  const [checkoutDiscountEnsuring, setCheckoutDiscountEnsuring] = useState(false);
+  const [checkoutDiscountEnsureResult, setCheckoutDiscountEnsureResult] = useState(null);
+  const [checkoutDiscountEnsureError, setCheckoutDiscountEnsureError] = useState(null);
   const [previewProbeTestId, setPreviewProbeTestId] = useState('');
   const [previewProbeVariant, setPreviewProbeVariant] = useState('');
   const [previewProbeLoading, setPreviewProbeLoading] = useState(false);
@@ -338,6 +341,36 @@ function Settings() {
       setCheckoutDiagLoading(false);
     }
   }, [installation?.domain]);
+
+  const ensureCheckoutDiscount = useCallback(async () => {
+    if (!installation?.domain) return;
+    setCheckoutDiscountEnsuring(true);
+    setCheckoutDiscountEnsureError(null);
+    setCheckoutDiscountEnsureResult(null);
+    try {
+      const res = await apiPost('/settings/checkout-price-discount/ensure', {
+        title: 'RipX Price Test Function',
+      });
+      const data = unwrapData(res);
+      if (!data || data.success === false || !data.discount) {
+        throw new Error(data?.error || 'Could not create/attach RipX automatic discount');
+      }
+      setCheckoutDiscountEnsureResult({
+        created: data.created === true,
+        discountId: data.discount.discountId || null,
+        title: data.discount.title || 'RipX Price Test Function',
+        status: data.discount.status || null,
+      });
+      // Refresh diagnostics after successful creation/attach.
+      runCheckoutDiagnostics();
+    } catch (e) {
+      setCheckoutDiscountEnsureError(
+        e?.message || 'Could not create/attach RipX automatic discount'
+      );
+    } finally {
+      setCheckoutDiscountEnsuring(false);
+    }
+  }, [installation?.domain, runCheckoutDiagnostics]);
 
   const runPreviewProbe = useCallback(async () => {
     const testId = String(previewProbeTestId || '').trim();
@@ -1090,6 +1123,13 @@ function Settings() {
                                   >
                                     Run check
                                   </Button>
+                                  <Button
+                                    onClick={ensureCheckoutDiscount}
+                                    loading={checkoutDiscountEnsuring}
+                                    disabled={checkoutDiscountEnsuring}
+                                  >
+                                    Create/attach RipX discount
+                                  </Button>
                                   {(checkoutDiag || installation) && (
                                     <Badge tone={storeHealth.ready ? 'success' : 'warning'}>
                                       {storeHealth.ready
@@ -1231,6 +1271,27 @@ function Settings() {
                                     onDismiss={() => setCheckoutDiagError(null)}
                                   >
                                     {checkoutDiagError}
+                                  </Banner>
+                                )}
+                                {checkoutDiscountEnsureError && (
+                                  <Banner
+                                    tone="critical"
+                                    onDismiss={() => setCheckoutDiscountEnsureError(null)}
+                                  >
+                                    {checkoutDiscountEnsureError}
+                                  </Banner>
+                                )}
+                                {checkoutDiscountEnsureResult && (
+                                  <Banner
+                                    tone="success"
+                                    onDismiss={() => setCheckoutDiscountEnsureResult(null)}
+                                  >
+                                    {checkoutDiscountEnsureResult.created
+                                      ? 'RipX automatic discount created successfully.'
+                                      : 'RipX automatic discount already exists and is attached.'}{' '}
+                                    {checkoutDiscountEnsureResult.status
+                                      ? `Status: ${checkoutDiscountEnsureResult.status}.`
+                                      : ''}
                                   </Banner>
                                 )}
                                 {checkoutDiag?.infrastructure && (

@@ -2399,6 +2399,49 @@ body:has(.wizard-page) {
   gap: 8px;
 }
 
+.wizard-title-modal-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wizard-title-modal-suggestions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.wizard-title-modal-suggestion-chip {
+  border: 1px solid rgba(6, 182, 212, 0.28);
+  background: rgba(6, 182, 212, 0.06);
+  color: var(--text-primary);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    background-color 0.18s ease,
+    transform 0.15s ease;
+}
+
+.wizard-title-modal-suggestion-chip:hover {
+  border-color: rgba(6, 182, 212, 0.42);
+  background: rgba(6, 182, 212, 0.12);
+  transform: translateY(-1px);
+}
+
+.wizard-title-modal-suggestion-chip:active {
+  transform: translateY(0);
+}
+
+.wizard-title-modal-suggestion-chip:focus-visible {
+  outline: 2px solid rgba(6, 182, 212, 0.5);
+  outline-offset: 1px;
+}
+
 .wizard-title-modal-preview {
   padding: 10px 12px;
   border: 1px dashed rgba(6, 182, 212, 0.35);
@@ -2426,6 +2469,16 @@ body:has(.wizard-page) {
   border-color: rgba(6, 182, 212, 0.5);
   box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.22);
   background: rgba(15, 23, 42, 0.55);
+}
+
+[data-theme='dark'] .wizard-title-modal-suggestion-chip {
+  border-color: rgba(6, 182, 212, 0.38);
+  background: rgba(6, 182, 212, 0.14);
+}
+
+[data-theme='dark'] .wizard-title-modal-suggestion-chip:hover {
+  border-color: rgba(6, 182, 212, 0.55);
+  background: rgba(6, 182, 212, 0.22);
 }
 
 [data-theme='dark'] .wizard-title-modal-preview {

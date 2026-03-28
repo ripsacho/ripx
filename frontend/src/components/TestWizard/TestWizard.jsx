@@ -9022,6 +9022,69 @@ function TestWizard({
     }
   };
 
+  const modalNameSuggestions = (() => {
+    const rawType = String(formData.type || selectedTemplate || 'content')
+      .replace(/[-_]+/g, ' ')
+      .trim();
+    const typeLabel = rawType ? rawType.charAt(0).toUpperCase() + rawType.slice(1) : 'Test';
+    const metricRaw = String(formData.goal?.metric || 'conversion_rate')
+      .toLowerCase()
+      .trim();
+    const metricLabel =
+      metricRaw === 'revenue' ? 'Revenue' : metricRaw === 'aov' ? 'AOV' : 'Conversion';
+    const targetTypeRaw = String(formData.target_type || '')
+      .toLowerCase()
+      .trim();
+    const selectedTargetIds =
+      Array.isArray(formData.target_ids) && formData.target_ids.length > 0
+        ? formData.target_ids
+        : formData.target_id
+          ? [formData.target_id]
+          : [];
+    const lookupId = selectedTargetIds[0];
+    const targetMatch = lookupId
+      ? (storeResources || []).find(r => String(r?.id || '') === String(lookupId))
+      : null;
+    const targetTitle = String(targetMatch?.title || '').trim();
+    const gidNumeric = lookupId ? String(lookupId).split('/').pop() : '';
+    const targetLabel =
+      targetTypeRaw === 'all'
+        ? 'Sitewide'
+        : targetTypeRaw === 'all-products'
+          ? 'All products'
+          : targetTypeRaw === 'product'
+            ? selectedTargetIds.length > 1
+              ? `${selectedTargetIds.length} products`
+              : targetTitle || (gidNumeric ? `Product ${gidNumeric}` : 'Product')
+            : targetTypeRaw === 'collection'
+              ? selectedTargetIds.length > 1
+                ? `${selectedTargetIds.length} collections`
+                : targetTitle || (gidNumeric ? `Collection ${gidNumeric}` : 'Collection')
+              : targetTypeRaw === 'page'
+                ? selectedTargetIds.length > 1
+                  ? `${selectedTargetIds.length} pages`
+                  : targetTitle || (gidNumeric ? `Page ${gidNumeric}` : 'Page')
+                : targetTypeRaw
+                  ? targetTypeRaw.charAt(0).toUpperCase() + targetTypeRaw.slice(1)
+                  : 'Audience';
+
+    const variantNames = (formData.variants || [])
+      .map(v => String(v?.name || '').trim())
+      .filter(Boolean);
+    const controlName = variantNames.find(v => /control/i.test(v)) || 'Control';
+    const challengerName =
+      variantNames.find(v => !/control/i.test(v)) || variantNames[1] || 'Variant A';
+
+    const suggestionPool = [
+      `${targetLabel} - ${challengerName} vs ${controlName}`,
+      `${targetLabel} - ${metricLabel} uplift`,
+      `${typeLabel} - ${challengerName} hypothesis`,
+      `${targetLabel} - ${typeLabel} experiment`,
+    ];
+
+    return Array.from(new Set(suggestionPool)).slice(0, 4);
+  })();
+
   return (
     <>
       <Toast message={error} type="error" onClose={() => setError(null)} duration={5000} />
@@ -9247,6 +9310,28 @@ function TestWizard({
                 >
                   {titleEditDraft.name.length}/90
                 </Text>
+              </div>
+              <div className="wizard-title-modal-suggestions">
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Quick suggestions
+                </Text>
+                <div className="wizard-title-modal-suggestions-row">
+                  {modalNameSuggestions.map(suggestion => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      className="wizard-title-modal-suggestion-chip"
+                      onClick={() =>
+                        setTitleEditDraft(d => ({
+                          ...d,
+                          name: suggestion.slice(0, 90),
+                        }))
+                      }
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
             <div className="wizard-title-modal-field">
