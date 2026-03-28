@@ -634,13 +634,17 @@ function Settings() {
         : 'Storefront script not detected on theme embed/snippet.',
     });
 
-    const diagReady = checkoutDiag?.summary?.overall_ok === true;
+    const failedChecklist = Array.isArray(checkoutDiag?.checklist)
+      ? checkoutDiag.checklist.filter(item => !item?.ok)
+      : [];
+    const diagReady = failedChecklist.length === 0;
+    const firstFailedDiagMessage = failedChecklist[0]?.message || null;
     checks.push({
       key: 'checkout_diag',
       ok: diagReady,
       message: diagReady
         ? 'Checkout diagnostics passed.'
-        : 'Checkout diagnostics has warnings/errors.',
+        : `Checkout diagnostics has issues.${firstFailedDiagMessage ? ` First: ${firstFailedDiagMessage}` : ''}`,
     });
 
     const runningPriceTests =
@@ -683,6 +687,21 @@ function Settings() {
       failed: checks.filter(c => !c.ok),
     };
   }, [installation?.scriptVerified, checkoutDiag]);
+
+  const previewProbeUrl = useMemo(() => {
+    const shopDomain = String(installation?.domain || '').trim();
+    const testId = String(previewProbeTestId || '').trim();
+    const variant = String(previewProbeVariant || '').trim();
+    if (!shopDomain || !testId || !variant) return '';
+    const base = `https://${shopDomain}/`;
+    const params = new URLSearchParams({
+      ab_preview: '1',
+      ab_preview_test: testId,
+      ab_preview_variant: variant,
+      ab_preview_variant_name: variant,
+    });
+    return `${base}?${params.toString()}`;
+  }, [installation?.domain, previewProbeTestId, previewProbeVariant]);
 
   return (
     <PageShell
@@ -1152,6 +1171,13 @@ function Settings() {
                                       disabled={previewProbeLoading || previewProbeAutofillLoading}
                                     >
                                       Run preview probe
+                                    </Button>
+                                    <Button
+                                      url={previewProbeUrl || undefined}
+                                      external
+                                      disabled={!previewProbeUrl}
+                                    >
+                                      Open preview URL
                                     </Button>
                                     {previewProbeResult && (
                                       <Badge tone="success">Preview resolve: PASS</Badge>
