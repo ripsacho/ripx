@@ -1,5 +1,6 @@
 const {
   normalizeTestTypeForStorefront,
+  normalizeTargetTypeForStorefront,
   mapTestToStorefrontPayload,
   buildStorefrontRuntimeConfig,
   getStorefrontScriptCacheControl,
@@ -39,6 +40,20 @@ describe('storefrontScriptRuntime', () => {
     };
     const m = mapTestToStorefrontPayload(row);
     expect(m.antiFlickerMode).toBe('strict');
+  });
+
+  it('defaults empty price test target_type to all-products', () => {
+    const row = {
+      id: 't3',
+      type: 'price',
+      target_type: '',
+      target_id: null,
+      target_ids: null,
+      segments: {},
+    };
+    expect(normalizeTargetTypeForStorefront(row)).toBe('all-products');
+    const mapped = mapTestToStorefrontPayload(row);
+    expect(mapped.targetType).toBe('all-products');
   });
 
   it('buildStorefrontRuntimeConfig uses req for fallback app URL', () => {

@@ -233,6 +233,12 @@ function Settings() {
   const [checkoutDiagLoading, setCheckoutDiagLoading] = useState(false);
   const [checkoutDiag, setCheckoutDiag] = useState(null);
   const [checkoutDiagError, setCheckoutDiagError] = useState(null);
+  const [previewProbeTestId, setPreviewProbeTestId] = useState('');
+  const [previewProbeVariant, setPreviewProbeVariant] = useState('');
+  const [previewProbeLoading, setPreviewProbeLoading] = useState(false);
+  const [previewProbeAutofillLoading, setPreviewProbeAutofillLoading] = useState(false);
+  const [previewProbeResult, setPreviewProbeResult] = useState(null);
+  const [previewProbeError, setPreviewProbeError] = useState(null);
 
   const fetchSettings = useCallback(async () => {
     setSettingsLoadError(false);
@@ -332,6 +338,109 @@ function Settings() {
       setCheckoutDiagLoading(false);
     }
   }, [installation?.domain]);
+
+  const runPreviewProbe = useCallback(async () => {
+    const testId = String(previewProbeTestId || '').trim();
+    const variant = String(previewProbeVariant || '').trim();
+    const shopDomain = String(installation?.domain || '').trim();
+    if (!shopDomain) {
+      setPreviewProbeError('Store domain missing for probe.');
+      return;
+    }
+    if (!testId) {
+      setPreviewProbeError('Enter a test ID.');
+      return;
+    }
+    if (!variant) {
+      setPreviewProbeError('Enter a variant ID/name.');
+      return;
+    }
+    setPreviewProbeLoading(true);
+    setPreviewProbeError(null);
+    setPreviewProbeResult(null);
+    try {
+      const res = await apiGet('/track/preview', {
+        test_id: testId,
+        shop_domain: shopDomain,
+        variant_id: variant,
+        variant_name: variant,
+      });
+      const data = unwrapData(res);
+      if (!data || data.success === false || !data.variant) {
+        throw new Error(data?.error || 'Preview probe returned empty variant');
+      }
+      const cfg =
+        data.variant.config && typeof data.variant.config === 'object' ? data.variant.config : {};
+      setPreviewProbeResult({
+        variantId: data.variant.variantId || null,
+        variantName: data.variant.variantName || null,
+        priceMode: cfg.priceMode || null,
+        price: cfg.price ?? null,
+        priceDelta: cfg.priceDelta ?? null,
+        pricePercent: cfg.pricePercent ?? null,
+      });
+    } catch (e) {
+      setPreviewProbeError(e?.message || 'Preview probe failed');
+    } finally {
+      setPreviewProbeLoading(false);
+    }
+  }, [installation?.domain, previewProbeTestId, previewProbeVariant]);
+
+  const autofillPreviewProbeFromRunningTest = useCallback(async () => {
+    setPreviewProbeAutofillLoading(true);
+    setPreviewProbeError(null);
+    try {
+      const listRes = await apiGet('/tests');
+      const listData = unwrapData(listRes);
+      const tests = Array.isArray(listData?.tests)
+        ? listData.tests
+        : Array.isArray(listData)
+          ? listData
+          : [];
+      const runningPriceTests = tests.filter(t => {
+        const type = String(t?.type || '').toLowerCase();
+        const status = String(t?.status || '').toLowerCase();
+        return (type === 'price' || type === 'pricing') && status === 'running';
+      });
+      if (runningPriceTests.length === 0) {
+        throw new Error('No running price test found for this shop.');
+      }
+
+      const picked = runningPriceTests[0];
+      let variants = Array.isArray(picked?.variants) ? picked.variants : [];
+      if (variants.length === 0 && picked?.id) {
+        const detailRes = await apiGet(`/tests/${picked.id}`);
+        const detailData = unwrapData(detailRes);
+        const detailTest = detailData?.test ?? detailData;
+        variants = Array.isArray(detailTest?.variants) ? detailTest.variants : [];
+      }
+
+      const candidate =
+        variants.find(v => {
+          const mode = String(v?.config?.priceMode || '').toLowerCase();
+          if (mode === 'control') return false;
+          const name = String(v?.name || '').toLowerCase();
+          return name !== 'control';
+        }) || variants.find(v => v && (v.id || v.name));
+
+      if (!picked?.id || !candidate) {
+        throw new Error('Running test found, but no usable variant could be resolved.');
+      }
+
+      const candidateIdOrName =
+        candidate.id !== undefined && candidate.id !== null && String(candidate.id).trim()
+          ? String(candidate.id).trim()
+          : String(candidate.name || '').trim();
+
+      setPreviewProbeTestId(String(picked.id));
+      setPreviewProbeVariant(candidateIdOrName);
+      setMessage('Preview probe autofilled from current running price test');
+    } catch (e) {
+      setPreviewProbeError(e?.message || 'Could not autofill from running price test');
+    } finally {
+      setPreviewProbeAutofillLoading(false);
+    }
+  }, []);
 
   const handleRefreshIntegrations = useCallback(async () => {
     setIntegrationsRefreshing(true);
@@ -513,6 +622,67 @@ function Settings() {
       .join(' · ');
     return parts || 'All segments';
   };
+
+  const storeHealth = useMemo(() => {
+    const checks = [];
+    const scriptDetected = installation?.scriptVerified === true;
+    checks.push({
+      key: 'script_detected',
+      ok: scriptDetected,
+      message: scriptDetected
+        ? 'Storefront script detected on store theme.'
+        : 'Storefront script not detected on theme embed/snippet.',
+    });
+
+    const diagReady = checkoutDiag?.summary?.overall_ok === true;
+    checks.push({
+      key: 'checkout_diag',
+      ok: diagReady,
+      message: diagReady
+        ? 'Checkout diagnostics passed.'
+        : 'Checkout diagnostics has warnings/errors.',
+    });
+
+    const runningPriceTests =
+      checkoutDiag?.shop?.running_price_tests === null ||
+      checkoutDiag?.shop?.running_price_tests === undefined
+        ? null
+        : Number(checkoutDiag.shop.running_price_tests);
+    const hasRunningPriceTest = runningPriceTests === null ? null : runningPriceTests > 0;
+    checks.push({
+      key: 'running_price_test',
+      ok: hasRunningPriceTest === null ? false : hasRunningPriceTest,
+      message:
+        hasRunningPriceTest === null
+          ? 'Running price-test count unavailable.'
+          : hasRunningPriceTest
+            ? `Running price tests found (${runningPriceTests}).`
+            : 'No running price test found for this shop.',
+    });
+
+    const tenantRegistered =
+      checkoutDiag?.shop?.tenant_registered === undefined ||
+      checkoutDiag?.shop?.tenant_registered === null
+        ? null
+        : Boolean(checkoutDiag.shop.tenant_registered);
+    checks.push({
+      key: 'tenant_registered',
+      ok: tenantRegistered === null ? false : tenantRegistered,
+      message:
+        tenantRegistered === null
+          ? 'Tenant registration status unavailable.'
+          : tenantRegistered
+            ? 'Shop tenant is registered.'
+            : 'Shop tenant is not registered for this backend.',
+    });
+
+    const ready = checks.every(c => c.ok);
+    return {
+      ready,
+      checks,
+      failed: checks.filter(c => !c.ok),
+    };
+  }, [installation?.scriptVerified, checkoutDiag]);
 
   return (
     <PageShell
@@ -901,6 +1071,13 @@ function Settings() {
                                   >
                                     Run check
                                   </Button>
+                                  {(checkoutDiag || installation) && (
+                                    <Badge tone={storeHealth.ready ? 'success' : 'warning'}>
+                                      {storeHealth.ready
+                                        ? 'Store health: PASS'
+                                        : `Store health: FAIL (${storeHealth.failed.length})`}
+                                    </Badge>
+                                  )}
                                   {checkoutDiag?.summary && (
                                     <Badge
                                       tone={
@@ -917,6 +1094,103 @@ function Settings() {
                                     </Badge>
                                   )}
                                 </InlineStack>
+                                {(checkoutDiag || installation) && (
+                                  <div className={styles.checkoutDiagHealthSummary}>
+                                    <Text variant="headingSm" as="h3">
+                                      Store health summary
+                                    </Text>
+                                    <BlockStack gap="150">
+                                      {storeHealth.checks.map(item => (
+                                        <div key={item.key} className={styles.checkoutDiagCheckRow}>
+                                          <Badge tone={item.ok ? 'success' : 'critical'}>
+                                            {item.ok ? 'OK' : 'Fail'}
+                                          </Badge>
+                                          <Text as="span" variant="bodySm">
+                                            {item.message}
+                                          </Text>
+                                        </div>
+                                      ))}
+                                    </BlockStack>
+                                  </div>
+                                )}
+                                <Divider />
+                                <div className={styles.checkoutDiagHealthSummary}>
+                                  <Text variant="headingSm" as="h3">
+                                    Preview probe
+                                  </Text>
+                                  <Text as="p" variant="bodySm" tone="subdued">
+                                    Check if this shop/domain can resolve a specific test variant
+                                    via <code>/api/track/preview</code>.
+                                  </Text>
+                                  <div className={styles.checkoutDiagProbeGrid}>
+                                    <TextField
+                                      label="Test ID"
+                                      value={previewProbeTestId}
+                                      onChange={setPreviewProbeTestId}
+                                      autoComplete="off"
+                                      placeholder="68cbfbe8-6bee-479c-acce-58d0d9ffd9fe"
+                                    />
+                                    <TextField
+                                      label="Variant ID or name"
+                                      value={previewProbeVariant}
+                                      onChange={setPreviewProbeVariant}
+                                      autoComplete="off"
+                                      placeholder="Variant A"
+                                    />
+                                  </div>
+                                  <InlineStack gap="300" blockAlign="center">
+                                    <Button
+                                      onClick={autofillPreviewProbeFromRunningTest}
+                                      loading={previewProbeAutofillLoading}
+                                      disabled={previewProbeAutofillLoading || previewProbeLoading}
+                                    >
+                                      Use running price test
+                                    </Button>
+                                    <Button
+                                      onClick={runPreviewProbe}
+                                      loading={previewProbeLoading}
+                                      disabled={previewProbeLoading || previewProbeAutofillLoading}
+                                    >
+                                      Run preview probe
+                                    </Button>
+                                    {previewProbeResult && (
+                                      <Badge tone="success">Preview resolve: PASS</Badge>
+                                    )}
+                                  </InlineStack>
+                                  {previewProbeError && (
+                                    <Banner
+                                      tone="critical"
+                                      onDismiss={() => setPreviewProbeError(null)}
+                                    >
+                                      {previewProbeError}
+                                    </Banner>
+                                  )}
+                                  {previewProbeResult && (
+                                    <div className={styles.checkoutDiagProbeResult}>
+                                      <Text as="p" variant="bodySm">
+                                        <strong>Variant:</strong>{' '}
+                                        {previewProbeResult.variantName ||
+                                          previewProbeResult.variantId ||
+                                          '—'}
+                                      </Text>
+                                      <Text as="p" variant="bodySm">
+                                        <strong>Mode:</strong> {previewProbeResult.priceMode || '—'}
+                                      </Text>
+                                      <Text as="p" variant="bodySm">
+                                        <strong>Fixed price:</strong>{' '}
+                                        {previewProbeResult.price ?? '—'}
+                                      </Text>
+                                      <Text as="p" variant="bodySm">
+                                        <strong>Delta:</strong>{' '}
+                                        {previewProbeResult.priceDelta ?? '—'}
+                                      </Text>
+                                      <Text as="p" variant="bodySm">
+                                        <strong>Percent:</strong>{' '}
+                                        {previewProbeResult.pricePercent ?? '—'}
+                                      </Text>
+                                    </div>
+                                  )}
+                                </div>
                                 {checkoutDiagLoading && (
                                   <InlineStack gap="200" blockAlign="center">
                                     <Spinner size="small" />

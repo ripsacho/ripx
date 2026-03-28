@@ -91,6 +91,7 @@ import {
   getStepIds,
 } from './testWizardConfig';
 import { getWizardStepErrors } from './wizardValidation';
+import { shouldHydrateInitialData } from './initialDataHydration';
 
 /** URL pattern for homepage on Shopify: root and /index */
 const HOMEPAGE_URL_PATTERN_SHOPIFY = '^/$|^/index';
@@ -347,6 +348,7 @@ function TestWizard({
   const hasVariantSelectionRef = useRef(false);
   const previousTestIdRef = useRef(null);
   const initialSnapshotPendingRef = useRef(false);
+  const createInitialDataAppliedRef = useRef(false);
   const validationSummaryRef = useRef(null);
 
   useEffect(() => {
@@ -547,6 +549,16 @@ function TestWizard({
   }, [currentStep, stepIds.targeting, isStandalone]);
 
   useEffect(() => {
+    if (
+      !shouldHydrateInitialData({
+        hasInitialData: Boolean(initialData),
+        mode,
+        createInitialDataAlreadyApplied: createInitialDataAppliedRef.current,
+      })
+    ) {
+      return;
+    }
+
     if (initialData) {
       const nextTestId = initialData.id || null;
       const isNewTest = nextTestId && nextTestId !== previousTestIdRef.current;
@@ -675,9 +687,12 @@ function TestWizard({
       setAutosaveState('idle');
       setLastSavedAt(null);
       setIsInitialized(true);
+      if (mode === 'create') {
+        createInitialDataAppliedRef.current = true;
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- customUrlModeActive/isDirty would re-run and overwrite user selection
-  }, [initialData]);
+  }, [initialData, mode]);
 
   useEffect(() => {
     if (mode !== 'edit') return;

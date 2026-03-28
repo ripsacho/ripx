@@ -16,6 +16,20 @@ function normalizeTestTypeForStorefront(type) {
   return t === 'pricing' ? 'price' : (type || '').toString();
 }
 
+function normalizeTargetTypeForStorefront(test) {
+  const raw = String(test?.target_type || '')
+    .toLowerCase()
+    .trim();
+  if (raw) {
+    return raw;
+  }
+  const type = normalizeTestTypeForStorefront(test?.type);
+  if (type === 'price') {
+    return 'all-products';
+  }
+  return '';
+}
+
 function mapTestToStorefrontPayload(test) {
   const ids =
     test.target_ids && Array.isArray(test.target_ids)
@@ -31,7 +45,7 @@ function mapTestToStorefrontPayload(test) {
   return {
     id: test.id,
     type: normalizeTestTypeForStorefront(test.type),
-    targetType: test.target_type,
+    targetType: normalizeTargetTypeForStorefront(test),
     targetId: test.target_id || null,
     targetIds: ids.length > 0 ? ids : null,
     antiFlickerMode,
@@ -77,5 +91,6 @@ module.exports = {
   buildStorefrontRuntimeConfig,
   getStorefrontScriptCacheControl,
   normalizeTestTypeForStorefront,
+  normalizeTargetTypeForStorefront,
   mapTestToStorefrontPayload,
 };

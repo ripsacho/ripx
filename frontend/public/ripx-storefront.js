@@ -66,6 +66,13 @@
     var ty = String(test.type).toLowerCase();
     return ty === 'price' || ty === 'pricing';
   }
+  function getNormalizedTargetType(test) {
+    var tt = String((test && (test.targetType || test.target_type)) || '')
+      .toLowerCase()
+      .trim();
+    if ((!tt || tt === 'all') && testTypeIsPrice(test)) return 'all-products';
+    return tt;
+  }
   function getAntiFlickerModeForTest(test) {
     if (!test || typeof test !== 'object') return 'balanced';
     var raw = String(test.antiFlickerMode || test.anti_flicker_mode || '')
@@ -2845,7 +2852,7 @@
    */
   function shouldRunPriceTestOnListingSurface(test) {
     if (!testTypeIsPrice(test)) return false;
-    var tt = (test.targetType || test.target_type || '').toLowerCase();
+    var tt = getNormalizedTargetType(test);
     if (!isProductScopeTargetType(tt)) return false;
     if (tt === 'all-products' || tt === 'all_products') return isProductListingSurface();
     var tids =
@@ -2867,7 +2874,7 @@
       test.targetIds || (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
     if (!ids.length) return true;
 
-    var targetType = (test.targetType || test.target_type || '').toLowerCase();
+    var targetType = getNormalizedTargetType(test);
     var current = null;
     if (isProductScopeTargetType(targetType)) {
       current = getCurrentProductId();
@@ -2944,7 +2951,7 @@
     if (matchesTarget(test)) return true;
     if (shouldRunPriceTestOnListingSurface(test)) return true;
     if (testTypeIsPrice(test)) {
-      var tt = (test.targetType || test.target_type || '').toLowerCase();
+      var tt = getNormalizedTargetType(test);
       if (isProductScopeTargetType(tt) && isCartSurface()) {
         return true;
       }
@@ -2960,7 +2967,7 @@
     if (
       PREVIEW_TEST_CONTEXT &&
       testTypeIsPrice(test) &&
-      isProductScopeTargetType((test.targetType || test.target_type || '').toLowerCase())
+      isProductScopeTargetType(getNormalizedTargetType(test))
     ) {
       var pathPv = (window.location.pathname || '').toLowerCase();
       if (pathPv.indexOf('/products/') !== -1 && pathPv.length > '/products/'.length + 1) {
@@ -3148,7 +3155,7 @@
                   }
                   return;
                 }
-                var tt = (test.targetType || test.target_type || '').toLowerCase();
+                var tt = getNormalizedTargetType(test);
                 var productScope = isProductScopeTargetType(tt);
                 var matched = matchesTarget(test);
                 if (!matched && PREVIEW_TEST_CONTEXT && testTypeIsPrice(test) && productScope) {
@@ -3267,7 +3274,7 @@
           CONFIG.activeTests.forEach(function (test) {
             if (!testTypeIsPrice(test)) return;
             if (!shouldRunPriceTestOnCurrentPage(test)) return;
-            var tt = (test.targetType || test.target_type || '').toLowerCase();
+            var tt = getNormalizedTargetType(test);
             var productScope = isProductScopeTargetType(tt);
             var tids =
               test.targetIds ||

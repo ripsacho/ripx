@@ -2,7 +2,7 @@
  * Test Creator (wrapper for shared wizard)
  * UI matches Settings/Profile for consistency.
  */
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Page } from '@shopify/polaris';
 import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { ProductIcon } from '@shopify/polaris-icons';
@@ -50,10 +50,13 @@ function TestCreator() {
   const testName = searchParams.get('name') || '';
   const testDescription = searchParams.get('description') || '';
 
-  const initialData = {
-    name: testName,
-    description: testDescription,
-  };
+  const initialData = useMemo(
+    () => ({
+      name: testName,
+      description: testDescription,
+    }),
+    [testName, testDescription]
+  );
 
   const handleSubmit = async payload => {
     try {

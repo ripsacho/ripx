@@ -421,6 +421,32 @@
   flex-wrap: wrap;
 }
 
+.checkoutDiagHealthSummary {
+  border: 1px solid rgba(6, 182, 212, 0.14);
+  border-radius: 12px;
+  padding: 0.875rem;
+  background: rgba(6, 182, 212, 0.04);
+}
+
+.checkoutDiagProbeGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+@media (min-width: 900px) {
+  .checkoutDiagProbeGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.checkoutDiagProbeResult {
+  border: 1px dashed rgba(6, 182, 212, 0.2);
+  border-radius: 10px;
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.35);
+}
+
 /* General - two cards: config + webhooks */
 .settingsPanelGeneral .generalFormCol {
   min-width: 0;
