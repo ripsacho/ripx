@@ -40,6 +40,8 @@
     "shopify:checkout-discount:typegen": "shopify app function typegen --path extensions/ripx-checkout-discount",
     "shopify:checkout-discount:build": "shopify app function build --path extensions/ripx-checkout-discount",
     "shopify:checkout-discount:prepare": "npm run shopify:checkout-discount:install && npm run shopify:checkout-discount:sync-config && npm run shopify:checkout-discount:typegen && npm run shopify:checkout-discount:build",
+    "dev:align-tunnel": "node scripts/dev-align-tunnel.js",
+    "dev:switch-tunnel": "node scripts/dev-switch-tunnel.js",
     "verify:price-pipeline": "node scripts/verify-price-pipeline.js",
     "verify:price-assignment-readiness": "node scripts/verify-price-assignment-readiness.js",
     "audit": "npm audit && cd frontend && npm audit",
