@@ -9197,9 +9197,9 @@ function TestWizard({
       <Modal
         open={titleEditOpen}
         onClose={() => setTitleEditOpen(false)}
-        title="Edit Test"
+        title="Update test details"
         primaryAction={{
-          content: 'Save',
+          content: 'Save changes',
           onAction: () => {
             setFormData(prev => ({
               ...prev,
@@ -9213,21 +9213,85 @@ function TestWizard({
         secondaryActions={[{ content: 'Cancel', onAction: () => setTitleEditOpen(false) }]}
       >
         <Modal.Section>
-          <BlockStack gap="400">
-            <TextField
-              label="Test Name"
-              value={titleEditDraft.name}
-              onChange={value => setTitleEditDraft(d => ({ ...d, name: value }))}
-              placeholder="Enter test name"
-              autoComplete="off"
-            />
-            <TextField
-              label="Description"
-              value={titleEditDraft.description}
-              onChange={value => setTitleEditDraft(d => ({ ...d, description: value }))}
-              multiline={2}
-              placeholder="Describe purpose or hypothesis"
-            />
+          <BlockStack gap="300">
+            <div className="wizard-title-modal-intro">
+              <div className="wizard-title-modal-intro-head">
+                <span className="wizard-title-modal-intro-icon" aria-hidden>
+                  <Icon source={PageIcon} />
+                </span>
+                <Text as="p" variant="bodyMd" fontWeight="semibold">
+                  Keep the title clear and outcome-focused
+                </Text>
+              </div>
+              <Text as="p" variant="bodyMd" fontWeight="semibold">
+                Good names make filtering, reporting, and team handoff much easier.
+              </Text>
+            </div>
+            <div className="wizard-title-modal-field">
+              <TextField
+                label="Test name"
+                value={titleEditDraft.name}
+                onChange={value => setTitleEditDraft(d => ({ ...d, name: value }))}
+                placeholder="e.g. Homepage CTA - Free Trial vs Demo"
+                autoComplete="off"
+                maxLength={90}
+              />
+              <div className="wizard-title-modal-field-meta">
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Use a concise name with page + variation objective.
+                </Text>
+                <Text
+                  as="p"
+                  variant="bodySm"
+                  tone={titleEditDraft.name.length > 76 ? 'critical' : 'subdued'}
+                >
+                  {titleEditDraft.name.length}/90
+                </Text>
+              </div>
+            </div>
+            <div className="wizard-title-modal-field">
+              <TextField
+                label="Description"
+                value={titleEditDraft.description}
+                onChange={value => setTitleEditDraft(d => ({ ...d, description: value }))}
+                multiline={3}
+                placeholder="State hypothesis, target audience, and expected impact."
+                autoComplete="off"
+                maxLength={240}
+              />
+              <div className="wizard-title-modal-field-meta">
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Optional, but recommended for team context and faster reviews.
+                </Text>
+                <Text
+                  as="p"
+                  variant="bodySm"
+                  tone={titleEditDraft.description.length > 210 ? 'critical' : 'subdued'}
+                >
+                  {titleEditDraft.description.length}/240
+                </Text>
+              </div>
+            </div>
+            <div className="wizard-title-modal-preview">
+              <Text as="p" variant="bodySm" fontWeight="semibold">
+                Preview
+              </Text>
+              <Text as="p" variant="bodyMd">
+                {titleEditDraft.name?.trim() ||
+                  formData.name?.trim() ||
+                  initialData?.name?.trim() ||
+                  'Untitled Test'}
+              </Text>
+              {(titleEditDraft.description?.trim() ||
+                formData.description?.trim() ||
+                initialData?.description?.trim()) && (
+                <Text as="p" variant="bodySm" tone="subdued">
+                  {titleEditDraft.description?.trim() ||
+                    formData.description?.trim() ||
+                    initialData?.description?.trim()}
+                </Text>
+              )}
+            </div>
           </BlockStack>
         </Modal.Section>
       </Modal>
