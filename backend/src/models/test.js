@@ -312,7 +312,8 @@ class TestModel {
   async getTestById(testId, shopDomain) {
     const sql = `
       SELECT * FROM tests
-      WHERE id = $1 AND shop_domain = $2
+      WHERE id = $1
+        AND LOWER(TRIM(shop_domain)) = LOWER(TRIM($2))
     `;
 
     const result = await query(sql, [testId, shopDomain]);
@@ -350,7 +351,8 @@ class TestModel {
     const placeholders = uniqueIds.map((_, i) => `$${i + 2}`).join(', ');
     const sql = `
       SELECT * FROM tests
-      WHERE shop_domain = $1 AND id IN (${placeholders})
+      WHERE LOWER(TRIM(shop_domain)) = LOWER(TRIM($1))
+        AND id IN (${placeholders})
     `;
     const params = [shopDomain, ...uniqueIds];
     const result = await query(sql, params);
@@ -383,7 +385,7 @@ class TestModel {
     try {
       const sql = `
         SELECT * FROM tests
-        WHERE shop_domain = $1
+        WHERE LOWER(TRIM(shop_domain)) = LOWER(TRIM($1))
           AND (
             status = 'running'
             OR (status IN ('stopped', 'completed') AND personalization_mode IN ('personalized', 'rollout'))
@@ -481,7 +483,8 @@ class TestModel {
     const sql = `
       UPDATE tests
       SET ${updates.join(', ')}
-      WHERE id = $2 AND shop_domain = $3
+      WHERE id = $2
+        AND LOWER(TRIM(shop_domain)) = LOWER(TRIM($3))
       RETURNING *
     `;
 
@@ -615,7 +618,8 @@ class TestModel {
     const sql = `
       UPDATE tests
       SET ${fields.join(', ')}
-      WHERE id = $${paramIndex} AND shop_domain = $${paramIndex + 1}
+      WHERE id = $${paramIndex}
+        AND LOWER(TRIM(shop_domain)) = LOWER(TRIM($${paramIndex + 1}))
       RETURNING *
     `;
 
@@ -657,7 +661,8 @@ class TestModel {
   async deleteTest(testId, shopDomain) {
     const sql = `
       DELETE FROM tests
-      WHERE id = $1 AND shop_domain = $2
+      WHERE id = $1
+        AND LOWER(TRIM(shop_domain)) = LOWER(TRIM($2))
     `;
 
     const result = await query(sql, [testId, shopDomain]);

@@ -313,6 +313,24 @@ describe('wizardValidation', () => {
         expect(errors.filter(e => e.includes('percent'))).toHaveLength(0);
       });
 
+      it('treats first variant as non-control when it has a configured price', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'price',
+            variants: [
+              { name: 'Variant A', config: { priceMode: 'percent', pricePercent: 10 } },
+              { name: 'Control', config: { priceMode: 'fixed', price: '' } },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'price',
+        });
+        expect(errors.filter(e => e.includes('At least one test variant'))).toHaveLength(0);
+      });
+
       it('returns error for price test when amount (priceDelta) is not a valid number', () => {
         const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
           stepIds: stepIdsWithTemplate,
@@ -329,6 +347,37 @@ describe('wizardValidation', () => {
           selectedTemplate: 'price',
         });
         expect(errors.some(e => e.includes('amount') && e.includes('valid number'))).toBe(true);
+      });
+
+      it('returns error for price test when per-product override has invalid fixed price', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'price',
+            target_type: 'product',
+            target_id: 'gid://shopify/Product/100',
+            variants: [
+              { name: 'Control', config: { priceMode: 'fixed', price: null } },
+              {
+                name: 'Variant A',
+                config: {
+                  priceMode: 'fixed',
+                  price: 30,
+                  byProduct: {
+                    'gid://shopify/Product/100': { priceMode: 'fixed', price: -2 },
+                  },
+                },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'price',
+        });
+        expect(
+          errors.some(e => e.includes('per-product override') && e.includes('0 or greater'))
+        ).toBe(true);
       });
 
       it('returns error for split-URL variant with invalid URL', () => {
@@ -476,6 +525,63 @@ describe('wizardValidation', () => {
           showTemplateStep: true,
         });
         expect(errors.filter(e => e.includes('At least one test variant'))).toHaveLength(0);
+      });
+
+      it('allows review when first variant has test pricing and later variant is control', () => {
+        const errors = getWizardStepErrors(reviewStepId, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId,
+          formData: {
+            name: 'Price Test',
+            type: 'price',
+            goal: { metric: 'revenue' },
+            target_type: 'all-products',
+            variants: [
+              {
+                name: 'Variant A',
+                allocation: 50,
+                config: { priceMode: 'percent', pricePercent: 10 },
+              },
+              { name: 'Control', allocation: 50, config: { priceMode: 'fixed', price: '' } },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+        });
+        expect(errors.filter(e => e.includes('At least one test variant'))).toHaveLength(0);
+      });
+
+      it('returns error when review has per-product override with invalid fixed price', () => {
+        const errors = getWizardStepErrors(reviewStepId, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId,
+          formData: {
+            name: 'Price Test',
+            type: 'price',
+            goal: { metric: 'revenue' },
+            target_type: 'product',
+            target_id: 'gid://shopify/Product/100',
+            variants: [
+              { name: 'Control', allocation: 50, config: { priceMode: 'fixed', price: '' } },
+              {
+                name: 'Variant A',
+                allocation: 50,
+                config: {
+                  priceMode: 'fixed',
+                  price: 29,
+                  byProduct: {
+                    'gid://shopify/Product/100': { priceMode: 'fixed', price: -1 },
+                  },
+                },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+        });
+        expect(
+          errors.some(e => e.includes('per-product override') && e.includes('0 or greater'))
+        ).toBe(true);
       });
     });
 

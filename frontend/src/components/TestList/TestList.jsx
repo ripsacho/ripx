@@ -33,6 +33,7 @@ import {
 } from '@shopify/polaris-icons';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Toast from '../Toast/Toast';
+import PartyPop from '../PartyPop/PartyPop';
 import { apiPost } from '../../services';
 import LoadingSkeleton from '../LoadingSkeleton/LoadingSkeleton';
 import { PageShell } from '../Shared';
@@ -46,6 +47,12 @@ import {
 } from '../../hooks';
 import { TEST_STATUS_OPTIONS, PERSONALIZATION_MODES } from '../../constants';
 import { getTestTypeDisplay, getVariantCount } from '../../utils/testType';
+import {
+  consumeFirstStartUltraCelebrationFlag,
+  getCelebrationAnimationPreference,
+  getCelebrationColorThemePreference,
+  getCelebrationStylePreference,
+} from '../../utils/preferences';
 import styles from './TestList.module.css';
 
 function TestList() {
@@ -59,10 +66,24 @@ function TestList() {
   const [actionLoading, setActionLoading] = useState({});
   const [errorMessage, setErrorMessage] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
+  const [startCelebrationMode, setStartCelebrationMode] = useState(null);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const viewFilter = searchParams.get('view') || 'all';
   const routes = useAppRoutes();
+  const resolveCelebrationVariant = useCallback(preferred => {
+    const userPref = getCelebrationAnimationPreference();
+    if (userPref === 'off') return null;
+    if (userPref === 'full' || userPref === 'subtle') return userPref;
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches) {
+      return 'subtle';
+    }
+    return preferred;
+  }, []);
+  const withUltraMilestone = useCallback(baseVariant => {
+    if (baseVariant !== 'full') return baseVariant;
+    return consumeFirstStartUltraCelebrationFlag() ? 'ultra' : baseVariant;
+  }, []);
 
   const invalidateTests = useInvalidateTests();
   const { data: tests = [], isLoading: loading, isError, error, refetch: _fetchTests } = useTests();
@@ -110,12 +131,15 @@ function TestList() {
           ? 'Test started successfully.'
           : `${selectedTests.length} tests started successfully.`
       );
+      setStartCelebrationMode(
+        withUltraMilestone(resolveCelebrationVariant(selectedTests.length > 1 ? 'subtle' : 'full'))
+      );
     } catch (err) {
       setErrorMessage('Failed to start some tests');
     } finally {
       setBulkActionLoading(false);
     }
-  }, [selectedTests, startMutation]);
+  }, [selectedTests, startMutation, resolveCelebrationVariant, withUltraMilestone]);
 
   const handleBulkStop = useCallback(async () => {
     if (selectedTests.length === 0) return;
@@ -170,13 +194,14 @@ function TestList() {
       try {
         await startMutation.mutateAsync(testId);
         setSuccessMessage('Test started successfully.');
+        setStartCelebrationMode(withUltraMilestone(resolveCelebrationVariant('full')));
       } catch (err) {
         setErrorMessage(err.response?.data?.error || 'Failed to start test');
       } finally {
         setActionLoading(prev => ({ ...prev, [testId]: false }));
       }
     },
-    [startMutation]
+    [startMutation, resolveCelebrationVariant, withUltraMilestone]
   );
 
   const handleTestStop = useCallback(
@@ -806,6 +831,13 @@ function TestList() {
 
   return (
     <PageShell className={styles.testsPage}>
+      <PartyPop
+        active={!!startCelebrationMode}
+        variant={startCelebrationMode || 'full'}
+        styleMode={getCelebrationStylePreference()}
+        palette={getCelebrationColorThemePreference()}
+        onComplete={() => setStartCelebrationMode(null)}
+      />
       <Toast
         message={
           errorMessage ||

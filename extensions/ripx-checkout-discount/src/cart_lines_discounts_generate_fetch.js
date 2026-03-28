@@ -52,11 +52,17 @@ export function cartLinesDiscountsGenerateFetch(input) {
 
     const compareAtAmt = line.cost?.compareAtAmountPerQuantity?.amount;
     const compareAtCurrency = line.cost?.compareAtAmountPerQuantity?.currencyCode;
+    const assignmentSig = line.ripxAssignmentSig?.value?.trim();
+    const assignmentTs = line.ripxAssignmentTs?.value?.trim();
+    const assignmentUser = line.ripxAssignmentUser?.value?.trim();
 
     lines.push({
       line_id: line.id,
       test_id: testId,
       assignment_variant: assignmentVariant,
+      assignment_sig: assignmentSig || null,
+      assignment_ts: assignmentTs || null,
+      assignment_user: assignmentUser || null,
       product_id: productId,
       variant_id: variantId || null,
       line_total: String(amount),

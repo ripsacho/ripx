@@ -251,7 +251,15 @@ apiClient.interceptors.response.use(
           requestUrl.includes('/auth/start') ||
           requestUrl.includes('/tests') ||
           isShopifyRoute);
+      const isOnAppDomainRoute = /^\/app\/[^/]+/.test(path);
+      // Let AppDomainLayout handle /account/stores 401 while switching domains.
+      // It can redirect to /api/auth?shop=... without forcing a full sign-in page.
+      const shouldSkipAccountStoresRedirect =
+        isOnAppDomainRoute && requestUrl.includes('/account/stores');
       if ((emailToken || apiKey) && !onPublicAuthPage && isShopNotAuthenticated) {
+        if (shouldSkipAccountStoresRedirect) {
+          return Promise.reject(error);
+        }
         isRedirectingToLogin = true;
         const normalized = /\.myshopify\.com$/i.test(requestShop)
           ? String(requestShop).trim().toLowerCase()
@@ -262,7 +270,6 @@ apiClient.interceptors.response.use(
         return Promise.reject(error);
       }
       // On /app/:domain never clear auth — redirect to Connect with shop so user can connect store without losing session
-      const isOnAppDomainRoute = /^\/app\/[^/]+/.test(path);
       if (isOnAppDomainRoute && shopDomain && !onPublicAuthPage) {
         isRedirectingToLogin = true;
         const normalized = /\.myshopify\.com$/i.test(shopDomain)

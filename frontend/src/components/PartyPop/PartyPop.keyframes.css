@@ -1,0 +1,279 @@
+/* =========================
+   Keyframes
+   ========================= */
+@keyframes party-pop-glow {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.8);
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -52%) scale(1.08);
+  }
+}
+
+@keyframes party-pop-backdrop {
+  0% {
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes party-pop-lens-flare {
+  0% {
+    opacity: 0;
+    transform: translate(-58%, -50%) rotate(-8deg) scaleX(0.72);
+  }
+  30% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-40%, -52%) rotate(-8deg) scaleX(1.08);
+  }
+}
+
+@keyframes party-pop-aura {
+  0% {
+    opacity: 0;
+    transform: scale(0.74) rotate(var(--party-rot, 0deg));
+  }
+  35% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.12) rotate(var(--party-rot, 0deg));
+  }
+}
+
+@keyframes party-pop-ring {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.32);
+  }
+  25% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(4.4);
+  }
+}
+
+@keyframes party-pop-burst {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.45) rotate(-8deg);
+  }
+  25% {
+    opacity: 1;
+    transform: translate(-50%, -58%) scale(1.14) rotate(4deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -67%) scale(0.94) rotate(-2deg);
+  }
+}
+
+@keyframes party-pop-piece {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(0deg) scale(0.65);
+  }
+  12% {
+    opacity: 1;
+  }
+  65% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(
+        calc(-50% + var(--party-x, 0px)),
+        calc(-50% + var(--party-y, -120px))
+      )
+      rotate(var(--party-r, 0deg))
+      scale(var(--party-s, 1));
+  }
+}
+
+@keyframes party-pop-ray {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(var(--party-r, 0deg)) scaleY(0.3);
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--party-x, 0px) * 0.15), calc(-50% + var(--party-y, 0px) * 0.18))
+      rotate(var(--party-r, 0deg))
+      scaleY(var(--party-s, 1));
+  }
+}
+
+@keyframes party-pop-orbit {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(0deg) scale(0.45);
+  }
+  18% {
+    opacity: 0.92;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--party-x, 0px)), calc(-50% + var(--party-y, 0px)))
+      rotate(calc(var(--party-r, 0deg) + 210deg))
+      scale(var(--party-s, 1));
+  }
+}
+
+@keyframes party-pop-firework-in {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -42%) scale(calc(var(--party-fw-s, 1) * 0.72));
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(calc(var(--party-fw-s, 1) * 1.08));
+  }
+}
+
+@keyframes party-pop-firework-core {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  24% {
+    opacity: 1;
+    transform: scale(1.4);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+
+@keyframes party-pop-firework-ray {
+  0% {
+    opacity: 0;
+    stroke-dashoffset: 44;
+  }
+  18% {
+    opacity: 1;
+  }
+  78% {
+    opacity: 0.9;
+    stroke-dashoffset: 8;
+  }
+  100% {
+    opacity: 0;
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes party-pop-firework-trail {
+  0% {
+    opacity: 0;
+    stroke-dashoffset: 64;
+  }
+  22% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes party-pop-comet {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(var(--party-r, 0deg)) scale(0.65);
+  }
+  10% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(
+        calc(-50% + var(--party-x, 0px)),
+        calc(-50% + var(--party-y, -220px))
+      )
+      rotate(var(--party-r, 0deg))
+      scale(var(--party-s, 1));
+  }
+}
+
+@keyframes party-pop-twinkle {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.4);
+  }
+  25% {
+    opacity: 1;
+    transform: translate(
+        calc(-50% + var(--party-x, 0px) * 0.5),
+        calc(-50% + var(--party-y, 0px) * 0.45)
+      )
+      scale(1.05);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--party-x, 0px)), calc(-50% + var(--party-y, 0px)))
+      scale(var(--party-s, 1));
+  }
+}
+
+@keyframes party-pop-rain {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 0) rotate(0deg) scale(0.8);
+  }
+  10% {
+    opacity: 1;
+  }
+  75% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--party-x, 0px)), calc(0px + var(--party-y, 220px)))
+      rotate(var(--party-r, 0deg))
+      scale(var(--party-s, 1));
+  }
+}
+
+/* =========================
+   Accessibility: Reduced Motion
+   ========================= */
+@media (prefers-reduced-motion: reduce) {
+  .party-pop-glow,
+  .party-pop-ring,
+  .party-pop-burst,
+  .party-pop-piece,
+  .party-pop-aura,
+  .party-pop-backdrop,
+  .party-pop-lens-flare,
+  .party-pop-ray,
+  .party-pop-orbit,
+  .party-pop-firework,
+  .party-pop-firework-core,
+  .party-pop-firework-ray,
+  .party-pop-firework-trail {
+    animation-duration: 220ms !important;
+  }
+}

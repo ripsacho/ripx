@@ -455,6 +455,11 @@ class ABTestEngine {
    */
   isUserEligible(test, context = {}) {
     const segments = test.segments || {};
+    const testType = String(test?.type || '').toLowerCase();
+    const targetType = String(test?.target_type || '').toLowerCase();
+    const isSiteWidePriceScope =
+      (testType === 'price' || testType === 'pricing') &&
+      (targetType === 'product' || targetType === 'all-products' || targetType === 'all_products');
 
     // Exclude bots by user-agent
     if (segments.exclude_bots === true && context.user_agent) {
@@ -537,20 +542,29 @@ class ABTestEngine {
         }
       }
     } else {
-      // Legacy: single url_pattern — test against pathname so ^/$|^/index matches homepage reliably (standalone + Shopify)
+      // Legacy: single url_pattern — for price tests in product/all-products scope, ignore default
+      // product-path patterns so assignment is not accidentally limited to PDP.
       const urlPattern = segments.url_pattern;
       if (urlPattern && urlPattern.trim()) {
-        const urlToTest = urlForPathMatch || urlForFullMatch;
-        if (!urlToTest) {
-          return false;
-        }
-        try {
-          const re = new RegExp(urlPattern.trim());
-          if (!re.test(urlToTest)) {
+        const normalizedPattern = urlPattern.trim();
+        const isLegacyProductPathPattern =
+          normalizedPattern === '/products/' ||
+          normalizedPattern === '/products' ||
+          normalizedPattern === '^/products/' ||
+          normalizedPattern === '^/products';
+        if (!(isSiteWidePriceScope && isLegacyProductPathPattern)) {
+          const urlToTest = urlForPathMatch || urlForFullMatch;
+          if (!urlToTest) {
             return false;
           }
-        } catch {
-          return false;
+          try {
+            const re = new RegExp(normalizedPattern);
+            if (!re.test(urlToTest)) {
+              return false;
+            }
+          } catch {
+            return false;
+          }
         }
       }
     }

@@ -28,7 +28,7 @@ import {
   GlobeIcon,
 } from '@shopify/polaris-icons';
 import { PageShell } from '../Shared';
-import { CONTENT_GAP, ROUTES } from '../../constants';
+import { CONTENT_GAP, ROUTES, STORAGE_KEYS } from '../../constants';
 import styles from './Profile.module.css';
 import {
   getProfile,
@@ -38,6 +38,7 @@ import {
 } from '../../services/profileApi';
 import { getSavedTheme, updateTheme } from '../../utils/theme';
 import Toast from '../Toast/Toast';
+import PartyPop from '../PartyPop/PartyPop';
 
 const TAB_CONFIG = [
   { id: 'profile', label: 'Profile', icon: ProfileIcon },
@@ -61,6 +62,8 @@ function Profile() {
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
+  const [devMessage, setDevMessage] = useState(null);
+  const [previewCelebrationMode, setPreviewCelebrationMode] = useState(null);
 
   const [profileData, setProfileData] = useState({
     firstName: 'John',
@@ -93,6 +96,9 @@ function Profile() {
     theme: 'light',
     customThemeStart: 7,
     customThemeEnd: 19,
+    celebrationAnimation: 'auto',
+    celebrationStyle: 'dynamic',
+    celebrationColorTheme: 'rainbow',
     dashboardView: 'grid',
     defaultTestType: 'price',
     defaultAnalyticsDateRange: '30',
@@ -222,6 +228,23 @@ function Profile() {
   };
 
   const setActiveTab = id => setSearchParams({ tab: id });
+  const isDevBuild = import.meta.env.DEV;
+
+  const handleResetUltraCelebration = () => {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.CELEBRATION_ULTRA_SHOWN);
+      setDevMessage(
+        'First-start ultra celebration reset. Next successful test start will trigger Ultra.'
+      );
+    } catch {
+      setDevMessage('Could not reset ultra celebration flag in local storage.');
+    }
+  };
+
+  const triggerCelebrationPreview = mode => {
+    setPreviewCelebrationMode(null);
+    setTimeout(() => setPreviewCelebrationMode(mode), 0);
+  };
 
   if (loading) {
     return (
@@ -257,7 +280,22 @@ function Profile() {
       messageDuration={3000}
       className={styles.profilePage}
     >
+      <PartyPop
+        active={!!previewCelebrationMode}
+        variant={previewCelebrationMode || 'full'}
+        styleMode={preferences.celebrationStyle === 'cinematic' ? 'cinematic' : 'dynamic'}
+        palette={preferences.celebrationColorTheme === 'brand' ? 'brand' : 'rainbow'}
+        onComplete={() => setPreviewCelebrationMode(null)}
+      />
       <Toast message={error} type="error" onClose={() => setError(null)} duration={5000} />
+      {devMessage ? (
+        <Toast
+          message={devMessage}
+          type="success"
+          onClose={() => setDevMessage(null)}
+          duration={3200}
+        />
+      ) : null}
 
       <Page title="" subtitle="">
         <div className={styles.profileLayout}>
@@ -717,6 +755,89 @@ function Profile() {
                                     : undefined
                               }
                             />
+                            <Select
+                              label="Success celebration animation"
+                              options={[
+                                { label: 'Auto (responsive)', value: 'auto' },
+                                { label: 'Full', value: 'full' },
+                                { label: 'Subtle', value: 'subtle' },
+                                { label: 'Off', value: 'off' },
+                              ]}
+                              value={preferences.celebrationAnimation || 'auto'}
+                              onChange={v =>
+                                setPreferences(p => ({
+                                  ...p,
+                                  celebrationAnimation: v,
+                                }))
+                              }
+                              helpText="Controls party pop effect when a test starts successfully."
+                            />
+                            <Select
+                              label="Success celebration color theme"
+                              options={[
+                                { label: 'Rainbow', value: 'rainbow' },
+                                { label: 'Brand', value: 'brand' },
+                              ]}
+                              value={preferences.celebrationColorTheme || 'rainbow'}
+                              onChange={v =>
+                                setPreferences(p => ({
+                                  ...p,
+                                  celebrationColorTheme: v === 'brand' ? 'brand' : 'rainbow',
+                                }))
+                              }
+                              helpText="Applies to celebration confetti colors for successful test starts."
+                            />
+                            <Select
+                              label="Success celebration motion style"
+                              options={[
+                                { label: 'Dynamic', value: 'dynamic' },
+                                { label: 'Cinematic', value: 'cinematic' },
+                              ]}
+                              value={preferences.celebrationStyle || 'dynamic'}
+                              onChange={v =>
+                                setPreferences(p => ({
+                                  ...p,
+                                  celebrationStyle: v === 'cinematic' ? 'cinematic' : 'dynamic',
+                                }))
+                              }
+                              helpText="Dynamic is punchy and energetic. Cinematic is smoother and premium."
+                            />
+                            <InlineStack align="space-between" blockAlign="center" gap="300" wrap>
+                              <Text as="span" variant="bodySm" tone="subdued">
+                                Preview celebration:
+                              </Text>
+                              <InlineStack gap="200">
+                                <Button
+                                  size="slim"
+                                  onClick={() => triggerCelebrationPreview('subtle')}
+                                >
+                                  Subtle
+                                </Button>
+                                <Button
+                                  size="slim"
+                                  onClick={() => triggerCelebrationPreview('full')}
+                                >
+                                  Full
+                                </Button>
+                                <Button
+                                  size="slim"
+                                  variant="primary"
+                                  onClick={() => triggerCelebrationPreview('ultra')}
+                                >
+                                  Ultra
+                                </Button>
+                              </InlineStack>
+                            </InlineStack>
+                            {isDevBuild ? (
+                              <InlineStack align="space-between" blockAlign="center" gap="300">
+                                <Text as="span" variant="bodySm" tone="subdued">
+                                  Dev testing: replay the one-time Ultra milestone celebration.
+                                </Text>
+                                <Button onClick={handleResetUltraCelebration}>
+                                  Reset first-start Ultra
+                                </Button>
+                              </InlineStack>
+                            ) : null}
                             {preferences.theme === 'custom' && (
                               <BlockStack gap="300">
                                 <div className={styles.formGrid2}>

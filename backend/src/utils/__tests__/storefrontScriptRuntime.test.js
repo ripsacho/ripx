@@ -25,6 +25,20 @@ describe('storefrontScriptRuntime', () => {
     const m = mapTestToStorefrontPayload(row);
     expect(m.type).toBe('price');
     expect(m.targetIds).toEqual(['gid://shopify/Product/1']);
+    expect(m.antiFlickerMode).toBe('balanced');
+  });
+
+  it('maps strict anti-flicker mode from segments', () => {
+    const row = {
+      id: 't2',
+      type: 'content',
+      target_type: 'all',
+      target_id: null,
+      target_ids: null,
+      segments: { anti_flicker_mode: 'strict' },
+    };
+    const m = mapTestToStorefrontPayload(row);
+    expect(m.antiFlickerMode).toBe('strict');
   });
 
   it('buildStorefrontRuntimeConfig uses req for fallback app URL', () => {

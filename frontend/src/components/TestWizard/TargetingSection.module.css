@@ -6915,6 +6915,22 @@
   font-weight: 600;
   color: var(--p-color-text, #202223);
 }
+.priceSimulationWrap {
+  padding: 12px 26px 14px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  background: var(--p-color-bg-surface-secondary, #f6f6f7);
+}
+.priceSimulationHeader {
+  margin-bottom: 10px;
+}
+.priceSimulationHeader .Polaris-InlineStack {
+  width: 100%;
+}
+.priceSimulationFootnote {
+  margin-top: 8px;
+  font-size: 0.75rem;
+  color: var(--p-color-text-subdued, #6d7175);
+}
 .priceAccordionActions {
   padding: 12px 26px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);

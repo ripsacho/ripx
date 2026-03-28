@@ -332,7 +332,7 @@ ${resourceHints}<script src="${scriptUrl}" defer crossorigin="anonymous" fetchpr
       instructions = {
         method: 'Add to your site',
         steps: [
-          "Add the script tag to your site's <head> (recommended) or before </body>",
+          "Add the script tag to your site's <head> (required for earliest variation handling and less flicker)",
           `Ensure your domain "${shopDomain}" is registered (add it in My domains if needed)`,
           'Use the same domain visitors see (no www vs non-www mismatch)',
         ],

@@ -2,8 +2,10 @@ const {
   resolvePriceTestLineDiscount,
   resolveCheckoutPriceBatchForDomain,
 } = require('../priceTestCheckoutResolve');
+const { signPriceAssignment } = require('../../utils/priceAssignmentSignature');
 
 describe('priceTestCheckoutResolve', () => {
+  const originalEnv = { ...process.env };
   const baseTest = {
     type: 'price',
     status: 'running',
@@ -17,6 +19,14 @@ describe('priceTestCheckoutResolve', () => {
       },
     ],
   };
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  afterAll(() => {
+    process.env = { ...originalEnv };
+  });
 
   it('returns discount when fixed price below line total', () => {
     const r = resolvePriceTestLineDiscount({
@@ -67,6 +77,37 @@ describe('priceTestCheckoutResolve', () => {
           id: 'var-b',
           name: 'Variant B',
           config: { priceMode: 'amount', priceDelta: -5 },
+        },
+      ],
+    };
+    const r = resolvePriceTestLineDiscount({
+      test,
+      assignmentVariantId: 'var-b',
+      productId: '111',
+      linePresentmentTotal: 29.99,
+      quantity: 1,
+    });
+    expect(r.applies).toBe(true);
+    expect(parseFloat(r.discountDecimal, 10)).toBeCloseTo(5, 2);
+  });
+
+  it('falls back to base mode when per-product override mode is incomplete', () => {
+    const test = {
+      ...baseTest,
+      variants: [
+        {
+          id: 'var-b',
+          name: 'Variant B',
+          config: {
+            priceMode: 'amount',
+            priceDelta: -5,
+            byProduct: {
+              'gid://shopify/Product/111': {
+                priceMode: 'fixed',
+                priceBase: 'price',
+              },
+            },
+          },
         },
       ],
     };
@@ -229,6 +270,24 @@ describe('priceTestCheckoutResolve', () => {
     expect(r.applies).toBe(true);
   });
 
+  it('supports all-products target_type for checkout price alignment', () => {
+    const test = {
+      ...baseTest,
+      target_type: 'all-products',
+      target_ids: null,
+      target_id: '',
+    };
+    const r = resolvePriceTestLineDiscount({
+      test,
+      assignmentVariantId: 'var-b',
+      productId: 'gid://shopify/Product/999999999',
+      linePresentmentTotal: 29.99,
+      quantity: 1,
+    });
+    expect(r.applies).toBe(true);
+    expect(parseFloat(r.discountDecimal, 10)).toBeCloseTo(10, 2);
+  });
+
   it('allows stopped test in rollout personalization mode', () => {
     const test = {
       ...baseTest,
@@ -311,5 +370,81 @@ describe('priceTestCheckoutResolve', () => {
     });
     expect(r.applies).toBe(false);
     expect(r.reason).toBe('compare_at_unavailable');
+  });
+
+  it('rejects missing assignment signature when strict mode is enabled', () => {
+    process.env.RIPX_PRICE_ASSIGNMENT_SIGNATURE_SECRET = 'sig-secret';
+    process.env.RIPX_CHECKOUT_REQUIRE_SIGNED_ASSIGNMENT = 'true';
+    const r = resolvePriceTestLineDiscount({
+      test: { ...baseTest, id: '11111111-1111-4111-8111-111111111111' },
+      assignmentVariantId: 'var-b',
+      productId: '111',
+      linePresentmentTotal: 29.99,
+      quantity: 1,
+      shopDomain: 'test.myshopify.com',
+    });
+    expect(r.applies).toBe(false);
+    expect(r.reason).toBe('missing_assignment_signature');
+  });
+
+  it('applies when assignment signature is valid in strict mode', () => {
+    process.env.RIPX_PRICE_ASSIGNMENT_SIGNATURE_SECRET = 'sig-secret';
+    process.env.RIPX_CHECKOUT_REQUIRE_SIGNED_ASSIGNMENT = 'true';
+    const testId = '11111111-1111-4111-8111-111111111111';
+    const userId = 'u-1';
+    const ts = Date.now();
+    const sig = signPriceAssignment({
+      testId,
+      variantId: 'var-b',
+      userId,
+      shopDomain: 'test.myshopify.com',
+      issuedAtMs: ts,
+    });
+    const r = resolvePriceTestLineDiscount({
+      test: { ...baseTest, id: testId },
+      assignmentVariantId: 'var-b',
+      productId: '111',
+      linePresentmentTotal: 29.99,
+      quantity: 1,
+      shopDomain: 'test.myshopify.com',
+      assignmentSignature: sig,
+      assignmentIssuedAtMs: String(ts),
+      assignmentUserId: userId,
+    });
+    expect(r.applies).toBe(true);
+    expect(parseFloat(r.discountDecimal, 10)).toBeCloseTo(10, 2);
+  });
+
+  it('rejects invalid assignment signature when provided', () => {
+    process.env.RIPX_PRICE_ASSIGNMENT_SIGNATURE_SECRET = 'sig-secret';
+    const r = resolvePriceTestLineDiscount({
+      test: { ...baseTest, id: '11111111-1111-4111-8111-111111111111' },
+      assignmentVariantId: 'var-b',
+      productId: '111',
+      linePresentmentTotal: 29.99,
+      quantity: 1,
+      shopDomain: 'test.myshopify.com',
+      assignmentSignature: 'deadbeef',
+      assignmentIssuedAtMs: String(Date.now()),
+      assignmentUserId: 'u-1',
+    });
+    expect(r.applies).toBe(false);
+    expect(r.reason).toBe('invalid_assignment_signature');
+  });
+
+  it('requires signature by default in production when strict flag is unset', () => {
+    process.env.RIPX_PRICE_ASSIGNMENT_SIGNATURE_SECRET = 'sig-secret';
+    process.env.NODE_ENV = 'production';
+    delete process.env.RIPX_CHECKOUT_REQUIRE_SIGNED_ASSIGNMENT;
+    const r = resolvePriceTestLineDiscount({
+      test: { ...baseTest, id: '11111111-1111-4111-8111-111111111111' },
+      assignmentVariantId: 'var-b',
+      productId: '111',
+      linePresentmentTotal: 29.99,
+      quantity: 1,
+      shopDomain: 'test.myshopify.com',
+    });
+    expect(r.applies).toBe(false);
+    expect(r.reason).toBe('missing_assignment_signature');
   });
 });

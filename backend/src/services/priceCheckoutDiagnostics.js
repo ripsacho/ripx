@@ -11,6 +11,10 @@ const {
   PRICE_RESOLVE_BATCH_RESPONSE_MAX_BYTES,
   PRICE_BATCH_SLOW_LOG_MS,
 } = require('../constants');
+const {
+  shouldRequireSignedAssignment,
+  getSignatureSecret,
+} = require('../utils/priceAssignmentSignature');
 
 function stripTrailingSlashes(s) {
   return String(s || '')
@@ -75,6 +79,39 @@ function extensionConfigInputFromReadResult(readResult) {
 }
 
 /**
+ * Parse JS string literals used in export const values.
+ * Supports both JSON style ("...") and single-quoted ('...') strings.
+ * @param {string} rawLiteral
+ * @returns {{ ok: true, value: string } | { ok: false }}
+ */
+function parseExportedStringLiteral(rawLiteral) {
+  const literal = String(rawLiteral || '').trim();
+  try {
+    const parsed = JSON.parse(literal);
+    if (typeof parsed === 'string') {
+      return { ok: true, value: parsed };
+    }
+  } catch {
+    // fall through
+  }
+
+  // Be lenient for hand-edited files using single quotes.
+  if (/^'(?:\\.|[^'])*'$/.test(literal)) {
+    const inner = literal.slice(1, -1);
+    try {
+      const normalized = inner.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\\'/g, "'");
+      const parsed = JSON.parse(`"${normalized}"`);
+      if (typeof parsed === 'string') {
+        return { ok: true, value: parsed };
+      }
+    } catch {
+      // fall through
+    }
+  }
+  return { ok: false };
+}
+
+/**
  * Parse batch URL + secret from generated ripxConfig.js (ESM export const ... = JSON.stringify(...)).
  * @param {string} source
  * @returns {{ batchUrl: string, secret: string } | { error: string }}
@@ -90,26 +127,22 @@ function parseRipxCheckoutExtensionConfig(source) {
   if (!batchM) {
     return { error: 'missing_batch_export' };
   }
-  let batchUrl;
   let secret = '';
-  try {
-    batchUrl = JSON.parse(batchM[1].trim());
-  } catch {
+  const batchParsed = parseExportedStringLiteral(batchM[1]);
+  if (!batchParsed.ok) {
     return { error: 'invalid_batch_literal' };
   }
+  const batchUrl = batchParsed.value;
   if (typeof batchUrl !== 'string') {
     return { error: 'invalid_batch_value' };
   }
   // Empty string is valid: clone-safe default until sync-config runs
   if (secretM) {
-    try {
-      const s = JSON.parse(secretM[1].trim());
-      if (typeof s === 'string') {
-        secret = s;
-      }
-    } catch {
+    const secretParsed = parseExportedStringLiteral(secretM[1]);
+    if (!secretParsed.ok) {
       return { error: 'invalid_secret_literal' };
     }
+    secret = secretParsed.value;
   }
   return {
     batchUrl: stripTrailingSlashes(batchUrl.trim()),
@@ -194,7 +227,7 @@ function buildExtensionConfigDiagnostics(params) {
   if (secretRequired && !secretMatches) {
     issues.push({
       level: 'error',
-      text: `RIPX_CHECKOUT_PRICE_SECRET mismatch: server .env and ${RIPX_EXTENSION_CONFIG_RELATIVE_PATH} must match or batch calls return 401. Run npm run shopify:checkout-discount:sync-config.`,
+      text: `RIPX_CHECKOUT_PRICE_SECRET mismatch: server .env and ${RIPX_EXTENSION_CONFIG_RELATIVE_PATH} must match or batch calls return 403. Run npm run shopify:checkout-discount:sync-config.`,
     });
   } else if (!secretRequired && extSecret) {
     issues.push({
@@ -271,6 +304,9 @@ function buildCheckoutPriceDiagnostics(opts = {}) {
   const { batchUrl, appUrl, usedExplicitBatchUrl } = getConfiguredBatchResolveUrls();
   const checkoutSecret = (process.env.RIPX_CHECKOUT_PRICE_SECRET || '').trim();
   const secretRequired = Boolean(checkoutSecret);
+  const assignmentSignatureRequired = shouldRequireSignedAssignment();
+  const assignmentSignatureSecretConfigured = Boolean(getSignatureSecret());
+  const assignmentSignatureOk = !assignmentSignatureRequired || assignmentSignatureSecretConfigured;
   const nodeEnv = process.env.NODE_ENV || 'development';
   const isProduction = nodeEnv === 'production';
 
@@ -289,6 +325,19 @@ function buildCheckoutPriceDiagnostics(opts = {}) {
     message: batchConfigured
       ? 'Batch resolver URL is set (APP_URL or RIPX_PRICE_RESOLVE_BATCH_URL).'
       : 'Set APP_URL or RIPX_PRICE_RESOLVE_BATCH_URL so the Discount Function can reach your API.',
+  });
+
+  checklist.push({
+    id: 'assignment_signature_enforcement',
+    ok: assignmentSignatureOk,
+    severity: assignmentSignatureOk ? 'ok' : 'warning',
+    message: assignmentSignatureRequired
+      ? assignmentSignatureSecretConfigured
+        ? 'Signed assignment verification is required and signature secret is configured.'
+        : 'Signed assignment verification is required but no signature secret is configured (set RIPX_PRICE_ASSIGNMENT_SIGNATURE_SECRET or RIPX_CHECKOUT_PRICE_SECRET).'
+      : isProduction
+        ? 'Signed assignment verification is explicitly disabled in production. Consider enabling it unless you are in migration mode.'
+        : 'Signed assignment verification is optional in non-production.',
   });
 
   const EXPECTED_BATCH_PATH = '/api/track/price-resolve-batch';
@@ -370,6 +419,16 @@ function buildCheckoutPriceDiagnostics(opts = {}) {
       'Set RIPX_CHECKOUT_PRICE_SECRET and redeploy the checkout discount extension with sync-config.'
     );
   }
+  if (assignmentSignatureRequired && !assignmentSignatureSecretConfigured) {
+    recommendations.push(
+      'Set RIPX_PRICE_ASSIGNMENT_SIGNATURE_SECRET (or reuse RIPX_CHECKOUT_PRICE_SECRET) so strict assignment signature checks can validate cart line proofs.'
+    );
+  }
+  if (isProduction && !assignmentSignatureRequired) {
+    recommendations.push(
+      'Enable RIPX_CHECKOUT_REQUIRE_SIGNED_ASSIGNMENT=true in production after rollout to prevent unsigned assignment spoofing.'
+    );
+  }
   recommendations.push(
     'Ensure Shopify Plus (or eligible plan) + Discount Function network access + an active automatic discount using the RipX function.'
   );
@@ -430,6 +489,8 @@ function buildCheckoutPriceDiagnostics(opts = {}) {
       batch_url_source: usedExplicitBatchUrl ? 'RIPX_PRICE_RESOLVE_BATCH_URL' : 'APP_URL',
       uses_https: usesHttps,
       checkout_price_secret_required: secretRequired,
+      assignment_signature_required: assignmentSignatureRequired,
+      assignment_signature_secret_configured: assignmentSignatureSecretConfigured,
       price_resolve_batch_max: PRICE_RESOLVE_BATCH_MAX,
       price_resolve_batch_response_max_bytes: PRICE_RESOLVE_BATCH_RESPONSE_MAX_BYTES,
       batch_compact_response: process.env.RIPX_PRICE_BATCH_FULL_RESPONSE !== 'true',

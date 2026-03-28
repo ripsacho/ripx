@@ -1,13 +1,12 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
-#
-# Alternate Partner app (different client_id). Default linked config for this repo is
-# shopify.app.toml — use `shopify app config link` to switch. Extensions under extensions/
-# deploy with whichever app config is active.
 
 client_id = "e7a7d74e7aaa14162e3951a559bda6c1"
 name = "RipperX"
 application_url = "https://splitter.echologyx.com"
 embedded = true
+
+[build]
+automatically_update_urls_on_dev = true
 
 [webhooks]
 api_version = "2026-04"
@@ -36,6 +35,3 @@ prefix = "apps"
 
 [pos]
 embedded = true
-
-[build]
-automatically_update_urls_on_dev = true

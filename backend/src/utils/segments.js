@@ -170,6 +170,16 @@ function normalizeSegments(segments) {
       );
   }
 
+  // Storefront anti-flicker strategy (per-test): balanced (default) or strict.
+  const antiFlickerModeRaw = String(segments.anti_flicker_mode || '')
+    .toLowerCase()
+    .trim();
+  if (antiFlickerModeRaw === 'strict') {
+    result.anti_flicker_mode = 'strict';
+  } else if (antiFlickerModeRaw === 'balanced') {
+    result.anti_flicker_mode = 'balanced';
+  }
+
   return result;
 }
 

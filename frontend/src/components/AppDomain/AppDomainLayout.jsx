@@ -85,6 +85,11 @@ function AppDomainLayout() {
   const notConnected = needsShopifySessionCheck && isFetched && (is401 || isError || !connected);
 
   useEffect(() => {
+    // A failed connect redirect for one domain must not block later switches.
+    redirectAttempted.current = false;
+  }, [domain]);
+
+  useEffect(() => {
     if (!notConnected || redirectAttempted.current || !domain) return;
     redirectAttempted.current = true;
     window.location.href = getShopifyConnectUrl(domain);
@@ -145,7 +150,9 @@ function AppDomainLayout() {
     return <Navigate to={ROUTES.USER_PANEL} replace />;
   }
 
-  if (hasEmailSession() && !keyForDomain) {
+  // Email-session users can switch to Shopify stores without pre-existing domain keys.
+  // For Shopify domains we run the explicit connection check above instead.
+  if (hasEmailSession() && !keyForDomain && !isShopify) {
     return <Navigate to={ROUTES.DOMAINS} replace />;
   }
 

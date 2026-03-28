@@ -76,11 +76,38 @@ describe('priceCheckoutDiagnostics', () => {
     process.env.NODE_ENV = 'production';
     process.env.APP_URL = 'https://api.example.com';
     delete process.env.RIPX_CHECKOUT_PRICE_SECRET;
+    delete process.env.RIPX_PRICE_ASSIGNMENT_SIGNATURE_SECRET;
     const { buildCheckoutPriceDiagnostics } = require('../priceCheckoutDiagnostics');
     const d = buildCheckoutPriceDiagnostics();
     expect(d.checklist.find(c => c.id === 'checkout_secret_consistency')?.ok).toBe(false);
+    expect(d.checklist.find(c => c.id === 'assignment_signature_enforcement')?.ok).toBe(false);
     expect(d.summary.overall_ok).toBe(false);
     expect(d.summary.overall_status).toBe('warning');
+  });
+
+  it('marks assignment signature enforcement as enabled by default in production', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.APP_URL = 'https://api.example.com';
+    process.env.RIPX_CHECKOUT_PRICE_SECRET = 'secret';
+    delete process.env.RIPX_CHECKOUT_REQUIRE_SIGNED_ASSIGNMENT;
+    const { buildCheckoutPriceDiagnostics } = require('../priceCheckoutDiagnostics');
+    const d = buildCheckoutPriceDiagnostics();
+    expect(d.infrastructure.assignment_signature_required).toBe(true);
+    expect(d.checklist.find(c => c.id === 'assignment_signature_enforcement')?.ok).toBe(true);
+  });
+
+  it('allows explicit disable of assignment signature enforcement', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.APP_URL = 'https://api.example.com';
+    process.env.RIPX_CHECKOUT_PRICE_SECRET = 'secret';
+    process.env.RIPX_CHECKOUT_REQUIRE_SIGNED_ASSIGNMENT = 'false';
+    const { buildCheckoutPriceDiagnostics } = require('../priceCheckoutDiagnostics');
+    const d = buildCheckoutPriceDiagnostics();
+    expect(d.infrastructure.assignment_signature_required).toBe(false);
+    expect(d.checklist.find(c => c.id === 'assignment_signature_enforcement')?.ok).toBe(true);
+    expect(d.checklist.find(c => c.id === 'assignment_signature_enforcement')?.message).toMatch(
+      /explicitly disabled/i
+    );
   });
 
   it('warns when RIPX_PRICE_RESOLVE_BATCH_URL path is not RipX batch endpoint', () => {
@@ -136,6 +163,17 @@ export const RIPX_CHECKOUT_PRICE_SECRET = ${JSON.stringify('secret-one')};
       'export const RIPX_PRICE_RESOLVE_BATCH_URL = "";\nexport const RIPX_CHECKOUT_PRICE_SECRET = "";'
     );
     expect(p).toMatchObject({ batchUrl: '', secret: '' });
+  });
+
+  it('parseRipxCheckoutExtensionConfig accepts single-quoted literals in hand-edited config', () => {
+    const { parseRipxCheckoutExtensionConfig } = require('../priceCheckoutDiagnostics');
+    const p = parseRipxCheckoutExtensionConfig(
+      "export const RIPX_PRICE_RESOLVE_BATCH_URL = 'https://api.example.com/api/track/price-resolve-batch';\nexport const RIPX_CHECKOUT_PRICE_SECRET = '';"
+    );
+    expect(p).toMatchObject({
+      batchUrl: 'https://api.example.com/api/track/price-resolve-batch',
+      secret: '',
+    });
   });
 
   it('extensionConfig empty batch URL with env set reports drift', () => {

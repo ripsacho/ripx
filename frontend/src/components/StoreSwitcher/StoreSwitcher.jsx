@@ -14,6 +14,8 @@ import {
   setCurrentStore as persistCurrentStore,
   getUrlWithEmbedParams,
   isEmbeddedInIframe,
+  getAccountApiKey,
+  getDomainKeys,
 } from '../../services';
 import { ROUTES, STORAGE_KEYS, RIPX_STORE_SWITCHED_EVENT } from '../../constants';
 import { getAppDomainFromPath } from '../../utils/breadcrumb';
@@ -114,6 +116,42 @@ function StoreSwitcher() {
         setActive(false);
         return;
       }
+      const selectedStore = stores.find(s => domainsMatch(s.domain, domain));
+      const selectedPlatform = (selectedStore?.platform || '').toLowerCase();
+      const isStandaloneTarget =
+        selectedPlatform === 'standalone' && !/\.myshopify\.com$/i.test(domain || '');
+      if (isStandaloneTarget) {
+        const normalized = String(domain || '')
+          .trim()
+          .toLowerCase();
+        const keys = getDomainKeys();
+        const key =
+          getAccountApiKey() ||
+          keys[domain] ||
+          keys[normalized] ||
+          keys[domain?.replace(/^www\./, '')] ||
+          null;
+        if (key) {
+          try {
+            window.localStorage.setItem(STORAGE_KEYS.API_KEY, key);
+          } catch (_) {
+            // ignore storage errors and continue navigation
+          }
+        } else {
+          setActive(false);
+          const params = new URLSearchParams({
+            reason: 'api_key_required',
+            shop: domain,
+          });
+          const targetPath = `${ROUTES.DOMAINS}?${params.toString()}`;
+          if (isEmbeddedInIframe()) {
+            window.location.href = getUrlWithEmbedParams(targetPath);
+          } else {
+            navigate(targetPath);
+          }
+          return;
+        }
+      }
       persistCurrentStore(domain);
       queueStoreSwitchToast(domain);
       setActive(false);
@@ -128,7 +166,7 @@ function StoreSwitcher() {
         navigate(ROUTES.appDashboard(domain));
       }
     },
-    [activeStore, navigate]
+    [activeStore, navigate, stores]
   );
 
   const multiStore = stores.length > 1;

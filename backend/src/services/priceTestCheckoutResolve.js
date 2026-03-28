@@ -3,6 +3,8 @@
  * Uses same config shape as storefront script: priceMode, price, priceDelta, pricePercent, priceBase, roundTo, byProduct, byVariant.
  */
 
+const { verifyPriceAssignmentSignature } = require('../utils/priceAssignmentSignature');
+
 function isPriceTestRowType(type) {
   const t = String(type || '').toLowerCase();
   return t === 'price' || t === 'pricing';
@@ -24,11 +26,18 @@ function isPriceTestActiveForCheckout(test) {
   return false;
 }
 
+function isCheckoutSupportedPriceTargetType(targetType) {
+  const tt = String(targetType || '')
+    .toLowerCase()
+    .trim();
+  return tt === 'product' || tt === 'all-products' || tt === 'all_products';
+}
+
 function parseRoundTo(roundTo) {
   if (roundTo === undefined || roundTo === null) {
     return 0;
   }
-  const n = typeof roundTo === 'number' ? roundTo : parseFloat(String(roundTo).trim(), 10);
+  const n = typeof roundTo === 'number' ? roundTo : parseFloat(String(roundTo).trim());
   return typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : 0;
 }
 
@@ -63,6 +72,67 @@ function toVariantIdKey(variantId) {
     return m[1];
   }
   return s;
+}
+
+function hasModeValue(cfg, mode) {
+  if (!cfg || typeof cfg !== 'object') {
+    return false;
+  }
+  const m = String(mode || '').toLowerCase();
+  if (m === 'fixed') {
+    return cfg.price !== null && cfg.price !== undefined && String(cfg.price).trim() !== '';
+  }
+  if (m === 'amount') {
+    return (
+      cfg.priceDelta !== null &&
+      cfg.priceDelta !== undefined &&
+      String(cfg.priceDelta).trim() !== ''
+    );
+  }
+  if (m === 'percent') {
+    return (
+      cfg.pricePercent !== null &&
+      cfg.pricePercent !== undefined &&
+      String(cfg.pricePercent).trim() !== ''
+    );
+  }
+  if (m === 'control') {
+    return true;
+  }
+  return false;
+}
+
+function normalizeMergedPriceConfig(baseCfg, mergedCfg) {
+  const base = baseCfg && typeof baseCfg === 'object' ? baseCfg : {};
+  const merged = mergedCfg && typeof mergedCfg === 'object' ? { ...mergedCfg } : { ...base };
+  const mergedMode = String(merged.priceMode || 'fixed').toLowerCase();
+  if (hasModeValue(merged, mergedMode)) {
+    return merged;
+  }
+  const baseMode = String(base.priceMode || 'fixed').toLowerCase();
+  if (!hasModeValue(base, baseMode)) {
+    return merged;
+  }
+  merged.priceMode = baseMode;
+  if (baseMode === 'fixed') {
+    merged.price = base.price;
+  }
+  if (baseMode === 'amount') {
+    merged.priceDelta = base.priceDelta;
+    merged.priceBase = base.priceBase || merged.priceBase;
+  }
+  if (baseMode === 'percent') {
+    merged.pricePercent = base.pricePercent;
+    merged.priceBase = base.priceBase || merged.priceBase;
+  }
+  if (
+    base.roundTo !== undefined &&
+    base.roundTo !== null &&
+    (merged.roundTo === undefined || merged.roundTo === null)
+  ) {
+    merged.roundTo = base.roundTo;
+  }
+  return merged;
 }
 
 function getEffectivePriceConfig(cfg, productId, currentVariantId) {
@@ -110,7 +180,7 @@ function getEffectivePriceConfig(cfg, productId, currentVariantId) {
       }
     }
   }
-  return merged;
+  return normalizeMergedPriceConfig(cfg, merged);
 }
 
 function assignmentMatchesVariant(test, assignmentVariantId) {
@@ -174,6 +244,10 @@ function productInTargetList(test, productGidOrNumeric) {
  * @param {string} [params.variantId] - Shopify variant GID or numeric (for byVariant)
  * @param {number} params.linePresentmentTotal - line subtotal in presentment money (major units e.g. 29.99)
  * @param {number} params.quantity - line qty (>=1)
+ * @param {string} [params.shopDomain] - shop domain used for signature verification
+ * @param {string} [params.assignmentSignature] - cart _ripx_assignment_sig
+ * @param {string|number} [params.assignmentIssuedAtMs] - cart _ripx_assignment_ts
+ * @param {string} [params.assignmentUserId] - cart _ripx_assignment_user
  * @returns {{ applies: boolean, discountDecimal?: string, reason?: string }}
  */
 function resolvePriceTestLineDiscount({
@@ -183,6 +257,10 @@ function resolvePriceTestLineDiscount({
   variantId,
   linePresentmentTotal,
   quantity,
+  shopDomain = '',
+  assignmentSignature = '',
+  assignmentIssuedAtMs = '',
+  assignmentUserId = '',
   /** Per-unit compare-at from CartLineCost.compareAtAmountPerQuantity (Shopify); required for priceBase compare_at parity with storefront. */
   compareAtUnitPrice = null,
 }) {
@@ -193,11 +271,22 @@ function resolvePriceTestLineDiscount({
     return { applies: false, reason: 'test_not_running' };
   }
   const tt = String(test.target_type || '').toLowerCase();
-  if (tt !== 'product') {
+  if (!isCheckoutSupportedPriceTargetType(tt)) {
     return { applies: false, reason: 'unsupported_target_type' };
   }
   if (!assignmentMatchesVariant(test, assignmentVariantId)) {
     return { applies: false, reason: 'unknown_assignment_variant' };
+  }
+  const signatureCheck = verifyPriceAssignmentSignature({
+    testId: test?.id || '',
+    variantId: assignmentVariantId,
+    userId: assignmentUserId,
+    shopDomain,
+    issuedAtMs: assignmentIssuedAtMs,
+    signature: assignmentSignature,
+  });
+  if (!signatureCheck.ok) {
+    return { applies: false, reason: signatureCheck.reason || 'invalid_assignment_signature' };
   }
   if (!productInTargetList(test, productId)) {
     return { applies: false, reason: 'product_not_in_test' };
@@ -238,7 +327,7 @@ function resolvePriceTestLineDiscount({
     if (cfg.price === null || cfg.price === undefined || cfg.price === '') {
       return { applies: false, reason: 'no_fixed_price' };
     }
-    targetUnit = parseFloat(String(cfg.price).trim(), 10);
+    targetUnit = parseFloat(String(cfg.price).trim());
   } else if (priceMode === 'amount') {
     if (
       cfg.priceDelta === null ||
@@ -247,7 +336,7 @@ function resolvePriceTestLineDiscount({
     ) {
       return { applies: false, reason: 'no_price_delta' };
     }
-    const delta = parseFloat(String(cfg.priceDelta).trim(), 10);
+    const delta = parseFloat(String(cfg.priceDelta).trim());
     if (!Number.isFinite(delta)) {
       return { applies: false, reason: 'bad_delta' };
     }
@@ -260,7 +349,7 @@ function resolvePriceTestLineDiscount({
     ) {
       return { applies: false, reason: 'no_price_percent' };
     }
-    const pct = parseFloat(String(cfg.pricePercent).trim(), 10);
+    const pct = parseFloat(String(cfg.pricePercent).trim());
     if (!Number.isFinite(pct)) {
       return { applies: false, reason: 'bad_percent' };
     }
@@ -440,6 +529,19 @@ async function resolveCheckoutPriceBatchForDomain(domain, lines, getTestById, ge
       variantId,
       linePresentmentTotal: lineTotal,
       quantity,
+      shopDomain: domain,
+      assignmentSignature:
+        row.assignment_sig === undefined || row.assignment_sig === null
+          ? ''
+          : String(row.assignment_sig).trim(),
+      assignmentIssuedAtMs:
+        row.assignment_ts === undefined || row.assignment_ts === null
+          ? ''
+          : String(row.assignment_ts).trim(),
+      assignmentUserId:
+        row.assignment_user === undefined || row.assignment_user === null
+          ? ''
+          : String(row.assignment_user).trim(),
       compareAtUnitPrice: compareRaw,
     });
 

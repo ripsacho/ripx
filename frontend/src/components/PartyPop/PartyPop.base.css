@@ -1,0 +1,93 @@
+/* =========================
+   Base Overlay + Theme Tokens
+   ========================= */
+.party-pop-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  --party-piece-a: #f59e0b;
+  --party-piece-b: #ef4444;
+  --party-piece2-a: #22c55e;
+  --party-piece2-b: #14b8a6;
+  --party-piece3-a: #8b5cf6;
+  --party-piece3-b: #3b82f6;
+  --party-ring2: rgba(251, 191, 36, 0.9);
+  --party-streamer-a: #fef3c7;
+  --party-streamer-b: #f59e0b;
+  --party-streamer2-a: #ede9fe;
+  --party-streamer2-b: #8b5cf6;
+  --party-streamer3-a: #dcfce7;
+  --party-streamer3-b: #22c55e;
+  --party-spark-a: #ffffff;
+  --party-spark-b: #f8fafc;
+  --party-glow-a: rgba(244, 114, 182, 0.22);
+  --party-glow-b: rgba(59, 130, 246, 0.18);
+  --party-ray-a: rgba(255, 255, 255, 0.62);
+  --party-ray-b: rgba(255, 255, 255, 0.03);
+  --party-backdrop-a: rgba(15, 23, 42, 0.08);
+  --party-backdrop-b: rgba(2, 6, 23, 0.02);
+  --party-firework-core: rgba(255, 255, 255, 0.96);
+  --party-firework-ray: rgba(255, 255, 255, 0.86);
+  --party-firework-trail: rgba(255, 255, 255, 0.4);
+}
+
+.party-pop-overlay-brand {
+  --party-piece-a: #38bdf8;
+  --party-piece-b: #2563eb;
+  --party-piece2-a: #34d399;
+  --party-piece2-b: #10b981;
+  --party-piece3-a: #a78bfa;
+  --party-piece3-b: #6366f1;
+  --party-ring2: rgba(56, 189, 248, 0.9);
+  --party-streamer-a: #dbeafe;
+  --party-streamer-b: #2563eb;
+  --party-streamer2-a: #dcfce7;
+  --party-streamer2-b: #10b981;
+  --party-streamer3-a: #ede9fe;
+  --party-streamer3-b: #6366f1;
+  --party-spark-a: #ecfeff;
+  --party-spark-b: #dbeafe;
+  --party-glow-a: rgba(56, 189, 248, 0.2);
+  --party-glow-b: rgba(16, 185, 129, 0.18);
+  --party-ray-a: rgba(165, 243, 252, 0.58);
+  --party-ray-b: rgba(165, 243, 252, 0.04);
+  --party-backdrop-a: rgba(2, 132, 199, 0.08);
+  --party-backdrop-b: rgba(17, 24, 39, 0.03);
+  --party-firework-core: rgba(165, 243, 252, 0.98);
+  --party-firework-ray: rgba(125, 211, 252, 0.88);
+  --party-firework-trail: rgba(56, 189, 248, 0.45);
+}
+
+/* =========================
+   Motion Style Variants
+   ========================= */
+.party-pop-style-cinematic .party-pop-burst {
+  animation-duration: 820ms;
+  animation-timing-function: cubic-bezier(0.14, 0.74, 0.2, 1);
+}
+
+.party-pop-style-cinematic .party-pop-piece {
+  animation-timing-function: cubic-bezier(0.12, 0.72, 0.2, 1);
+}
+
+.party-pop-style-cinematic .party-pop-streamer,
+.party-pop-style-cinematic .party-pop-rain {
+  opacity: 0.7;
+}
+
+.party-pop-style-cinematic .party-pop-orbit {
+  border-width: 1px;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.07),
+    inset 0 0 26px rgba(255, 255, 255, 0.19);
+  animation-duration: 1320ms;
+}
+
+.party-pop-style-cinematic .party-pop-lens-flare {
+  animation-duration: 1320ms;
+}
+
+.party-pop-style-cinematic .party-pop-backdrop {
+  animation-duration: 1300ms;
+}

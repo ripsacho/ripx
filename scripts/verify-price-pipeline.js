@@ -61,10 +61,17 @@ async function main() {
 
   let shopOpts = {};
   let shopLookupError = null;
+  /** When tenant looks missing, explains which DB tables were checked (same DATABASE_URL as .env). */
+  let shopDbLookupBreakdown = null;
   const shop = (process.env.RIPX_VERIFY_SHOP || '').trim();
   if (shop) {
     try {
-      const { tenantExists, normalizeDomain } = require('../backend/src/models/tenant');
+      const {
+        tenantExists,
+        normalizeDomain,
+        getTenantByDomain,
+      } = require('../backend/src/models/tenant');
+      const { getShopSession } = require('../backend/src/models/shopSession');
       const { query } = require('../backend/src/utils/database');
       const domain = normalizeDomain(shop);
       if (domain && (await tenantExists(domain))) {
@@ -81,6 +88,14 @@ async function main() {
           runningPriceTests: countRes.rows[0]?.c ?? 0,
         };
       } else {
+        const tenantRow = domain ? await getTenantByDomain(domain) : null;
+        const sessionRow = domain ? await getShopSession(domain) : null;
+        shopDbLookupBreakdown = {
+          normalized_domain: domain || null,
+          database_url_configured: !!(process.env.DATABASE_URL || '').trim(),
+          tenants_table_row: !!tenantRow,
+          shop_sessions_row: !!sessionRow,
+        };
         shopOpts = { shopDomain: shop, tenantRegistered: false, runningPriceTests: null };
       }
     } catch (e) {
@@ -98,19 +113,22 @@ async function main() {
   const body = buildCheckoutPriceDiagnostics({ ...shopOpts, extensionConfig });
 
   if (shop) {
+    const tenantFalse = body.shop?.tenant_registered === false;
     body.verify_meta = {
       rip_verify_shop: shop,
       shop_lookup_ok: shopLookupError == null,
       shop_lookup_error: shopLookupError || null,
       tenant_registered: body.shop?.tenant_registered ?? null,
-      hint:
-        body.shop?.tenant_registered === false
-          ? 'This domain is not in RipX tenants — install the app / add My domains, or fix spelling vs DB shop_domain.'
-          : body.shop?.tenant_registered === true
-            ? 'Tenant registered; running_price_tests counts running price/pricing tests for that shop.'
-            : shopLookupError
-              ? 'Fix DATABASE_URL / DB connectivity to resolve tenant counts.'
-              : null,
+      ...(shopDbLookupBreakdown ? { db_lookup: shopDbLookupBreakdown } : {}),
+      hint: tenantFalse
+        ? shopDbLookupBreakdown?.database_url_configured
+          ? 'No row for this shop in tenants or shop_sessions on the database pointed to by DATABASE_URL (.env). Onboarding in Shopify uses the server DB that handled OAuth — if that is production Postgres, run this script with DATABASE_URL set to that same database, or SSH to the app host and run there.'
+          : 'Set DATABASE_URL in .env so the script can look up tenants and shop_sessions.'
+        : body.shop?.tenant_registered === true
+          ? 'Tenant registered; running_price_tests counts running price/pricing tests for that shop.'
+          : shopLookupError
+            ? 'Fix DATABASE_URL / DB connectivity to resolve tenant counts.'
+            : null,
     };
   }
 
@@ -153,8 +171,12 @@ async function main() {
     );
     if (body.shop.tenant_registered === false) {
       console.warn(
-        '\n[!] tenant: false → this shop is not registered in RipX (tenants table). Use your real *.myshopify.com from the app.\n'
+        '\n[!] tenant: false → no tenants/shop_sessions row for this shop on your current DATABASE_URL.\n' +
+          '    If the store is onboarded on another environment, use that DB or run this on the app server.\n'
       );
+      if (body.verify_meta?.db_lookup) {
+        console.warn('    db_lookup:', JSON.stringify(body.verify_meta.db_lookup));
+      }
     }
   }
   if (shopLookupError) {
@@ -166,9 +188,7 @@ async function main() {
     printPrefixedLines(`  [${mark}] ${c.id}: `, c.message || '');
   }
   if (body.recommendations?.length) {
-    console.log(
-      '\n--- Recommendations (see also backend/docs/PRICE_TEST_PIPELINE_RESEARCH.md) ---'
-    );
+    console.log('\n--- Recommendations (see also docs/SHOPIFY_CHECKOUT_PRICE_RESOLVER.md) ---');
     body.recommendations.forEach((r, i) => {
       printPrefixedLines(`  ${i + 1}. `, r);
     });

@@ -30,6 +30,8 @@ export const STORAGE_KEYS = {
   OAUTH_REDIRECTING: 'ripx_oauth_redirecting',
   /** Persisted variant colors (array of hex) – used in wizard, code editor, review, etc. */
   VARIANT_COLORS: 'ripx_variant_colors',
+  /** One-time marker for first successful test-start ultra celebration */
+  CELEBRATION_ULTRA_SHOWN: 'ripx_celebration_ultra_shown_v1',
 };
 
 /** Intervals (ms) */

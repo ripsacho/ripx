@@ -24,12 +24,17 @@ function mapTestToStorefrontPayload(test) {
         ? [test.target_id]
         : [];
   const jsTargeting = test.segments?.js_targeting;
+  const antiFlickerModeRaw = String(test.segments?.anti_flicker_mode || '')
+    .toLowerCase()
+    .trim();
+  const antiFlickerMode = antiFlickerModeRaw === 'strict' ? 'strict' : 'balanced';
   return {
     id: test.id,
     type: normalizeTestTypeForStorefront(test.type),
     targetType: test.target_type,
     targetId: test.target_id || null,
     targetIds: ids.length > 0 ? ids : null,
+    antiFlickerMode,
     jsTargeting:
       jsTargeting?.enabled && jsTargeting?.code ? { enabled: true, code: jsTargeting.code } : null,
   };

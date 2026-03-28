@@ -69,4 +69,48 @@ describe('ABTestEngine.isUserEligible', () => {
     const test = { segments: { countries: ['US', 'BD'] } };
     expect(ABTestEngine.isUserEligible(test, { country: 'BD' })).toBe(true);
   });
+
+  it('ignores legacy url_pattern for price tests in all-products scope', () => {
+    const test = {
+      type: 'price',
+      target_type: 'all-products',
+      segments: { url_pattern: '/products/' },
+    };
+    expect(
+      ABTestEngine.isUserEligible(test, {
+        current_url: 'https://shop.example.com/collections/snowboards',
+        current_pathname: '/collections/snowboards',
+      })
+    ).toBe(true);
+  });
+
+  it('still enforces url_pattern for non-price tests', () => {
+    const test = {
+      type: 'content',
+      target_type: 'homepage',
+      segments: { url_pattern: '^/products/' },
+    };
+    expect(
+      ABTestEngine.isUserEligible(test, {
+        current_url: 'https://shop.example.com/collections/snowboards',
+        current_pathname: '/collections/snowboards',
+      })
+    ).toBe(false);
+  });
+
+  it('still enforces explicit page_rules for price tests', () => {
+    const test = {
+      type: 'price',
+      target_type: 'all-products',
+      segments: {
+        page_rules: [{ type: 'include', match_type: 'starts_with', pattern: '/products/' }],
+      },
+    };
+    expect(
+      ABTestEngine.isUserEligible(test, {
+        current_url: 'https://shop.example.com/collections/snowboards',
+        current_pathname: '/collections/snowboards',
+      })
+    ).toBe(false);
+  });
 });

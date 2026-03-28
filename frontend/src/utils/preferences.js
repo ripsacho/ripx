@@ -32,3 +32,50 @@ export function getDefaultExportFormat() {
   const prefs = getPreferences();
   return prefs.defaultExportFormat || 'csv';
 }
+
+/**
+ * Celebration animation preference ('auto' | 'full' | 'subtle' | 'off')
+ */
+export function getCelebrationAnimationPreference() {
+  const prefs = getPreferences();
+  const raw = String(prefs.celebrationAnimation || '')
+    .toLowerCase()
+    .trim();
+  return ['auto', 'full', 'subtle', 'off'].includes(raw) ? raw : 'auto';
+}
+
+/**
+ * Celebration color theme preference ('rainbow' | 'brand')
+ */
+export function getCelebrationColorThemePreference() {
+  const prefs = getPreferences();
+  const raw = String(prefs.celebrationColorTheme || '')
+    .toLowerCase()
+    .trim();
+  return raw === 'brand' ? 'brand' : 'rainbow';
+}
+
+/**
+ * Celebration motion style preference ('dynamic' | 'cinematic')
+ */
+export function getCelebrationStylePreference() {
+  const prefs = getPreferences();
+  const raw = String(prefs.celebrationStyle || '')
+    .toLowerCase()
+    .trim();
+  return raw === 'cinematic' ? 'cinematic' : 'dynamic';
+}
+
+/**
+ * Returns true exactly once per browser profile.
+ * Used to trigger an ultra celebration for the first successful test start.
+ */
+export function consumeFirstStartUltraCelebrationFlag() {
+  try {
+    if (localStorage.getItem(STORAGE_KEYS.CELEBRATION_ULTRA_SHOWN) === '1') return false;
+    localStorage.setItem(STORAGE_KEYS.CELEBRATION_ULTRA_SHOWN, '1');
+    return true;
+  } catch {
+    return false;
+  }
+}

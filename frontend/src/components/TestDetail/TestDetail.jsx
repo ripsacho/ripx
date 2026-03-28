@@ -17,6 +17,7 @@ import {
 } from '@shopify/polaris-icons';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import Toast from '../Toast/Toast';
+import PartyPop from '../PartyPop/PartyPop';
 import LoadingSkeleton from '../LoadingSkeleton/LoadingSkeleton';
 import { apiPost, apiPut, unwrapData, getShopDomain } from '../../services';
 import TestWizard from '../TestWizard/TestWizard';
@@ -36,6 +37,12 @@ import {
 } from '../../hooks';
 import { useQueryClient } from '@tanstack/react-query';
 import { getTestTypeDisplay, getVariantCount } from '../../utils/testType';
+import {
+  consumeFirstStartUltraCelebrationFlag,
+  getCelebrationAnimationPreference,
+  getCelebrationColorThemePreference,
+  getCelebrationStylePreference,
+} from '../../utils/preferences';
 import styles from './TestDetail.module.css';
 
 function TestDetail() {
@@ -46,6 +53,7 @@ function TestDetail() {
   const [actionLoading, setActionLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState(null);
+  const [startCelebrationMode, setStartCelebrationMode] = useState(null);
   const [deleteModal, setDeleteModal] = useState(false);
   const [stopExpanded, setStopExpanded] = useState(false);
   const [rolloutConfigExpanded, setRolloutConfigExpanded] = useState(false);
@@ -111,6 +119,19 @@ function TestDetail() {
   const disablePersonalizationMutation = useDisablePersonalization();
 
   const handleTitleRender = useCallback(el => setPageTitle(el), []);
+  const resolveCelebrationVariant = useCallback(preferred => {
+    const userPref = getCelebrationAnimationPreference();
+    if (userPref === 'off') return null;
+    if (userPref === 'full' || userPref === 'subtle') return userPref;
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches) {
+      return 'subtle';
+    }
+    return preferred;
+  }, []);
+  const withUltraMilestone = useCallback(baseVariant => {
+    if (baseVariant !== 'full') return baseVariant;
+    return consumeFirstStartUltraCelebrationFlag() ? 'ultra' : baseVariant;
+  }, []);
 
   const isStopped = test?.status === 'stopped' || test?.status === 'completed';
   const isPersonalized = test?.personalization_mode === 'personalized';
@@ -124,6 +145,7 @@ function TestDetail() {
     try {
       await startMutation.mutateAsync(id);
       setSuccessMessage('Test started successfully.');
+      setStartCelebrationMode(withUltraMilestone(resolveCelebrationVariant('full')));
     } catch (err) {
       setErrorMessage('Failed to start test');
     } finally {
@@ -342,6 +364,13 @@ function TestDetail() {
 
   return (
     <PageShell className={`${styles.detailPage} wizard-page`}>
+      <PartyPop
+        active={!!startCelebrationMode}
+        variant={startCelebrationMode || 'full'}
+        styleMode={getCelebrationStylePreference()}
+        palette={getCelebrationColorThemePreference()}
+        onComplete={() => setStartCelebrationMode(null)}
+      />
       <Toast
         message={displayError}
         type="error"

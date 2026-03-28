@@ -25,6 +25,15 @@ query RipxCartLinesFetch {
       ripxVariant: attribute(key: "_ripx_variant") {
         value
       }
+      ripxAssignmentSig: attribute(key: "_ripx_assignment_sig") {
+        value
+      }
+      ripxAssignmentTs: attribute(key: "_ripx_assignment_ts") {
+        value
+      }
+      ripxAssignmentUser: attribute(key: "_ripx_assignment_user") {
+        value
+      }
       merchandise {
         __typename
         ... on ProductVariant {

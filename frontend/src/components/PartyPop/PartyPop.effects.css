@@ -1,0 +1,360 @@
+/* =========================
+   Core Visual Layers
+   ========================= */
+.party-pop-backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 40%, var(--party-backdrop-a), transparent 46%),
+    radial-gradient(circle at 30% 70%, var(--party-backdrop-b), transparent 54%);
+  opacity: 0;
+  animation: party-pop-backdrop 920ms ease-out forwards;
+}
+
+.party-pop-lens-flare {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 460px;
+  height: 96px;
+  transform: translate(-50%, -50%) rotate(-8deg);
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.1) 26%,
+    rgba(255, 255, 255, 0.7) 50%,
+    rgba(255, 255, 255, 0.16) 70%,
+    transparent 100%
+  );
+  opacity: 0;
+  filter: blur(0.5px);
+  animation: party-pop-lens-flare 860ms cubic-bezier(0.14, 0.82, 0.2, 1) forwards;
+}
+
+.party-pop-glow {
+  position: absolute;
+  left: 50%;
+  top: 44%;
+  width: 540px;
+  height: 320px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 40%, var(--party-glow-a), transparent 62%),
+    radial-gradient(circle at 70% 58%, var(--party-glow-b), transparent 65%);
+  opacity: 0;
+  animation: party-pop-glow 760ms ease-out forwards;
+}
+
+.party-pop-aura {
+  position: absolute;
+  width: 300px;
+  height: 120px;
+  top: 47%;
+  border-radius: 999px;
+  opacity: 0;
+  filter: blur(1px);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.26), transparent);
+  animation: party-pop-aura 820ms ease-out forwards;
+}
+
+.party-pop-aura-left {
+  left: 19%;
+  --party-rot: -22deg;
+}
+
+.party-pop-aura-right {
+  right: 19%;
+  --party-rot: 22deg;
+}
+
+.party-pop-overlay-ultra .party-pop-burst {
+  font-size: 3.9rem;
+  top: 45%;
+}
+
+.party-pop-overlay-ultra .party-pop-burst-secondary {
+  font-size: 2.9rem;
+  top: 40%;
+}
+
+.party-pop-overlay-ultra .party-pop-burst-tertiary {
+  font-size: 2.2rem;
+  top: 54%;
+}
+
+.party-pop-overlay-ultra .party-pop-piece {
+  width: 10px;
+  height: 10px;
+}
+
+.party-pop-overlay-ultra .party-pop-ray {
+  height: 160px;
+}
+
+.party-pop-overlay-ultra .party-pop-orbit {
+  width: 130px;
+  height: 130px;
+}
+
+.party-pop-firework {
+  position: absolute;
+  width: 170px;
+  height: 170px;
+  left: var(--party-fw-x, 50%);
+  top: var(--party-fw-y, 28%);
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(var(--party-fw-s, 1));
+  filter: drop-shadow(0 0 14px rgba(255, 255, 255, 0.42));
+  animation: party-pop-firework-in 640ms ease-out forwards;
+  animation-delay: var(--party-fw-d, 0ms);
+}
+
+.party-pop-firework-core {
+  fill: var(--party-firework-core);
+  opacity: 0;
+  animation: party-pop-firework-core 620ms ease-out forwards;
+  animation-delay: var(--party-fw-d, 0ms);
+}
+
+.party-pop-firework-ray {
+  fill: none;
+  stroke: var(--party-firework-ray);
+  stroke-width: 3.2;
+  stroke-linecap: round;
+  stroke-dasharray: 44;
+  stroke-dashoffset: 44;
+  opacity: 0;
+  animation: party-pop-firework-ray 760ms cubic-bezier(0.12, 0.82, 0.2, 1) forwards;
+  animation-delay: var(--party-fw-d, 0ms);
+}
+
+.party-pop-firework-trail {
+  fill: none;
+  stroke: var(--party-firework-trail);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-dasharray: 64;
+  stroke-dashoffset: 64;
+  opacity: 0;
+  animation: party-pop-firework-trail 720ms ease-out forwards;
+  animation-delay: calc(var(--party-fw-d, 0ms) - 90ms);
+}
+
+/* =========================
+   Intensity Variants (Ultra/Subtle)
+   ========================= */
+.party-pop-overlay-subtle .party-pop-ring {
+  opacity: 0.7;
+}
+
+.party-pop-overlay-subtle .party-pop-burst {
+  font-size: 2.45rem;
+  top: 49%;
+}
+
+.party-pop-overlay-subtle .party-pop-piece {
+  width: 7px;
+  height: 7px;
+  top: 59%;
+}
+
+.party-pop-overlay-subtle .party-pop-spark {
+  width: 4px;
+  height: 4px;
+}
+
+.party-pop-ring {
+  position: absolute;
+  left: 50%;
+  top: 47%;
+  width: 34px;
+  height: 34px;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  border-radius: 999px;
+  transform: translate(-50%, -50%) scale(0.45);
+  opacity: 0;
+  animation: party-pop-ring 520ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.party-pop-ring-secondary {
+  border-color: var(--party-ring2);
+  animation-delay: 110ms;
+}
+
+.party-pop-ring-tertiary {
+  border-color: rgba(255, 255, 255, 0.72);
+  animation-delay: 200ms;
+}
+
+.party-pop-ring-quaternary {
+  border-color: rgba(192, 132, 252, 0.82);
+  animation-delay: 320ms;
+}
+
+.party-pop-burst {
+  position: absolute;
+  left: 50%;
+  top: 47%;
+  transform: translate(-50%, -50%) scale(0.7);
+  font-size: 3.2rem;
+  opacity: 0;
+  filter: drop-shadow(0 6px 10px rgba(15, 23, 42, 0.28));
+  animation: party-pop-burst 560ms cubic-bezier(0.15, 0.82, 0.2, 1) forwards;
+}
+
+.party-pop-burst-secondary {
+  font-size: 2.4rem;
+  top: 43%;
+  animation-delay: 90ms;
+}
+
+.party-pop-burst-tertiary {
+  font-size: 1.8rem;
+  top: 52%;
+  animation-delay: 160ms;
+}
+
+.party-pop-burst-ultra {
+  font-size: 1.9rem;
+  top: 36%;
+  animation-delay: 250ms;
+}
+
+.party-pop-ray {
+  position: absolute;
+  left: 50%;
+  top: 52%;
+  width: 3px;
+  height: 122px;
+  border-radius: 999px;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  transform-origin: center bottom;
+  background: linear-gradient(180deg, var(--party-ray-a), var(--party-ray-b));
+  animation: party-pop-ray var(--party-d, 760ms) cubic-bezier(0.2, 0.82, 0.2, 1) forwards;
+}
+
+.party-pop-orbit {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 106px;
+  height: 106px;
+  border-radius: 999px;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  border: 2px solid rgba(255, 255, 255, 0.52);
+  border-top-color: rgba(255, 255, 255, 0.95);
+  border-bottom-color: rgba(255, 255, 255, 0.16);
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.06),
+    inset 0 0 18px rgba(255, 255, 255, 0.14);
+  animation: party-pop-orbit var(--party-d, 980ms) cubic-bezier(0.2, 0.82, 0.2, 1) forwards;
+}
+
+.party-pop-piece {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  background: linear-gradient(140deg, var(--party-piece-a), var(--party-piece-b));
+  animation: party-pop-piece var(--party-d, 1000ms) cubic-bezier(0.16, 0.84, 0.31, 1) forwards;
+}
+
+.party-pop-piece:nth-child(2n) {
+  background: linear-gradient(140deg, var(--party-piece2-a), var(--party-piece2-b));
+}
+
+.party-pop-piece:nth-child(3n) {
+  background: linear-gradient(140deg, var(--party-piece3-a), var(--party-piece3-b));
+  border-radius: 999px;
+}
+
+.party-pop-spark {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: linear-gradient(140deg, var(--party-spark-a), var(--party-spark-b));
+  box-shadow: 0 0 10px rgba(248, 250, 252, 0.7);
+}
+
+.party-pop-streamer {
+  width: 4px;
+  height: 28px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--party-streamer-a), var(--party-streamer-b));
+}
+
+.party-pop-streamer:nth-child(2n) {
+  background: linear-gradient(180deg, var(--party-streamer2-a), var(--party-streamer2-b));
+}
+
+.party-pop-streamer:nth-child(3n) {
+  background: linear-gradient(180deg, var(--party-streamer3-a), var(--party-streamer3-b));
+}
+
+.party-pop-rain {
+  top: -8%;
+  width: 8px;
+  height: 18px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--party-piece2-a), var(--party-piece3-b));
+  animation: party-pop-rain var(--party-d, 1700ms) cubic-bezier(0.12, 0.86, 0.22, 1) forwards;
+}
+
+.party-pop-rain:nth-child(2n) {
+  width: 7px;
+  height: 14px;
+  background: linear-gradient(180deg, var(--party-piece-a), var(--party-piece-b));
+}
+
+.party-pop-rain:nth-child(3n) {
+  width: 9px;
+  height: 20px;
+  background: linear-gradient(180deg, var(--party-piece3-a), var(--party-piece2-b));
+}
+
+.party-pop-comet {
+  width: 6px;
+  height: 22px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.16));
+  box-shadow: 0 0 12px rgba(248, 250, 252, 0.52);
+  animation: party-pop-comet var(--party-d, 1200ms) cubic-bezier(0.14, 0.82, 0.2, 1) forwards;
+}
+
+.party-pop-twinkle {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.08));
+  box-shadow: 0 0 14px rgba(255, 255, 255, 0.55);
+  animation: party-pop-twinkle var(--party-d, 960ms) ease-out forwards;
+}
+
+.party-pop-overlay-subtle .party-pop-ray {
+  height: 92px;
+}
+
+.party-pop-overlay-subtle .party-pop-lens-flare {
+  width: 320px;
+  height: 70px;
+  animation-duration: 700ms;
+}
+
+.party-pop-overlay-subtle .party-pop-orbit {
+  width: 86px;
+  height: 86px;
+  opacity: 0.72;
+}
+
+.party-pop-overlay-subtle .party-pop-aura,
+.party-pop-overlay-subtle .party-pop-backdrop {
+  opacity: 0.52;
+}

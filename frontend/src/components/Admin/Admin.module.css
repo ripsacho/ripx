@@ -2876,14 +2876,20 @@
 
 .adminModalRoleUserCard {
   padding: 0.75rem 1rem;
-  margin-bottom: 1rem;
   background: linear-gradient(135deg, rgba(6, 182, 212, 0.06) 0%, rgba(139, 92, 246, 0.04) 100%);
   border: 1px solid var(--border-secondary);
   border-radius: var(--radius-md);
-  font-size: 0.9375rem;
-  font-weight: 600;
   color: var(--text-primary);
-  word-break: break-all;
+  word-break: break-word;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.adminModalRoleBadges {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
 }
 
 [data-theme='dark'] .adminModalRoleUserCard {
@@ -2999,12 +3005,126 @@
   padding-block-end: 0.125rem;
 }
 
+.adminTablePrimaryCell {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 180px;
+}
+
+.adminTableMetaCell {
+  display: inline-flex;
+  align-items: center;
+}
+
+.adminTableInlineAction {
+  color: var(--futuristic-cyan);
+  font-weight: 600;
+  border-radius: 999px !important;
+  padding-inline: 0.55rem !important;
+}
+
+.adminTableInlineAction:hover {
+  color: #0891b2;
+}
+
+.adminBtnSecondary,
+.adminBtnPrimary,
+.adminBtnDanger,
+.adminBtnGhost {
+  border-radius: 10px !important;
+  font-weight: 600 !important;
+  transition: transform 0.12s ease, box-shadow 0.16s ease, border-color 0.16s ease,
+    background 0.16s ease !important;
+}
+
+.adminBtnSecondary {
+  border: 1px solid rgba(6, 182, 212, 0.22) !important;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.08), rgba(6, 182, 212, 0.03)) !important;
+  color: var(--futuristic-cyan) !important;
+}
+
+.adminBtnSecondary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(6, 182, 212, 0.36) !important;
+  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.18);
+}
+
+.adminBtnPrimary {
+  border: none !important;
+  background: linear-gradient(135deg, var(--futuristic-cyan), #0284c7) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
+}
+
+.adminBtnPrimary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(2, 132, 199, 0.38);
+}
+
+.adminBtnDanger {
+  border: 1px solid rgba(220, 38, 38, 0.32) !important;
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.1), rgba(220, 38, 38, 0.04)) !important;
+  color: #dc2626 !important;
+}
+
+.adminBtnDanger:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(220, 38, 38, 0.48) !important;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.2);
+}
+
+.adminBtnGhost {
+  border: 1px solid var(--border-secondary) !important;
+  background: transparent !important;
+  color: var(--text-secondary) !important;
+}
+
+.adminBtnGhost:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: rgba(148, 163, 184, 0.08) !important;
+  border-color: rgba(100, 116, 139, 0.3) !important;
+}
+
+@media (max-width: 900px) {
+  .adminListActionsWrap {
+    padding: 0.45rem 0.5rem;
+    gap: 0.3rem;
+  }
+
+  .adminListActionsPrimary,
+  .adminListActionsDanger {
+    gap: 0.3rem;
+  }
+
+  .adminListActionsWrap :global(.Polaris-Button),
+  .adminTableInlineAction {
+    min-width: 2rem;
+    padding-inline: 0.45rem !important;
+  }
+
+  .adminListActionsWrap :global(.Polaris-Button__Text),
+  .adminTableInlineAction :global(.Polaris-Button__Text) {
+    display: none;
+  }
+
+  .adminListActionsWrap :global(.Polaris-Button .Polaris-Icon),
+  .adminTableInlineAction :global(.Polaris-Button .Polaris-Icon) {
+    margin-right: 0;
+  }
+}
+
+.adminTableEmailValue {
+  font-family: ui-monospace, monospace;
+  font-size: 0.82rem;
+}
+
 /* Action column: pill container + grouped buttons */
 .adminListActionsWrap {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
+  flex-direction: column;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.35rem;
   padding: 0.5rem 0.75rem;
   background: linear-gradient(135deg, rgba(6, 182, 212, 0.04) 0%, rgba(139, 92, 246, 0.02) 100%);
   border: 1px solid var(--border-secondary);
@@ -3020,7 +3140,17 @@
   flex-wrap: wrap;
 }
 
-.adminListActions :global(.Polaris-Button) {
+.adminListActionsPrimary,
+.adminListActionsDanger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.adminListActions :global(.Polaris-Button),
+.adminListActionsPrimary :global(.Polaris-Button),
+.adminListActionsDanger :global(.Polaris-Button) {
   min-height: 30px;
   padding: 0 0.6rem;
   font-size: 0.8125rem;
@@ -3029,53 +3159,73 @@
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
 }
 
-.adminListActions :global(.Polaris-Button:hover):not(:disabled) {
+.adminListActions :global(.Polaris-Button:hover):not(:disabled),
+.adminListActionsPrimary :global(.Polaris-Button:hover):not(:disabled),
+.adminListActionsDanger :global(.Polaris-Button:hover):not(:disabled) {
   transform: translateY(-0.5px);
 }
 
-.adminListActions :global(.Polaris-Button--primary) {
+.adminListActions :global(.Polaris-Button--primary),
+.adminListActionsPrimary :global(.Polaris-Button--primary),
+.adminListActionsDanger :global(.Polaris-Button--primary) {
   background: linear-gradient(135deg, var(--futuristic-cyan), #0891b2);
   border: none;
   font-weight: 600;
   box-shadow: 0 1px 4px rgba(6, 182, 212, 0.3);
 }
 
-.adminListActions :global(.Polaris-Button--primary:hover):not(:disabled) {
+.adminListActions :global(.Polaris-Button--primary:hover):not(:disabled),
+.adminListActionsPrimary :global(.Polaris-Button--primary:hover):not(:disabled),
+.adminListActionsDanger :global(.Polaris-Button--primary:hover):not(:disabled) {
   box-shadow: 0 2px 10px rgba(6, 182, 212, 0.4);
 }
 
-.adminListActions :global(.Polaris-Button--plain) {
+.adminListActions :global(.Polaris-Button--plain),
+.adminListActionsPrimary :global(.Polaris-Button--plain),
+.adminListActionsDanger :global(.Polaris-Button--plain) {
   color: var(--text-secondary);
   border: 1px solid transparent;
 }
 
-.adminListActions :global(.Polaris-Button--plain:hover):not(:disabled) {
+.adminListActions :global(.Polaris-Button--plain:hover):not(:disabled),
+.adminListActionsPrimary :global(.Polaris-Button--plain:hover):not(:disabled),
+.adminListActionsDanger :global(.Polaris-Button--plain:hover):not(:disabled) {
   color: var(--futuristic-cyan);
   background: rgba(6, 182, 212, 0.08);
   border-color: rgba(6, 182, 212, 0.2);
 }
 
-.adminListActions :global(.Polaris-Button[data-polaris-unstyled]) {
+.adminListActions :global(.Polaris-Button[data-polaris-unstyled]),
+.adminListActionsPrimary :global(.Polaris-Button[data-polaris-unstyled]),
+.adminListActionsDanger :global(.Polaris-Button[data-polaris-unstyled]) {
   min-height: 30px;
   padding: 0 0.6rem;
   border-radius: 8px;
 }
 
 /* Danger actions in list */
-.adminListActions :global([class*='critical']) {
+.adminListActions :global([class*='critical']),
+.adminListActionsPrimary :global([class*='critical']),
+.adminListActionsDanger :global([class*='critical']) {
   border-radius: 8px;
   font-weight: 500;
 }
 
 .adminListActions :global([class*='critical'][class*='plain']:hover):not(:disabled),
-.adminListActions :global(.Polaris-Button--critical.Polaris-Button--plain:hover):not(:disabled) {
+.adminListActions :global(.Polaris-Button--critical.Polaris-Button--plain:hover):not(:disabled),
+.adminListActionsPrimary :global([class*='critical'][class*='plain']:hover):not(:disabled),
+.adminListActionsPrimary :global(.Polaris-Button--critical.Polaris-Button--plain:hover):not(:disabled),
+.adminListActionsDanger :global([class*='critical'][class*='plain']:hover):not(:disabled),
+.adminListActionsDanger :global(.Polaris-Button--critical.Polaris-Button--plain:hover):not(:disabled) {
   background: rgba(220, 38, 38, 0.08);
   border-color: rgba(220, 38, 38, 0.25);
   color: #dc2626;
 }
 
 /* Icon + label in action buttons */
-.adminListActions :global(.Polaris-Button .Polaris-Icon) {
+.adminListActions :global(.Polaris-Button .Polaris-Icon),
+.adminListActionsPrimary :global(.Polaris-Button .Polaris-Icon),
+.adminListActionsDanger :global(.Polaris-Button .Polaris-Icon) {
   margin-right: 0.35rem;
 }
 
@@ -3138,6 +3288,13 @@
   margin-bottom: 1rem;
   padding: 0.25rem 0;
   font-size: 0.875rem;
+}
+
+.adminUsersTableSummaryMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
 }
 
 /* Legacy aliases */

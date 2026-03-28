@@ -23,6 +23,7 @@ import {
 import {
   RefreshIcon,
   ViewIcon,
+  EditIcon,
   CheckCircleIcon,
   XCircleIcon,
   LockIcon,
@@ -70,6 +71,27 @@ function formatKeyLabel(key) {
     .replace(/([A-Z])/g, ' $1')
     .replace(/^\w/, c => c.toUpperCase())
     .trim();
+}
+
+function normalizeIdentifier(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase();
+}
+
+function applyRoleToUsersListPayload(payload, identifier, nextRole) {
+  if (!payload || typeof payload !== 'object' || !Array.isArray(payload.users)) return payload;
+  const normalizedIdentifier = normalizeIdentifier(identifier);
+  if (!normalizedIdentifier) return payload;
+  let changed = false;
+  const users = payload.users.map(user => {
+    const userDomain = normalizeIdentifier(user?.shopDomain);
+    const userEmail = normalizeIdentifier(user?.email);
+    if (userDomain !== normalizedIdentifier && userEmail !== normalizedIdentifier) return user;
+    changed = true;
+    return { ...user, role: nextRole || null };
+  });
+  return changed ? { ...payload, users } : payload;
 }
 
 function UserDetailModalContent({
@@ -424,8 +446,23 @@ export default function AdminUsers() {
     mutationFn: async ({ shopDomain, role }) => {
       await apiPut(`/admin/users/${encodeURIComponent(shopDomain)}/role`, { role: role || null });
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      const { shopDomain, role } = variables || {};
+      const nextRole = role || null;
+      if (shopDomain) {
+        // Update visible rows immediately so table reflects role changes without waiting for reload.
+        queryClient.setQueriesData({ queryKey: ['admin', 'users'] }, old =>
+          applyRoleToUsersListPayload(old, shopDomain, nextRole)
+        );
+        queryClient.setQueriesData({ queryKey: ['admin', 'standalone-users'] }, old =>
+          applyRoleToUsersListPayload(old, shopDomain, nextRole)
+        );
+        queryClient.setQueryData(['admin', 'users', shopDomain], old =>
+          old && typeof old === 'object' ? { ...old, role: nextRole } : old
+        );
+      }
       queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'standalone-users'] });
       setToast({ message: 'Role updated', type: 'success' });
       setRoleModalOpen(false);
       setRoleModalUser(null);
@@ -519,6 +556,19 @@ export default function AdminUsers() {
   const isLoadingList = listView === 'email' ? standaloneLoading : isLoading;
   const isFetchingList = listView === 'email' ? standaloneFetching : isFetching;
   const statusOptions = listView === 'email' ? EMAIL_STATUS_OPTIONS : STORE_STATUS_OPTIONS;
+  const activeFiltersCount = (statusFilter ? 1 : 0) + (search ? 1 : 0);
+  const roleModalTarget =
+    roleModalUser?.identifier ?? roleModalUser?.shopDomain ?? roleModalUser?.email ?? '';
+  const roleModalCurrentRole = roleModalUser?.role || '';
+  const selectedRoleLabel =
+    roleOptionsForSetRole.find(option => option.value === roleModalValue)?.label || 'No admin role';
+
+  const renderRoleBadge = role =>
+    role ? (
+      <Badge tone={role === 'superadmin' ? 'attention' : 'info'}>{role}</Badge>
+    ) : (
+      <Badge tone="default">No role</Badge>
+    );
 
   const handleExportCsv = () => {
     const baseUrl = getApiBaseUrl();
@@ -549,7 +599,14 @@ export default function AdminUsers() {
   const rows =
     listView === 'email'
       ? users.map(u => [
-          u.email || '—',
+          <div key={`email-${u.id}`} className={styles.adminTablePrimaryCell}>
+            <Text as="p" variant="bodyMd" fontWeight="semibold">
+              {u.email || '—'}
+            </Text>
+            <Text as="p" variant="bodySm" tone="subdued">
+              Registered {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—'}
+            </Text>
+          </div>,
           u.status === 'pending' ? (
             <Badge tone="attention">Pending</Badge>
           ) : u.status === 'rejected' ? (
@@ -557,36 +614,46 @@ export default function AdminUsers() {
           ) : (
             <Badge tone="success">Accepted</Badge>
           ),
-          u.role ? (
-            <Badge tone={u.role === 'superadmin' ? 'attention' : 'info'}>{u.role}</Badge>
-          ) : (
-            '—'
-          ),
-          u.emailVerifiedAt ? (
-            <Badge tone="success">Yes</Badge>
-          ) : (
-            <Badge tone="attention">No</Badge>
-          ),
+          renderRoleBadge(u.role),
+          u.emailVerifiedAt ? <Badge tone="success">Yes</Badge> : <Badge tone="critical">No</Badge>,
           u.acceptedAt ? new Date(u.acceptedAt).toLocaleDateString() : '—',
-          u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—',
-          <Button
-            key={`view-${u.id}`}
-            size="slim"
-            variant="plain"
-            icon={ViewIcon}
-            onClick={() => setDetailUser(u.email || '')}
-            accessibilityLabel="View domains"
-          >
-            View
-          </Button>,
+          <div key={`domains-${u.id}`} className={styles.adminTableMetaCell}>
+            <Button
+              size="slim"
+              variant="plain"
+              icon={ViewIcon}
+              className={styles.adminTableInlineAction}
+              onClick={() => setDetailUser(u.email || '')}
+              accessibilityLabel="View domains"
+            >
+              View domains
+            </Button>
+          </div>,
           <div key={`actions-${u.id}`} className={styles.adminListActionsWrap}>
-            <div className={styles.adminListActions}>
+            <div className={styles.adminListActionsPrimary}>
+              <Button
+                size="slim"
+                variant="plain"
+                icon={ViewIcon}
+                className={styles.adminBtnSecondary}
+                onClick={() => setDetailUser(u.email || '')}
+                accessibilityLabel="Open user details"
+              >
+                View details
+              </Button>
               {can(ADMIN_PERMISSIONS.USERS_SET_ROLE) && !isCurrentUser(u.email) && (
                 <Button
                   size="slim"
                   variant="plain"
+                  className={styles.adminBtnSecondary}
+                  icon={EditIcon}
+                  accessibilityLabel={`Set role for ${u.email || 'user'}`}
                   onClick={() => {
-                    setRoleModalUser({ identifier: u.email, email: u.email });
+                    setRoleModalUser({
+                      identifier: u.email,
+                      email: u.email,
+                      role: u.role || '',
+                    });
                     setRoleModalValue(u.role || '');
                     setRoleModalOpen(true);
                   }}
@@ -594,58 +661,74 @@ export default function AdminUsers() {
                   Set role
                 </Button>
               )}
-              {u.status === 'pending' && (
-                <>
-                  <Button
-                    size="slim"
-                    variant="primary"
-                    icon={CheckCircleIcon}
-                    onClick={() => acceptMutation.mutate(u.id)}
-                    loading={acceptMutation.isPending && acceptMutation.variables === u.id}
-                  >
-                    Accept
-                  </Button>
-                  <Button
-                    size="slim"
-                    tone="critical"
-                    icon={XCircleIcon}
-                    onClick={() => rejectMutation.mutate(u.id)}
-                    loading={rejectMutation.isPending && rejectMutation.variables === u.id}
-                  >
-                    Reject
-                  </Button>
-                </>
-              )}
             </div>
+            {u.status === 'pending' && (
+              <div className={styles.adminListActionsDanger}>
+                <Button
+                  size="slim"
+                  variant="primary"
+                  icon={CheckCircleIcon}
+                  className={styles.adminBtnPrimary}
+                  accessibilityLabel={`Accept ${u.email || 'user'}`}
+                  onClick={() => acceptMutation.mutate(u.id)}
+                  loading={acceptMutation.isPending && acceptMutation.variables === u.id}
+                >
+                  Accept
+                </Button>
+                <Button
+                  size="slim"
+                  tone="critical"
+                  icon={XCircleIcon}
+                  className={styles.adminBtnDanger}
+                  accessibilityLabel={`Reject ${u.email || 'user'}`}
+                  onClick={() => rejectMutation.mutate(u.id)}
+                  loading={rejectMutation.isPending && rejectMutation.variables === u.id}
+                >
+                  Reject
+                </Button>
+              </div>
+            )}
           </div>,
         ])
       : users.map(u => [
-          u.shopDomain,
-          u.email || '—',
+          <div key={`domain-${u.shopDomain}`} className={styles.adminTablePrimaryCell}>
+            <Text as="p" variant="bodyMd" fontWeight="semibold">
+              {u.shopDomain}
+            </Text>
+            <Text as="p" variant="bodySm" tone="subdued">
+              Added {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—'}
+            </Text>
+          </div>,
+          <span key={`email-${u.shopDomain}`} className={styles.adminTableEmailValue}>
+            {u.email || '—'}
+          </span>,
           u.firstName || u.lastName ? [u.firstName, u.lastName].filter(Boolean).join(' ') : '—',
-          u.role ? <Badge tone="info">{u.role}</Badge> : '—',
+          renderRoleBadge(u.role),
           u.status === 'locked' ? (
             <Badge tone="critical">Locked</Badge>
           ) : (
             <Badge tone="success">Active</Badge>
           ),
           new Date(u.createdAt).toLocaleDateString(),
-          <Button
-            key={`view-${u.shopDomain}`}
-            size="slim"
-            variant="plain"
-            icon={ViewIcon}
-            onClick={() => setDetailUser(u.shopDomain)}
-            accessibilityLabel="View domains"
-          >
-            View {(u.domainCount ?? 0) > 0 ? `(${u.domainCount})` : ''}
-          </Button>,
+          <div key={`view-${u.shopDomain}`} className={styles.adminTableMetaCell}>
+            <Button
+              size="slim"
+              variant="plain"
+              icon={ViewIcon}
+              className={styles.adminTableInlineAction}
+              onClick={() => setDetailUser(u.shopDomain)}
+              accessibilityLabel="View domains"
+            >
+              Domains {(u.domainCount ?? 0) > 0 ? `(${u.domainCount})` : '(0)'}
+            </Button>
+          </div>,
           <div key={`actions-${u.shopDomain}`} className={styles.adminListActionsWrap}>
-            <div className={styles.adminListActions}>
+            <div className={styles.adminListActionsPrimary}>
               <Button
                 size="slim"
                 variant="plain"
                 icon={ViewIcon}
+                className={styles.adminBtnSecondary}
                 onClick={() => setDetailUser(u.shopDomain)}
                 accessibilityLabel="View user details"
               >
@@ -655,6 +738,9 @@ export default function AdminUsers() {
                 <Button
                   size="slim"
                   variant="plain"
+                  icon={EditIcon}
+                  className={styles.adminBtnSecondary}
+                  accessibilityLabel={`Set role for ${u.shopDomain || 'user'}`}
                   onClick={() => {
                     setRoleModalUser(u);
                     setRoleModalValue(u.role || '');
@@ -664,11 +750,15 @@ export default function AdminUsers() {
                   Set role
                 </Button>
               )}
+            </div>
+            <div className={styles.adminListActionsDanger}>
               {can(ADMIN_PERMISSIONS.USERS_LOCK) &&
                 (u.status === 'locked' ? (
                   <Button
                     size="slim"
                     icon={LockIcon}
+                    className={styles.adminBtnSecondary}
+                    accessibilityLabel={`Unlock ${u.shopDomain || 'user'}`}
                     onClick={() =>
                       lockMutation.mutate({ shopDomain: u.shopDomain, action: 'unlock' })
                     }
@@ -681,6 +771,8 @@ export default function AdminUsers() {
                     tone="critical"
                     icon={LockIcon}
                     variant="plain"
+                    className={styles.adminBtnDanger}
+                    accessibilityLabel={`Lock ${u.shopDomain || 'user'}`}
                     onClick={() =>
                       lockMutation.mutate({ shopDomain: u.shopDomain, action: 'lock' })
                     }
@@ -875,12 +967,22 @@ export default function AdminUsers() {
                     <Text as="p" variant="bodySm" tone="subdued">
                       {total} user{total !== 1 ? 's' : ''} found
                     </Text>
+                    <div className={styles.adminUsersTableSummaryMeta}>
+                      <Badge tone="info">
+                        {listView === 'email' ? 'Email users' : 'Store users'}
+                      </Badge>
+                      {activeFiltersCount > 0 && (
+                        <Badge tone="attention">
+                          {activeFiltersCount} filter{activeFiltersCount > 1 ? 's' : ''} active
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                   <div className={styles.adminTableWrap}>
                     <DataTable
                       columnContentTypes={
                         listView === 'email'
-                          ? ['text', 'text', 'text', 'text', 'text', 'text', 'text', 'text']
+                          ? ['text', 'text', 'text', 'text', 'text', 'text', 'text']
                           : ['text', 'text', 'text', 'text', 'text', 'text', 'text', 'text']
                       }
                       headings={
@@ -891,8 +993,7 @@ export default function AdminUsers() {
                               'Role',
                               'Email verified',
                               'Accepted at',
-                              'Created',
-                              'Domains',
+                              'Connected domains',
                               'Actions',
                             ]
                           : [
@@ -902,7 +1003,7 @@ export default function AdminUsers() {
                               'Role',
                               'Status',
                               'Created',
-                              'Domains',
+                              'Connected domains',
                               'Actions',
                             ]
                       }
@@ -997,21 +1098,33 @@ export default function AdminUsers() {
           <Modal.Section>
             <BlockStack gap="400">
               <div className={styles.adminModalRoleUserCard}>
-                {roleModalUser.identifier ?? roleModalUser.shopDomain ?? roleModalUser.email}
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Updating role for
+                </Text>
+                <Text as="p" variant="bodyMd" fontWeight="semibold">
+                  {roleModalTarget}
+                </Text>
+                <div className={styles.adminModalRoleBadges}>
+                  <Badge tone="info">Current: {roleModalCurrentRole || 'No role'}</Badge>
+                  <Badge tone="attention">Selected: {selectedRoleLabel}</Badge>
+                </div>
               </div>
+              <Text as="p" variant="bodySm" tone="subdued">
+                Role changes take effect immediately and apply to all admin pages for this user.
+              </Text>
               <Select
                 label="Role"
                 options={roleOptionsForSetRole}
                 value={roleModalValue}
                 onChange={setRoleModalValue}
               />
-              <InlineStack gap="200">
+              <InlineStack gap="200" align="end">
                 <Button
                   variant="primary"
+                  className={styles.adminBtnPrimary}
                   onClick={() =>
                     roleMutation.mutate({
-                      shopDomain:
-                        roleModalUser.identifier ?? roleModalUser.shopDomain ?? roleModalUser.email,
+                      shopDomain: roleModalTarget,
                       role: roleModalValue || null,
                     })
                   }
@@ -1020,6 +1133,7 @@ export default function AdminUsers() {
                   Save
                 </Button>
                 <Button
+                  className={styles.adminBtnGhost}
                   onClick={() => {
                     setRoleModalOpen(false);
                     setRoleModalUser(null);

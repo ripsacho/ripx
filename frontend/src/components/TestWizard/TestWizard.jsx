@@ -77,6 +77,12 @@ import {
 } from '../../utils/previewUrl';
 import { inferTemplateKeyFromVariants } from '../../utils/testType';
 import { getVariantColor, getVariantColorLight } from '../../utils/variantColors';
+import {
+  buildPriceSimulationRows,
+  buildPriceSimulationCsv,
+  computeEffectivePrice as computeSimulationPrice,
+  configUsesCompareAtBase,
+} from '../../utils/priceSimulation';
 import { ROUTES, STANDALONE_TEST_TYPE_IDS } from '../../constants';
 import {
   TEST_TEMPLATES,
@@ -117,6 +123,7 @@ const DEFAULT_FORM_DATA = {
     customer: 'all',
     countries: [],
     traffic_source: 'all',
+    anti_flicker_mode: 'balanced',
     url_pattern: '',
     min_sessions: '',
     page_rules: [],
@@ -221,7 +228,11 @@ function TestWizard({
   const [quickFillValue, setQuickFillValue] = useState('');
   const [quickFillRoundTo, setQuickFillRoundTo] = useState(''); // '' | '0.01' | '0.25' | '0.50' | '1' — stored in variant config when applying
   const [exampleCatalogPrice, setExampleCatalogPrice] = useState(''); // optional $ for live preview
+  const [exampleCompareAtPrice, setExampleCompareAtPrice] = useState(''); // optional compare-at basis for compare_at simulation
   const [catalogConfirmedForPriceTest, setCatalogConfirmedForPriceTest] = useState(false); // optional confirmation on Review (does not block submit)
+  const [lastSimulationExportAt, setLastSimulationExportAt] = useState(null);
+  const [simulationExportToast, setSimulationExportToast] = useState(null);
+  const [antiFlickerToast, setAntiFlickerToast] = useState(null);
   useEffect(() => {
     const n = formData.variants?.length ?? 0;
     if (n === 0) {
@@ -762,6 +773,7 @@ function TestWizard({
         ? data.segments.countries.filter(Boolean)
         : [],
       traffic_source: data.segments?.traffic_source || 'all',
+      anti_flicker_mode: data.segments?.anti_flicker_mode === 'strict' ? 'strict' : 'balanced',
       url_pattern: data.segments?.url_pattern ?? '',
       min_sessions: data.segments?.min_sessions ?? '',
     };
@@ -1357,7 +1369,7 @@ function TestWizard({
       urlPattern = '/cart';
     } else if (templateKey === 'price' || templateKey === 'pricing' || templateKey === 'offer') {
       targetType = 'all-products';
-      urlPattern = '/products/';
+      urlPattern = '';
     }
 
     if (TEST_TEMPLATES[templateKey]) {
@@ -1695,11 +1707,12 @@ function TestWizard({
   const buildPreviewUrl = (variant, index) => {
     if (mode !== 'edit' || !initialData?.id) return null;
     const domain = initialData?.shop_domain || getPreviewDomain() || getShopDomain();
+    const pathForPreview = getFirstTargetPreviewPath();
     const baseUrl = resolvePreviewBaseUrl({
       variantUrl: variant?.config?.url,
-      overrideUrl: null,
+      overrideUrl: (formData.segments?.visual_editor_preview_url ?? '').trim() || null,
       domain: domain || undefined,
-      path: '/',
+      path: pathForPreview,
     });
     if (!baseUrl) return null;
     const variantId = variant?.id || variant?.name || `variant-${index + 1}`;
@@ -1713,7 +1726,15 @@ function TestWizard({
     });
   };
 
-  const handlePreviewVariant = (variant, index) => {
+  const handlePreviewVariant = async (variant, index) => {
+    if (mode === 'edit' && isDirty) {
+      await handleSubmit({ silent: true });
+      const stillDirty = JSON.stringify(buildPayload()) !== lastSavedSnapshotRef.current;
+      if (stillDirty) {
+        setError('Save failed. Fix validation or network issues, then try preview again.');
+        return;
+      }
+    }
     const url = buildPreviewUrl(variant, index);
     if (!url) {
       setError(
@@ -2147,6 +2168,18 @@ function TestWizard({
       formData.holdout_percent === null || formData.holdout_percent === undefined
         ? ''
         : String(formData.holdout_percent);
+    const currentTemplateKey = String(
+      selectedTemplate || formData.goal?.template_key || formData.type || ''
+    ).toLowerCase();
+    const antiFlickerRecommendedMode = ['content', 'offer', 'theme', 'split-url'].includes(
+      currentTemplateKey
+    )
+      ? 'strict'
+      : 'balanced';
+    const antiFlickerRecommendationReason =
+      antiFlickerRecommendedMode === 'strict'
+        ? 'Visual/content changes benefit from stronger pre-hiding to avoid control flash.'
+        : 'Price-focused tests usually perform better with less pre-hide time.';
 
     return (
       <BlockStack gap="400">
@@ -2551,7 +2584,7 @@ function TestWizard({
                                         desc: 'Every product page',
                                         scope: 'all-products',
                                         target_type: 'all-products',
-                                        url_pattern: '/products/',
+                                        url_pattern: '',
                                         needsId: false,
                                         icon: ProductIcon,
                                         tooltip: 'All product pages',
@@ -2573,7 +2606,7 @@ function TestWizard({
                                         desc: 'Choose from store',
                                         scope: 'product-id',
                                         target_type: 'product',
-                                        url_pattern: '/products/',
+                                        url_pattern: '',
                                         needsId: true,
                                         icon: ProductIcon,
                                         tooltip: 'Select product(s) from your store',
@@ -4318,6 +4351,85 @@ function TestWizard({
                                               helpText="Start at this % and ramp to 100%. 0 = no ramp."
                                               autoComplete="off"
                                             />
+                                            <Select
+                                              label="Variation anti-flicker mode"
+                                              options={[
+                                                {
+                                                  label:
+                                                    'Balanced (recommended) - hide for content/offer tests only',
+                                                  value: 'balanced',
+                                                },
+                                                {
+                                                  label:
+                                                    'Strict - hide for all tests (strongest flicker protection)',
+                                                  value: 'strict',
+                                                },
+                                              ]}
+                                              value={
+                                                formData.segments?.anti_flicker_mode || 'balanced'
+                                              }
+                                              onChange={value =>
+                                                setFormData(prev => ({
+                                                  ...prev,
+                                                  segments: {
+                                                    ...prev.segments,
+                                                    anti_flicker_mode:
+                                                      value === 'strict' ? 'strict' : 'balanced',
+                                                  },
+                                                }))
+                                              }
+                                              helpText="Strict reduces control flash further but can increase blank-screen time slightly."
+                                            />
+                                            <InlineStack
+                                              align="start"
+                                              gap="200"
+                                              blockAlign="center"
+                                            >
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setFormData(prev => ({
+                                                    ...prev,
+                                                    segments: {
+                                                      ...prev.segments,
+                                                      anti_flicker_mode: antiFlickerRecommendedMode,
+                                                    },
+                                                  }));
+                                                  setIsDirty(true);
+                                                  setAntiFlickerToast({
+                                                    type: 'success',
+                                                    message: `Applied recommended anti-flicker mode: ${antiFlickerRecommendedMode}.`,
+                                                  });
+                                                }}
+                                                style={{
+                                                  padding: 0,
+                                                  border: 'none',
+                                                  background: 'transparent',
+                                                  cursor: 'pointer',
+                                                }}
+                                                title={`Apply recommended mode: ${antiFlickerRecommendedMode}`}
+                                              >
+                                                <Badge
+                                                  tone={
+                                                    antiFlickerRecommendedMode === 'strict'
+                                                      ? 'warning'
+                                                      : 'success'
+                                                  }
+                                                >
+                                                  Best for this test type:{' '}
+                                                  {antiFlickerRecommendedMode}
+                                                </Badge>
+                                              </button>
+                                              <Text as="span" variant="bodySm" tone="subdued">
+                                                {antiFlickerRecommendationReason}
+                                              </Text>
+                                            </InlineStack>
+                                            <Text as="p" variant="bodySm" tone="subdued">
+                                              Tip: Use <strong>Balanced</strong> for most price
+                                              tests to protect speed. Use <strong>Strict</strong>{' '}
+                                              for visual/content tests where even brief control
+                                              flashes are unacceptable.
+                                            </Text>
                                           </BlockStack>
                                         </div>
                                       </div>
@@ -5518,46 +5630,6 @@ function TestWizard({
     return '—';
   };
 
-  /** Given variant config and an example catalog price, return the effective displayed price (for preview). */
-  const computeEffectivePrice = (cfg, catalogPrice) => {
-    if (
-      catalogPrice === null ||
-      catalogPrice === undefined ||
-      !Number.isFinite(Number(catalogPrice))
-    )
-      return null;
-    const catalog = Number(catalogPrice);
-    const m = (cfg?.priceMode || 'fixed').toLowerCase();
-    if (m === 'fixed') {
-      if (cfg.price !== null && cfg.price !== undefined && cfg.price !== '') {
-        const n = Number(cfg.price);
-        return Number.isNaN(n) ? catalog : n;
-      }
-      return catalog;
-    }
-    if (
-      m === 'amount' &&
-      cfg.priceDelta !== null &&
-      cfg.priceDelta !== undefined &&
-      cfg.priceDelta !== ''
-    ) {
-      const d = Number(cfg.priceDelta);
-      return Number.isNaN(d) ? catalog : Math.max(0, catalog + d);
-    }
-    if (
-      m === 'percent' &&
-      cfg.pricePercent !== null &&
-      cfg.pricePercent !== undefined &&
-      cfg.pricePercent !== ''
-    ) {
-      const p = Number(cfg.pricePercent);
-      if (Number.isNaN(p)) return catalog;
-      const factor = p >= 0 ? 1 - p / 100 : 1 + Math.abs(p) / 100;
-      return Math.max(0, catalog * factor);
-    }
-    return catalog;
-  };
-
   const PRICE_AMOUNT_PRESETS = [-10, -5, -2, 2, 5];
   const PRICE_PERCENT_PRESETS = [-10, -5, 5, 10, 15, 20];
 
@@ -5567,6 +5639,42 @@ function TestWizard({
     const m = s.match(/Product\/(\d+)/);
     return m ? `Product ${m[1]}` : s;
   };
+
+  const downloadPriceSimulationCsv = useCallback(
+    (rows, variantsForCsv) => {
+      if (!Array.isArray(rows) || rows.length === 0) return;
+      const csv = buildPriceSimulationCsv({
+        rows,
+        variantNames: (variantsForCsv || []).map((v, idx) => v?.name || `Variant ${idx + 1}`),
+      });
+      if (typeof window === 'undefined' || typeof document === 'undefined') return;
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const safeTestName = (formData.name || initialData?.name || 'price-test')
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9-_]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+      const fileName = `${safeTestName || 'price-test'}-simulation.csv`;
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      const exportedAt = new Date();
+      setLastSimulationExportAt(exportedAt);
+      setSimulationExportToast({
+        message: `${fileName} exported at ${exportedAt.toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+        })}`,
+        type: 'success',
+      });
+    },
+    [formData.name, initialData?.name]
+  );
 
   const renderVariantPriceModule = () => {
     const variants = formData.variants || [];
@@ -5578,6 +5686,31 @@ function TestWizard({
             ? [formData.target_id]
             : []
         : [];
+    const parsedExampleCatalog =
+      exampleCatalogPrice !== '' && Number.isFinite(Number.parseFloat(exampleCatalogPrice))
+        ? Number.parseFloat(exampleCatalogPrice)
+        : null;
+    const parsedExampleCompareAt =
+      exampleCompareAtPrice !== '' && Number.isFinite(Number.parseFloat(exampleCompareAtPrice))
+        ? Number.parseFloat(exampleCompareAtPrice)
+        : null;
+    const simulationNeedsCompareAt = variants.some(v => configUsesCompareAtBase(v?.config || {}));
+    const priceSimulation =
+      parsedExampleCatalog !== null
+        ? buildPriceSimulationRows({
+            variants,
+            catalogPrice: parsedExampleCatalog,
+            compareAtPrice: parsedExampleCompareAt,
+            targetType: formData.target_type,
+            targetProductIds: priceTargetProductIds,
+          })
+        : {
+            rows: [],
+            truncated: false,
+            hasVariantOverrideRows: false,
+            hasCompareAtBase: simulationNeedsCompareAt,
+            hasMissingCompareAt: false,
+          };
 
     const renderPriceVariantEditor = index => {
       const variant = variants[index] || {};
@@ -6191,6 +6324,14 @@ function TestWizard({
                   checkout the customer pays your <strong>Shopify catalog price</strong> unless you
                   align it.
                 </Text>
+                {!['product', 'all-products', 'all_products'].includes(
+                  String(formData.target_type || '').toLowerCase()
+                ) && (
+                  <Text as="p" variant="bodySm" tone="critical">
+                    Checkout price-alignment automation (Shopify Functions) currently supports{' '}
+                    <strong>Product / all-products scope</strong>. Use one of those for full parity.
+                  </Text>
+                )}
                 <ul className={styles.priceBannerBullets}>
                   <li>
                     To charge the test price: set catalog to the <strong>highest</strong> test
@@ -6518,21 +6659,25 @@ function TestWizard({
                     onChange={checked => {
                       setFormData(prev => {
                         const next = { ...prev, pricePerProduct: !!checked };
-                        if (!!checked && Array.isArray(prev.variants)) {
+                        if (Array.isArray(prev.variants)) {
                           next.variants = prev.variants.map(v => {
                             const config = { ...(v.config || {}) };
-                            if (!config.byProduct || typeof config.byProduct !== 'object')
-                              config.byProduct = {};
-                            priceTargetProductIds.forEach(pid => {
-                              if (!config.byProduct[pid])
-                                config.byProduct[pid] = {
-                                  priceMode: config.priceMode || 'fixed',
-                                  price: config.price,
-                                  priceDelta: config.priceDelta,
-                                  pricePercent: config.pricePercent,
-                                  priceBase: config.priceBase || 'price',
-                                };
-                            });
+                            if (checked) {
+                              if (!config.byProduct || typeof config.byProduct !== 'object')
+                                config.byProduct = {};
+                              priceTargetProductIds.forEach(pid => {
+                                if (!config.byProduct[pid])
+                                  config.byProduct[pid] = {
+                                    priceMode: config.priceMode || 'fixed',
+                                    price: config.price,
+                                    priceDelta: config.priceDelta,
+                                    pricePercent: config.pricePercent,
+                                    priceBase: config.priceBase || 'price',
+                                  };
+                              });
+                            } else if (config.byProduct && typeof config.byProduct === 'object') {
+                              delete config.byProduct;
+                            }
                             return { ...v, config };
                           });
                         }
@@ -6675,21 +6820,40 @@ function TestWizard({
                           step={0.01}
                         />
                       </div>
-                      {exampleCatalogPrice !== '' &&
-                        Number.isFinite(parseFloat(exampleCatalogPrice, 10)) &&
+                      {simulationNeedsCompareAt && (
+                        <div style={{ minWidth: '180px' }}>
+                          <TextField
+                            label="Example compare-at price"
+                            helpText="Required when any variant uses Compare-at base"
+                            type="number"
+                            value={exampleCompareAtPrice}
+                            onChange={setExampleCompareAtPrice}
+                            placeholder="e.g. 80"
+                            prefix="$"
+                            autoComplete="off"
+                            min={0}
+                            step={0.01}
+                          />
+                        </div>
+                      )}
+                      {parsedExampleCatalog !== null &&
                         (() => {
-                          const catalog = parseFloat(exampleCatalogPrice, 10);
+                          const catalog = parsedExampleCatalog;
+                          if (simulationNeedsCompareAt && parsedExampleCompareAt === null) {
+                            return (
+                              <span className={styles.priceExamplePreviewResult}>
+                                Add an example compare-at price to simulate variants that use
+                                Compare-at base.
+                              </span>
+                            );
+                          }
                           const parts = variants.map(v => {
-                            const effective = computeEffectivePrice(v.config, catalog);
+                            const effective = computeSimulationPrice(v.config, catalog, {
+                              compareAtPrice: parsedExampleCompareAt,
+                            });
                             const label = v.name;
                             if (effective === null || effective === undefined) return `${label}: —`;
-                            const rounded =
-                              v.config?.roundTo && Number.isFinite(v.config.roundTo)
-                                ? (
-                                    Math.round(effective / v.config.roundTo) * v.config.roundTo
-                                  ).toFixed(2)
-                                : effective.toFixed(2);
-                            return `${label}: $${rounded}`;
+                            return `${label}: $${effective.toFixed(2)}`;
                           });
                           return (
                             <span className={styles.priceExamplePreviewResult}>
@@ -6698,6 +6862,65 @@ function TestWizard({
                           );
                         })()}
                     </InlineStack>
+                  </div>
+                )}
+                {priceSimulation.rows.length > 0 && (
+                  <div className={styles.priceSimulationWrap}>
+                    <div className={styles.priceSimulationHeader}>
+                      <InlineStack align="space-between" blockAlign="center" wrap>
+                        <BlockStack gap="100">
+                          <Text as="p" variant="bodySm" fontWeight="semibold">
+                            Effective price simulation
+                          </Text>
+                          <Text as="p" variant="bodySm" tone="subdued">
+                            Simulates what each variation would display for catalog $
+                            {parsedExampleCatalog.toFixed(2)}
+                            {priceSimulation.hasCompareAtBase &&
+                              parsedExampleCompareAt !== null &&
+                              ` (compare-at $${parsedExampleCompareAt.toFixed(2)})`}
+                            {formData.pricePerProduct ? ', including product/SKU overrides' : '.'}
+                          </Text>
+                        </BlockStack>
+                        <Button
+                          size="slim"
+                          onClick={() => downloadPriceSimulationCsv(priceSimulation.rows, variants)}
+                        >
+                          Export simulation CSV
+                        </Button>
+                      </InlineStack>
+                    </div>
+                    <div className={styles.priceSummaryTableWrap}>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Scenario</th>
+                            {variants.map((v, idx) => (
+                              <th key={`sim-head-${idx}`}>{v.name || `Variant ${idx + 1}`}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {priceSimulation.rows.map(row => (
+                            <tr key={row.id}>
+                              <td>{row.label}</td>
+                              {row.prices.map((p, idx) => (
+                                <td key={`${row.id}-${idx}`}>{p}</td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {(priceSimulation.hasVariantOverrideRows || priceSimulation.truncated) && (
+                      <div className={styles.priceSimulationFootnote}>
+                        {priceSimulation.hasVariantOverrideRows &&
+                          'Includes SKU-specific rows where per-variant overrides are configured. '}
+                        {priceSimulation.hasMissingCompareAt &&
+                          'Rows that use Compare-at base show — until an example compare-at price is provided. '}
+                        {priceSimulation.truncated &&
+                          'Some scenarios are hidden to keep this preview concise.'}
+                      </div>
+                    )}
                   </div>
                 )}
                 {variants.length > 0 && (
@@ -8358,6 +8581,44 @@ function TestWizard({
     const reviewVariants = formData.variants?.length
       ? formData.variants
       : initialData?.variants || [];
+    const isPriceReview = (formData.type || initialData?.type || '').toLowerCase() === 'price';
+    const reviewTargetProductIds =
+      (formData.target_type || initialData?.target_type) === 'product'
+        ? formData.target_ids?.length
+          ? formData.target_ids
+          : formData.target_id
+            ? [formData.target_id]
+            : initialData?.target_ids?.length
+              ? initialData.target_ids
+              : initialData?.target_id
+                ? [initialData.target_id]
+                : []
+        : [];
+    const parsedReviewCatalogPrice =
+      exampleCatalogPrice !== '' && Number.isFinite(Number.parseFloat(exampleCatalogPrice))
+        ? Number.parseFloat(exampleCatalogPrice)
+        : null;
+    const parsedReviewCompareAtPrice =
+      exampleCompareAtPrice !== '' && Number.isFinite(Number.parseFloat(exampleCompareAtPrice))
+        ? Number.parseFloat(exampleCompareAtPrice)
+        : null;
+    const reviewNeedsCompareAt = reviewVariants.some(v => configUsesCompareAtBase(v?.config || {}));
+    const reviewPriceSimulation =
+      isPriceReview && parsedReviewCatalogPrice !== null
+        ? buildPriceSimulationRows({
+            variants: reviewVariants,
+            catalogPrice: parsedReviewCatalogPrice,
+            compareAtPrice: parsedReviewCompareAtPrice,
+            targetType: formData.target_type || initialData?.target_type,
+            targetProductIds: reviewTargetProductIds,
+          })
+        : {
+            rows: [],
+            truncated: false,
+            hasVariantOverrideRows: false,
+            hasCompareAtBase: reviewNeedsCompareAt,
+            hasMissingCompareAt: false,
+          };
 
     const targetingParts = [
       (reviewSegments.page_rules || []).length > 0
@@ -8375,6 +8636,9 @@ function TestWizard({
     if (reviewSegments.js_targeting?.enabled) {
       targetingParts.push('Custom JS');
     }
+    targetingParts.push(
+      `Anti-flicker: ${reviewSegments.anti_flicker_mode === 'strict' ? 'Strict' : 'Balanced'}`
+    );
     const targetingSummary = targetingParts.join(' · ');
 
     return (
@@ -8392,7 +8656,7 @@ function TestWizard({
           </div>
         </div>
 
-        {(formData.type || initialData?.type || '').toLowerCase() === 'price' && (
+        {isPriceReview && (
           <div className={stepStyles.reviewSection} style={{ marginBottom: '1rem' }}>
             <Banner tone="warning" title="Before you start: set catalog to highest test price">
               <BlockStack gap="200">
@@ -8402,6 +8666,14 @@ function TestWizard({
                   customer sees the test price on the product page but pays the catalog price at
                   checkout.
                 </Text>
+                {!['product', 'all-products', 'all_products'].includes(
+                  String(formData.target_type || '').toLowerCase()
+                ) && (
+                  <Text as="p" variant="bodySm" tone="critical">
+                    This test is not in <strong>Product / all-products</strong> scope. Checkout
+                    price-alignment automation requires one of those scopes.
+                  </Text>
+                )}
                 <Text as="p" variant="bodySm">
                   Use the{' '}
                   <Link to={`${ROUTES.DOCS}#price-testing`} rel="noopener noreferrer">
@@ -8424,6 +8696,82 @@ function TestWizard({
                 </Text>
               </BlockStack>
             </Banner>
+          </div>
+        )}
+
+        {isPriceReview && (
+          <div className={stepStyles.reviewSection} style={{ marginBottom: '1rem' }}>
+            <div className={stepStyles.reviewSectionTitle}>
+              <span className={stepStyles.reviewSectionTitleIcon}>
+                <Icon source={DataTableIcon} />
+              </span>
+              Price Simulation Export
+            </div>
+            <BlockStack gap="300">
+              <div style={{ maxWidth: 220 }}>
+                <TextField
+                  label="Example catalog price"
+                  value={exampleCatalogPrice}
+                  onChange={setExampleCatalogPrice}
+                  type="number"
+                  prefix="$"
+                  autoComplete="off"
+                  min={0}
+                  step={0.01}
+                  helpText="Used to generate the scenario export CSV."
+                />
+              </div>
+              {reviewNeedsCompareAt && (
+                <div style={{ maxWidth: 240 }}>
+                  <TextField
+                    label="Example compare-at price"
+                    value={exampleCompareAtPrice}
+                    onChange={setExampleCompareAtPrice}
+                    type="number"
+                    prefix="$"
+                    autoComplete="off"
+                    min={0}
+                    step={0.01}
+                    helpText="Required when any variant uses Compare-at base."
+                  />
+                </div>
+              )}
+              <InlineStack gap="200" blockAlign="center" wrap>
+                <Button
+                  size="slim"
+                  onClick={() =>
+                    downloadPriceSimulationCsv(reviewPriceSimulation.rows, reviewVariants)
+                  }
+                  disabled={
+                    !reviewPriceSimulation.rows.length ||
+                    (reviewNeedsCompareAt && parsedReviewCompareAtPrice === null)
+                  }
+                >
+                  Export simulation CSV
+                </Button>
+                {parsedReviewCatalogPrice === null && (
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    Add an example catalog price to enable export.
+                  </Text>
+                )}
+                {parsedReviewCatalogPrice !== null &&
+                  reviewNeedsCompareAt &&
+                  parsedReviewCompareAtPrice === null && (
+                    <Text as="span" variant="bodySm" tone="subdued">
+                      Add an example compare-at price to export Compare-at based scenarios.
+                    </Text>
+                  )}
+                {lastSimulationExportAt && (
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    Last exported at{' '}
+                    {lastSimulationExportAt.toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </Text>
+                )}
+              </InlineStack>
+            </BlockStack>
           </div>
         )}
 
@@ -8668,6 +9016,22 @@ function TestWizard({
           type={visualPreviewToast.type}
           onClose={() => setVisualPreviewToast(null)}
           duration={visualPreviewToast.type === 'success' ? 3000 : 4000}
+        />
+      )}
+      {simulationExportToast && (
+        <Toast
+          message={simulationExportToast.message}
+          type={simulationExportToast.type}
+          onClose={() => setSimulationExportToast(null)}
+          duration={3000}
+        />
+      )}
+      {antiFlickerToast && (
+        <Toast
+          message={antiFlickerToast.message}
+          type={antiFlickerToast.type}
+          onClose={() => setAntiFlickerToast(null)}
+          duration={2200}
         />
       )}
 
