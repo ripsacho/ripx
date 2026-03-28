@@ -33,7 +33,9 @@ const { isUserStatusAllowedForSession } = require('../constants');
 router.get(
   '/domains',
   asyncHandler(async (req, res) => {
-    const email = (req.email || req.shopDomain || '').trim().toLowerCase();
+    const email = String(req.email || '')
+      .trim()
+      .toLowerCase();
     if (!email) {
       return sendError(res, HTTP_STATUS.UNAUTHORIZED, 'Email session required');
     }
@@ -93,7 +95,9 @@ router.get(
 router.post(
   '/domains',
   asyncHandler(async (req, res) => {
-    const email = (req.email || req.shopDomain || '').trim().toLowerCase();
+    const email = String(req.email || '')
+      .trim()
+      .toLowerCase();
     if (!email) {
       return sendError(res, HTTP_STATUS.UNAUTHORIZED, 'Email session required');
     }
@@ -202,7 +206,9 @@ router.post(
 router.delete(
   '/domains/:id',
   asyncHandler(async (req, res) => {
-    const email = (req.email || req.shopDomain || '').trim().toLowerCase();
+    const email = String(req.email || '')
+      .trim()
+      .toLowerCase();
     if (!email) {
       return sendError(res, HTTP_STATUS.UNAUTHORIZED, 'Email session required');
     }
@@ -250,7 +256,9 @@ router.delete(
 router.post(
   '/account/regenerate-api-key',
   asyncHandler(async (req, res) => {
-    const email = (req.email || req.shopDomain || '').trim().toLowerCase();
+    const email = String(req.email || '')
+      .trim()
+      .toLowerCase();
     if (!email) {
       return sendError(res, HTTP_STATUS.UNAUTHORIZED, 'Email session required');
     }

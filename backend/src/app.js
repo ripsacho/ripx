@@ -108,39 +108,20 @@ try {
 
   if (useRedisSession) {
     const sessionStorePromise = createSessionStoreAsync();
-    let cachedSessionMiddleware = null;
-    const pendingRequests = [];
-    const flushPending = () => {
-      const mw = cachedSessionMiddleware;
-      const batch = pendingRequests.splice(0, pendingRequests.length);
-      if (mw && batch.length > 0) {
-        for (const { req, res, next } of batch) {
-          mw(req, res, next);
-        }
-      } else if (batch.length > 0) {
-        const err = new Error('Session middleware not ready');
-        for (const { next } of batch) {
-          next(err);
-        }
-      }
-    };
+    // Start with in-memory session middleware immediately; swap to Redis when ready.
+    // This avoids request queue races during async store initialization.
+    let cachedSessionMiddleware = session({ ...sessionOptions, store: undefined });
     sessionStorePromise
       .then(store => {
         cachedSessionMiddleware = session({ ...sessionOptions, store: store || undefined });
-        flushPending();
         return cachedSessionMiddleware;
       })
       .catch(err => {
         logger.error('Session store init failed, using memory fallback', { error: err.message });
         cachedSessionMiddleware = session({ ...sessionOptions, store: undefined });
-        flushPending();
       });
     sessionMiddleware = (req, res, next) => {
-      if (cachedSessionMiddleware) {
-        cachedSessionMiddleware(req, res, next);
-        return;
-      }
-      pendingRequests.push({ req, res, next });
+      cachedSessionMiddleware(req, res, next);
     };
   } else {
     const sessionStore = createSessionStore();
@@ -332,7 +313,16 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
           if (!t) {
             return null;
           }
-          return normalizeOriginFromUrl(t, t);
+          const parsed = normalizeOriginFromUrl(t, null);
+          if (!parsed) {
+            logger.warn(
+              'Ignoring invalid ALLOWED_ORIGINS entry (must be full origin with scheme)',
+              {
+                value: t,
+              }
+            );
+          }
+          return parsed;
         })
       ),
     ].filter(Boolean)

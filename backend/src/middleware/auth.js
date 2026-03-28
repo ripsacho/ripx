@@ -303,7 +303,7 @@ function tryImpersonationToken(req) {
 }
 
 /**
- * Check for email session JWT (passwordless login). Sets req.shopDomain = email, req.authType = 'email'.
+ * Check for email session JWT (passwordless login). Sets req.email + req.authType = 'email'.
  * Returns true if valid; false otherwise. Does not call next() — caller must.
  */
 function tryEmailSessionToken(req) {
@@ -315,7 +315,6 @@ function tryEmailSessionToken(req) {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     if (decoded.ripxtype === 'email_session' && decoded.email) {
-      req.shopDomain = decoded.email;
       req.authType = 'email';
       req.email = decoded.email;
       return true;

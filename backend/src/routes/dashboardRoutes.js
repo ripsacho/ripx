@@ -36,13 +36,9 @@ router.get(
       WHERE LOWER(TRIM(shop_domain)) = LOWER(TRIM($1))
     `;
     const visitorsSql = `
-      SELECT COALESCE(SUM(cnt), 0)::bigint as total_visitors
-      FROM (
-        SELECT COUNT(DISTINCT user_id) as cnt
-        FROM test_assignments
-        WHERE LOWER(TRIM(shop_domain)) = LOWER(TRIM($1))
-        GROUP BY test_id, variant_id
-      ) sub
+      SELECT COALESCE(COUNT(DISTINCT user_id), 0)::bigint as total_visitors
+      FROM test_assignments
+      WHERE LOWER(TRIM(shop_domain)) = LOWER(TRIM($1))
     `;
     const revenueSql = `
       SELECT 

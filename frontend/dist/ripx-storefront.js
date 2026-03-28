@@ -68,7 +68,9 @@
   }
   function getAntiFlickerModeForTest(test) {
     if (!test || typeof test !== 'object') return 'balanced';
-    var raw = String(test.antiFlickerMode || test.anti_flicker_mode || '').toLowerCase().trim();
+    var raw = String(test.antiFlickerMode || test.anti_flicker_mode || '')
+      .toLowerCase()
+      .trim();
     return raw === 'strict' ? 'strict' : 'balanced';
   }
   function shouldUseAntiFlickerForTest(test) {
@@ -187,8 +189,7 @@
     null;
   // True only when a concrete preview context is active (target test id or runtime preview flag).
   const PREVIEW_TEST_CONTEXT = !!PREVIEW_TEST_ID || !!(CONFIG.previewMode === true);
-  const PREVIEW_MODE =
-    URL_PARAMS.get('ab_preview') === '1' || PREVIEW_TEST_CONTEXT;
+  const PREVIEW_MODE = URL_PARAMS.get('ab_preview') === '1' || PREVIEW_TEST_CONTEXT;
   const VISUAL_PICKER_MODE = URL_PARAMS.get('ab_visual_picker') === '1';
   const AB_VISUAL_EDITOR =
     URL_PARAMS.get('ab_visual_editor') === '1' || !!(CONFIG.visualEditor === true);
@@ -1138,8 +1139,7 @@
       }
 
       var looksUrlEncoded =
-        ct.indexOf('application/x-www-form-urlencoded') !== -1 ||
-        trimmed.indexOf('=') !== -1;
+        ct.indexOf('application/x-www-form-urlencoded') !== -1 || trimmed.indexOf('=') !== -1;
       if (looksUrlEncoded) {
         try {
           var params = new URLSearchParams(body);
@@ -1171,20 +1171,14 @@
                 ? input.url
                 : '';
           var methodRaw =
-            (init && init.method) ||
-            (typeof input !== 'string' && input && input.method) ||
-            'GET';
+            (init && init.method) || (typeof input !== 'string' && input && input.method) || 'GET';
           var method = String(methodRaw || 'GET').toUpperCase();
 
           if (method === 'POST' && isCartAddPath(url) && _ripxCartAttributeState) {
             var nextInit = init ? Object.assign({}, init) : {};
             if (!nextInit.headers) nextInit.headers = (input && input.headers) || {};
             if (nextInit.body === undefined && input && typeof input !== 'string') {
-              if (
-                typeof FormData !== 'undefined' &&
-                input.body &&
-                input.body instanceof FormData
-              ) {
+              if (typeof FormData !== 'undefined' && input.body && input.body instanceof FormData) {
                 nextInit.body = input.body;
               } else if (
                 typeof URLSearchParams !== 'undefined' &&
@@ -1376,9 +1370,14 @@
   function hasModeValue(cfg, mode) {
     if (!cfg || typeof cfg !== 'object') return false;
     var m = String(mode || '').toLowerCase();
-    if (m === 'fixed') return cfg.price !== null && cfg.price !== undefined && String(cfg.price).trim() !== '';
+    if (m === 'fixed')
+      return cfg.price !== null && cfg.price !== undefined && String(cfg.price).trim() !== '';
     if (m === 'amount')
-      return cfg.priceDelta !== null && cfg.priceDelta !== undefined && String(cfg.priceDelta).trim() !== '';
+      return (
+        cfg.priceDelta !== null &&
+        cfg.priceDelta !== undefined &&
+        String(cfg.priceDelta).trim() !== ''
+      );
     if (m === 'percent')
       return (
         cfg.pricePercent !== null &&
@@ -1391,7 +1390,10 @@
 
   function normalizeMergedPriceConfig(baseCfg, mergedCfg) {
     var base = baseCfg && typeof baseCfg === 'object' ? baseCfg : {};
-    var merged = mergedCfg && typeof mergedCfg === 'object' ? Object.assign({}, mergedCfg) : Object.assign({}, base);
+    var merged =
+      mergedCfg && typeof mergedCfg === 'object'
+        ? Object.assign({}, mergedCfg)
+        : Object.assign({}, base);
     var mergedMode = String(merged.priceMode || 'fixed').toLowerCase();
     if (hasModeValue(merged, mergedMode)) return merged;
     var baseMode = String(base.priceMode || 'fixed').toLowerCase();
@@ -1735,9 +1737,12 @@
 
     if (variantIdForCart != null && String(variantIdForCart).trim() !== '') {
       window.__RIPX_PRICE_TEST_CTX__ = { testId: testId, variantId: variantIdForCart };
-      injectPriceTestCartAttributes(testId, variantIdForCart, getAssignmentProofFromVariant(variant), [
-        productId,
-      ]);
+      injectPriceTestCartAttributes(
+        testId,
+        variantIdForCart,
+        getAssignmentProofFromVariant(variant),
+        [productId]
+      );
     }
   }
 
@@ -1863,7 +1868,11 @@
     var variantIdForCart = variant.variantId != null ? variant.variantId : variant.id;
     if (variantIdForCart != null && String(variantIdForCart).trim() !== '') {
       window.__RIPX_PRICE_TEST_CTX__ = { testId: testId, variantId: variantIdForCart };
-      injectPriceTestCartAttributes(testId, variantIdForCart, getAssignmentProofFromVariant(variant));
+      injectPriceTestCartAttributes(
+        testId,
+        variantIdForCart,
+        getAssignmentProofFromVariant(variant)
+      );
     }
     var cartUi =
       '.cart-drawer,.cart-notification,#CartDrawer,#mini-cart,.mini-cart,[data-cart-drawer],.drawer--cart,aside.mini-cart,cart-drawer,.header__cart,.site-header__cart,predictive-search';
@@ -3129,99 +3138,107 @@
           getVariant(test.id).then(
             function (variant) {
               try {
-            if (!variant) {
-              if (DEBUG) {
-                debugLog(
-                  'Test skipped (no variant assigned):',
-                  test.id,
-                  '- URL/segment may not match. Check targeting (URL pattern, device, etc.) or open with ?ab_preview=1 for preview.'
-                );
-              }
-              return;
-            }
-            var tt = (test.targetType || test.target_type || '').toLowerCase();
-            var productScope = isProductScopeTargetType(tt);
-            var matched = matchesTarget(test);
-            if (!matched && PREVIEW_TEST_CONTEXT && testTypeIsPrice(test) && productScope) {
-              var pathM = (window.location.pathname || '').toLowerCase();
-              if (pathM.indexOf('/products/') !== -1 && pathM.length > '/products/'.length + 1) {
-                matched = true;
-              }
-            }
-            if (matched) {
-              if (
-                variant.config &&
-                typeof variant.config.url === 'string' &&
-                variant.config.url.trim()
-              ) {
-                var rawUrl = variant.config.url.trim();
-                try {
-                  var dest = new URL(rawUrl, window.location.href);
-                  var cur = window.location;
-                  var sameOriginPath =
-                    dest.origin === cur.origin &&
-                    dest.pathname === cur.pathname &&
-                    (dest.search || '') === (cur.search || '');
-                  if (!sameOriginPath) {
-                    if (DEBUG) debugLog('Split-URL redirect', dest.toString());
-                    window.location.href = dest.toString();
-                    return;
+                if (!variant) {
+                  if (DEBUG) {
+                    debugLog(
+                      'Test skipped (no variant assigned):',
+                      test.id,
+                      '- URL/segment may not match. Check targeting (URL pattern, device, etc.) or open with ?ab_preview=1 for preview.'
+                    );
                   }
-                } catch (e) {
-                  if (DEBUG) debugLog('Split-URL invalid URL', rawUrl);
+                  return;
                 }
-              }
-              var previewFocusTest = PREVIEW_MODE && String(test.id) === String(PREVIEW_TEST_ID);
-              if (!previewFocusTest) {
-                applyCustomCode(test.id, variant);
-              }
-            }
+                var tt = (test.targetType || test.target_type || '').toLowerCase();
+                var productScope = isProductScopeTargetType(tt);
+                var matched = matchesTarget(test);
+                if (!matched && PREVIEW_TEST_CONTEXT && testTypeIsPrice(test) && productScope) {
+                  var pathM = (window.location.pathname || '').toLowerCase();
+                  if (
+                    pathM.indexOf('/products/') !== -1 &&
+                    pathM.length > '/products/'.length + 1
+                  ) {
+                    matched = true;
+                  }
+                }
+                if (matched) {
+                  if (
+                    variant.config &&
+                    typeof variant.config.url === 'string' &&
+                    variant.config.url.trim()
+                  ) {
+                    var rawUrl = variant.config.url.trim();
+                    try {
+                      var dest = new URL(rawUrl, window.location.href);
+                      var cur = window.location;
+                      var sameOriginPath =
+                        dest.origin === cur.origin &&
+                        dest.pathname === cur.pathname &&
+                        (dest.search || '') === (cur.search || '');
+                      if (!sameOriginPath) {
+                        if (DEBUG) debugLog('Split-URL redirect', dest.toString());
+                        window.location.href = dest.toString();
+                        return;
+                      }
+                    } catch (e) {
+                      if (DEBUG) debugLog('Split-URL invalid URL', rawUrl);
+                    }
+                  }
+                  var previewFocusTest =
+                    PREVIEW_MODE && String(test.id) === String(PREVIEW_TEST_ID);
+                  if (!previewFocusTest) {
+                    applyCustomCode(test.id, variant);
+                  }
+                }
 
-            var tids =
-              test.targetIds ||
-              (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
-            if (testTypeIsPrice(test)) {
-              // Read after async preview merge / deferred Product JSON (avoids stale null on PDP).
-              var curProductId = getCurrentProductId();
-              var pdpProductMatch =
-                productScope &&
-                matched &&
-                curProductId &&
-                ((tt === 'all-products' || tt === 'all_products') ||
-                  (tids.length &&
-                    tids.some(function (id) {
-                      return id && gidMatches(id, curProductId);
-                    })));
-              var pdpCollectionMatch =
-                tt === 'collection' &&
-                curProductId &&
-                tids.length &&
-                productBelongsToPriceTestCollections(tids);
-              if (pdpProductMatch || pdpCollectionMatch) {
-                applyPriceTest(test.id, curProductId, test.targetVariantId || null, variant);
-              }
-              if (
-                variant &&
-                variant.config &&
-                (tids.length || tt === 'all-products' || tt === 'all_products')
-              ) {
-                if (tt === 'product' && isProductListingSurface()) {
-                  applyPriceTestToProductCards(test.id, variant, tids);
-                } else if ((tt === 'all-products' || tt === 'all_products') && isProductListingSurface()) {
-                  applyPriceTestToCollectionListingCards(test.id, variant);
-                } else if (tt === 'collection' && matched && isProductListingSurface()) {
-                  applyPriceTestToCollectionListingCards(test.id, variant);
-                }
-                if (tt === 'product') {
-                  applyPriceTestToCart(test.id, variant, tids);
-                } else if (tt === 'all-products' || tt === 'all_products') {
-                  var cartTids = getCartVisibleProductTargetIds();
-                  if (cartTids.length) {
-                    applyPriceTestToCart(test.id, variant, cartTids);
+                var tids =
+                  test.targetIds ||
+                  (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
+                if (testTypeIsPrice(test)) {
+                  // Read after async preview merge / deferred Product JSON (avoids stale null on PDP).
+                  var curProductId = getCurrentProductId();
+                  var pdpProductMatch =
+                    productScope &&
+                    matched &&
+                    curProductId &&
+                    (tt === 'all-products' ||
+                      tt === 'all_products' ||
+                      (tids.length &&
+                        tids.some(function (id) {
+                          return id && gidMatches(id, curProductId);
+                        })));
+                  var pdpCollectionMatch =
+                    tt === 'collection' &&
+                    curProductId &&
+                    tids.length &&
+                    productBelongsToPriceTestCollections(tids);
+                  if (pdpProductMatch || pdpCollectionMatch) {
+                    applyPriceTest(test.id, curProductId, test.targetVariantId || null, variant);
+                  }
+                  if (
+                    variant &&
+                    variant.config &&
+                    (tids.length || tt === 'all-products' || tt === 'all_products')
+                  ) {
+                    if (tt === 'product' && isProductListingSurface()) {
+                      applyPriceTestToProductCards(test.id, variant, tids);
+                    } else if (
+                      (tt === 'all-products' || tt === 'all_products') &&
+                      isProductListingSurface()
+                    ) {
+                      applyPriceTestToCollectionListingCards(test.id, variant);
+                    } else if (tt === 'collection' && matched && isProductListingSurface()) {
+                      applyPriceTestToCollectionListingCards(test.id, variant);
+                    }
+                    if (tt === 'product') {
+                      applyPriceTestToCart(test.id, variant, tids);
+                    } else if (tt === 'all-products' || tt === 'all_products') {
+                      var cartTids = getCartVisibleProductTargetIds();
+                      if (cartTids.length) {
+                        applyPriceTestToCart(test.id, variant, cartTids);
+                      }
+                    }
                   }
                 }
-              }
-            }
               } finally {
                 if (shouldTrackAntiFlicker) markAntiFlickerDone();
               }
@@ -3264,7 +3281,8 @@
                 productScope &&
                 matchedNow &&
                 curPid &&
-                ((tt === 'all-products' || tt === 'all_products') ||
+                (tt === 'all-products' ||
+                  tt === 'all_products' ||
                   tids.some(function (id) {
                     return id && gidMatches(id, curPid);
                   }))
@@ -3276,7 +3294,10 @@
               }
               if (tt === 'product' && isProductListingSurface()) {
                 applyPriceTestToProductCards(test.id, variant, tids);
-              } else if ((tt === 'all-products' || tt === 'all_products') && isProductListingSurface()) {
+              } else if (
+                (tt === 'all-products' || tt === 'all_products') &&
+                isProductListingSurface()
+              ) {
                 applyPriceTestToCollectionListingCards(test.id, variant);
               } else if (tt === 'collection' && matchedNow && isProductListingSurface()) {
                 applyPriceTestToCollectionListingCards(test.id, variant);
