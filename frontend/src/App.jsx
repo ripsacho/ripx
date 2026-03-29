@@ -383,7 +383,7 @@ function AppContent() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!looksLikeDiscountLaunch || discountLaunchDomain || !hasCreds) {
+    if (!shouldHandleDiscountLaunch || discountLaunchDomain || !hasCreds) {
       setResolvedDiscountDomain('');
       setIsResolvingDiscountDomain(false);
       return () => {
@@ -435,7 +435,7 @@ function AppContent() {
     return () => {
       cancelled = true;
     };
-  }, [looksLikeDiscountLaunch, discountLaunchDomain, hasCreds, storeHandleFromHost]);
+  }, [shouldHandleDiscountLaunch, discountLaunchDomain, hasCreds, storeHandleFromHost]);
 
   const shouldAutoOpenDiscountSetup =
     isShopifyStoreDomain(effectiveDiscountLaunchDomain) &&
@@ -443,11 +443,59 @@ function AppContent() {
     ((searchParams.has('host') &&
       (pathname === ROUTES.USER_PANEL || Boolean(currentRouteDomain))) ||
       isDiscountUiPath);
+  const isDiscountSetupInstallationQuery =
+    String(searchParams.get('tab') || '').toLowerCase() === 'installation' &&
+    String(searchParams.get('auto_discount_setup') || '') === '1';
+  const isSettingsPath = /\/settings\/?$/i.test(pathname);
+  const isDiscountSetupSettled = isSettingsPath && isDiscountSetupInstallationQuery;
   const isOnDiscountInstallationTarget =
     isShopifyStoreDomain(effectiveDiscountLaunchDomain) &&
     pathname === ROUTES.appSettings(effectiveDiscountLaunchDomain) &&
     String(searchParams.get('tab') || '').toLowerCase() === 'installation' &&
     String(searchParams.get('auto_discount_setup') || '') === '1';
+  const shouldHandleDiscountLaunch = looksLikeDiscountLaunch && !isDiscountSetupSettled;
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !isDiscountSetupSettled) return;
+    // Canonicalize once settled: remove launch noise and duplicated host/shop keys.
+    const allowedKeys = new Set(['host', 'shop', 'tab', 'auto_discount_setup']);
+    const current = new URLSearchParams(window.location.search || '');
+    const next = new URLSearchParams();
+    const host = String(current.get('host') || '').trim();
+    const shop = String(
+      effectiveDiscountLaunchDomain ||
+        current.get('shop') ||
+        shopFromQuery ||
+        storedShopDomain ||
+        ''
+    )
+      .trim()
+      .toLowerCase();
+    if (host) next.set('host', host);
+    if (shop) next.set('shop', shop);
+    next.set('tab', 'installation');
+    next.set('auto_discount_setup', '1');
+
+    let shouldNormalize = false;
+    const keyCounts = new Map();
+    for (const [key] of current.entries()) {
+      const normalizedKey = String(key || '')
+        .trim()
+        .toLowerCase();
+      keyCounts.set(normalizedKey, (keyCounts.get(normalizedKey) || 0) + 1);
+      if (!allowedKeys.has(normalizedKey)) {
+        shouldNormalize = true;
+      }
+    }
+    for (const key of allowedKeys) {
+      if ((keyCounts.get(key) || 0) > 1) shouldNormalize = true;
+      if (String(current.get(key) || '') !== String(next.get(key) || '')) shouldNormalize = true;
+    }
+    if (!shouldNormalize) return;
+    const query = next.toString();
+    const normalizedUrl = `${window.location.pathname}${query ? `?${query}` : ''}`;
+    window.history.replaceState(window.history.state, '', normalizedUrl);
+  }, [isDiscountSetupSettled, effectiveDiscountLaunchDomain, shopFromQuery, storedShopDomain]);
 
   const isOnConnectOrAuthPath =
     pathname === ROUTES.CONNECT ||
@@ -562,11 +610,11 @@ function AppContent() {
     return <ConnectTokenExchange connectToken={connectToken} />;
   }
 
-  if (looksLikeDiscountLaunch && !effectiveDiscountLaunchDomain && isResolvingDiscountDomain) {
+  if (shouldHandleDiscountLaunch && !effectiveDiscountLaunchDomain && isResolvingDiscountDomain) {
     return <RouteLoading message="Resolving store context..." fullScreen />;
   }
 
-  if (looksLikeDiscountLaunch && !effectiveDiscountLaunchDomain) {
+  if (shouldHandleDiscountLaunch && !effectiveDiscountLaunchDomain) {
     const connectUrl = getConnectUrl({
       launch: 'discount_setup',
       reason: ROUTES.CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect',
@@ -577,7 +625,11 @@ function AppContent() {
     }
   }
 
-  if (looksLikeDiscountLaunch && effectiveDiscountLaunchDomain && !isOnDiscountInstallationTarget) {
+  if (
+    shouldHandleDiscountLaunch &&
+    effectiveDiscountLaunchDomain &&
+    !isOnDiscountInstallationTarget
+  ) {
     const nextQuery = new URLSearchParams();
     const host = String(searchParams.get('host') || '').trim();
     if (host) nextQuery.set('host', host);
@@ -603,7 +655,11 @@ function AppContent() {
     }
   }
 
-  if (shouldAutoOpenDiscountSetup && !isOnDiscountInstallationTarget) {
+  if (
+    shouldHandleDiscountLaunch &&
+    shouldAutoOpenDiscountSetup &&
+    !isOnDiscountInstallationTarget
+  ) {
     const nextQuery = new URLSearchParams();
     const host = String(searchParams.get('host') || '').trim();
     if (host) nextQuery.set('host', host);
