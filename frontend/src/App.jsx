@@ -383,7 +383,7 @@ function AppContent() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!shouldHandleDiscountLaunch || discountLaunchDomain || !hasCreds) {
+    if (!looksLikeDiscountLaunch || discountLaunchDomain || !hasCreds) {
       setResolvedDiscountDomain('');
       setIsResolvingDiscountDomain(false);
       return () => {
@@ -435,7 +435,7 @@ function AppContent() {
     return () => {
       cancelled = true;
     };
-  }, [shouldHandleDiscountLaunch, discountLaunchDomain, hasCreds, storeHandleFromHost]);
+  }, [looksLikeDiscountLaunch, discountLaunchDomain, hasCreds, storeHandleFromHost]);
 
   const shouldAutoOpenDiscountSetup =
     isShopifyStoreDomain(effectiveDiscountLaunchDomain) &&
