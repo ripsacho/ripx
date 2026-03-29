@@ -307,8 +307,23 @@ function AppContent() {
   const discountSource = String(searchParams.get('source') || searchParams.get('context') || '')
     .trim()
     .toLowerCase();
+  const shopifyPathHint = String(
+    searchParams.get('path') || searchParams.get('return_to') || searchParams.get('redirect') || ''
+  )
+    .trim()
+    .toLowerCase();
+  const referrer =
+    typeof document !== 'undefined'
+      ? String(document.referrer || '')
+          .trim()
+          .toLowerCase()
+      : '';
+  const looksLikeDiscountReferrer =
+    referrer.includes('admin.shopify.com') && /\/discounts(\/|$)|discount|function/.test(referrer);
   const looksLikeDiscountLaunch =
     /discount|function/.test(discountSource) ||
+    /discount|function/.test(shopifyPathHint) ||
+    looksLikeDiscountReferrer ||
     searchParams.has('discount_id') ||
     searchParams.has('discountId') ||
     searchParams.has('function_id') ||
