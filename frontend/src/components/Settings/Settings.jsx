@@ -62,8 +62,7 @@ const INTEGRATIONS_CONFIG = [
     title: 'BigQuery',
     Icon: DataTableIcon,
     iconClass: 'bigquery',
-    configHint:
-      'Paste your GCP service account JSON key. Create tables using backend/docs/bigquery_schema.sql',
+    configHint: 'Paste your Google Cloud service account JSON key for BigQuery export.',
   },
 ];
 
@@ -148,10 +147,10 @@ function formatRelativeTime(iso) {
 /** Full app settings (inside /app/:domain) – installation, test config, webhooks, integrations, presets */
 const TAB_CONFIG_APP = [
   { id: 'installation', label: 'Installation', icon: CodeIcon },
-  { id: 'general', label: 'General', icon: SettingsIcon },
-  { id: 'integrations', label: 'Integrations', icon: ChartVerticalIcon },
+  { id: 'general', label: 'Test defaults', icon: SettingsIcon },
+  { id: 'integrations', label: 'Connections', icon: ChartVerticalIcon },
+  { id: 'presets', label: 'Audience presets', icon: TargetIcon },
   { id: 'appearance', label: 'Appearance', icon: PaintBrushFlatIcon },
-  { id: 'presets', label: 'Targeting Presets', icon: TargetIcon },
 ];
 
 /** Account-level only (universal /settings) – theme/appearance; app-related config is in the app */
@@ -759,6 +758,14 @@ function Settings() {
     };
   }, [installation?.scriptVerified, checkoutDiag]);
 
+  const configuredIntegrationCount = useMemo(() => {
+    if (!integrations) return 0;
+    return INTEGRATIONS_CONFIG.reduce(
+      (count, { key }) => count + (integrations?.[key]?.configured ? 1 : 0),
+      0
+    );
+  }, [integrations]);
+
   const previewProbeUrl = useMemo(() => {
     const shopDomain = String(installation?.domain || '').trim();
     const testId = String(previewProbeTestId || '').trim();
@@ -799,6 +806,103 @@ function Settings() {
                     : 'Theme and appearance. For test configuration and installation, open the app.'}
                 </p>
               </div>
+            </div>
+
+            <div className={styles.settingsOverviewGrid}>
+              <Card className={styles.settingsPanelCard}>
+                <Box padding="400">
+                  <BlockStack gap="200">
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      Active section
+                    </Text>
+                    <Text as="p" variant="headingSm">
+                      {TAB_CONFIG[selectedTab]?.label || 'Settings'}
+                    </Text>
+                  </BlockStack>
+                </Box>
+              </Card>
+              {isAppSettings && (
+                <>
+                  <Card className={styles.settingsPanelCard}>
+                    <Box padding="400">
+                      <BlockStack gap="200">
+                        <InlineStack align="space-between" blockAlign="center">
+                          <Text as="p" variant="bodySm" tone="subdued">
+                            Store readiness
+                          </Text>
+                          <Badge tone={storeHealth.ready ? 'success' : 'attention'}>
+                            {storeHealth.ready ? 'Healthy' : 'Needs attention'}
+                          </Badge>
+                        </InlineStack>
+                        <Text as="p" variant="bodySm" tone="subdued">
+                          {storeHealth.ready
+                            ? 'Installation and diagnostics look good.'
+                            : `${storeHealth.failed.length} check${storeHealth.failed.length === 1 ? '' : 's'} need action.`}
+                        </Text>
+                      </BlockStack>
+                    </Box>
+                  </Card>
+                  <Card className={styles.settingsPanelCard}>
+                    <Box padding="400">
+                      <BlockStack gap="200">
+                        <InlineStack align="space-between" blockAlign="center">
+                          <Text as="p" variant="bodySm" tone="subdued">
+                            Connected services
+                          </Text>
+                          <Badge tone={configuredIntegrationCount > 0 ? 'success' : 'info'}>
+                            {configuredIntegrationCount}/{INTEGRATIONS_CONFIG.length}
+                          </Badge>
+                        </InlineStack>
+                        <Text as="p" variant="bodySm" tone="subdued">
+                          GA4 and BigQuery connections for reporting workflows.
+                        </Text>
+                      </BlockStack>
+                    </Box>
+                  </Card>
+                </>
+              )}
+              <Card className={styles.settingsPanelCard}>
+                <Box padding="400">
+                  <BlockStack gap="200">
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      Quick navigation
+                    </Text>
+                    <InlineStack gap="200" wrap>
+                      {isAppSettings && (
+                        <>
+                          <Button
+                            size="slim"
+                            onClick={() => {
+                              const i = TAB_IDS.indexOf('installation');
+                              if (i >= 0) setSelectedTab(i);
+                            }}
+                          >
+                            Installation
+                          </Button>
+                          <Button
+                            size="slim"
+                            onClick={() => {
+                              const i = TAB_IDS.indexOf('integrations');
+                              if (i >= 0) setSelectedTab(i);
+                            }}
+                          >
+                            Connections
+                          </Button>
+                        </>
+                      )}
+                      <Button
+                        size="slim"
+                        onClick={() => {
+                          const i = TAB_IDS.indexOf('appearance');
+                          if (i >= 0) setSelectedTab(i);
+                        }}
+                      >
+                        Appearance
+                      </Button>
+                    </InlineStack>
+                  </BlockStack>
+                </Box>
+              </Card>
             </div>
 
             {!isAppSettings && (
@@ -1441,16 +1545,6 @@ function Settings() {
                                       </ul>
                                     </>
                                   )}
-                                <Text as="p" variant="bodySm" tone="subdued">
-                                  Docs: extension{' '}
-                                  <code className={styles.checkoutDiagMono}>
-                                    extensions/ripx-checkout-discount/README.md
-                                  </code>{' '}
-                                  · roadmap{' '}
-                                  <code className={styles.checkoutDiagMono}>
-                                    backend/docs/PRODUCT_EXCELLENCE_ROADMAP.md
-                                  </code>
-                                </Text>
                               </BlockStack>
                             </Box>
                           </Card>
@@ -2218,12 +2312,9 @@ function Settings() {
                     </div>
                     <div className={styles.aboutVersion}>Version {APP_META.VERSION}</div>
                     <p className={styles.aboutDesc}>
-                      A comprehensive A/B testing platform for Shopify and standalone sites. Create,
-                      run, and analyze experiments with statistical rigor.
+                      Centralized configuration for install health, test defaults, integrations, and
+                      account appearance.
                     </p>
-                    <Link to={ROUTES.DOCS} className={styles.aboutDocsLink}>
-                      View documentation
-                    </Link>
                   </div>
                 </Box>
               </Card>
