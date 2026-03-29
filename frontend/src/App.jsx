@@ -300,6 +300,22 @@ function AppContent() {
       return '';
     }
   });
+  const replaceIfDifferent = targetUrl => {
+    if (typeof window === 'undefined' || !targetUrl) return false;
+    try {
+      const next = new URL(targetUrl, window.location.origin);
+      const currentPathAndQuery = `${window.location.pathname}${window.location.search}`;
+      const nextPathAndQuery = `${next.pathname}${next.search}`;
+      if (currentPathAndQuery === nextPathAndQuery) {
+        return false;
+      }
+      window.location.replace(nextPathAndQuery);
+      return true;
+    } catch {
+      window.location.replace(targetUrl);
+      return true;
+    }
+  };
 
   const [searchParams] = useSearchParams();
   const connectToken = searchParams.get('connect_token');
@@ -551,11 +567,9 @@ function AppContent() {
       reason: ROUTES.CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect',
       ...(shopFromQuery ? { shop: shopFromQuery } : {}),
     });
-    if (typeof window !== 'undefined') {
-      window.location.replace(connectUrl);
+    if (replaceIfDifferent(connectUrl)) {
       return <RouteLoading message="Opening connect flow..." fullScreen />;
     }
-    return <Navigate to={connectUrl} replace />;
   }
 
   if (looksLikeDiscountLaunch && effectiveDiscountLaunchDomain) {
@@ -567,11 +581,9 @@ function AppContent() {
       `${ROUTES.appSettings(effectiveDiscountLaunchDomain)}?${nextQuery.toString()}`,
       { shop: effectiveDiscountLaunchDomain }
     );
-    if (typeof window !== 'undefined') {
-      window.location.replace(target);
+    if (replaceIfDifferent(target)) {
       return <RouteLoading message="Opening Installation settings..." fullScreen />;
     }
-    return <Navigate to={target} replace />;
   }
 
   if (shouldAutoOpenDiscountSetup) {

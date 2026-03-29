@@ -30,12 +30,32 @@ function showFallback(message) {
 if (typeof window !== 'undefined' && window.self !== window.top && window.parent) {
   try {
     const parent = window.parent;
-    const ourOrigin = window.location.origin;
     const rawPostMessage = parent.postMessage.bind(parent);
+    const isShopifyEmbedded =
+      String(document.referrer || '')
+        .toLowerCase()
+        .includes('admin.shopify.com') ||
+      new URLSearchParams(window.location.search || '').has('host');
     parent.postMessage = function (message, targetOrigin, transfer) {
+      const adminOrigin = 'https://admin.shopify.com';
+      const requestedOrigin = typeof targetOrigin === 'string' ? targetOrigin.trim() : targetOrigin;
       const resolvedOrigin =
-        targetOrigin === ourOrigin ? 'https://admin.shopify.com' : targetOrigin;
-      rawPostMessage(message, resolvedOrigin, transfer);
+        isShopifyEmbedded &&
+        typeof requestedOrigin === 'string' &&
+        requestedOrigin !== '*' &&
+        requestedOrigin !== adminOrigin
+          ? adminOrigin
+          : requestedOrigin;
+      try {
+        rawPostMessage(message, resolvedOrigin, transfer);
+      } catch (err) {
+        // Retry against Shopify Admin if a stale/incorrect app origin was provided.
+        if (isShopifyEmbedded && resolvedOrigin !== adminOrigin) {
+          rawPostMessage(message, adminOrigin, transfer);
+          return;
+        }
+        throw err;
+      }
     };
   } catch {
     // ignore postMessage patch errors
