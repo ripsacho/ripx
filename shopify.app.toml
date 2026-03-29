@@ -1,6 +1,6 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-client_id = "be18ce24d0354b555ea1a0b8af0bbcbe"
+client_id = "e7a7d74e7aaa14162e3951a559bda6c1"
 name = "RipperX"
 application_url = "https://splitter.echologyx.com/"
 embedded = true
