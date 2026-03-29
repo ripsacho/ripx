@@ -2976,8 +2976,8 @@
         if (productBelongsToPriceTestCollections(cids)) return true;
       }
     }
-    // Preview on PDP: product JSON / meta can load after first paint — still run the pipeline so
-    // getVariant + price apply can fire once ids exist (reapply timers also help).
+    // Preview: run the same price pipeline on PDP, listings, and cart — not only /products/…
+    // (preview links with ?ab_preview=1 were previously PDP-only, so cart/collection looked broken).
     if (
       PREVIEW_TEST_CONTEXT &&
       testTypeIsPrice(test) &&
@@ -2987,6 +2987,8 @@
       if (pathPv.indexOf('/products/') !== -1 && pathPv.length > '/products/'.length + 1) {
         return true;
       }
+      if (isProductListingSurface()) return true;
+      if (isCartSurface()) return true;
     }
     return false;
   }
@@ -3179,6 +3181,8 @@
                     pathM.length > '/products/'.length + 1
                   ) {
                     matched = true;
+                  } else if (isProductListingSurface() || isCartSurface()) {
+                    matched = true;
                   }
                 }
                 if (matched) {
@@ -3298,6 +3302,22 @@
               if (!variant || !variant.config) return;
               var curPid = getCurrentProductId();
               var matchedNow = matchesTarget(test);
+              if (
+                !matchedNow &&
+                PREVIEW_TEST_CONTEXT &&
+                testTypeIsPrice(test) &&
+                productScope
+              ) {
+                var pathRm = (window.location.pathname || '').toLowerCase();
+                if (
+                  pathRm.indexOf('/products/') !== -1 &&
+                  pathRm.length > '/products/'.length + 1
+                ) {
+                  matchedNow = true;
+                } else if (isProductListingSurface() || isCartSurface()) {
+                  matchedNow = true;
+                }
+              }
               if (
                 productScope &&
                 matchedNow &&
