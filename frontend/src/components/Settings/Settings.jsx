@@ -1003,214 +1003,131 @@ function Settings() {
       <Page title="" subtitle="">
         <div className={styles.settingsLayout}>
           <div className={styles.settingsHeader}>
-            <div className={styles.settingsHero}>
-              <div className={styles.settingsHeroIcon}>
-                <SettingsIcon />
+            <div className={styles.settingsShell}>
+              <div className={styles.settingsShellHeaderRow}>
+                <div className={styles.settingsShellTitleGroup}>
+                  <div className={styles.settingsShellIcon} aria-hidden>
+                    <SettingsIcon />
+                  </div>
+                  <div className={styles.settingsShellTitleBlock}>
+                    <h1 className={styles.settingsShellTitle}>
+                      {isAppSettings ? 'App settings' : 'Account settings'}
+                    </h1>
+                    <p className={styles.settingsShellSubtitle}>
+                      {isAppSettings
+                        ? 'Configure installation, tests, connections, and appearance for this shop.'
+                        : 'Theme and appearance. Open the app from Home for tests and installation.'}
+                    </p>
+                  </div>
+                </div>
+                {isAppSettings && (
+                  <div className={styles.settingsShellBadges}>
+                    <Badge tone={setupComplete ? 'success' : 'attention'}>
+                      {setupComplete ? 'Setup complete' : 'Setup incomplete'}
+                    </Badge>
+                    <Badge tone={storeHealth.ready ? 'success' : 'attention'}>
+                      {storeHealth.ready ? 'Store healthy' : 'Needs attention'}
+                    </Badge>
+                  </div>
+                )}
               </div>
-              <div>
-                <h1 className={styles.settingsHeroTitle}>
-                  {isAppSettings ? 'App settings' : 'Account settings'}
-                </h1>
-                <p className={styles.settingsHeroSubtitle}>
-                  {isAppSettings
-                    ? 'Installation, test defaults, webhooks, integrations, and appearance for this store'
-                    : 'Theme and appearance. For test configuration and installation, open the app.'}
-                </p>
-              </div>
-            </div>
 
-            <div className={styles.settingsOverviewGrid}>
-              <Card className={`${styles.settingsPanelCard} ${styles.settingsOverviewCard}`}>
-                <Box padding="400">
-                  <BlockStack gap="200">
-                    <InlineStack align="space-between" blockAlign="center">
-                      <Text as="p" variant="bodySm" tone="subdued" className={styles.overviewTitle}>
-                        Active section
-                      </Text>
-                      <span className={styles.overviewIconWrap}>
-                        <Icon source={activeTabMeta?.icon || SettingsIcon} />
+              {isAppSettings && (
+                <div
+                  className={styles.settingsMetricsGrid}
+                  role="region"
+                  aria-label="Store overview"
+                >
+                  <div className={styles.settingsMetricCell}>
+                    <span className={styles.settingsMetricLabel}>Active section</span>
+                    <span className={styles.settingsMetricValue}>
+                      <Icon source={activeTabMeta?.icon || SettingsIcon} />
+                      <span>{activeTabMeta?.label || 'Settings'}</span>
+                    </span>
+                  </div>
+                  <div className={styles.settingsMetricCell}>
+                    <span className={styles.settingsMetricLabel}>Store</span>
+                    <span className={styles.settingsMetricValue} title={currentStoreLabel}>
+                      {currentStoreLabel}
+                    </span>
+                  </div>
+                  <div className={styles.settingsMetricCell}>
+                    <span className={styles.settingsMetricLabel}>Connections</span>
+                    <span className={styles.settingsMetricValue}>
+                      {configuredIntegrationCount}/{INTEGRATIONS_CONFIG.length}
+                      <span className={styles.settingsMetricHint}>
+                        {configuredIntegrationCount > 0 ? 'linked' : 'optional'}
                       </span>
-                    </InlineStack>
-                    <Text as="p" variant="headingSm" className={styles.overviewValue}>
-                      {activeTabMeta?.label || 'Settings'}
-                    </Text>
-                    <Text as="p" variant="bodySm" tone="subdued" className={styles.overviewHint}>
-                      Focused configuration area for this workspace.
-                    </Text>
-                  </BlockStack>
-                </Box>
-              </Card>
-              {isAppSettings && (
-                <Card className={`${styles.settingsPanelCard} ${styles.settingsOverviewCard}`}>
-                  <Box padding="400">
-                    <BlockStack gap="200">
-                      <InlineStack align="space-between" blockAlign="center">
-                        <Text
-                          as="p"
-                          variant="bodySm"
-                          tone="subdued"
-                          className={styles.overviewTitle}
-                        >
-                          Current store
-                        </Text>
-                        <span className={styles.overviewIconWrap}>
-                          <Icon source={CodeIcon} />
-                        </span>
-                      </InlineStack>
-                      <Text as="p" variant="headingSm" className={styles.overviewValue}>
-                        {currentStoreLabel}
-                      </Text>
-                      <Text as="p" variant="bodySm" tone="subdued" className={styles.overviewHint}>
-                        All installation and diagnostics actions apply to this shop.
-                      </Text>
-                    </BlockStack>
-                  </Box>
-                </Card>
+                    </span>
+                  </div>
+                  <div className={styles.settingsMetricCell}>
+                    <span className={styles.settingsMetricLabel}>Checks</span>
+                    <span className={styles.settingsMetricValue}>
+                      {storeHealth.ready ? 'Passing' : `${storeHealth.failed.length} to fix`}
+                    </span>
+                  </div>
+                </div>
               )}
-              {isAppSettings && (
-                <>
-                  <Card className={`${styles.settingsPanelCard} ${styles.settingsOverviewCard}`}>
-                    <Box padding="400">
-                      <BlockStack gap="200">
-                        <InlineStack align="space-between" blockAlign="center">
-                          <Text
-                            as="p"
-                            variant="bodySm"
-                            tone="subdued"
-                            className={styles.overviewTitle}
-                          >
-                            Setup completion
-                          </Text>
-                          <Badge tone={setupComplete ? 'success' : 'attention'}>
-                            {setupComplete ? 'Complete' : 'Incomplete'}
-                          </Badge>
-                        </InlineStack>
-                        <Text as="p" variant="headingSm" className={styles.overviewValue}>
-                          {setupComplete ? 'Ready for launch' : 'Action required'}
-                        </Text>
-                        <Text
-                          as="p"
-                          variant="bodySm"
-                          tone="subdued"
-                          className={styles.overviewHint}
-                        >
-                          {setupComplete
-                            ? 'Install health and discount attach checks are passing.'
-                            : 'Run Create/attach RipX discount and Run check in Installation.'}
-                        </Text>
-                      </BlockStack>
-                    </Box>
-                  </Card>
-                  <Card className={`${styles.settingsPanelCard} ${styles.settingsOverviewCard}`}>
-                    <Box padding="400">
-                      <BlockStack gap="200">
-                        <InlineStack align="space-between" blockAlign="center">
-                          <Text
-                            as="p"
-                            variant="bodySm"
-                            tone="subdued"
-                            className={styles.overviewTitle}
-                          >
-                            Store readiness
-                          </Text>
-                          <Badge tone={storeHealth.ready ? 'success' : 'attention'}>
-                            {storeHealth.ready ? 'Healthy' : 'Needs attention'}
-                          </Badge>
-                        </InlineStack>
-                        <Text as="p" variant="headingSm" className={styles.overviewValue}>
-                          {storeHealth.ready
-                            ? 'Checks passing'
-                            : `${storeHealth.failed.length} issue${storeHealth.failed.length === 1 ? '' : 's'}`}
-                        </Text>
-                        <Text
-                          as="p"
-                          variant="bodySm"
-                          tone="subdued"
-                          className={styles.overviewHint}
-                        >
-                          {storeHealth.ready
-                            ? 'Installation and diagnostics look good.'
-                            : `${storeHealth.failed.length} check${storeHealth.failed.length === 1 ? '' : 's'} need action.`}
-                        </Text>
-                      </BlockStack>
-                    </Box>
-                  </Card>
-                  <Card className={`${styles.settingsPanelCard} ${styles.settingsOverviewCard}`}>
-                    <Box padding="400">
-                      <BlockStack gap="200">
-                        <InlineStack align="space-between" blockAlign="center">
-                          <Text
-                            as="p"
-                            variant="bodySm"
-                            tone="subdued"
-                            className={styles.overviewTitle}
-                          >
-                            Connected services
-                          </Text>
-                          <Badge tone={configuredIntegrationCount > 0 ? 'success' : 'info'}>
-                            {configuredIntegrationCount}/{INTEGRATIONS_CONFIG.length}
-                          </Badge>
-                        </InlineStack>
-                        <Text as="p" variant="headingSm" className={styles.overviewValue}>
-                          {configuredIntegrationCount > 0
-                            ? 'Data pipeline active'
-                            : 'No integrations'}
-                        </Text>
-                        <Text
-                          as="p"
-                          variant="bodySm"
-                          tone="subdued"
-                          className={styles.overviewHint}
-                        >
-                          GA4 and BigQuery connections for reporting workflows.
-                        </Text>
-                      </BlockStack>
-                    </Box>
-                  </Card>
-                </>
-              )}
-              <Card className={`${styles.settingsPanelCard} ${styles.settingsOverviewCard}`}>
-                <Box padding="400">
-                  <BlockStack gap="200">
-                    <Text as="p" variant="bodySm" tone="subdued" className={styles.overviewTitle}>
-                      Quick navigation
-                    </Text>
-                    <div className={styles.overviewActions}>
-                      {isAppSettings && (
-                        <>
-                          <Button
-                            size="slim"
-                            onClick={() => {
-                              const i = TAB_IDS.indexOf('installation');
-                              if (i >= 0) setSelectedTab(i);
-                            }}
-                          >
-                            Installation
-                          </Button>
-                          <Button
-                            size="slim"
-                            onClick={() => {
-                              const i = TAB_IDS.indexOf('integrations');
-                              if (i >= 0) setSelectedTab(i);
-                            }}
-                          >
-                            Connections
-                          </Button>
-                        </>
-                      )}
+
+              <div className={styles.settingsShellQuickNav}>
+                <span className={styles.settingsShellQuickNavLabel}>Jump to</span>
+                <InlineStack gap="150" wrap>
+                  {isAppSettings && (
+                    <>
                       <Button
                         size="slim"
+                        variant="plain"
                         onClick={() => {
-                          const i = TAB_IDS.indexOf('appearance');
+                          const i = TAB_IDS.indexOf('installation');
                           if (i >= 0) setSelectedTab(i);
                         }}
                       >
-                        Appearance
+                        Installation
                       </Button>
-                    </div>
-                  </BlockStack>
-                </Box>
-              </Card>
+                      <Button
+                        size="slim"
+                        variant="plain"
+                        onClick={() => {
+                          const i = TAB_IDS.indexOf('general');
+                          if (i >= 0) setSelectedTab(i);
+                        }}
+                      >
+                        Test defaults
+                      </Button>
+                      <Button
+                        size="slim"
+                        variant="plain"
+                        onClick={() => {
+                          const i = TAB_IDS.indexOf('integrations');
+                          if (i >= 0) setSelectedTab(i);
+                        }}
+                      >
+                        Connections
+                      </Button>
+                      <Button
+                        size="slim"
+                        variant="plain"
+                        onClick={() => {
+                          const i = TAB_IDS.indexOf('presets');
+                          if (i >= 0) setSelectedTab(i);
+                        }}
+                      >
+                        Audience presets
+                      </Button>
+                    </>
+                  )}
+                  <Button
+                    size="slim"
+                    variant="plain"
+                    onClick={() => {
+                      const i = TAB_IDS.indexOf('appearance');
+                      if (i >= 0) setSelectedTab(i);
+                    }}
+                  >
+                    Appearance
+                  </Button>
+                </InlineStack>
+              </div>
             </div>
 
             {!isAppSettings && (
@@ -1266,58 +1183,6 @@ function Settings() {
                 use Installation, Integrations, and other tabs.
               </Banner>
             )}
-            <div className={styles.settingsUtilityBar}>
-              <Text as="p" variant="bodySm" tone="subdued">
-                {tabSummaries[activeTabId] || 'Manage this section settings and health checks.'}
-              </Text>
-              <InlineStack gap="200" wrap>
-                <Button
-                  size="slim"
-                  pressed={layoutDensity === 'comfortable'}
-                  onClick={() => setLayoutDensity('comfortable')}
-                >
-                  Comfortable
-                </Button>
-                <Button
-                  size="slim"
-                  pressed={layoutDensity === 'compact'}
-                  onClick={() => setLayoutDensity('compact')}
-                >
-                  Compact
-                </Button>
-                {isAppSettings && (
-                  <>
-                    <Button
-                      size="slim"
-                      onClick={() => {
-                        const i = TAB_IDS.indexOf('installation');
-                        if (i >= 0) setSelectedTab(i);
-                      }}
-                    >
-                      Installation
-                    </Button>
-                    <Button
-                      size="slim"
-                      onClick={() => {
-                        const i = TAB_IDS.indexOf('integrations');
-                        if (i >= 0) setSelectedTab(i);
-                      }}
-                    >
-                      Connections
-                    </Button>
-                  </>
-                )}
-                <Button
-                  size="slim"
-                  onClick={() => {
-                    const i = TAB_IDS.indexOf('appearance');
-                    if (i >= 0) setSelectedTab(i);
-                  }}
-                >
-                  Appearance
-                </Button>
-              </InlineStack>
-            </div>
           </div>
 
           <main
@@ -1407,17 +1272,6 @@ function Settings() {
                     {!isRailCollapsed && (
                       <div className={styles.settingsRailBlock}>
                         <Text as="p" variant="bodySm" tone="subdued">
-                          Active summary
-                        </Text>
-                        <Text as="p" variant="bodySm">
-                          {tabSummaries[activeTabId] ||
-                            'Configure this section to keep setup healthy.'}
-                        </Text>
-                      </div>
-                    )}
-                    {!isRailCollapsed && (
-                      <div className={styles.settingsRailBlock}>
-                        <Text as="p" variant="bodySm" tone="subdued">
                           Recent actions
                         </Text>
                         <BlockStack gap="100">
@@ -1443,6 +1297,30 @@ function Settings() {
                     aria-live="polite"
                     aria-label={isAppSettings ? 'App settings panel' : 'Account settings panel'}
                   >
+                    <div className={styles.settingsContextStrip}>
+                      <Text as="p" variant="bodySm" tone="subdued">
+                        {tabSummaries[activeTabId] || 'Manage this section.'}
+                      </Text>
+                      <InlineStack gap="100" wrap blockAlign="center">
+                        <Text as="span" variant="bodySm" tone="subdued">
+                          Density
+                        </Text>
+                        <Button
+                          size="micro"
+                          pressed={layoutDensity === 'comfortable'}
+                          onClick={() => setLayoutDensity('comfortable')}
+                        >
+                          Comfortable
+                        </Button>
+                        <Button
+                          size="micro"
+                          pressed={layoutDensity === 'compact'}
+                          onClick={() => setLayoutDensity('compact')}
+                        >
+                          Compact
+                        </Button>
+                      </InlineStack>
+                    </div>
                     {isAppSettings && activeTabId === 'installation' && (
                       <div
                         id="settings-panel-installation"

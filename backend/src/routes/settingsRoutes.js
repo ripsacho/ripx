@@ -25,6 +25,7 @@ const shopifyService = require('../services/shopifyService');
 const { getShopSession } = require('../models/shopSession');
 
 const RIPX_DEFAULT_AUTOMATIC_DISCOUNT_TITLE = 'RipX Price Test Function';
+const ALLOWED_DISCOUNT_CLASSES = new Set(['PRODUCT', 'ORDER', 'SHIPPING']);
 
 function buildDiscountEnsureTroubleshooting({ shopDomain, chosenFunction, attemptedTitles = [] }) {
   return {
@@ -41,6 +42,18 @@ function buildDiscountEnsureTroubleshooting({ shopDomain, chosenFunction, attemp
       'Re-open RipX from Shopify Admin to refresh OAuth token/session for this shop.',
     ],
   };
+}
+
+function resolveDiscountClasses(rawClasses) {
+  const input = Array.isArray(rawClasses) ? rawClasses : [];
+  const normalized = input
+    .map(v =>
+      String(v || '')
+        .trim()
+        .toUpperCase()
+    )
+    .filter(v => ALLOWED_DISCOUNT_CLASSES.has(v));
+  return normalized.length > 0 ? Array.from(new Set(normalized)) : ['PRODUCT'];
 }
 
 async function fetchAutomaticAppDiscounts(client) {
@@ -495,6 +508,7 @@ router.post(
 
     const requestedTitle = String(req.body?.title || '').trim();
     const discountTitle = requestedTitle || RIPX_DEFAULT_AUTOMATIC_DISCOUNT_TITLE;
+    const discountClasses = resolveDiscountClasses(req.body?.discountClasses);
     const session = shopifyService.getSession(shopDomain, accessToken);
     const client = new shopifyService.api.clients.Graphql({ session });
 
@@ -541,6 +555,7 @@ router.post(
       automaticAppDiscount: {
         title: discountTitle,
         functionId: chosenFunction.id,
+        discountClasses,
         startsAt: new Date().toISOString(),
       },
     };
@@ -643,6 +658,7 @@ router.post(
       automaticAppDiscount: {
         title: fallbackTitle,
         functionId: chosenFunction.id,
+        discountClasses,
         startsAt: new Date().toISOString(),
       },
     };
@@ -739,8 +755,12 @@ router.get(
       const title = String(discount?.title || '')
         .trim()
         .toLowerCase();
-      if (requestedId && id === requestedId) {return true;}
-      if (title === targetTitle.toLowerCase()) {return true;}
+      if (requestedId && id === requestedId) {
+        return true;
+      }
+      if (title === targetTitle.toLowerCase()) {
+        return true;
+      }
       return !requestedTitle && title.includes('ripx');
     });
 
