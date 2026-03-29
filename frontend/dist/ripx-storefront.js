@@ -66,6 +66,13 @@
     var ty = String(test.type).toLowerCase();
     return ty === 'price' || ty === 'pricing';
   }
+  function getNormalizedTargetType(test) {
+    var tt = String((test && (test.targetType || test.target_type)) || '')
+      .toLowerCase()
+      .trim();
+    if ((!tt || tt === 'all') && testTypeIsPrice(test)) return 'all-products';
+    return tt;
+  }
   function getAntiFlickerModeForTest(test) {
     if (!test || typeof test !== 'object') return 'balanced';
     var raw = String(test.antiFlickerMode || test.anti_flicker_mode || '')
@@ -590,6 +597,17 @@
       const params = new URLSearchParams();
       params.set('test_id', testId);
       appendTrackTenantParams(params);
+      var previewUserId = getUserId();
+      if (!previewUserId) {
+        if (!window.__RIPX_PREVIEW_USER_ID__) {
+          window.__RIPX_PREVIEW_USER_ID__ =
+            'ripx_preview_' + Math.random().toString(36).slice(2, 12);
+        }
+        previewUserId = window.__RIPX_PREVIEW_USER_ID__;
+      }
+      if (previewUserId && String(previewUserId).trim()) {
+        params.set('user_id', String(previewUserId).trim());
+      }
 
       if (PREVIEW_VARIANT_ID) {
         params.set('variant_id', PREVIEW_VARIANT_ID);
@@ -1643,7 +1661,10 @@
       function paintEl(el) {
         if (!el || seen.has(el) || inCartUi(el)) return;
         seen.add(el);
-        el.textContent = currentDisplay;
+        // Avoid continuous mutation churn by writing only when value changed.
+        if (el.textContent !== currentDisplay) {
+          el.textContent = currentDisplay;
+        }
         el.setAttribute('data-test-variant', String(variantIdForCart));
         el.setAttribute('data-test-id', String(testId));
         el.setAttribute('data-ripx-price', '1');
@@ -2845,7 +2866,7 @@
    */
   function shouldRunPriceTestOnListingSurface(test) {
     if (!testTypeIsPrice(test)) return false;
-    var tt = (test.targetType || test.target_type || '').toLowerCase();
+    var tt = getNormalizedTargetType(test);
     if (!isProductScopeTargetType(tt)) return false;
     if (tt === 'all-products' || tt === 'all_products') return isProductListingSurface();
     var tids =
@@ -2867,7 +2888,7 @@
       test.targetIds || (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
     if (!ids.length) return true;
 
-    var targetType = (test.targetType || test.target_type || '').toLowerCase();
+    var targetType = getNormalizedTargetType(test);
     var current = null;
     if (isProductScopeTargetType(targetType)) {
       current = getCurrentProductId();
@@ -2944,7 +2965,7 @@
     if (matchesTarget(test)) return true;
     if (shouldRunPriceTestOnListingSurface(test)) return true;
     if (testTypeIsPrice(test)) {
-      var tt = (test.targetType || test.target_type || '').toLowerCase();
+      var tt = getNormalizedTargetType(test);
       if (isProductScopeTargetType(tt) && isCartSurface()) {
         return true;
       }
@@ -2960,7 +2981,7 @@
     if (
       PREVIEW_TEST_CONTEXT &&
       testTypeIsPrice(test) &&
-      isProductScopeTargetType((test.targetType || test.target_type || '').toLowerCase())
+      isProductScopeTargetType(getNormalizedTargetType(test))
     ) {
       var pathPv = (window.location.pathname || '').toLowerCase();
       if (pathPv.indexOf('/products/') !== -1 && pathPv.length > '/products/'.length + 1) {
@@ -3148,7 +3169,7 @@
                   }
                   return;
                 }
-                var tt = (test.targetType || test.target_type || '').toLowerCase();
+                var tt = getNormalizedTargetType(test);
                 var productScope = isProductScopeTargetType(tt);
                 var matched = matchesTarget(test);
                 if (!matched && PREVIEW_TEST_CONTEXT && testTypeIsPrice(test) && productScope) {
@@ -3267,7 +3288,7 @@
           CONFIG.activeTests.forEach(function (test) {
             if (!testTypeIsPrice(test)) return;
             if (!shouldRunPriceTestOnCurrentPage(test)) return;
-            var tt = (test.targetType || test.target_type || '').toLowerCase();
+            var tt = getNormalizedTargetType(test);
             var productScope = isProductScopeTargetType(tt);
             var tids =
               test.targetIds ||

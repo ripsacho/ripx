@@ -80,6 +80,85 @@ class ErrorBoundary extends React.Component {
 
   render() {
     if (this.state.hasError) {
+      if (this.props.minimal) {
+        return (
+          <div
+            role="alert"
+            aria-live="assertive"
+            style={{
+              minHeight: '100vh',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 24,
+              background: '#f6f6f7',
+              color: '#202223',
+              fontFamily:
+                '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+            }}
+          >
+            <div style={{ maxWidth: 720, width: '100%' }}>
+              <h1 style={{ margin: '0 0 12px', fontSize: 24 }}>Something went wrong</h1>
+              <p style={{ margin: '0 0 16px', fontSize: 14, lineHeight: 1.5 }}>
+                We&apos;re sorry, but something unexpected happened. Please refresh the page.
+              </p>
+              {import.meta.env.DEV && this.state.error && (
+                <pre
+                  style={{
+                    margin: '0 0 16px',
+                    padding: 12,
+                    borderRadius: 8,
+                    background: '#ffffff',
+                    border: '1px solid #dfe3e8',
+                    overflow: 'auto',
+                    fontSize: 12,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {this.state.error.toString()}
+                  {this.state.errorInfo?.componentStack}
+                </pre>
+              )}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={this.handleReset}
+                  style={{
+                    border: '1px solid #c9cccf',
+                    borderRadius: 8,
+                    background: '#ffffff',
+                    color: '#202223',
+                    padding: '8px 14px',
+                    cursor: 'pointer',
+                    fontSize: 14,
+                  }}
+                >
+                  Try Again
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.href = getUrlWithEmbedParams(ROUTES.USER_PANEL);
+                    window.location.reload();
+                  }}
+                  style={{
+                    border: '1px solid #008060',
+                    borderRadius: 8,
+                    background: '#008060',
+                    color: '#ffffff',
+                    padding: '8px 14px',
+                    cursor: 'pointer',
+                    fontSize: 14,
+                  }}
+                >
+                  Go to Dashboard
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
       return (
         <PageShell>
           <div className={styles.errorPage} role="alert" aria-live="assertive">

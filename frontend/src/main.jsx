@@ -47,7 +47,7 @@ try {
   if (rootEl) {
     ReactDOM.createRoot(rootEl).render(
       <React.StrictMode>
-        <ErrorBoundary>
+        <ErrorBoundary minimal>
           <App />
         </ErrorBoundary>
       </React.StrictMode>
