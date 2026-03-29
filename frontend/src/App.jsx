@@ -443,6 +443,11 @@ function AppContent() {
     ((searchParams.has('host') &&
       (pathname === ROUTES.USER_PANEL || Boolean(currentRouteDomain))) ||
       isDiscountUiPath);
+  const isOnDiscountInstallationTarget =
+    isShopifyStoreDomain(effectiveDiscountLaunchDomain) &&
+    pathname === ROUTES.appSettings(effectiveDiscountLaunchDomain) &&
+    String(searchParams.get('tab') || '').toLowerCase() === 'installation' &&
+    String(searchParams.get('auto_discount_setup') || '') === '1';
 
   const isOnConnectOrAuthPath =
     pathname === ROUTES.CONNECT ||
@@ -572,11 +577,23 @@ function AppContent() {
     }
   }
 
-  if (looksLikeDiscountLaunch && effectiveDiscountLaunchDomain) {
-    const nextQuery = new URLSearchParams(searchParams);
+  if (looksLikeDiscountLaunch && effectiveDiscountLaunchDomain && !isOnDiscountInstallationTarget) {
+    const nextQuery = new URLSearchParams();
+    const host = String(searchParams.get('host') || '').trim();
+    if (host) nextQuery.set('host', host);
+    nextQuery.set('shop', effectiveDiscountLaunchDomain);
+    const functionId = String(
+      searchParams.get('function_id') || searchParams.get('functionId') || ''
+    ).trim();
+    const discountId = String(
+      searchParams.get('discount_id') || searchParams.get('discountId') || ''
+    ).trim();
+    if (functionId) nextQuery.set('function_id', functionId);
+    if (discountId) nextQuery.set('discount_id', discountId);
     nextQuery.set('tab', 'installation');
     nextQuery.set('auto_discount_setup', '1');
     nextQuery.set('launch', 'discount_setup');
+    nextQuery.set('source', 'discount_launch');
     const target = getUrlWithEmbedParams(
       `${ROUTES.appSettings(effectiveDiscountLaunchDomain)}?${nextQuery.toString()}`,
       { shop: effectiveDiscountLaunchDomain }
@@ -586,11 +603,15 @@ function AppContent() {
     }
   }
 
-  if (shouldAutoOpenDiscountSetup) {
-    const nextQuery = new URLSearchParams(searchParams);
+  if (shouldAutoOpenDiscountSetup && !isOnDiscountInstallationTarget) {
+    const nextQuery = new URLSearchParams();
+    const host = String(searchParams.get('host') || '').trim();
+    if (host) nextQuery.set('host', host);
+    nextQuery.set('shop', effectiveDiscountLaunchDomain);
     nextQuery.set('tab', 'installation');
     nextQuery.set('auto_discount_setup', '1');
     nextQuery.set('launch', 'discount_setup');
+    nextQuery.set('source', 'discount_launch');
     return (
       <Navigate
         to={`${ROUTES.appSettings(effectiveDiscountLaunchDomain)}?${nextQuery.toString()}`}

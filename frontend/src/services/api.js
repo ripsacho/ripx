@@ -172,9 +172,13 @@ export function getUrlWithEmbedParams(path, options = {}) {
   if (options.shop) {
     safeParams.set('shop', options.shop);
   }
-  const search = safeParams.toString() ? `?${safeParams.toString()}` : '';
-  if (!search) return resolvedPath;
-  return resolvedPath + (resolvedPath.includes('?') ? '&' + search.slice(1) : search);
+  const [basePath, existingQuery = ''] = resolvedPath.split('?');
+  const merged = new URLSearchParams(existingQuery);
+  safeParams.forEach((value, key) => {
+    merged.set(key, value);
+  });
+  const search = merged.toString() ? `?${merged.toString()}` : '';
+  return `${basePath}${search}`;
 }
 
 // Request interceptor: add correlation ID for distributed tracing
