@@ -235,6 +235,34 @@ function Settings() {
   const [checkoutDiscountEnsuring, setCheckoutDiscountEnsuring] = useState(false);
   const [checkoutDiscountEnsureResult, setCheckoutDiscountEnsureResult] = useState(null);
   const [checkoutDiscountEnsureError, setCheckoutDiscountEnsureError] = useState(null);
+  const [checkoutDiscountEnsureDebug, setCheckoutDiscountEnsureDebug] = useState(null);
+  const [checkoutDiscountListCheck, setCheckoutDiscountListCheck] = useState(null);
+  const [checkoutDiscountListCheckLoading, setCheckoutDiscountListCheckLoading] = useState(false);
+  const [checkoutDiscountListCheckError, setCheckoutDiscountListCheckError] = useState(null);
+  const [checkoutFullVerifyRunning, setCheckoutFullVerifyRunning] = useState(false);
+  const [layoutDensity, setLayoutDensity] = useState(() => {
+    if (typeof window === 'undefined') return 'comfortable';
+    try {
+      const saved = window.localStorage.getItem('ripx_settings_density_v1');
+      return saved === 'compact' ? 'compact' : 'comfortable';
+    } catch {
+      return 'comfortable';
+    }
+  });
+  const [isRailCollapsed, setIsRailCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return window.localStorage.getItem('ripx_settings_rail_collapsed_v1') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [recentActions, setRecentActions] = useState({
+    ensureAt: '',
+    diagnosticsAt: '',
+    listCheckAt: '',
+    fullVerifyAt: '',
+  });
   const autoDiscountSetupHandledRef = useRef(false);
   const [previewProbeTestId, setPreviewProbeTestId] = useState('');
   const [previewProbeVariant, setPreviewProbeVariant] = useState('');
@@ -242,6 +270,24 @@ function Settings() {
   const [previewProbeAutofillLoading, setPreviewProbeAutofillLoading] = useState(false);
   const [previewProbeResult, setPreviewProbeResult] = useState(null);
   const [previewProbeError, setPreviewProbeError] = useState(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem('ripx_settings_rail_collapsed_v1', isRailCollapsed ? '1' : '0');
+    } catch {
+      // Ignore persistence failures.
+    }
+  }, [isRailCollapsed]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem('ripx_settings_density_v1', layoutDensity);
+    } catch {
+      // Ignore persistence failures.
+    }
+  }, [layoutDensity]);
 
   const fetchSettings = useCallback(async () => {
     setSettingsLoadError(false);
@@ -335,6 +381,7 @@ function Settings() {
         throw new Error(data?.error || 'Invalid diagnostics response');
       }
       setCheckoutDiag(data);
+      setRecentActions(prev => ({ ...prev, diagnosticsAt: new Date().toISOString() }));
     } catch (e) {
       setCheckoutDiagError(e?.message || 'Could not load diagnostics');
     } finally {
@@ -347,6 +394,8 @@ function Settings() {
     setCheckoutDiscountEnsuring(true);
     setCheckoutDiscountEnsureError(null);
     setCheckoutDiscountEnsureResult(null);
+    setCheckoutDiscountEnsureDebug(null);
+    setCheckoutDiscountListCheckError(null);
     try {
       const res = await apiPost('/settings/checkout-price-discount/ensure', {
         title: 'RipX Price Test Function',
@@ -357,20 +406,105 @@ function Settings() {
       }
       setCheckoutDiscountEnsureResult({
         created: data.created === true,
+        titleAdjusted: data.titleAdjusted === true,
         discountId: data.discount.discountId || null,
         title: data.discount.title || 'RipX Price Test Function',
         status: data.discount.status || null,
       });
+      setCheckoutDiscountListCheck(data?.listCheck || null);
+      setRecentActions(prev => ({ ...prev, ensureAt: new Date().toISOString() }));
+      setCheckoutDiscountEnsureDebug({
+        function: data?.function || null,
+        troubleshooting: data?.troubleshooting || null,
+        shopifyUserErrors: [],
+        retryUserErrors: [],
+      });
       // Refresh diagnostics after successful creation/attach.
       runCheckoutDiagnostics();
     } catch (e) {
+      const apiError = e?.response?.data || null;
+      const baseMessage =
+        apiError?.error || e?.message || 'Could not create/attach RipX automatic discount';
+      const functionLabel = apiError?.details?.function
+        ? `${apiError.details.function.title || 'Unknown function'} (${apiError.details.function.apiType || 'unknown'})`
+        : null;
+      const userErrors = Array.isArray(apiError?.details?.shopifyUserErrors)
+        ? apiError.details.shopifyUserErrors
+            .map(err => {
+              const msg = String(err?.message || '').trim();
+              const code = String(err?.code || '').trim();
+              const field = String(err?.field || '').trim();
+              if (!msg && !code && !field) return '';
+              const parts = [msg];
+              if (code) parts.push(`code=${code}`);
+              if (field) parts.push(`field=${field}`);
+              return parts.filter(Boolean).join(' | ');
+            })
+            .filter(Boolean)
+        : [];
+      const detailParts = [];
+      if (functionLabel) detailParts.push(`Function: ${functionLabel}`);
+      if (userErrors.length > 0) detailParts.push(`Shopify: ${userErrors.join(' ; ')}`);
       setCheckoutDiscountEnsureError(
-        e?.message || 'Could not create/attach RipX automatic discount'
+        detailParts.length > 0 ? `${baseMessage}. ${detailParts.join('. ')}` : baseMessage
       );
+      setCheckoutDiscountEnsureDebug({
+        function: apiError?.details?.function || null,
+        troubleshooting: apiError?.details?.troubleshooting || null,
+        shopifyUserErrors: Array.isArray(apiError?.details?.shopifyUserErrors)
+          ? apiError.details.shopifyUserErrors
+          : [],
+        retryUserErrors: Array.isArray(apiError?.details?.retryUserErrors)
+          ? apiError.details.retryUserErrors
+          : [],
+      });
+      setCheckoutDiscountListCheck(null);
     } finally {
       setCheckoutDiscountEnsuring(false);
     }
   }, [installation?.domain, runCheckoutDiagnostics]);
+
+  const runCheckoutDiscountListCheck = useCallback(async () => {
+    if (!installation?.domain) return;
+    setCheckoutDiscountListCheckLoading(true);
+    setCheckoutDiscountListCheckError(null);
+    try {
+      const res = await apiGet('/settings/checkout-price-discount/status', {
+        title: 'RipX Price Test Function',
+        discount_id: String(checkoutDiscountEnsureResult?.discountId || '').trim() || undefined,
+      });
+      const data = unwrapData(res);
+      if (!data || data.success === false) {
+        throw new Error(data?.error || 'Could not verify discount list status');
+      }
+      setCheckoutDiscountListCheck({
+        inList: Boolean(data.inList),
+        matchedCount: Number(data.matchedCount || 0),
+        matchedDiscounts: Array.isArray(data.matchedDiscounts) ? data.matchedDiscounts : [],
+        inspectedCount: Number(data.inspectedCount || 0),
+      });
+      setRecentActions(prev => ({ ...prev, listCheckAt: new Date().toISOString() }));
+    } catch (e) {
+      setCheckoutDiscountListCheckError(
+        e?.message || 'Could not verify if discount appears in Shopify list'
+      );
+    } finally {
+      setCheckoutDiscountListCheckLoading(false);
+    }
+  }, [installation?.domain, checkoutDiscountEnsureResult?.discountId]);
+
+  const runFullCheckoutVerification = useCallback(async () => {
+    if (!installation?.domain) return;
+    setCheckoutFullVerifyRunning(true);
+    try {
+      await ensureCheckoutDiscount();
+      await runCheckoutDiagnostics();
+      setRecentActions(prev => ({ ...prev, fullVerifyAt: new Date().toISOString() }));
+      setMessage('Full checkout verification completed');
+    } finally {
+      setCheckoutFullVerifyRunning(false);
+    }
+  }, [installation?.domain, ensureCheckoutDiscount, runCheckoutDiagnostics]);
 
   const runPreviewProbe = useCallback(async () => {
     const testId = String(previewProbeTestId || '').trim();
@@ -641,6 +775,25 @@ function Settings() {
   };
 
   const activeTabId = TAB_IDS[selectedTab];
+  const handleTabNavKeyDown = useCallback(
+    e => {
+      const count = TAB_CONFIG.length;
+      if (e.key === 'ArrowLeft' && selectedTab > 0) {
+        e.preventDefault();
+        setSelectedTab(selectedTab - 1);
+      } else if (e.key === 'ArrowRight' && selectedTab < count - 1) {
+        e.preventDefault();
+        setSelectedTab(selectedTab + 1);
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        setSelectedTab(0);
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        setSelectedTab(count - 1);
+      }
+    },
+    [TAB_CONFIG.length, selectedTab, setSelectedTab]
+  );
 
   useEffect(() => {
     if (!isAppSettings) return;
@@ -781,13 +934,71 @@ function Settings() {
     return `${base}?${params.toString()}`;
   }, [installation?.domain, previewProbeTestId, previewProbeVariant]);
 
+  const shopifyAdminDiscountsUrl = useMemo(() => {
+    const domain = String(installation?.domain || '')
+      .trim()
+      .toLowerCase();
+    if (!domain.endsWith('.myshopify.com')) return '';
+    const handle = domain.replace(/\.myshopify\.com$/, '');
+    if (!handle) return '';
+    return `https://admin.shopify.com/store/${handle}/discounts`;
+  }, [installation?.domain]);
+
+  const checkoutDiscountAttached = useMemo(() => {
+    const idFromEnsure = String(checkoutDiscountEnsureResult?.discountId || '').trim();
+    if (idFromEnsure) return true;
+    const statusFromEnsure = String(checkoutDiscountEnsureResult?.status || '')
+      .trim()
+      .toLowerCase();
+    if (statusFromEnsure === 'active' || statusFromEnsure === 'enabled') return true;
+    const discountCheck = Array.isArray(checkoutDiag?.checklist)
+      ? checkoutDiag.checklist.find(item => {
+          const key = String(item?.id || item?.key || '').toLowerCase();
+          return key.includes('discount');
+        })
+      : null;
+    return Boolean(discountCheck?.ok);
+  }, [checkoutDiscountEnsureResult, checkoutDiag?.checklist]);
+
+  const setupComplete = useMemo(
+    () => Boolean(isAppSettings && storeHealth.ready && checkoutDiscountAttached),
+    [isAppSettings, storeHealth.ready, checkoutDiscountAttached]
+  );
+  const activeTabMeta = TAB_CONFIG[selectedTab] || null;
+  const currentStoreLabel = String(installation?.domain || '').trim() || 'Not detected';
+  const tabSummaries = useMemo(
+    () => ({
+      installation: setupComplete
+        ? 'Install, discount attach, and diagnostics are synchronized.'
+        : 'Complete discount attach and checks to finish setup.',
+      general: 'Configure sample size, confidence level, and webhook behavior.',
+      integrations:
+        configuredIntegrationCount > 0
+          ? `${configuredIntegrationCount} integration(s) configured and active.`
+          : 'Connect GA4 or BigQuery to activate external analytics flow.',
+      presets: `${Array.isArray(targetingPresets) ? targetingPresets.length : 0} saved audience preset(s).`,
+      appearance: 'Tune visual preferences and operator experience.',
+    }),
+    [setupComplete, configuredIntegrationCount, targetingPresets]
+  );
+  const tabStateMap = useMemo(
+    () => ({
+      installation: setupComplete ? 'ok' : 'warn',
+      general: 'neutral',
+      integrations: configuredIntegrationCount > 0 ? 'ok' : 'warn',
+      presets: Array.isArray(targetingPresets) && targetingPresets.length > 0 ? 'ok' : 'neutral',
+      appearance: 'neutral',
+    }),
+    [setupComplete, configuredIntegrationCount, targetingPresets]
+  );
+
   return (
     <PageShell
       message={message}
       messageType={message?.includes('Failed') ? 'error' : 'success'}
       onCloseMessage={() => setMessage(null)}
       messageDuration={message?.includes('Failed') ? 5000 : 3000}
-      className={styles.settingsPage}
+      className={`${styles.settingsPage} ${layoutDensity === 'compact' ? styles.settingsDensityCompact : ''}`}
     >
       <Page title="" subtitle="">
         <div className={styles.settingsLayout}>
@@ -809,32 +1020,114 @@ function Settings() {
             </div>
 
             <div className={styles.settingsOverviewGrid}>
-              <Card className={styles.settingsPanelCard}>
+              <Card className={`${styles.settingsPanelCard} ${styles.settingsOverviewCard}`}>
                 <Box padding="400">
                   <BlockStack gap="200">
-                    <Text as="p" variant="bodySm" tone="subdued">
-                      Active section
+                    <InlineStack align="space-between" blockAlign="center">
+                      <Text as="p" variant="bodySm" tone="subdued" className={styles.overviewTitle}>
+                        Active section
+                      </Text>
+                      <span className={styles.overviewIconWrap}>
+                        <Icon source={activeTabMeta?.icon || SettingsIcon} />
+                      </span>
+                    </InlineStack>
+                    <Text as="p" variant="headingSm" className={styles.overviewValue}>
+                      {activeTabMeta?.label || 'Settings'}
                     </Text>
-                    <Text as="p" variant="headingSm">
-                      {TAB_CONFIG[selectedTab]?.label || 'Settings'}
+                    <Text as="p" variant="bodySm" tone="subdued" className={styles.overviewHint}>
+                      Focused configuration area for this workspace.
                     </Text>
                   </BlockStack>
                 </Box>
               </Card>
               {isAppSettings && (
+                <Card className={`${styles.settingsPanelCard} ${styles.settingsOverviewCard}`}>
+                  <Box padding="400">
+                    <BlockStack gap="200">
+                      <InlineStack align="space-between" blockAlign="center">
+                        <Text
+                          as="p"
+                          variant="bodySm"
+                          tone="subdued"
+                          className={styles.overviewTitle}
+                        >
+                          Current store
+                        </Text>
+                        <span className={styles.overviewIconWrap}>
+                          <Icon source={CodeIcon} />
+                        </span>
+                      </InlineStack>
+                      <Text as="p" variant="headingSm" className={styles.overviewValue}>
+                        {currentStoreLabel}
+                      </Text>
+                      <Text as="p" variant="bodySm" tone="subdued" className={styles.overviewHint}>
+                        All installation and diagnostics actions apply to this shop.
+                      </Text>
+                    </BlockStack>
+                  </Box>
+                </Card>
+              )}
+              {isAppSettings && (
                 <>
-                  <Card className={styles.settingsPanelCard}>
+                  <Card className={`${styles.settingsPanelCard} ${styles.settingsOverviewCard}`}>
                     <Box padding="400">
                       <BlockStack gap="200">
                         <InlineStack align="space-between" blockAlign="center">
-                          <Text as="p" variant="bodySm" tone="subdued">
+                          <Text
+                            as="p"
+                            variant="bodySm"
+                            tone="subdued"
+                            className={styles.overviewTitle}
+                          >
+                            Setup completion
+                          </Text>
+                          <Badge tone={setupComplete ? 'success' : 'attention'}>
+                            {setupComplete ? 'Complete' : 'Incomplete'}
+                          </Badge>
+                        </InlineStack>
+                        <Text as="p" variant="headingSm" className={styles.overviewValue}>
+                          {setupComplete ? 'Ready for launch' : 'Action required'}
+                        </Text>
+                        <Text
+                          as="p"
+                          variant="bodySm"
+                          tone="subdued"
+                          className={styles.overviewHint}
+                        >
+                          {setupComplete
+                            ? 'Install health and discount attach checks are passing.'
+                            : 'Run Create/attach RipX discount and Run check in Installation.'}
+                        </Text>
+                      </BlockStack>
+                    </Box>
+                  </Card>
+                  <Card className={`${styles.settingsPanelCard} ${styles.settingsOverviewCard}`}>
+                    <Box padding="400">
+                      <BlockStack gap="200">
+                        <InlineStack align="space-between" blockAlign="center">
+                          <Text
+                            as="p"
+                            variant="bodySm"
+                            tone="subdued"
+                            className={styles.overviewTitle}
+                          >
                             Store readiness
                           </Text>
                           <Badge tone={storeHealth.ready ? 'success' : 'attention'}>
                             {storeHealth.ready ? 'Healthy' : 'Needs attention'}
                           </Badge>
                         </InlineStack>
-                        <Text as="p" variant="bodySm" tone="subdued">
+                        <Text as="p" variant="headingSm" className={styles.overviewValue}>
+                          {storeHealth.ready
+                            ? 'Checks passing'
+                            : `${storeHealth.failed.length} issue${storeHealth.failed.length === 1 ? '' : 's'}`}
+                        </Text>
+                        <Text
+                          as="p"
+                          variant="bodySm"
+                          tone="subdued"
+                          className={styles.overviewHint}
+                        >
                           {storeHealth.ready
                             ? 'Installation and diagnostics look good.'
                             : `${storeHealth.failed.length} check${storeHealth.failed.length === 1 ? '' : 's'} need action.`}
@@ -842,18 +1135,33 @@ function Settings() {
                       </BlockStack>
                     </Box>
                   </Card>
-                  <Card className={styles.settingsPanelCard}>
+                  <Card className={`${styles.settingsPanelCard} ${styles.settingsOverviewCard}`}>
                     <Box padding="400">
                       <BlockStack gap="200">
                         <InlineStack align="space-between" blockAlign="center">
-                          <Text as="p" variant="bodySm" tone="subdued">
+                          <Text
+                            as="p"
+                            variant="bodySm"
+                            tone="subdued"
+                            className={styles.overviewTitle}
+                          >
                             Connected services
                           </Text>
                           <Badge tone={configuredIntegrationCount > 0 ? 'success' : 'info'}>
                             {configuredIntegrationCount}/{INTEGRATIONS_CONFIG.length}
                           </Badge>
                         </InlineStack>
-                        <Text as="p" variant="bodySm" tone="subdued">
+                        <Text as="p" variant="headingSm" className={styles.overviewValue}>
+                          {configuredIntegrationCount > 0
+                            ? 'Data pipeline active'
+                            : 'No integrations'}
+                        </Text>
+                        <Text
+                          as="p"
+                          variant="bodySm"
+                          tone="subdued"
+                          className={styles.overviewHint}
+                        >
                           GA4 and BigQuery connections for reporting workflows.
                         </Text>
                       </BlockStack>
@@ -861,13 +1169,13 @@ function Settings() {
                   </Card>
                 </>
               )}
-              <Card className={styles.settingsPanelCard}>
+              <Card className={`${styles.settingsPanelCard} ${styles.settingsOverviewCard}`}>
                 <Box padding="400">
                   <BlockStack gap="200">
-                    <Text as="p" variant="bodySm" tone="subdued">
+                    <Text as="p" variant="bodySm" tone="subdued" className={styles.overviewTitle}>
                       Quick navigation
                     </Text>
-                    <InlineStack gap="200" wrap>
+                    <div className={styles.overviewActions}>
                       {isAppSettings && (
                         <>
                           <Button
@@ -899,7 +1207,7 @@ function Settings() {
                       >
                         Appearance
                       </Button>
-                    </InlineStack>
+                    </div>
                   </BlockStack>
                 </Box>
               </Card>
@@ -923,25 +1231,10 @@ function Settings() {
             )}
 
             <nav
-              className={styles.settingsTabBar}
+              className={`${styles.settingsTabBar} ${styles.settingsTopNav}`}
               role="tablist"
               aria-label={isAppSettings ? 'App settings sections' : 'Account settings sections'}
-              onKeyDown={e => {
-                const count = TAB_CONFIG.length;
-                if (e.key === 'ArrowLeft' && selectedTab > 0) {
-                  e.preventDefault();
-                  setSelectedTab(selectedTab - 1);
-                } else if (e.key === 'ArrowRight' && selectedTab < count - 1) {
-                  e.preventDefault();
-                  setSelectedTab(selectedTab + 1);
-                } else if (e.key === 'Home') {
-                  e.preventDefault();
-                  setSelectedTab(0);
-                } else if (e.key === 'End') {
-                  e.preventDefault();
-                  setSelectedTab(count - 1);
-                }
-              }}
+              onKeyDown={handleTabNavKeyDown}
             >
               {TAB_CONFIG.map((tab, i) => (
                 <button
@@ -973,6 +1266,58 @@ function Settings() {
                 use Installation, Integrations, and other tabs.
               </Banner>
             )}
+            <div className={styles.settingsUtilityBar}>
+              <Text as="p" variant="bodySm" tone="subdued">
+                {tabSummaries[activeTabId] || 'Manage this section settings and health checks.'}
+              </Text>
+              <InlineStack gap="200" wrap>
+                <Button
+                  size="slim"
+                  pressed={layoutDensity === 'comfortable'}
+                  onClick={() => setLayoutDensity('comfortable')}
+                >
+                  Comfortable
+                </Button>
+                <Button
+                  size="slim"
+                  pressed={layoutDensity === 'compact'}
+                  onClick={() => setLayoutDensity('compact')}
+                >
+                  Compact
+                </Button>
+                {isAppSettings && (
+                  <>
+                    <Button
+                      size="slim"
+                      onClick={() => {
+                        const i = TAB_IDS.indexOf('installation');
+                        if (i >= 0) setSelectedTab(i);
+                      }}
+                    >
+                      Installation
+                    </Button>
+                    <Button
+                      size="slim"
+                      onClick={() => {
+                        const i = TAB_IDS.indexOf('integrations');
+                        if (i >= 0) setSelectedTab(i);
+                      }}
+                    >
+                      Connections
+                    </Button>
+                  </>
+                )}
+                <Button
+                  size="slim"
+                  onClick={() => {
+                    const i = TAB_IDS.indexOf('appearance');
+                    if (i >= 0) setSelectedTab(i);
+                  }}
+                >
+                  Appearance
+                </Button>
+              </InlineStack>
+            </div>
           </div>
 
           <main
@@ -989,535 +1334,458 @@ function Settings() {
                 </div>
               ) : (
                 <div
-                  className={styles.settingsPanels}
-                  role="region"
-                  aria-live="polite"
-                  aria-label={isAppSettings ? 'App settings panel' : 'Account settings panel'}
+                  className={`${styles.settingsWorkspace} ${isRailCollapsed ? styles.settingsWorkspaceCollapsed : ''}`}
                 >
-                  {isAppSettings && activeTabId === 'installation' && (
-                    <div
-                      id="settings-panel-installation"
-                      role="tabpanel"
-                      aria-labelledby="settings-tab-installation"
-                      className={`${styles.settingsContent} ${styles.settingsPanelLayout} ${styles.settingsPanelInstallation}`}
-                    >
-                      <Card
-                        className={`${styles.settingsPanelCard} ${styles.installMain} ${styles.storefrontSnippetCard}`}
+                  <aside
+                    className={`${styles.settingsRail} ${isRailCollapsed ? styles.settingsRailCollapsed : ''}`}
+                    aria-label="Settings quick navigator"
+                  >
+                    <div className={styles.settingsRailBlock}>
+                      <InlineStack align="space-between" blockAlign="center">
+                        {!isRailCollapsed && (
+                          <Text as="p" variant="bodySm" tone="subdued">
+                            Sections
+                          </Text>
+                        )}
+                        <Button
+                          size="slim"
+                          variant="plain"
+                          onClick={() => setIsRailCollapsed(v => !v)}
+                          accessibilityLabel={
+                            isRailCollapsed
+                              ? 'Expand settings navigator'
+                              : 'Collapse settings navigator'
+                          }
+                        >
+                          {isRailCollapsed ? 'Expand' : 'Collapse'}
+                        </Button>
+                      </InlineStack>
+                      <nav
+                        className={styles.settingsRailTabs}
+                        role="tablist"
+                        aria-label={
+                          isAppSettings
+                            ? 'App settings side sections'
+                            : 'Account settings side sections'
+                        }
+                        onKeyDown={handleTabNavKeyDown}
                       >
-                        <Box padding="500">
-                          <BlockStack gap="400">
-                            <div className={styles.snippetSectionHeader}>
-                              <div className={styles.snippetSectionHeaderIcon}>
-                                <CodeIcon />
-                              </div>
-                              <div className={styles.snippetSectionHeaderContent}>
-                                <Text
-                                  variant="headingMd"
-                                  as="h2"
-                                  className={styles.snippetSectionTitle}
-                                >
-                                  Storefront Snippet
-                                </Text>
-                                {installation && (
-                                  <div className={styles.snippetBadges}>
-                                    <span className={styles.snippetPlatformBadge}>
-                                      {installation.platform === 'shopify'
-                                        ? 'Shopify'
-                                        : 'Standalone'}
-                                    </span>
-                                    {installation.scriptVerified && (
-                                      <span
-                                        className={styles.snippetVerifiedBadge}
-                                        title="Script detected on your site"
-                                      >
-                                        Script detected
-                                      </span>
-                                    )}
-                                  </div>
-                                )}
-                                <Text
-                                  as="p"
-                                  variant="bodySm"
-                                  tone="subdued"
-                                  className={styles.snippetSectionDesc}
-                                >
-                                  {installationLoading
-                                    ? 'Loading your installation details…'
-                                    : installationError || !installation
-                                      ? 'Get your snippet and setup steps from the Setup Wizard below.'
-                                      : installation.platform === 'shopify'
-                                        ? 'Copy the snippet below. For guided setup, use the Setup Wizard.'
-                                        : "Add this script to your site's <head> — one copy, done."}
-                                </Text>
-                              </div>
-                            </div>
-
-                            {installationLoading ? (
-                              <div className={styles.installationSkeleton}>
-                                <div
-                                  className={styles.loadingBlock}
-                                  style={{ height: 48, marginBottom: '1rem' }}
+                        {TAB_CONFIG.map((tab, i) => (
+                          <button
+                            key={`rail-${tab.id}`}
+                            type="button"
+                            role="tab"
+                            tabIndex={selectedTab === i ? 0 : -1}
+                            aria-selected={selectedTab === i}
+                            aria-controls={`settings-panel-${tab.id}`}
+                            id={`settings-rail-tab-${tab.id}`}
+                            className={`${styles.settingsRailTab} ${selectedTab === i ? styles.settingsRailTabActive : ''}`}
+                            onClick={() => setSelectedTab(i)}
+                          >
+                            <span className={styles.settingsTabIcon}>
+                              <Icon source={tab.icon} />
+                            </span>
+                            {!isRailCollapsed && (
+                              <>
+                                <span className={styles.settingsRailTabLabel}>{tab.label}</span>
+                                <span
+                                  className={`${styles.settingsRailStatusDot} ${
+                                    tabStateMap[tab.id] === 'ok'
+                                      ? styles.settingsRailStatusOk
+                                      : tabStateMap[tab.id] === 'warn'
+                                        ? styles.settingsRailStatusWarn
+                                        : styles.settingsRailStatusNeutral
+                                  }`}
+                                  aria-hidden="true"
                                 />
-                                <div className={styles.loadingBlock} style={{ height: 140 }} />
-                                <div
-                                  className={styles.loadingBlock}
-                                  style={{ height: 32, marginTop: '1.5rem' }}
-                                />
-                                <div
-                                  className={styles.loadingBlock}
-                                  style={{ height: 40, marginTop: '0.5rem' }}
-                                />
-                              </div>
-                            ) : installationError || !installation ? (
-                              <div className={styles.installationEmpty}>
-                                <div className={styles.installationEmptyIcon}>
-                                  <CodeIcon />
-                                </div>
-                                <Text as="p" variant="bodyMd" tone="subdued">
-                                  {installationError
-                                    ? "We couldn't load the installation snippet. Use the Setup Wizard to get your script and steps, or retry if you just added a domain."
-                                    : 'Get your storefront snippet and setup steps from the Setup Wizard.'}
-                                </Text>
-                                <div className={styles.installationEmptyActions}>
-                                  {installationError && (
-                                    <Button size="slim" onClick={() => fetchInstallation()}>
-                                      Retry
-                                    </Button>
-                                  )}
-                                  <Link
-                                    to={ROUTES.USER_PANEL}
-                                    className={styles.installationEmptyCta}
-                                  >
-                                    Open app (Setup Wizard)
-                                  </Link>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className={styles.snippetSection}>
-                                <div className={styles.snippetBlock}>
-                                  <div className={styles.snippetBlockHeader}>
-                                    <span className={styles.snippetBlockLabel}>
-                                      <CodeIcon />
-                                      HTML snippet
-                                    </span>
-                                    <Button
-                                      icon={ClipboardIcon}
-                                      onClick={handleCopySnippet}
-                                      variant="primary"
-                                      size="slim"
-                                      className={styles.snippetCopyBtn}
-                                    >
-                                      {copiedSnippet ? 'Copied!' : 'Copy snippet'}
-                                    </Button>
-                                  </div>
-                                  <div className={styles.snippetCodeWrap}>
-                                    <pre className={styles.snippetPre}>
-                                      <code>{installation.snippetHtml}</code>
-                                    </pre>
-                                  </div>
-                                </div>
-
-                                <div className={styles.snippetSubsection}>
-                                  <div className={styles.snippetSubsectionHeader}>
-                                    <span className={styles.snippetSubsectionLabel}>
-                                      Script URL
-                                    </span>
-                                  </div>
-                                  <div
-                                    className={`${styles.snippetBlock} ${styles.snippetBlockInline}`}
-                                  >
-                                    <code className={styles.snippetUrl}>
-                                      {installation.scriptUrl}
-                                    </code>
-                                    <div className={styles.snippetUrlActions}>
-                                      <Button
-                                        icon={ClipboardIcon}
-                                        onClick={() =>
-                                          handleCopy(installation.scriptUrl, 'URL copied')
-                                        }
-                                        variant="plain"
-                                        size="slim"
-                                      >
-                                        Copy URL
-                                      </Button>
-                                      <Button
-                                        url={installation.scriptUrl}
-                                        external
-                                        variant="plain"
-                                        size="slim"
-                                      >
-                                        Test script
-                                      </Button>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
+                              </>
                             )}
-                          </BlockStack>
-                        </Box>
-                      </Card>
-                      {installation && (
-                        <Card className={`${styles.settingsPanelCard} ${styles.installSide}`}>
+                          </button>
+                        ))}
+                      </nav>
+                    </div>
+                    {!isRailCollapsed && (
+                      <div className={styles.settingsRailBlock}>
+                        <Text as="p" variant="bodySm" tone="subdued">
+                          Active summary
+                        </Text>
+                        <Text as="p" variant="bodySm">
+                          {tabSummaries[activeTabId] ||
+                            'Configure this section to keep setup healthy.'}
+                        </Text>
+                      </div>
+                    )}
+                    {!isRailCollapsed && (
+                      <div className={styles.settingsRailBlock}>
+                        <Text as="p" variant="bodySm" tone="subdued">
+                          Recent actions
+                        </Text>
+                        <BlockStack gap="100">
+                          <Text as="p" variant="bodySm">
+                            Full verify: {formatRelativeTime(recentActions.fullVerifyAt) || '—'}
+                          </Text>
+                          <Text as="p" variant="bodySm">
+                            Ensure discount: {formatRelativeTime(recentActions.ensureAt) || '—'}
+                          </Text>
+                          <Text as="p" variant="bodySm">
+                            List check: {formatRelativeTime(recentActions.listCheckAt) || '—'}
+                          </Text>
+                          <Text as="p" variant="bodySm">
+                            Diagnostics: {formatRelativeTime(recentActions.diagnosticsAt) || '—'}
+                          </Text>
+                        </BlockStack>
+                      </div>
+                    )}
+                  </aside>
+                  <div
+                    className={styles.settingsPanels}
+                    role="region"
+                    aria-live="polite"
+                    aria-label={isAppSettings ? 'App settings panel' : 'Account settings panel'}
+                  >
+                    {isAppSettings && activeTabId === 'installation' && (
+                      <div
+                        id="settings-panel-installation"
+                        role="tabpanel"
+                        aria-labelledby="settings-tab-installation"
+                        className={`${styles.settingsContent} ${styles.settingsPanelLayout} ${styles.settingsPanelInstallation}`}
+                      >
+                        <Card
+                          className={`${styles.settingsPanelCard} ${styles.installMain} ${styles.storefrontSnippetCard}`}
+                        >
                           <Box padding="500">
-                            <BlockStack gap={CONTENT_GAP}>
-                              <div className={styles.sectionHeader}>
-                                <div className={styles.sectionHeaderIcon}>
+                            <BlockStack gap="400">
+                              <div className={styles.snippetSectionHeader}>
+                                <div className={styles.snippetSectionHeaderIcon}>
                                   <CodeIcon />
                                 </div>
-                                <div className={styles.sectionHeaderContent}>
-                                  <Text variant="headingMd" as="h2">
-                                    Setup & Alternative
+                                <div className={styles.snippetSectionHeaderContent}>
+                                  <Text
+                                    variant="headingMd"
+                                    as="h2"
+                                    className={styles.snippetSectionTitle}
+                                  >
+                                    Storefront Snippet
                                   </Text>
-                                  <Text as="p" variant="bodySm" tone="subdued">
-                                    Step-by-step instructions and alternative installation methods.
+                                  {installation && (
+                                    <div className={styles.snippetBadges}>
+                                      <span className={styles.snippetPlatformBadge}>
+                                        {installation.platform === 'shopify'
+                                          ? 'Shopify'
+                                          : 'Standalone'}
+                                      </span>
+                                      {installation.scriptVerified && (
+                                        <span
+                                          className={styles.snippetVerifiedBadge}
+                                          title="Script detected on your site"
+                                        >
+                                          Script detected
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                  <Text
+                                    as="p"
+                                    variant="bodySm"
+                                    tone="subdued"
+                                    className={styles.snippetSectionDesc}
+                                  >
+                                    {installationLoading
+                                      ? 'Loading your installation details…'
+                                      : installationError || !installation
+                                        ? 'Get your snippet and setup steps from the Setup Wizard below.'
+                                        : installation.platform === 'shopify'
+                                          ? 'Copy the snippet below. For guided setup, use the Setup Wizard.'
+                                          : "Add this script to your site's <head> — one copy, done."}
                                   </Text>
                                 </div>
                               </div>
-                              <div className={styles.panelCardBody}>
-                                {installation.instructions?.steps &&
-                                  installation.instructions.steps.length > 0 && (
-                                    <>
-                                      <Text variant="headingSm" as="h3">
-                                        Setup steps
-                                      </Text>
-                                      <ol className={styles.installSteps}>
-                                        {installation.instructions.steps.map((step, i) => (
-                                          <li key={i}>
-                                            <Text as="span" variant="bodyMd">
-                                              {step}
-                                            </Text>
-                                          </li>
-                                        ))}
-                                      </ol>
-                                    </>
-                                  )}
-                                {installation.instructions?.altMethod && (
-                                  <>
-                                    <Text variant="headingSm" as="h3">
-                                      Alternative: {installation.instructions.altMethod}
-                                    </Text>
-                                    <div
-                                      className={`${styles.snippetBlock} ${styles.snippetBlockAlt}`}
+
+                              {installationLoading ? (
+                                <div className={styles.installationSkeleton}>
+                                  <div
+                                    className={styles.loadingBlock}
+                                    style={{ height: 48, marginBottom: '1rem' }}
+                                  />
+                                  <div className={styles.loadingBlock} style={{ height: 140 }} />
+                                  <div
+                                    className={styles.loadingBlock}
+                                    style={{ height: 32, marginTop: '1.5rem' }}
+                                  />
+                                  <div
+                                    className={styles.loadingBlock}
+                                    style={{ height: 40, marginTop: '0.5rem' }}
+                                  />
+                                </div>
+                              ) : installationError || !installation ? (
+                                <div className={styles.installationEmpty}>
+                                  <div className={styles.installationEmptyIcon}>
+                                    <CodeIcon />
+                                  </div>
+                                  <Text as="p" variant="bodyMd" tone="subdued">
+                                    {installationError
+                                      ? "We couldn't load the installation snippet. Use the Setup Wizard to get your script and steps, or retry if you just added a domain."
+                                      : 'Get your storefront snippet and setup steps from the Setup Wizard.'}
+                                  </Text>
+                                  <div className={styles.installationEmptyActions}>
+                                    {installationError && (
+                                      <Button size="slim" onClick={() => fetchInstallation()}>
+                                        Retry
+                                      </Button>
+                                    )}
+                                    <Link
+                                      to={ROUTES.USER_PANEL}
+                                      className={styles.installationEmptyCta}
                                     >
-                                      <pre className={styles.snippetPre}>
-                                        <code>{installation.instructions.altSnippet}</code>
-                                      </pre>
+                                      Open app (Setup Wizard)
+                                    </Link>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className={styles.snippetSection}>
+                                  <div className={styles.snippetBlock}>
+                                    <div className={styles.snippetBlockHeader}>
+                                      <span className={styles.snippetBlockLabel}>
+                                        <CodeIcon />
+                                        HTML snippet
+                                      </span>
                                       <Button
                                         icon={ClipboardIcon}
-                                        onClick={() =>
-                                          handleCopy(
-                                            installation.instructions.altSnippet,
-                                            'Snippet copied'
-                                          )
-                                        }
-                                        variant="plain"
+                                        onClick={handleCopySnippet}
+                                        variant="primary"
                                         size="slim"
+                                        className={styles.snippetCopyBtn}
                                       >
-                                        Copy
+                                        {copiedSnippet ? 'Copied!' : 'Copy snippet'}
                                       </Button>
                                     </div>
-                                  </>
-                                )}
-                                {!installation.instructions?.steps?.length &&
-                                  !installation.instructions?.altMethod && (
-                                    <Text as="p" variant="bodyMd" tone="subdued">
-                                      For guided setup, open the app and use the Setup Wizard from
-                                      the sidebar.
-                                    </Text>
-                                  )}
-                              </div>
+                                    <div className={styles.snippetCodeWrap}>
+                                      <pre className={styles.snippetPre}>
+                                        <code>{installation.snippetHtml}</code>
+                                      </pre>
+                                    </div>
+                                  </div>
+
+                                  <div className={styles.snippetSubsection}>
+                                    <div className={styles.snippetSubsectionHeader}>
+                                      <span className={styles.snippetSubsectionLabel}>
+                                        Script URL
+                                      </span>
+                                    </div>
+                                    <div
+                                      className={`${styles.snippetBlock} ${styles.snippetBlockInline}`}
+                                    >
+                                      <code className={styles.snippetUrl}>
+                                        {installation.scriptUrl}
+                                      </code>
+                                      <div className={styles.snippetUrlActions}>
+                                        <Button
+                                          icon={ClipboardIcon}
+                                          onClick={() =>
+                                            handleCopy(installation.scriptUrl, 'URL copied')
+                                          }
+                                          variant="plain"
+                                          size="slim"
+                                        >
+                                          Copy URL
+                                        </Button>
+                                        <Button
+                                          url={installation.scriptUrl}
+                                          external
+                                          variant="plain"
+                                          size="slim"
+                                        >
+                                          Test script
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
                             </BlockStack>
                           </Box>
                         </Card>
-                      )}
-
-                      {installation &&
-                        installation.platform === 'shopify' &&
-                        !installationLoading &&
-                        !installationError && (
-                          <Card
-                            className={`${styles.settingsPanelCard} ${styles.checkoutDiagCard}`}
-                          >
+                        {installation && (
+                          <Card className={`${styles.settingsPanelCard} ${styles.installSide}`}>
                             <Box padding="500">
-                              <BlockStack gap="400">
+                              <BlockStack gap={CONTENT_GAP}>
                                 <div className={styles.sectionHeader}>
                                   <div className={styles.sectionHeaderIcon}>
-                                    <TargetIcon />
+                                    <CodeIcon />
                                   </div>
                                   <div className={styles.sectionHeaderContent}>
                                     <Text variant="headingMd" as="h2">
-                                      Checkout price test health
+                                      Setup & Alternative
                                     </Text>
                                     <Text as="p" variant="bodySm" tone="subdued">
-                                      Verifies your RipX API is ready for the Shopify Discount
-                                      Function that aligns <strong>charged</strong> checkout prices
-                                      with running price tests (Plus / network access + app
-                                      extension). Run this after changing <code>APP_URL</code> or
-                                      secrets.
+                                      Step-by-step instructions and alternative installation
+                                      methods.
                                     </Text>
                                   </div>
                                 </div>
-                                <InlineStack gap="300" blockAlign="center">
-                                  <Button
-                                    onClick={runCheckoutDiagnostics}
-                                    loading={checkoutDiagLoading}
-                                    disabled={checkoutDiagLoading}
-                                  >
-                                    Run check
-                                  </Button>
-                                  <Button
-                                    onClick={ensureCheckoutDiscount}
-                                    loading={checkoutDiscountEnsuring}
-                                    disabled={checkoutDiscountEnsuring}
-                                  >
-                                    Create/attach RipX discount
-                                  </Button>
-                                  {(checkoutDiag || installation) && (
-                                    <Badge tone={storeHealth.ready ? 'success' : 'warning'}>
-                                      {storeHealth.ready
-                                        ? 'Store health: PASS'
-                                        : `Store health: FAIL (${storeHealth.failed.length})`}
-                                    </Badge>
-                                  )}
-                                  {checkoutDiag?.summary && (
-                                    <Badge
-                                      tone={
-                                        checkoutDiag.summary.overall_ok
-                                          ? 'success'
-                                          : checkoutDiag.summary.overall_status === 'error'
-                                            ? 'critical'
-                                            : 'warning'
-                                      }
-                                    >
-                                      {checkoutDiag.summary.overall_ok
-                                        ? 'All checks passed'
-                                        : `${checkoutDiag.summary.checks_passed}/${checkoutDiag.summary.checks_total} checks OK`}
-                                    </Badge>
-                                  )}
-                                </InlineStack>
-                                {(checkoutDiag || installation) && (
-                                  <div className={styles.checkoutDiagHealthSummary}>
-                                    <Text variant="headingSm" as="h3">
-                                      Store health summary
-                                    </Text>
-                                    <BlockStack gap="150">
-                                      {storeHealth.checks.map(item => (
-                                        <div key={item.key} className={styles.checkoutDiagCheckRow}>
-                                          <Badge tone={item.ok ? 'success' : 'critical'}>
-                                            {item.ok ? 'OK' : 'Fail'}
-                                          </Badge>
-                                          <Text as="span" variant="bodySm">
-                                            {item.message}
-                                          </Text>
-                                        </div>
-                                      ))}
-                                    </BlockStack>
-                                  </div>
-                                )}
-                                <Divider />
-                                <div className={styles.checkoutDiagHealthSummary}>
-                                  <Text variant="headingSm" as="h3">
-                                    Preview probe
-                                  </Text>
-                                  <Text as="p" variant="bodySm" tone="subdued">
-                                    Check if this shop/domain can resolve a specific test variant
-                                    via <code>/api/track/preview</code>.
-                                  </Text>
-                                  <div className={styles.checkoutDiagProbeGrid}>
-                                    <TextField
-                                      label="Test ID"
-                                      value={previewProbeTestId}
-                                      onChange={setPreviewProbeTestId}
-                                      autoComplete="off"
-                                      placeholder="68cbfbe8-6bee-479c-acce-58d0d9ffd9fe"
-                                    />
-                                    <TextField
-                                      label="Variant ID or name"
-                                      value={previewProbeVariant}
-                                      onChange={setPreviewProbeVariant}
-                                      autoComplete="off"
-                                      placeholder="Variant A"
-                                    />
-                                  </div>
-                                  <InlineStack gap="300" blockAlign="center">
-                                    <Button
-                                      onClick={autofillPreviewProbeFromRunningTest}
-                                      loading={previewProbeAutofillLoading}
-                                      disabled={previewProbeAutofillLoading || previewProbeLoading}
-                                    >
-                                      Use running price test
-                                    </Button>
-                                    <Button
-                                      onClick={runPreviewProbe}
-                                      loading={previewProbeLoading}
-                                      disabled={previewProbeLoading || previewProbeAutofillLoading}
-                                    >
-                                      Run preview probe
-                                    </Button>
-                                    <Button
-                                      url={previewProbeUrl || undefined}
-                                      external
-                                      disabled={!previewProbeUrl}
-                                    >
-                                      Open preview URL
-                                    </Button>
-                                    {previewProbeResult && (
-                                      <Badge tone="success">Preview resolve: PASS</Badge>
+                                <div className={styles.panelCardBody}>
+                                  {installation.instructions?.steps &&
+                                    installation.instructions.steps.length > 0 && (
+                                      <>
+                                        <Text variant="headingSm" as="h3">
+                                          Setup steps
+                                        </Text>
+                                        <ol className={styles.installSteps}>
+                                          {installation.instructions.steps.map((step, i) => (
+                                            <li key={i}>
+                                              <Text as="span" variant="bodyMd">
+                                                {step}
+                                              </Text>
+                                            </li>
+                                          ))}
+                                        </ol>
+                                      </>
                                     )}
-                                  </InlineStack>
-                                  {previewProbeError && (
-                                    <Banner
-                                      tone="critical"
-                                      onDismiss={() => setPreviewProbeError(null)}
-                                    >
-                                      {previewProbeError}
-                                    </Banner>
-                                  )}
-                                  {previewProbeResult && (
-                                    <div className={styles.checkoutDiagProbeResult}>
-                                      <Text as="p" variant="bodySm">
-                                        <strong>Variant:</strong>{' '}
-                                        {previewProbeResult.variantName ||
-                                          previewProbeResult.variantId ||
-                                          '—'}
-                                      </Text>
-                                      <Text as="p" variant="bodySm">
-                                        <strong>Mode:</strong> {previewProbeResult.priceMode || '—'}
-                                      </Text>
-                                      <Text as="p" variant="bodySm">
-                                        <strong>Fixed price:</strong>{' '}
-                                        {previewProbeResult.price ?? '—'}
-                                      </Text>
-                                      <Text as="p" variant="bodySm">
-                                        <strong>Delta:</strong>{' '}
-                                        {previewProbeResult.priceDelta ?? '—'}
-                                      </Text>
-                                      <Text as="p" variant="bodySm">
-                                        <strong>Percent:</strong>{' '}
-                                        {previewProbeResult.pricePercent ?? '—'}
-                                      </Text>
-                                    </div>
-                                  )}
-                                </div>
-                                {checkoutDiagLoading && (
-                                  <InlineStack gap="200" blockAlign="center">
-                                    <Spinner size="small" />
-                                    <Text as="span" variant="bodySm" tone="subdued">
-                                      Checking API configuration…
-                                    </Text>
-                                  </InlineStack>
-                                )}
-                                {checkoutDiagError && (
-                                  <Banner
-                                    tone="critical"
-                                    onDismiss={() => setCheckoutDiagError(null)}
-                                  >
-                                    {checkoutDiagError}
-                                  </Banner>
-                                )}
-                                {checkoutDiscountEnsureError && (
-                                  <Banner
-                                    tone="critical"
-                                    onDismiss={() => setCheckoutDiscountEnsureError(null)}
-                                  >
-                                    {checkoutDiscountEnsureError}
-                                  </Banner>
-                                )}
-                                {checkoutDiscountEnsureResult && (
-                                  <Banner
-                                    tone="success"
-                                    onDismiss={() => setCheckoutDiscountEnsureResult(null)}
-                                  >
-                                    {checkoutDiscountEnsureResult.created
-                                      ? 'RipX automatic discount created successfully.'
-                                      : 'RipX automatic discount already exists and is attached.'}{' '}
-                                    {checkoutDiscountEnsureResult.status
-                                      ? `Status: ${checkoutDiscountEnsureResult.status}.`
-                                      : ''}
-                                  </Banner>
-                                )}
-                                {checkoutDiag?.infrastructure && (
-                                  <>
-                                    <Divider />
-                                    <Text variant="headingSm" as="h3">
-                                      Batch resolver
-                                    </Text>
-                                    <Text as="p" variant="bodySm" tone="subdued">
-                                      Shopify calls this URL from your discount function (
-                                      {checkoutDiag.infrastructure.batch_url_source}).
-                                    </Text>
-                                    <div className={styles.checkoutDiagMono}>
-                                      {checkoutDiag.infrastructure.batch_resolve_url ||
-                                        '(not configured)'}
-                                    </div>
-                                    <InlineStack gap="200" wrap>
-                                      <Text as="span" variant="bodySm">
-                                        HTTPS:{' '}
-                                        {checkoutDiag.infrastructure.uses_https ? 'yes' : 'no'}
-                                      </Text>
-                                      <Text as="span" variant="bodySm">
-                                        Secret required:{' '}
-                                        {checkoutDiag.infrastructure.checkout_price_secret_required
-                                          ? 'yes'
-                                          : 'no'}
-                                      </Text>
-                                      <Text as="span" variant="bodySm">
-                                        Max lines / batch:{' '}
-                                        {checkoutDiag.infrastructure.price_resolve_batch_max}
-                                      </Text>
-                                      <Text as="span" variant="bodySm">
-                                        Max response (bytes):{' '}
-                                        {checkoutDiag.infrastructure
-                                          .price_resolve_batch_response_max_bytes ?? '—'}
-                                      </Text>
-                                      <Text as="span" variant="bodySm">
-                                        Compact batch JSON:{' '}
-                                        {checkoutDiag.infrastructure.batch_compact_response ===
-                                        false
-                                          ? 'no (full)'
-                                          : checkoutDiag.infrastructure.batch_compact_response ===
-                                              true
-                                            ? 'yes'
-                                            : '—'}
-                                      </Text>
-                                      <Text as="span" variant="bodySm">
-                                        Slow batch log (ms):{' '}
-                                        {checkoutDiag.infrastructure.price_batch_slow_log_ms ?? '—'}
-                                      </Text>
-                                    </InlineStack>
-                                    {checkoutDiag.shop && (
-                                      <Text as="p" variant="bodySm">
-                                        Running <strong>price</strong> tests for this shop:{' '}
-                                        <strong>
-                                          {checkoutDiag.shop.running_price_tests ?? '—'}
-                                        </strong>
-                                      </Text>
-                                    )}
-                                  </>
-                                )}
-                                {Array.isArray(checkoutDiag?.checklist) &&
-                                  checkoutDiag.checklist.length > 0 && (
+                                  {installation.instructions?.altMethod && (
                                     <>
-                                      <Divider />
                                       <Text variant="headingSm" as="h3">
-                                        Checklist
+                                        Alternative: {installation.instructions.altMethod}
                                       </Text>
-                                      <BlockStack gap="200">
-                                        {checkoutDiag.checklist.map(item => (
+                                      <div
+                                        className={`${styles.snippetBlock} ${styles.snippetBlockAlt}`}
+                                      >
+                                        <pre className={styles.snippetPre}>
+                                          <code>{installation.instructions.altSnippet}</code>
+                                        </pre>
+                                        <Button
+                                          icon={ClipboardIcon}
+                                          onClick={() =>
+                                            handleCopy(
+                                              installation.instructions.altSnippet,
+                                              'Snippet copied'
+                                            )
+                                          }
+                                          variant="plain"
+                                          size="slim"
+                                        >
+                                          Copy
+                                        </Button>
+                                      </div>
+                                    </>
+                                  )}
+                                  {!installation.instructions?.steps?.length &&
+                                    !installation.instructions?.altMethod && (
+                                      <Text as="p" variant="bodyMd" tone="subdued">
+                                        For guided setup, open the app and use the Setup Wizard from
+                                        the sidebar.
+                                      </Text>
+                                    )}
+                                </div>
+                              </BlockStack>
+                            </Box>
+                          </Card>
+                        )}
+
+                        {installation &&
+                          installation.platform === 'shopify' &&
+                          !installationLoading &&
+                          !installationError && (
+                            <Card
+                              className={`${styles.settingsPanelCard} ${styles.checkoutDiagCard}`}
+                            >
+                              <Box padding="500">
+                                <BlockStack gap="400">
+                                  <div className={styles.sectionHeader}>
+                                    <div className={styles.sectionHeaderIcon}>
+                                      <TargetIcon />
+                                    </div>
+                                    <div className={styles.sectionHeaderContent}>
+                                      <Text variant="headingMd" as="h2">
+                                        Checkout price test health
+                                      </Text>
+                                      <Text as="p" variant="bodySm" tone="subdued">
+                                        Verifies your RipX API is ready for the Shopify Discount
+                                        Function that aligns <strong>charged</strong> checkout
+                                        prices with running price tests (Plus / network access + app
+                                        extension). Run this after changing <code>APP_URL</code> or
+                                        secrets.
+                                      </Text>
+                                    </div>
+                                  </div>
+                                  <div className={styles.checkoutDiagActionBar}>
+                                    <InlineStack gap="300" blockAlign="center" wrap>
+                                      <Button
+                                        onClick={runFullCheckoutVerification}
+                                        loading={checkoutFullVerifyRunning}
+                                        disabled={
+                                          checkoutFullVerifyRunning ||
+                                          checkoutDiscountEnsuring ||
+                                          checkoutDiagLoading
+                                        }
+                                      >
+                                        Run full verify
+                                      </Button>
+                                      <Button
+                                        onClick={runCheckoutDiagnostics}
+                                        loading={checkoutDiagLoading}
+                                        disabled={checkoutDiagLoading || checkoutFullVerifyRunning}
+                                      >
+                                        Run check
+                                      </Button>
+                                      <Button
+                                        onClick={ensureCheckoutDiscount}
+                                        loading={checkoutDiscountEnsuring}
+                                        disabled={
+                                          checkoutDiscountEnsuring || checkoutFullVerifyRunning
+                                        }
+                                      >
+                                        Create/attach RipX discount
+                                      </Button>
+                                      <Button
+                                        onClick={runCheckoutDiscountListCheck}
+                                        loading={checkoutDiscountListCheckLoading}
+                                        disabled={
+                                          checkoutDiscountListCheckLoading ||
+                                          checkoutDiscountEnsuring ||
+                                          checkoutFullVerifyRunning
+                                        }
+                                      >
+                                        Check discount list
+                                      </Button>
+                                    </InlineStack>
+                                    <InlineStack gap="200" blockAlign="center" wrap>
+                                      {(checkoutDiag || installation) && (
+                                        <Badge tone={storeHealth.ready ? 'success' : 'warning'}>
+                                          {storeHealth.ready
+                                            ? 'Store health: PASS'
+                                            : `Store health: FAIL (${storeHealth.failed.length})`}
+                                        </Badge>
+                                      )}
+                                      {checkoutDiag?.summary && (
+                                        <Badge
+                                          tone={
+                                            checkoutDiag.summary.overall_ok
+                                              ? 'success'
+                                              : checkoutDiag.summary.overall_status === 'error'
+                                                ? 'critical'
+                                                : 'warning'
+                                          }
+                                        >
+                                          {checkoutDiag.summary.overall_ok
+                                            ? 'All checks passed'
+                                            : `${checkoutDiag.summary.checks_passed}/${checkoutDiag.summary.checks_total} checks OK`}
+                                        </Badge>
+                                      )}
+                                    </InlineStack>
+                                  </div>
+                                  {(checkoutDiag || installation) && (
+                                    <div className={styles.checkoutDiagHealthSummary}>
+                                      <Text variant="headingSm" as="h3">
+                                        Store health summary
+                                      </Text>
+                                      <BlockStack gap="150">
+                                        {storeHealth.checks.map(item => (
                                           <div
-                                            key={item.id}
+                                            key={item.key}
                                             className={styles.checkoutDiagCheckRow}
                                           >
-                                            <Badge
-                                              tone={
-                                                item.ok
-                                                  ? 'success'
-                                                  : item.severity === 'error'
-                                                    ? 'critical'
-                                                    : 'warning'
-                                              }
-                                            >
-                                              {item.ok ? 'OK' : 'Fix'}
+                                            <Badge tone={item.ok ? 'success' : 'critical'}>
+                                              {item.ok ? 'OK' : 'Fail'}
                                             </Badge>
                                             <Text as="span" variant="bodySm">
                                               {item.message}
@@ -1525,64 +1793,1148 @@ function Settings() {
                                           </div>
                                         ))}
                                       </BlockStack>
-                                    </>
+                                    </div>
                                   )}
-                                {Array.isArray(checkoutDiag?.recommendations) &&
-                                  checkoutDiag.recommendations.length > 0 && (
+                                  <Divider />
+                                  <div className={styles.checkoutDiagHealthSummary}>
+                                    <Text variant="headingSm" as="h3">
+                                      Preview probe
+                                    </Text>
+                                    <Text as="p" variant="bodySm" tone="subdued">
+                                      Check if this shop/domain can resolve a specific test variant
+                                      via <code>/api/track/preview</code>.
+                                    </Text>
+                                    <div className={styles.checkoutDiagProbeGrid}>
+                                      <TextField
+                                        label="Test ID"
+                                        value={previewProbeTestId}
+                                        onChange={setPreviewProbeTestId}
+                                        autoComplete="off"
+                                        placeholder="68cbfbe8-6bee-479c-acce-58d0d9ffd9fe"
+                                      />
+                                      <TextField
+                                        label="Variant ID or name"
+                                        value={previewProbeVariant}
+                                        onChange={setPreviewProbeVariant}
+                                        autoComplete="off"
+                                        placeholder="Variant A"
+                                      />
+                                    </div>
+                                    <InlineStack gap="300" blockAlign="center">
+                                      <Button
+                                        onClick={autofillPreviewProbeFromRunningTest}
+                                        loading={previewProbeAutofillLoading}
+                                        disabled={
+                                          previewProbeAutofillLoading || previewProbeLoading
+                                        }
+                                      >
+                                        Use running price test
+                                      </Button>
+                                      <Button
+                                        onClick={runPreviewProbe}
+                                        loading={previewProbeLoading}
+                                        disabled={
+                                          previewProbeLoading || previewProbeAutofillLoading
+                                        }
+                                      >
+                                        Run preview probe
+                                      </Button>
+                                      <Button
+                                        url={previewProbeUrl || undefined}
+                                        external
+                                        disabled={!previewProbeUrl}
+                                      >
+                                        Open preview URL
+                                      </Button>
+                                      {previewProbeResult && (
+                                        <Badge tone="success">Preview resolve: PASS</Badge>
+                                      )}
+                                    </InlineStack>
+                                    {previewProbeError && (
+                                      <Banner
+                                        tone="critical"
+                                        onDismiss={() => setPreviewProbeError(null)}
+                                      >
+                                        {previewProbeError}
+                                      </Banner>
+                                    )}
+                                    {previewProbeResult && (
+                                      <div className={styles.checkoutDiagProbeResult}>
+                                        <Text as="p" variant="bodySm">
+                                          <strong>Variant:</strong>{' '}
+                                          {previewProbeResult.variantName ||
+                                            previewProbeResult.variantId ||
+                                            '—'}
+                                        </Text>
+                                        <Text as="p" variant="bodySm">
+                                          <strong>Mode:</strong>{' '}
+                                          {previewProbeResult.priceMode || '—'}
+                                        </Text>
+                                        <Text as="p" variant="bodySm">
+                                          <strong>Fixed price:</strong>{' '}
+                                          {previewProbeResult.price ?? '—'}
+                                        </Text>
+                                        <Text as="p" variant="bodySm">
+                                          <strong>Delta:</strong>{' '}
+                                          {previewProbeResult.priceDelta ?? '—'}
+                                        </Text>
+                                        <Text as="p" variant="bodySm">
+                                          <strong>Percent:</strong>{' '}
+                                          {previewProbeResult.pricePercent ?? '—'}
+                                        </Text>
+                                      </div>
+                                    )}
+                                  </div>
+                                  {checkoutDiagLoading && (
+                                    <InlineStack gap="200" blockAlign="center">
+                                      <Spinner size="small" />
+                                      <Text as="span" variant="bodySm" tone="subdued">
+                                        Checking API configuration…
+                                      </Text>
+                                    </InlineStack>
+                                  )}
+                                  {checkoutDiagError && (
+                                    <Banner
+                                      tone="critical"
+                                      onDismiss={() => setCheckoutDiagError(null)}
+                                    >
+                                      {checkoutDiagError}
+                                    </Banner>
+                                  )}
+                                  {checkoutDiscountEnsureError && (
+                                    <Banner
+                                      tone="critical"
+                                      onDismiss={() => setCheckoutDiscountEnsureError(null)}
+                                    >
+                                      {checkoutDiscountEnsureError}
+                                    </Banner>
+                                  )}
+                                  {checkoutDiscountEnsureResult && (
+                                    <Banner
+                                      tone="success"
+                                      onDismiss={() => setCheckoutDiscountEnsureResult(null)}
+                                    >
+                                      {checkoutDiscountEnsureResult.created
+                                        ? 'RipX automatic discount created successfully.'
+                                        : 'RipX automatic discount already exists and is attached.'}{' '}
+                                      {checkoutDiscountEnsureResult.titleAdjusted
+                                        ? 'A fallback title was used due to title conflict.'
+                                        : ''}
+                                      {checkoutDiscountEnsureResult.titleAdjusted ? ' ' : ''}
+                                      {checkoutDiscountEnsureResult.status
+                                        ? `Status: ${checkoutDiscountEnsureResult.status}.`
+                                        : ''}
+                                    </Banner>
+                                  )}
+                                  {checkoutDiscountEnsureDebug && (
+                                    <div className={styles.checkoutDiagDebugBox}>
+                                      <InlineStack align="space-between" blockAlign="center">
+                                        <Text variant="headingSm" as="h3">
+                                          Advanced ensure diagnostics
+                                        </Text>
+                                        <Button
+                                          icon={ClipboardIcon}
+                                          variant="plain"
+                                          size="slim"
+                                          onClick={() =>
+                                            handleCopy(
+                                              JSON.stringify(
+                                                {
+                                                  ensuredAt: new Date().toISOString(),
+                                                  storeHealth,
+                                                  ensureResult: checkoutDiscountEnsureResult,
+                                                  ensureDebug: checkoutDiscountEnsureDebug,
+                                                  discountListCheck: checkoutDiscountListCheck,
+                                                  diagnosticsSummary: checkoutDiag?.summary || null,
+                                                },
+                                                null,
+                                                2
+                                              ),
+                                              'Diagnostics JSON copied'
+                                            )
+                                          }
+                                        >
+                                          Copy diagnostics JSON
+                                        </Button>
+                                      </InlineStack>
+                                      {checkoutDiscountEnsureDebug.function && (
+                                        <Text as="p" variant="bodySm" tone="subdued">
+                                          Function:{' '}
+                                          <code className={styles.checkoutDiagMono}>
+                                            {checkoutDiscountEnsureDebug.function.title ||
+                                              'unknown'}{' '}
+                                            (
+                                            {checkoutDiscountEnsureDebug.function.apiType ||
+                                              'unknown'}
+                                            )
+                                          </code>
+                                        </Text>
+                                      )}
+                                      {Array.isArray(
+                                        checkoutDiscountEnsureDebug?.troubleshooting
+                                          ?.attemptedTitles
+                                      ) &&
+                                        checkoutDiscountEnsureDebug.troubleshooting.attemptedTitles
+                                          .length > 0 && (
+                                          <Text as="p" variant="bodySm" tone="subdued">
+                                            Attempted titles:{' '}
+                                            <code className={styles.checkoutDiagMono}>
+                                              {checkoutDiscountEnsureDebug.troubleshooting.attemptedTitles.join(
+                                                ' | '
+                                              )}
+                                            </code>
+                                          </Text>
+                                        )}
+                                      {Array.isArray(
+                                        checkoutDiscountEnsureDebug.shopifyUserErrors
+                                      ) &&
+                                        checkoutDiscountEnsureDebug.shopifyUserErrors.length >
+                                          0 && (
+                                          <BlockStack gap="100">
+                                            <Text as="p" variant="bodySm">
+                                              Shopify create errors:
+                                            </Text>
+                                            {checkoutDiscountEnsureDebug.shopifyUserErrors.map(
+                                              (err, i) => (
+                                                <Text
+                                                  as="p"
+                                                  key={`create-err-${i}`}
+                                                  variant="bodySm"
+                                                >
+                                                  - {err?.message || 'Unknown'}{' '}
+                                                  {err?.code ? `(${err.code})` : ''}
+                                                </Text>
+                                              )
+                                            )}
+                                          </BlockStack>
+                                        )}
+                                      {Array.isArray(checkoutDiscountEnsureDebug.retryUserErrors) &&
+                                        checkoutDiscountEnsureDebug.retryUserErrors.length > 0 && (
+                                          <BlockStack gap="100">
+                                            <Text as="p" variant="bodySm">
+                                              Retry errors:
+                                            </Text>
+                                            {checkoutDiscountEnsureDebug.retryUserErrors.map(
+                                              (err, i) => (
+                                                <Text
+                                                  as="p"
+                                                  key={`retry-err-${i}`}
+                                                  variant="bodySm"
+                                                >
+                                                  - {err?.message || 'Unknown'}{' '}
+                                                  {err?.code ? `(${err.code})` : ''}
+                                                </Text>
+                                              )
+                                            )}
+                                          </BlockStack>
+                                        )}
+                                      {checkoutDiscountListCheck && (
+                                        <Text as="p" variant="bodySm" tone="subdued">
+                                          Shopify list check:{' '}
+                                          <strong>
+                                            {checkoutDiscountListCheck.inList
+                                              ? `FOUND (${checkoutDiscountListCheck.matchedCount})`
+                                              : `NOT FOUND (${checkoutDiscountListCheck.inspectedCount} scanned)`}
+                                          </strong>
+                                        </Text>
+                                      )}
+                                    </div>
+                                  )}
+                                  {checkoutDiscountListCheckError && (
+                                    <Banner
+                                      tone="critical"
+                                      onDismiss={() => setCheckoutDiscountListCheckError(null)}
+                                    >
+                                      {checkoutDiscountListCheckError}
+                                    </Banner>
+                                  )}
+                                  <div className={styles.checkoutDiagVerifyBox}>
+                                    <Text variant="headingSm" as="h3">
+                                      Discount setup confirmation
+                                    </Text>
+                                    <Text as="p" variant="bodySm" tone="subdued">
+                                      After install, RipX does <strong>not</strong> auto-create a
+                                      manual discount each time in Shopify. It ensures one automatic
+                                      RipX discount/function exists and Shopify calls it at
+                                      checkout.
+                                    </Text>
+                                    <ol className={styles.checkoutDiagVerifyList}>
+                                      <li>
+                                        Click <strong>Create/attach RipX discount</strong> once.
+                                      </li>
+                                      <li>
+                                        Click <strong>Run check</strong> and confirm health passes.
+                                      </li>
+                                      <li>
+                                        Open Shopify Discounts and verify{' '}
+                                        <strong>RipX Price Test Function</strong> exists and is
+                                        active.
+                                      </li>
+                                    </ol>
+                                    <InlineStack gap="200" blockAlign="center" wrap>
+                                      {shopifyAdminDiscountsUrl && (
+                                        <Button url={shopifyAdminDiscountsUrl} external>
+                                          Open Shopify discounts
+                                        </Button>
+                                      )}
+                                      {checkoutDiscountEnsureResult?.discountId && (
+                                        <Button
+                                          icon={ClipboardIcon}
+                                          variant="plain"
+                                          onClick={() =>
+                                            handleCopy(
+                                              checkoutDiscountEnsureResult.discountId,
+                                              'Discount ID copied'
+                                            )
+                                          }
+                                        >
+                                          Copy discount ID
+                                        </Button>
+                                      )}
+                                      {checkoutDiscountEnsureResult?.status && (
+                                        <Badge tone="success">
+                                          Status: {checkoutDiscountEnsureResult.status}
+                                        </Badge>
+                                      )}
+                                    </InlineStack>
+                                    {checkoutDiscountEnsureResult?.discountId && (
+                                      <Text as="p" variant="bodySm" tone="subdued">
+                                        Discount ID:{' '}
+                                        <code className={styles.checkoutDiagMono}>
+                                          {checkoutDiscountEnsureResult.discountId}
+                                        </code>
+                                      </Text>
+                                    )}
+                                    {checkoutDiscountListCheck && (
+                                      <div className={styles.checkoutDiagListResult}>
+                                        <Text as="p" variant="bodySm">
+                                          <strong>List status:</strong>{' '}
+                                          {checkoutDiscountListCheck.inList
+                                            ? 'Present in Shopify discount list'
+                                            : 'Not found in current Shopify automatic list'}
+                                        </Text>
+                                        {Array.isArray(
+                                          checkoutDiscountListCheck.matchedDiscounts
+                                        ) &&
+                                          checkoutDiscountListCheck.matchedDiscounts.length > 0 &&
+                                          checkoutDiscountListCheck.matchedDiscounts.map((d, i) => (
+                                            <Text as="p" key={`list-match-${i}`} variant="bodySm">
+                                              - {d?.title || 'Untitled'} ({d?.status || 'unknown'}){' '}
+                                              {d?.discountId ? `· ${d.discountId}` : ''}
+                                            </Text>
+                                          ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                  {checkoutDiag?.infrastructure && (
                                     <>
                                       <Divider />
                                       <Text variant="headingSm" as="h3">
-                                        Next steps
+                                        Batch resolver
                                       </Text>
-                                      <ul className={styles.installSteps}>
-                                        {checkoutDiag.recommendations.map((line, i) => (
-                                          <li key={i}>
-                                            <Text as="span" variant="bodySm">
-                                              {line}
-                                            </Text>
-                                          </li>
-                                        ))}
-                                      </ul>
+                                      <Text as="p" variant="bodySm" tone="subdued">
+                                        Shopify calls this URL from your discount function (
+                                        {checkoutDiag.infrastructure.batch_url_source}).
+                                      </Text>
+                                      <div className={styles.checkoutDiagMono}>
+                                        {checkoutDiag.infrastructure.batch_resolve_url ||
+                                          '(not configured)'}
+                                      </div>
+                                      <InlineStack gap="200" wrap>
+                                        <Text as="span" variant="bodySm">
+                                          HTTPS:{' '}
+                                          {checkoutDiag.infrastructure.uses_https ? 'yes' : 'no'}
+                                        </Text>
+                                        <Text as="span" variant="bodySm">
+                                          Secret required:{' '}
+                                          {checkoutDiag.infrastructure
+                                            .checkout_price_secret_required
+                                            ? 'yes'
+                                            : 'no'}
+                                        </Text>
+                                        <Text as="span" variant="bodySm">
+                                          Max lines / batch:{' '}
+                                          {checkoutDiag.infrastructure.price_resolve_batch_max}
+                                        </Text>
+                                        <Text as="span" variant="bodySm">
+                                          Max response (bytes):{' '}
+                                          {checkoutDiag.infrastructure
+                                            .price_resolve_batch_response_max_bytes ?? '—'}
+                                        </Text>
+                                        <Text as="span" variant="bodySm">
+                                          Compact batch JSON:{' '}
+                                          {checkoutDiag.infrastructure.batch_compact_response ===
+                                          false
+                                            ? 'no (full)'
+                                            : checkoutDiag.infrastructure.batch_compact_response ===
+                                                true
+                                              ? 'yes'
+                                              : '—'}
+                                        </Text>
+                                        <Text as="span" variant="bodySm">
+                                          Slow batch log (ms):{' '}
+                                          {checkoutDiag.infrastructure.price_batch_slow_log_ms ??
+                                            '—'}
+                                        </Text>
+                                      </InlineStack>
+                                      {checkoutDiag.shop && (
+                                        <Text as="p" variant="bodySm">
+                                          Running <strong>price</strong> tests for this shop:{' '}
+                                          <strong>
+                                            {checkoutDiag.shop.running_price_tests ?? '—'}
+                                          </strong>
+                                        </Text>
+                                      )}
                                     </>
                                   )}
+                                  {Array.isArray(checkoutDiag?.checklist) &&
+                                    checkoutDiag.checklist.length > 0 && (
+                                      <>
+                                        <Divider />
+                                        <Text variant="headingSm" as="h3">
+                                          Checklist
+                                        </Text>
+                                        <BlockStack gap="200">
+                                          {checkoutDiag.checklist.map(item => (
+                                            <div
+                                              key={item.id}
+                                              className={styles.checkoutDiagCheckRow}
+                                            >
+                                              <Badge
+                                                tone={
+                                                  item.ok
+                                                    ? 'success'
+                                                    : item.severity === 'error'
+                                                      ? 'critical'
+                                                      : 'warning'
+                                                }
+                                              >
+                                                {item.ok ? 'OK' : 'Fix'}
+                                              </Badge>
+                                              <Text as="span" variant="bodySm">
+                                                {item.message}
+                                              </Text>
+                                            </div>
+                                          ))}
+                                        </BlockStack>
+                                      </>
+                                    )}
+                                  {Array.isArray(checkoutDiag?.recommendations) &&
+                                    checkoutDiag.recommendations.length > 0 && (
+                                      <>
+                                        <Divider />
+                                        <Text variant="headingSm" as="h3">
+                                          Next steps
+                                        </Text>
+                                        <ul className={styles.installSteps}>
+                                          {checkoutDiag.recommendations.map((line, i) => (
+                                            <li key={i}>
+                                              <Text as="span" variant="bodySm">
+                                                {line}
+                                              </Text>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </>
+                                    )}
+                                </BlockStack>
+                              </Box>
+                            </Card>
+                          )}
+
+                        {installation &&
+                          installation.platform === 'standalone' &&
+                          !installationLoading &&
+                          !installationError && (
+                            <Card
+                              className={`${styles.settingsPanelCard} ${styles.checkoutDiagCard}`}
+                            >
+                              <Box padding="500">
+                                <Banner tone="info">
+                                  <BlockStack gap="200">
+                                    <Text as="p" variant="bodyMd">
+                                      <strong>Checkout price alignment</strong> (matching charged
+                                      checkout to a price test) uses Shopify&apos;s Discount
+                                      Function API and applies to <strong>Shopify</strong> stores,
+                                      not standalone sites. On standalone, RipX still runs price
+                                      tests on your storefront via the script.
+                                    </Text>
+                                  </BlockStack>
+                                </Banner>
+                              </Box>
+                            </Card>
+                          )}
+                      </div>
+                    )}
+
+                    {isAppSettings && activeTabId === 'general' && (
+                      <div
+                        id="settings-panel-general"
+                        role="tabpanel"
+                        aria-labelledby="settings-tab-general"
+                        className={`${styles.settingsContent} ${styles.settingsPanelLayout} ${styles.settingsPanelGeneral}`}
+                      >
+                        {isStandaloneMode() && (
+                          <Card
+                            className={`${styles.settingsPanelCard} ${styles.settingsPanelCardFull}`}
+                          >
+                            <Box padding="400">
+                              <BlockStack gap={CONTENT_GAP}>
+                                <div className={styles.sectionHeader}>
+                                  <div className={styles.sectionHeaderIcon}>
+                                    <SettingsIcon />
+                                  </div>
+                                  <div className={styles.sectionHeaderContent}>
+                                    <Text variant="headingMd" as="h2">
+                                      API Key
+                                    </Text>
+                                    <Text as="p" variant="bodySm" tone="subdued">
+                                      Connected via API key. To use a different key, go to{' '}
+                                      <Link to={ROUTES.CONNECT}>Connect</Link> or clear storage and
+                                      reload.
+                                    </Text>
+                                  </div>
+                                </div>
                               </BlockStack>
                             </Box>
                           </Card>
                         )}
 
-                      {installation &&
-                        installation.platform === 'standalone' &&
-                        !installationLoading &&
-                        !installationError && (
-                          <Card
-                            className={`${styles.settingsPanelCard} ${styles.checkoutDiagCard}`}
-                          >
-                            <Box padding="500">
-                              <Banner tone="info">
-                                <BlockStack gap="200">
-                                  <Text as="p" variant="bodyMd">
-                                    <strong>Checkout price alignment</strong> (matching charged
-                                    checkout to a price test) uses Shopify&apos;s Discount Function
-                                    API and applies to <strong>Shopify</strong> stores, not
-                                    standalone sites. On standalone, RipX still runs price tests on
-                                    your storefront via the script.
+                        <Card className={`${styles.settingsPanelCard} ${styles.testConfigCard}`}>
+                          <Box padding="500">
+                            <BlockStack gap="400">
+                              <div className={styles.sectionHeader}>
+                                <div className={styles.sectionHeaderIcon}>
+                                  <TargetIcon />
+                                </div>
+                                <div className={styles.sectionHeaderContent}>
+                                  <Text variant="headingMd" as="h2">
+                                    Test Configuration
                                   </Text>
-                                </BlockStack>
-                              </Banner>
-                            </Box>
-                          </Card>
-                        )}
-                    </div>
-                  )}
+                                  <Text as="p" variant="bodySm" tone="subdued">
+                                    Choose a preset or customize. Settings apply to all new tests.
+                                  </Text>
+                                </div>
+                              </div>
 
-                  {isAppSettings && activeTabId === 'general' && (
-                    <div
-                      id="settings-panel-general"
-                      role="tabpanel"
-                      aria-labelledby="settings-tab-general"
-                      className={`${styles.settingsContent} ${styles.settingsPanelLayout} ${styles.settingsPanelGeneral}`}
-                    >
-                      {isStandaloneMode() && (
+                              <div className={styles.testConfigPresets}>
+                                <span className={styles.configSubsection}>Quick presets</span>
+                                <div className={styles.presetCardsGrid}>
+                                  {Object.entries(SETTINGS_PRESETS).map(([key, preset]) => (
+                                    <button
+                                      key={key}
+                                      type="button"
+                                      disabled={presetApplyingKey !== null}
+                                      className={`${styles.presetCard} ${key === 'recommended' ? styles.presetCardRecommended : ''}`}
+                                      onClick={async () => {
+                                        setPresetApplyingKey(key);
+                                        const next = {
+                                          ...settings,
+                                          minSampleSize: preset.minSampleSize,
+                                          confidenceLevel: preset.confidenceLevel,
+                                          autoStopEnabled: preset.autoStopEnabled,
+                                        };
+                                        setSettings(next);
+                                        setMessage(`Applying "${preset.label}"…`);
+                                        try {
+                                          await apiPut('/settings', next);
+                                          setMessage(`"${preset.label}" preset saved`);
+                                        } catch (err) {
+                                          setMessage(
+                                            err?.response?.data?.error || 'Failed to save'
+                                          );
+                                        } finally {
+                                          setPresetApplyingKey(null);
+                                        }
+                                      }}
+                                    >
+                                      {presetApplyingKey === key ? (
+                                        <span className={styles.presetCardLoading}>Applying…</span>
+                                      ) : (
+                                        <>
+                                          <span className={styles.presetCardLabel}>
+                                            {preset.label}
+                                          </span>
+                                          <span className={styles.presetCardDesc}>
+                                            {preset.description}
+                                          </span>
+                                          <span className={styles.presetCardMeta}>
+                                            {preset.minSampleSize} visitors ·{' '}
+                                            {Math.round(preset.confidenceLevel * 100)}% confidence
+                                          </span>
+                                        </>
+                                      )}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div className={styles.testConfigCustom}>
+                                <span className={styles.configSubsection}>Customize</span>
+                                <div className={styles.configFieldGroups}>
+                                  <div className={styles.configFieldGroup}>
+                                    <Text
+                                      variant="bodySm"
+                                      fontWeight="semibold"
+                                      as="span"
+                                      className={styles.configFieldLabel}
+                                    >
+                                      Minimum Sample Size
+                                    </Text>
+                                    <div className={styles.configQuickSelect}>
+                                      {SAMPLE_SIZE_QUICK.map(n => (
+                                        <Button
+                                          key={n}
+                                          size="slim"
+                                          pressed={settings.minSampleSize === n}
+                                          onClick={() =>
+                                            setSettings({ ...settings, minSampleSize: n })
+                                          }
+                                        >
+                                          {n}
+                                        </Button>
+                                      ))}
+                                    </div>
+                                    <div className={styles.configTextField}>
+                                      <TextField
+                                        label="Or enter custom (10–10,000)"
+                                        type="number"
+                                        value={String(
+                                          settings.minSampleSize ?? DEFAULT_SETTINGS.minSampleSize
+                                        )}
+                                        onChange={value => {
+                                          const num = parseInt(
+                                            String(value).replace(/\D/g, ''),
+                                            10
+                                          );
+                                          setSettings({
+                                            ...settings,
+                                            minSampleSize: Number.isFinite(num)
+                                              ? Math.max(10, Math.min(10000, num))
+                                              : DEFAULT_SETTINGS.minSampleSize,
+                                          });
+                                        }}
+                                        helpText="Minimum visitors before showing results"
+                                        min={10}
+                                        max={10000}
+                                        autoComplete="off"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <div className={styles.configFieldGroup}>
+                                    <Text
+                                      variant="bodySm"
+                                      fontWeight="semibold"
+                                      as="span"
+                                      className={styles.configFieldLabel}
+                                    >
+                                      Confidence Level
+                                    </Text>
+                                    <div className={styles.configQuickSelect}>
+                                      {CONFIDENCE_QUICK.map(({ label, value }) => (
+                                        <Button
+                                          key={value}
+                                          size="slim"
+                                          pressed={
+                                            Math.abs(Number(settings.confidenceLevel) - value) <
+                                            0.001
+                                          }
+                                          onClick={() =>
+                                            setSettings({ ...settings, confidenceLevel: value })
+                                          }
+                                        >
+                                          {label}
+                                        </Button>
+                                      ))}
+                                    </div>
+                                    <div className={styles.configTextField}>
+                                      <TextField
+                                        label="Or enter custom (0.8–0.99)"
+                                        type="number"
+                                        value={String(
+                                          settings.confidenceLevel ??
+                                            DEFAULT_SETTINGS.confidenceLevel
+                                        )}
+                                        onChange={value => {
+                                          const num = parseFloat(
+                                            String(value).replace(/[^\d.]/g, '')
+                                          );
+                                          setSettings({
+                                            ...settings,
+                                            confidenceLevel: Number.isFinite(num)
+                                              ? Math.max(0.8, Math.min(0.99, num))
+                                              : DEFAULT_SETTINGS.confidenceLevel,
+                                          });
+                                        }}
+                                        helpText="Higher = more conservative, waits for stronger evidence"
+                                        min={0.8}
+                                        max={1}
+                                        step={0.01}
+                                        autoComplete="off"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <div className={styles.configAutoStop}>
+                                    <Checkbox
+                                      label="Auto-stop when winner is clear"
+                                      helpText="Automatically stop tests when statistical significance is reached — recommended for most users"
+                                      checked={settings.autoStopEnabled}
+                                      onChange={checked =>
+                                        setSettings({ ...settings, autoStopEnabled: checked })
+                                      }
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </BlockStack>
+                          </Box>
+                        </Card>
+
+                        <Card className={`${styles.settingsPanelCard}`}>
+                          <Box padding="400">
+                            <BlockStack gap={CONTENT_GAP}>
+                              <div className={styles.sectionHeader}>
+                                <div className={styles.sectionHeaderIcon}>
+                                  <ChartVerticalIcon />
+                                </div>
+                                <div className={styles.sectionHeaderContent}>
+                                  <Text variant="headingMd" as="h2">
+                                    Webhooks
+                                  </Text>
+                                  <Text as="p" variant="bodySm" tone="subdued">
+                                    Send events to your server when tests complete or reach
+                                    significance. The button below saves both webhook settings and
+                                    test defaults (sample size, confidence, auto-stop).
+                                  </Text>
+                                </div>
+                              </div>
+                              <div className={styles.panelCardBody}>
+                                <FormLayout>
+                                  <TextField
+                                    label="Webhook URL"
+                                    value={settings.outboundWebhookUrl}
+                                    onChange={value => {
+                                      setSettings({ ...settings, outboundWebhookUrl: value });
+                                      setWebhookError(null);
+                                    }}
+                                    helpText="Leave empty to disable. Must be a valid URL when set."
+                                    placeholder="https://your-server.com/webhook"
+                                    autoComplete="off"
+                                    error={webhookError}
+                                  />
+                                  <ChoiceList
+                                    title="Send webhook when"
+                                    choices={WEBHOOK_EVENT_CHOICES}
+                                    selected={settings.outboundWebhookEvents}
+                                    onChange={selected =>
+                                      setSettings({
+                                        ...settings,
+                                        outboundWebhookEvents: selected.length
+                                          ? selected
+                                          : DEFAULT_SETTINGS.outboundWebhookEvents,
+                                      })
+                                    }
+                                    allowMultiple
+                                  />
+
+                                  <Box paddingBlockStart="400">
+                                    <Button variant="primary" onClick={handleSave} loading={saving}>
+                                      Save settings
+                                    </Button>
+                                  </Box>
+                                </FormLayout>
+                              </div>
+                            </BlockStack>
+                          </Box>
+                        </Card>
+
+                        <Card
+                          className={`${styles.settingsPanelCard} ${styles.settingsPanelCardFull} ${styles.quickLinksCard}`}
+                        >
+                          <Box padding="400">
+                            <BlockStack gap="300">
+                              <div className={styles.sectionHeader}>
+                                <div className={styles.sectionHeaderIcon}>
+                                  <SettingsIcon />
+                                </div>
+                                <div className={styles.sectionHeaderContent}>
+                                  <Text variant="headingMd" as="h2">
+                                    User Preferences
+                                  </Text>
+                                  <Text as="p" variant="bodySm" tone="subdued">
+                                    Notifications, dashboard defaults, theme (custom schedule), and
+                                    export format are in{' '}
+                                    <Link to={ROUTES.PROFILE} className={styles.setupWizardLink}>
+                                      Profile
+                                    </Link>{' '}
+                                    — Account (notifications), Preferences (theme, dashboard,
+                                    editor).
+                                  </Text>
+                                </div>
+                              </div>
+                              <InlineStack gap="200" wrap>
+                                <Link to={ROUTES.PROFILE} className={styles.quickLinkBtn}>
+                                  Open Profile
+                                </Link>
+                              </InlineStack>
+                            </BlockStack>
+                          </Box>
+                        </Card>
+                      </div>
+                    )}
+
+                    {isAppSettings && activeTabId === 'integrations' && (
+                      <div
+                        id="settings-panel-integrations"
+                        role="tabpanel"
+                        aria-labelledby="settings-tab-integrations"
+                        className={`${styles.settingsContent} ${styles.settingsPanelLayout} ${styles.settingsPanelIntegrations}`}
+                      >
+                        {integrationsError && (
+                          <div className={styles.settingsPanelBannerWrap}>
+                            <Banner
+                              tone="critical"
+                              onDismiss={() => setIntegrationsError(false)}
+                              action={{ content: 'Retry', onAction: () => fetchIntegrations() }}
+                            >
+                              Couldn&apos;t load integration status. Check your connection and
+                              retry.
+                            </Banner>
+                          </div>
+                        )}
+                        <Card
+                          className={`${styles.settingsPanelCard} ${styles.settingsPanelCardFull} ${styles.integrationsHeaderCard}`}
+                        >
+                          <Box padding="400">
+                            <div className={styles.sectionHeaderWithAction}>
+                              <div className={styles.sectionHeader}>
+                                <div
+                                  className={`${styles.sectionHeaderIcon} ${styles.integrationsHeaderIcon}`}
+                                >
+                                  <ChartVerticalIcon />
+                                </div>
+                                <div className={styles.sectionHeaderContent}>
+                                  <Text variant="headingMd" as="h2">
+                                    Analytics & Data
+                                  </Text>
+                                  <Text as="p" variant="bodySm" tone="subdued">
+                                    Connect GA4 and BigQuery to unify analytics and run advanced
+                                    queries.
+                                  </Text>
+                                </div>
+                              </div>
+                              <Button
+                                variant="plain"
+                                onClick={handleRefreshIntegrations}
+                                loading={integrationsRefreshing}
+                                accessibilityLabel="Refresh integration status"
+                              >
+                                Refresh status
+                              </Button>
+                            </div>
+                          </Box>
+                        </Card>
+
+                        <div className={styles.integrationCardsRow}>
+                          {INTEGRATIONS_CONFIG.map(
+                            ({ key, title, Icon, iconClass, configHint }) => {
+                              const data = integrations?.[key];
+                              const configured = data?.configured;
+                              const lastExport = key === 'bigquery' ? data?.lastExportAt : null;
+                              const lastExportLabel = formatRelativeTime(lastExport);
+                              const isLoading = integrations === null;
+                              return (
+                                <Card
+                                  key={key}
+                                  className={`${styles.settingsPanelCard} ${styles.integrationCardWrapper} ${configured ? styles.integrationCardConnected : ''}`}
+                                >
+                                  <Box padding="400">
+                                    <BlockStack gap={CONTENT_GAP}>
+                                      <div className={styles.sectionHeader}>
+                                        <div
+                                          className={`${styles.sectionHeaderIcon} ${styles.integrationIcon} ${styles[iconClass]}`}
+                                        >
+                                          <Icon />
+                                        </div>
+                                        <div
+                                          className={`${styles.sectionHeaderContent} ${styles.integrationCardHeader}`}
+                                        >
+                                          <div className={styles.integrationCardTitleRow}>
+                                            <Text
+                                              variant="headingMd"
+                                              as="h2"
+                                              className={styles.integrationCardTitle}
+                                            >
+                                              {title}
+                                            </Text>
+                                            {!isLoading && (
+                                              <Badge
+                                                tone={configured ? 'success' : 'info'}
+                                                className={styles.integrationCardBadge}
+                                              >
+                                                {key === 'ga4'
+                                                  ? configured
+                                                    ? 'Active'
+                                                    : 'Not configured'
+                                                  : configured
+                                                    ? 'Configured'
+                                                    : 'Not configured'}
+                                              </Badge>
+                                            )}
+                                          </div>
+                                          <Text
+                                            as="p"
+                                            variant="bodySm"
+                                            tone="subdued"
+                                            className={styles.integrationCardHint}
+                                          >
+                                            {isLoading ? 'Loading…' : (data?.hint ?? configHint)}
+                                          </Text>
+                                        </div>
+                                      </div>
+                                      <div className={styles.panelCardBody}>
+                                        {isLoading ? (
+                                          <div
+                                            className={styles.loadingBlock}
+                                            style={{ height: 60, marginTop: '0.5rem' }}
+                                          />
+                                        ) : (
+                                          <>
+                                            {key === 'ga4' && (
+                                              <FormLayout>
+                                                <TextField
+                                                  label="Measurement ID"
+                                                  value={integrationConfig.ga4MeasurementId}
+                                                  onChange={v =>
+                                                    setIntegrationConfig(c => ({
+                                                      ...c,
+                                                      ga4MeasurementId: v,
+                                                    }))
+                                                  }
+                                                  placeholder="G-XXXXXXXXXX"
+                                                  autoComplete="off"
+                                                />
+                                                <TextField
+                                                  label="API Secret"
+                                                  type="password"
+                                                  value={integrationConfig.ga4ApiSecret}
+                                                  onChange={v =>
+                                                    setIntegrationConfig(c => ({
+                                                      ...c,
+                                                      ga4ApiSecret: v,
+                                                    }))
+                                                  }
+                                                  placeholder={
+                                                    integrationConfig.ga4ApiSecret === '••••••••'
+                                                      ? '••••••••'
+                                                      : 'Enter API secret'
+                                                  }
+                                                  autoComplete="off"
+                                                  helpText="From GA4 Admin → Data Streams → Measurement Protocol"
+                                                />
+                                              </FormLayout>
+                                            )}
+                                            {key === 'bigquery' && (
+                                              <FormLayout>
+                                                <TextField
+                                                  label="Project ID"
+                                                  value={integrationConfig.bigqueryProjectId}
+                                                  onChange={v =>
+                                                    setIntegrationConfig(c => ({
+                                                      ...c,
+                                                      bigqueryProjectId: v,
+                                                    }))
+                                                  }
+                                                  placeholder="your-gcp-project"
+                                                  autoComplete="off"
+                                                />
+                                                <TextField
+                                                  label="Dataset"
+                                                  value={integrationConfig.bigqueryDataset}
+                                                  onChange={v =>
+                                                    setIntegrationConfig(c => ({
+                                                      ...c,
+                                                      bigqueryDataset: v,
+                                                    }))
+                                                  }
+                                                  placeholder="ripx_analytics"
+                                                  autoComplete="off"
+                                                />
+                                                <TextField
+                                                  label="Service Account JSON"
+                                                  value={
+                                                    integrationConfig.bigqueryCredentials ===
+                                                    '[configured]'
+                                                      ? ''
+                                                      : integrationConfig.bigqueryCredentials
+                                                  }
+                                                  onChange={v =>
+                                                    setIntegrationConfig(c => ({
+                                                      ...c,
+                                                      bigqueryCredentials: v,
+                                                    }))
+                                                  }
+                                                  placeholder={
+                                                    integrationConfig.bigqueryCredentials ===
+                                                    '[configured]'
+                                                      ? '[Already configured — leave blank to keep]'
+                                                      : 'Paste full JSON key'
+                                                  }
+                                                  multiline={4}
+                                                  autoComplete="off"
+                                                  helpText="Paste the full JSON from GCP Service Account key file"
+                                                />
+                                                {configured && (
+                                                  <>
+                                                    <p className={styles.integrationLastExport}>
+                                                      Last export:{' '}
+                                                      <strong
+                                                        {...(!lastExportLabel && {
+                                                          'data-subdued': true,
+                                                        })}
+                                                      >
+                                                        {lastExportLabel || 'Never'}
+                                                      </strong>
+                                                    </p>
+                                                    <div className={styles.integrationActions}>
+                                                      <Button
+                                                        variant="primary"
+                                                        onClick={() => handleBigQueryExport(false)}
+                                                        loading={bigQueryExporting}
+                                                      >
+                                                        Export incremental
+                                                      </Button>
+                                                      <Button
+                                                        onClick={() => handleBigQueryExport(true)}
+                                                        loading={bigQueryExporting}
+                                                      >
+                                                        Full export
+                                                      </Button>
+                                                    </div>
+                                                  </>
+                                                )}
+                                              </FormLayout>
+                                            )}
+                                            {!configured && (
+                                              <div className={styles.configHint}>{configHint}</div>
+                                            )}
+                                            {configured && key === 'ga4' && (
+                                              <div className={styles.integrationActiveNote}>
+                                                Events are forwarded automatically
+                                              </div>
+                                            )}
+                                          </>
+                                        )}
+                                      </div>
+                                    </BlockStack>
+                                  </Box>
+                                </Card>
+                              );
+                            }
+                          )}
+                        </div>
+                        <Card
+                          className={`${styles.settingsPanelCard} ${styles.settingsPanelCardFull} ${styles.integrationsSaveCard}`}
+                        >
+                          <Box padding="400">
+                            <InlineStack align="end" gap="300">
+                              <Button
+                                variant="primary"
+                                onClick={handleSaveIntegrations}
+                                loading={integrationsSaving}
+                              >
+                                Save integration settings
+                              </Button>
+                            </InlineStack>
+                          </Box>
+                        </Card>
+                      </div>
+                    )}
+
+                    {activeTabId === 'appearance' && (
+                      <div
+                        id="settings-panel-appearance"
+                        role="tabpanel"
+                        aria-labelledby="settings-tab-appearance"
+                        className={`${styles.settingsContent} ${styles.settingsPanelLayout} ${styles.settingsPanelAppearance}`}
+                      >
+                        <Card
+                          className={`${styles.settingsPanelCard} ${styles.settingsPanelCardFull}`}
+                        >
+                          <Box padding="500">
+                            <BlockStack gap="400">
+                              <div className={styles.sectionHeader}>
+                                <div className={styles.sectionHeaderIcon}>
+                                  <PaintBrushFlatIcon />
+                                </div>
+                                <div className={styles.sectionHeaderContent}>
+                                  <Text variant="headingMd" as="h2">
+                                    Theme
+                                  </Text>
+                                  <Text as="p" variant="bodySm" tone="subdued">
+                                    Choose how the app looks. Auto switches by time of day. For a
+                                    custom schedule (e.g. dark after 7pm), use{' '}
+                                    <Link
+                                      to={`${ROUTES.PROFILE}?tab=preferences`}
+                                      className={styles.setupWizardLink}
+                                    >
+                                      Profile → Preferences
+                                    </Link>
+                                    .
+                                  </Text>
+                                </div>
+                              </div>
+                              <div className={styles.panelCardBody}>
+                                <div className={styles.themePreviewGrid}>
+                                  {THEME_OPTIONS.map(opt => (
+                                    <button
+                                      key={opt.value}
+                                      type="button"
+                                      className={`${styles.themePreviewCard} ${theme === opt.value ? styles.themePreviewCardActive : ''}`}
+                                      onClick={() => handleThemeChange(opt.value)}
+                                      aria-pressed={theme === opt.value}
+                                      aria-label={`Theme: ${opt.label}`}
+                                    >
+                                      <div
+                                        className={`${styles.themePreviewSwatch} ${styles[`themePreviewSwatch_${opt.preview}`]}`}
+                                      />
+                                      <span className={styles.themePreviewLabel}>{opt.label}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                                <div className={styles.themeSelectFallback}>
+                                  <Text as="span" variant="bodySm" tone="subdued">
+                                    Or choose from dropdown:
+                                  </Text>
+                                  <div className={styles.themeSelectWrap}>
+                                    <Select
+                                      label="Theme"
+                                      labelHidden
+                                      options={THEME_OPTIONS.map(({ value, label }) => ({
+                                        value,
+                                        label,
+                                      }))}
+                                      value={theme}
+                                      onChange={handleThemeChange}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </BlockStack>
+                          </Box>
+                        </Card>
+                      </div>
+                    )}
+
+                    {isAppSettings && activeTabId === 'presets' && (
+                      <div
+                        id="settings-panel-presets"
+                        role="tabpanel"
+                        aria-labelledby="settings-tab-presets"
+                        className={`${styles.settingsContent} ${styles.settingsPanelLayout} ${styles.settingsPanelPresets}`}
+                      >
                         <Card
                           className={`${styles.settingsPanelCard} ${styles.settingsPanelCardFull}`}
                         >
@@ -1590,717 +2942,70 @@ function Settings() {
                             <BlockStack gap={CONTENT_GAP}>
                               <div className={styles.sectionHeader}>
                                 <div className={styles.sectionHeaderIcon}>
-                                  <SettingsIcon />
+                                  <TargetIcon />
                                 </div>
                                 <div className={styles.sectionHeaderContent}>
                                   <Text variant="headingMd" as="h2">
-                                    API Key
+                                    Targeting Presets
                                   </Text>
                                   <Text as="p" variant="bodySm" tone="subdued">
-                                    Connected via API key. To use a different key, go to{' '}
-                                    <Link to={ROUTES.CONNECT}>Connect</Link> or clear storage and
-                                    reload.
+                                    Saved segment presets for reuse when creating tests. Save
+                                    targeting as a preset in the test wizard.
                                   </Text>
                                 </div>
+                              </div>
+                              <div className={styles.panelCardBody}>
+                                {presetsLoading ? (
+                                  <div className={styles.presetsLoading}>
+                                    <div
+                                      className={styles.loadingBlock}
+                                      style={{ height: 56, marginBottom: '0.75rem' }}
+                                    />
+                                    <div className={styles.loadingBlock} style={{ height: 56 }} />
+                                  </div>
+                                ) : targetingPresets.length > 0 ? (
+                                  <div className={styles.presetsGrid}>
+                                    {targetingPresets.map(p => (
+                                      <div key={p.id} className={styles.presetCardItem}>
+                                        <div className={styles.presetCardContent}>
+                                          <div className={styles.presetName}>{p.name}</div>
+                                          <div className={styles.presetSegments}>
+                                            {formatPresetSegments(p)}
+                                          </div>
+                                        </div>
+                                        <Button
+                                          variant="plain"
+                                          tone="critical"
+                                          onClick={() => setDeletePresetId(p.id)}
+                                          icon={DeleteIcon}
+                                        >
+                                          Delete
+                                        </Button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div className={styles.presetsEmpty}>
+                                    <div className={styles.presetsEmptyIcon}>
+                                      <TargetIcon />
+                                    </div>
+                                    <p className={styles.presetsEmptyText}>
+                                      No targeting presets yet. Open the app, create a test, and
+                                      save your targeting as a preset in the Test Wizard to reuse it
+                                      later.
+                                    </p>
+                                    <Link to={ROUTES.USER_PANEL} className={styles.presetsEmptyCta}>
+                                      Open app
+                                    </Link>
+                                  </div>
+                                )}
                               </div>
                             </BlockStack>
                           </Box>
                         </Card>
-                      )}
-
-                      <Card className={`${styles.settingsPanelCard} ${styles.testConfigCard}`}>
-                        <Box padding="500">
-                          <BlockStack gap="400">
-                            <div className={styles.sectionHeader}>
-                              <div className={styles.sectionHeaderIcon}>
-                                <TargetIcon />
-                              </div>
-                              <div className={styles.sectionHeaderContent}>
-                                <Text variant="headingMd" as="h2">
-                                  Test Configuration
-                                </Text>
-                                <Text as="p" variant="bodySm" tone="subdued">
-                                  Choose a preset or customize. Settings apply to all new tests.
-                                </Text>
-                              </div>
-                            </div>
-
-                            <div className={styles.testConfigPresets}>
-                              <span className={styles.configSubsection}>Quick presets</span>
-                              <div className={styles.presetCardsGrid}>
-                                {Object.entries(SETTINGS_PRESETS).map(([key, preset]) => (
-                                  <button
-                                    key={key}
-                                    type="button"
-                                    disabled={presetApplyingKey !== null}
-                                    className={`${styles.presetCard} ${key === 'recommended' ? styles.presetCardRecommended : ''}`}
-                                    onClick={async () => {
-                                      setPresetApplyingKey(key);
-                                      const next = {
-                                        ...settings,
-                                        minSampleSize: preset.minSampleSize,
-                                        confidenceLevel: preset.confidenceLevel,
-                                        autoStopEnabled: preset.autoStopEnabled,
-                                      };
-                                      setSettings(next);
-                                      setMessage(`Applying "${preset.label}"…`);
-                                      try {
-                                        await apiPut('/settings', next);
-                                        setMessage(`"${preset.label}" preset saved`);
-                                      } catch (err) {
-                                        setMessage(err?.response?.data?.error || 'Failed to save');
-                                      } finally {
-                                        setPresetApplyingKey(null);
-                                      }
-                                    }}
-                                  >
-                                    {presetApplyingKey === key ? (
-                                      <span className={styles.presetCardLoading}>Applying…</span>
-                                    ) : (
-                                      <>
-                                        <span className={styles.presetCardLabel}>
-                                          {preset.label}
-                                        </span>
-                                        <span className={styles.presetCardDesc}>
-                                          {preset.description}
-                                        </span>
-                                        <span className={styles.presetCardMeta}>
-                                          {preset.minSampleSize} visitors ·{' '}
-                                          {Math.round(preset.confidenceLevel * 100)}% confidence
-                                        </span>
-                                      </>
-                                    )}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-
-                            <div className={styles.testConfigCustom}>
-                              <span className={styles.configSubsection}>Customize</span>
-                              <div className={styles.configFieldGroups}>
-                                <div className={styles.configFieldGroup}>
-                                  <Text
-                                    variant="bodySm"
-                                    fontWeight="semibold"
-                                    as="span"
-                                    className={styles.configFieldLabel}
-                                  >
-                                    Minimum Sample Size
-                                  </Text>
-                                  <div className={styles.configQuickSelect}>
-                                    {SAMPLE_SIZE_QUICK.map(n => (
-                                      <Button
-                                        key={n}
-                                        size="slim"
-                                        pressed={settings.minSampleSize === n}
-                                        onClick={() =>
-                                          setSettings({ ...settings, minSampleSize: n })
-                                        }
-                                      >
-                                        {n}
-                                      </Button>
-                                    ))}
-                                  </div>
-                                  <div className={styles.configTextField}>
-                                    <TextField
-                                      label="Or enter custom (10–10,000)"
-                                      type="number"
-                                      value={String(
-                                        settings.minSampleSize ?? DEFAULT_SETTINGS.minSampleSize
-                                      )}
-                                      onChange={value => {
-                                        const num = parseInt(String(value).replace(/\D/g, ''), 10);
-                                        setSettings({
-                                          ...settings,
-                                          minSampleSize: Number.isFinite(num)
-                                            ? Math.max(10, Math.min(10000, num))
-                                            : DEFAULT_SETTINGS.minSampleSize,
-                                        });
-                                      }}
-                                      helpText="Minimum visitors before showing results"
-                                      min={10}
-                                      max={10000}
-                                      autoComplete="off"
-                                    />
-                                  </div>
-                                </div>
-
-                                <div className={styles.configFieldGroup}>
-                                  <Text
-                                    variant="bodySm"
-                                    fontWeight="semibold"
-                                    as="span"
-                                    className={styles.configFieldLabel}
-                                  >
-                                    Confidence Level
-                                  </Text>
-                                  <div className={styles.configQuickSelect}>
-                                    {CONFIDENCE_QUICK.map(({ label, value }) => (
-                                      <Button
-                                        key={value}
-                                        size="slim"
-                                        pressed={
-                                          Math.abs(Number(settings.confidenceLevel) - value) < 0.001
-                                        }
-                                        onClick={() =>
-                                          setSettings({ ...settings, confidenceLevel: value })
-                                        }
-                                      >
-                                        {label}
-                                      </Button>
-                                    ))}
-                                  </div>
-                                  <div className={styles.configTextField}>
-                                    <TextField
-                                      label="Or enter custom (0.8–0.99)"
-                                      type="number"
-                                      value={String(
-                                        settings.confidenceLevel ?? DEFAULT_SETTINGS.confidenceLevel
-                                      )}
-                                      onChange={value => {
-                                        const num = parseFloat(
-                                          String(value).replace(/[^\d.]/g, '')
-                                        );
-                                        setSettings({
-                                          ...settings,
-                                          confidenceLevel: Number.isFinite(num)
-                                            ? Math.max(0.8, Math.min(0.99, num))
-                                            : DEFAULT_SETTINGS.confidenceLevel,
-                                        });
-                                      }}
-                                      helpText="Higher = more conservative, waits for stronger evidence"
-                                      min={0.8}
-                                      max={1}
-                                      step={0.01}
-                                      autoComplete="off"
-                                    />
-                                  </div>
-                                </div>
-
-                                <div className={styles.configAutoStop}>
-                                  <Checkbox
-                                    label="Auto-stop when winner is clear"
-                                    helpText="Automatically stop tests when statistical significance is reached — recommended for most users"
-                                    checked={settings.autoStopEnabled}
-                                    onChange={checked =>
-                                      setSettings({ ...settings, autoStopEnabled: checked })
-                                    }
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          </BlockStack>
-                        </Box>
-                      </Card>
-
-                      <Card className={`${styles.settingsPanelCard}`}>
-                        <Box padding="400">
-                          <BlockStack gap={CONTENT_GAP}>
-                            <div className={styles.sectionHeader}>
-                              <div className={styles.sectionHeaderIcon}>
-                                <ChartVerticalIcon />
-                              </div>
-                              <div className={styles.sectionHeaderContent}>
-                                <Text variant="headingMd" as="h2">
-                                  Webhooks
-                                </Text>
-                                <Text as="p" variant="bodySm" tone="subdued">
-                                  Send events to your server when tests complete or reach
-                                  significance. The button below saves both webhook settings and
-                                  test defaults (sample size, confidence, auto-stop).
-                                </Text>
-                              </div>
-                            </div>
-                            <div className={styles.panelCardBody}>
-                              <FormLayout>
-                                <TextField
-                                  label="Webhook URL"
-                                  value={settings.outboundWebhookUrl}
-                                  onChange={value => {
-                                    setSettings({ ...settings, outboundWebhookUrl: value });
-                                    setWebhookError(null);
-                                  }}
-                                  helpText="Leave empty to disable. Must be a valid URL when set."
-                                  placeholder="https://your-server.com/webhook"
-                                  autoComplete="off"
-                                  error={webhookError}
-                                />
-                                <ChoiceList
-                                  title="Send webhook when"
-                                  choices={WEBHOOK_EVENT_CHOICES}
-                                  selected={settings.outboundWebhookEvents}
-                                  onChange={selected =>
-                                    setSettings({
-                                      ...settings,
-                                      outboundWebhookEvents: selected.length
-                                        ? selected
-                                        : DEFAULT_SETTINGS.outboundWebhookEvents,
-                                    })
-                                  }
-                                  allowMultiple
-                                />
-
-                                <Box paddingBlockStart="400">
-                                  <Button variant="primary" onClick={handleSave} loading={saving}>
-                                    Save settings
-                                  </Button>
-                                </Box>
-                              </FormLayout>
-                            </div>
-                          </BlockStack>
-                        </Box>
-                      </Card>
-
-                      <Card
-                        className={`${styles.settingsPanelCard} ${styles.settingsPanelCardFull} ${styles.quickLinksCard}`}
-                      >
-                        <Box padding="400">
-                          <BlockStack gap="300">
-                            <div className={styles.sectionHeader}>
-                              <div className={styles.sectionHeaderIcon}>
-                                <SettingsIcon />
-                              </div>
-                              <div className={styles.sectionHeaderContent}>
-                                <Text variant="headingMd" as="h2">
-                                  User Preferences
-                                </Text>
-                                <Text as="p" variant="bodySm" tone="subdued">
-                                  Notifications, dashboard defaults, theme (custom schedule), and
-                                  export format are in{' '}
-                                  <Link to={ROUTES.PROFILE} className={styles.setupWizardLink}>
-                                    Profile
-                                  </Link>{' '}
-                                  — Account (notifications), Preferences (theme, dashboard, editor).
-                                </Text>
-                              </div>
-                            </div>
-                            <InlineStack gap="200" wrap>
-                              <Link to={ROUTES.PROFILE} className={styles.quickLinkBtn}>
-                                Open Profile
-                              </Link>
-                            </InlineStack>
-                          </BlockStack>
-                        </Box>
-                      </Card>
-                    </div>
-                  )}
-
-                  {isAppSettings && activeTabId === 'integrations' && (
-                    <div
-                      id="settings-panel-integrations"
-                      role="tabpanel"
-                      aria-labelledby="settings-tab-integrations"
-                      className={`${styles.settingsContent} ${styles.settingsPanelLayout} ${styles.settingsPanelIntegrations}`}
-                    >
-                      {integrationsError && (
-                        <div className={styles.settingsPanelBannerWrap}>
-                          <Banner
-                            tone="critical"
-                            onDismiss={() => setIntegrationsError(false)}
-                            action={{ content: 'Retry', onAction: () => fetchIntegrations() }}
-                          >
-                            Couldn&apos;t load integration status. Check your connection and retry.
-                          </Banner>
-                        </div>
-                      )}
-                      <Card
-                        className={`${styles.settingsPanelCard} ${styles.settingsPanelCardFull} ${styles.integrationsHeaderCard}`}
-                      >
-                        <Box padding="400">
-                          <div className={styles.sectionHeaderWithAction}>
-                            <div className={styles.sectionHeader}>
-                              <div
-                                className={`${styles.sectionHeaderIcon} ${styles.integrationsHeaderIcon}`}
-                              >
-                                <ChartVerticalIcon />
-                              </div>
-                              <div className={styles.sectionHeaderContent}>
-                                <Text variant="headingMd" as="h2">
-                                  Analytics & Data
-                                </Text>
-                                <Text as="p" variant="bodySm" tone="subdued">
-                                  Connect GA4 and BigQuery to unify analytics and run advanced
-                                  queries.
-                                </Text>
-                              </div>
-                            </div>
-                            <Button
-                              variant="plain"
-                              onClick={handleRefreshIntegrations}
-                              loading={integrationsRefreshing}
-                              accessibilityLabel="Refresh integration status"
-                            >
-                              Refresh status
-                            </Button>
-                          </div>
-                        </Box>
-                      </Card>
-
-                      <div className={styles.integrationCardsRow}>
-                        {INTEGRATIONS_CONFIG.map(({ key, title, Icon, iconClass, configHint }) => {
-                          const data = integrations?.[key];
-                          const configured = data?.configured;
-                          const lastExport = key === 'bigquery' ? data?.lastExportAt : null;
-                          const lastExportLabel = formatRelativeTime(lastExport);
-                          const isLoading = integrations === null;
-                          return (
-                            <Card
-                              key={key}
-                              className={`${styles.settingsPanelCard} ${styles.integrationCardWrapper} ${configured ? styles.integrationCardConnected : ''}`}
-                            >
-                              <Box padding="400">
-                                <BlockStack gap={CONTENT_GAP}>
-                                  <div className={styles.sectionHeader}>
-                                    <div
-                                      className={`${styles.sectionHeaderIcon} ${styles.integrationIcon} ${styles[iconClass]}`}
-                                    >
-                                      <Icon />
-                                    </div>
-                                    <div
-                                      className={`${styles.sectionHeaderContent} ${styles.integrationCardHeader}`}
-                                    >
-                                      <div className={styles.integrationCardTitleRow}>
-                                        <Text
-                                          variant="headingMd"
-                                          as="h2"
-                                          className={styles.integrationCardTitle}
-                                        >
-                                          {title}
-                                        </Text>
-                                        {!isLoading && (
-                                          <Badge
-                                            tone={configured ? 'success' : 'info'}
-                                            className={styles.integrationCardBadge}
-                                          >
-                                            {key === 'ga4'
-                                              ? configured
-                                                ? 'Active'
-                                                : 'Not configured'
-                                              : configured
-                                                ? 'Configured'
-                                                : 'Not configured'}
-                                          </Badge>
-                                        )}
-                                      </div>
-                                      <Text
-                                        as="p"
-                                        variant="bodySm"
-                                        tone="subdued"
-                                        className={styles.integrationCardHint}
-                                      >
-                                        {isLoading ? 'Loading…' : (data?.hint ?? configHint)}
-                                      </Text>
-                                    </div>
-                                  </div>
-                                  <div className={styles.panelCardBody}>
-                                    {isLoading ? (
-                                      <div
-                                        className={styles.loadingBlock}
-                                        style={{ height: 60, marginTop: '0.5rem' }}
-                                      />
-                                    ) : (
-                                      <>
-                                        {key === 'ga4' && (
-                                          <FormLayout>
-                                            <TextField
-                                              label="Measurement ID"
-                                              value={integrationConfig.ga4MeasurementId}
-                                              onChange={v =>
-                                                setIntegrationConfig(c => ({
-                                                  ...c,
-                                                  ga4MeasurementId: v,
-                                                }))
-                                              }
-                                              placeholder="G-XXXXXXXXXX"
-                                              autoComplete="off"
-                                            />
-                                            <TextField
-                                              label="API Secret"
-                                              type="password"
-                                              value={integrationConfig.ga4ApiSecret}
-                                              onChange={v =>
-                                                setIntegrationConfig(c => ({
-                                                  ...c,
-                                                  ga4ApiSecret: v,
-                                                }))
-                                              }
-                                              placeholder={
-                                                integrationConfig.ga4ApiSecret === '••••••••'
-                                                  ? '••••••••'
-                                                  : 'Enter API secret'
-                                              }
-                                              autoComplete="off"
-                                              helpText="From GA4 Admin → Data Streams → Measurement Protocol"
-                                            />
-                                          </FormLayout>
-                                        )}
-                                        {key === 'bigquery' && (
-                                          <FormLayout>
-                                            <TextField
-                                              label="Project ID"
-                                              value={integrationConfig.bigqueryProjectId}
-                                              onChange={v =>
-                                                setIntegrationConfig(c => ({
-                                                  ...c,
-                                                  bigqueryProjectId: v,
-                                                }))
-                                              }
-                                              placeholder="your-gcp-project"
-                                              autoComplete="off"
-                                            />
-                                            <TextField
-                                              label="Dataset"
-                                              value={integrationConfig.bigqueryDataset}
-                                              onChange={v =>
-                                                setIntegrationConfig(c => ({
-                                                  ...c,
-                                                  bigqueryDataset: v,
-                                                }))
-                                              }
-                                              placeholder="ripx_analytics"
-                                              autoComplete="off"
-                                            />
-                                            <TextField
-                                              label="Service Account JSON"
-                                              value={
-                                                integrationConfig.bigqueryCredentials ===
-                                                '[configured]'
-                                                  ? ''
-                                                  : integrationConfig.bigqueryCredentials
-                                              }
-                                              onChange={v =>
-                                                setIntegrationConfig(c => ({
-                                                  ...c,
-                                                  bigqueryCredentials: v,
-                                                }))
-                                              }
-                                              placeholder={
-                                                integrationConfig.bigqueryCredentials ===
-                                                '[configured]'
-                                                  ? '[Already configured — leave blank to keep]'
-                                                  : 'Paste full JSON key'
-                                              }
-                                              multiline={4}
-                                              autoComplete="off"
-                                              helpText="Paste the full JSON from GCP Service Account key file"
-                                            />
-                                            {configured && (
-                                              <>
-                                                <p className={styles.integrationLastExport}>
-                                                  Last export:{' '}
-                                                  <strong
-                                                    {...(!lastExportLabel && {
-                                                      'data-subdued': true,
-                                                    })}
-                                                  >
-                                                    {lastExportLabel || 'Never'}
-                                                  </strong>
-                                                </p>
-                                                <div className={styles.integrationActions}>
-                                                  <Button
-                                                    variant="primary"
-                                                    onClick={() => handleBigQueryExport(false)}
-                                                    loading={bigQueryExporting}
-                                                  >
-                                                    Export incremental
-                                                  </Button>
-                                                  <Button
-                                                    onClick={() => handleBigQueryExport(true)}
-                                                    loading={bigQueryExporting}
-                                                  >
-                                                    Full export
-                                                  </Button>
-                                                </div>
-                                              </>
-                                            )}
-                                          </FormLayout>
-                                        )}
-                                        {!configured && (
-                                          <div className={styles.configHint}>{configHint}</div>
-                                        )}
-                                        {configured && key === 'ga4' && (
-                                          <div className={styles.integrationActiveNote}>
-                                            Events are forwarded automatically
-                                          </div>
-                                        )}
-                                      </>
-                                    )}
-                                  </div>
-                                </BlockStack>
-                              </Box>
-                            </Card>
-                          );
-                        })}
                       </div>
-                      <Card
-                        className={`${styles.settingsPanelCard} ${styles.settingsPanelCardFull} ${styles.integrationsSaveCard}`}
-                      >
-                        <Box padding="400">
-                          <InlineStack align="end" gap="300">
-                            <Button
-                              variant="primary"
-                              onClick={handleSaveIntegrations}
-                              loading={integrationsSaving}
-                            >
-                              Save integration settings
-                            </Button>
-                          </InlineStack>
-                        </Box>
-                      </Card>
-                    </div>
-                  )}
-
-                  {activeTabId === 'appearance' && (
-                    <div
-                      id="settings-panel-appearance"
-                      role="tabpanel"
-                      aria-labelledby="settings-tab-appearance"
-                      className={`${styles.settingsContent} ${styles.settingsPanelLayout} ${styles.settingsPanelAppearance}`}
-                    >
-                      <Card
-                        className={`${styles.settingsPanelCard} ${styles.settingsPanelCardFull}`}
-                      >
-                        <Box padding="500">
-                          <BlockStack gap="400">
-                            <div className={styles.sectionHeader}>
-                              <div className={styles.sectionHeaderIcon}>
-                                <PaintBrushFlatIcon />
-                              </div>
-                              <div className={styles.sectionHeaderContent}>
-                                <Text variant="headingMd" as="h2">
-                                  Theme
-                                </Text>
-                                <Text as="p" variant="bodySm" tone="subdued">
-                                  Choose how the app looks. Auto switches by time of day. For a
-                                  custom schedule (e.g. dark after 7pm), use{' '}
-                                  <Link
-                                    to={`${ROUTES.PROFILE}?tab=preferences`}
-                                    className={styles.setupWizardLink}
-                                  >
-                                    Profile → Preferences
-                                  </Link>
-                                  .
-                                </Text>
-                              </div>
-                            </div>
-                            <div className={styles.panelCardBody}>
-                              <div className={styles.themePreviewGrid}>
-                                {THEME_OPTIONS.map(opt => (
-                                  <button
-                                    key={opt.value}
-                                    type="button"
-                                    className={`${styles.themePreviewCard} ${theme === opt.value ? styles.themePreviewCardActive : ''}`}
-                                    onClick={() => handleThemeChange(opt.value)}
-                                    aria-pressed={theme === opt.value}
-                                    aria-label={`Theme: ${opt.label}`}
-                                  >
-                                    <div
-                                      className={`${styles.themePreviewSwatch} ${styles[`themePreviewSwatch_${opt.preview}`]}`}
-                                    />
-                                    <span className={styles.themePreviewLabel}>{opt.label}</span>
-                                  </button>
-                                ))}
-                              </div>
-                              <div className={styles.themeSelectFallback}>
-                                <Text as="span" variant="bodySm" tone="subdued">
-                                  Or choose from dropdown:
-                                </Text>
-                                <div className={styles.themeSelectWrap}>
-                                  <Select
-                                    label="Theme"
-                                    labelHidden
-                                    options={THEME_OPTIONS.map(({ value, label }) => ({
-                                      value,
-                                      label,
-                                    }))}
-                                    value={theme}
-                                    onChange={handleThemeChange}
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          </BlockStack>
-                        </Box>
-                      </Card>
-                    </div>
-                  )}
-
-                  {isAppSettings && activeTabId === 'presets' && (
-                    <div
-                      id="settings-panel-presets"
-                      role="tabpanel"
-                      aria-labelledby="settings-tab-presets"
-                      className={`${styles.settingsContent} ${styles.settingsPanelLayout} ${styles.settingsPanelPresets}`}
-                    >
-                      <Card
-                        className={`${styles.settingsPanelCard} ${styles.settingsPanelCardFull}`}
-                      >
-                        <Box padding="400">
-                          <BlockStack gap={CONTENT_GAP}>
-                            <div className={styles.sectionHeader}>
-                              <div className={styles.sectionHeaderIcon}>
-                                <TargetIcon />
-                              </div>
-                              <div className={styles.sectionHeaderContent}>
-                                <Text variant="headingMd" as="h2">
-                                  Targeting Presets
-                                </Text>
-                                <Text as="p" variant="bodySm" tone="subdued">
-                                  Saved segment presets for reuse when creating tests. Save
-                                  targeting as a preset in the test wizard.
-                                </Text>
-                              </div>
-                            </div>
-                            <div className={styles.panelCardBody}>
-                              {presetsLoading ? (
-                                <div className={styles.presetsLoading}>
-                                  <div
-                                    className={styles.loadingBlock}
-                                    style={{ height: 56, marginBottom: '0.75rem' }}
-                                  />
-                                  <div className={styles.loadingBlock} style={{ height: 56 }} />
-                                </div>
-                              ) : targetingPresets.length > 0 ? (
-                                <div className={styles.presetsGrid}>
-                                  {targetingPresets.map(p => (
-                                    <div key={p.id} className={styles.presetCardItem}>
-                                      <div className={styles.presetCardContent}>
-                                        <div className={styles.presetName}>{p.name}</div>
-                                        <div className={styles.presetSegments}>
-                                          {formatPresetSegments(p)}
-                                        </div>
-                                      </div>
-                                      <Button
-                                        variant="plain"
-                                        tone="critical"
-                                        onClick={() => setDeletePresetId(p.id)}
-                                        icon={DeleteIcon}
-                                      >
-                                        Delete
-                                      </Button>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <div className={styles.presetsEmpty}>
-                                  <div className={styles.presetsEmptyIcon}>
-                                    <TargetIcon />
-                                  </div>
-                                  <p className={styles.presetsEmptyText}>
-                                    No targeting presets yet. Open the app, create a test, and save
-                                    your targeting as a preset in the Test Wizard to reuse it later.
-                                  </p>
-                                  <Link to={ROUTES.USER_PANEL} className={styles.presetsEmptyCta}>
-                                    Open app
-                                  </Link>
-                                </div>
-                              )}
-                            </div>
-                          </BlockStack>
-                        </Box>
-                      </Card>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               )}
               <Card className={styles.aboutCard}>

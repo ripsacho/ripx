@@ -26,24 +26,70 @@ const { getShopSession } = require('../models/shopSession');
 
 const RIPX_DEFAULT_AUTOMATIC_DISCOUNT_TITLE = 'RipX Price Test Function';
 
+function buildDiscountEnsureTroubleshooting({ shopDomain, chosenFunction, attemptedTitles = [] }) {
+  return {
+    shopDomain: shopDomain || null,
+    function: {
+      id: chosenFunction?.id || null,
+      title: chosenFunction?.title || null,
+      apiType: chosenFunction?.apiType || null,
+    },
+    attemptedTitles: attemptedTitles.filter(Boolean),
+    suggestions: [
+      'Ensure the checkout discount function extension is deployed for this app.',
+      'Open Shopify Admin > Discounts > Automatic and verify app discounts are visible.',
+      'Re-open RipX from Shopify Admin to refresh OAuth token/session for this shop.',
+    ],
+  };
+}
+
+async function fetchAutomaticAppDiscounts(client) {
+  const existingQuery = `
+    query ripxExistingAutomaticDiscount {
+      discountNodes(first: 100) {
+        nodes {
+          discount {
+            ... on DiscountAutomaticApp {
+              discountId
+              title
+              status
+            }
+          }
+        }
+      }
+    }
+  `;
+  const existingResp = await client.request(existingQuery);
+  const existingNodes = existingResp?.data?.discountNodes?.nodes || [];
+  return existingNodes.map(node => node?.discount).filter(Boolean);
+}
+
 function pickCheckoutDiscountFunction(functionsList = []) {
   if (!Array.isArray(functionsList) || functionsList.length === 0) {
     return null;
   }
   const normalized = functionsList.filter(Boolean);
-  const ripxNamed = normalized.find(fn =>
+  const discountFns = normalized.filter(fn =>
+    String(fn?.apiType || '')
+      .toLowerCase()
+      .includes('discount')
+  );
+  const ripxDiscount = discountFns.find(fn =>
     String(fn?.title || '')
       .toLowerCase()
       .includes('ripx')
   );
-  if (ripxNamed) {
-    return ripxNamed;
+  if (ripxDiscount) {
+    return ripxDiscount;
+  }
+  if (discountFns.length > 0) {
+    return discountFns[0];
   }
   return (
     normalized.find(fn =>
-      String(fn?.apiType || '')
+      String(fn?.title || '')
         .toLowerCase()
-        .includes('discount')
+        .includes('ripx')
     ) || null
   );
 }
@@ -490,6 +536,7 @@ router.post(
         }
       }
     `;
+    const attemptedTitles = [discountTitle];
     const createVars = {
       automaticAppDiscount: {
         title: discountTitle,
@@ -500,7 +547,17 @@ router.post(
     const createResp = await client.request(createMutation, { variables: createVars });
     const createPayload = createResp?.data?.discountAutomaticAppCreate;
     const createErrors = Array.isArray(createPayload?.userErrors) ? createPayload.userErrors : [];
+    const createErrorDetails = createErrors.map(err => ({
+      field: Array.isArray(err?.field) ? err.field.join('.') : err?.field || null,
+      message: err?.message || null,
+      code: err?.code || null,
+    }));
     if (createErrors.length === 0 && createPayload?.automaticAppDiscount?.discountId) {
+      const createdId = String(createPayload.automaticAppDiscount.discountId || '').trim();
+      const latestDiscounts = await fetchAutomaticAppDiscounts(client);
+      const listMatched = latestDiscounts.filter(
+        d => String(d?.discountId || '').trim() === createdId
+      );
       return res.json({
         success: true,
         created: true,
@@ -510,6 +567,16 @@ router.post(
           title: chosenFunction.title || null,
           apiType: chosenFunction.apiType || null,
         },
+        listCheck: {
+          inList: listMatched.length > 0,
+          matchedCount: listMatched.length,
+          matchedDiscounts: listMatched,
+        },
+        troubleshooting: buildDiscountEnsureTroubleshooting({
+          shopDomain,
+          chosenFunction,
+          attemptedTitles,
+        }),
       });
     }
 
@@ -522,32 +589,27 @@ router.post(
       return sendError(
         res,
         400,
-        createErrors[0]?.message || 'Could not create automatic app discount.'
+        createErrors[0]?.message || 'Could not create automatic app discount.',
+        {
+          function: {
+            id: chosenFunction.id,
+            title: chosenFunction.title || null,
+            apiType: chosenFunction.apiType || null,
+          },
+          shopifyUserErrors: createErrorDetails,
+          troubleshooting: buildDiscountEnsureTroubleshooting({
+            shopDomain,
+            chosenFunction,
+            attemptedTitles,
+          }),
+        }
       );
     }
 
-    const existingQuery = `
-      query ripxExistingAutomaticDiscount($query: String!) {
-        discountNodes(first: 20, query: $query) {
-          nodes {
-            discount {
-              ... on DiscountAutomaticApp {
-                discountId
-                title
-                status
-              }
-            }
-          }
-        }
-      }
-    `;
-    const existingResp = await client.request(existingQuery, {
-      variables: { query: `title:${JSON.stringify(discountTitle)}` },
-    });
-    const existingNodes = existingResp?.data?.discountNodes?.nodes || [];
-    const existing = existingNodes
-      .map(node => node?.discount)
-      .find(d => d && String(d.title || '').toLowerCase() === discountTitle.toLowerCase());
+    const existingDiscounts = await fetchAutomaticAppDiscounts(client);
+    const existing = existingDiscounts.find(
+      d => d && String(d.title || '').toLowerCase() === discountTitle.toLowerCase()
+    );
     if (existing?.discountId) {
       return res.json({
         success: true,
@@ -558,6 +620,61 @@ router.post(
           title: chosenFunction.title || null,
           apiType: chosenFunction.apiType || null,
         },
+        troubleshooting: buildDiscountEnsureTroubleshooting({
+          shopDomain,
+          chosenFunction,
+          attemptedTitles,
+        }),
+        listCheck: {
+          inList: true,
+          matchedCount: 1,
+          matchedDiscounts: [existing],
+        },
+      });
+    }
+
+    // Title may be considered in conflict but the existing item may not be searchable yet.
+    // Retry once with a deterministic alternate title to reduce "invisible conflict" failures.
+    const fallbackTitle = `${discountTitle} (${shopDomain})`;
+    if (!attemptedTitles.includes(fallbackTitle)) {
+      attemptedTitles.push(fallbackTitle);
+    }
+    const retryVars = {
+      automaticAppDiscount: {
+        title: fallbackTitle,
+        functionId: chosenFunction.id,
+        startsAt: new Date().toISOString(),
+      },
+    };
+    const retryResp = await client.request(createMutation, { variables: retryVars });
+    const retryPayload = retryResp?.data?.discountAutomaticAppCreate;
+    const retryErrors = Array.isArray(retryPayload?.userErrors) ? retryPayload.userErrors : [];
+    if (retryErrors.length === 0 && retryPayload?.automaticAppDiscount?.discountId) {
+      const createdId = String(retryPayload.automaticAppDiscount.discountId || '').trim();
+      const latestDiscounts = await fetchAutomaticAppDiscounts(client);
+      const listMatched = latestDiscounts.filter(
+        d => String(d?.discountId || '').trim() === createdId
+      );
+      return res.json({
+        success: true,
+        created: true,
+        titleAdjusted: true,
+        discount: retryPayload.automaticAppDiscount,
+        function: {
+          id: chosenFunction.id,
+          title: chosenFunction.title || null,
+          apiType: chosenFunction.apiType || null,
+        },
+        troubleshooting: buildDiscountEnsureTroubleshooting({
+          shopDomain,
+          chosenFunction,
+          attemptedTitles,
+        }),
+        listCheck: {
+          inList: listMatched.length > 0,
+          matchedCount: listMatched.length,
+          matchedDiscounts: listMatched,
+        },
       });
     }
 
@@ -565,8 +682,77 @@ router.post(
       res,
       400,
       createErrors[0]?.message ||
-        'Automatic app discount may already exist, but could not be verified.'
+        'Automatic app discount may already exist, but could not be verified.',
+      {
+        function: {
+          id: chosenFunction.id,
+          title: chosenFunction.title || null,
+          apiType: chosenFunction.apiType || null,
+        },
+        shopifyUserErrors: createErrorDetails,
+        retryUserErrors: retryErrors.map(err => ({
+          field: Array.isArray(err?.field) ? err.field.join('.') : err?.field || null,
+          message: err?.message || null,
+          code: err?.code || null,
+        })),
+        troubleshooting: buildDiscountEnsureTroubleshooting({
+          shopDomain,
+          chosenFunction,
+          attemptedTitles,
+        }),
+      }
     );
+  })
+);
+
+/**
+ * GET /api/settings/checkout-price-discount/status
+ * Verify if RipX checkout discount appears in Shopify automatic discount list.
+ */
+router.get(
+  '/checkout-price-discount/status',
+  asyncHandler(async (req, res) => {
+    const shopDomain = req.shopDomain;
+    if (!shopDomain) {
+      return sendError(res, 401, 'Shop domain required');
+    }
+
+    const fallbackSession = await getShopSession(shopDomain);
+    const accessToken = req.shopifyAccessToken || fallbackSession?.access_token || '';
+    if (!accessToken) {
+      return sendError(
+        res,
+        400,
+        'Missing Shopify access token for this shop. Re-open RipX from Shopify Admin and try again.'
+      );
+    }
+
+    const requestedTitle = String(req.query?.title || req.query?.discount_title || '').trim();
+    const requestedId = String(req.query?.discount_id || req.query?.discountId || '').trim();
+    const targetTitle = requestedTitle || RIPX_DEFAULT_AUTOMATIC_DISCOUNT_TITLE;
+
+    const session = shopifyService.getSession(shopDomain, accessToken);
+    const client = new shopifyService.api.clients.Graphql({ session });
+    const automaticDiscounts = await fetchAutomaticAppDiscounts(client);
+    const matched = automaticDiscounts.filter(discount => {
+      const id = String(discount?.discountId || '').trim();
+      const title = String(discount?.title || '')
+        .trim()
+        .toLowerCase();
+      if (requestedId && id === requestedId) {return true;}
+      if (title === targetTitle.toLowerCase()) {return true;}
+      return !requestedTitle && title.includes('ripx');
+    });
+
+    return res.json({
+      success: true,
+      inList: matched.length > 0,
+      matchedCount: matched.length,
+      matchedDiscounts: matched,
+      inspectedCount: automaticDiscounts.length,
+      targetTitle,
+      targetDiscountId: requestedId || null,
+    });
   })
 );
 
