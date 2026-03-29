@@ -103,13 +103,35 @@ export function isEmbeddedInIframe() {
   return typeof window !== 'undefined' && window.self !== window.top;
 }
 
+/** Base path when app is opened via Shopify Admin (e.g. /store/{shop}/apps/{handle}). */
+export function getEmbeddedAppBasePath(pathname) {
+  const sourcePath =
+    typeof pathname === 'string'
+      ? pathname
+      : typeof window !== 'undefined'
+        ? window.location.pathname
+        : '';
+  const match = String(sourcePath).match(/^\/store\/[^/]+\/apps\/[^/]+/i);
+  return match ? match[0] : '';
+}
+
+/** Prefix app-internal absolute paths with Shopify embedded base path when needed. */
+export function withEmbeddedAppBasePath(path) {
+  if (!path || typeof path !== 'string') return path;
+  if (!path.startsWith('/')) return path;
+  const basePath = getEmbeddedAppBasePath();
+  if (!basePath) return path;
+  if (path === basePath || path.startsWith(`${basePath}/`)) return path;
+  return `${basePath}${path}`;
+}
+
 /**
  * Build Connect URL preserving current page's query params (host, shop, etc.).
  * When redirecting to Connect from within the Shopify Admin iframe, we must keep host and shop
  * so the embed context is not lost (otherwise Shopify may redirect the top frame).
  */
 export function getConnectUrl(params = {}) {
-  const base = ROUTES.CONNECT;
+  const base = withEmbeddedAppBasePath(ROUTES.CONNECT);
   const currentSearch = typeof window !== 'undefined' ? window.location.search : '';
   const combined = new URLSearchParams(currentSearch);
   Object.entries(params).forEach(([k, v]) => {
@@ -127,14 +149,15 @@ export function getConnectUrl(params = {}) {
  */
 export function getUrlWithEmbedParams(path, options = {}) {
   if (typeof window === 'undefined' || !path) return path;
+  const resolvedPath = withEmbeddedAppBasePath(path);
   let search = window.location.search;
   if (options.shop) {
     const params = new URLSearchParams(search || '');
     params.set('shop', options.shop);
     search = '?' + params.toString();
   }
-  if (!search) return path;
-  return path + (path.includes('?') ? '&' + search.slice(1) : search);
+  if (!search) return resolvedPath;
+  return resolvedPath + (resolvedPath.includes('?') ? '&' + search.slice(1) : search);
 }
 
 // Request interceptor: add correlation ID for distributed tracing

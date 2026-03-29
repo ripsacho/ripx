@@ -63,6 +63,7 @@ import {
   getHealthUrl,
   apiGet,
   resetRedirectingToLogin,
+  getEmbeddedAppBasePath,
 } from './services';
 import { useSessionCheck } from './hooks';
 
@@ -303,8 +304,9 @@ function AppContent() {
   const pathname = location.pathname;
   const currentRouteDomain = getAppDomainFromPath(pathname);
   const isDiscountUiPath = /\/discounts(\/|$)/i.test(pathname);
+  const rawWindowPath = typeof window !== 'undefined' ? window.location.pathname : pathname;
   const embeddedStoreHandle = (() => {
-    const match = pathname.match(/\/store\/([^/]+)\/apps\//i);
+    const match = String(rawWindowPath || pathname).match(/\/store\/([^/]+)\/apps\//i);
     return match?.[1] ? String(match[1]).trim().toLowerCase() : '';
   })();
   const shopFromEmbeddedPath = embeddedStoreHandle ? `${embeddedStoreHandle}.myshopify.com` : '';
@@ -998,6 +1000,8 @@ const _isEmbeddedApp = typeof window !== 'undefined' && window.self !== window.t
 const useEmbedded = false;
 
 function App() {
+  const embeddedBasePath =
+    typeof window !== 'undefined' ? getEmbeddedAppBasePath(window.location.pathname) : '';
   return (
     <QueryClientProvider client={queryClient}>
       <AppProvider
@@ -1012,6 +1016,7 @@ function App() {
         }}
       >
         <BrowserRouter
+          basename={embeddedBasePath || undefined}
           future={{
             v7_startTransition: true,
             v7_relativeSplatPath: true,
