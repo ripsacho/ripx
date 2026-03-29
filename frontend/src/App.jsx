@@ -300,6 +300,7 @@ function AppContent() {
 
   const [searchParams] = useSearchParams();
   const connectToken = searchParams.get('connect_token');
+  const pathname = location.pathname;
   const shopFromQuery = String(searchParams.get('shop') || '')
     .trim()
     .toLowerCase();
@@ -320,7 +321,6 @@ function AppContent() {
     looksLikeDiscountLaunch;
 
   const hasCreds = getShopDomain() || getApiKey() || hasEmailSession();
-  const pathname = location.pathname;
   const isOnConnectOrAuthPath =
     pathname === ROUTES.CONNECT ||
     pathname === '/connect/' ||
