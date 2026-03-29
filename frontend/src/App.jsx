@@ -300,14 +300,50 @@ function AppContent() {
       return '';
     }
   });
+  const DISCOUNT_REDIRECT_GUARD_KEY = 'ripx_discount_redirect_guard_v1';
+  const canonicalizePathAndQuery = inputUrl => {
+    if (typeof window === 'undefined' || !inputUrl) return '';
+    const parsed = new URL(inputUrl, window.location.origin);
+    const latestValues = new Map();
+    const params = new URLSearchParams(parsed.search);
+    params.forEach((value, key) => {
+      // Keep latest value per key to collapse duplicates from prior bad redirects.
+      latestValues.set(String(key), String(value));
+    });
+    const sorted = Array.from(latestValues.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    const canonical = new URLSearchParams();
+    sorted.forEach(([key, value]) => canonical.set(key, value));
+    const query = canonical.toString();
+    return `${parsed.pathname}${query ? `?${query}` : ''}`;
+  };
   const replaceIfDifferent = targetUrl => {
     if (typeof window === 'undefined' || !targetUrl) return false;
     try {
-      const next = new URL(targetUrl, window.location.origin);
-      const currentPathAndQuery = `${window.location.pathname}${window.location.search}`;
-      const nextPathAndQuery = `${next.pathname}${next.search}`;
-      if (currentPathAndQuery === nextPathAndQuery) {
+      const currentPathAndQuery = canonicalizePathAndQuery(window.location.href);
+      const nextPathAndQuery = canonicalizePathAndQuery(targetUrl);
+      if (!nextPathAndQuery || currentPathAndQuery === nextPathAndQuery) {
         return false;
+      }
+      try {
+        const rawGuard = sessionStorage.getItem(DISCOUNT_REDIRECT_GUARD_KEY);
+        if (rawGuard) {
+          const guard = JSON.parse(rawGuard);
+          const sameTarget = guard?.target === nextPathAndQuery;
+          const guardAgeMs = Date.now() - Number(guard?.ts || 0);
+          if (sameTarget && guardAgeMs >= 0 && guardAgeMs < 8000) {
+            return false;
+          }
+        }
+      } catch {
+        // Ignore guard read failures.
+      }
+      try {
+        sessionStorage.setItem(
+          DISCOUNT_REDIRECT_GUARD_KEY,
+          JSON.stringify({ target: nextPathAndQuery, ts: Date.now() })
+        );
+      } catch {
+        // Ignore guard write failures.
       }
       window.location.replace(nextPathAndQuery);
       return true;
