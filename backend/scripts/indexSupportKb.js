@@ -48,7 +48,9 @@ function chunkText(content, sourceLabel) {
       if (buffer.length > 0) {
         chunks.push(buffer.trim());
         start = buffer.length - CHUNK_OVERLAP;
-        if (start < 0) {start = 0;}
+        if (start < 0) {
+          start = 0;
+        }
         buffer = buffer.slice(-CHUNK_OVERLAP) + para;
       } else {
         buffer = para;
@@ -214,7 +216,9 @@ async function run() {
         const embedding = noEmbed ? null : await getEmbedding(text, process.env.OPENAI_API_KEY);
         await insertChunk(client, source, index, text, embedding);
         totalInserted++;
-        if (!noEmbed) {await sleep(150);}
+        if (!noEmbed) {
+          await sleep(150);
+        }
       }
     });
   }
@@ -223,7 +227,11 @@ async function run() {
   await closeDatabase();
 }
 
-run().catch(err => {
-  console.error(err);
-  process.exit(1);
-});
+run()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch(err => {
+    console.error(err);
+    process.exit(1);
+  });

@@ -4,7 +4,7 @@
  * Polished settings UI with tabs, integration cards, and user-friendly controls
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useSearchParams, useLocation } from 'react-router-dom';
 import {
   Page,
@@ -236,6 +236,7 @@ function Settings() {
   const [checkoutDiscountEnsuring, setCheckoutDiscountEnsuring] = useState(false);
   const [checkoutDiscountEnsureResult, setCheckoutDiscountEnsureResult] = useState(null);
   const [checkoutDiscountEnsureError, setCheckoutDiscountEnsureError] = useState(null);
+  const autoDiscountSetupHandledRef = useRef(false);
   const [previewProbeTestId, setPreviewProbeTestId] = useState('');
   const [previewProbeVariant, setPreviewProbeVariant] = useState('');
   const [previewProbeLoading, setPreviewProbeLoading] = useState(false);
@@ -641,6 +642,43 @@ function Settings() {
   };
 
   const activeTabId = TAB_IDS[selectedTab];
+
+  useEffect(() => {
+    if (!isAppSettings) return;
+    if (autoDiscountSetupHandledRef.current) return;
+    if (String(searchParams.get('auto_discount_setup') || '').trim() !== '1') return;
+    if (!installation?.domain) return;
+
+    autoDiscountSetupHandledRef.current = true;
+    const installationTabIndex = TAB_IDS.indexOf('installation');
+    if (installationTabIndex >= 0 && selectedTab !== installationTabIndex) {
+      setSelectedTab(installationTabIndex);
+    }
+
+    (async () => {
+      await ensureCheckoutDiscount();
+      await runCheckoutDiagnostics();
+    })();
+
+    setSearchParams(
+      prev => {
+        const next = new URLSearchParams(prev);
+        next.delete('auto_discount_setup');
+        return next;
+      },
+      { replace: true }
+    );
+  }, [
+    isAppSettings,
+    searchParams,
+    installation?.domain,
+    TAB_IDS,
+    selectedTab,
+    setSelectedTab,
+    ensureCheckoutDiscount,
+    runCheckoutDiagnostics,
+    setSearchParams,
+  ]);
 
   const formatPresetSegments = p => {
     const seg = p?.segments || {};
