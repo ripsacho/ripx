@@ -824,6 +824,21 @@ app.get('/store/:store/apps/:app/discounts/*', (req, res) => {
   return res.redirect(buildDiscountLaunchRedirect({ req, basePrefix }));
 });
 
+// Some Shopify launches arrive at "/" with path hints in query (?path=/discounts/...).
+// Normalize those the same way so we don't depend on client-side parsing.
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api')) {return next();}
+  const launch = String(req.query?.launch || '')
+    .trim()
+    .toLowerCase();
+  if (launch === 'discount_setup') {return next();}
+  const hint = String(req.query?.path || req.query?.return_to || req.query?.redirect || '')
+    .trim()
+    .toLowerCase();
+  if (!/discount|function/.test(hint)) {return next();}
+  return res.redirect(buildDiscountLaunchRedirect({ req }));
+});
+
 // Reject requests for source paths (e.g. /src/App.jsx from dev index). Prevents blank page when tunnel serves dev HTML but backend can't serve /src/*.
 app.get('/src/*', (_req, res) => {
   res.status(404).send('Not found');

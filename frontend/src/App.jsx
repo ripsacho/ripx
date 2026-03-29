@@ -306,12 +306,25 @@ function AppContent() {
   const pathname = location.pathname;
   const currentRouteDomain = getAppDomainFromPath(pathname);
   const isDiscountUiPath = /\/discounts(\/|$)/i.test(pathname);
-  const rawWindowPath = typeof window !== 'undefined' ? window.location.pathname : pathname;
-  const embeddedStoreHandle = (() => {
-    const match = String(rawWindowPath || pathname).match(/\/store\/([^/]+)\/apps\//i);
-    return match?.[1] ? String(match[1]).trim().toLowerCase() : '';
+  const hostParam = String(searchParams.get('host') || '')
+    .trim()
+    .toLowerCase();
+  const storeHandleFromHost = (() => {
+    if (!hostParam) return '';
+    try {
+      const normalized = hostParam.replace(/-/g, '+').replace(/_/g, '/');
+      const pad = normalized.length % 4 === 0 ? '' : '='.repeat(4 - (normalized.length % 4));
+      const decoded = atob(normalized + pad)
+        .trim()
+        .toLowerCase();
+      const fromStorePath = decoded.match(/\/store\/([^/?#]+)/i)?.[1] || '';
+      if (fromStorePath) return fromStorePath;
+      const fromSubdomain = decoded.match(/^([a-z0-9-]+)\.myshopify\.com(?:\/|$)/i)?.[1] || '';
+      return fromSubdomain;
+    } catch {
+      return '';
+    }
   })();
-  const shopFromEmbeddedPath = embeddedStoreHandle ? `${embeddedStoreHandle}.myshopify.com` : '';
   const shopFromQuery = String(searchParams.get('shop') || '')
     .trim()
     .toLowerCase();
@@ -347,9 +360,66 @@ function AppContent() {
     .trim()
     .toLowerCase();
   const hasCreds = getShopDomain() || getApiKey() || hasEmailSession();
-  const discountLaunchDomain =
-    shopFromQuery || currentRouteDomain || storedShopDomain || shopFromEmbeddedPath || '';
-  const effectiveDiscountLaunchDomain = discountLaunchDomain;
+  const discountLaunchDomain = shopFromQuery || currentRouteDomain || storedShopDomain || '';
+  const [resolvedDiscountDomain, setResolvedDiscountDomain] = useState('');
+  const [isResolvingDiscountDomain, setIsResolvingDiscountDomain] = useState(false);
+  const effectiveDiscountLaunchDomain = discountLaunchDomain || resolvedDiscountDomain || '';
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!looksLikeDiscountLaunch || discountLaunchDomain || !hasCreds) {
+      setResolvedDiscountDomain('');
+      setIsResolvingDiscountDomain(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+    setIsResolvingDiscountDomain(true);
+    apiGet('/account/stores')
+      .then(res => {
+        if (cancelled) return;
+        const raw = res?.data?.data ?? res?.data ?? {};
+        const stores = Array.isArray(raw?.stores) ? raw.stores : [];
+        const shopifyDomains = stores
+          .map(store =>
+            String(store?.domain || '')
+              .trim()
+              .toLowerCase()
+          )
+          .filter(domain => isShopifyStoreDomain(domain));
+        if (shopifyDomains.length === 0) {
+          setResolvedDiscountDomain('');
+          return;
+        }
+        if (storeHandleFromHost) {
+          const matchedByHandle = shopifyDomains.find(domain =>
+            domain.startsWith(`${storeHandleFromHost}.`)
+          );
+          if (matchedByHandle) {
+            setResolvedDiscountDomain(matchedByHandle);
+            return;
+          }
+        }
+        if (shopifyDomains.length === 1) {
+          setResolvedDiscountDomain(shopifyDomains[0]);
+          return;
+        }
+        setResolvedDiscountDomain('');
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setResolvedDiscountDomain('');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsResolvingDiscountDomain(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [looksLikeDiscountLaunch, discountLaunchDomain, hasCreds, storeHandleFromHost]);
 
   const shouldAutoOpenDiscountSetup =
     isShopifyStoreDomain(effectiveDiscountLaunchDomain) &&
@@ -471,11 +541,15 @@ function AppContent() {
     return <ConnectTokenExchange connectToken={connectToken} />;
   }
 
-  if (isDiscountUiPath && !effectiveDiscountLaunchDomain) {
+  if (looksLikeDiscountLaunch && !effectiveDiscountLaunchDomain && isResolvingDiscountDomain) {
+    return <RouteLoading message="Resolving store context..." fullScreen />;
+  }
+
+  if (looksLikeDiscountLaunch && !effectiveDiscountLaunchDomain) {
     const connectUrl = getConnectUrl({
       launch: 'discount_setup',
       reason: ROUTES.CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect',
-      ...(shopFromEmbeddedPath ? { shop: shopFromEmbeddedPath } : {}),
+      ...(shopFromQuery ? { shop: shopFromQuery } : {}),
     });
     if (typeof window !== 'undefined') {
       window.location.replace(connectUrl);
@@ -484,7 +558,7 @@ function AppContent() {
     return <Navigate to={connectUrl} replace />;
   }
 
-  if (isDiscountUiPath && effectiveDiscountLaunchDomain) {
+  if (looksLikeDiscountLaunch && effectiveDiscountLaunchDomain) {
     const nextQuery = new URLSearchParams(searchParams);
     nextQuery.set('tab', 'installation');
     nextQuery.set('auto_discount_setup', '1');
