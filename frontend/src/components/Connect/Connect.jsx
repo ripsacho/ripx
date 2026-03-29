@@ -152,6 +152,7 @@ function Connect() {
   useEffect(() => {
     const reason = searchParams.get('reason');
     const shop = (searchParams.get('shop') || '').trim();
+    const launch = (searchParams.get('launch') || '').trim().toLowerCase();
     const signInToConnectReason = ROUTES.CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect';
     if (
       reason !== signInToConnectReason ||
@@ -170,6 +171,7 @@ function Connect() {
         const origin = typeof window !== 'undefined' ? window.location.origin : '';
         const params = new URLSearchParams({ shop });
         if (origin) params.set('callback_base', origin);
+        if (launch === 'discount_setup') params.set('launch', 'discount_setup');
         const installLinkUrl = `${base}/auth/install-link?${params.toString()}`;
         const res = await fetch(installLinkUrl, {
           credentials: 'include',

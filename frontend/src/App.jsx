@@ -306,7 +306,9 @@ function AppContent() {
   const shopFromQuery = String(searchParams.get('shop') || '')
     .trim()
     .toLowerCase();
-  const discountSource = String(searchParams.get('source') || searchParams.get('context') || '')
+  const discountSource = String(
+    searchParams.get('source') || searchParams.get('context') || searchParams.get('launch') || ''
+  )
     .trim()
     .toLowerCase();
   const shopifyPathHint = String(
@@ -335,15 +337,62 @@ function AppContent() {
   const storedShopDomain = String(getShopDomain() || '')
     .trim()
     .toLowerCase();
+  const hasCreds = getShopDomain() || getApiKey() || hasEmailSession();
   const discountLaunchDomain = shopFromQuery || currentRouteDomain || storedShopDomain || '';
+  const [resolvedDiscountDomain, setResolvedDiscountDomain] = useState('');
+  const [isResolvingDiscountDomain, setIsResolvingDiscountDomain] = useState(false);
+  const effectiveDiscountLaunchDomain = discountLaunchDomain || resolvedDiscountDomain || '';
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!isDiscountUiPath || discountLaunchDomain || !hasCreds) {
+      setResolvedDiscountDomain('');
+      setIsResolvingDiscountDomain(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+    setIsResolvingDiscountDomain(true);
+    apiGet('/account/stores')
+      .then(res => {
+        if (cancelled) return;
+        const raw = res?.data?.data ?? res?.data ?? {};
+        const stores = Array.isArray(raw?.stores) ? raw.stores : [];
+        const shopifyDomains = stores
+          .map(store =>
+            String(store?.domain || '')
+              .trim()
+              .toLowerCase()
+          )
+          .filter(domain => isShopifyStoreDomain(domain));
+        if (shopifyDomains.length === 1) {
+          setResolvedDiscountDomain(shopifyDomains[0]);
+        } else {
+          setResolvedDiscountDomain('');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setResolvedDiscountDomain('');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsResolvingDiscountDomain(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isDiscountUiPath, discountLaunchDomain, hasCreds]);
+
   const shouldAutoOpenDiscountSetup =
-    isShopifyStoreDomain(discountLaunchDomain) &&
+    isShopifyStoreDomain(effectiveDiscountLaunchDomain) &&
     looksLikeDiscountLaunch &&
     ((searchParams.has('host') &&
       (pathname === ROUTES.USER_PANEL || Boolean(currentRouteDomain))) ||
       isDiscountUiPath);
 
-  const hasCreds = getShopDomain() || getApiKey() || hasEmailSession();
   const isOnConnectOrAuthPath =
     pathname === ROUTES.CONNECT ||
     pathname === '/connect/' ||
@@ -457,13 +506,29 @@ function AppContent() {
     return <ConnectTokenExchange connectToken={connectToken} />;
   }
 
+  if (isDiscountUiPath && !effectiveDiscountLaunchDomain && isResolvingDiscountDomain) {
+    return <RouteLoading />;
+  }
+
+  if (
+    isDiscountUiPath &&
+    !effectiveDiscountLaunchDomain &&
+    hasCreds &&
+    !isResolvingDiscountDomain
+  ) {
+    const nextQuery = new URLSearchParams(searchParams);
+    nextQuery.set('launch', 'discount_setup');
+    return <Navigate to={`${ROUTES.DOMAINS}?${nextQuery.toString()}`} replace />;
+  }
+
   if (shouldAutoOpenDiscountSetup) {
     const nextQuery = new URLSearchParams(searchParams);
     nextQuery.set('tab', 'installation');
     nextQuery.set('auto_discount_setup', '1');
+    nextQuery.set('launch', 'discount_setup');
     return (
       <Navigate
-        to={`${ROUTES.appSettings(discountLaunchDomain)}?${nextQuery.toString()}`}
+        to={`${ROUTES.appSettings(effectiveDiscountLaunchDomain)}?${nextQuery.toString()}`}
         replace
       />
     );

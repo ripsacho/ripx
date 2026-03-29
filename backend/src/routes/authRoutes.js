@@ -67,6 +67,18 @@ const OAUTH_COOKIE_OPTIONS = {
   maxAge: 10 * 60 * 1000,
   path: '/',
 };
+const OAUTH_LAUNCH_COOKIE = 'shopify_oauth_launch';
+const OAUTH_LAUNCH_DISCOUNT_SETUP = 'discount_setup';
+
+function sanitizeOAuthLaunchIntent(value) {
+  const raw = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (raw === OAUTH_LAUNCH_DISCOUNT_SETUP) {
+    return OAUTH_LAUNCH_DISCOUNT_SETUP;
+  }
+  return '';
+}
 
 /**
  * Decode state payload and return email segment (no signature check).
@@ -514,6 +526,7 @@ router.get(
     const shop = typeof rawShop === 'string' ? rawShop.trim().toLowerCase() : '';
     const callbackBase =
       typeof req.query.callback_base === 'string' ? req.query.callback_base.trim() : undefined;
+    const launchIntent = sanitizeOAuthLaunchIntent(req.query.launch);
     if (!shop || !isValidShopDomain(shop)) {
       return res.status(400).json({ success: false, error: 'Invalid shop domain' });
     }
@@ -532,6 +545,12 @@ router.get(
     const oauthUrl = getAuthRedirectUrl(shop, state, callbackBase, req);
     res.cookie('shopify_oauth_state', state, OAUTH_COOKIE_OPTIONS);
     res.cookie('shopify_oauth_shop', shop, OAUTH_COOKIE_OPTIONS);
+    if (launchIntent) {
+      res.cookie(OAUTH_LAUNCH_COOKIE, launchIntent, OAUTH_COOKIE_OPTIONS);
+    } else {
+      const { maxAge: _m, ...clearOpts } = OAUTH_COOKIE_OPTIONS;
+      res.clearCookie(OAUTH_LAUNCH_COOKIE, clearOpts);
+    }
     return res.json({ success: true, redirectUrl: oauthUrl });
   })
 );
@@ -547,6 +566,7 @@ router.get(
   asyncHandler((req, res) => {
     const rawShop = req.query.shop;
     const shop = typeof rawShop === 'string' ? rawShop.trim().toLowerCase() : '';
+    const launchIntent = sanitizeOAuthLaunchIntent(req.query.launch);
     if (!shop || !isValidShopDomain(shop)) {
       return res.status(400).json({ success: false, error: 'Invalid shop domain' });
     }
@@ -574,6 +594,9 @@ router.get(
     if (validatedBase && validatedBase !== baseUrl) {
       installUrl += `&callback_base=${encodeURIComponent(validatedBase)}`;
     }
+    if (launchIntent) {
+      installUrl += `&launch=${encodeURIComponent(launchIntent)}`;
+    }
     return res.json({
       success: true,
       url: installUrl,
@@ -597,6 +620,9 @@ router.get(
     const showConfirm = req.query.confirm === '1';
     const callbackBaseRaw =
       typeof req.query.callback_base === 'string' ? req.query.callback_base.trim() : '';
+    const launchIntent = sanitizeOAuthLaunchIntent(
+      req.query.launch || req.cookies?.[OAUTH_LAUNCH_COOKIE]
+    );
     const callbackBase = callbackBaseRaw ? validateCallbackBase(callbackBaseRaw) : null;
     if (!shop || !isValidShopDomain(shop) || !token) {
       const baseUrl = getOAuthRedirectBase(req);
@@ -616,7 +642,8 @@ router.get(
       const continueQuery = callbackBase
         ? `&callback_base=${encodeURIComponent(callbackBase)}`
         : '';
-      const continueUrlRaw = continuePath + continueQuery;
+      const launchQuery = launchIntent ? `&launch=${encodeURIComponent(launchIntent)}` : '';
+      const continueUrlRaw = continuePath + continueQuery + launchQuery;
       const continueUrlEsc = continueUrlRaw
         .replace(/&/g, '&amp;')
         .replace(/"/g, '&quot;')
@@ -686,6 +713,9 @@ router.get(
     const state = generateState(parsed.shop, parsed.email);
     res.cookie('shopify_oauth_state', state, OAUTH_COOKIE_OPTIONS);
     res.cookie('shopify_oauth_shop', parsed.shop, OAUTH_COOKIE_OPTIONS);
+    if (launchIntent) {
+      res.cookie(OAUTH_LAUNCH_COOKIE, launchIntent, OAUTH_COOKIE_OPTIONS);
+    }
     const oauthUrl = getAuthRedirectUrl(parsed.shop, state, callbackBase, req);
     return res.redirect(oauthUrl);
   })
@@ -761,6 +791,9 @@ router.get(
     const { shop, code, state } = req.query;
     const stateCookie = req.cookies.shopify_oauth_state;
     const shopCookie = req.cookies.shopify_oauth_shop;
+    const launchIntent = sanitizeOAuthLaunchIntent(
+      req.query.launch || req.cookies?.[OAUTH_LAUNCH_COOKIE]
+    );
 
     if (!shop || !code || !state) {
       return res.status(400).json({ success: false, error: 'Missing OAuth parameters' });
@@ -918,12 +951,23 @@ router.get(
     const { maxAge: _m, ...clearOpts } = OAUTH_COOKIE_OPTIONS;
     res.clearCookie('shopify_oauth_state', clearOpts);
     res.clearCookie('shopify_oauth_shop', clearOpts);
+    res.clearCookie(OAUTH_LAUNCH_COOKIE, clearOpts);
 
     const baseUrl = getOAuthRedirectBase(req);
-    const appendRequested = url =>
-      requestedShopFromCookie
-        ? `${url}${url.includes('?') ? '&' : '?'}requested_shop=${encodeURIComponent(requestedShopFromCookie)}`
-        : url;
+    const appendCallbackContext = url => {
+      const params = new URLSearchParams();
+      if (requestedShopFromCookie) {
+        params.set('requested_shop', requestedShopFromCookie);
+      }
+      if (launchIntent) {
+        params.set('launch', launchIntent);
+      }
+      const suffix = params.toString();
+      if (!suffix) {
+        return url;
+      }
+      return `${url}${url.includes('?') ? '&' : '?'}${suffix}`;
+    };
     if (storeLinkedToAnother) {
       auditLogService.logAuthAction(req, {
         action: 'shopify_connect_rejected_linked_to_another',
@@ -932,13 +976,13 @@ router.get(
         changes: { domain: normalizedShop },
       });
       res.redirect(
-        appendRequested(
+        appendCallbackContext(
           `${baseUrl}/connect?shop=${encodeURIComponent(normalizedShop)}&reason=${encodeURIComponent(CONNECT_REASON.STORE_LINKED_TO_ANOTHER)}`
         )
       );
     } else if (linked) {
       res.redirect(
-        appendRequested(
+        appendCallbackContext(
           `${baseUrl}/connect/oauth-success?shop=${encodeURIComponent(normalizedShop)}`
         )
       );

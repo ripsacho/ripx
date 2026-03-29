@@ -19,6 +19,8 @@ export default function OAuthSuccess() {
   const navigate = useNavigate();
   const shop = (searchParams.get('shop') || '').trim().toLowerCase();
   const requestedShop = (searchParams.get('requested_shop') || '').trim().toLowerCase();
+  const launchIntent = (searchParams.get('launch') || '').trim().toLowerCase();
+  const isDiscountLaunch = launchIntent === 'discount_setup';
   const [notified, setNotified] = useState(false);
 
   const isOpenedInNewTab = typeof window !== 'undefined' && !!window.opener;
@@ -29,7 +31,11 @@ export default function OAuthSuccess() {
       return;
     }
     if (isOpenedInNewTab && window.opener && !notified) {
-      const payload = { type: OAUTH_SUCCESS_MESSAGE_TYPE, shop: shop.trim().toLowerCase() };
+      const payload = {
+        type: OAUTH_SUCCESS_MESSAGE_TYPE,
+        shop: shop.trim().toLowerCase(),
+        launch: isDiscountLaunch ? 'discount_setup' : '',
+      };
       const ourOrigin = window.location.origin;
       // When embedded in Shopify Admin, opener is often admin.shopify.com. Try that first to avoid console SecurityError; then try our origin for same-tab opener.
       try {
@@ -44,12 +50,21 @@ export default function OAuthSuccess() {
       setNotified(true);
     } else if (!isOpenedInNewTab) {
       const timer = window.setTimeout(() => {
-        const target = getUrlWithEmbedParams(ROUTES.appDashboard(shop), { shop });
+        const targetPath = isDiscountLaunch ? ROUTES.appSettings(shop) : ROUTES.appDashboard(shop);
+        const nextParams = new URLSearchParams();
+        if (isDiscountLaunch) {
+          nextParams.set('tab', 'installation');
+          nextParams.set('auto_discount_setup', '1');
+        }
+        const targetWithQuery = nextParams.toString()
+          ? `${targetPath}?${nextParams.toString()}`
+          : targetPath;
+        const target = getUrlWithEmbedParams(targetWithQuery, { shop });
         navigate(target, { replace: true });
       }, 2000);
       return () => window.clearTimeout(timer);
     }
-  }, [shop, isOpenedInNewTab, notified, navigate]);
+  }, [shop, isOpenedInNewTab, notified, navigate, isDiscountLaunch]);
 
   if (!shop) {
     return null;
@@ -101,20 +116,31 @@ export default function OAuthSuccess() {
                   ) : (
                     <>
                       <Text as="p" variant="bodyMd" tone="subdued">
-                        Taking you to the dashboard…
+                        {isDiscountLaunch
+                          ? 'Taking you to Installation settings…'
+                          : 'Taking you to the dashboard…'}
                       </Text>
                       <Box paddingBlockStart="300">
                         <Button
                           variant="primary"
                           size="large"
                           onClick={() => {
-                            const target = getUrlWithEmbedParams(ROUTES.appDashboard(shop), {
-                              shop,
-                            });
+                            const targetPath = isDiscountLaunch
+                              ? ROUTES.appSettings(shop)
+                              : ROUTES.appDashboard(shop);
+                            const nextParams = new URLSearchParams();
+                            if (isDiscountLaunch) {
+                              nextParams.set('tab', 'installation');
+                              nextParams.set('auto_discount_setup', '1');
+                            }
+                            const targetWithQuery = nextParams.toString()
+                              ? `${targetPath}?${nextParams.toString()}`
+                              : targetPath;
+                            const target = getUrlWithEmbedParams(targetWithQuery, { shop });
                             navigate(target, { replace: true });
                           }}
                         >
-                          Go to dashboard
+                          {isDiscountLaunch ? 'Go to Installation settings' : 'Go to dashboard'}
                         </Button>
                       </Box>
                     </>
