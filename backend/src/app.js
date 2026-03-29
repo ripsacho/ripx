@@ -771,6 +771,31 @@ app.use('/api', (req, res) => {
   });
 });
 
+// Shopify Discount Function UI deep-links can open /discounts/* directly.
+// Convert these to root entry with launch context so frontend flow stays consistent
+// even when embedded path handling varies across Shopify hosts.
+app.get('/discounts/*', (req, res) => {
+  const nextQuery = new URLSearchParams();
+  Object.entries(req.query || {}).forEach(([key, value]) => {
+    if (Array.isArray(value)) {
+      value.forEach(v => {
+        if (v !== undefined && v !== null) {nextQuery.append(key, String(v));}
+      });
+      return;
+    }
+    if (value !== undefined && value !== null) {nextQuery.set(key, String(value));}
+  });
+  nextQuery.set('launch', 'discount_setup');
+  const shopHeader = String(req.get('x-shopify-shop-domain') || '')
+    .trim()
+    .toLowerCase();
+  if (!nextQuery.get('shop') && SHOP_DOMAIN_REGEX.test(shopHeader)) {
+    nextQuery.set('shop', shopHeader);
+  }
+  const suffix = nextQuery.toString();
+  return res.redirect(suffix ? `/?${suffix}` : '/');
+});
+
 // Reject requests for source paths (e.g. /src/App.jsx from dev index). Prevents blank page when tunnel serves dev HTML but backend can't serve /src/*.
 app.get('/src/*', (_req, res) => {
   res.status(404).send('Not found');

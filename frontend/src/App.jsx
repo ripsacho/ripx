@@ -64,6 +64,8 @@ import {
   apiGet,
   resetRedirectingToLogin,
   getEmbeddedAppBasePath,
+  getUrlWithEmbedParams,
+  getConnectUrl,
 } from './services';
 import { useSessionCheck } from './hooks';
 
@@ -470,13 +472,32 @@ function AppContent() {
   }
 
   if (isDiscountUiPath && !effectiveDiscountLaunchDomain) {
-    const nextQuery = new URLSearchParams(searchParams);
-    nextQuery.set('launch', 'discount_setup');
-    nextQuery.set('reason', ROUTES.CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect');
-    if (shopFromEmbeddedPath) {
-      nextQuery.set('shop', shopFromEmbeddedPath);
+    const connectUrl = getConnectUrl({
+      launch: 'discount_setup',
+      reason: ROUTES.CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect',
+      ...(shopFromEmbeddedPath ? { shop: shopFromEmbeddedPath } : {}),
+    });
+    if (typeof window !== 'undefined') {
+      window.location.replace(connectUrl);
+      return <RouteLoading message="Opening connect flow..." fullScreen />;
     }
-    return <Navigate to={`${ROUTES.CONNECT}?${nextQuery.toString()}`} replace />;
+    return <Navigate to={connectUrl} replace />;
+  }
+
+  if (isDiscountUiPath && effectiveDiscountLaunchDomain) {
+    const nextQuery = new URLSearchParams(searchParams);
+    nextQuery.set('tab', 'installation');
+    nextQuery.set('auto_discount_setup', '1');
+    nextQuery.set('launch', 'discount_setup');
+    const target = getUrlWithEmbedParams(
+      `${ROUTES.appSettings(effectiveDiscountLaunchDomain)}?${nextQuery.toString()}`,
+      { shop: effectiveDiscountLaunchDomain }
+    );
+    if (typeof window !== 'undefined') {
+      window.location.replace(target);
+      return <RouteLoading message="Opening Installation settings..." fullScreen />;
+    }
+    return <Navigate to={target} replace />;
   }
 
   if (shouldAutoOpenDiscountSetup) {
