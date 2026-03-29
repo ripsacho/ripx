@@ -774,8 +774,24 @@ app.use('/api', (req, res) => {
 // Shopify Discount Function UI deep-links can open discount paths directly.
 // Normalize both direct and embedded-admin paths to the app settings Installation tab.
 const buildDiscountLaunchRedirect = ({ req, basePrefix = '' }) => {
+  const allowedQueryKeys = new Set([
+    'host',
+    'shop',
+    'function_id',
+    'functionid',
+    'discount_id',
+    'discountid',
+    'source',
+    'context',
+  ]);
   const nextQuery = new URLSearchParams();
   Object.entries(req.query || {}).forEach(([key, value]) => {
+    const normalizedKey = String(key || '')
+      .trim()
+      .toLowerCase();
+    if (!allowedQueryKeys.has(normalizedKey)) {
+      return;
+    }
     if (Array.isArray(value)) {
       value.forEach(v => {
         if (v !== undefined && v !== null) {
@@ -789,6 +805,7 @@ const buildDiscountLaunchRedirect = ({ req, basePrefix = '' }) => {
     }
   });
   nextQuery.set('launch', 'discount_setup');
+  nextQuery.set('source', 'discount_launch');
   const shopHeader = String(req.get('x-shopify-shop-domain') || '')
     .trim()
     .toLowerCase();
@@ -827,15 +844,21 @@ app.get('/store/:store/apps/:app/discounts/*', (req, res) => {
 // Some Shopify launches arrive at "/" with path hints in query (?path=/discounts/...).
 // Normalize those the same way so we don't depend on client-side parsing.
 app.get('*', (req, res, next) => {
-  if (req.path.startsWith('/api')) {return next();}
+  if (req.path.startsWith('/api')) {
+    return next();
+  }
   const launch = String(req.query?.launch || '')
     .trim()
     .toLowerCase();
-  if (launch === 'discount_setup') {return next();}
+  if (launch === 'discount_setup') {
+    return next();
+  }
   const hint = String(req.query?.path || req.query?.return_to || req.query?.redirect || '')
     .trim()
     .toLowerCase();
-  if (!/discount|function/.test(hint)) {return next();}
+  if (!/discount|function/.test(hint)) {
+    return next();
+  }
   return res.redirect(buildDiscountLaunchRedirect({ req }));
 });
 

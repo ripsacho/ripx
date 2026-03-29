@@ -125,6 +125,24 @@ export function withEmbeddedAppBasePath(path) {
   return `${basePath}${path}`;
 }
 
+function pickEmbedSafeQueryParams(search) {
+  const keepKeys = new Set(['host', 'shop']);
+  const input = new URLSearchParams(search || '');
+  const safe = new URLSearchParams();
+  input.forEach((value, key) => {
+    if (
+      keepKeys.has(
+        String(key || '')
+          .trim()
+          .toLowerCase()
+      )
+    ) {
+      safe.set(key, value);
+    }
+  });
+  return safe;
+}
+
 /**
  * Build Connect URL preserving current page's query params (host, shop, etc.).
  * When redirecting to Connect from within the Shopify Admin iframe, we must keep host and shop
@@ -133,7 +151,7 @@ export function withEmbeddedAppBasePath(path) {
 export function getConnectUrl(params = {}) {
   const base = withEmbeddedAppBasePath(ROUTES.CONNECT);
   const currentSearch = typeof window !== 'undefined' ? window.location.search : '';
-  const combined = new URLSearchParams(currentSearch);
+  const combined = pickEmbedSafeQueryParams(currentSearch);
   Object.entries(params).forEach(([k, v]) => {
     if (v !== undefined && v !== null && v !== '') combined.set(k, String(v));
   });
@@ -150,12 +168,11 @@ export function getConnectUrl(params = {}) {
 export function getUrlWithEmbedParams(path, options = {}) {
   if (typeof window === 'undefined' || !path) return path;
   const resolvedPath = withEmbeddedAppBasePath(path);
-  let search = window.location.search;
+  const safeParams = pickEmbedSafeQueryParams(window.location.search);
   if (options.shop) {
-    const params = new URLSearchParams(search || '');
-    params.set('shop', options.shop);
-    search = '?' + params.toString();
+    safeParams.set('shop', options.shop);
   }
+  const search = safeParams.toString() ? `?${safeParams.toString()}` : '';
   if (!search) return resolvedPath;
   return resolvedPath + (resolvedPath.includes('?') ? '&' + search.slice(1) : search);
 }
