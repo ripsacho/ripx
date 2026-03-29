@@ -301,6 +301,7 @@ function AppContent() {
   const [searchParams] = useSearchParams();
   const connectToken = searchParams.get('connect_token');
   const pathname = location.pathname;
+  const currentRouteDomain = getAppDomainFromPath(pathname);
   const shopFromQuery = String(searchParams.get('shop') || '')
     .trim()
     .toLowerCase();
@@ -329,11 +330,12 @@ function AppContent() {
     searchParams.has('function_id') ||
     searchParams.has('functionId') ||
     /discount|function/i.test(location.search || '');
+  const discountLaunchDomain = shopFromQuery || currentRouteDomain || '';
   const shouldAutoOpenDiscountSetup =
-    pathname === ROUTES.USER_PANEL &&
-    isShopifyStoreDomain(shopFromQuery) &&
+    isShopifyStoreDomain(discountLaunchDomain) &&
     searchParams.has('host') &&
-    looksLikeDiscountLaunch;
+    looksLikeDiscountLaunch &&
+    (pathname === ROUTES.USER_PANEL || Boolean(currentRouteDomain));
 
   const hasCreds = getShopDomain() || getApiKey() || hasEmailSession();
   const isOnConnectOrAuthPath =
@@ -453,7 +455,12 @@ function AppContent() {
     const nextQuery = new URLSearchParams(searchParams);
     nextQuery.set('tab', 'installation');
     nextQuery.set('auto_discount_setup', '1');
-    return <Navigate to={`${ROUTES.appSettings(shopFromQuery)}?${nextQuery.toString()}`} replace />;
+    return (
+      <Navigate
+        to={`${ROUTES.appSettings(discountLaunchDomain)}?${nextQuery.toString()}`}
+        replace
+      />
+    );
   }
 
   /* Render connect/auth pages in a minimal layout (no TopBar, no Sidebar) — check pathname first so we never show app chrome on login */
