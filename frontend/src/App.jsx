@@ -479,22 +479,22 @@ function AppContent() {
     ((searchParams.has('host') &&
       (pathname === ROUTES.USER_PANEL || Boolean(currentRouteDomain))) ||
       isDiscountUiPath);
-  const isDiscountSetupInstallationQuery =
-    String(searchParams.get('tab') || '').toLowerCase() === 'installation' &&
-    String(searchParams.get('auto_discount_setup') || '') === '1';
+  const isDiscountInstallationTab =
+    String(searchParams.get('tab') || '').toLowerCase() === 'installation';
   const isSettingsPath = /\/settings\/?$/i.test(pathname);
-  const isDiscountSetupSettled = isSettingsPath && isDiscountSetupInstallationQuery;
+  // Treat installation tab as settled even after Settings cleans auto_discount_setup.
+  // This prevents the launch detector from re-triggering redirects endlessly.
+  const isDiscountSetupSettled = isSettingsPath && isDiscountInstallationTab;
   const isOnDiscountInstallationTarget =
     isShopifyStoreDomain(effectiveDiscountLaunchDomain) &&
     pathname === ROUTES.appSettings(effectiveDiscountLaunchDomain) &&
-    String(searchParams.get('tab') || '').toLowerCase() === 'installation' &&
-    String(searchParams.get('auto_discount_setup') || '') === '1';
+    isDiscountInstallationTab;
   const shouldHandleDiscountLaunch = looksLikeDiscountLaunch && !isDiscountSetupSettled;
 
   useEffect(() => {
     if (typeof window === 'undefined' || !isDiscountSetupSettled) return;
     // Canonicalize once settled: remove launch noise and duplicated host/shop keys.
-    const allowedKeys = new Set(['host', 'shop', 'tab', 'auto_discount_setup']);
+    const allowedKeys = new Set(['host', 'shop', 'tab']);
     const current = new URLSearchParams(window.location.search || '');
     const next = new URLSearchParams();
     const host = String(current.get('host') || '').trim();
@@ -510,7 +510,6 @@ function AppContent() {
     if (host) next.set('host', host);
     if (shop) next.set('shop', shop);
     next.set('tab', 'installation');
-    next.set('auto_discount_setup', '1');
 
     let shouldNormalize = false;
     const keyCounts = new Map();
