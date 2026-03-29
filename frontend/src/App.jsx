@@ -302,6 +302,7 @@ function AppContent() {
   const connectToken = searchParams.get('connect_token');
   const pathname = location.pathname;
   const currentRouteDomain = getAppDomainFromPath(pathname);
+  const isDiscountUiPath = /^\/discounts(\/|$)/i.test(pathname);
   const shopFromQuery = String(searchParams.get('shop') || '')
     .trim()
     .toLowerCase();
@@ -322,6 +323,7 @@ function AppContent() {
   const looksLikeDiscountReferrer =
     referrer.includes('admin.shopify.com') && /\/discounts(\/|$)|discount|function/.test(referrer);
   const looksLikeDiscountLaunch =
+    isDiscountUiPath ||
     /discount|function/.test(discountSource) ||
     /discount|function/.test(shopifyPathHint) ||
     looksLikeDiscountReferrer ||
@@ -330,12 +332,16 @@ function AppContent() {
     searchParams.has('function_id') ||
     searchParams.has('functionId') ||
     /discount|function/i.test(location.search || '');
-  const discountLaunchDomain = shopFromQuery || currentRouteDomain || '';
+  const storedShopDomain = String(getShopDomain() || '')
+    .trim()
+    .toLowerCase();
+  const discountLaunchDomain = shopFromQuery || currentRouteDomain || storedShopDomain || '';
   const shouldAutoOpenDiscountSetup =
     isShopifyStoreDomain(discountLaunchDomain) &&
-    searchParams.has('host') &&
     looksLikeDiscountLaunch &&
-    (pathname === ROUTES.USER_PANEL || Boolean(currentRouteDomain));
+    ((searchParams.has('host') &&
+      (pathname === ROUTES.USER_PANEL || Boolean(currentRouteDomain))) ||
+      isDiscountUiPath);
 
   const hasCreds = getShopDomain() || getApiKey() || hasEmailSession();
   const isOnConnectOrAuthPath =

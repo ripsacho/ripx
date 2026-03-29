@@ -33,3 +33,7 @@ export = "cart-delivery-options-discounts-generate-fetch"
 [extensions.build]
 command = ""
 path = "dist/function.wasm"
+
+[extensions.ui.paths]
+create = "/discounts/:functionId/new"
+details = "/discounts/:functionId/:id"
