@@ -771,19 +771,22 @@ app.use('/api', (req, res) => {
   });
 });
 
-// Shopify Discount Function UI deep-links can open /discounts/* directly.
-// Convert these to root entry with launch context so frontend flow stays consistent
-// even when embedded path handling varies across Shopify hosts.
-app.get('/discounts/*', (req, res) => {
+// Shopify Discount Function UI deep-links can open discount paths directly.
+// Normalize both direct and embedded-admin paths to the app settings Installation tab.
+const buildDiscountLaunchRedirect = ({ req, basePrefix = '' }) => {
   const nextQuery = new URLSearchParams();
   Object.entries(req.query || {}).forEach(([key, value]) => {
     if (Array.isArray(value)) {
       value.forEach(v => {
-        if (v !== undefined && v !== null) {nextQuery.append(key, String(v));}
+        if (v !== undefined && v !== null) {
+          nextQuery.append(key, String(v));
+        }
       });
       return;
     }
-    if (value !== undefined && value !== null) {nextQuery.set(key, String(value));}
+    if (value !== undefined && value !== null) {
+      nextQuery.set(key, String(value));
+    }
   });
   nextQuery.set('launch', 'discount_setup');
   const shopHeader = String(req.get('x-shopify-shop-domain') || '')
@@ -792,8 +795,33 @@ app.get('/discounts/*', (req, res) => {
   if (!nextQuery.get('shop') && SHOP_DOMAIN_REGEX.test(shopHeader)) {
     nextQuery.set('shop', shopHeader);
   }
+  const shop = String(nextQuery.get('shop') || '')
+    .trim()
+    .toLowerCase();
+  if (SHOP_DOMAIN_REGEX.test(shop)) {
+    nextQuery.set('tab', 'installation');
+    nextQuery.set('auto_discount_setup', '1');
+    return `${basePrefix}/app/${encodeURIComponent(shop)}/settings?${nextQuery.toString()}`;
+  }
   const suffix = nextQuery.toString();
-  return res.redirect(suffix ? `/?${suffix}` : '/');
+  return suffix ? `${basePrefix}/?${suffix}` : `${basePrefix || '/'}`;
+};
+
+app.get('/discounts/*', (req, res) => {
+  return res.redirect(buildDiscountLaunchRedirect({ req }));
+});
+
+app.get('/store/:store/apps/:app/discounts/*', (req, res) => {
+  const store = String(req.params.store || '')
+    .trim()
+    .toLowerCase();
+  const appHandle = String(req.params.app || '').trim();
+  const inferredShop = `${store}.myshopify.com`;
+  if (!req.query?.shop && SHOP_DOMAIN_REGEX.test(inferredShop)) {
+    req.query.shop = inferredShop;
+  }
+  const basePrefix = `/store/${encodeURIComponent(store)}/apps/${encodeURIComponent(appHandle)}`;
+  return res.redirect(buildDiscountLaunchRedirect({ req, basePrefix }));
 });
 
 // Reject requests for source paths (e.g. /src/App.jsx from dev index). Prevents blank page when tunnel serves dev HTML but backend can't serve /src/*.
