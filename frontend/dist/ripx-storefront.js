@@ -1366,6 +1366,28 @@
   }
 
   /**
+   * Preview may return a stub when /track/preview fails — no config, so DOM price helpers bail.
+   * Checkout still needs _ripx_* line properties; inject when preview + test/variant ids are known.
+   */
+  function injectPreviewCartAttributesWhenConfigMissing(testId, variant) {
+    if (!PREVIEW_MODE || !testId || !variant) return;
+    if (variant.config) return;
+    var allow =
+      variant.isPreview ||
+      (PREVIEW_TEST_ID != null && String(testId) === String(PREVIEW_TEST_ID));
+    if (!allow) return;
+    var vid = variant.variantId != null ? variant.variantId : variant.id;
+    if (vid == null || String(vid).trim() === '') vid = PREVIEW_VARIANT_ID;
+    if (vid == null || String(vid).trim() === '') return;
+    injectPriceTestCartAttributes(
+      testId,
+      vid,
+      getAssignmentProofFromVariant(variant),
+      null
+    );
+  }
+
+  /**
    * Normalize variant ID for lookup (numeric string or gid). Used for byVariant keys.
    */
   function toVariantIdKey(variantId) {
@@ -1490,7 +1512,11 @@
    */
   async function applyPriceTest(testId, productId, variantId, providedVariant) {
     var variant = providedVariant || (await getVariant(testId));
-    if (!variant || !variant.config) return;
+    if (!variant) return;
+    if (!variant.config) {
+      injectPreviewCartAttributesWhenConfigMissing(testId, variant);
+      return;
+    }
 
     var variantIdForCart = variant.variantId != null ? variant.variantId : variant.id;
     var currentPdpVariantId = getSelectedVariantId();
@@ -1794,7 +1820,11 @@
    * Finds [data-product-id] cards matching test targets and paints variant price.
    */
   function applyPriceTestToProductCards(testId, variant, targetIds) {
-    if (!variant || !variant.config || !targetIds || !targetIds.length) return;
+    if (!variant || !targetIds || !targetIds.length) return;
+    if (!variant.config) {
+      injectPreviewCartAttributesWhenConfigMissing(testId, variant);
+      return;
+    }
     var variantIdForCart = variant.variantId != null ? variant.variantId : variant.id;
     if (variantIdForCart != null && String(variantIdForCart).trim() !== '') {
       window.__RIPX_PRICE_TEST_CTX__ = { testId: testId, variantId: variantIdForCart };
@@ -1885,7 +1915,11 @@
    * Uses each card's product id for getEffectivePriceConfig (byProduct / variant picker).
    */
   function applyPriceTestToCollectionListingCards(testId, variant) {
-    if (!variant || !variant.config) return;
+    if (!variant) return;
+    if (!variant.config) {
+      injectPreviewCartAttributesWhenConfigMissing(testId, variant);
+      return;
+    }
     var variantIdForCart = variant.variantId != null ? variant.variantId : variant.id;
     if (variantIdForCart != null && String(variantIdForCart).trim() !== '') {
       window.__RIPX_PRICE_TEST_CTX__ = { testId: testId, variantId: variantIdForCart };
@@ -1973,7 +2007,11 @@
    * Matches rows by data-product-id (and product id in selector) or by data-variant-id when present (best effort for themes without product id on line).
    */
   function applyPriceTestToCart(testId, variant, targetIds) {
-    if (!variant || !variant.config || !targetIds || !targetIds.length) return;
+    if (!variant || !targetIds || !targetIds.length) return;
+    if (!variant.config) {
+      injectPreviewCartAttributesWhenConfigMissing(testId, variant);
+      return;
+    }
     var variantIdForCart = variant.variantId != null ? variant.variantId : variant.id;
     var cartContainers =
       '.cart-drawer, #CartDrawer, .drawer--cart, [data-cart-drawer], #cart-form, form[action*="/cart"], .cart-items, main .cart';
@@ -3108,6 +3146,10 @@
         return;
       }
 
+      if (PREVIEW_MODE && PREVIEW_TEST_ID && PREVIEW_VARIANT_ID) {
+        injectPriceTestCartAttributes(PREVIEW_TEST_ID, PREVIEW_VARIANT_ID, null, null);
+      }
+
       const activeTests = CONFIG.activeTests || [];
 
       if (DEBUG && activeTests.length === 0 && !(PREVIEW_MODE && PREVIEW_TEST_ID)) {
@@ -3184,6 +3226,14 @@
                   } else if (isProductListingSurface() || isCartSurface()) {
                     matched = true;
                   }
+                }
+                if (
+                  matched &&
+                  testTypeIsPrice(test) &&
+                  variant &&
+                  !variant.config
+                ) {
+                  injectPreviewCartAttributesWhenConfigMissing(test.id, variant);
                 }
                 if (matched) {
                   if (
@@ -3299,15 +3349,12 @@
               (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
             if (!productScope && tt !== 'collection' && tids.length === 0) return;
             getVariant(test.id).then(function (variant) {
-              if (!variant || !variant.config) return;
+              if (!variant) return;
+              injectPreviewCartAttributesWhenConfigMissing(test.id, variant);
+              if (!variant.config) return;
               var curPid = getCurrentProductId();
               var matchedNow = matchesTarget(test);
-              if (
-                !matchedNow &&
-                PREVIEW_TEST_CONTEXT &&
-                testTypeIsPrice(test) &&
-                productScope
-              ) {
+              if (!matchedNow && PREVIEW_TEST_CONTEXT && testTypeIsPrice(test) && productScope) {
                 var pathRm = (window.location.pathname || '').toLowerCase();
                 if (
                   pathRm.indexOf('/products/') !== -1 &&
