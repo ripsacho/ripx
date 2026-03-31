@@ -175,13 +175,6 @@
     );
   }
 
-  function whenConsent(cb) {
-    if (hasConsent()) {
-      cb();
-      return;
-    }
-    window.ripx_consent_callback = cb;
-  }
   const URL_PARAMS = new URLSearchParams(window.location.search);
   // Shopify navigation drops query params; keep preview context sticky across clicks (PDP/collections/cart).
   const PREVIEW_STORAGE_KEY = '__ripx_preview_ctx_v1__';
@@ -245,6 +238,19 @@
       variantName: _urlPreviewVariantName || PREVIEW_VARIANT_NAME || null,
     });
   }
+
+  function whenConsent(cb) {
+    // Preview QA must run without waiting for marketing consent (otherwise RipX never mounts).
+    if (
+      hasConsent() ||
+      (PREVIEW_TEST_ID && (PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME))
+    ) {
+      cb();
+      return;
+    }
+    window.ripx_consent_callback = cb;
+  }
+
   const VISUAL_PICKER_MODE = URL_PARAMS.get('ab_visual_picker') === '1';
   const AB_VISUAL_EDITOR =
     URL_PARAMS.get('ab_visual_editor') === '1' || !!(CONFIG.visualEditor === true);
@@ -3604,6 +3610,20 @@
                 'Preview: test not in activeTests and preview-storefront-test fetch failed — is the test saved for this shop? Open DevTools → Network for /track/preview-storefront-test.'
               );
             }
+          }
+          // Draft/offline/CORS: API may not return a row; without any test, getVariant/reapply never run.
+          if (
+            !testsToRun.some(function (t) {
+              return String(t.id) === String(PREVIEW_TEST_ID);
+            })
+          ) {
+            testsToRun.push({
+              id: PREVIEW_TEST_ID,
+              type: 'price',
+              targetType: 'all-products',
+              targetIds: null,
+              targetId: null,
+            });
           }
           CONFIG.activeTests = testsToRun;
         }

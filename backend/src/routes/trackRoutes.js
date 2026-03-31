@@ -56,6 +56,7 @@ const {
 } = require('../utils/priceResolveBatchResponse');
 const { checkoutPriceSecretsMatch } = require('../utils/checkoutPriceSecret');
 const { signPriceAssignment } = require('../utils/priceAssignmentSignature');
+const { findVariantForPreviewQuery } = require('../utils/previewVariantMatch');
 const PRICE_RESOLVE_LINE_ID_MAX = Math.max(
   32,
   Number.parseInt(process.env.RIPX_PRICE_RESOLVE_LINE_ID_MAX || '256', 10) || 256
@@ -265,13 +266,24 @@ function normalizePriceConfigShape(config) {
     return config;
   }
   const c = { ...config };
-  if (!c.priceMode && c.price_mode) {c.priceMode = c.price_mode;}
-  if (c.priceDelta === undefined && c.price_delta !== undefined) {c.priceDelta = c.price_delta;}
-  if (c.pricePercent === undefined && c.price_percent !== undefined)
-    {c.pricePercent = c.price_percent;}
-  if (!c.priceBase && c.price_base) {c.priceBase = c.price_base;}
-  if (c.roundTo === undefined && c.round_to !== undefined) {c.roundTo = c.round_to;}
-  if (typeof c.priceMode === 'string') {c.priceMode = c.priceMode.toLowerCase();}
+  if (!c.priceMode && c.price_mode) {
+    c.priceMode = c.price_mode;
+  }
+  if (c.priceDelta === undefined && c.price_delta !== undefined) {
+    c.priceDelta = c.price_delta;
+  }
+  if (c.pricePercent === undefined && c.price_percent !== undefined) {
+    c.pricePercent = c.price_percent;
+  }
+  if (!c.priceBase && c.price_base) {
+    c.priceBase = c.price_base;
+  }
+  if (c.roundTo === undefined && c.round_to !== undefined) {
+    c.roundTo = c.round_to;
+  }
+  if (typeof c.priceMode === 'string') {
+    c.priceMode = c.priceMode.toLowerCase();
+  }
   return c;
 }
 
@@ -1127,20 +1139,7 @@ router.get(
     }
 
     const variants = Array.isArray(test.variants) ? test.variants : [];
-    const variant = variants.find(item => {
-      if (variant_id) {
-        if (item?.id && item.id === variant_id) {
-          return true;
-        }
-        if (item?.name && String(item.name).trim() === String(variant_id).trim()) {
-          return true;
-        }
-      }
-      if (variant_name && item?.name) {
-        return String(item.name).trim() === String(variant_name).trim();
-      }
-      return false;
-    });
+    const variant = findVariantForPreviewQuery(variants, { variant_id, variant_name });
 
     if (!variant) {
       return res.status(404).json({ success: false, error: 'Variant not found' });
