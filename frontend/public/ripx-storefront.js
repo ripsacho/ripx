@@ -3203,6 +3203,11 @@
       var id = el.getAttribute('data-product-id');
       if (id) return toProductGid(id);
     }
+    // Late / alternate shapes: same script as getProductJson (product nested only).
+    var gj = getProductJson();
+    if (gj && gj.product && gj.product.id != null) {
+      return toProductGid(gj.product.id);
+    }
     return null;
   }
 
@@ -3748,6 +3753,36 @@
                     productBelongsToPriceTestCollections(tids);
                   if (pdpProductMatch || pdpCollectionMatch) {
                     applyPriceTest(test.id, curProductId, test.targetVariantId || null, variant);
+                  } else if (
+                    testTypeIsPrice(test) &&
+                    variant &&
+                    variant.config &&
+                    (tt === 'all-products' || tt === 'all_products')
+                  ) {
+                    // Meta / ProductJson often loads after our first tick — curProductId was null so PDP paint skipped.
+                    var pdpPathEarly = (window.location.pathname || '').toLowerCase();
+                    if (
+                      pdpPathEarly.indexOf('/products/') !== -1 &&
+                      pdpPathEarly.length > '/products/'.length + 1
+                    ) {
+                      var attempts = 0;
+                      var maxAttempts = 48;
+                      var iv = setInterval(function () {
+                        attempts++;
+                        var cid = getCurrentProductId();
+                        if (cid) {
+                          clearInterval(iv);
+                          applyPriceTest(test.id, cid, test.targetVariantId || null, variant);
+                        } else if (attempts >= maxAttempts) {
+                          clearInterval(iv);
+                          if (DEBUG) {
+                            debugLog(
+                              'PDP: product id not resolved after retries — theme may defer ProductJson; try hard refresh.'
+                            );
+                          }
+                        }
+                      }, 125);
+                    }
                   }
                   if (
                     variant &&
@@ -4098,13 +4133,19 @@
           '#ProductJson, script[type="application/json"][data-product-json], script[data-section-type="product"]'
         ),
       },
+      diagnostics: {
+        getCurrentProductId: getCurrentProductId(),
+        hasProductJson: !!getProductJson(),
+      },
       interpret: {
         if_password_page: isPasswordPage
           ? 'RipX does not run on /password — enter the store first.'
           : null,
         if_preview_ok_but_no_paint:
           variant && variant.isPreview && variant.config && !isPasswordPage
-            ? 'Variant OK — if dataRipxPriceCount is 0, theme selectors may not match; check dom.priceItemRegular vs .money.'
+            ? isPdp && !getCurrentProductId()
+              ? 'Variant OK but getCurrentProductId was null — Shopify meta/ProductJson may load late; deploy latest script (PDP retry + getProductJson fallback).'
+              : 'Variant OK — if dataRipxPriceCount is 0, theme selectors may not match; check dom.priceItemRegular vs .money.'
             : null,
         if_network_preview_not_ok:
           network.preview && network.preview.status && network.preview.status >= 400
