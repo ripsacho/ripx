@@ -2204,7 +2204,7 @@
       '.price .money, .product-price .money, [data-product-price], .money, .price-item--regular .price-item__regular, .price-item--regular .price, .price-item__regular, .price-item--regular, .price-item, [data-price], .line-item__price .money, [data-line-item-price], .cart-item__price .money, .cart-item__price';
     if (scope === 'cart') {
       sel +=
-        ', .cart-item__price, .cart-item__final-price, td.cart-item__price, .cart__item .price, .cart-item .price-item--regular, .totals__subtotal-value, .totals__footer .totals__value, [data-cart-item-regular-price], [data-cart-item-price]';
+        ', .cart-item__price, .cart-item__final-price, td.cart-item__price, .cart__item .price, .cart-item .price-item--regular, .cart-item__totals .price, .cart-item__price-wrapper .price, .cart-item__price-wrapper .price--end, .cart-item__details .product-option, .totals__subtotal-value, .totals__footer .totals__value, [data-cart-item-regular-price], [data-cart-item-price]';
     }
     var roots = [];
     if (scope === 'cart') {
