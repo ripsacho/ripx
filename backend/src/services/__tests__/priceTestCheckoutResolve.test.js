@@ -41,6 +41,34 @@ describe('priceTestCheckoutResolve', () => {
     expect(parseFloat(r.discountDecimal, 10)).toBeCloseTo(10, 2);
   });
 
+  it('rejects draft test at checkout unless env allows draft price tests', () => {
+    const draftTest = { ...baseTest, status: 'draft' };
+    const r = resolvePriceTestLineDiscount({
+      test: draftTest,
+      assignmentVariantId: 'var-b',
+      productId: '111',
+      variantId: null,
+      linePresentmentTotal: 29.99,
+      quantity: 1,
+    });
+    expect(r.applies).toBe(false);
+    expect(r.reason).toBe('test_not_running');
+  });
+
+  it('allows draft test when RIPX_CHECKOUT_ALLOW_DRAFT_PRICE_TESTS=true', () => {
+    process.env.RIPX_CHECKOUT_ALLOW_DRAFT_PRICE_TESTS = 'true';
+    const draftTest = { ...baseTest, status: 'draft' };
+    const r = resolvePriceTestLineDiscount({
+      test: draftTest,
+      assignmentVariantId: 'var-b',
+      productId: '111',
+      variantId: null,
+      linePresentmentTotal: 29.99,
+      quantity: 1,
+    });
+    expect(r.applies).toBe(true);
+  });
+
   it('does not apply for control mode', () => {
     const test = {
       ...baseTest,

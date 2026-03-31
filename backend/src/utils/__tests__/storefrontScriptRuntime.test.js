@@ -29,6 +29,19 @@ describe('storefrontScriptRuntime', () => {
     expect(m.antiFlickerMode).toBe('balanced');
   });
 
+  it('falls back to target_id when target_ids is an empty array', () => {
+    const row = {
+      id: 't-empty',
+      type: 'price',
+      target_type: 'product',
+      target_id: 'gid://shopify/Product/99',
+      target_ids: [],
+      segments: {},
+    };
+    const m = mapTestToStorefrontPayload(row);
+    expect(m.targetIds).toEqual(['gid://shopify/Product/99']);
+  });
+
   it('maps strict anti-flicker mode from segments', () => {
     const row = {
       id: 't2',

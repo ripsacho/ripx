@@ -125,6 +125,25 @@ function bootStorefrontScriptHarness(opts = {}) {
 }
 
 describe('storefront script cart/add interceptors', () => {
+  it('exposes cart debug helpers on test hooks', () => {
+    const { hooks } = bootStorefrontScriptHarness();
+    expect(hooks.pathnameFromCartUrl('/en/cart/add.js')).toBe('/en/cart/add.js');
+    expect(hooks.debugDescribeCartAddBody('{"a":1}')).toBe('body:string(JSON)');
+    expect(hooks.debugDescribeCartAddBody(null)).toBe('body:none');
+    expect(hooks.looksLikeCartAddNearMiss('/apps/proxy/cart-add-line')).toBe(true);
+    expect(hooks.looksLikeCartAddNearMiss('/cart/add.js')).toBe(false);
+  });
+
+  it('recognizes cart add paths (suffix match; any Markets / locale depth)', () => {
+    const { hooks } = bootStorefrontScriptHarness();
+    expect(hooks.isCartAddPath('/cart/add.js')).toBe(true);
+    expect(hooks.isCartAddPath('/cart/add')).toBe(true);
+    expect(hooks.isCartAddPath('/en/cart/add.js')).toBe(true);
+    expect(hooks.isCartAddPath('/en-us/cart/add')).toBe(true);
+    expect(hooks.isCartAddPath('/de/fr/cart/add.js')).toBe(true);
+    expect(hooks.isCartAddPath('/collections/all')).toBe(false);
+  });
+
   it('keeps preview flag inert without explicit preview test context', () => {
     const { hooks } = bootStorefrontScriptHarness({ search: '?ab_preview=1' });
     expect(hooks.previewMode).toBe(true);
@@ -143,6 +162,31 @@ describe('storefront script cart/add interceptors', () => {
     hooks.installRipxCartAddInterceptors();
 
     await windowObj.fetch('/cart/add.js', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 123, quantity: 1 }),
+    });
+
+    expect(fetchCalls).toHaveLength(1);
+    const body = JSON.parse(fetchCalls[0].init.body);
+    expect(body.properties).toMatchObject({
+      _ripx_price_test: '11111111-1111-4111-8111-111111111111',
+      _ripx_variant: 'variant-A',
+      _ripx_shop: 'makripon.myshopify.com',
+    });
+  });
+
+  it('patches JSON fetch body for /en/cart/add.js (localized storefront)', async () => {
+    const { hooks, fetchCalls, windowObj } = bootStorefrontScriptHarness();
+    const attrs = hooks.getRipxCartAttrsPayload(
+      '11111111-1111-4111-8111-111111111111',
+      'variant-A',
+      'makripon.myshopify.com'
+    );
+    hooks.setRipxCartAttributeState(attrs);
+    hooks.installRipxCartAddInterceptors();
+
+    await windowObj.fetch('/en/cart/add.js', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: 123, quantity: 1 }),
@@ -249,6 +293,33 @@ describe('storefront script cart/add interceptors', () => {
     });
     expect(body.items[1].properties).toMatchObject({
       existing: 'yes',
+      _ripx_price_test: '44444444-4444-4444-8444-444444444444',
+      _ripx_variant: 'variant-D',
+      _ripx_shop: 'makripon.myshopify.com',
+    });
+  });
+
+  it('patches JSON body line_items[] (legacy / alternate theme shape)', async () => {
+    const { hooks, fetchCalls, windowObj } = bootStorefrontScriptHarness();
+    const attrs = hooks.getRipxCartAttrsPayload(
+      '44444444-4444-4444-8444-444444444444',
+      'variant-D',
+      'makripon.myshopify.com'
+    );
+    hooks.setRipxCartAttributeState(attrs);
+    hooks.installRipxCartAddInterceptors();
+
+    await windowObj.fetch('/cart/add.js', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        line_items: [{ id: 123, quantity: 1 }],
+      }),
+    });
+
+    expect(fetchCalls).toHaveLength(1);
+    const body = JSON.parse(fetchCalls[0].init.body);
+    expect(body.line_items[0].properties).toMatchObject({
       _ripx_price_test: '44444444-4444-4444-8444-444444444444',
       _ripx_variant: 'variant-D',
       _ripx_shop: 'makripon.myshopify.com',

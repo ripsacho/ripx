@@ -19,6 +19,13 @@ function isPriceTestActiveForCheckout(test) {
   if (s === 'running') {
     return true;
   }
+  const allowDraft =
+    String(process.env.RIPX_CHECKOUT_ALLOW_DRAFT_PRICE_TESTS || '')
+      .trim()
+      .toLowerCase() === 'true';
+  if (allowDraft && (s === 'draft' || s === 'paused')) {
+    return true;
+  }
   const mode = String(test.personalization_mode || '').toLowerCase();
   if ((s === 'stopped' || s === 'completed') && (mode === 'personalized' || mode === 'rollout')) {
     return true;

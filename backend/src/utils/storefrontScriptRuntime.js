@@ -31,12 +31,11 @@ function normalizeTargetTypeForStorefront(test) {
 }
 
 function mapTestToStorefrontPayload(test) {
-  const ids =
-    test.target_ids && Array.isArray(test.target_ids)
-      ? test.target_ids.filter(Boolean)
-      : test.target_id
-        ? [test.target_id]
-        : [];
+  let ids =
+    test.target_ids && Array.isArray(test.target_ids) ? test.target_ids.filter(Boolean) : [];
+  if (!ids.length && test.target_id) {
+    ids = [test.target_id];
+  }
   const jsTargeting = test.segments?.js_targeting;
   const antiFlickerModeRaw = String(test.segments?.anti_flicker_mode || '')
     .toLowerCase()

@@ -21,6 +21,7 @@
  * The server sends short Cache-Control for script.js (activeTests are embedded); hard-refresh or wait for max-age after starting/stopping tests.
  *
  * Debug: Set window.__RIPX_DEBUG__ = true before the script loads to enable console logs (no PII).
+ * With debug on, cart/add interception logs [RipX] lines: path matched, patched vs unchanged body, near-miss paths, missing line state.
  * Version: Exposed as window.RipX.version / window.ABTestTracker.version for support.
  */
 
@@ -369,6 +370,9 @@
   var _previewVariantInflightKey = '';
   /** Latest line-attribute payload to apply on theme AJAX cart/add requests. */
   var _ripxCartAttributeState = null;
+  var _ripxCartFormTargetProductIds = null;
+  var _ripxCartFormObserverInstalled = false;
+  var _ripxCartFormObserverTimer = null;
   var _ripxCartAddInterceptorsInstalled = false;
 
   function getVariantCachePromise() {
@@ -1042,10 +1046,68 @@
     try {
       var parsed = new URL(String(urlValue), window.location.origin);
       var p = (parsed.pathname || '').replace(/\/+$/, '');
+      // Suffix match: /cart/add or /cart/add.js with any prefix (/en/…, /en-us/…, nested Markets paths).
       return /\/cart\/add(?:\.js)?$/i.test(p);
     } catch (e) {
       return false;
     }
+  }
+
+  /** @type {Record<string, true>} */
+  var _ripxCartDebugNearMiss = {};
+
+  function pathnameFromCartUrl(urlValue) {
+    try {
+      var p = new URL(String(urlValue), window.location.origin).pathname || '';
+      return p.replace(/\/+$/, '') || '/';
+    } catch (e) {
+      return '(invalid-url)';
+    }
+  }
+
+  function looksLikeCartAddNearMiss(urlValue) {
+    if (!urlValue || isCartAddPath(urlValue)) return false;
+    try {
+      var p = (new URL(String(urlValue), window.location.origin).pathname || '').toLowerCase();
+      return p.indexOf('cart') !== -1 && p.indexOf('add') !== -1;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function debugLogCartNearMissOnce(pathname) {
+    if (!DEBUG) return;
+    if (_ripxCartDebugNearMiss[pathname]) return;
+    if (Object.keys(_ripxCartDebugNearMiss).length >= 32) return;
+    _ripxCartDebugNearMiss[pathname] = true;
+    debugLog(
+      'cart near-miss:',
+      pathname,
+      'POST path mentions cart+add but is not */cart/add(.js) — if this is add-to-cart, file an issue with the path pattern.'
+    );
+  }
+
+  /** Body shape hint when patchCartAddBodyForRipx returns changed:false (debug only). */
+  function debugDescribeCartAddBody(body) {
+    if (body == null || body === '') return 'body:none';
+    try {
+      if (typeof FormData !== 'undefined' && body instanceof FormData) return 'body:FormData';
+      if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) {
+        return 'body:URLSearchParams';
+      }
+      if (typeof body === 'string') {
+        var t = body.trim();
+        if (!t) return 'body:string(empty)';
+        var c0 = t.charAt(0);
+        if (c0 === '{' || c0 === '[') return 'body:string(JSON)';
+        if (t.indexOf('=') !== -1) return 'body:string(form)';
+        return 'body:string(other)';
+      }
+      if (typeof Blob !== 'undefined' && body instanceof Blob) return 'body:Blob';
+      if (typeof ArrayBuffer !== 'undefined' && body instanceof ArrayBuffer)
+        return 'body:ArrayBuffer';
+    } catch (e) {}
+    return 'body:' + typeof body;
   }
 
   function getHeaderValue(headers, headerName) {
@@ -1102,6 +1164,7 @@
 
   function patchCartAddBodyForRipx(body, headers, payload) {
     if (!payload || !payload._ripx_price_test || !payload._ripx_variant) {
+      if (DEBUG) debugLog('cart patch skip: missing _ripx_price_test / _ripx_variant on payload');
       return { changed: false, body: body };
     }
 
@@ -1137,14 +1200,25 @@
               setPropIfMissing('_ripx_assignment_user', payload._ripx_assignment_user);
               return nextProps;
             }
-            if (Array.isArray(obj.items)) {
-              obj.items = obj.items.map(function (item) {
-                if (!item || typeof item !== 'object') return item;
+            function mapCartLinesWithRipx(arr) {
+              if (!Array.isArray(arr)) return;
+              for (var li = 0; li < arr.length; li++) {
+                var item = arr[li];
+                if (!item || typeof item !== 'object') continue;
                 var nextItem = Object.assign({}, item);
                 nextItem.properties = mergedRipxProps(item.properties);
-                return nextItem;
-              });
-            } else {
+                arr[li] = nextItem;
+              }
+            }
+            var hasItems = Array.isArray(obj.items);
+            var hasLineItems = Array.isArray(obj.line_items);
+            if (hasItems) {
+              mapCartLinesWithRipx(obj.items);
+            }
+            if (hasLineItems) {
+              mapCartLinesWithRipx(obj.line_items);
+            }
+            if (!hasItems && !hasLineItems) {
               obj.properties = mergedRipxProps(obj.properties);
             }
             return {
@@ -1153,7 +1227,11 @@
               contentType: 'application/json',
             };
           }
-        } catch (e) {}
+        } catch (e) {
+          if (DEBUG) {
+            debugLog('cart patch: JSON parse failed', e && (e.message || String(e)));
+          }
+        }
       }
 
       var looksUrlEncoded =
@@ -1167,7 +1245,11 @@
             body: params.toString(),
             contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
           };
-        } catch (e) {}
+        } catch (e) {
+          if (DEBUG) {
+            debugLog('cart patch: URLSearchParams parse failed', e && (e.message || String(e)));
+          }
+        }
       }
     }
     return { changed: false, body: body };
@@ -1192,60 +1274,93 @@
             (init && init.method) || (typeof input !== 'string' && input && input.method) || 'GET';
           var method = String(methodRaw || 'GET').toUpperCase();
 
-          if (method === 'POST' && isCartAddPath(url) && _ripxCartAttributeState) {
-            var nextInit = init ? Object.assign({}, init) : {};
-            if (!nextInit.headers) nextInit.headers = (input && input.headers) || {};
-            if (nextInit.body === undefined && input && typeof input !== 'string') {
-              if (typeof FormData !== 'undefined' && input.body && input.body instanceof FormData) {
-                nextInit.body = input.body;
-              } else if (
-                typeof URLSearchParams !== 'undefined' &&
-                input.body &&
-                input.body instanceof URLSearchParams
-              ) {
-                nextInit.body = input.body;
-              } else if (typeof input.body === 'string') {
-                nextInit.body = input.body;
-              } else if (typeof input.clone === 'function' && typeof input.text === 'function') {
-                return input
-                  .clone()
-                  .text()
-                  .then(function (requestBodyText) {
-                    var asyncInit = Object.assign({}, nextInit);
-                    asyncInit.body = requestBodyText;
-                    var asyncPatch = patchCartAddBodyForRipx(
-                      asyncInit.body,
-                      asyncInit.headers,
-                      _ripxCartAttributeState
-                    );
-                    if (asyncPatch.changed) {
-                      asyncInit.body = asyncPatch.body;
-                      if (
-                        asyncPatch.contentType &&
-                        !getHeaderValue(asyncInit.headers, 'content-type')
-                      ) {
-                        setHeaderValue(asyncInit.headers, 'Content-Type', asyncPatch.contentType);
+          if (method === 'POST' && isCartAddPath(url)) {
+            var ripxCartPath = pathnameFromCartUrl(url);
+            if (!_ripxCartAttributeState) {
+              if (DEBUG) {
+                debugLog(
+                  'cart intercept fetch:',
+                  ripxCartPath,
+                  '— skip (no RipX line state yet; open preview URL or wait for price test to apply)'
+                );
+              }
+            } else {
+              var nextInit = init ? Object.assign({}, init) : {};
+              if (!nextInit.headers) nextInit.headers = (input && input.headers) || {};
+              if (nextInit.body === undefined && input && typeof input !== 'string') {
+                if (
+                  typeof FormData !== 'undefined' &&
+                  input.body &&
+                  input.body instanceof FormData
+                ) {
+                  nextInit.body = input.body;
+                } else if (
+                  typeof URLSearchParams !== 'undefined' &&
+                  input.body &&
+                  input.body instanceof URLSearchParams
+                ) {
+                  nextInit.body = input.body;
+                } else if (typeof input.body === 'string') {
+                  nextInit.body = input.body;
+                } else if (typeof input.clone === 'function' && typeof input.text === 'function') {
+                  return input
+                    .clone()
+                    .text()
+                    .then(function (requestBodyText) {
+                      var asyncInit = Object.assign({}, nextInit);
+                      asyncInit.body = requestBodyText;
+                      var asyncPatch = patchCartAddBodyForRipx(
+                        asyncInit.body,
+                        asyncInit.headers,
+                        _ripxCartAttributeState
+                      );
+                      if (asyncPatch.changed) {
+                        asyncInit.body = asyncPatch.body;
+                        if (
+                          asyncPatch.contentType &&
+                          !getHeaderValue(asyncInit.headers, 'content-type')
+                        ) {
+                          setHeaderValue(asyncInit.headers, 'Content-Type', asyncPatch.contentType);
+                        }
                       }
-                    }
-                    return nativeFetch(input, asyncInit);
-                  })
-                  .catch(function () {
-                    return nativeFetch(input, init);
-                  });
+                      if (DEBUG) {
+                        debugLog(
+                          'cart intercept fetch:',
+                          ripxCartPath,
+                          asyncPatch.changed ? 'patched' : 'unchanged',
+                          asyncPatch.changed ? '' : debugDescribeCartAddBody(asyncInit.body)
+                        );
+                      }
+                      return nativeFetch(input, asyncInit);
+                    })
+                    .catch(function () {
+                      return nativeFetch(input, init);
+                    });
+                }
               }
-            }
-            var patch = patchCartAddBodyForRipx(
-              nextInit.body,
-              nextInit.headers,
-              _ripxCartAttributeState
-            );
-            if (patch.changed) {
-              nextInit.body = patch.body;
-              if (patch.contentType && !getHeaderValue(nextInit.headers, 'content-type')) {
-                setHeaderValue(nextInit.headers, 'Content-Type', patch.contentType);
+              var patch = patchCartAddBodyForRipx(
+                nextInit.body,
+                nextInit.headers,
+                _ripxCartAttributeState
+              );
+              if (patch.changed) {
+                nextInit.body = patch.body;
+                if (patch.contentType && !getHeaderValue(nextInit.headers, 'content-type')) {
+                  setHeaderValue(nextInit.headers, 'Content-Type', patch.contentType);
+                }
               }
+              if (DEBUG) {
+                debugLog(
+                  'cart intercept fetch:',
+                  ripxCartPath,
+                  patch.changed ? 'patched' : 'unchanged',
+                  patch.changed ? '' : debugDescribeCartAddBody(nextInit.body)
+                );
+              }
+              return nativeFetch(input, nextInit);
             }
-            return nativeFetch(input, nextInit);
+          } else if (DEBUG && method === 'POST' && looksLikeCartAddNearMiss(url)) {
+            debugLogCartNearMissOnce(pathnameFromCartUrl(url));
           }
         } catch (e) {}
         return nativeFetch(input, init);
@@ -1273,14 +1388,36 @@
       XMLHttpRequest.prototype.send = function (body) {
         try {
           var method = String(this.__ripxMethod || 'GET').toUpperCase();
-          if (method === 'POST' && isCartAddPath(this.__ripxUrl) && _ripxCartAttributeState) {
-            var headerObj = { 'content-type': this.__ripxContentType || '' };
-            var patch = patchCartAddBodyForRipx(body, headerObj, _ripxCartAttributeState);
-            body = patch.body;
-            if (patch.contentType && !this.__ripxContentType) {
-              this.setRequestHeader('Content-Type', patch.contentType);
-              this.__ripxContentType = patch.contentType;
+          var xhrCartPath = pathnameFromCartUrl(this.__ripxUrl);
+          if (method === 'POST' && isCartAddPath(this.__ripxUrl)) {
+            if (!_ripxCartAttributeState) {
+              if (DEBUG) {
+                debugLog(
+                  'cart intercept xhr:',
+                  xhrCartPath,
+                  '— skip (no RipX line state yet; open preview URL or wait for price test to apply)'
+                );
+              }
+            } else {
+              var bodyBeforeXhr = body;
+              var headerObj = { 'content-type': this.__ripxContentType || '' };
+              var patch = patchCartAddBodyForRipx(body, headerObj, _ripxCartAttributeState);
+              body = patch.body;
+              if (patch.contentType && !this.__ripxContentType) {
+                this.setRequestHeader('Content-Type', patch.contentType);
+                this.__ripxContentType = patch.contentType;
+              }
+              if (DEBUG) {
+                debugLog(
+                  'cart intercept xhr:',
+                  xhrCartPath,
+                  patch.changed ? 'patched' : 'unchanged',
+                  patch.changed ? '' : debugDescribeCartAddBody(bodyBeforeXhr)
+                );
+              }
             }
+          } else if (DEBUG && method === 'POST' && looksLikeCartAddNearMiss(this.__ripxUrl)) {
+            debugLogCartNearMissOnce(xhrCartPath);
           }
         } catch (e) {}
         return origSend.call(this, body);
@@ -1308,32 +1445,27 @@
     return scoped.indexOf(pid) !== -1;
   }
 
-  function injectPriceTestCartAttributes(testId, variantId, assignmentProof, targetProductIds) {
-    if (!testId || variantId == null || String(variantId).trim() === '') return;
+  /**
+   * Re-apply hidden RipX line properties to cart/add forms (dynamic drawers, section reloads).
+   * Uses _ripxCartAttributeState; respects last injectPriceTestCartAttributes target scope.
+   */
+  function applyRipxStateToCartForms(targetProductIds) {
+    var state = _ripxCartAttributeState;
+    if (!state || !state._ripx_price_test || !state._ripx_variant) return;
     var keyTest = '_ripx_price_test';
     var keyVariant = '_ripx_variant';
     var keyShop = '_ripx_shop';
-    var valueTest = String(testId);
-    var valueVariant = String(variantId);
-    var valueShop =
-      (CONFIG.shopDomain && String(CONFIG.shopDomain).trim()) ||
-      (typeof window !== 'undefined' &&
-        window.Shopify &&
-        window.Shopify.shop &&
-        String(window.Shopify.shop).trim()) ||
-      '';
-    _ripxCartAttributeState = getRipxCartAttrsPayload(
-      valueTest,
-      valueVariant,
-      valueShop,
-      assignmentProof
+    var valueTest = String(state._ripx_price_test);
+    var valueVariant = String(state._ripx_variant);
+    var valueShop = state._ripx_shop ? String(state._ripx_shop) : '';
+    var forms = document.querySelectorAll(
+      'form[action*="cart/add"], form[action*="/cart/add"], form[data-ajax-cart-form], form[data-cart-add]'
     );
-    installRipxCartAddInterceptors();
-    var forms = document.querySelectorAll('form[action*="cart/add"], form[action*="/cart/add"]');
     forms.forEach(function (form) {
       if (!form) return;
       if (!formMatchesTargetProductIds(form, targetProductIds)) return;
       function setProperty(propKey, value) {
+        if (value === undefined || value === null || String(value).trim() === '') return;
         var fullName = 'properties[' + propKey + ']';
         var inputs = form.querySelectorAll('input[type="hidden"]');
         for (var hi = 0; hi < inputs.length; hi++) {
@@ -1351,18 +1483,65 @@
       setProperty(keyTest, valueTest);
       setProperty(keyVariant, valueVariant);
       if (valueShop) setProperty(keyShop, valueShop);
-      if (_ripxCartAttributeState._ripx_assignment_sig) {
-        setProperty('_ripx_assignment_sig', _ripxCartAttributeState._ripx_assignment_sig);
+      if (state._ripx_assignment_sig) {
+        setProperty('_ripx_assignment_sig', state._ripx_assignment_sig);
       }
-      if (_ripxCartAttributeState._ripx_assignment_ts) {
-        setProperty('_ripx_assignment_ts', _ripxCartAttributeState._ripx_assignment_ts);
+      if (state._ripx_assignment_ts) {
+        setProperty('_ripx_assignment_ts', state._ripx_assignment_ts);
       }
-      if (_ripxCartAttributeState._ripx_assignment_user) {
-        setProperty('_ripx_assignment_user', _ripxCartAttributeState._ripx_assignment_user);
+      if (state._ripx_assignment_user) {
+        setProperty('_ripx_assignment_user', state._ripx_assignment_user);
       }
     });
+  }
+
+  function installRipxCartFormObserver() {
+    if (_ripxCartFormObserverInstalled) return;
+    if (typeof MutationObserver === 'undefined') return;
+    var root = document.documentElement || document.body;
+    if (!root) return;
+    _ripxCartFormObserverInstalled = true;
+    var observer = new MutationObserver(function () {
+      if (!_ripxCartAttributeState) return;
+      if (_ripxCartFormObserverTimer) clearTimeout(_ripxCartFormObserverTimer);
+      _ripxCartFormObserverTimer = setTimeout(function () {
+        _ripxCartFormObserverTimer = null;
+        applyRipxStateToCartForms(_ripxCartFormTargetProductIds);
+      }, 200);
+    });
+    try {
+      observer.observe(root, { childList: true, subtree: true });
+    } catch (e) {
+      _ripxCartFormObserverInstalled = false;
+    }
+  }
+
+  function injectPriceTestCartAttributes(testId, variantId, assignmentProof, targetProductIds) {
+    if (!testId || variantId == null || String(variantId).trim() === '') return;
+    var valueShop =
+      (CONFIG.shopDomain && String(CONFIG.shopDomain).trim()) ||
+      (typeof window !== 'undefined' &&
+        window.Shopify &&
+        window.Shopify.shop &&
+        String(window.Shopify.shop).trim()) ||
+      '';
+    _ripxCartAttributeState = getRipxCartAttrsPayload(
+      String(testId),
+      String(variantId),
+      valueShop,
+      assignmentProof
+    );
+    _ripxCartFormTargetProductIds = targetProductIds;
+    installRipxCartAddInterceptors();
+    applyRipxStateToCartForms(targetProductIds);
+    installRipxCartFormObserver();
     if (DEBUG)
-      debugLog('injectPriceTestCartAttributes:', valueTest, valueVariant, valueShop || '(no shop)');
+      debugLog(
+        'injectPriceTestCartAttributes:',
+        String(testId),
+        String(variantId),
+        valueShop || '(no shop)'
+      );
   }
 
   /**
@@ -3427,6 +3606,9 @@
         );
         if (window.RipX) {
           window.RipX.reapplyPriceTests = reapplyPriceTestsOnly;
+          window.RipX.reapplyCartFormRipxProps = function () {
+            applyRipxStateToCartForms(_ripxCartFormTargetProductIds);
+          };
         }
       })();
     }
@@ -3477,6 +3659,7 @@
     trackEvent,
     applyPriceTest,
     reapplyPriceTests: null,
+    reapplyCartFormRipxProps: null,
     version: SCRIPT_VERSION,
   };
   window.ABTestTracker = api;
@@ -3487,6 +3670,9 @@
     window.__RIPX_TEST_HOOKS__.patchCartAddBodyForRipx = patchCartAddBodyForRipx;
     window.__RIPX_TEST_HOOKS__.installRipxCartAddInterceptors = installRipxCartAddInterceptors;
     window.__RIPX_TEST_HOOKS__.isCartAddPath = isCartAddPath;
+    window.__RIPX_TEST_HOOKS__.pathnameFromCartUrl = pathnameFromCartUrl;
+    window.__RIPX_TEST_HOOKS__.debugDescribeCartAddBody = debugDescribeCartAddBody;
+    window.__RIPX_TEST_HOOKS__.looksLikeCartAddNearMiss = looksLikeCartAddNearMiss;
     window.__RIPX_TEST_HOOKS__.previewMode = PREVIEW_MODE;
     window.__RIPX_TEST_HOOKS__.previewTestContext = PREVIEW_TEST_CONTEXT;
     window.__RIPX_TEST_HOOKS__.previewTestId = PREVIEW_TEST_ID;
