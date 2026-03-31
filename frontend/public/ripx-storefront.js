@@ -183,21 +183,68 @@
     window.ripx_consent_callback = cb;
   }
   const URL_PARAMS = new URLSearchParams(window.location.search);
+  // Shopify navigation drops query params; keep preview context sticky across clicks (PDP/collections/cart).
+  const PREVIEW_STORAGE_KEY = '__ripx_preview_ctx_v1__';
+  function readPersistedPreviewCtx() {
+    try {
+      const raw = window.sessionStorage && window.sessionStorage.getItem(PREVIEW_STORAGE_KEY);
+      if (!raw) return null;
+      const obj = JSON.parse(raw);
+      if (!obj || typeof obj !== 'object') return null;
+      return {
+        preview: obj.preview === true || obj.preview === '1',
+        testId: obj.testId ? String(obj.testId) : null,
+        variantId: obj.variantId ? String(obj.variantId) : null,
+        variantName: obj.variantName ? String(obj.variantName) : null,
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+  function writePersistedPreviewCtx(ctx) {
+    try {
+      if (!window.sessionStorage) return;
+      window.sessionStorage.setItem(PREVIEW_STORAGE_KEY, JSON.stringify(ctx || {}));
+    } catch (e) {}
+  }
+  const persistedPreview = readPersistedPreviewCtx();
+
+  const _urlPreview = URL_PARAMS.get('ab_preview') === '1';
+  const _urlPreviewTest = URL_PARAMS.get('ab_preview_test');
+  const _urlPreviewVariantId = URL_PARAMS.get('ab_preview_variant');
+  const _urlPreviewVariantName = URL_PARAMS.get('ab_preview_variant_name');
+
+  // Effective preview inputs: URL wins; otherwise use embedded config; otherwise use persisted session preview.
   const PREVIEW_TEST_ID =
-    URL_PARAMS.get('ab_preview_test') ||
+    _urlPreviewTest ||
     (CONFIG.previewTestId && String(CONFIG.previewTestId)) ||
+    (persistedPreview && persistedPreview.preview ? persistedPreview.testId : null) ||
     null;
   const PREVIEW_VARIANT_ID =
-    URL_PARAMS.get('ab_preview_variant') ||
+    _urlPreviewVariantId ||
     (CONFIG.previewVariantId && String(CONFIG.previewVariantId)) ||
+    (persistedPreview && persistedPreview.preview ? persistedPreview.variantId : null) ||
     null;
   const PREVIEW_VARIANT_NAME =
-    URL_PARAMS.get('ab_preview_variant_name') ||
+    _urlPreviewVariantName ||
     (CONFIG.previewVariantName && String(CONFIG.previewVariantName)) ||
+    (persistedPreview && persistedPreview.preview ? persistedPreview.variantName : null) ||
     null;
+
   // True only when a concrete preview context is active (target test id or runtime preview flag).
   const PREVIEW_TEST_CONTEXT = !!PREVIEW_TEST_ID || !!(CONFIG.previewMode === true);
-  const PREVIEW_MODE = URL_PARAMS.get('ab_preview') === '1' || PREVIEW_TEST_CONTEXT;
+  const PREVIEW_MODE =
+    _urlPreview || PREVIEW_TEST_CONTEXT || !!(persistedPreview && persistedPreview.preview);
+
+  // If URL explicitly enables preview, persist it so clicks keep the same test/variant.
+  if (_urlPreview && (_urlPreviewTest || _urlPreviewVariantId || _urlPreviewVariantName)) {
+    writePersistedPreviewCtx({
+      preview: true,
+      testId: _urlPreviewTest || PREVIEW_TEST_ID || null,
+      variantId: _urlPreviewVariantId || PREVIEW_VARIANT_ID || null,
+      variantName: _urlPreviewVariantName || PREVIEW_VARIANT_NAME || null,
+    });
+  }
   const VISUAL_PICKER_MODE = URL_PARAMS.get('ab_visual_picker') === '1';
   const AB_VISUAL_EDITOR =
     URL_PARAMS.get('ab_visual_editor') === '1' || !!(CONFIG.visualEditor === true);
