@@ -2526,7 +2526,8 @@
       var display = formatShopPrice(priceNum);
       if (!display && priceMode === 'fixed') return;
       containers.forEach(function (container) {
-        var rows = container.querySelectorAll(
+        var rows = querySelectorAllWithShadowRoots(
+          container,
           '[data-product-id="' +
             pid +
             '"], [data-product-id*="' +
@@ -2579,7 +2580,8 @@
                 ? CSS.escape(String(variantIdForCart))
                 : String(variantIdForCart).replace(/"|\\/g, '\\$&');
             containers.forEach(function (container) {
-              var variantRows = container.querySelectorAll(
+              var variantRows = querySelectorAllWithShadowRoots(
+                container,
                 '[data-variant-id="' + escapedVid + '"]'
               );
               variantRows.forEach(function (row) {
@@ -3397,18 +3399,36 @@
     return isCartSurface() || hasCartUiInDom();
   }
 
+  /**
+   * Product ids visible in cart UI only (drawer / cart page), including Shadow DOM.
+   * IMPORTANT: Do not use document-wide `[data-product-id]` — on PDP that matches the main product
+   * and forces applyPriceTestToCart instead of the all-products cart fallback + shadow-aware paint.
+   */
   function getCartVisibleProductTargetIds() {
     var seen = {};
     var out = [];
-    var nodes = document.querySelectorAll(
-      '.cart-item [data-product-id], [data-cart-item] [data-product-id], [data-line-item-key] [data-product-id], [data-product-id]'
-    );
-    nodes.forEach(function (el) {
-      var raw = el && el.getAttribute ? el.getAttribute('data-product-id') : '';
+    var cartRootsSel =
+      '.cart-drawer, cart-drawer, #CartDrawer, .drawer--cart, [data-cart-drawer], #cart-form, form[action*="/cart"], .cart-items, main .cart, .cart__contents, aside.mini-cart';
+    var roots;
+    try {
+      roots = document.querySelectorAll(cartRootsSel);
+    } catch (e) {
+      return [];
+    }
+    if (!roots.length) return [];
+    var lineSel =
+      '.cart-item [data-product-id], .cart-item[data-product-id], [data-cart-item] [data-product-id], [data-cart-item][data-product-id], [data-line-item-key] [data-product-id], [data-product-id]';
+    function considerEl(el) {
+      if (!el || !el.getAttribute) return;
+      var raw = el.getAttribute('data-product-id') || '';
+      if (!raw.trim()) return;
       var pid = toNumericProductId(raw);
       if (!pid || seen[pid]) return;
       seen[pid] = true;
       out.push(toProductGid(raw) || 'gid://shopify/Product/' + pid);
+    }
+    Array.prototype.forEach.call(roots, function (root) {
+      querySelectorAllWithShadowRoots(root, lineSel).forEach(considerEl);
     });
     return out;
   }
