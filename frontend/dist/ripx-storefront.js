@@ -2147,6 +2147,42 @@
     return true;
   }
 
+  /** Dawn / OS 2.0 `cart-drawer` often renders line prices inside Shadow DOM — light-DOM querySelectorAll misses them. */
+  function querySelectorAllWithShadowRoots(root, sel) {
+    var acc = [];
+    function q(node) {
+      if (!node) return;
+      try {
+        if (node.querySelectorAll) {
+          node.querySelectorAll(sel).forEach(function (el) {
+            acc.push(el);
+          });
+        }
+      } catch (e) {}
+    }
+    function walk(n) {
+      if (!n) return;
+      q(n);
+      try {
+        if (n.shadowRoot) walk(n.shadowRoot);
+      } catch (e2) {}
+      try {
+        if (n.children) {
+          for (var i = 0; i < n.children.length; i++) {
+            walk(n.children[i]);
+          }
+        }
+      } catch (e3) {}
+    }
+    walk(root);
+    var seen = new WeakSet();
+    return acc.filter(function (el) {
+      if (!el || seen.has(el)) return false;
+      seen.add(el);
+      return true;
+    });
+  }
+
   /**
    * All-products global fallback: reapply timers and section loads can run this multiple times.
    * We store the original catalog on first paint so deltas are not applied twice to already-adjusted text.
@@ -2166,6 +2202,10 @@
     // Prefer qualified selectors; include Dawn leaves (.price-item__regular) when themes have no .money.
     var sel =
       '.price .money, .product-price .money, [data-product-price], .money, .price-item--regular .price-item__regular, .price-item--regular .price, .price-item__regular, .price-item--regular, .price-item, [data-price], .line-item__price .money, [data-line-item-price], .cart-item__price .money, .cart-item__price';
+    if (scope === 'cart') {
+      sel +=
+        ', .cart-item__price, .cart-item__final-price, td.cart-item__price, .cart__item .price, .cart-item .price-item--regular, .totals__subtotal-value, .totals__footer .totals__value, [data-cart-item-regular-price], [data-cart-item-price]';
+    }
     var roots = [];
     if (scope === 'cart') {
       roots = Array.prototype.slice.call(
@@ -2181,7 +2221,11 @@
     roots.forEach(function (root) {
       if (!root) return;
       try {
-        root.querySelectorAll(sel).forEach(function (el) {
+        var nodes =
+          scope === 'cart'
+            ? querySelectorAllWithShadowRoots(root, sel)
+            : Array.prototype.slice.call(root.querySelectorAll(sel));
+        nodes.forEach(function (el) {
           if (!el) return;
           var tgn = el.tagName && String(el.tagName).toUpperCase();
           if (tgn === 'S' || tgn === 'DEL' || tgn === 'STRIKE') return;
@@ -2234,6 +2278,10 @@
     setTimeout(run, 120);
     setTimeout(run, 450);
     setTimeout(run, 1200);
+    if (scope === 'cart') {
+      setTimeout(run, 2200);
+      setTimeout(run, 4000);
+    }
   }
 
   /**
@@ -4169,6 +4217,19 @@
           typeof shouldRunAllProductsCartFallback === 'function'
             ? shouldRunAllProductsCartFallback()
             : null,
+        cartDrawerOpenShadowRoot: (function () {
+          try {
+            var el = document.querySelector('cart-drawer');
+            return el && el.shadowRoot ? true : el ? false : null;
+          } catch (eCd) {
+            return null;
+          }
+        })(),
+      },
+      checkout: {
+        storefrontScriptRunsOnHostedCheckout: false,
+        note:
+          'checkout.shopify.com does not load the RipX storefront script. The charged total is adjusted via line-item properties (_ripx_*) and the RipX Shopify discount function calling the price-resolve API — not DOM paint.',
       },
       interpret: {
         if_password_page: isPasswordPage
