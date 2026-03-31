@@ -1104,7 +1104,8 @@
         return 'body:string(other)';
       }
       if (typeof Blob !== 'undefined' && body instanceof Blob) return 'body:Blob';
-      if (typeof ArrayBuffer !== 'undefined' && body instanceof ArrayBuffer) return 'body:ArrayBuffer';
+      if (typeof ArrayBuffer !== 'undefined' && body instanceof ArrayBuffer)
+        return 'body:ArrayBuffer';
     } catch (e) {}
     return 'body:' + typeof body;
   }
@@ -1287,7 +1288,11 @@
               var nextInit = init ? Object.assign({}, init) : {};
               if (!nextInit.headers) nextInit.headers = (input && input.headers) || {};
               if (nextInit.body === undefined && input && typeof input !== 'string') {
-                if (typeof FormData !== 'undefined' && input.body && input.body instanceof FormData) {
+                if (
+                  typeof FormData !== 'undefined' &&
+                  input.body &&
+                  input.body instanceof FormData
+                ) {
                   nextInit.body = input.body;
                 } else if (
                   typeof URLSearchParams !== 'undefined' &&
@@ -3314,8 +3319,13 @@
         return;
       }
 
-      if (PREVIEW_MODE && PREVIEW_TEST_ID && PREVIEW_VARIANT_ID) {
-        injectPriceTestCartAttributes(PREVIEW_TEST_ID, PREVIEW_VARIANT_ID, null, null);
+      if (PREVIEW_MODE && PREVIEW_TEST_ID && (PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME)) {
+        injectPriceTestCartAttributes(
+          PREVIEW_TEST_ID,
+          PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME,
+          null,
+          null
+        );
       }
 
       const activeTests = CONFIG.activeTests || [];

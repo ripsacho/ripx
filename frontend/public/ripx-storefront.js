@@ -3319,8 +3319,13 @@
         return;
       }
 
-      if (PREVIEW_MODE && PREVIEW_TEST_ID && PREVIEW_VARIANT_ID) {
-        injectPriceTestCartAttributes(PREVIEW_TEST_ID, PREVIEW_VARIANT_ID, null, null);
+      if (PREVIEW_MODE && PREVIEW_TEST_ID && (PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME)) {
+        injectPriceTestCartAttributes(
+          PREVIEW_TEST_ID,
+          PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME,
+          null,
+          null
+        );
       }
 
       const activeTests = CONFIG.activeTests || [];

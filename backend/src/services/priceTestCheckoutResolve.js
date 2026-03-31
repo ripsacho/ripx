@@ -37,7 +37,7 @@ function isCheckoutSupportedPriceTargetType(targetType) {
   const tt = String(targetType || '')
     .toLowerCase()
     .trim();
-  return tt === 'product' || tt === 'all-products' || tt === 'all_products';
+  return tt === 'product' || tt === 'all-products' || tt === 'all_products' || tt === 'collection';
 }
 
 function parseRoundTo(roundTo) {
@@ -244,6 +244,22 @@ function productInTargetList(test, productGidOrNumeric) {
 }
 
 /**
+ * Collection-targeted price tests store collection GIDs in target_ids, not product ids.
+ * The cart line only has a product id; verifying collection membership would require a Shopify API round-trip.
+ * The storefront only injects _ripx_* for products in the targeted collections, so we treat a valid
+ * assignment + signature on the line as sufficient for checkout alignment (same trust model as manual line props).
+ */
+function lineProductMatchesPriceTestTarget(test, productGidOrNumeric) {
+  const tt = String(test?.target_type || '')
+    .toLowerCase()
+    .trim();
+  if (tt === 'collection') {
+    return true;
+  }
+  return productInTargetList(test, productGidOrNumeric);
+}
+
+/**
  * @param {object} params
  * @param {object} params.test - row from DB (variants, target_ids, type, status, target_type)
  * @param {string} params.assignmentVariantId - value of cart _ripx_variant
@@ -295,7 +311,7 @@ function resolvePriceTestLineDiscount({
   if (!signatureCheck.ok) {
     return { applies: false, reason: signatureCheck.reason || 'invalid_assignment_signature' };
   }
-  if (!productInTargetList(test, productId)) {
+  if (!lineProductMatchesPriceTestTarget(test, productId)) {
     return { applies: false, reason: 'product_not_in_test' };
   }
   const vRow = findTestVariant(test, assignmentVariantId);
@@ -571,4 +587,5 @@ module.exports = {
   getEffectivePriceConfig,
   isPriceTestRowType,
   isPriceTestActiveForCheckout,
+  lineProductMatchesPriceTestTarget,
 };

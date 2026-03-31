@@ -316,6 +316,23 @@ describe('priceTestCheckoutResolve', () => {
     expect(parseFloat(r.discountDecimal, 10)).toBeCloseTo(10, 2);
   });
 
+  it('supports collection target_type at checkout (target_ids are collections, not products)', () => {
+    const test = {
+      ...baseTest,
+      target_type: 'collection',
+      target_ids: ['gid://shopify/Collection/100'],
+    };
+    const r = resolvePriceTestLineDiscount({
+      test,
+      assignmentVariantId: 'var-b',
+      productId: '111',
+      linePresentmentTotal: 29.99,
+      quantity: 1,
+    });
+    expect(r.applies).toBe(true);
+    expect(parseFloat(r.discountDecimal, 10)).toBeCloseTo(10, 2);
+  });
+
   it('allows stopped test in rollout personalization mode', () => {
     const test = {
       ...baseTest,
