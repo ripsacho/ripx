@@ -1988,6 +1988,91 @@
   }
 
   /**
+   * All-products fallback painter for amount/percent price tests.
+   * Some themes don't include data-product-id on listing cards or cart rows, which breaks per-product matching.
+   * For all-products tests with global delta/percent config (no byProduct overrides), we can still compute from
+   * the visible catalog number and repaint.
+   */
+  function canUseAllProductsGlobalFallback(cfg) {
+    if (!cfg || typeof cfg !== 'object') return false;
+    if (cfg.byProduct && typeof cfg.byProduct === 'object' && Object.keys(cfg.byProduct).length > 0)
+      return false;
+    var pm = String(cfg.priceMode || '').toLowerCase();
+    return pm === 'amount' || pm === 'percent';
+  }
+
+  function computeAllProductsAdjustedPrice(catalog, cfg) {
+    if (catalog == null || !isFinite(catalog)) return null;
+    var pm = String(cfg.priceMode || '').toLowerCase();
+    if (pm === 'amount') {
+      var d = parseFloat(cfg.priceDelta, 10);
+      if (isNaN(d)) return null;
+      return Math.max(0, Math.round((catalog + d) * 100) / 100);
+    }
+    if (pm === 'percent') {
+      var p = parseFloat(cfg.pricePercent, 10);
+      if (isNaN(p)) return null;
+      return Math.max(0, Math.round(catalog * (1 - p / 100) * 100) / 100);
+    }
+    return null;
+  }
+
+  function paintAllProductsGlobalPrices(testId, variant, scope) {
+    if (!variant || !variant.config) return;
+    var cfg = variant.config;
+    if (!canUseAllProductsGlobalFallback(cfg)) return;
+    var pm = String(cfg.priceMode || '').toLowerCase();
+    if (pm === 'control') return;
+
+    var cartUi =
+      '.cart-drawer,.cart-notification,#CartDrawer,#mini-cart,.mini-cart,[data-cart-drawer],.drawer--cart,aside.mini-cart,cart-drawer,.header__cart,.site-header__cart,predictive-search';
+    function inCartUi(el) {
+      return el.closest && el.closest(cartUi);
+    }
+    // Reuse the same selector set as other painters.
+    var sel =
+      '.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price .money, .price-item, [data-price], .line-item__price, [data-line-item-price], .cart-item__price .money, .cart-item__price';
+    var roots = [];
+    if (scope === 'cart') {
+      roots = Array.prototype.slice.call(
+        document.querySelectorAll(
+          '.cart-drawer, #CartDrawer, .drawer--cart, [data-cart-drawer], #cart-form, form[action*="/cart"], .cart-items, main .cart'
+        )
+      );
+    } else {
+      roots = [document.querySelector('main') || document.body];
+    }
+    var variantIdForCart = variant.variantId != null ? variant.variantId : variant.id;
+
+    roots.forEach(function (root) {
+      if (!root) return;
+      try {
+        root.querySelectorAll(sel).forEach(function (el) {
+          if (!el) return;
+          if (scope === 'listing' && inCartUi(el)) return;
+          var catalog = parsePriceFromDisplay(el);
+          if (catalog == null) return;
+          var adjusted = computeAllProductsAdjustedPrice(catalog, cfg);
+          if (adjusted == null) return;
+          var roundToVal = parseRoundTo(cfg.roundTo);
+          if (roundToVal > 0) {
+            adjusted = Math.round(adjusted / roundToVal) * roundToVal;
+            adjusted = Math.max(0, Math.round(adjusted * 100) / 100);
+          }
+          var display = formatShopPrice(adjusted);
+          if (!display) return;
+          el.textContent = display;
+          if (variantIdForCart != null && String(variantIdForCart).trim() !== '') {
+            el.setAttribute('data-test-variant', String(variantIdForCart));
+          }
+          el.setAttribute('data-test-id', String(testId));
+          el.setAttribute('data-ripx-price', '1');
+        });
+      } catch (e) {}
+    });
+  }
+
+  /**
    * Apply price test to product cards on collection/homepage/search (non-PDP).
    * Prefers elements with data-product-id / data-variant-id (Intelligems-style tagging) for reliable targeting.
    * Finds [data-product-id] cards matching test targets and paints variant price.
@@ -2173,6 +2258,10 @@
         el.setAttribute('data-ripx-price', '1');
       });
     });
+
+    // If the theme lacks data-product-id entirely, try a safe all-products fallback for amount/percent.
+    // (fixed mode cannot be inferred without knowing which product it belongs to).
+    paintAllProductsGlobalPrices(testId, variant, 'listing');
   }
 
   /**
@@ -2319,6 +2408,26 @@
         }
       }
     }
+  }
+
+  function applyPriceTestToCartAllProductsFallback(testId, variant) {
+    if (!variant) return;
+    if (!variant.config) {
+      injectPreviewCartAttributesWhenConfigMissing(testId, variant);
+      return;
+    }
+    // Ensure line props exist for checkout, even if we can't match rows by product id.
+    var variantIdForCart = variant.variantId != null ? variant.variantId : variant.id;
+    if (variantIdForCart != null && String(variantIdForCart).trim() !== '') {
+      window.__RIPX_PRICE_TEST_CTX__ = { testId: testId, variantId: variantIdForCart };
+      injectPriceTestCartAttributes(
+        testId,
+        variantIdForCart,
+        getAssignmentProofFromVariant(variant),
+        null
+      );
+    }
+    paintAllProductsGlobalPrices(testId, variant, 'cart');
   }
 
   function parseCombinedCode(code) {
@@ -3483,6 +3592,8 @@
                       var cartTids = getCartVisibleProductTargetIds();
                       if (cartTids.length) {
                         applyPriceTestToCart(test.id, variant, cartTids);
+                      } else if (isCartSurface()) {
+                        applyPriceTestToCartAllProductsFallback(test.id, variant);
                       }
                     }
                   }
@@ -3569,6 +3680,8 @@
                 var cartTids = getCartVisibleProductTargetIds();
                 if (cartTids.length) {
                   applyPriceTestToCart(test.id, variant, cartTids);
+                } else if (isCartSurface()) {
+                  applyPriceTestToCartAllProductsFallback(test.id, variant);
                 }
               }
             });
