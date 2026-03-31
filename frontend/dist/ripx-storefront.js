@@ -1940,6 +1940,8 @@
       return (
         document.querySelector('product-info[data-product-id="' + pid + '"]') ||
         document.querySelector('.product-single[data-product-id="' + pid + '"]') ||
+        document.querySelector('main product-info') ||
+        document.querySelector('product-info') ||
         document.querySelector('[data-section-type="product-template"]') ||
         document.querySelector('#MainProduct-template') ||
         document.querySelector('main .product[data-product-id="' + pid + '"]') ||
@@ -1952,6 +1954,8 @@
       var seen = new WeakSet();
       function paintEl(el) {
         if (!el || seen.has(el) || inCartUi(el)) return;
+        var tagU = el.tagName && String(el.tagName).toUpperCase();
+        if (tagU === 'S' || tagU === 'DEL' || tagU === 'STRIKE') return;
         // Dawn/OS2: do not replace outer .price blocks that contain real leaf nodes (avoids one-node wipe).
         try {
           if (el.querySelector) {
@@ -2166,7 +2170,7 @@
     if (scope === 'cart') {
       roots = Array.prototype.slice.call(
         document.querySelectorAll(
-          '.cart-drawer, #CartDrawer, .drawer--cart, [data-cart-drawer], #cart-form, form[action*="/cart"], .cart-items, main .cart'
+          '.cart-drawer, cart-drawer, #CartDrawer, .drawer--cart, [data-cart-drawer], #cart-form, form[action*="/cart"], .cart-items, main .cart'
         )
       );
     } else {
@@ -2179,6 +2183,8 @@
       try {
         root.querySelectorAll(sel).forEach(function (el) {
           if (!el) return;
+          var tgn = el.tagName && String(el.tagName).toUpperCase();
+          if (tgn === 'S' || tgn === 'DEL' || tgn === 'STRIKE') return;
           if (!isLeafPricePaintNode(el)) return;
           if (scope === 'listing' && inCartUi(el)) return;
           var catalog = null;
@@ -3328,6 +3334,21 @@
     return p === '/cart' || p.indexOf('/cart/') === 0;
   }
 
+  /** Cart drawer / mini-cart exists in DOM (even on PDP). Used so all-products price paint runs outside /cart. */
+  function hasCartUiInDom() {
+    try {
+      return !!document.querySelector(
+        '.cart-drawer, cart-drawer, #CartDrawer, [data-cart-drawer], #cart-form, form[action*="/cart"], .cart-items, .cart__contents, aside.mini-cart'
+      );
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function shouldRunAllProductsCartFallback() {
+    return isCartSurface() || hasCartUiInDom();
+  }
+
   function getCartVisibleProductTargetIds() {
     var seen = {};
     var out = [];
@@ -3812,7 +3833,7 @@
                       var cartTids = getCartVisibleProductTargetIds();
                       if (cartTids.length) {
                         applyPriceTestToCart(test.id, variant, cartTids);
-                      } else if (isCartSurface()) {
+                      } else if (shouldRunAllProductsCartFallback()) {
                         applyPriceTestToCartAllProductsFallback(test.id, variant);
                       }
                     }
@@ -3900,7 +3921,7 @@
                 var cartTids = getCartVisibleProductTargetIds();
                 if (cartTids.length) {
                   applyPriceTestToCart(test.id, variant, cartTids);
-                } else if (isCartSurface()) {
+                } else if (shouldRunAllProductsCartFallback()) {
                   applyPriceTestToCartAllProductsFallback(test.id, variant);
                 }
               }
@@ -4143,6 +4164,11 @@
       diagnostics: {
         getCurrentProductId: getCurrentProductId(),
         hasProductJson: !!getProductJson(),
+        hasCartUiInDom: typeof hasCartUiInDom === 'function' ? hasCartUiInDom() : null,
+        shouldRunAllProductsCartFallback:
+          typeof shouldRunAllProductsCartFallback === 'function'
+            ? shouldRunAllProductsCartFallback()
+            : null,
       },
       interpret: {
         if_password_page: isPasswordPage
