@@ -259,11 +259,27 @@ function normalizeMergedPriceConfig(baseCfg, mergedCfg) {
   return merged;
 }
 
+/** Align API/DB snake_case with storefront + checkout (camelCase). */
+function normalizePriceConfigShape(config) {
+  if (!config || typeof config !== 'object') {
+    return config;
+  }
+  const c = { ...config };
+  if (!c.priceMode && c.price_mode) {c.priceMode = c.price_mode;}
+  if (c.priceDelta === undefined && c.price_delta !== undefined) {c.priceDelta = c.price_delta;}
+  if (c.pricePercent === undefined && c.price_percent !== undefined)
+    {c.pricePercent = c.price_percent;}
+  if (!c.priceBase && c.price_base) {c.priceBase = c.price_base;}
+  if (c.roundTo === undefined && c.round_to !== undefined) {c.roundTo = c.round_to;}
+  if (typeof c.priceMode === 'string') {c.priceMode = c.priceMode.toLowerCase();}
+  return c;
+}
+
 function normalizePreviewVariantConfig(config) {
   if (!config || typeof config !== 'object') {
     return {};
   }
-  const normalized = { ...config };
+  const normalized = normalizePriceConfigShape({ ...config });
   if (normalized.byProduct && typeof normalized.byProduct === 'object') {
     const nextByProduct = {};
     for (const [productId, productCfg] of Object.entries(normalized.byProduct)) {

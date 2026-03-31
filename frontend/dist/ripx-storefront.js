@@ -470,10 +470,10 @@
     ) {
       const previewVariant = await getPreviewVariantSingleFlight(testId);
       if (previewVariant) {
-        return {
+        return normalizeVariantForStorefront({
           ...previewVariant,
           isPreview: true,
-        };
+        });
       }
 
       if (DEBUG) {
@@ -497,7 +497,7 @@
         if (fromCache === undefined || fromCache === null) {
           fromCache = cache[testId];
         }
-        if (fromCache !== undefined && fromCache !== null) return fromCache;
+        if (fromCache !== undefined && fromCache !== null) return normalizeVariantForStorefront(fromCache);
       }
     } catch (e) {
       console.error('Error getting variant from cache:', e);
@@ -556,7 +556,7 @@
 
       if (response.ok) {
         const data = await response.json();
-        return data.variant;
+        return normalizeVariantForStorefront(data.variant);
       }
     } catch (error) {
       console.error('Error getting variant:', error);
@@ -628,7 +628,7 @@
 
       if (response.ok) {
         const data = await response.json();
-        return data.variant;
+        return normalizeVariantForStorefront(data.variant);
       }
     } catch (error) {
       console.error('Error getting preview variant:', error);
@@ -1580,6 +1580,26 @@
     return { sig: sig, ts: ts, user: user };
   }
 
+  /** API/DB may send snake_case; storefront + getEffectivePriceConfig expect camelCase. */
+  function normalizePriceConfigKeys(cfg) {
+    if (!cfg || typeof cfg !== 'object') return cfg;
+    var out = Object.assign({}, cfg);
+    if (!out.priceMode && out.price_mode) out.priceMode = out.price_mode;
+    if (out.priceDelta === undefined && out.price_delta !== undefined) out.priceDelta = out.price_delta;
+    if (out.pricePercent === undefined && out.price_percent !== undefined) out.pricePercent = out.price_percent;
+    if (!out.priceBase && out.price_base) out.priceBase = out.price_base;
+    if (out.roundTo === undefined && out.round_to !== undefined) out.roundTo = out.round_to;
+    if (typeof out.priceMode === 'string') out.priceMode = out.priceMode.toLowerCase();
+    if (out.priceMode === 'delta' || out.priceMode === 'dollar') out.priceMode = 'amount';
+    return out;
+  }
+
+  function normalizeVariantForStorefront(variant) {
+    if (!variant || typeof variant !== 'object') return variant;
+    if (!variant.config) return variant;
+    return Object.assign({}, variant, { config: normalizePriceConfigKeys(variant.config) });
+  }
+
   function hasModeValue(cfg, mode) {
     if (!cfg || typeof cfg !== 'object') return false;
     var m = String(mode || '').toLowerCase();
@@ -1975,6 +1995,13 @@
     if (typeof s !== 'string') return null;
     s = s.trim().replace(/\s/g, '');
     if (!s) return null;
+    // "Regularprice$600.00" / stacked sale+compare — prefer last $… group when $ is present.
+    if (s.indexOf('$') !== -1) {
+      var dollarGroups = s.match(/\$[\d,]+(?:\.\d{2})?/g);
+      if (dollarGroups && dollarGroups.length) {
+        s = dollarGroups[dollarGroups.length - 1].replace(/\s/g, '');
+      }
+    }
     var lastComma = s.lastIndexOf(',');
     var lastDot = s.lastIndexOf('.');
     var normalized =
@@ -2012,11 +2039,22 @@
     if (pm === 'percent') {
       var p = parseFloat(cfg.pricePercent, 10);
       if (isNaN(p)) return null;
-      return Math.max(0, Math.round((catalog * (1 - p / 100)) * 100) / 100);
+      return Math.max(0, Math.round(catalog * (1 - p / 100) * 100) / 100);
     }
     return null;
   }
 
+  /** Prefer leaf nodes so we do not parse concatenated sale/compare text from a parent .price. */
+  function isLeafPricePaintNode(el) {
+    if (!el || !el.querySelector) return true;
+    var inner = el.querySelector('.money');
+    return !inner || inner === el;
+  }
+
+  /**
+   * All-products global fallback: reapply timers and section loads can run this multiple times.
+   * We store the original catalog on first paint so deltas are not applied twice to already-adjusted text.
+   */
   function paintAllProductsGlobalPrices(testId, variant, scope) {
     if (!variant || !variant.config) return;
     var cfg = variant.config;
@@ -2029,9 +2067,9 @@
     function inCartUi(el) {
       return el.closest && el.closest(cartUi);
     }
-    // Reuse the same selector set as other painters.
+    // Prefer qualified selectors; avoid bare .price so we target leaf money nodes when possible.
     var sel =
-      '.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price .money, .price-item, [data-price], .line-item__price, [data-line-item-price], .cart-item__price .money, .cart-item__price';
+      '.price .money, .product-price .money, [data-product-price], .money, .price-item--regular, .price-item__regular, .price-item, [data-price], .line-item__price .money, [data-line-item-price], .cart-item__price .money, .cart-item__price';
     var roots = [];
     if (scope === 'cart') {
       roots = Array.prototype.slice.call(
@@ -2049,8 +2087,19 @@
       try {
         root.querySelectorAll(sel).forEach(function (el) {
           if (!el) return;
+          if (!isLeafPricePaintNode(el)) return;
           if (scope === 'listing' && inCartUi(el)) return;
-          var catalog = parsePriceFromDisplay(el);
+          var catalog = null;
+          var srcAttr = el.getAttribute('data-ripx-catalog-src');
+          if (srcAttr != null && String(srcAttr).trim() !== '') {
+            var parsedSrc = parseFloat(String(srcAttr).trim(), 10);
+            catalog = isNaN(parsedSrc) ? null : parsedSrc;
+          } else {
+            catalog = parsePriceFromDisplay(el);
+            if (catalog != null) {
+              el.setAttribute('data-ripx-catalog-src', String(catalog));
+            }
+          }
           if (catalog == null) return;
           var adjusted = computeAllProductsAdjustedPrice(catalog, cfg);
           if (adjusted == null) return;
@@ -2070,6 +2119,23 @@
         });
       } catch (e) {}
     });
+  }
+
+  /** Themes hydrate cards/cart after first paint — schedule a few passes without stacking duplicate deltas. */
+  function schedulePaintAllProductsGlobalPrices(testId, variant, scope) {
+    paintAllProductsGlobalPrices(testId, variant, scope);
+    var run = function () {
+      paintAllProductsGlobalPrices(testId, variant, scope);
+    };
+    try {
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(run);
+      }
+    } catch (e1) {}
+    setTimeout(run, 0);
+    setTimeout(run, 120);
+    setTimeout(run, 450);
+    setTimeout(run, 1200);
   }
 
   /**
@@ -2261,7 +2327,7 @@
 
     // If the theme lacks data-product-id entirely, try a safe all-products fallback for amount/percent.
     // (fixed mode cannot be inferred without knowing which product it belongs to).
-    paintAllProductsGlobalPrices(testId, variant, 'listing');
+    schedulePaintAllProductsGlobalPrices(testId, variant, 'listing');
   }
 
   /**
@@ -2427,7 +2493,7 @@
         null
       );
     }
-    paintAllProductsGlobalPrices(testId, variant, 'cart');
+    schedulePaintAllProductsGlobalPrices(testId, variant, 'cart');
   }
 
   function parseCombinedCode(code) {
