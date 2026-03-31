@@ -1888,6 +1888,9 @@
     if (pid) {
       specificSelectors.push(
         '.product-price[data-product-id="' + pid + '"]',
+        // Dawn leaf nodes (some themes only use price-item--regular without price-item__regular)
+        '[data-product-id="' + pid + '"] .price-item--regular',
+        'product-info[data-product-id="' + pid + '"] .price-item--regular',
         '[data-product-id="' + pid + '"] .price-item--regular .price-item__regular',
         '[data-product-id="' + pid + '"] .price-item--regular .price',
         '[data-product-id="' + pid + '"] .price-item__regular',
@@ -1911,11 +1914,15 @@
     // Dawn / OS 2.0 themes often use .price-item__regular with no .money — paint those leaves first.
     // Avoid `.price--large` / outer `.price` wrappers: they match one container and wipe inner markup (one painted node).
     var broadSelectors = [
+      // Dawn / OS 2.0 leaves (many themes have no .money)
+      '.price-item--regular',
       '.price-item--regular .price-item__regular',
       '.price-item--regular .price',
       '.price-item__regular',
+      '.price-item--sale',
       '.price-item--sale .price-item__sale .price',
       '.price-item--sale .price-item__sale',
+      // Legacy / other themes
       '.product__price',
       '.product-single__price',
       '#ProductPrice',
