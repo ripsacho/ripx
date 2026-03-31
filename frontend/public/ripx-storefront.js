@@ -1881,11 +1881,14 @@
     if (pid) {
       specificSelectors.push(
         '.product-price[data-product-id="' + pid + '"]',
-        '[data-product-id="' + pid + '"] .price',
-        '[data-product-id="' + pid + '"] .product__price',
+        '[data-product-id="' + pid + '"] .price-item--regular .price-item__regular',
         '[data-product-id="' + pid + '"] .price-item--regular .price',
         '[data-product-id="' + pid + '"] .price-item__regular',
+        '[data-product-id="' + pid + '"] .product__price',
         '[data-product-id="' + pid + '"] [data-price-container] .money',
+        'product-info[data-product-id="' + pid + '"] .price-item__regular',
+        'product-info[data-product-id="' + pid + '"] .price-item--regular .price',
+        '[data-product-id="' + pid + '"] .price',
         'product-info[data-product-id="' + pid + '"] .price',
         'product-price[data-product-id="' + pid + '"]'
       );
@@ -1898,18 +1901,24 @@
       );
     }
 
+    // Dawn / OS 2.0 themes often use .price-item__regular with no .money — paint those leaves first.
+    // Avoid `.price--large` / outer `.price` wrappers: they match one container and wipe inner markup (one painted node).
     var broadSelectors = [
+      '.price-item--regular .price-item__regular',
+      '.price-item--regular .price',
+      '.price-item__regular',
+      '.price-item--sale .price-item__sale .price',
+      '.price-item--sale .price-item__sale',
       '.product__price',
       '.product-single__price',
       '#ProductPrice',
       '#productPrice',
-      '.product .price:not(.price--compare)',
+      '.product .price:not(.price--compare):not(.price--large)',
       '.price-item--sale .price-item__sale .money',
       '.price-item--regular .price-item__regular .money',
       '[data-product-price]',
       '.product-price .money',
       'sale-price .money',
-      '.price--large',
       'span[data-type="price"]',
     ];
 
@@ -1929,6 +1938,16 @@
       var seen = new WeakSet();
       function paintEl(el) {
         if (!el || seen.has(el) || inCartUi(el)) return;
+        // Dawn/OS2: do not replace outer .price blocks that contain real leaf nodes (avoids one-node wipe).
+        try {
+          if (el.querySelector) {
+            var dawnLeaf =
+              el.querySelector('.price-item__regular') ||
+              el.querySelector('.price-item--sale .price-item__sale .price') ||
+              el.querySelector('.price-item--sale .price-item__sale');
+            if (dawnLeaf && dawnLeaf !== el) return;
+          }
+        } catch (e0) {}
         seen.add(el);
         // Avoid continuous mutation churn by writing only when value changed.
         if (el.textContent !== currentDisplay) {
@@ -2094,11 +2113,20 @@
     return null;
   }
 
-  /** Prefer leaf nodes so we do not parse concatenated sale/compare text from a parent .price. */
+  /**
+   * Prefer leaf nodes so we do not parse concatenated sale/compare text from a parent.
+   * Dawn themes often omit `.money` and use `.price-item__regular` inside `.price-item--regular`.
+   */
   function isLeafPricePaintNode(el) {
     if (!el || !el.querySelector) return true;
-    var inner = el.querySelector('.money');
-    return !inner || inner === el;
+    var innerMoney = el.querySelector('.money');
+    if (innerMoney && innerMoney !== el) return false;
+    var innerDawn =
+      el.querySelector('.price-item__regular') ||
+      el.querySelector('.price-item--sale .price') ||
+      el.querySelector('.price-item--regular .price:not(.price--compare)');
+    if (innerDawn && innerDawn !== el) return false;
+    return true;
   }
 
   /**
@@ -2117,9 +2145,9 @@
     function inCartUi(el) {
       return el.closest && el.closest(cartUi);
     }
-    // Prefer qualified selectors; avoid bare .price so we target leaf money nodes when possible.
+    // Prefer qualified selectors; include Dawn leaves (.price-item__regular) when themes have no .money.
     var sel =
-      '.price .money, .product-price .money, [data-product-price], .money, .price-item--regular, .price-item__regular, .price-item, [data-price], .line-item__price .money, [data-line-item-price], .cart-item__price .money, .cart-item__price';
+      '.price .money, .product-price .money, [data-product-price], .money, .price-item--regular .price-item__regular, .price-item--regular .price, .price-item__regular, .price-item--regular, .price-item, [data-price], .line-item__price .money, [data-line-item-price], .cart-item__price .money, .cart-item__price';
     var roots = [];
     if (scope === 'cart') {
       roots = Array.prototype.slice.call(
@@ -3886,6 +3914,66 @@
     }
   }
 
+  /**
+   * One-shot debug bundle: URL vs session preview, runtime config, getVariant result, DOM paint signals.
+   * @param {string} [testId] - Defaults to preview test id from URL/session when omitted.
+   * @returns {Promise<object>}
+   */
+  async function debugStatus(testId) {
+    if (!hasValidConfig) {
+      return { ok: false, error: 'no_valid_config' };
+    }
+    var tid =
+      testId != null && String(testId).trim() !== ''
+        ? String(testId).trim()
+        : PREVIEW_TEST_ID || null;
+    var variant = null;
+    var variantError = null;
+    try {
+      variant = tid ? await getVariant(tid) : null;
+    } catch (e) {
+      variantError = e && (e.message || String(e));
+    }
+    var sp = new URLSearchParams(window.location.search || '');
+    var sess = null;
+    try {
+      sess = window.sessionStorage && window.sessionStorage.getItem('__ripx_preview_ctx_v1__');
+    } catch (e2) {
+      sess = null;
+    }
+    return {
+      ok: true,
+      version: SCRIPT_VERSION,
+      href: window.location.href,
+      pathname: window.location.pathname || '',
+      runtime: {
+        apiUrl: CONFIG.apiUrl,
+        shopDomain: CONFIG.shopDomain,
+        activeTestsCount: (CONFIG.activeTests || []).length,
+      },
+      preview: {
+        mode: PREVIEW_MODE,
+        testContext: PREVIEW_TEST_CONTEXT,
+        testId: PREVIEW_TEST_ID,
+        variantId: PREVIEW_VARIANT_ID,
+        variantName: PREVIEW_VARIANT_NAME,
+        urlParams: {
+          ab_preview: sp.get('ab_preview'),
+          ab_preview_test: sp.get('ab_preview_test'),
+          ab_preview_variant: sp.get('ab_preview_variant'),
+          ab_preview_variant_name: sp.get('ab_preview_variant_name'),
+        },
+        sessionStorage: sess,
+      },
+      requestedTestId: tid,
+      variant: variant,
+      variantError: variantError,
+      dom: {
+        dataRipxPriceCount: document.querySelectorAll('[data-ripx-price="1"]').length,
+      },
+    };
+  }
+
   // Export for use in other scripts (version for support/debugging)
   const api = {
     getVariant,
@@ -3894,6 +3982,7 @@
     applyPriceTest,
     reapplyPriceTests: null,
     reapplyCartFormRipxProps: null,
+    debugStatus,
     version: SCRIPT_VERSION,
   };
   window.ABTestTracker = api;

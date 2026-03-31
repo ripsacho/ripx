@@ -5,6 +5,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { Page, Layout, Modal, Text, Icon, BlockStack, Checkbox } from '@shopify/polaris';
 import {
   ChartLineIcon,
+  ClipboardIcon,
   DeleteIcon,
   DuplicateIcon,
   ExportIcon,
@@ -61,6 +62,8 @@ function TestDetail() {
   const [rolloutDuration, setRolloutDuration] = useState(7);
   const [pageTitle, setPageTitle] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
+  const [idsModalOpen, setIdsModalOpen] = useState(false);
+  const [copyToast, setCopyToast] = useState(null);
   const [preLaunchOpen, setPreLaunchOpen] = useState(false);
   const [preLaunchChecked, setPreLaunchChecked] = useState({
     hypothesis: false,
@@ -248,6 +251,32 @@ function TestDetail() {
     }
   };
 
+  const handleCopyValue = useCallback(async (raw, label) => {
+    const text = raw === null || raw === undefined ? '' : String(raw);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyToast(`${label} copied`);
+      setTimeout(() => setCopyToast(null), 2200);
+    } catch {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        setCopyToast(`${label} copied`);
+        setTimeout(() => setCopyToast(null), 2200);
+      } catch {
+        setCopyToast('Could not copy');
+        setTimeout(() => setCopyToast(null), 2200);
+      }
+    }
+  }, []);
+
   const handleClone = async () => {
     setActionLoading(true);
     setErrorMessage(null);
@@ -383,6 +412,96 @@ function TestDetail() {
         onClose={() => setSuccessMessage(null)}
         duration={3000}
       />
+      <Toast
+        message={copyToast}
+        type="success"
+        onClose={() => setCopyToast(null)}
+        duration={2200}
+      />
+      <Modal
+        open={idsModalOpen}
+        onClose={() => setIdsModalOpen(false)}
+        title="Test & variant IDs"
+        secondaryActions={[
+          {
+            content: 'Close',
+            onAction: () => setIdsModalOpen(false),
+          },
+        ]}
+      >
+        <Modal.Section>
+          <BlockStack gap="400">
+            <Text variant="bodySm" tone="subdued" as="p">
+              Click any value to copy it to the clipboard. Use these IDs in APIs, scripts, or
+              support tickets.
+            </Text>
+            <div className={styles.idsModalSection}>
+              <Text variant="headingSm" as="h3">
+                Test ID
+              </Text>
+              <button
+                type="button"
+                className={styles.idsModalCopyValue}
+                onClick={() => handleCopyValue(test?.id, 'Test ID')}
+                title="Copy test ID"
+              >
+                {test?.id !== undefined && test?.id !== null ? String(test.id) : '—'}
+              </button>
+            </div>
+            <div className={styles.idsModalSection}>
+              <Text variant="headingSm" as="h3">
+                Variants
+              </Text>
+              {Array.isArray(test?.variants) && test.variants.length > 0 ? (
+                <BlockStack gap="300">
+                  {test.variants.map((v, index) => {
+                    const displayName =
+                      (typeof v?.name === 'string'
+                        ? v.name.trim()
+                        : String(v?.name ?? '').trim()) || `Variant ${index + 1}`;
+                    const vid = v?.id !== undefined && v?.id !== null ? String(v.id) : '';
+                    return (
+                      <div key={`${vid}-${index}`} className={styles.idsModalVariantCard}>
+                        <Text variant="bodySm" fontWeight="semibold" as="p">
+                          {displayName}
+                        </Text>
+                        <div className={styles.idsModalVariantRows}>
+                          <div className={styles.idsModalLabelRow}>
+                            <span className={styles.idsModalFieldLabel}>Name</span>
+                            <button
+                              type="button"
+                              className={styles.idsModalCopyValue}
+                              onClick={() => handleCopyValue(displayName, 'Variant name')}
+                              title="Copy variant name"
+                            >
+                              {displayName}
+                            </button>
+                          </div>
+                          <div className={styles.idsModalLabelRow}>
+                            <span className={styles.idsModalFieldLabel}>Variant ID</span>
+                            <button
+                              type="button"
+                              className={styles.idsModalCopyValue}
+                              onClick={() => handleCopyValue(vid || displayName, 'Variant ID')}
+                              title="Copy variant ID"
+                            >
+                              {vid || '—'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </BlockStack>
+              ) : (
+                <Text variant="bodySm" tone="subdued" as="p">
+                  No variants on this test yet.
+                </Text>
+              )}
+            </div>
+          </BlockStack>
+        </Modal.Section>
+      </Modal>
       <Modal
         open={deleteModal}
         onClose={() => setDeleteModal(false)}
@@ -602,6 +721,15 @@ function TestDetail() {
                       >
                         <Icon source={ExportIcon} />
                         Export
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.detailSecondaryBtn}
+                        onClick={() => setIdsModalOpen(true)}
+                        title="View test ID and variant IDs; click a value to copy"
+                      >
+                        <Icon source={ClipboardIcon} />
+                        Test &amp; variant IDs
                       </button>
                       {test.type === 'offer' && (
                         <button
