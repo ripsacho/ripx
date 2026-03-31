@@ -3599,6 +3599,14 @@
       (async function runWithPreviewTestMerge() {
         var testsToRun = activeTests.slice();
         if (PREVIEW_MODE && PREVIEW_TEST_ID) {
+          var mergeMeta = {
+            previewTestId: String(PREVIEW_TEST_ID),
+            hadTestInEmbeddedConfig: testsToRun.some(function (t) {
+              return String(t.id) === String(PREVIEW_TEST_ID);
+            }),
+            previewStorefrontTestFetched: false,
+            usedSyntheticFallback: false,
+          };
           var hasPreview = testsToRun.some(function (t) {
             return String(t.id) === String(PREVIEW_TEST_ID);
           });
@@ -3606,6 +3614,7 @@
             var extraTest = await fetchPreviewStorefrontTestShape(PREVIEW_TEST_ID);
             if (extraTest) {
               testsToRun.push(extraTest);
+              mergeMeta.previewStorefrontTestFetched = true;
             } else if (DEBUG) {
               debugLog(
                 'Preview: test not in activeTests and preview-storefront-test fetch failed — is the test saved for this shop? Open DevTools → Network for /track/preview-storefront-test.'
@@ -3625,8 +3634,12 @@
               targetIds: null,
               targetId: null,
             });
+            mergeMeta.usedSyntheticFallback = true;
           }
           CONFIG.activeTests = testsToRun;
+          try {
+            window.__RIPX_PREVIEW_MERGE__ = mergeMeta;
+          } catch (eMerge) {}
         }
         var guardEnabled = hasAntiFlickerEligibleTests(testsToRun);
         if (guardEnabled) installAntiFlickerGuard();
@@ -3936,13 +3949,18 @@
   }
 
   /**
-   * One-shot debug bundle: URL vs session preview, runtime config, getVariant result, DOM paint signals.
-   * @param {string} [testId] - Defaults to preview test id from URL/session when omitted.
+   * One-shot debug bundle: URL vs session preview, runtime config, API probes, getVariant, DOM/theme probes.
+   * Call after load: await window.RipX.debugStatus('uuid') or await window.RipX.debugStatus()
+   * @param {string} [testId]
    * @returns {Promise<object>}
    */
   async function debugStatus(testId) {
     if (!hasValidConfig) {
-      return { ok: false, error: 'no_valid_config' };
+      return {
+        ok: false,
+        error: 'no_valid_config',
+        hint: 'AB_TEST_RUNTIME_CONFIG.apiUrl missing — script not injected or blocked.',
+      };
     }
     var tid =
       testId != null && String(testId).trim() !== ''
@@ -3962,15 +3980,91 @@
     } catch (e2) {
       sess = null;
     }
+
+    var pathLower = (window.location.pathname || '').toLowerCase();
+    var isPdp =
+      pathLower.indexOf('/products/') !== -1 && pathLower.length > '/products/'.length + 1;
+    var isPasswordPage = pathLower.indexOf('/password') !== -1;
+
+    var network = { preview: null, previewStorefrontTest: null };
+    if (tid && CONFIG.apiUrl) {
+      try {
+        var pp = new URLSearchParams();
+        pp.set('test_id', tid);
+        appendTrackTenantParams(pp);
+        if (PREVIEW_VARIANT_ID) pp.set('variant_id', PREVIEW_VARIANT_ID);
+        if (PREVIEW_VARIANT_NAME) pp.set('variant_name', PREVIEW_VARIANT_NAME);
+        var uid = getUserId();
+        if (uid) pp.set('user_id', String(uid));
+        var rp = await fetchWithTimeout(
+          CONFIG.apiUrl + '/track/preview?' + pp.toString(),
+          { method: 'GET' },
+          8000
+        );
+        network.preview = { status: rp.status, ok: rp.ok };
+      } catch (ep) {
+        network.preview = { error: ep && (ep.message || String(ep)) };
+      }
+      try {
+        var ps = new URLSearchParams();
+        ps.set('test_id', tid);
+        appendTrackTenantParams(ps);
+        var rs = await fetchWithTimeout(
+          CONFIG.apiUrl + '/track/preview-storefront-test?' + ps.toString(),
+          { method: 'GET' },
+          8000
+        );
+        network.previewStorefrontTest = { status: rs.status, ok: rs.ok };
+      } catch (es) {
+        network.previewStorefrontTest = { error: es && (es.message || String(es)) };
+      }
+    }
+
+    var scripts = [];
+    try {
+      var list = document.querySelectorAll('script[src]');
+      for (var si = 0; si < list.length; si++) {
+        var src = list[si].getAttribute('src') || '';
+        if (
+          src.indexOf('ripx') !== -1 ||
+          src.indexOf('track/script') !== -1 ||
+          src.indexOf('echologyx') !== -1
+        ) {
+          scripts.push(src);
+        }
+      }
+    } catch (eScr) {}
+
+    var activeTestsSummary = [];
+    try {
+      (CONFIG.activeTests || []).forEach(function (t) {
+        if (!t) return;
+        activeTestsSummary.push({
+          id: t.id,
+          type: t.type,
+          targetType: t.targetType || t.target_type,
+        });
+      });
+    } catch (eAct) {}
+
     return {
       ok: true,
       version: SCRIPT_VERSION,
+      loaded: !!window.__RIPX_LOADED__,
       href: window.location.href,
       pathname: window.location.pathname || '',
+      isPasswordPage: isPasswordPage,
+      pageKind: isPdp ? 'pdp' : pathLower === '/' || pathLower === '' ? 'home' : 'other',
+      consent: {
+        consentRequired: consentRequired,
+        hasConsent: hasConsent(),
+        bypassPreview: !!(PREVIEW_TEST_ID && (PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME)),
+      },
       runtime: {
         apiUrl: CONFIG.apiUrl,
         shopDomain: CONFIG.shopDomain,
         activeTestsCount: (CONFIG.activeTests || []).length,
+        activeTestsSummary: activeTestsSummary,
       },
       preview: {
         mode: PREVIEW_MODE,
@@ -3985,12 +4079,37 @@
           ab_preview_variant_name: sp.get('ab_preview_variant_name'),
         },
         sessionStorage: sess,
+        merge:
+          typeof window.__RIPX_PREVIEW_MERGE__ === 'object' ? window.__RIPX_PREVIEW_MERGE__ : null,
+      },
+      ripXApi: {
+        reapplyPriceTestsType: window.RipX ? typeof window.RipX.reapplyPriceTests : 'n/a',
       },
       requestedTestId: tid,
       variant: variant,
       variantError: variantError,
+      network,
+      scriptSrcHints: scripts,
       dom: {
         dataRipxPriceCount: document.querySelectorAll('[data-ripx-price="1"]').length,
+        priceItemRegular: document.querySelectorAll('.price-item--regular').length,
+        money: document.querySelectorAll('.money').length,
+        productJsonScript: !!document.querySelector(
+          '#ProductJson, script[type="application/json"][data-product-json], script[data-section-type="product"]'
+        ),
+      },
+      interpret: {
+        if_password_page: isPasswordPage
+          ? 'RipX does not run on /password — enter the store first.'
+          : null,
+        if_preview_ok_but_no_paint:
+          variant && variant.isPreview && variant.config && !isPasswordPage
+            ? 'Variant OK — if dataRipxPriceCount is 0, theme selectors may not match; check dom.priceItemRegular vs .money.'
+            : null,
+        if_network_preview_not_ok:
+          network.preview && network.preview.status && network.preview.status >= 400
+            ? 'GET /track/preview failed — tenant, test id, or variant params.'
+            : null,
       },
     };
   }

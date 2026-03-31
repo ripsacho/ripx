@@ -368,6 +368,48 @@ router.use(blockListCheck);
 router.use(maintenanceCheck);
 
 /**
+ * GET /api/track/storefront-script-health
+ * Ops / debugging: confirms the deployed server is reading `shopify/storefront-script.js` and shows size + feature flags.
+ * No shop param required.
+ */
+router.get(
+  '/storefront-script-health',
+  asyncHandler(async (req, res) => {
+    const scriptPath = getStorefrontScriptPath();
+    let stat = null;
+    try {
+      stat = fs.statSync(scriptPath);
+    } catch (e) {
+      return res.status(503).json({
+        success: false,
+        error: 'storefront_script_missing',
+        path: scriptPath,
+      });
+    }
+    let snippet = '';
+    try {
+      const fd = fs.openSync(scriptPath, 'r');
+      const buf = Buffer.alloc(Math.min(65536, stat.size));
+      fs.readSync(fd, buf, 0, buf.length, 0);
+      fs.closeSync(fd);
+      snippet = buf.toString('utf8');
+    } catch (e2) {
+      snippet = '';
+    }
+    res.set('Cache-Control', 'no-store');
+    return res.json({
+      success: true,
+      scriptVersion: SCRIPT_VERSION,
+      scriptPath,
+      scriptSizeBytes: stat.size,
+      hasDebugStatus: snippet.includes('debugStatus'),
+      hasPreviewMergeMeta: snippet.includes('__RIPX_PREVIEW_MERGE__'),
+      serverTime: new Date().toISOString(),
+    });
+  })
+);
+
+/**
  * GET /api/track/ping
  * Called by the storefront script when it loads on a page. Sets domain_verified_at for the tenant.
  * Query: shop (Shopify) or site (standalone).
