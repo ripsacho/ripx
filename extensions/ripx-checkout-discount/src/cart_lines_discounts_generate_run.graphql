@@ -9,6 +9,31 @@ query RipxCartLinesRun {
   cart {
     lines {
       id
+      quantity
+      cost {
+        subtotalAmount {
+          amount
+          currencyCode
+        }
+      }
+      ripxTest: attribute(key: "_ripx_price_test") {
+        value
+      }
+      ripxVariant: attribute(key: "_ripx_variant") {
+        value
+      }
+      ripxAssignmentSig: attribute(key: "_ripx_assignment_sig") {
+        value
+      }
+      ripxAssignmentTs: attribute(key: "_ripx_assignment_ts") {
+        value
+      }
+      ripxAssignmentUser: attribute(key: "_ripx_assignment_user") {
+        value
+      }
+      ripxTargetUnit: attribute(key: "_ripx_target_unit") {
+        value
+      }
     }
   }
 }

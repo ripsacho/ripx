@@ -18,6 +18,63 @@ function normalizeFetchBody(jsonBody) {
   return jsonBody;
 }
 
+function buildCandidateForLine(line, discountDecimal) {
+  const amt = parseFloat(String(discountDecimal), 10);
+  if (!Number.isFinite(amt) || amt <= 0) {
+    return null;
+  }
+  return {
+    message: 'RipX price test',
+    targets: [
+      {
+        cartLine: {
+          id: line.id,
+        },
+      },
+    ],
+    value: {
+      fixedAmount: {
+        amount: amt.toFixed(2),
+        appliesToEachItem: false,
+      },
+    },
+  };
+}
+
+function buildLocalFallbackCandidates(cartLines) {
+  const candidates = [];
+  for (const line of cartLines || []) {
+    const targetUnitRaw = line?.ripxTargetUnit?.value;
+    const qty = Math.max(1, Number(line?.quantity) || 1);
+    const subtotal = Number.parseFloat(String(line?.cost?.subtotalAmount?.amount || '').trim());
+    if (!targetUnitRaw || !Number.isFinite(subtotal) || subtotal <= 0) {
+      continue;
+    }
+    if (!line?.ripxTest?.value || !line?.ripxVariant?.value) {
+      continue;
+    }
+    if (
+      !line?.ripxAssignmentSig?.value ||
+      !line?.ripxAssignmentTs?.value ||
+      !line?.ripxAssignmentUser?.value
+    ) {
+      continue;
+    }
+    const targetUnit = Number.parseFloat(String(targetUnitRaw).trim());
+    if (!Number.isFinite(targetUnit) || targetUnit < 0) {
+      continue;
+    }
+    const targetLine = Math.max(0, Math.round(targetUnit * qty * 100) / 100);
+    const roundedSubtotal = Math.round(subtotal * 100) / 100;
+    const discount = Math.round((roundedSubtotal - targetLine) * 100) / 100;
+    const candidate = buildCandidateForLine(line, discount);
+    if (candidate) {
+      candidates.push(candidate);
+    }
+  }
+  return candidates;
+}
+
 /**
  * @param {import("../generated/api").RipxCartLinesRun} input
  */
@@ -27,52 +84,29 @@ export function cartLinesDiscountsGenerateRun(input) {
   const hasOrder = discountClasses.includes(DiscountClass.Order);
   // Be permissive in case Shopify omits/changes class signals for this target.
   // If we have valid resolved rows, still attempt product candidates.
-
+  const cartLines = input.cart?.lines || [];
   const status = input.fetchResult?.status;
-  if (typeof status === 'number' && (status < 200 || status > 299)) {
-    return { operations: [] };
-  }
-
   const body = normalizeFetchBody(input.fetchResult?.jsonBody);
-  if (!body || body.success === false || !Array.isArray(body.lines)) {
-    return { operations: [] };
-  }
-
   const rows = Array.isArray(body.lines) ? body.lines : [];
   const byLineId = new Map(rows.map(row => [row.line_id, row]));
 
   const candidates = [];
-  for (const line of input.cart?.lines || []) {
-    const row = byLineId.get(line.id);
-    if (!row || !row.applies || !row.discountDecimal) {
-      continue;
+  if (!(typeof status === 'number' && (status < 200 || status > 299))) {
+    for (const line of cartLines) {
+      const row = byLineId.get(line.id);
+      if (!row || !row.applies || !row.discountDecimal) {
+        continue;
+      }
+      const candidate = buildCandidateForLine(line, row.discountDecimal);
+      if (candidate) {
+        candidates.push(candidate);
+      }
     }
-    const amt = parseFloat(String(row.discountDecimal), 10);
-    if (!Number.isFinite(amt) || amt <= 0) {
-      continue;
-    }
-    candidates.push({
-      message: 'RipX price test',
-      targets: [
-        {
-          cartLine: {
-            id: line.id,
-          },
-        },
-      ],
-      value: {
-        fixedAmount: {
-          amount: String(row.discountDecimal),
-          appliesToEachItem: false,
-        },
-      },
-    });
   }
 
   // Fallback for potential fetch/run line-id drift: map by index order.
   // Some environments may produce non-matching line IDs across stages.
   if (candidates.length === 0 && rows.length > 0) {
-    const cartLines = input.cart?.lines || [];
     const n = Math.min(cartLines.length, rows.length);
     for (let i = 0; i < n; i++) {
       const line = cartLines[i];
@@ -80,26 +114,19 @@ export function cartLinesDiscountsGenerateRun(input) {
       if (!line || !row || !row.applies || !row.discountDecimal) {
         continue;
       }
-      const amt = parseFloat(String(row.discountDecimal), 10);
-      if (!Number.isFinite(amt) || amt <= 0) {
-        continue;
+      const candidate = buildCandidateForLine(line, row.discountDecimal);
+      if (candidate) {
+        candidates.push(candidate);
       }
-      candidates.push({
-        message: 'RipX price test',
-        targets: [
-          {
-            cartLine: {
-              id: line.id,
-            },
-          },
-        ],
-        value: {
-          fixedAmount: {
-            amount: String(row.discountDecimal),
-            appliesToEachItem: false,
-          },
-        },
-      });
+    }
+  }
+
+  // Local no-network fallback:
+  // use line properties set by the storefront when Shopify never executes fetch.
+  if (candidates.length === 0) {
+    const localCandidates = buildLocalFallbackCandidates(cartLines);
+    for (const candidate of localCandidates) {
+      candidates.push(candidate);
     }
   }
 

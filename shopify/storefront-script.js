@@ -980,7 +980,7 @@
    * Shopify expects properties[_key] (not attributes[]) for line-level data. Leading underscore = hidden from buyers in most themes.
    * See docs/SHOPIFY_CHECKOUT_PRICE_RESOLVER.md
    */
-  function getRipxCartAttrsPayload(testId, variantId, shopDomain, assignmentProof) {
+  function getRipxCartAttrsPayload(testId, variantId, shopDomain, assignmentProof, pricingProof) {
     var out = {
       _ripx_price_test: String(testId || ''),
       _ripx_variant: String(variantId == null ? '' : variantId),
@@ -998,6 +998,14 @@
       out._ripx_assignment_sig = String(assignmentProof.sig).trim();
       out._ripx_assignment_ts = String(assignmentProof.ts).trim();
       out._ripx_assignment_user = String(assignmentProof.user).trim();
+    }
+    if (
+      pricingProof &&
+      pricingProof.targetUnit !== undefined &&
+      pricingProof.targetUnit !== null &&
+      isFinite(Number(pricingProof.targetUnit))
+    ) {
+      out._ripx_target_unit = Number(pricingProof.targetUnit).toFixed(2);
     }
     return out;
   }
@@ -1054,6 +1062,12 @@
       payload._ripx_assignment_user,
       preserveExisting
     );
+    setRipxAttrValueOnFormData(
+      formData,
+      'properties[_ripx_target_unit]',
+      payload._ripx_target_unit,
+      preserveExisting
+    );
     return true;
   }
 
@@ -1102,6 +1116,12 @@
       params,
       'properties[_ripx_assignment_user]',
       payload._ripx_assignment_user,
+      preserveExisting
+    );
+    setRipxAttrValueOnSearchParams(
+      params,
+      'properties[_ripx_target_unit]',
+      payload._ripx_target_unit,
       preserveExisting
     );
     return true;
@@ -1264,6 +1284,7 @@
               setPropIfMissing('_ripx_assignment_sig', payload._ripx_assignment_sig);
               setPropIfMissing('_ripx_assignment_ts', payload._ripx_assignment_ts);
               setPropIfMissing('_ripx_assignment_user', payload._ripx_assignment_user);
+              setPropIfMissing('_ripx_target_unit', payload._ripx_target_unit);
               return nextProps;
             }
             function mapCartLinesWithRipx(arr) {
@@ -1732,6 +1753,9 @@
       if (state._ripx_assignment_user) {
         setProperty('_ripx_assignment_user', state._ripx_assignment_user);
       }
+      if (state._ripx_target_unit) {
+        setProperty('_ripx_target_unit', state._ripx_target_unit);
+      }
     });
   }
 
@@ -1756,7 +1780,13 @@
     }
   }
 
-  function injectPriceTestCartAttributes(testId, variantId, assignmentProof, targetProductIds) {
+  function injectPriceTestCartAttributes(
+    testId,
+    variantId,
+    assignmentProof,
+    targetProductIds,
+    pricingProof
+  ) {
     if (!testId || variantId == null || String(variantId).trim() === '') return;
     var valueShop =
       (CONFIG.shopDomain && String(CONFIG.shopDomain).trim()) ||
@@ -1769,7 +1799,8 @@
       String(testId),
       String(variantId),
       valueShop,
-      assignmentProof
+      assignmentProof,
+      pricingProof
     );
     _ripxCartFormTargetProductIds = targetProductIds;
     installRipxCartAddInterceptors();
@@ -2253,7 +2284,8 @@
         testId,
         variantIdForCart,
         getAssignmentProofFromVariant(variant),
-        [productId]
+        [productId],
+        { targetUnit: priceNum }
       );
     }
   }
