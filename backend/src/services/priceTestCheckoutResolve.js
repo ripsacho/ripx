@@ -81,6 +81,37 @@ function toVariantIdKey(variantId) {
   return s;
 }
 
+function buildResolutionDebugMeta(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+  const out = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (value !== undefined) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+function withOptionalDebug(result, debugEnabled, debugMeta) {
+  if (!debugEnabled) {
+    return result;
+  }
+  return {
+    ...result,
+    debug: buildResolutionDebugMeta({
+      ...debugMeta,
+      resultReason: result && result.reason ? result.reason : null,
+      applies: !!(result && result.applies),
+      discountDecimal:
+        result && result.discountDecimal !== undefined ? result.discountDecimal || null : null,
+      targetLineDecimal:
+        result && result.targetLineDecimal !== undefined ? result.targetLineDecimal || null : null,
+    }),
+  };
+}
+
 function hasModeValue(cfg, mode) {
   if (!cfg || typeof cfg !== 'object') {
     return false;
@@ -286,19 +317,37 @@ function resolvePriceTestLineDiscount({
   assignmentUserId = '',
   /** Per-unit compare-at from CartLineCost.compareAtAmountPerQuantity (Shopify); required for priceBase compare_at parity with storefront. */
   compareAtUnitPrice = null,
+  debug = false,
 }) {
+  const debugEnabled = debug === true;
+  const debugMeta = {
+    testId: test && test.id ? String(test.id) : null,
+    testType: test && test.type ? String(test.type) : null,
+    testStatus: test && test.status ? String(test.status) : null,
+    targetType: test && test.target_type ? String(test.target_type) : null,
+    assignmentVariantId:
+      assignmentVariantId === undefined || assignmentVariantId === null
+        ? null
+        : String(assignmentVariantId).trim() || null,
+    productId:
+      productId === undefined || productId === null ? null : String(productId).trim() || null,
+    variantId:
+      variantId === undefined || variantId === null ? null : String(variantId).trim() || null,
+    shopDomain: shopDomain ? String(shopDomain).trim() || null : null,
+  };
+  const finish = result => withOptionalDebug(result, debugEnabled, debugMeta);
   if (!test || !isPriceTestRowType(test.type)) {
-    return { applies: false, reason: 'not_price_test' };
+    return finish({ applies: false, reason: 'not_price_test' });
   }
   if (!isPriceTestActiveForCheckout(test)) {
-    return { applies: false, reason: 'test_not_running' };
+    return finish({ applies: false, reason: 'test_not_running' });
   }
   const tt = String(test.target_type || '').toLowerCase();
   if (!isCheckoutSupportedPriceTargetType(tt)) {
-    return { applies: false, reason: 'unsupported_target_type' };
+    return finish({ applies: false, reason: 'unsupported_target_type' });
   }
   if (!assignmentMatchesVariant(test, assignmentVariantId)) {
-    return { applies: false, reason: 'unknown_assignment_variant' };
+    return finish({ applies: false, reason: 'unknown_assignment_variant' });
   }
   const signatureCheck = verifyPriceAssignmentSignature({
     testId: test?.id || '',
@@ -308,20 +357,33 @@ function resolvePriceTestLineDiscount({
     issuedAtMs: assignmentIssuedAtMs,
     signature: assignmentSignature,
   });
+  debugMeta.signatureCheck = signatureCheck && signatureCheck.reason ? signatureCheck.reason : 'ok';
   if (!signatureCheck.ok) {
-    return { applies: false, reason: signatureCheck.reason || 'invalid_assignment_signature' };
+    return finish({
+      applies: false,
+      reason: signatureCheck.reason || 'invalid_assignment_signature',
+    });
   }
   if (!lineProductMatchesPriceTestTarget(test, productId)) {
-    return { applies: false, reason: 'product_not_in_test' };
+    return finish({ applies: false, reason: 'product_not_in_test' });
   }
   const vRow = findTestVariant(test, assignmentVariantId);
+  debugMeta.matchedVariantId =
+    vRow && vRow.id !== undefined && vRow.id !== null ? String(vRow.id) : null;
+  debugMeta.matchedVariantName =
+    vRow && vRow.name !== undefined && vRow.name !== null ? String(vRow.name) : null;
+  debugMeta.variantConfigPresent = !!(vRow && vRow.config);
   if (!vRow || !vRow.config) {
-    return { applies: false, reason: 'no_variant_config' };
+    return finish({ applies: false, reason: 'no_variant_config' });
   }
   const qty = Math.max(1, Number(quantity) || 1);
   const lineTotal = Number(linePresentmentTotal);
+  debugMeta.quantity = qty;
+  debugMeta.linePresentmentTotal = Number.isFinite(lineTotal)
+    ? Math.round(lineTotal * 100) / 100
+    : null;
   if (!Number.isFinite(lineTotal) || lineTotal <= 0) {
-    return { applies: false, reason: 'invalid_line_total' };
+    return finish({ applies: false, reason: 'invalid_line_total' });
   }
   const catalogUnit = lineTotal / qty;
   const compareAtParsed =
@@ -329,6 +391,8 @@ function resolvePriceTestLineDiscount({
       ? null
       : Number.parseFloat(String(compareAtUnitPrice).trim());
   const hasValidCompareAt = Number.isFinite(compareAtParsed) && compareAtParsed > 0;
+  debugMeta.catalogUnit = Math.round(catalogUnit * 100) / 100;
+  debugMeta.compareAtUnit = hasValidCompareAt ? Math.round(compareAtParsed * 100) / 100 : null;
 
   const cfg = getEffectivePriceConfig(vRow.config, productId, variantId || null);
   const priceMode = String(cfg.priceMode || 'fixed').toLowerCase();
@@ -336,19 +400,24 @@ function resolvePriceTestLineDiscount({
   const useCompareAtBase =
     (priceMode === 'amount' || priceMode === 'percent') && priceBase === 'compare_at';
   const basisUnit = useCompareAtBase && hasValidCompareAt ? compareAtParsed : catalogUnit;
+  debugMeta.priceMode = priceMode;
+  debugMeta.priceBase = priceBase;
+  debugMeta.useCompareAtBase = useCompareAtBase;
+  debugMeta.basisUnit = Math.round(basisUnit * 100) / 100;
+  debugMeta.roundTo = cfg.roundTo !== undefined && cfg.roundTo !== null ? cfg.roundTo : null;
 
   if (useCompareAtBase && !hasValidCompareAt) {
-    return { applies: false, reason: 'compare_at_unavailable' };
+    return finish({ applies: false, reason: 'compare_at_unavailable' });
   }
 
   if (priceMode === 'control') {
-    return { applies: false, reason: 'control_variant' };
+    return finish({ applies: false, reason: 'control_variant' });
   }
 
   let targetUnit = null;
   if (priceMode === 'fixed') {
     if (cfg.price === null || cfg.price === undefined || cfg.price === '') {
-      return { applies: false, reason: 'no_fixed_price' };
+      return finish({ applies: false, reason: 'no_fixed_price' });
     }
     targetUnit = parseFloat(String(cfg.price).trim());
   } else if (priceMode === 'amount') {
@@ -357,11 +426,12 @@ function resolvePriceTestLineDiscount({
       cfg.priceDelta === undefined ||
       String(cfg.priceDelta).trim() === ''
     ) {
-      return { applies: false, reason: 'no_price_delta' };
+      return finish({ applies: false, reason: 'no_price_delta' });
     }
     const delta = parseFloat(String(cfg.priceDelta).trim());
+    debugMeta.priceDelta = Number.isFinite(delta) ? delta : null;
     if (!Number.isFinite(delta)) {
-      return { applies: false, reason: 'bad_delta' };
+      return finish({ applies: false, reason: 'bad_delta' });
     }
     targetUnit = Math.max(0, basisUnit + delta);
   } else if (priceMode === 'percent') {
@@ -370,35 +440,39 @@ function resolvePriceTestLineDiscount({
       cfg.pricePercent === undefined ||
       String(cfg.pricePercent).trim() === ''
     ) {
-      return { applies: false, reason: 'no_price_percent' };
+      return finish({ applies: false, reason: 'no_price_percent' });
     }
     const pct = parseFloat(String(cfg.pricePercent).trim());
+    debugMeta.pricePercent = Number.isFinite(pct) ? pct : null;
     if (!Number.isFinite(pct)) {
-      return { applies: false, reason: 'bad_percent' };
+      return finish({ applies: false, reason: 'bad_percent' });
     }
     targetUnit = Math.max(0, basisUnit * (1 - pct / 100));
   } else {
-    return { applies: false, reason: 'unknown_price_mode' };
+    return finish({ applies: false, reason: 'unknown_price_mode' });
   }
 
   if (!Number.isFinite(targetUnit) || targetUnit < 0) {
-    return { applies: false, reason: 'bad_target_unit' };
+    return finish({ applies: false, reason: 'bad_target_unit' });
   }
 
   targetUnit = applyRoundToUnitPrice(targetUnit, parseRoundTo(cfg.roundTo));
+  debugMeta.targetUnit = Math.round(targetUnit * 100) / 100;
 
   const targetLine = Math.round(targetUnit * qty * 100) / 100;
   const roundedLineTotal = Math.round(lineTotal * 100) / 100;
   const discount = Math.round((roundedLineTotal - targetLine) * 100) / 100;
+  debugMeta.targetLine = targetLine;
+  debugMeta.roundedLineTotal = roundedLineTotal;
   if (discount <= 0.0001) {
-    return { applies: false, reason: 'no_discount_needed' };
+    return finish({ applies: false, reason: 'no_discount_needed' });
   }
 
-  return {
+  return finish({
     applies: true,
     discountDecimal: discount.toFixed(2),
     targetLineDecimal: targetLine.toFixed(2),
-  };
+  });
 }
 
 /**
@@ -424,7 +498,14 @@ function resolvePriceTestLineDiscount({
  *   reason: string|null
  * }>>}
  */
-async function resolveCheckoutPriceBatchForDomain(domain, lines, getTestById, getTestsByIds) {
+async function resolveCheckoutPriceBatchForDomain(
+  domain,
+  lines,
+  getTestById,
+  getTestsByIds,
+  opts = {}
+) {
+  const debugEnabled = opts && opts.debug === true;
   const testCache = new Map();
   /** Prefetch unique tests — single query when getTestsByIds is available (best under Shopify Function readTimeoutMs). */
   const uniqueTestIds = new Set();
@@ -471,6 +552,17 @@ async function resolveCheckoutPriceBatchForDomain(domain, lines, getTestById, ge
         : String(row.assignment_variant).trim();
     const productId =
       row.product_id === undefined || row.product_id === null ? '' : String(row.product_id).trim();
+    const baseDebug = {
+      shopDomain: domain,
+      lineIndex: i,
+      testId: testId || null,
+      assignmentVariantId: assignmentVariant || null,
+      productId: productId || null,
+      variantId:
+        row.variant_id === undefined || row.variant_id === null
+          ? null
+          : String(row.variant_id).trim() || null,
+    };
 
     if (!testId) {
       results.push({
@@ -479,6 +571,9 @@ async function resolveCheckoutPriceBatchForDomain(domain, lines, getTestById, ge
         discountDecimal: null,
         targetLineDecimal: null,
         reason: 'missing_test_id',
+        ...(debugEnabled
+          ? { debug: buildResolutionDebugMeta({ ...baseDebug, resultReason: 'missing_test_id' }) }
+          : {}),
       });
       continue;
     }
@@ -489,6 +584,14 @@ async function resolveCheckoutPriceBatchForDomain(domain, lines, getTestById, ge
         discountDecimal: null,
         targetLineDecimal: null,
         reason: 'missing_assignment_variant',
+        ...(debugEnabled
+          ? {
+              debug: buildResolutionDebugMeta({
+                ...baseDebug,
+                resultReason: 'missing_assignment_variant',
+              }),
+            }
+          : {}),
       });
       continue;
     }
@@ -499,6 +602,11 @@ async function resolveCheckoutPriceBatchForDomain(domain, lines, getTestById, ge
         discountDecimal: null,
         targetLineDecimal: null,
         reason: 'missing_product_id',
+        ...(debugEnabled
+          ? {
+              debug: buildResolutionDebugMeta({ ...baseDebug, resultReason: 'missing_product_id' }),
+            }
+          : {}),
       });
       continue;
     }
@@ -513,6 +621,15 @@ async function resolveCheckoutPriceBatchForDomain(domain, lines, getTestById, ge
         discountDecimal: null,
         targetLineDecimal: null,
         reason: 'invalid_line_total',
+        ...(debugEnabled
+          ? {
+              debug: buildResolutionDebugMeta({
+                ...baseDebug,
+                resultReason: 'invalid_line_total',
+                linePresentmentTotal: null,
+              }),
+            }
+          : {}),
       });
       continue;
     }
@@ -527,6 +644,16 @@ async function resolveCheckoutPriceBatchForDomain(domain, lines, getTestById, ge
         discountDecimal: null,
         targetLineDecimal: null,
         reason: 'test_not_found',
+        ...(debugEnabled
+          ? {
+              debug: buildResolutionDebugMeta({
+                ...baseDebug,
+                resultReason: 'test_not_found',
+                linePresentmentTotal: Math.round(lineTotal * 100) / 100,
+                quantity,
+              }),
+            }
+          : {}),
       });
       continue;
     }
@@ -566,6 +693,7 @@ async function resolveCheckoutPriceBatchForDomain(domain, lines, getTestById, ge
           ? ''
           : String(row.assignment_user).trim(),
       compareAtUnitPrice: compareRaw,
+      debug: debugEnabled,
     });
 
     results.push({
@@ -574,6 +702,7 @@ async function resolveCheckoutPriceBatchForDomain(domain, lines, getTestById, ge
       discountDecimal: result.discountDecimal || null,
       targetLineDecimal: result.targetLineDecimal || null,
       reason: result.reason || null,
+      ...(debugEnabled && result.debug ? { debug: result.debug } : {}),
     });
   }
 

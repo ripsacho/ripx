@@ -26,6 +26,7 @@ import {
   Spinner,
   Divider,
   Collapsible,
+  Tooltip,
 } from '@shopify/polaris';
 import {
   ChartVerticalIcon,
@@ -828,6 +829,7 @@ function Settings() {
     checks.push({
       key: 'script_detected',
       ok: scriptDetected,
+      required: true,
       message: scriptDetected
         ? 'Storefront script detected on store theme.'
         : 'Storefront script not detected on theme embed/snippet.',
@@ -841,6 +843,7 @@ function Settings() {
     checks.push({
       key: 'checkout_diag',
       ok: diagReady,
+      required: true,
       message: diagReady
         ? 'Checkout diagnostics passed.'
         : `Checkout diagnostics has issues.${firstFailedDiagMessage ? ` First: ${firstFailedDiagMessage}` : ''}`,
@@ -855,6 +858,7 @@ function Settings() {
     checks.push({
       key: 'running_price_test',
       ok: hasRunningPriceTest === null ? false : hasRunningPriceTest,
+      required: true,
       message:
         hasRunningPriceTest === null
           ? 'Running price-test count unavailable.'
@@ -871,6 +875,7 @@ function Settings() {
     checks.push({
       key: 'tenant_registered',
       ok: tenantRegistered === null ? false : tenantRegistered,
+      required: true,
       message:
         tenantRegistered === null
           ? 'Tenant registration status unavailable.'
@@ -879,13 +884,41 @@ function Settings() {
             : 'Shop tenant is not registered for this backend.',
     });
 
-    const ready = checks.every(c => c.ok);
+    const cartNativeStatus = String(
+      installation?.instructions?.cartNative?.status ||
+        checkoutDiag?.support?.cart_rendering?.level ||
+        ''
+    )
+      .trim()
+      .toLowerCase();
+    const cartNativeInstalled =
+      cartNativeStatus === 'native_installed' ||
+      cartNativeStatus === 'ready' ||
+      cartNativeStatus === 'native_supported';
+    checks.push({
+      key: 'cart_native_rendering',
+      ok: cartNativeInstalled,
+      required: false,
+      message: cartNativeInstalled
+        ? 'Cart native discount rendering markers are configured.'
+        : 'Cart native discount rendering is not confirmed (JS fallback may still be used on this theme).',
+    });
+
+    const requiredChecks = checks.filter(c => c.required !== false);
+    const ready = requiredChecks.every(c => c.ok);
+    const supportLevel = !ready
+      ? 'setup_incomplete'
+      : cartNativeInstalled
+        ? 'native_cart_checkout_aligned'
+        : 'checkout_aligned_cart_fallback';
     return {
       ready,
       checks,
-      failed: checks.filter(c => !c.ok),
+      failed: requiredChecks.filter(c => !c.ok),
+      advisories: checks.filter(c => c.required === false && !c.ok),
+      supportLevel,
     };
-  }, [installation?.scriptVerified, checkoutDiag]);
+  }, [installation?.scriptVerified, installation?.instructions?.cartNative?.status, checkoutDiag]);
 
   const configuredIntegrationCount = useMemo(() => {
     if (!integrations) return 0;
@@ -940,6 +973,15 @@ function Settings() {
     () => Boolean(isAppSettings && storeHealth.ready && checkoutDiscountAttached),
     [isAppSettings, storeHealth.ready, checkoutDiscountAttached]
   );
+  const supportLevelHelpText = useMemo(() => {
+    if (storeHealth.supportLevel === 'native_cart_checkout_aligned') {
+      return 'Native cart + checkout: checkout discounts are aligned and cart theme integration is detected.';
+    }
+    if (storeHealth.supportLevel === 'checkout_aligned_cart_fallback') {
+      return 'Checkout aligned + cart fallback: checkout discount path is healthy, but native cart rendering is not confirmed on this theme yet.';
+    }
+    return 'Setup incomplete: required checks are not passing yet (script, diagnostics, tenant, or running price test).';
+  }, [storeHealth.supportLevel]);
   const activeTabMeta = TAB_CONFIG[selectedTab] || null;
   const currentStoreLabel = String(installation?.domain || '').trim() || 'Not detected';
   const tabSummaries = useMemo(
@@ -994,6 +1036,30 @@ function Settings() {
                       <Badge tone={storeHealth.ready ? 'success' : 'attention'}>
                         {storeHealth.ready ? 'Store healthy' : 'Needs attention'}
                       </Badge>
+                      <Badge
+                        tone={
+                          storeHealth.supportLevel === 'native_cart_checkout_aligned'
+                            ? 'success'
+                            : storeHealth.supportLevel === 'checkout_aligned_cart_fallback'
+                              ? 'attention'
+                              : 'warning'
+                        }
+                      >
+                        {storeHealth.supportLevel === 'native_cart_checkout_aligned'
+                          ? 'Support: Native cart + checkout'
+                          : storeHealth.supportLevel === 'checkout_aligned_cart_fallback'
+                            ? 'Support: Checkout aligned + cart fallback'
+                            : 'Support: Setup incomplete'}
+                      </Badge>
+                      <Tooltip content={supportLevelHelpText}>
+                        <span
+                          className={styles.supportLevelHint}
+                          role="note"
+                          aria-label="Support level help"
+                        >
+                          What this means
+                        </span>
+                      </Tooltip>
                     </div>
                   )}
                 </div>
@@ -1430,6 +1496,114 @@ function Settings() {
                                         </div>
                                       </>
                                     )}
+                                    {installation.instructions?.cartNative && (
+                                      <>
+                                        <Text variant="headingSm" as="h3">
+                                          {installation.instructions.cartNative.heading ||
+                                            'Cart native discount rendering'}
+                                        </Text>
+                                        <Badge tone="attention">
+                                          {installation.instructions.cartNative.status ===
+                                          'manual_required'
+                                            ? 'Manual theme step required'
+                                            : 'Configured'}
+                                        </Badge>
+                                        {installation.instructions.cartNative.summary && (
+                                          <Text as="p" variant="bodySm" tone="subdued">
+                                            {installation.instructions.cartNative.summary}
+                                          </Text>
+                                        )}
+                                        {installation.instructions.cartNative.appBlockName && (
+                                          <Text as="p" variant="bodySm">
+                                            <strong>App block:</strong>{' '}
+                                            {installation.instructions.cartNative.appBlockName}
+                                          </Text>
+                                        )}
+                                        {Array.isArray(
+                                          installation.instructions.cartNative.steps
+                                        ) &&
+                                          installation.instructions.cartNative.steps.length > 0 && (
+                                            <details className={styles.installStepsDetails}>
+                                              <summary className={styles.installStepsSummary}>
+                                                Cart integration steps (
+                                                {installation.instructions.cartNative.steps.length})
+                                              </summary>
+                                              <ol className={styles.installSteps}>
+                                                {installation.instructions.cartNative.steps.map(
+                                                  (step, i) => (
+                                                    <li key={`cart-native-step-${i}`}>
+                                                      <Text as="span" variant="bodyMd">
+                                                        {step}
+                                                      </Text>
+                                                    </li>
+                                                  )
+                                                )}
+                                              </ol>
+                                            </details>
+                                          )}
+                                        {installation.instructions.cartNative.lineSnippet && (
+                                          <div className={styles.snippetBlock}>
+                                            <div className={styles.snippetBlockHeader}>
+                                              <span className={styles.snippetBlockLabel}>
+                                                <CodeIcon />
+                                                Cart line snippet
+                                              </span>
+                                              <Button
+                                                icon={ClipboardIcon}
+                                                onClick={() =>
+                                                  handleCopy(
+                                                    installation.instructions.cartNative
+                                                      .lineSnippet,
+                                                    'Cart line snippet copied'
+                                                  )
+                                                }
+                                                variant="plain"
+                                                size="slim"
+                                              >
+                                                Copy
+                                              </Button>
+                                            </div>
+                                            <pre className={styles.snippetPre}>
+                                              <code>
+                                                {installation.instructions.cartNative.lineSnippet}
+                                              </code>
+                                            </pre>
+                                          </div>
+                                        )}
+                                        {installation.instructions.cartNative.summarySnippet && (
+                                          <div className={styles.snippetBlock}>
+                                            <div className={styles.snippetBlockHeader}>
+                                              <span className={styles.snippetBlockLabel}>
+                                                <CodeIcon />
+                                                Cart summary snippet
+                                              </span>
+                                              <Button
+                                                icon={ClipboardIcon}
+                                                onClick={() =>
+                                                  handleCopy(
+                                                    installation.instructions.cartNative
+                                                      .summarySnippet,
+                                                    'Cart summary snippet copied'
+                                                  )
+                                                }
+                                                variant="plain"
+                                                size="slim"
+                                              >
+                                                Copy
+                                              </Button>
+                                            </div>
+                                            <pre className={styles.snippetPre}>
+                                              <code>
+                                                {
+                                                  installation.instructions.cartNative
+                                                    .summarySnippet
+                                                }
+                                              </code>
+                                            </pre>
+                                          </div>
+                                        )}
+                                      </>
+                                    )}
                                     {!installation.instructions?.steps?.length &&
                                       !installation.instructions?.altMethod && (
                                         <Text as="p" variant="bodyMd" tone="subdued">
@@ -1518,6 +1692,38 @@ function Settings() {
                                               : `Store health: FAIL (${storeHealth.failed.length})`}
                                           </Badge>
                                         )}
+                                        {(checkoutDiag || installation) && (
+                                          <Badge
+                                            tone={
+                                              storeHealth.supportLevel ===
+                                              'native_cart_checkout_aligned'
+                                                ? 'success'
+                                                : storeHealth.supportLevel ===
+                                                    'checkout_aligned_cart_fallback'
+                                                  ? 'attention'
+                                                  : 'warning'
+                                            }
+                                          >
+                                            {storeHealth.supportLevel ===
+                                            'native_cart_checkout_aligned'
+                                              ? 'Support: Native cart + checkout'
+                                              : storeHealth.supportLevel ===
+                                                  'checkout_aligned_cart_fallback'
+                                                ? 'Support: Checkout aligned + cart fallback'
+                                                : 'Support: Setup incomplete'}
+                                          </Badge>
+                                        )}
+                                        {(checkoutDiag || installation) && (
+                                          <Tooltip content={supportLevelHelpText}>
+                                            <span
+                                              className={styles.supportLevelHint}
+                                              role="note"
+                                              aria-label="Support level help"
+                                            >
+                                              What this means
+                                            </span>
+                                          </Tooltip>
+                                        )}
                                         {checkoutDiag?.summary && (
                                           <Badge
                                             tone={
@@ -1536,6 +1742,38 @@ function Settings() {
                                       </InlineStack>
                                     </div>
                                     {(checkoutDiag || installation) && (
+                                      <div className={styles.supportLevelLegend}>
+                                        <Text variant="headingSm" as="h3">
+                                          Support level legend
+                                        </Text>
+                                        <div className={styles.supportLevelLegendRow}>
+                                          <Badge tone="success">
+                                            Support: Native cart + checkout
+                                          </Badge>
+                                          <Text as="span" variant="bodySm" tone="subdued">
+                                            Checkout discounts are aligned and native cart rendering
+                                            is detected.
+                                          </Text>
+                                        </div>
+                                        <div className={styles.supportLevelLegendRow}>
+                                          <Badge tone="attention">
+                                            Support: Checkout aligned + cart fallback
+                                          </Badge>
+                                          <Text as="span" variant="bodySm" tone="subdued">
+                                            Checkout is aligned, but cart native rendering is not
+                                            confirmed for this theme yet.
+                                          </Text>
+                                        </div>
+                                        <div className={styles.supportLevelLegendRow}>
+                                          <Badge tone="warning">Support: Setup incomplete</Badge>
+                                          <Text as="span" variant="bodySm" tone="subdued">
+                                            Required checks are still failing and setup must be
+                                            completed.
+                                          </Text>
+                                        </div>
+                                      </div>
+                                    )}
+                                    {(checkoutDiag || installation) && (
                                       <div className={styles.checkoutDiagHealthSummary}>
                                         <Text variant="headingSm" as="h3">
                                           Store health summary
@@ -1546,8 +1784,20 @@ function Settings() {
                                               key={item.key}
                                               className={styles.checkoutDiagCheckRow}
                                             >
-                                              <Badge tone={item.ok ? 'success' : 'critical'}>
-                                                {item.ok ? 'OK' : 'Fail'}
+                                              <Badge
+                                                tone={
+                                                  item.ok
+                                                    ? 'success'
+                                                    : item.required === false
+                                                      ? 'attention'
+                                                      : 'critical'
+                                                }
+                                              >
+                                                {item.ok
+                                                  ? 'OK'
+                                                  : item.required === false
+                                                    ? 'Advisory'
+                                                    : 'Fail'}
                                               </Badge>
                                               <Text as="span" variant="bodySm">
                                                 {item.message}

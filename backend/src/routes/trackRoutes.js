@@ -354,6 +354,16 @@ function toPublicCheckoutDiagnosticsPayload(body) {
   };
 }
 
+function isTruthyDebugFlag(value) {
+  if (value === true || value === 1) {
+    return true;
+  }
+  const v = String(value || '')
+    .trim()
+    .toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+}
+
 /** Returns true if tenant is suspended or blocked (admin) */
 function isTenantSuspendedOrBlocked(tenant) {
   const s = tenant?.status;
@@ -1352,6 +1362,7 @@ router.get(
       assignment_sig,
       assignment_ts,
       assignment_user,
+      debug,
     } = req.query;
 
     const domain = await resolveTenantDomain(shop || shop_domain, site);
@@ -1407,6 +1418,7 @@ router.get(
         String(compare_at_unit).trim() !== ''
           ? String(compare_at_unit).trim()
           : null,
+      debug: isTruthyDebugFlag(debug) || isTruthyDebugFlag(req.get('x-ripx-debug')),
     });
 
     res.set('Cache-Control', 'no-store');
@@ -1429,6 +1441,8 @@ router.get(
  *
  * Response `lines` default shape: `{ line_id, applies, discountDecimal }` (compact for Shopify size limits).
  * Set env `RIPX_PRICE_BATCH_FULL_RESPONSE=true` to include `targetLineDecimal` and `reason` per line.
+ * Authenticated/manual callers can also send body `{ debug: true }` or header `X-RipX-Debug: 1`
+ * to receive full per-line output without changing the global env behavior for Shopify.
  */
 router.post(
   '/price-resolve-batch',
@@ -1451,6 +1465,8 @@ router.post(
     }
 
     const lines = body.lines;
+    const debugRequested =
+      isTruthyDebugFlag(body.debug) || isTruthyDebugFlag(req.get('x-ripx-debug'));
     if (!Array.isArray(lines) || lines.length === 0) {
       return res.status(400).json({ success: false, error: 'lines must be a non-empty array' });
     }
@@ -1492,9 +1508,12 @@ router.post(
       domain,
       lines,
       getTestById,
-      getTestsByIds
+      getTestsByIds,
+      { debug: debugRequested }
     );
-    const linesOut = shapePriceResolveBatchLinesForCheckout(resolved);
+    const linesOut = shapePriceResolveBatchLinesForCheckout(resolved, {
+      fullResponse: debugRequested,
+    });
     const payload = { success: true, lines: linesOut };
     const approxBytes = batchResolveJsonUtf8Bytes(payload);
 
@@ -1538,6 +1557,7 @@ router.post(
       durationMs,
       approxResponseBytes: approxBytes,
       batchFullResponse: process.env.RIPX_PRICE_BATCH_FULL_RESPONSE === 'true',
+      batchDebugResponse: debugRequested,
     });
 
     res.set('Cache-Control', 'no-store');

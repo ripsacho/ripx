@@ -1,0 +1,42 @@
+{% comment %}
+  RipX Cart Summary block
+  Purpose: render cart totals from Shopify's native discount state so carts can reflect the same
+  discount allocations that checkout uses.
+{% endcomment %}
+
+{{ 'ripx-cart-native.css' | asset_url | stylesheet_tag }}
+
+<div class="ripx-cart-summary-block" data-ripx-native-cart-block="1" {{ block.shopify_attributes }}>
+  {% if block.settings.heading != blank %}
+    <h3 class="ripx-cart-summary-block__heading">{{ block.settings.heading }}</h3>
+  {% endif %}
+
+  {% render 'ripx-native-cart-summary' %}
+
+  {% if block.settings.show_hint %}
+    <p class="ripx-cart-summary-block__hint">
+      Cart prices are rendered from Shopify discount allocations when available.
+    </p>
+  {% endif %}
+</div>
+
+{% schema %}
+{
+  "name": "RipX Cart Summary",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "RipX cart pricing"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_hint",
+      "label": "Show hint text",
+      "default": false
+    }
+  ]
+}
+{% endschema %}

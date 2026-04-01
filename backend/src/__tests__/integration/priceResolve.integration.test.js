@@ -259,4 +259,58 @@ describe('POST /api/track/price-resolve-batch', () => {
     });
     expect(mockResolveCheckoutPriceBatchForDomain).toHaveBeenCalled();
   });
+
+  it('returns full batch line details when debug is explicitly requested', async () => {
+    process.env.RIPX_CHECKOUT_PRICE_SECRET = 'super-secret';
+    mockResolveCheckoutPriceBatchForDomain.mockResolvedValueOnce([
+      {
+        line_id: 'line-1',
+        applies: false,
+        discountDecimal: null,
+        targetLineDecimal: null,
+        reason: 'test_not_running',
+        debug: { testId: '11111111-1111-4111-8111-111111111111', resultReason: 'test_not_running' },
+      },
+    ]);
+    const res = await request(app)
+      .post('/api/track/price-resolve-batch')
+      .set('x-ripx-price-secret', 'super-secret')
+      .set('x-ripx-debug', '1')
+      .send({
+        shop_domain: 'test.myshopify.com',
+        lines: [
+          {
+            line_id: 'line-1',
+            test_id: '11111111-1111-4111-8111-111111111111',
+            assignment_variant: 'A',
+            product_id: 'gid://shopify/Product/123',
+            line_total: '10',
+          },
+        ],
+      });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      success: true,
+      lines: [
+        {
+          line_id: 'line-1',
+          applies: false,
+          discountDecimal: null,
+          targetLineDecimal: null,
+          reason: 'test_not_running',
+          debug: {
+            testId: '11111111-1111-4111-8111-111111111111',
+            resultReason: 'test_not_running',
+          },
+        },
+      ],
+    });
+    expect(mockResolveCheckoutPriceBatchForDomain).toHaveBeenCalledWith(
+      'test.myshopify.com',
+      expect.any(Array),
+      expect.any(Function),
+      expect.any(Function),
+      { debug: true }
+    );
+  });
 });

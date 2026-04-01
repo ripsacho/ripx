@@ -59,6 +59,7 @@
   const consentRequired = !!CONFIG.consentRequired;
   const SCRIPT_VERSION = (CONFIG.version && String(CONFIG.version)) || '1.0.0';
   const DEBUG = !!(typeof window !== 'undefined' && window.__RIPX_DEBUG__);
+  var _ripxNativeFetch = typeof window.fetch === 'function' ? window.fetch.bind(window) : null;
   const ANTI_FLICKER_MAX_MS = 1400;
   var antiFlickerState = { active: false, pending: 0, timeoutId: null };
   /** Backend may send type "pricing"; treat same as "price" for storefront logic. */
@@ -428,6 +429,16 @@
   var _ripxCartFormObserverInstalled = false;
   var _ripxCartFormObserverTimer = null;
   var _ripxCartAddInterceptorsInstalled = false;
+  var _ripxCartNativeState = {
+    cart: null,
+    fetchedAt: 0,
+    hasDiscounts: false,
+    uiMatches: false,
+    expectedSubtotalCents: null,
+    displayedSubtotalCents: null,
+  };
+  var _ripxCartNativeStateInFlight = null;
+  var _ripxCartNativeStateTimer = null;
 
   function getVariantCachePromise() {
     if (_variantCachePromise) return _variantCachePromise;
@@ -1386,7 +1397,10 @@
                           asyncPatch.changed ? '' : debugDescribeCartAddBody(asyncInit.body)
                         );
                       }
-                      return nativeFetch(input, asyncInit);
+                      return nativeFetch(input, asyncInit).then(function (response) {
+                        if (response && response.ok) scheduleRipxCartNativeStateRefreshBurst();
+                        return response;
+                      });
                     })
                     .catch(function () {
                       return nativeFetch(input, init);
@@ -1412,7 +1426,10 @@
                   patch.changed ? '' : debugDescribeCartAddBody(nextInit.body)
                 );
               }
-              return nativeFetch(input, nextInit);
+              return nativeFetch(input, nextInit).then(function (response) {
+                if (response && response.ok) scheduleRipxCartNativeStateRefreshBurst();
+                return response;
+              });
             }
           } else if (DEBUG && method === 'POST' && looksLikeCartAddNearMiss(url)) {
             debugLogCartNearMissOnce(pathnameFromCartUrl(url));
@@ -1445,6 +1462,18 @@
           var method = String(this.__ripxMethod || 'GET').toUpperCase();
           var xhrCartPath = pathnameFromCartUrl(this.__ripxUrl);
           if (method === 'POST' && isCartAddPath(this.__ripxUrl)) {
+            var self = this;
+            try {
+              self.addEventListener(
+                'loadend',
+                function () {
+                  if (self.status >= 200 && self.status < 300) {
+                    scheduleRipxCartNativeStateRefreshBurst();
+                  }
+                },
+                { once: true }
+              );
+            } catch (eAdd) {}
             if (!_ripxCartAttributeState) {
               if (DEBUG) {
                 debugLog(
@@ -1478,6 +1507,162 @@
         return origSend.call(this, body);
       };
     }
+  }
+
+  function cartUiRoot() {
+    return document.querySelector(
+      '.cart-drawer.active, .cart-drawer, #CartDrawer, cart-drawer, .drawer--cart, [data-cart-drawer], #cart-form, form[action*="/cart"], .cart-items, .cart__contents, main .cart'
+    );
+  }
+
+  function cartUiFallbackPaintCount() {
+    var root = cartUiRoot();
+    if (!root || !root.querySelectorAll) return 0;
+    try {
+      return querySelectorAllWithShadowRoots(root, '[data-ripx-price="1"]').length;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  function cartUiNativeMarkerCount() {
+    var root = cartUiRoot();
+    if (!root || !root.querySelectorAll) return 0;
+    try {
+      return querySelectorAllWithShadowRoots(
+        root,
+        '[data-ripx-native-cart="1"], [data-ripx-native-cart-line="1"], [data-ripx-native-cart-block="1"]'
+      ).length;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  function getDisplayedCartSubtotalCents() {
+    var root = cartUiRoot();
+    if (!root) return null;
+    var selectors =
+      '.totals__subtotal-value, [data-cart-subtotal], .cart-subtotal .money, .cart__subtotal .money, .totals .price';
+    var nodes = querySelectorAllWithShadowRoots(root, selectors);
+    for (var i = 0; i < nodes.length; i++) {
+      var price = parsePriceFromDisplay(nodes[i]);
+      if (price != null) return Math.round(price * 100);
+    }
+    return null;
+  }
+
+  function cartStateLineHasDiscount(item) {
+    if (!item || typeof item !== 'object') return false;
+    var original =
+      item.original_line_price !== undefined && item.original_line_price !== null
+        ? Number(item.original_line_price)
+        : item.line_price !== undefined && item.line_price !== null
+          ? Number(item.line_price)
+          : null;
+    var finalLine =
+      item.final_line_price !== undefined && item.final_line_price !== null
+        ? Number(item.final_line_price)
+        : null;
+    var totalDiscount =
+      item.total_discount !== undefined && item.total_discount !== null
+        ? Number(item.total_discount)
+        : 0;
+    if (Number.isFinite(totalDiscount) && totalDiscount > 0) return true;
+    if (Number.isFinite(original) && Number.isFinite(finalLine) && finalLine < original)
+      return true;
+    return Array.isArray(item.discounts) && item.discounts.length > 0;
+  }
+
+  function cartStateHasNativeDiscounts(cartState) {
+    if (!cartState || !Array.isArray(cartState.items)) return false;
+    return cartState.items.some(cartStateLineHasDiscount);
+  }
+
+  function cartUiMatchesNativeDiscountState(cartState) {
+    if (!cartStateHasNativeDiscounts(cartState)) return false;
+    if (cartUiFallbackPaintCount() > 0) return false;
+    var expected =
+      cartState.items_subtotal_price !== undefined && cartState.items_subtotal_price !== null
+        ? Number(cartState.items_subtotal_price)
+        : null;
+    var displayed = getDisplayedCartSubtotalCents();
+    if (!Number.isFinite(expected) || displayed == null) return false;
+    return displayed === expected;
+  }
+
+  function cacheRipxCartNativeState(cartState) {
+    var expected =
+      cartState &&
+      cartState.items_subtotal_price !== undefined &&
+      cartState.items_subtotal_price !== null
+        ? Number(cartState.items_subtotal_price)
+        : null;
+    var displayed = getDisplayedCartSubtotalCents();
+    _ripxCartNativeState = {
+      cart: cartState || null,
+      fetchedAt: Date.now(),
+      hasDiscounts: cartStateHasNativeDiscounts(cartState),
+      uiMatches: cartUiMatchesNativeDiscountState(cartState),
+      expectedSubtotalCents: Number.isFinite(expected) ? expected : null,
+      displayedSubtotalCents: displayed,
+    };
+    if (DEBUG) {
+      debugLog(
+        'cart native state:',
+        _ripxCartNativeState.hasDiscounts ? 'discounts-present' : 'no-discounts',
+        _ripxCartNativeState.uiMatches ? 'ui-matches' : 'ui-fallback-needed'
+      );
+    }
+    return _ripxCartNativeState;
+  }
+
+  function fetchRipxCartNativeState() {
+    if (!_ripxNativeFetch || !hasCartUiInDom()) return Promise.resolve(null);
+    if (_ripxCartNativeStateInFlight) return _ripxCartNativeStateInFlight;
+    _ripxCartNativeStateInFlight = _ripxNativeFetch('/cart.js', {
+      method: 'GET',
+      credentials: 'same-origin',
+      headers: { accept: 'application/json' },
+    })
+      .then(function (response) {
+        if (!response || !response.ok) return null;
+        return response.json().catch(function () {
+          return null;
+        });
+      })
+      .then(function (cartState) {
+        return cacheRipxCartNativeState(cartState);
+      })
+      .catch(function () {
+        return null;
+      })
+      .finally(function () {
+        _ripxCartNativeStateInFlight = null;
+      });
+    return _ripxCartNativeStateInFlight;
+  }
+
+  function scheduleRipxCartNativeStateRefresh(delayMs) {
+    if (_ripxCartNativeStateTimer) clearTimeout(_ripxCartNativeStateTimer);
+    _ripxCartNativeStateTimer = setTimeout(
+      function () {
+        _ripxCartNativeStateTimer = null;
+        fetchRipxCartNativeState();
+      },
+      Math.max(0, Number(delayMs) || 0)
+    );
+  }
+
+  function scheduleRipxCartNativeStateRefreshBurst() {
+    scheduleRipxCartNativeStateRefresh(0);
+    setTimeout(fetchRipxCartNativeState, 180);
+    setTimeout(fetchRipxCartNativeState, 700);
+  }
+
+  function shouldPreferNativeCartRendering() {
+    var st = _ripxCartNativeState;
+    if (!st || !st.hasDiscounts || !st.uiMatches) return false;
+    return Date.now() - Number(st.fetchedAt || 0) < 15000;
   }
 
   function formMatchesTargetProductIds(form, targetProductIds) {
@@ -2189,6 +2374,7 @@
    */
   function paintAllProductsGlobalPrices(testId, variant, scope) {
     if (!variant || !variant.config) return;
+    if (scope === 'cart' && shouldPreferNativeCartRendering()) return;
     var cfg = variant.config;
     if (!canUseAllProductsGlobalFallback(cfg)) return;
     var pm = String(cfg.priceMode || '').toLowerCase();
@@ -2482,6 +2668,7 @@
    */
   function applyPriceTestToCart(testId, variant, targetIds) {
     if (!variant || !targetIds || !targetIds.length) return;
+    if (shouldPreferNativeCartRendering()) return;
     if (!variant.config) {
       injectPreviewCartAttributesWhenConfigMissing(testId, variant);
       return;
@@ -2641,6 +2828,7 @@
         null
       );
     }
+    if (shouldPreferNativeCartRendering()) return;
     schedulePaintAllProductsGlobalPrices(testId, variant, 'cart');
   }
 
@@ -3929,6 +4117,10 @@
 
         initHeatmap();
 
+        if (shouldRunAllProductsCartFallback()) {
+          scheduleRipxCartNativeStateRefreshBurst();
+        }
+
         // Re-apply price tests after delays so dynamically loaded content (cart drawer, AJAX sections, predictive search) shows test prices (Intelligems-style: price everywhere).
         function reapplyPriceTestsOnly() {
           if (!hasValidConfig || !CONFIG.activeTests || CONFIG.activeTests.length === 0) return;
@@ -4008,8 +4200,9 @@
           var now = Date.now();
           if (now - lastCartReapplyAt < 400) return;
           lastCartReapplyAt = now;
-          setTimeout(reapplyPriceTestsOnly, 100);
-          setTimeout(reapplyPriceTestsOnly, 500);
+          scheduleRipxCartNativeStateRefreshBurst();
+          setTimeout(reapplyPriceTestsOnly, 180);
+          setTimeout(reapplyPriceTestsOnly, 700);
         };
         if (document.body) {
           document.body.addEventListener('click', function (e) {
@@ -4245,6 +4438,35 @@
             return null;
           }
         })(),
+        nativeCartState: {
+          fetchedAt:
+            _ripxCartNativeState && _ripxCartNativeState.fetchedAt
+              ? new Date(_ripxCartNativeState.fetchedAt).toISOString()
+              : null,
+          hasDiscounts:
+            _ripxCartNativeState && typeof _ripxCartNativeState.hasDiscounts === 'boolean'
+              ? _ripxCartNativeState.hasDiscounts
+              : null,
+          uiMatches:
+            _ripxCartNativeState && typeof _ripxCartNativeState.uiMatches === 'boolean'
+              ? _ripxCartNativeState.uiMatches
+              : null,
+          expectedSubtotalCents:
+            _ripxCartNativeState &&
+            _ripxCartNativeState.expectedSubtotalCents !== undefined &&
+            _ripxCartNativeState.expectedSubtotalCents !== null
+              ? _ripxCartNativeState.expectedSubtotalCents
+              : null,
+          displayedSubtotalCents:
+            _ripxCartNativeState &&
+            _ripxCartNativeState.displayedSubtotalCents !== undefined &&
+            _ripxCartNativeState.displayedSubtotalCents !== null
+              ? _ripxCartNativeState.displayedSubtotalCents
+              : null,
+          markerCount: cartUiNativeMarkerCount(),
+          fallbackPaintCount: cartUiFallbackPaintCount(),
+          preferNativeRendering: shouldPreferNativeCartRendering(),
+        },
       },
       checkout: {
         storefrontScriptRunsOnHostedCheckout: false,

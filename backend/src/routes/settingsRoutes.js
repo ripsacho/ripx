@@ -402,6 +402,26 @@ ${resourceHints}<script src="${scriptUrl}" defer crossorigin="anonymous" fetchpr
         ],
         altMethod: 'Direct script',
         altSnippet: `<script src="${directUrl}" defer crossorigin="anonymous" fetchpriority="low"></script>`,
+        cartNative: {
+          status: 'manual_required',
+          heading: 'Cart native discount rendering (recommended)',
+          summary:
+            'Checkout charged price is controlled by the Discount Function. To align cart UI across themes, render Shopify native discount values in cart lines/summary instead of relying only on JS text replacement.',
+          appBlockName: 'RipX Cart Summary',
+          lineSnippet: "{% render 'ripx-native-cart-line-price', item: item %}",
+          summarySnippet: "{% render 'ripx-native-cart-summary' %}",
+          markers: [
+            'data-ripx-native-cart="1"',
+            'data-ripx-native-cart-line="1"',
+            'data-ripx-native-cart-block="1"',
+          ],
+          steps: [
+            'Enable RipX App Embed (required for assignment + _ripx_* cart properties).',
+            'Add app block "RipX Cart Summary" in cart/footer sections that support app blocks.',
+            'In Dawn-style cart line templates, render ripx-native-cart-line-price for each line item.',
+            'Use ripx-native-cart-summary for subtotal/discount rows in cart page and drawer.',
+          ],
+        },
       };
     } else {
       platform = 'standalone';

@@ -1,0 +1,22 @@
+{% liquid
+  assign ripx_line_item = item | default: line_item
+%}
+{% if ripx_line_item %}
+  <div class="ripx-native-cart-line-price" data-ripx-native-cart-line="1">
+    {% if ripx_line_item.original_line_price > ripx_line_item.final_line_price %}
+      <s class="ripx-native-cart-line-price__original">{{ ripx_line_item.original_line_price | money }}</s>
+    {% endif %}
+    <span class="ripx-native-cart-line-price__final">{{ ripx_line_item.final_line_price | money }}</span>
+
+    {% if ripx_line_item.line_level_discount_allocations.size > 0 %}
+      <ul class="ripx-native-cart-line-price__discounts list-unstyled" role="list" aria-label="RipX cart discounts">
+        {% for discount_allocation in ripx_line_item.line_level_discount_allocations %}
+          <li class="ripx-native-cart-line-price__discount">
+            <span class="ripx-native-cart-line-price__discount-title">{{ discount_allocation.discount_application.title }}</span>
+            <span class="ripx-native-cart-line-price__discount-amount">-{{ discount_allocation.amount | money }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  </div>
+{% endif %}

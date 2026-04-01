@@ -41,6 +41,37 @@ describe('priceTestCheckoutResolve', () => {
     expect(parseFloat(r.discountDecimal, 10)).toBeCloseTo(10, 2);
   });
 
+  it('includes debug metadata when requested', () => {
+    const r = resolvePriceTestLineDiscount({
+      test: baseTest,
+      assignmentVariantId: 'var-b',
+      productId: '111',
+      variantId: 'gid://shopify/ProductVariant/222',
+      linePresentmentTotal: 29.99,
+      quantity: 1,
+      shopDomain: 'store.myshopify.com',
+      debug: true,
+    });
+    expect(r.applies).toBe(true);
+    expect(r.debug).toMatchObject({
+      testId: null,
+      testType: 'price',
+      testStatus: 'running',
+      targetType: 'product',
+      assignmentVariantId: 'var-b',
+      productId: '111',
+      variantId: 'gid://shopify/ProductVariant/222',
+      shopDomain: 'store.myshopify.com',
+      matchedVariantId: 'var-b',
+      matchedVariantName: 'Variant B',
+      priceMode: 'fixed',
+      resultReason: null,
+      applies: true,
+      discountDecimal: '10.00',
+      targetLineDecimal: '19.99',
+    });
+  });
+
   it('rejects draft test at checkout unless env allows draft price tests', () => {
     const draftTest = { ...baseTest, status: 'draft' };
     const r = resolvePriceTestLineDiscount({
@@ -95,6 +126,37 @@ describe('priceTestCheckoutResolve', () => {
     });
     expect(r.applies).toBe(false);
     expect(r.reason).toBe('product_not_in_test');
+  });
+
+  it('includes debug reason for compare_at failures', () => {
+    const test = {
+      ...baseTest,
+      variants: [
+        {
+          id: 'var-b',
+          name: 'Variant B',
+          config: { priceMode: 'percent', pricePercent: 10, priceBase: 'compare_at' },
+        },
+      ],
+    };
+    const r = resolvePriceTestLineDiscount({
+      test,
+      assignmentVariantId: 'var-b',
+      productId: '111',
+      linePresentmentTotal: 20,
+      quantity: 1,
+      debug: true,
+    });
+    expect(r.applies).toBe(false);
+    expect(r.reason).toBe('compare_at_unavailable');
+    expect(r.debug).toMatchObject({
+      priceMode: 'percent',
+      priceBase: 'compare_at',
+      useCompareAtBase: true,
+      compareAtUnit: null,
+      resultReason: 'compare_at_unavailable',
+      applies: false,
+    });
   });
 
   it('amount mode uses catalog from line', () => {
@@ -284,6 +346,48 @@ describe('priceTestCheckoutResolve', () => {
     expect(batchIds).toEqual([testUuid]);
     expect(out).toHaveLength(1);
     expect(out[0].applies).toBe(true);
+  });
+
+  it('resolveCheckoutPriceBatchForDomain includes per-line debug metadata when requested', async () => {
+    const testUuid = '550e8400-e29b-41d4-a716-446655440088';
+    const testRow = {
+      id: testUuid,
+      type: 'price',
+      status: 'running',
+      target_type: 'product',
+      target_ids: ['gid://shopify/Product/111'],
+      variants: [{ id: 'var-b', name: 'Variant B', config: { priceMode: 'fixed', price: 19.99 } }],
+    };
+    const out = await resolveCheckoutPriceBatchForDomain(
+      'store.myshopify.com',
+      [
+        {
+          line_id: 'gid://shopify/CartLine/9',
+          test_id: testUuid,
+          assignment_variant: 'var-b',
+          product_id: '111',
+          line_total: 29.99,
+          qty: 1,
+        },
+      ],
+      async () => testRow,
+      undefined,
+      { debug: true }
+    );
+    expect(out[0]).toMatchObject({
+      line_id: 'gid://shopify/CartLine/9',
+      applies: true,
+      discountDecimal: '10.00',
+      targetLineDecimal: '19.99',
+      debug: {
+        shopDomain: 'store.myshopify.com',
+        testId: testUuid,
+        assignmentVariantId: 'var-b',
+        productId: '111',
+        resultReason: null,
+        applies: true,
+      },
+    });
   });
 
   it('accepts type pricing like price', () => {

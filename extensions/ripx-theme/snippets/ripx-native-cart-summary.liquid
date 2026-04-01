@@ -1,0 +1,17 @@
+<div class="ripx-native-cart-summary" data-ripx-native-cart="1">
+  <div class="ripx-native-cart-summary__subtotal-row">
+    <span class="ripx-native-cart-summary__label">Subtotal</span>
+    <span class="ripx-native-cart-summary__value">{{ cart.items_subtotal_price | money }}</span>
+  </div>
+
+  {% if cart.cart_level_discount_applications.size > 0 %}
+    <ul class="ripx-native-cart-summary__discounts list-unstyled" role="list" aria-label="Cart discounts">
+      {% for discount_application in cart.cart_level_discount_applications %}
+        <li class="ripx-native-cart-summary__discount">
+          <span class="ripx-native-cart-summary__discount-title">{{ discount_application.title }}</span>
+          <span class="ripx-native-cart-summary__discount-amount">-{{ discount_application.total_allocated_amount | money }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</div>

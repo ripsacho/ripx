@@ -28,11 +28,13 @@ function batchResolveResponseTooLarge(payload, maxBytes = PRICE_RESOLVE_BATCH_RE
  * Shopify discount `run` target only reads line_id, applies, discountDecimal.
  * Default: omit targetLineDecimal/reason to shrink JSON (Shopify ~100KB cap).
  * Set RIPX_PRICE_BATCH_FULL_RESPONSE=true for debugging or external integrators.
- * @param {Array<{ line_id: string, applies: boolean, discountDecimal: string|null, targetLineDecimal?: string|null, reason?: string|null }>} resolved
+ * Callers can also force `fullResponse` for authenticated/manual debug requests without changing env.
+ * @param {Array<{ line_id: string, applies: boolean, discountDecimal: string|null, targetLineDecimal?: string|null, reason?: string|null, debug?: object|null }>} resolved
+ * @param {{ fullResponse?: boolean }} [opts]
  * @returns {object[]}
  */
-function shapePriceResolveBatchLinesForCheckout(resolved) {
-  const full = process.env.RIPX_PRICE_BATCH_FULL_RESPONSE === 'true';
+function shapePriceResolveBatchLinesForCheckout(resolved, opts = {}) {
+  const full = opts.fullResponse === true || process.env.RIPX_PRICE_BATCH_FULL_RESPONSE === 'true';
   if (full) {
     return resolved;
   }

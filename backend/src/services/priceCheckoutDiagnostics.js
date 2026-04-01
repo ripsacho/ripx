@@ -472,6 +472,12 @@ function buildCheckoutPriceDiagnostics(opts = {}) {
   const anyNotOk = checklist.some(c => !c.ok);
   const anyErrorSeverity = checklist.some(c => !c.ok && c.severity === 'error');
   const overallStatus = anyErrorSeverity ? 'error' : anyNotOk ? 'warning' : 'ok';
+  const checksWarning = checklist.filter(c => c.severity === 'warning').length;
+  const checksError = checklist.filter(c => c.severity === 'error').length;
+  const checkoutAlignmentReady = !anyNotOk;
+  const cartRenderingLevel = 'theme_integration_recommended';
+  const cartRenderingSummary =
+    'Cart UI can vary by theme. Prefer native Shopify discount rendering (theme app block/snippets) and use JS price paint as fallback only.';
 
   return {
     success: true,
@@ -481,6 +487,8 @@ function buildCheckoutPriceDiagnostics(opts = {}) {
       overall_ok: !anyNotOk,
       checks_passed: checklist.filter(c => c.ok).length,
       checks_total: checklist.length,
+      checks_warning: checksWarning,
+      checks_error: checksError,
     },
     infrastructure: {
       app_url_configured: Boolean(appUrl),
@@ -497,6 +505,24 @@ function buildCheckoutPriceDiagnostics(opts = {}) {
       price_batch_slow_log_ms: PRICE_BATCH_SLOW_LOG_MS,
       node_env: nodeEnv,
       ...infrastructureExtension,
+    },
+    support: {
+      model: 'discount_function_truth',
+      checkout_alignment: {
+        level: checkoutAlignmentReady ? 'ready' : 'needs_attention',
+        summary: checkoutAlignmentReady
+          ? 'Checkout discount function infrastructure is configured and checks pass.'
+          : 'Checkout alignment has failing or warning checks. Resolve checklist items before relying on charged-price parity.',
+      },
+      cart_rendering: {
+        level: cartRenderingLevel,
+        summary: cartRenderingSummary,
+        native_markers: [
+          'data-ripx-native-cart="1"',
+          'data-ripx-native-cart-line="1"',
+          'data-ripx-native-cart-block="1"',
+        ],
+      },
     },
     checklist,
     recommendations,

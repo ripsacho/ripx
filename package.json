@@ -44,6 +44,8 @@
     "dev:switch-tunnel": "node scripts/dev-switch-tunnel.js",
     "verify:price-pipeline": "node scripts/verify-price-pipeline.js",
     "verify:price-assignment-readiness": "node scripts/verify-price-assignment-readiness.js",
+    "verify:price-go-no-go": "node scripts/verify-price-go-no-go.js",
+    "verify:price-go-no-go:strict": "node scripts/verify-price-go-no-go.js --strict",
     "audit": "npm audit && cd frontend && npm audit",
     "presentation": "npx @marp-team/marp-cli docs/presentation/PRESENTATION.md -o docs/presentation/PRESENTATION.html --allow-local-files",
     "presentation:pdf": "npx @marp-team/marp-cli docs/presentation/PRESENTATION.md -o docs/presentation/PRESENTATION.pdf --allow-local-files",

@@ -1584,6 +1584,37 @@
   min-width: 200px;
 }
 
+.supportLevelHint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.5rem;
+  padding: 0 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid var(--border-secondary);
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
+  cursor: help;
+  user-select: none;
+}
+
+.supportLevelLegend {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border-secondary);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-secondary) 94%, transparent);
+}
+
+.supportLevelLegendRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
 @media (max-width: 600px) {
   .presetCardsGrid {
     grid-template-columns: 1fr;

@@ -49,8 +49,11 @@ describe('priceResolveBatchResponse', () => {
   describe('shapePriceResolveBatchLinesForCheckout', () => {
     const savedFull = process.env.RIPX_PRICE_BATCH_FULL_RESPONSE;
     afterEach(() => {
-      if (savedFull === undefined) {delete process.env.RIPX_PRICE_BATCH_FULL_RESPONSE;}
-      else {process.env.RIPX_PRICE_BATCH_FULL_RESPONSE = savedFull;}
+      if (savedFull === undefined) {
+        delete process.env.RIPX_PRICE_BATCH_FULL_RESPONSE;
+      } else {
+        process.env.RIPX_PRICE_BATCH_FULL_RESPONSE = savedFull;
+      }
     });
 
     it('drops reason/targetLineDecimal by default', () => {
@@ -86,6 +89,19 @@ describe('priceResolveBatchResponse', () => {
         reason: 'x',
       };
       expect(shapePriceResolveBatchLinesForCheckout([row])).toEqual([row]);
+    });
+
+    it('preserves all fields when fullResponse option is set', () => {
+      delete process.env.RIPX_PRICE_BATCH_FULL_RESPONSE;
+      const row = {
+        line_id: 'L1',
+        applies: false,
+        discountDecimal: null,
+        targetLineDecimal: null,
+        reason: 'x',
+        debug: { resultReason: 'x' },
+      };
+      expect(shapePriceResolveBatchLinesForCheckout([row], { fullResponse: true })).toEqual([row]);
     });
   });
 });

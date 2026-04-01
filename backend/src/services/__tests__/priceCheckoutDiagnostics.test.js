@@ -26,6 +26,9 @@ describe('priceCheckoutDiagnostics', () => {
     expect(d.checklist.find(c => c.id === 'https_public_url')?.ok).toBe(true);
     expect(d.summary?.overall_ok).toBe(true);
     expect(d.summary?.checks_total).toBeGreaterThan(0);
+    expect(d.support?.model).toBe('discount_function_truth');
+    expect(d.support?.checkout_alignment?.level).toBe('ready');
+    expect(d.support?.cart_rendering?.level).toBe('theme_integration_recommended');
     expect(d.recommendations.some(r => r.includes('readTimeoutMs'))).toBe(true);
     expect(d.recommendations.some(r => r.includes('RIPX_PRICE_BATCH_FULL_RESPONSE'))).toBe(true);
     expect(d.recommendations.some(r => r.includes('timing-safe'))).toBe(true);
@@ -47,6 +50,8 @@ describe('priceCheckoutDiagnostics', () => {
     expect(d.checklist.find(c => c.id === 'batch_url_configured')?.ok).toBe(false);
     expect(d.summary?.overall_ok).toBe(false);
     expect(d.summary?.overall_status).toBe('error');
+    expect(d.summary?.checks_error).toBeGreaterThan(0);
+    expect(d.support?.checkout_alignment?.level).toBe('needs_attention');
   });
 
   it('includes shop snapshot fields when provided', () => {
@@ -83,6 +88,7 @@ describe('priceCheckoutDiagnostics', () => {
     expect(d.checklist.find(c => c.id === 'assignment_signature_enforcement')?.ok).toBe(false);
     expect(d.summary.overall_ok).toBe(false);
     expect(d.summary.overall_status).toBe('warning');
+    expect(d.summary.checks_warning).toBeGreaterThan(0);
   });
 
   it('marks assignment signature enforcement as enabled by default in production', () => {

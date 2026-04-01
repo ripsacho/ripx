@@ -1,0 +1,27 @@
+.ripx-native-cart-line-price,
+.ripx-native-cart-summary {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.ripx-native-cart-line-price__original,
+.ripx-native-cart-summary__discount-amount {
+  opacity: 0.72;
+}
+
+.ripx-native-cart-line-price__discounts,
+.ripx-native-cart-summary__discounts {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.ripx-native-cart-line-price__discount,
+.ripx-native-cart-summary__discount,
+.ripx-native-cart-summary__subtotal-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
