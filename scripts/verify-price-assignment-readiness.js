@@ -14,6 +14,7 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 const jsonMode = process.argv.includes('--json');
+const argShop = (process.argv.find(a => a.startsWith('--shop=')) || '').split('=')[1] || '';
 
 function bool(v) {
   return !!v;
@@ -276,7 +277,7 @@ async function main() {
     getSignatureSecret,
   } = require('../backend/src/utils/priceAssignmentSignature');
 
-  const shop = (process.env.RIPX_VERIFY_SHOP || '').trim();
+  const shop = (argShop || process.env.RIPX_VERIFY_SHOP || '').trim();
   const probeLineTotal = getSyntheticProbeLineTotal();
   const probeQty = getSyntheticProbeQty();
   const strictRequired = shouldRequireSignedAssignment();

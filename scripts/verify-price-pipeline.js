@@ -26,6 +26,7 @@ const CHECKOUT_FN_WASM = path.join(
 );
 
 const jsonMode = process.argv.includes('--json');
+const argShop = (process.argv.find(a => a.startsWith('--shop=')) || '').split('=')[1] || '';
 
 /** Word-wrap long strings for narrow terminals (one checklist/recommendation per logical block). */
 function printPrefixedLines(prefix, text) {
@@ -63,7 +64,7 @@ async function main() {
   let shopLookupError = null;
   /** When tenant looks missing, explains which DB tables were checked (same DATABASE_URL as .env). */
   let shopDbLookupBreakdown = null;
-  const shop = (process.env.RIPX_VERIFY_SHOP || '').trim();
+  const shop = (argShop || process.env.RIPX_VERIFY_SHOP || '').trim();
   if (shop) {
     try {
       const {
