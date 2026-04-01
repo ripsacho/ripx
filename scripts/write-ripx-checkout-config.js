@@ -24,6 +24,10 @@ if (!batchUrl && appUrl) {
   batchUrl = `${appUrl}/api/track/price-resolve-batch`;
 }
 const secret = (process.env.RIPX_CHECKOUT_PRICE_SECRET || '').trim();
+const probeAlwaysDiscount =
+  String(process.env.RIPX_CHECKOUT_PROBE_ALWAYS_DISCOUNT || '')
+    .trim()
+    .toLowerCase() === 'true';
 
 if (!batchUrl) {
   console.error(
@@ -41,9 +45,15 @@ const content = `/**
 export const RIPX_PRICE_RESOLVE_BATCH_URL = ${JSON.stringify(batchUrl)};
 
 export const RIPX_CHECKOUT_PRICE_SECRET = ${JSON.stringify(secret)};
+
+export const RIPX_CHECKOUT_PROBE_ALWAYS_DISCOUNT = ${JSON.stringify(probeAlwaysDiscount)};
 `;
 
 fs.writeFileSync(dest, content, 'utf8');
 console.log('[write-ripx-checkout-config] Wrote', dest);
 console.log('[write-ripx-checkout-config] BATCH_URL =', batchUrl);
 console.log('[write-ripx-checkout-config] SECRET    =', secret ? '(set)' : '(empty)');
+console.log(
+  '[write-ripx-checkout-config] PROBE     =',
+  probeAlwaysDiscount ? 'always_discount' : 'off'
+);

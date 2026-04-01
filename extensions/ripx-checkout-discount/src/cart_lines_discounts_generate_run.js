@@ -3,6 +3,7 @@ import {
   OrderDiscountSelectionStrategy,
   ProductDiscountSelectionStrategy,
 } from '../generated/api';
+import { RIPX_CHECKOUT_PROBE_ALWAYS_DISCOUNT } from './ripxConfig';
 
 function normalizeFetchBody(jsonBody) {
   if (jsonBody == null) {
@@ -75,6 +76,21 @@ function buildLocalFallbackCandidates(cartLines) {
   return candidates;
 }
 
+function buildProbeCandidates(cartLines) {
+  const candidates = [];
+  for (const line of cartLines || []) {
+    if (!line?.ripxTest?.value) {
+      continue;
+    }
+    const candidate = buildCandidateForLine(line, 0.01);
+    if (candidate) {
+      candidate.message = 'RipX probe discount';
+      candidates.push(candidate);
+    }
+  }
+  return candidates;
+}
+
 /**
  * @param {import("../generated/api").RipxCartLinesRun} input
  */
@@ -85,6 +101,45 @@ export function cartLinesDiscountsGenerateRun(input) {
   // Be permissive in case Shopify omits/changes class signals for this target.
   // If we have valid resolved rows, still attempt product candidates.
   const cartLines = input.cart?.lines || [];
+  const probeEnabled = RIPX_CHECKOUT_PROBE_ALWAYS_DISCOUNT === true;
+  if (probeEnabled) {
+    const probeCandidates = buildProbeCandidates(cartLines);
+    if (probeCandidates.length === 0) {
+      return { operations: [] };
+    }
+    if (!hasProduct && hasOrder) {
+      return {
+        operations: [
+          {
+            orderDiscountsAdd: {
+              candidates: [
+                {
+                  message: 'RipX probe discount',
+                  targets: [{ orderSubtotal: { excludedCartLineIds: [] } }],
+                  value: {
+                    fixedAmount: {
+                      amount: (probeCandidates.length * 0.01).toFixed(2),
+                    },
+                  },
+                },
+              ],
+              selectionStrategy: OrderDiscountSelectionStrategy.Maximum,
+            },
+          },
+        ],
+      };
+    }
+    return {
+      operations: [
+        {
+          productDiscountsAdd: {
+            candidates: probeCandidates,
+            selectionStrategy: ProductDiscountSelectionStrategy.All,
+          },
+        },
+      ],
+    };
+  }
   const status = input.fetchResult?.status;
   const body = normalizeFetchBody(input.fetchResult?.jsonBody);
   const rows = Array.isArray(body.lines) ? body.lines : [];
