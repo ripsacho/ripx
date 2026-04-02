@@ -1277,19 +1277,13 @@
     }
     var effectivePayload = payload;
     if (!effectivePayload._ripx_target_unit || !effectivePayload._ripx_discount_unit) {
-      var rememberedTargetUnit = '';
-      var rememberedDiscountUnit = '';
-      if (
-        Array.isArray(_ripxCartFormTargetProductIds) &&
-        _ripxCartFormTargetProductIds.length === 1
-      ) {
-        rememberedTargetUnit = getRememberedRipxTargetUnitForProductId(
-          toNumericProductId(_ripxCartFormTargetProductIds[0])
-        );
-        rememberedDiscountUnit = getRememberedRipxDiscountUnitForProductId(
-          toNumericProductId(_ripxCartFormTargetProductIds[0])
-        );
-      }
+      var preferredPid = getPreferredRipxProductIdForCartAttrs();
+      var rememberedTargetUnit = preferredPid
+        ? getRememberedRipxTargetUnitForProductId(preferredPid)
+        : '';
+      var rememberedDiscountUnit = preferredPid
+        ? getRememberedRipxDiscountUnitForProductId(preferredPid)
+        : '';
       if (rememberedTargetUnit || rememberedDiscountUnit) {
         effectivePayload = Object.assign({}, payload, {
           _ripx_target_unit: effectivePayload._ripx_target_unit || rememberedTargetUnit,
@@ -1811,6 +1805,20 @@
     return getRememberedRipxDiscountUnitForProductId(getRipxProductIdForForm(form));
   }
 
+  function getPreferredRipxProductIdForCartAttrs() {
+    if (
+      Array.isArray(_ripxCartFormTargetProductIds) &&
+      _ripxCartFormTargetProductIds.length === 1
+    ) {
+      return toNumericProductId(_ripxCartFormTargetProductIds[0]);
+    }
+    var currentPid = toNumericProductId(getCurrentProductId());
+    if (currentPid) return currentPid;
+    var rememberedKeys = Object.keys(_ripxTargetUnitByProductId || {});
+    if (rememberedKeys.length === 1) return toNumericProductId(rememberedKeys[0]);
+    return null;
+  }
+
   /**
    * Re-apply hidden RipX line properties to cart/add forms (dynamic drawers, section reloads).
    * Uses _ripxCartAttributeState; respects last injectPriceTestCartAttributes target scope.
@@ -1906,13 +1914,35 @@
         window.Shopify.shop &&
         String(window.Shopify.shop).trim()) ||
       '';
-    _ripxCartAttributeState = getRipxCartAttrsPayload(
+    var nextState = getRipxCartAttrsPayload(
       String(testId),
       String(variantId),
       valueShop,
       assignmentProof,
       pricingProof
     );
+    if (
+      _ripxCartAttributeState &&
+      _ripxCartAttributeState._ripx_price_test === String(testId) &&
+      _ripxCartAttributeState._ripx_variant === String(variantId)
+    ) {
+      if (!nextState._ripx_target_unit && _ripxCartAttributeState._ripx_target_unit) {
+        nextState._ripx_target_unit = _ripxCartAttributeState._ripx_target_unit;
+      }
+      if (!nextState._ripx_discount_unit && _ripxCartAttributeState._ripx_discount_unit) {
+        nextState._ripx_discount_unit = _ripxCartAttributeState._ripx_discount_unit;
+      }
+      if (!nextState._ripx_assignment_sig && _ripxCartAttributeState._ripx_assignment_sig) {
+        nextState._ripx_assignment_sig = _ripxCartAttributeState._ripx_assignment_sig;
+      }
+      if (!nextState._ripx_assignment_ts && _ripxCartAttributeState._ripx_assignment_ts) {
+        nextState._ripx_assignment_ts = _ripxCartAttributeState._ripx_assignment_ts;
+      }
+      if (!nextState._ripx_assignment_user && _ripxCartAttributeState._ripx_assignment_user) {
+        nextState._ripx_assignment_user = _ripxCartAttributeState._ripx_assignment_user;
+      }
+    }
+    _ripxCartAttributeState = nextState;
     if (_ripxCartAttributeState && _ripxCartAttributeState._ripx_target_unit) {
       rememberRipxTargetUnitForProducts(
         targetProductIds,
@@ -1925,9 +1955,16 @@
         _ripxCartAttributeState._ripx_discount_unit
       );
     }
-    _ripxCartFormTargetProductIds = targetProductIds;
+    if (Array.isArray(targetProductIds) && targetProductIds.length > 0) {
+      _ripxCartFormTargetProductIds = targetProductIds;
+    } else if (
+      !Array.isArray(_ripxCartFormTargetProductIds) ||
+      _ripxCartFormTargetProductIds.length === 0
+    ) {
+      _ripxCartFormTargetProductIds = targetProductIds;
+    }
     installRipxCartAddInterceptors();
-    applyRipxStateToCartForms(targetProductIds);
+    applyRipxStateToCartForms(_ripxCartFormTargetProductIds);
     installRipxCartFormObserver();
     if (DEBUG)
       debugLog(
