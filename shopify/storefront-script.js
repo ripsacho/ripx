@@ -427,6 +427,7 @@
   var _ripxCartAttributeState = null;
   var _ripxCartFormTargetProductIds = null;
   var _ripxTargetUnitByProductId = {};
+  var _ripxDiscountUnitByProductId = {};
   var _ripxCartFormObserverInstalled = false;
   var _ripxCartFormObserverTimer = null;
   var _ripxCartAddInterceptorsInstalled = false;
@@ -1008,6 +1009,14 @@
     ) {
       out._ripx_target_unit = Number(pricingProof.targetUnit).toFixed(2);
     }
+    if (
+      pricingProof &&
+      pricingProof.discountUnit !== undefined &&
+      pricingProof.discountUnit !== null &&
+      isFinite(Number(pricingProof.discountUnit))
+    ) {
+      out._ripx_discount_unit = Number(pricingProof.discountUnit).toFixed(2);
+    }
     return out;
   }
 
@@ -1069,6 +1078,12 @@
       payload._ripx_target_unit,
       preserveExisting
     );
+    setRipxAttrValueOnFormData(
+      formData,
+      'properties[_ripx_discount_unit]',
+      payload._ripx_discount_unit,
+      preserveExisting
+    );
     return true;
   }
 
@@ -1123,6 +1138,12 @@
       params,
       'properties[_ripx_target_unit]',
       payload._ripx_target_unit,
+      preserveExisting
+    );
+    setRipxAttrValueOnSearchParams(
+      params,
+      'properties[_ripx_discount_unit]',
+      payload._ripx_discount_unit,
       preserveExisting
     );
     return true;
@@ -1255,8 +1276,9 @@
       return { changed: false, body: body };
     }
     var effectivePayload = payload;
-    if (!effectivePayload._ripx_target_unit) {
+    if (!effectivePayload._ripx_target_unit || !effectivePayload._ripx_discount_unit) {
       var rememberedTargetUnit = '';
+      var rememberedDiscountUnit = '';
       if (
         Array.isArray(_ripxCartFormTargetProductIds) &&
         _ripxCartFormTargetProductIds.length === 1
@@ -1264,10 +1286,14 @@
         rememberedTargetUnit = getRememberedRipxTargetUnitForProductId(
           toNumericProductId(_ripxCartFormTargetProductIds[0])
         );
+        rememberedDiscountUnit = getRememberedRipxDiscountUnitForProductId(
+          toNumericProductId(_ripxCartFormTargetProductIds[0])
+        );
       }
-      if (rememberedTargetUnit) {
+      if (rememberedTargetUnit || rememberedDiscountUnit) {
         effectivePayload = Object.assign({}, payload, {
-          _ripx_target_unit: rememberedTargetUnit,
+          _ripx_target_unit: effectivePayload._ripx_target_unit || rememberedTargetUnit,
+          _ripx_discount_unit: effectivePayload._ripx_discount_unit || rememberedDiscountUnit,
         });
       }
     }
@@ -1303,6 +1329,7 @@
               setPropIfMissing('_ripx_assignment_ts', effectivePayload._ripx_assignment_ts);
               setPropIfMissing('_ripx_assignment_user', effectivePayload._ripx_assignment_user);
               setPropIfMissing('_ripx_target_unit', effectivePayload._ripx_target_unit);
+              setPropIfMissing('_ripx_discount_unit', effectivePayload._ripx_discount_unit);
               return nextProps;
             }
             function mapCartLinesWithRipx(arr) {
@@ -1756,8 +1783,32 @@
     return _ripxTargetUnitByProductId[String(pid)] || '';
   }
 
+  function rememberRipxDiscountUnitForProduct(productId, discountUnit) {
+    var pid = toNumericProductId(productId);
+    var num = Number(discountUnit);
+    if (!pid || !isFinite(num) || !(num > 0)) return;
+    _ripxDiscountUnitByProductId[String(pid)] = num.toFixed(2);
+  }
+
+  function rememberRipxDiscountUnitForProducts(targetProductIds, discountUnit) {
+    if (!Array.isArray(targetProductIds) || targetProductIds.length === 0) return;
+    targetProductIds.forEach(function (productId) {
+      rememberRipxDiscountUnitForProduct(productId, discountUnit);
+    });
+  }
+
+  function getRememberedRipxDiscountUnitForProductId(productId) {
+    var pid = toNumericProductId(productId);
+    if (!pid) return '';
+    return _ripxDiscountUnitByProductId[String(pid)] || '';
+  }
+
   function getRememberedRipxTargetUnitForForm(form) {
     return getRememberedRipxTargetUnitForProductId(getRipxProductIdForForm(form));
+  }
+
+  function getRememberedRipxDiscountUnitForForm(form) {
+    return getRememberedRipxDiscountUnitForProductId(getRipxProductIdForForm(form));
   }
 
   /**
@@ -1811,6 +1862,11 @@
       if (targetUnitValue) {
         setProperty('_ripx_target_unit', targetUnitValue);
       }
+      var discountUnitValue =
+        state._ripx_discount_unit || getRememberedRipxDiscountUnitForForm(form);
+      if (discountUnitValue) {
+        setProperty('_ripx_discount_unit', discountUnitValue);
+      }
     });
   }
 
@@ -1861,6 +1917,12 @@
       rememberRipxTargetUnitForProducts(
         targetProductIds,
         _ripxCartAttributeState._ripx_target_unit
+      );
+    }
+    if (_ripxCartAttributeState && _ripxCartAttributeState._ripx_discount_unit) {
+      rememberRipxDiscountUnitForProducts(
+        targetProductIds,
+        _ripxCartAttributeState._ripx_discount_unit
       );
     }
     _ripxCartFormTargetProductIds = targetProductIds;
@@ -2097,10 +2159,24 @@
 
     if (isNaN(priceNum) || !isFinite(priceNum)) return;
     priceNum = Math.max(0, Math.round(priceNum * 100) / 100);
+    var catalogUnitForCheckout = getCatalogPriceFromPage(currentPdpVariantId);
+    var discountUnit = null;
+    if (catalogUnitForCheckout != null && isFinite(Number(catalogUnitForCheckout))) {
+      discountUnit = Math.round((Number(catalogUnitForCheckout) - priceNum) * 100) / 100;
+      if (!(discountUnit > 0)) {
+        discountUnit = null;
+      }
+    }
     var roundToVal = parseRoundTo(cfg.roundTo);
     if (roundToVal > 0) {
       priceNum = Math.round(priceNum / roundToVal) * roundToVal;
       priceNum = Math.max(0, Math.round(priceNum * 100) / 100);
+      if (catalogUnitForCheckout != null && isFinite(Number(catalogUnitForCheckout))) {
+        discountUnit = Math.round((Number(catalogUnitForCheckout) - priceNum) * 100) / 100;
+        if (!(discountUnit > 0)) {
+          discountUnit = null;
+        }
+      }
     }
 
     var display = formatShopPrice(priceNum);
@@ -2346,7 +2422,7 @@
         variantIdForCart,
         getAssignmentProofFromVariant(variant),
         [productId],
-        { targetUnit: priceNum }
+        { targetUnit: priceNum, discountUnit: discountUnit }
       );
     }
   }

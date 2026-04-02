@@ -45,17 +45,26 @@ function buildCandidateForLine(line, discountDecimal) {
 function buildLocalFallbackCandidates(cartLines) {
   const candidates = [];
   for (const line of cartLines || []) {
+    const discountUnitRaw = line?.ripxDiscountUnit?.value;
     const targetUnitRaw = line?.ripxTargetUnit?.value;
     const qty = Math.max(1, Number(line?.quantity) || 1);
     const subtotal = Number.parseFloat(String(line?.cost?.subtotalAmount?.amount || '').trim());
-    if (!targetUnitRaw || !Number.isFinite(subtotal) || subtotal <= 0) {
-      continue;
-    }
     // Probe mode proved the function executes. When fetch data is missing,
     // fall back as long as the line carries a test marker and target unit.
     // Requiring proof fields here only creates false negatives because this
     // branch cannot validate those fields anyway.
     if (!line?.ripxTest?.value) {
+      continue;
+    }
+    const discountUnit = Number.parseFloat(String(discountUnitRaw || '').trim());
+    if (Number.isFinite(discountUnit) && discountUnit > 0) {
+      const candidate = buildCandidateForLine(line, Math.round(discountUnit * qty * 100) / 100);
+      if (candidate) {
+        candidates.push(candidate);
+      }
+      continue;
+    }
+    if (!targetUnitRaw || !Number.isFinite(subtotal) || subtotal <= 0) {
       continue;
     }
     const targetUnit = Number.parseFloat(String(targetUnitRaw).trim());

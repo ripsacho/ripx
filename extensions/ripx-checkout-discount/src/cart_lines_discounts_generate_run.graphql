@@ -34,6 +34,9 @@ query RipxCartLinesRun {
       ripxTargetUnit: attribute(key: "_ripx_target_unit") {
         value
       }
+      ripxDiscountUnit: attribute(key: "_ripx_discount_unit") {
+        value
+      }
     }
   }
 }

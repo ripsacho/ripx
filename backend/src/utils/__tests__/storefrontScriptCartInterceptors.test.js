@@ -156,7 +156,9 @@ describe('storefront script cart/add interceptors', () => {
     const attrs = hooks.getRipxCartAttrsPayload(
       '11111111-1111-4111-8111-111111111111',
       'variant-A',
-      'makripon.myshopify.com'
+      'makripon.myshopify.com',
+      null,
+      { targetUnit: 90, discountUnit: 10 }
     );
     hooks.setRipxCartAttributeState(attrs);
     hooks.installRipxCartAddInterceptors();
@@ -173,6 +175,8 @@ describe('storefront script cart/add interceptors', () => {
       _ripx_price_test: '11111111-1111-4111-8111-111111111111',
       _ripx_variant: 'variant-A',
       _ripx_shop: 'makripon.myshopify.com',
+      _ripx_target_unit: '90.00',
+      _ripx_discount_unit: '10.00',
     });
   });
 
