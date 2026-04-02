@@ -426,6 +426,7 @@
   /** Latest line-attribute payload to apply on theme AJAX cart/add requests. */
   var _ripxCartAttributeState = null;
   var _ripxCartFormTargetProductIds = null;
+  var _ripxTargetUnitByProductId = {};
   var _ripxCartFormObserverInstalled = false;
   var _ripxCartFormObserverTimer = null;
   var _ripxCartAddInterceptorsInstalled = false;
@@ -1253,13 +1254,30 @@
       if (DEBUG) debugLog('cart patch skip: missing _ripx_price_test / _ripx_variant on payload');
       return { changed: false, body: body };
     }
+    var effectivePayload = payload;
+    if (!effectivePayload._ripx_target_unit) {
+      var rememberedTargetUnit = '';
+      if (
+        Array.isArray(_ripxCartFormTargetProductIds) &&
+        _ripxCartFormTargetProductIds.length === 1
+      ) {
+        rememberedTargetUnit = getRememberedRipxTargetUnitForProductId(
+          toNumericProductId(_ripxCartFormTargetProductIds[0])
+        );
+      }
+      if (rememberedTargetUnit) {
+        effectivePayload = Object.assign({}, payload, {
+          _ripx_target_unit: rememberedTargetUnit,
+        });
+      }
+    }
 
     if (typeof FormData !== 'undefined' && body instanceof FormData) {
-      applyRipxCartAttrsToFormData(body, payload, true);
+      applyRipxCartAttrsToFormData(body, effectivePayload, true);
       return { changed: true, body: body };
     }
     if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) {
-      applyRipxCartAttrsToSearchParams(body, payload, true);
+      applyRipxCartAttrsToSearchParams(body, effectivePayload, true);
       return { changed: true, body: body };
     }
     if (typeof body === 'string') {
@@ -1278,13 +1296,13 @@
                 if (nextProps[key] != null && String(nextProps[key]).trim() !== '') return;
                 nextProps[key] = value;
               }
-              setPropIfMissing('_ripx_price_test', payload._ripx_price_test);
-              setPropIfMissing('_ripx_variant', payload._ripx_variant);
-              setPropIfMissing('_ripx_shop', payload._ripx_shop);
-              setPropIfMissing('_ripx_assignment_sig', payload._ripx_assignment_sig);
-              setPropIfMissing('_ripx_assignment_ts', payload._ripx_assignment_ts);
-              setPropIfMissing('_ripx_assignment_user', payload._ripx_assignment_user);
-              setPropIfMissing('_ripx_target_unit', payload._ripx_target_unit);
+              setPropIfMissing('_ripx_price_test', effectivePayload._ripx_price_test);
+              setPropIfMissing('_ripx_variant', effectivePayload._ripx_variant);
+              setPropIfMissing('_ripx_shop', effectivePayload._ripx_shop);
+              setPropIfMissing('_ripx_assignment_sig', effectivePayload._ripx_assignment_sig);
+              setPropIfMissing('_ripx_assignment_ts', effectivePayload._ripx_assignment_ts);
+              setPropIfMissing('_ripx_assignment_user', effectivePayload._ripx_assignment_user);
+              setPropIfMissing('_ripx_target_unit', effectivePayload._ripx_target_unit);
               return nextProps;
             }
             function mapCartLinesWithRipx(arr) {
@@ -1706,6 +1724,42 @@
     return scoped.indexOf(pid) !== -1;
   }
 
+  function getRipxProductIdForForm(form) {
+    if (!form) return null;
+    var holder = form.closest
+      ? form.closest('[data-product-id],[data-product],[data-product-handle]')
+      : null;
+    var raw =
+      (form.getAttribute && form.getAttribute('data-product-id')) ||
+      (holder && holder.getAttribute && holder.getAttribute('data-product-id')) ||
+      '';
+    return toNumericProductId(raw);
+  }
+
+  function rememberRipxTargetUnitForProduct(productId, targetUnit) {
+    var pid = toNumericProductId(productId);
+    var num = Number(targetUnit);
+    if (!pid || !isFinite(num)) return;
+    _ripxTargetUnitByProductId[String(pid)] = num.toFixed(2);
+  }
+
+  function rememberRipxTargetUnitForProducts(targetProductIds, targetUnit) {
+    if (!Array.isArray(targetProductIds) || targetProductIds.length === 0) return;
+    targetProductIds.forEach(function (productId) {
+      rememberRipxTargetUnitForProduct(productId, targetUnit);
+    });
+  }
+
+  function getRememberedRipxTargetUnitForProductId(productId) {
+    var pid = toNumericProductId(productId);
+    if (!pid) return '';
+    return _ripxTargetUnitByProductId[String(pid)] || '';
+  }
+
+  function getRememberedRipxTargetUnitForForm(form) {
+    return getRememberedRipxTargetUnitForProductId(getRipxProductIdForForm(form));
+  }
+
   /**
    * Re-apply hidden RipX line properties to cart/add forms (dynamic drawers, section reloads).
    * Uses _ripxCartAttributeState; respects last injectPriceTestCartAttributes target scope.
@@ -1753,8 +1807,9 @@
       if (state._ripx_assignment_user) {
         setProperty('_ripx_assignment_user', state._ripx_assignment_user);
       }
-      if (state._ripx_target_unit) {
-        setProperty('_ripx_target_unit', state._ripx_target_unit);
+      var targetUnitValue = state._ripx_target_unit || getRememberedRipxTargetUnitForForm(form);
+      if (targetUnitValue) {
+        setProperty('_ripx_target_unit', targetUnitValue);
       }
     });
   }
@@ -1802,6 +1857,12 @@
       assignmentProof,
       pricingProof
     );
+    if (_ripxCartAttributeState && _ripxCartAttributeState._ripx_target_unit) {
+      rememberRipxTargetUnitForProducts(
+        targetProductIds,
+        _ripxCartAttributeState._ripx_target_unit
+      );
+    }
     _ripxCartFormTargetProductIds = targetProductIds;
     installRipxCartAddInterceptors();
     applyRipxStateToCartForms(targetProductIds);
@@ -2584,6 +2645,7 @@
             }
           }
         }
+        rememberRipxTargetUnitForProduct(pid, cardPriceNum);
         var priceEls = card.querySelectorAll(
           '.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price .money, .price-item, [data-price]'
         );
@@ -2596,6 +2658,7 @@
         });
       });
     });
+    applyRipxStateToCartForms(targetIds);
   }
 
   /**
@@ -2677,6 +2740,7 @@
           }
         }
       }
+      rememberRipxTargetUnitForProduct(pid, cardPriceNum);
       var priceEls = card.querySelectorAll(
         '.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price .money, .price-item, [data-price]'
       );
@@ -2688,6 +2752,7 @@
         el.setAttribute('data-ripx-price', '1');
       });
     });
+    applyRipxStateToCartForms(null);
 
     // If the theme lacks data-product-id entirely, try a safe all-products fallback for amount/percent.
     // (fixed mode cannot be inferred without knowing which product it belongs to).

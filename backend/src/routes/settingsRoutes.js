@@ -56,7 +56,7 @@ function resolveDiscountClasses(rawClasses) {
   return normalized.length > 0 ? Array.from(new Set(normalized)) : ['PRODUCT'];
 }
 
-async function fetchAutomaticAppDiscounts(client) {
+async function fetchAutomaticAppDiscountsViaAdmin(shopDomain, accessToken) {
   const existingQuery = `
     query ripxExistingAutomaticDiscount {
       discountNodes(first: 100) {
@@ -66,13 +66,27 @@ async function fetchAutomaticAppDiscounts(client) {
               discountId
               title
               status
+              discountClasses
+              appDiscountType {
+                appKey
+                functionId
+              }
+              combinesWith {
+                orderDiscounts
+                productDiscounts
+                shippingDiscounts
+              }
             }
           }
         }
       }
     }
   `;
-  const existingResp = await client.request(existingQuery);
+  const existingResp = await shopifyService.requestAdminGraphql(
+    shopDomain,
+    accessToken,
+    existingQuery
+  );
   const existingNodes = existingResp?.data?.discountNodes?.nodes || [];
   return existingNodes.map(node => node?.discount).filter(Boolean);
 }
@@ -529,9 +543,6 @@ router.post(
     const requestedTitle = String(req.body?.title || '').trim();
     const discountTitle = requestedTitle || RIPX_DEFAULT_AUTOMATIC_DISCOUNT_TITLE;
     const discountClasses = resolveDiscountClasses(req.body?.discountClasses);
-    const session = shopifyService.getSession(shopDomain, accessToken);
-    const client = new shopifyService.api.clients.Graphql({ session });
-
     const fnQuery = `
       query ripxShopifyFunctions {
         shopifyFunctions(first: 50) {
@@ -543,7 +554,7 @@ router.post(
         }
       }
     `;
-    const fnResp = await client.request(fnQuery);
+    const fnResp = await shopifyService.requestAdminGraphql(shopDomain, accessToken, fnQuery);
     const functionNodes = fnResp?.data?.shopifyFunctions?.nodes || [];
     const chosenFunction = pickCheckoutDiscountFunction(functionNodes);
     if (!chosenFunction?.id) {
@@ -579,7 +590,12 @@ router.post(
         startsAt: new Date().toISOString(),
       },
     };
-    const createResp = await client.request(createMutation, { variables: createVars });
+    const createResp = await shopifyService.requestAdminGraphql(
+      shopDomain,
+      accessToken,
+      createMutation,
+      createVars
+    );
     const createPayload = createResp?.data?.discountAutomaticAppCreate;
     const createErrors = Array.isArray(createPayload?.userErrors) ? createPayload.userErrors : [];
     const createErrorDetails = createErrors.map(err => ({
@@ -589,7 +605,7 @@ router.post(
     }));
     if (createErrors.length === 0 && createPayload?.automaticAppDiscount?.discountId) {
       const createdId = String(createPayload.automaticAppDiscount.discountId || '').trim();
-      const latestDiscounts = await fetchAutomaticAppDiscounts(client);
+      const latestDiscounts = await fetchAutomaticAppDiscountsViaAdmin(shopDomain, accessToken);
       const listMatched = latestDiscounts.filter(
         d => String(d?.discountId || '').trim() === createdId
       );
@@ -641,7 +657,7 @@ router.post(
       );
     }
 
-    const existingDiscounts = await fetchAutomaticAppDiscounts(client);
+    const existingDiscounts = await fetchAutomaticAppDiscountsViaAdmin(shopDomain, accessToken);
     const existing = existingDiscounts.find(
       d => d && String(d.title || '').toLowerCase() === discountTitle.toLowerCase()
     );
@@ -682,12 +698,17 @@ router.post(
         startsAt: new Date().toISOString(),
       },
     };
-    const retryResp = await client.request(createMutation, { variables: retryVars });
+    const retryResp = await shopifyService.requestAdminGraphql(
+      shopDomain,
+      accessToken,
+      createMutation,
+      retryVars
+    );
     const retryPayload = retryResp?.data?.discountAutomaticAppCreate;
     const retryErrors = Array.isArray(retryPayload?.userErrors) ? retryPayload.userErrors : [];
     if (retryErrors.length === 0 && retryPayload?.automaticAppDiscount?.discountId) {
       const createdId = String(retryPayload.automaticAppDiscount.discountId || '').trim();
-      const latestDiscounts = await fetchAutomaticAppDiscounts(client);
+      const latestDiscounts = await fetchAutomaticAppDiscountsViaAdmin(shopDomain, accessToken);
       const listMatched = latestDiscounts.filter(
         d => String(d?.discountId || '').trim() === createdId
       );
@@ -767,9 +788,7 @@ router.get(
     const requestedId = String(req.query?.discount_id || req.query?.discountId || '').trim();
     const targetTitle = requestedTitle || RIPX_DEFAULT_AUTOMATIC_DISCOUNT_TITLE;
 
-    const session = shopifyService.getSession(shopDomain, accessToken);
-    const client = new shopifyService.api.clients.Graphql({ session });
-    const automaticDiscounts = await fetchAutomaticAppDiscounts(client);
+    const automaticDiscounts = await fetchAutomaticAppDiscountsViaAdmin(shopDomain, accessToken);
     const matched = automaticDiscounts.filter(discount => {
       const id = String(discount?.discountId || '').trim();
       const title = String(discount?.title || '')

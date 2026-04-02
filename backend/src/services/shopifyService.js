@@ -44,6 +44,41 @@ class ShopifyService {
   }
 
   /**
+   * Direct Admin GraphQL helper for routes that need a newer API version than the SDK enum bundle ships with.
+   * This is used for discount/function management because community reports indicate
+   * `discountAutomaticAppCreate` had issues on Admin API versions before 2025-04.
+   */
+  async requestAdminGraphql(shopDomain, accessToken, query, variables = {}, opts = {}) {
+    const apiVersion = String(opts.apiVersion || '2025-04').trim();
+    const endpoint = `https://${shopDomain}/admin/api/${apiVersion}/graphql.json`;
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Shopify-Access-Token': accessToken,
+      },
+      body: JSON.stringify({ query, variables }),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      logger.error('Admin GraphQL request failed', {
+        shopDomain,
+        apiVersion,
+        status: response.status,
+        errors: payload?.errors || null,
+      });
+      throw new Error(
+        payload?.errors?.[0]?.message ||
+          `Shopify Admin GraphQL failed (${response.status}) for ${shopDomain}`
+      );
+    }
+    if (payload?.errors?.length) {
+      throw new Error(payload.errors[0]?.message || 'Shopify Admin GraphQL returned errors');
+    }
+    return payload;
+  }
+
+  /**
    * Update product price
    *
    * @param {string} shopDomain - Shop domain

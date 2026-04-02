@@ -51,14 +51,11 @@ function buildLocalFallbackCandidates(cartLines) {
     if (!targetUnitRaw || !Number.isFinite(subtotal) || subtotal <= 0) {
       continue;
     }
-    if (!line?.ripxTest?.value || !line?.ripxVariant?.value) {
-      continue;
-    }
-    if (
-      !line?.ripxAssignmentSig?.value ||
-      !line?.ripxAssignmentTs?.value ||
-      !line?.ripxAssignmentUser?.value
-    ) {
+    // Probe mode proved the function executes. When fetch data is missing,
+    // fall back as long as the line carries a test marker and target unit.
+    // Requiring proof fields here only creates false negatives because this
+    // branch cannot validate those fields anyway.
+    if (!line?.ripxTest?.value) {
       continue;
     }
     const targetUnit = Number.parseFloat(String(targetUnitRaw).trim());
