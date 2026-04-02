@@ -4598,6 +4598,23 @@
       diagnostics: {
         getCurrentProductId: getCurrentProductId(),
         hasProductJson: !!getProductJson(),
+        cartAttributeState: _ripxCartAttributeState
+          ? {
+              priceTest: _ripxCartAttributeState._ripx_price_test || null,
+              variant: _ripxCartAttributeState._ripx_variant || null,
+              shop: _ripxCartAttributeState._ripx_shop || null,
+              targetUnit: _ripxCartAttributeState._ripx_target_unit || null,
+              discountUnit: _ripxCartAttributeState._ripx_discount_unit || null,
+              hasAssignmentSig: !!_ripxCartAttributeState._ripx_assignment_sig,
+              hasAssignmentTs: !!_ripxCartAttributeState._ripx_assignment_ts,
+              hasAssignmentUser: !!_ripxCartAttributeState._ripx_assignment_user,
+            }
+          : null,
+        cartFormTargetProductIds: Array.isArray(_ripxCartFormTargetProductIds)
+          ? _ripxCartFormTargetProductIds.slice()
+          : _ripxCartFormTargetProductIds || null,
+        rememberedTargetUnits: Object.assign({}, _ripxTargetUnitByProductId),
+        rememberedDiscountUnits: Object.assign({}, _ripxDiscountUnitByProductId),
         hasCartUiInDom: typeof hasCartUiInDom === 'function' ? hasCartUiInDom() : null,
         shouldRunAllProductsCartFallback:
           typeof shouldRunAllProductsCartFallback === 'function'
@@ -4690,6 +4707,9 @@
     window.__RIPX_TEST_HOOKS__.previewTestId = PREVIEW_TEST_ID;
     window.__RIPX_TEST_HOOKS__.setRipxCartAttributeState = function (payload) {
       _ripxCartAttributeState = payload || null;
+    };
+    window.__RIPX_TEST_HOOKS__.getRipxCartAttributeState = function () {
+      return _ripxCartAttributeState;
     };
   }
   debugLog('init', 'v' + SCRIPT_VERSION);

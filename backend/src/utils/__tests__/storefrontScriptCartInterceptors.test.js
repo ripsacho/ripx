@@ -132,6 +132,7 @@ describe('storefront script cart/add interceptors', () => {
     expect(hooks.debugDescribeCartAddBody(null)).toBe('body:none');
     expect(hooks.looksLikeCartAddNearMiss('/apps/proxy/cart-add-line')).toBe(true);
     expect(hooks.looksLikeCartAddNearMiss('/cart/add.js')).toBe(false);
+    expect(typeof hooks.getRipxCartAttributeState).toBe('function');
   });
 
   it('recognizes cart add paths (suffix match; any Markets / locale depth)', () => {
