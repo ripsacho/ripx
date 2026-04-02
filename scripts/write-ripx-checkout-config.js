@@ -28,6 +28,10 @@ const probeAlwaysDiscount =
   String(process.env.RIPX_CHECKOUT_PROBE_ALWAYS_DISCOUNT || '')
     .trim()
     .toLowerCase() === 'true';
+const probeAttributeMatrix =
+  String(process.env.RIPX_CHECKOUT_PROBE_ATTRIBUTE_MATRIX || '')
+    .trim()
+    .toLowerCase() === 'true';
 
 if (!batchUrl) {
   console.error(
@@ -47,6 +51,7 @@ export const RIPX_PRICE_RESOLVE_BATCH_URL = ${JSON.stringify(batchUrl)};
 export const RIPX_CHECKOUT_PRICE_SECRET = ${JSON.stringify(secret)};
 
 export const RIPX_CHECKOUT_PROBE_ALWAYS_DISCOUNT = ${JSON.stringify(probeAlwaysDiscount)};
+export const RIPX_CHECKOUT_PROBE_ATTRIBUTE_MATRIX = ${JSON.stringify(probeAttributeMatrix)};
 `;
 
 fs.writeFileSync(dest, content, 'utf8');
@@ -56,4 +61,8 @@ console.log('[write-ripx-checkout-config] SECRET    =', secret ? '(set)' : '(emp
 console.log(
   '[write-ripx-checkout-config] PROBE     =',
   probeAlwaysDiscount ? 'always_discount' : 'off'
+);
+console.log(
+  '[write-ripx-checkout-config] ATTR_PROBE =',
+  probeAttributeMatrix ? 'attribute_matrix' : 'off'
 );

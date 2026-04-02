@@ -3,7 +3,10 @@ import {
   OrderDiscountSelectionStrategy,
   ProductDiscountSelectionStrategy,
 } from '../generated/api';
-import { RIPX_CHECKOUT_PROBE_ALWAYS_DISCOUNT } from './ripxConfig';
+import {
+  RIPX_CHECKOUT_PROBE_ALWAYS_DISCOUNT,
+  RIPX_CHECKOUT_PROBE_ATTRIBUTE_MATRIX,
+} from './ripxConfig';
 
 function normalizeFetchBody(jsonBody) {
   if (jsonBody == null) {
@@ -97,6 +100,37 @@ function buildProbeCandidates(cartLines) {
   return candidates;
 }
 
+function buildAttributeMatrixProbeCandidates(cartLines) {
+  const candidates = [];
+  for (const line of cartLines || []) {
+    if (!line?.ripxTest?.value) {
+      continue;
+    }
+    let amount = 0.01;
+    let message = 'RipX attr probe:test only';
+    const hasTargetUnit = Number.isFinite(
+      Number.parseFloat(String(line?.ripxTargetUnit?.value || '').trim())
+    );
+    const hasDiscountUnit =
+      Number.isFinite(Number.parseFloat(String(line?.ripxDiscountUnit?.value || '').trim())) &&
+      Number.parseFloat(String(line?.ripxDiscountUnit?.value || '').trim()) > 0;
+    if (hasTargetUnit) {
+      amount = 0.02;
+      message = 'RipX attr probe:target';
+    }
+    if (hasDiscountUnit) {
+      amount = 0.03;
+      message = 'RipX attr probe:discount';
+    }
+    const candidate = buildCandidateForLine(line, amount);
+    if (candidate) {
+      candidate.message = message;
+      candidates.push(candidate);
+    }
+  }
+  return candidates;
+}
+
 /**
  * @param {import("../generated/api").RipxCartLinesRun} input
  */
@@ -108,6 +142,7 @@ export function cartLinesDiscountsGenerateRun(input) {
   // If we have valid resolved rows, still attempt product candidates.
   const cartLines = input.cart?.lines || [];
   const probeEnabled = RIPX_CHECKOUT_PROBE_ALWAYS_DISCOUNT === true;
+  const attributeProbeEnabled = RIPX_CHECKOUT_PROBE_ATTRIBUTE_MATRIX === true;
   if (probeEnabled) {
     const probeCandidates = buildProbeCandidates(cartLines);
     if (probeCandidates.length === 0) {
@@ -134,6 +169,22 @@ export function cartLinesDiscountsGenerateRun(input) {
           },
         ],
       };
+    }
+    return {
+      operations: [
+        {
+          productDiscountsAdd: {
+            candidates: probeCandidates,
+            selectionStrategy: ProductDiscountSelectionStrategy.All,
+          },
+        },
+      ],
+    };
+  }
+  if (attributeProbeEnabled) {
+    const probeCandidates = buildAttributeMatrixProbeCandidates(cartLines);
+    if (probeCandidates.length === 0) {
+      return { operations: [] };
     }
     return {
       operations: [
