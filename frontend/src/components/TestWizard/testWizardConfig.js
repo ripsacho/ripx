@@ -14,8 +14,16 @@ export const TEST_TEMPLATES = {
     defaultConfig: {
       type: 'price',
       variants: [
-        { name: 'Control', allocation: 50, config: { price: null } },
-        { name: 'Variant A', allocation: 50, config: { price: null } },
+        {
+          name: 'Control',
+          allocation: 50,
+          config: { price: null, priceApplicationMethod: 'auto' },
+        },
+        {
+          name: 'Variant A',
+          allocation: 50,
+          config: { price: null, priceApplicationMethod: 'auto' },
+        },
       ],
     },
   },
@@ -27,8 +35,16 @@ export const TEST_TEMPLATES = {
     defaultConfig: {
       type: 'price',
       variants: [
-        { name: 'Control', allocation: 50, config: { price: null } },
-        { name: 'Variant A', allocation: 50, config: { price: null } },
+        {
+          name: 'Control',
+          allocation: 50,
+          config: { price: null, priceApplicationMethod: 'auto' },
+        },
+        {
+          name: 'Variant A',
+          allocation: 50,
+          config: { price: null, priceApplicationMethod: 'auto' },
+        },
       ],
     },
   },

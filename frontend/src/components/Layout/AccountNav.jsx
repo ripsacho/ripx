@@ -9,7 +9,13 @@ import { Icon } from '@shopify/polaris';
 import { GlobeIcon, HomeIcon } from '@shopify/polaris-icons';
 import { ROUTES } from '../../constants';
 import { useAdminMe } from '../../hooks';
-import { clearAuthStorage, logout, redirectToAppUrl, getConnectUrl } from '../../services';
+import {
+  clearAuthStorage,
+  logout,
+  redirectToAppUrl,
+  getConnectUrl,
+  getNavigateToWithEmbed,
+} from '../../services';
 import styles from './AccountNav.module.css';
 
 const LockIcon = () => (
@@ -36,14 +42,18 @@ export default function AccountNav({ current = 'home' }) {
   return (
     <header className={styles.accountNav} role="banner">
       <div className={styles.accountNavInner}>
-        <Link to={ROUTES.USER_PANEL} className={styles.accountNavLogo} aria-label="RipX Home">
+        <Link
+          to={getNavigateToWithEmbed(ROUTES.USER_PANEL)}
+          className={styles.accountNavLogo}
+          aria-label="RipX Home"
+        >
           <img src="/logo.svg" alt="" className={styles.accountNavLogoImg} width={32} height={32} />
           <span className={styles.accountNavLogoText}>RipX</span>
         </Link>
 
         <nav className={styles.accountNavLinks} aria-label="Account navigation">
           <Link
-            to={ROUTES.USER_PANEL}
+            to={getNavigateToWithEmbed(ROUTES.USER_PANEL)}
             className={`${styles.accountNavLink} ${current === 'home' ? styles.accountNavLinkCurrent : ''}`}
             aria-current={current === 'home' ? 'page' : undefined}
           >
@@ -51,7 +61,7 @@ export default function AccountNav({ current = 'home' }) {
             <span>Home</span>
           </Link>
           <Link
-            to={ROUTES.DOMAINS}
+            to={getNavigateToWithEmbed(ROUTES.DOMAINS)}
             className={`${styles.accountNavLink} ${current === 'domains' ? styles.accountNavLinkCurrent : ''}`}
             aria-current={current === 'domains' ? 'page' : undefined}
           >
@@ -59,7 +69,11 @@ export default function AccountNav({ current = 'home' }) {
             <span>My domains</span>
           </Link>
           {!isLoading && isAdmin && (
-            <Link to={ROUTES.ADMIN} className={styles.accountNavLinkAdmin} aria-label="Admin panel">
+            <Link
+              to={getNavigateToWithEmbed(ROUTES.ADMIN)}
+              className={styles.accountNavLinkAdmin}
+              aria-label="Admin panel"
+            >
               <LockIcon />
               <span>Admin</span>
             </Link>

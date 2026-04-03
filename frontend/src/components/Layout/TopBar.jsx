@@ -22,6 +22,7 @@ import {
   apiGet,
   apiPut,
   getConnectUrl,
+  getNavigateToWithEmbed,
   redirectToAppUrl,
   logout,
   clearAuthStorage,
@@ -59,6 +60,12 @@ function TopBar({
 }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const navigateWithEmbed = useCallback(
+    (pathname, extraParams) => {
+      navigate(getNavigateToWithEmbed(pathname, extraParams));
+    },
+    [navigate]
+  );
   const { data: adminMeData, isAdmin, isLoading, role } = useAdminMe();
   const showAdminEntry = Boolean(!isLoading && isAdmin && role);
   const userEmail =
@@ -210,7 +217,7 @@ function TopBar({
               {breadcrumb.parentPath ? (
                 <button
                   type="button"
-                  onClick={() => navigate(breadcrumb.parentPath)}
+                  onClick={() => navigateWithEmbed(breadcrumb.parentPath)}
                   className={styles.breadcrumbParent}
                 >
                   {breadcrumb.parent}
@@ -233,7 +240,7 @@ function TopBar({
         {appDomain && (
           <button
             type="button"
-            onClick={() => navigate(ROUTES.appCreateTest(appDomain))}
+            onClick={() => navigateWithEmbed(ROUTES.appCreateTest(appDomain))}
             className={styles.newTestBtn}
             aria-label="Create new A/B test"
             title="Create a new A/B test"
@@ -279,7 +286,7 @@ function TopBar({
                   className={styles.helpPopoverLink}
                   onClick={() => {
                     setHelpPopoverActive(false);
-                    navigate(docsPath);
+                    navigateWithEmbed(docsPath);
                   }}
                 >
                   Documentation
@@ -289,7 +296,7 @@ function TopBar({
                   className={styles.helpPopoverLink}
                   onClick={() => {
                     setHelpPopoverActive(false);
-                    navigate(supportPath);
+                    navigateWithEmbed(supportPath);
                   }}
                 >
                   Support
@@ -300,7 +307,7 @@ function TopBar({
           <Tooltip content="Support" preferredPosition="below">
             <button
               type="button"
-              onClick={() => navigate(supportPath)}
+              onClick={() => navigateWithEmbed(supportPath)}
               aria-label="Go to Support"
               aria-current={location.pathname === supportPath ? 'page' : undefined}
               className={`${styles.iconBtn} ${location.pathname === supportPath ? styles.active : ''}`}
@@ -415,7 +422,7 @@ function TopBar({
                   variant="plain"
                   onClick={() => {
                     setNotificationsActive(false);
-                    navigate(notificationsPath);
+                    navigateWithEmbed(notificationsPath);
                   }}
                 >
                   See all notifications
@@ -531,7 +538,7 @@ function TopBar({
                   role="menuitem"
                   onClick={() => {
                     closeUserMenu();
-                    navigate(ROUTES.USER_PANEL);
+                    navigateWithEmbed(ROUTES.USER_PANEL);
                   }}
                 >
                   Home
@@ -542,7 +549,7 @@ function TopBar({
                   role="menuitem"
                   onClick={() => {
                     closeUserMenu();
-                    navigate(ROUTES.DOMAINS);
+                    navigateWithEmbed(ROUTES.DOMAINS);
                   }}
                 >
                   My domains
@@ -554,7 +561,7 @@ function TopBar({
                     role="menuitem"
                     onClick={() => {
                       closeUserMenu();
-                      navigate(ROUTES.ADMIN);
+                      navigateWithEmbed(ROUTES.ADMIN);
                     }}
                   >
                     Admin
@@ -570,7 +577,7 @@ function TopBar({
                   role="menuitem"
                   onClick={() => {
                     closeUserMenu();
-                    navigate(settingsPath);
+                    navigateWithEmbed(settingsPath);
                   }}
                 >
                   {appDomain ? 'App settings' : 'Account settings'}
@@ -581,7 +588,7 @@ function TopBar({
                   role="menuitem"
                   onClick={() => {
                     closeUserMenu();
-                    navigate(notificationsPath);
+                    navigateWithEmbed(notificationsPath);
                   }}
                 >
                   Notifications
@@ -592,7 +599,7 @@ function TopBar({
                   role="menuitem"
                   onClick={() => {
                     closeUserMenu();
-                    navigate(profilePath + '?tab=account');
+                    navigateWithEmbed(ROUTES.PROFILE, { tab: 'account' });
                   }}
                 >
                   Account & API keys
@@ -607,7 +614,7 @@ function TopBar({
                   role="menuitem"
                   onClick={() => {
                     closeUserMenu();
-                    navigate(profilePath);
+                    navigateWithEmbed(profilePath);
                   }}
                 >
                   My Profile
@@ -618,7 +625,7 @@ function TopBar({
                   role="menuitem"
                   onClick={() => {
                     closeUserMenu();
-                    navigate(profilePath + '?tab=preferences');
+                    navigateWithEmbed(ROUTES.PROFILE, { tab: 'preferences' });
                   }}
                 >
                   Preferences
@@ -629,7 +636,7 @@ function TopBar({
                   role="menuitem"
                   onClick={() => {
                     closeUserMenu();
-                    navigate(docsPath);
+                    navigateWithEmbed(docsPath);
                   }}
                 >
                   Documentation

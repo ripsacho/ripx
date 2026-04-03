@@ -251,6 +251,20 @@ function normalizeMergedPriceConfig(baseCfg, mergedCfg) {
     merged.priceBase = base.priceBase || merged.priceBase;
   }
   if (
+    base.nativeVariantId !== undefined &&
+    base.nativeVariantId !== null &&
+    (merged.nativeVariantId === undefined || merged.nativeVariantId === null)
+  ) {
+    merged.nativeVariantId = base.nativeVariantId;
+  }
+  if (
+    base.priceApplicationMethod !== undefined &&
+    base.priceApplicationMethod !== null &&
+    (merged.priceApplicationMethod === undefined || merged.priceApplicationMethod === null)
+  ) {
+    merged.priceApplicationMethod = base.priceApplicationMethod;
+  }
+  if (
     base.roundTo !== undefined &&
     base.roundTo !== null &&
     (merged.roundTo === undefined || merged.roundTo === null)
@@ -277,6 +291,12 @@ function normalizePriceConfigShape(config) {
   }
   if (!c.priceBase && c.price_base) {
     c.priceBase = c.price_base;
+  }
+  if (c.nativeVariantId === undefined && c.native_variant_id !== undefined) {
+    c.nativeVariantId = c.native_variant_id;
+  }
+  if (!c.priceApplicationMethod && c.price_application_method) {
+    c.priceApplicationMethod = c.price_application_method;
   }
   if (c.roundTo === undefined && c.round_to !== undefined) {
     c.roundTo = c.round_to;

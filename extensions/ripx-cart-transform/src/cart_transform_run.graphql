@@ -1,0 +1,37 @@
+query Input {
+  cart {
+    lines {
+      id
+      quantity
+      cost {
+        amountPerQuantity {
+          amount
+          currencyCode
+        }
+      }
+      ripxTest: attribute(key: "_ripx_price_test") {
+        value
+      }
+      ripxVariant: attribute(key: "_ripx_variant") {
+        value
+      }
+      ripxTargetUnit: attribute(key: "_ripx_target_unit") {
+        value
+      }
+      ripxPriceMethod: attribute(key: "_ripx_price_method") {
+        value
+      }
+      merchandise {
+        __typename
+        ... on ProductVariant {
+          id
+          title
+          product {
+            id
+            title
+          }
+        }
+      }
+    }
+  }
+}

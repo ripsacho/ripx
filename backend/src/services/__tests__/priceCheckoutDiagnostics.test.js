@@ -29,9 +29,34 @@ describe('priceCheckoutDiagnostics', () => {
     expect(d.support?.model).toBe('discount_function_truth');
     expect(d.support?.checkout_alignment?.level).toBe('ready');
     expect(d.support?.cart_rendering?.level).toBe('theme_integration_recommended');
+    expect(d.support?.direct_price_override?.level).toBe('needs_deploy');
     expect(d.recommendations.some(r => r.includes('readTimeoutMs'))).toBe(true);
     expect(d.recommendations.some(r => r.includes('RIPX_PRICE_BATCH_FULL_RESPONSE'))).toBe(true);
     expect(d.recommendations.some(r => r.includes('timing-safe'))).toBe(true);
+  });
+
+  it('reports deployed discount and cart transform functions when provided', () => {
+    process.env.APP_URL = 'https://api.example.com';
+    const { buildCheckoutPriceDiagnostics } = require('../priceCheckoutDiagnostics');
+    const d = buildCheckoutPriceDiagnostics({
+      shopifyFunctions: [
+        {
+          id: 'gid://shopify/ShopifyFunction/1',
+          title: 'RipX checkout discount',
+          apiType: 'product_discounts',
+        },
+        {
+          id: 'gid://shopify/ShopifyFunction/2',
+          title: 'RipX cart transform',
+          apiType: 'cart_transform',
+        },
+      ],
+    });
+    expect(d.infrastructure.discount_function_available).toBe(true);
+    expect(d.infrastructure.cart_transform_function_available).toBe(true);
+    expect(d.checklist.find(c => c.id === 'discount_function_available')?.ok).toBe(true);
+    expect(d.checklist.find(c => c.id === 'cart_transform_function_available')?.ok).toBe(true);
+    expect(d.support?.direct_price_override?.level).toBe('available');
   });
 
   it('prefers RIPX_PRICE_RESOLVE_BATCH_URL when set', () => {

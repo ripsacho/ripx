@@ -47,6 +47,41 @@ function ShortTextWithTooltip({ shortText, fullMessage, className = '', iconLabe
   );
 }
 
+const USER_ERROR_INLINE_MAX = 140;
+
+/** Prefer API `error` / `message`; show first line, capped length, for inline + toast. */
+function toUserFacingError(errOrMsg) {
+  let msg = '';
+  if (typeof errOrMsg === 'string') {
+    msg = errOrMsg.trim();
+  } else if (errOrMsg !== null && errOrMsg !== undefined) {
+    const d = errOrMsg.response?.data;
+    msg =
+      (typeof d?.error === 'string' && d.error) ||
+      (typeof d?.message === 'string' && d.message) ||
+      (typeof errOrMsg.message === 'string' && errOrMsg.message) ||
+      '';
+    msg = String(msg).trim();
+  }
+  if (!msg) return 'Something went wrong';
+  const line = msg.split(/\n/)[0].trim();
+  if (line.length <= USER_ERROR_INLINE_MAX) return line;
+  return `${line.slice(0, USER_ERROR_INLINE_MAX - 1)}…`;
+}
+
+/** Full message for state (API error, validation, or network). */
+function apiErrorToString(err, fallback) {
+  if (err === null || err === undefined) return fallback;
+  const d = err.response?.data;
+  const raw =
+    (typeof d?.error === 'string' && d.error) ||
+    (typeof d?.message === 'string' && d.message) ||
+    (typeof err.message === 'string' && err.message) ||
+    '';
+  const s = String(raw).trim();
+  return s || fallback;
+}
+
 const OTP_EXPIRY_SECONDS = 60;
 /* Transition: minimal wait before clock, timer matches iris duration, no gap after */
 const STAGGER_OUT_MS = 280;
@@ -247,11 +282,7 @@ function Connect() {
         window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(domain), { shop: domain });
       } catch (err) {
         if (!cancelled) {
-          setError(
-            err?.response?.data?.error ||
-              err?.message ||
-              'Invalid or expired link. Request a new one from Admin.'
-          );
+          setError(apiErrorToString(err, 'Invalid or expired link. Request a new one from Admin.'));
           setSearchParams(prev => {
             const next = new URLSearchParams(prev);
             next.delete('connect_token');
@@ -300,7 +331,7 @@ function Connect() {
         setEmail('');
       }
     } catch (err) {
-      setError(err.response?.data?.error || err.message || 'Failed to send login link');
+      setError(apiErrorToString(err, 'Failed to send login link'));
     } finally {
       setLoading(false);
     }
@@ -335,9 +366,7 @@ function Connect() {
         }, 180);
       });
     } catch (err) {
-      setError(
-        err.response?.data?.error || err.message || 'Invalid or expired code. Request a new code.'
-      );
+      setError(apiErrorToString(err, 'Invalid or expired code. Request a new code.'));
     } finally {
       setOtpVerifyLoading(false);
     }
@@ -360,7 +389,7 @@ function Connect() {
         setSuccess(data.message || 'Check your email.');
       }
     } catch (err) {
-      setError(err.response?.data?.error || err.message || 'Failed to resend code');
+      setError(apiErrorToString(err, 'Failed to resend code'));
     } finally {
       setOtpResendLoading(false);
     }
@@ -429,7 +458,7 @@ function Connect() {
       );
       setEmail('');
     } catch (err) {
-      setError(err.response?.data?.error || err.message || 'Registration failed');
+      setError(apiErrorToString(err, 'Registration failed'));
     } finally {
       setLoading(false);
     }
@@ -558,7 +587,7 @@ function Connect() {
                 {error && (
                   <div className={styles.authInlineMessage} role="alert">
                     <ShortTextWithTooltip
-                      shortText="Invalid or expired code."
+                      shortText={toUserFacingError(error)}
                       fullMessage={error}
                       className={styles.authInlineMessageError}
                       iconLabel="Error details"
@@ -670,7 +699,7 @@ function Connect() {
                   {error && (
                     <div className={styles.authInlineMessage} role="alert">
                       <ShortTextWithTooltip
-                        shortText="Something went wrong."
+                        shortText={toUserFacingError(error)}
                         fullMessage={error}
                         className={styles.authInlineMessageError}
                         iconLabel="Error details"
@@ -747,7 +776,7 @@ function Connect() {
           {error && (
             <div className={styles.authInlineMessage} role="alert">
               <ShortTextWithTooltip
-                shortText="Something went wrong."
+                shortText={toUserFacingError(error)}
                 fullMessage={error}
                 className={styles.authInlineMessageError}
                 iconLabel="Error details"
@@ -864,7 +893,7 @@ function Connect() {
   const ariaHiddenFlip = transitionPhase === 'exiting' || transitionPhase === 'flipIn';
 
   const toastMessage =
-    error || success ? (error ? 'Something went wrong.' : 'Check your email.') : null;
+    error || success ? (error ? toUserFacingError(error) : 'Check your email.') : null;
 
   return (
     <PageShell

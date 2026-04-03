@@ -17,6 +17,7 @@ import {
   unwrapData,
   getHealthUrl,
   getApiBaseUrl,
+  getNavigateToWithEmbed,
 } from '../../services';
 import { PageShell } from '../Shared';
 import { MetricCard, MetricGrid } from '../Shared';
@@ -277,7 +278,7 @@ export default function AdminOverview() {
                 <button
                   type="button"
                   className={styles.adminQuickActionBtn}
-                  onClick={() => navigate(ROUTES.ADMIN_SYSTEM_HEALTH)}
+                  onClick={() => navigate(getNavigateToWithEmbed(ROUTES.ADMIN_SYSTEM_HEALTH))}
                 >
                   System health
                 </button>
@@ -286,7 +287,7 @@ export default function AdminOverview() {
                 <button
                   type="button"
                   className={styles.adminQuickActionBtn}
-                  onClick={() => navigate(ROUTES.ADMIN_AUDIT)}
+                  onClick={() => navigate(getNavigateToWithEmbed(ROUTES.ADMIN_AUDIT))}
                 >
                   Audit log
                 </button>

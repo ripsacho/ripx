@@ -31,7 +31,7 @@ import {
   PlayCircleIcon,
 } from '@shopify/polaris-icons';
 import { useNavigate } from 'react-router-dom';
-import { apiGet, apiPut, apiPost, apiDelete } from '../../services';
+import { apiGet, apiPut, apiPost, apiDelete, getNavigateToWithEmbed } from '../../services';
 import Toast from '../Toast/Toast';
 import { PageShell } from '../Shared';
 import LoadingSkeleton from '../LoadingSkeleton/LoadingSkeleton';
@@ -386,7 +386,7 @@ export default function AdminDomains() {
             {
               content: 'View tests',
               onAction: () => {
-                navigate(`${ROUTES.ADMIN_TESTS}?domain=${encodeURIComponent(detailDomain)}`);
+                navigate(getNavigateToWithEmbed(ROUTES.ADMIN_TESTS, { domain: detailDomain }));
                 closeDetail();
               },
             },

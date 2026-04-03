@@ -218,6 +218,169 @@ class ShopifyService {
   }
 
   /**
+   * List products with their variants for native price mapping UX.
+   *
+   * @param {string} shopDomain - Shop domain
+   * @param {string} accessToken - Access token
+   * @param {string} [searchQuery] - Optional search query
+   * @param {number} [first] - Max products
+   * @param {number} [variantsFirst] - Max variants per product
+   * @returns {Promise<Array<{id: string, title: string, handle: string, variants: Array<{id: string, title: string, displayName: string, sku: string, price: string, compareAtPrice: string|null}>}>>}
+   */
+  async listProductsWithVariants(
+    shopDomain,
+    accessToken,
+    searchQuery = '',
+    first = 24,
+    variantsFirst = 25
+  ) {
+    const session = this.getSession(shopDomain, accessToken);
+    const client = new this.api.clients.Graphql({ session });
+    const query = `
+      query listProductsWithVariants($first: Int!, $query: String, $variantsFirst: Int!) {
+        products(first: $first, query: $query) {
+          edges {
+            node {
+              id
+              title
+              handle
+              variants(first: $variantsFirst) {
+                edges {
+                  node {
+                    id
+                    title
+                    displayName
+                    sku
+                    price
+                    compareAtPrice
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+    try {
+      const response = await client.request(query, {
+        variables: {
+          first,
+          query: searchQuery || null,
+          variantsFirst,
+        },
+      });
+      const edges = response.data?.products?.edges || [];
+      const list = edges.map(e => ({
+        id: e.node.id,
+        title: e.node.title || '(Untitled)',
+        handle: e.node.handle || '',
+        variants: (e.node.variants?.edges || [])
+          .map(ve => ({
+            id: ve.node.id,
+            title: ve.node.title || 'Default Title',
+            displayName: ve.node.displayName || ve.node.title || 'Untitled variant',
+            sku: ve.node.sku || '',
+            price:
+              ve.node.price !== null && ve.node.price !== undefined ? String(ve.node.price) : '',
+            compareAtPrice:
+              ve.node.compareAtPrice !== null && ve.node.compareAtPrice !== undefined
+                ? String(ve.node.compareAtPrice)
+                : null,
+          }))
+          .sort((a, b) =>
+            (a.displayName || '').localeCompare(b.displayName || '', undefined, {
+              sensitivity: 'base',
+            })
+          ),
+      }));
+      list.sort((a, b) =>
+        (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' })
+      );
+      return list;
+    } catch (error) {
+      logger.error('Error listing products with variants', {
+        error: error.message,
+        shopDomain,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get one product with its variants for scoped native variant mapping.
+   *
+   * @param {string} shopDomain
+   * @param {string} accessToken
+   * @param {string} productId
+   * @param {number} [variantsFirst]
+   * @returns {Promise<{id: string, title: string, handle: string, variants: Array}>}
+   */
+  async getProductWithVariants(shopDomain, accessToken, productId, variantsFirst = 50) {
+    const session = this.getSession(shopDomain, accessToken);
+    const client = new this.api.clients.Graphql({ session });
+    const query = `
+      query getProductWithVariants($id: ID!, $variantsFirst: Int!) {
+        product(id: $id) {
+          id
+          title
+          handle
+          variants(first: $variantsFirst) {
+            edges {
+              node {
+                id
+                title
+                displayName
+                sku
+                price
+                compareAtPrice
+              }
+            }
+          }
+        }
+      }
+    `;
+    try {
+      const response = await client.request(query, {
+        variables: { id: productId, variantsFirst },
+      });
+      const node = response.data?.product;
+      if (!node) {
+        return null;
+      }
+      return {
+        id: node.id,
+        title: node.title || '(Untitled)',
+        handle: node.handle || '',
+        variants: (node.variants?.edges || [])
+          .map(ve => ({
+            id: ve.node.id,
+            title: ve.node.title || 'Default Title',
+            displayName: ve.node.displayName || ve.node.title || 'Untitled variant',
+            sku: ve.node.sku || '',
+            price:
+              ve.node.price !== null && ve.node.price !== undefined ? String(ve.node.price) : '',
+            compareAtPrice:
+              ve.node.compareAtPrice !== null && ve.node.compareAtPrice !== undefined
+                ? String(ve.node.compareAtPrice)
+                : null,
+          }))
+          .sort((a, b) =>
+            (a.displayName || '').localeCompare(b.displayName || '', undefined, {
+              sensitivity: 'base',
+            })
+          ),
+      };
+    } catch (error) {
+      logger.error('Error fetching product with variants', {
+        error: error.message,
+        productId,
+        shopDomain,
+      });
+      throw error;
+    }
+  }
+
+  /**
    * List collections for store resource selector (targeting)
    *
    * @param {string} shopDomain - Shop domain

@@ -20,9 +20,116 @@ npm run shopify:dev   # or: shopify app dev --reset
 npm run build         # production frontend build
 # Checkout price function (Shopify Plus + network access): set APP_URL / secrets in .env, then:
 # npm run shopify:checkout-discount:prepare && shopify app deploy
+# Direct price override cart transform (Shopify Plus / dev stores):
+# npm run shopify:cart-transform:prepare && shopify app deploy
 ```
 
 Production deploy (host, SSH key, IP, and process manager) is environment-specific — keep those steps in your private runbook, not in the repo.
+
+## Build in CI (local -> live)
+
+This repo now includes GitHub Actions workflows for a "build in CI" release model:
+
+- `.github/workflows/ci.yml` - lint, format-check, test, migrate (CI DB), and frontend build on PR/push.
+- `.github/workflows/deploy-staging.yml` - on `develop` push (or manual run), builds backend Docker image in CI and deploys to staging.
+- `.github/workflows/deploy-production.yml` - on `main` push (or manual run), builds backend Docker image in CI, pushes to GHCR, and deploys to the production host over SSH.
+- Manual deploy supports `image_tag` input to redeploy/rollback a previously built image without rebuilding.
+
+Required repository/environment secrets for production deploy:
+
+- `DEPLOY_SSH_PRIVATE_KEY`
+- `DEPLOY_SSH_HOST`
+- `DEPLOY_SSH_USER`
+- `DEPLOY_SSH_PORT` (optional, default `22`)
+- `DEPLOY_SSH_KNOWN_HOSTS` (optional, recommended)
+- `DEPLOY_GHCR_USER`
+- `DEPLOY_GHCR_PAT`
+- `DEPLOY_CONTAINER_NAME` (optional, default `ripx-backend`)
+- `DEPLOY_ENV_FILE_PATH` (optional, default `/opt/ripx/.env`)
+- `DEPLOY_APP_PORT` (optional, default `3000`)
+- `DEPLOY_HEALTHCHECK_URL` (optional, recommended)
+- `DEPLOY_SMOKE_BASE_URL` (optional, recommended)
+- `DEPLOY_SMOKE_ADMIN_BEARER` (optional, for authenticated smoke check)
+
+Required repository/environment secrets for staging deploy:
+
+- `STAGING_SSH_PRIVATE_KEY`
+- `STAGING_SSH_HOST`
+- `STAGING_SSH_USER`
+- `STAGING_SSH_PORT` (optional, default `22`)
+- `STAGING_SSH_KNOWN_HOSTS` (optional, recommended)
+- `STAGING_GHCR_USER`
+- `STAGING_GHCR_PAT`
+- `STAGING_CONTAINER_NAME` (optional, default `ripx-staging-backend`)
+- `STAGING_ENV_FILE_PATH` (optional, default `/opt/ripx/.env`)
+- `STAGING_APP_PORT` (optional, default `3000`)
+- `STAGING_HEALTHCHECK_URL` (optional, recommended)
+- `STAGING_SMOKE_BASE_URL` (optional, recommended)
+- `STAGING_SMOKE_ADMIN_BEARER` (optional, for authenticated smoke check)
+
+Recommended GitHub branch protections:
+
+- Require PRs into `main`.
+- Require CI status checks (`CI / Validate and build`).
+- Use protected `production` environment with manual approval.
+
+### Release / rollback playbook
+
+1. Merge PR to `develop` to deploy staging automatically.
+2. Verify staging (health + smoke checks).
+3. Merge PR to `main`.
+4. Wait for `CI` to pass.
+5. `Deploy Production (Build in CI)` runs automatically and deploys commit image tag.
+6. For rollback: run `Deploy Production (Build in CI)` manually and set `image_tag` to last known good image tag.
+
+### Copy-paste local -> deploy commands
+
+Feature flow (recommended):
+
+```bash
+git checkout develop
+git pull origin develop
+git checkout -b feature/<short-name>
+
+# implement your change
+npm run validate
+npm run build
+
+git add .
+git commit -m "feat: <short summary>"
+git push -u origin feature/<short-name>
+```
+
+Then open PR:
+
+1. `feature/<short-name>` -> `develop` (staging deploy runs after merge)
+2. Verify staging
+3. `develop` -> `main` (production deploy runs after merge)
+
+Hotfix flow:
+
+```bash
+git checkout main
+git pull origin main
+git checkout -b hotfix/<short-name>
+
+# implement urgent fix
+npm run validate
+npm run build
+
+git add .
+git commit -m "fix: <short summary>"
+git push -u origin hotfix/<short-name>
+```
+
+Then open PR `hotfix/<short-name>` -> `main`.
+
+Rollback (no rebuild):
+
+1. GitHub -> Actions -> `Deploy Production (Build in CI)`.
+2. Click **Run workflow**.
+3. Set `image_tag` to last known good tag.
+4. Run workflow.
 
 **Test & validate:** `npm run test` (backend + frontend), `npm run validate` (lint + test), `npm run build` (frontend). **Audit:** `npm run audit` (root + frontend).
 

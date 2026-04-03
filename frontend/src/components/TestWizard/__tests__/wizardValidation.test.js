@@ -233,6 +233,102 @@ describe('wizardValidation', () => {
     });
 
     describe('code step', () => {
+      it('returns error when Native Variant Price has no mapped Shopify variant ID', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'price',
+            variants: [
+              { name: 'Control', allocation: 50, config: { priceMode: 'fixed', price: null } },
+              {
+                name: 'Variant A',
+                allocation: 50,
+                config: {
+                  priceMode: 'fixed',
+                  price: 39,
+                  priceApplicationMethod: 'native_variant_price',
+                },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'price',
+          cssValidationErrors: [],
+          jsValidationErrors: [],
+        });
+        expect(
+          errors.some(
+            e => e.includes('Native Variant Price') && e.includes('mapped Shopify variant ID')
+          )
+        ).toBe(true);
+      });
+
+      it('returns error when Discounted Checkout Price is used for a price increase', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'price',
+            variants: [
+              { name: 'Control', allocation: 50, config: { priceMode: 'fixed', price: null } },
+              {
+                name: 'Variant A',
+                allocation: 50,
+                config: {
+                  priceMode: 'amount',
+                  priceDelta: 5,
+                  priceApplicationMethod: 'discounted_checkout_price',
+                },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'price',
+          cssValidationErrors: [],
+          jsValidationErrors: [],
+        });
+        expect(
+          errors.some(
+            e => e.includes('Discounted Checkout Price') && e.includes('only supports lower prices')
+          )
+        ).toBe(true);
+      });
+
+      it('returns error when Direct Price Override is used for a lower price', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'price',
+            variants: [
+              { name: 'Control', allocation: 50, config: { priceMode: 'fixed', price: null } },
+              {
+                name: 'Variant A',
+                allocation: 50,
+                config: {
+                  priceMode: 'amount',
+                  priceDelta: -5,
+                  priceApplicationMethod: 'direct_price_override',
+                },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'price',
+          cssValidationErrors: [],
+          jsValidationErrors: [],
+        });
+        expect(
+          errors.some(
+            e => e.includes('Direct Price Override') && e.includes('hardened for price increases')
+          )
+        ).toBe(true);
+      });
+
       it('returns error when cssValidationErrors is non-empty', () => {
         const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
           stepIds: stepIdsWithTemplate,

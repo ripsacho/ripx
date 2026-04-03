@@ -426,6 +426,8 @@
   /** Latest line-attribute payload to apply on theme AJAX cart/add requests. */
   var _ripxCartAttributeState = null;
   var _ripxCartFormTargetProductIds = null;
+  var _ripxTargetUnitByProductId = {};
+  var _ripxDiscountUnitByProductId = {};
   var _ripxCartFormObserverInstalled = false;
   var _ripxCartFormObserverTimer = null;
   var _ripxCartAddInterceptorsInstalled = false;
@@ -980,7 +982,7 @@
    * Shopify expects properties[_key] (not attributes[]) for line-level data. Leading underscore = hidden from buyers in most themes.
    * See docs/SHOPIFY_CHECKOUT_PRICE_RESOLVER.md
    */
-  function getRipxCartAttrsPayload(testId, variantId, shopDomain, assignmentProof) {
+  function getRipxCartAttrsPayload(testId, variantId, shopDomain, assignmentProof, pricingProof) {
     var out = {
       _ripx_price_test: String(testId || ''),
       _ripx_variant: String(variantId == null ? '' : variantId),
@@ -998,6 +1000,22 @@
       out._ripx_assignment_sig = String(assignmentProof.sig).trim();
       out._ripx_assignment_ts = String(assignmentProof.ts).trim();
       out._ripx_assignment_user = String(assignmentProof.user).trim();
+    }
+    if (
+      pricingProof &&
+      pricingProof.targetUnit !== undefined &&
+      pricingProof.targetUnit !== null &&
+      isFinite(Number(pricingProof.targetUnit))
+    ) {
+      out._ripx_target_unit = Number(pricingProof.targetUnit).toFixed(2);
+    }
+    if (
+      pricingProof &&
+      pricingProof.discountUnit !== undefined &&
+      pricingProof.discountUnit !== null &&
+      isFinite(Number(pricingProof.discountUnit))
+    ) {
+      out._ripx_discount_unit = Number(pricingProof.discountUnit).toFixed(2);
     }
     return out;
   }
@@ -1054,6 +1072,18 @@
       payload._ripx_assignment_user,
       preserveExisting
     );
+    setRipxAttrValueOnFormData(
+      formData,
+      'properties[_ripx_target_unit]',
+      payload._ripx_target_unit,
+      preserveExisting
+    );
+    setRipxAttrValueOnFormData(
+      formData,
+      'properties[_ripx_discount_unit]',
+      payload._ripx_discount_unit,
+      preserveExisting
+    );
     return true;
   }
 
@@ -1102,6 +1132,18 @@
       params,
       'properties[_ripx_assignment_user]',
       payload._ripx_assignment_user,
+      preserveExisting
+    );
+    setRipxAttrValueOnSearchParams(
+      params,
+      'properties[_ripx_target_unit]',
+      payload._ripx_target_unit,
+      preserveExisting
+    );
+    setRipxAttrValueOnSearchParams(
+      params,
+      'properties[_ripx_discount_unit]',
+      payload._ripx_discount_unit,
       preserveExisting
     );
     return true;
@@ -1233,13 +1275,70 @@
       if (DEBUG) debugLog('cart patch skip: missing _ripx_price_test / _ripx_variant on payload');
       return { changed: false, body: body };
     }
+    function maybeSwapVariantId(currentId, swapState) {
+      if (!shouldSwapRipxCartVariant(currentId, swapState)) return currentId;
+      return swapState.mappedVariantId;
+    }
+    function applyNativeVariantSwapToObject(obj, swapState) {
+      if (!obj || typeof obj !== 'object' || !swapState) return;
+      if (obj.id != null) {
+        obj.id = maybeSwapVariantId(obj.id, swapState);
+      }
+      if (Array.isArray(obj.items)) {
+        for (var i = 0; i < obj.items.length; i++) {
+          if (obj.items[i] && typeof obj.items[i] === 'object' && obj.items[i].id != null) {
+            obj.items[i].id = maybeSwapVariantId(obj.items[i].id, swapState);
+          }
+        }
+      }
+      if (Array.isArray(obj.line_items)) {
+        for (var j = 0; j < obj.line_items.length; j++) {
+          if (
+            obj.line_items[j] &&
+            typeof obj.line_items[j] === 'object' &&
+            obj.line_items[j].id != null
+          ) {
+            obj.line_items[j].id = maybeSwapVariantId(obj.line_items[j].id, swapState);
+          }
+        }
+      }
+    }
+    var effectivePayload = payload;
+    var nativeSwapState = getRipxNativeVariantSwapState(effectivePayload);
+    if (!effectivePayload._ripx_target_unit || !effectivePayload._ripx_discount_unit) {
+      var preferredPid = getPreferredRipxProductIdForCartAttrs();
+      var rememberedTargetUnit = preferredPid
+        ? getRememberedRipxTargetUnitForProductId(preferredPid)
+        : '';
+      var rememberedDiscountUnit = preferredPid
+        ? getRememberedRipxDiscountUnitForProductId(preferredPid)
+        : '';
+      if (rememberedTargetUnit || rememberedDiscountUnit) {
+        effectivePayload = Object.assign({}, payload, {
+          _ripx_target_unit: effectivePayload._ripx_target_unit || rememberedTargetUnit,
+          _ripx_discount_unit: effectivePayload._ripx_discount_unit || rememberedDiscountUnit,
+        });
+      }
+    }
 
     if (typeof FormData !== 'undefined' && body instanceof FormData) {
-      applyRipxCartAttrsToFormData(body, payload, true);
+      if (nativeSwapState && body.get && body.has && body.has('id')) {
+        var formIdValue = body.get('id');
+        if (shouldSwapRipxCartVariant(formIdValue, nativeSwapState)) {
+          body.set('id', nativeSwapState.mappedVariantId);
+        }
+      }
+      applyRipxCartAttrsToFormData(body, effectivePayload, true);
       return { changed: true, body: body };
     }
     if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) {
-      applyRipxCartAttrsToSearchParams(body, payload, true);
+      if (nativeSwapState && body.has('id')) {
+        var paramsIdValue = body.get('id');
+        if (shouldSwapRipxCartVariant(paramsIdValue, nativeSwapState)) {
+          body.set('id', nativeSwapState.mappedVariantId);
+        }
+      }
+      applyRipxCartAttrsToSearchParams(body, effectivePayload, true);
       return { changed: true, body: body };
     }
     if (typeof body === 'string') {
@@ -1251,6 +1350,7 @@
         try {
           var obj = JSON.parse(trimmed || '{}');
           if (obj && typeof obj === 'object') {
+            applyNativeVariantSwapToObject(obj, nativeSwapState);
             function mergedRipxProps(existing) {
               var nextProps = Object.assign({}, existing || {});
               function setPropIfMissing(key, value) {
@@ -1258,12 +1358,14 @@
                 if (nextProps[key] != null && String(nextProps[key]).trim() !== '') return;
                 nextProps[key] = value;
               }
-              setPropIfMissing('_ripx_price_test', payload._ripx_price_test);
-              setPropIfMissing('_ripx_variant', payload._ripx_variant);
-              setPropIfMissing('_ripx_shop', payload._ripx_shop);
-              setPropIfMissing('_ripx_assignment_sig', payload._ripx_assignment_sig);
-              setPropIfMissing('_ripx_assignment_ts', payload._ripx_assignment_ts);
-              setPropIfMissing('_ripx_assignment_user', payload._ripx_assignment_user);
+              setPropIfMissing('_ripx_price_test', effectivePayload._ripx_price_test);
+              setPropIfMissing('_ripx_variant', effectivePayload._ripx_variant);
+              setPropIfMissing('_ripx_shop', effectivePayload._ripx_shop);
+              setPropIfMissing('_ripx_assignment_sig', effectivePayload._ripx_assignment_sig);
+              setPropIfMissing('_ripx_assignment_ts', effectivePayload._ripx_assignment_ts);
+              setPropIfMissing('_ripx_assignment_user', effectivePayload._ripx_assignment_user);
+              setPropIfMissing('_ripx_target_unit', effectivePayload._ripx_target_unit);
+              setPropIfMissing('_ripx_discount_unit', effectivePayload._ripx_discount_unit);
               return nextProps;
             }
             function mapCartLinesWithRipx(arr) {
@@ -1305,6 +1407,12 @@
       if (looksUrlEncoded) {
         try {
           var params = new URLSearchParams(body);
+          if (nativeSwapState && params.has('id')) {
+            var stringIdValue = params.get('id');
+            if (shouldSwapRipxCartVariant(stringIdValue, nativeSwapState)) {
+              params.set('id', nativeSwapState.mappedVariantId);
+            }
+          }
           applyRipxCartAttrsToSearchParams(params, payload, true);
           return {
             changed: true,
@@ -1568,7 +1676,8 @@
         ? Number(item.total_discount)
         : 0;
     if (Number.isFinite(totalDiscount) && totalDiscount > 0) return true;
-    if (Number.isFinite(original) && Number.isFinite(finalLine) && finalLine < original) return true;
+    if (Number.isFinite(original) && Number.isFinite(finalLine) && finalLine < original)
+      return true;
     return Array.isArray(item.discounts) && item.discounts.length > 0;
   }
 
@@ -1643,10 +1752,13 @@
 
   function scheduleRipxCartNativeStateRefresh(delayMs) {
     if (_ripxCartNativeStateTimer) clearTimeout(_ripxCartNativeStateTimer);
-    _ripxCartNativeStateTimer = setTimeout(function () {
-      _ripxCartNativeStateTimer = null;
-      fetchRipxCartNativeState();
-    }, Math.max(0, Number(delayMs) || 0));
+    _ripxCartNativeStateTimer = setTimeout(
+      function () {
+        _ripxCartNativeStateTimer = null;
+        fetchRipxCartNativeState();
+      },
+      Math.max(0, Number(delayMs) || 0)
+    );
   }
 
   function scheduleRipxCartNativeStateRefreshBurst() {
@@ -1659,6 +1771,23 @@
     var st = _ripxCartNativeState;
     if (!st || !st.hasDiscounts || !st.uiMatches) return false;
     return Date.now() - Number(st.fetchedAt || 0) < 15000;
+  }
+
+  function shouldBlockCartFallbackPaint() {
+    if (!hasCartUiInDom()) return false;
+    var st = _ripxCartNativeState;
+    var fresh = st && Date.now() - Number(st.fetchedAt || 0) < 15000;
+    if (!fresh) {
+      fetchRipxCartNativeState().then(function () {
+        try {
+          if (window.RipX && typeof window.RipX.reapplyPriceTests === 'function') {
+            setTimeout(window.RipX.reapplyPriceTests, 0);
+          }
+        } catch (e) {}
+      });
+      return true;
+    }
+    return !!st.hasDiscounts;
   }
 
   function formMatchesTargetProductIds(form, targetProductIds) {
@@ -1679,6 +1808,93 @@
     var pid = toNumericProductId(raw);
     if (!pid) return true;
     return scoped.indexOf(pid) !== -1;
+  }
+
+  function getRipxProductIdForForm(form) {
+    if (!form) return null;
+    var holder = form.closest
+      ? form.closest('[data-product-id],[data-product],[data-product-handle]')
+      : null;
+    var raw =
+      (form.getAttribute && form.getAttribute('data-product-id')) ||
+      (holder && holder.getAttribute && holder.getAttribute('data-product-id')) ||
+      '';
+    return toNumericProductId(raw);
+  }
+
+  function rememberRipxTargetUnitForProduct(productId, targetUnit) {
+    var pid = toNumericProductId(productId);
+    var num = Number(targetUnit);
+    if (!pid || !isFinite(num)) return;
+    _ripxTargetUnitByProductId[String(pid)] = num.toFixed(2);
+  }
+
+  function rememberRipxTargetUnitForProducts(targetProductIds, targetUnit) {
+    if (!Array.isArray(targetProductIds) || targetProductIds.length === 0) return;
+    targetProductIds.forEach(function (productId) {
+      rememberRipxTargetUnitForProduct(productId, targetUnit);
+    });
+  }
+
+  function getRememberedRipxTargetUnitForProductId(productId) {
+    var pid = toNumericProductId(productId);
+    if (!pid) return '';
+    return _ripxTargetUnitByProductId[String(pid)] || '';
+  }
+
+  function rememberRipxDiscountUnitForProduct(productId, discountUnit) {
+    var pid = toNumericProductId(productId);
+    var num = Number(discountUnit);
+    if (!pid || !isFinite(num) || !(num > 0)) return;
+    _ripxDiscountUnitByProductId[String(pid)] = num.toFixed(2);
+  }
+
+  function rememberRipxDiscountUnitForProducts(targetProductIds, discountUnit) {
+    if (!Array.isArray(targetProductIds) || targetProductIds.length === 0) return;
+    targetProductIds.forEach(function (productId) {
+      rememberRipxDiscountUnitForProduct(productId, discountUnit);
+    });
+  }
+
+  function getRememberedRipxDiscountUnitForProductId(productId) {
+    var pid = toNumericProductId(productId);
+    if (!pid) return '';
+    return _ripxDiscountUnitByProductId[String(pid)] || '';
+  }
+
+  function getRememberedRipxTargetUnitForForm(form) {
+    return getRememberedRipxTargetUnitForProductId(getRipxProductIdForForm(form));
+  }
+
+  function getRememberedRipxDiscountUnitForForm(form) {
+    return getRememberedRipxDiscountUnitForProductId(getRipxProductIdForForm(form));
+  }
+
+  function getPreferredRipxProductIdForCartAttrs() {
+    if (
+      Array.isArray(_ripxCartFormTargetProductIds) &&
+      _ripxCartFormTargetProductIds.length === 1
+    ) {
+      return toNumericProductId(_ripxCartFormTargetProductIds[0]);
+    }
+    var currentPid = toNumericProductId(getCurrentProductId());
+    if (currentPid) return currentPid;
+    var rememberedKeys = Object.keys(_ripxTargetUnitByProductId || {});
+    if (rememberedKeys.length === 1) return toNumericProductId(rememberedKeys[0]);
+    return null;
+  }
+
+  function getRipxNativeVariantSwapState(state) {
+    if (!state || typeof state !== 'object') return null;
+    var mappedVariantId = normalizeCartVariantId(state.__ripx_native_variant_id);
+    var sourceVariantId = normalizeCartVariantId(state.__ripx_source_variant_id);
+    if (!mappedVariantId || !sourceVariantId) return null;
+    return { mappedVariantId: mappedVariantId, sourceVariantId: sourceVariantId };
+  }
+
+  function shouldSwapRipxCartVariant(currentVariantId, swapState) {
+    if (!swapState || !swapState.mappedVariantId || !swapState.sourceVariantId) return false;
+    return normalizeCartVariantId(currentVariantId) === swapState.sourceVariantId;
   }
 
   /**
@@ -1728,6 +1944,28 @@
       if (state._ripx_assignment_user) {
         setProperty('_ripx_assignment_user', state._ripx_assignment_user);
       }
+      var targetUnitValue = state._ripx_target_unit || getRememberedRipxTargetUnitForForm(form);
+      if (targetUnitValue) {
+        setProperty('_ripx_target_unit', targetUnitValue);
+      }
+      var discountUnitValue =
+        state._ripx_discount_unit || getRememberedRipxDiscountUnitForForm(form);
+      if (discountUnitValue) {
+        setProperty('_ripx_discount_unit', discountUnitValue);
+      }
+      var swapState = getRipxNativeVariantSwapState(state);
+      if (swapState) {
+        var variantIdInput =
+          form.querySelector('input[name="id"]') ||
+          form.querySelector('select[name="id"]') ||
+          form.querySelector('[name="id"]');
+        if (variantIdInput && shouldSwapRipxCartVariant(variantIdInput.value, swapState)) {
+          variantIdInput.value = swapState.mappedVariantId;
+          if (variantIdInput.setAttribute) {
+            variantIdInput.setAttribute('data-ripx-native-variant', swapState.mappedVariantId);
+          }
+        }
+      }
     });
   }
 
@@ -1752,7 +1990,14 @@
     }
   }
 
-  function injectPriceTestCartAttributes(testId, variantId, assignmentProof, targetProductIds) {
+  function injectPriceTestCartAttributes(
+    testId,
+    variantId,
+    assignmentProof,
+    targetProductIds,
+    pricingProof,
+    checkoutMethodProof
+  ) {
     if (!testId || variantId == null || String(variantId).trim() === '') return;
     var valueShop =
       (CONFIG.shopDomain && String(CONFIG.shopDomain).trim()) ||
@@ -1761,15 +2006,86 @@
         window.Shopify.shop &&
         String(window.Shopify.shop).trim()) ||
       '';
-    _ripxCartAttributeState = getRipxCartAttrsPayload(
+    var nextState = getRipxCartAttrsPayload(
       String(testId),
       String(variantId),
       valueShop,
-      assignmentProof
+      assignmentProof,
+      pricingProof
     );
-    _ripxCartFormTargetProductIds = targetProductIds;
+    if (checkoutMethodProof && typeof checkoutMethodProof === 'object') {
+      var resolvedMethod = normalizePriceApplicationMethod(
+        checkoutMethodProof.applicationMethod
+      );
+      nextState.__ripx_price_application_method = resolvedMethod;
+      var nativeVariantId = normalizeCartVariantId(checkoutMethodProof.nativeVariantId);
+      var sourceVariantId = normalizeCartVariantId(checkoutMethodProof.sourceVariantId);
+      if (nativeVariantId) nextState.__ripx_native_variant_id = nativeVariantId;
+      if (sourceVariantId) nextState.__ripx_source_variant_id = sourceVariantId;
+    }
+    if (
+      _ripxCartAttributeState &&
+      _ripxCartAttributeState._ripx_price_test === String(testId) &&
+      _ripxCartAttributeState._ripx_variant === String(variantId)
+    ) {
+      if (!nextState._ripx_target_unit && _ripxCartAttributeState._ripx_target_unit) {
+        nextState._ripx_target_unit = _ripxCartAttributeState._ripx_target_unit;
+      }
+      if (!nextState._ripx_discount_unit && _ripxCartAttributeState._ripx_discount_unit) {
+        nextState._ripx_discount_unit = _ripxCartAttributeState._ripx_discount_unit;
+      }
+      if (!nextState._ripx_assignment_sig && _ripxCartAttributeState._ripx_assignment_sig) {
+        nextState._ripx_assignment_sig = _ripxCartAttributeState._ripx_assignment_sig;
+      }
+      if (!nextState._ripx_assignment_ts && _ripxCartAttributeState._ripx_assignment_ts) {
+        nextState._ripx_assignment_ts = _ripxCartAttributeState._ripx_assignment_ts;
+      }
+      if (!nextState._ripx_assignment_user && _ripxCartAttributeState._ripx_assignment_user) {
+        nextState._ripx_assignment_user = _ripxCartAttributeState._ripx_assignment_user;
+      }
+      if (
+        !nextState.__ripx_native_variant_id &&
+        _ripxCartAttributeState.__ripx_native_variant_id
+      ) {
+        nextState.__ripx_native_variant_id = _ripxCartAttributeState.__ripx_native_variant_id;
+      }
+      if (
+        !nextState.__ripx_source_variant_id &&
+        _ripxCartAttributeState.__ripx_source_variant_id
+      ) {
+        nextState.__ripx_source_variant_id = _ripxCartAttributeState.__ripx_source_variant_id;
+      }
+      if (
+        !nextState.__ripx_price_application_method &&
+        _ripxCartAttributeState.__ripx_price_application_method
+      ) {
+        nextState.__ripx_price_application_method =
+          _ripxCartAttributeState.__ripx_price_application_method;
+      }
+    }
+    _ripxCartAttributeState = nextState;
+    if (_ripxCartAttributeState && _ripxCartAttributeState._ripx_target_unit) {
+      rememberRipxTargetUnitForProducts(
+        targetProductIds,
+        _ripxCartAttributeState._ripx_target_unit
+      );
+    }
+    if (_ripxCartAttributeState && _ripxCartAttributeState._ripx_discount_unit) {
+      rememberRipxDiscountUnitForProducts(
+        targetProductIds,
+        _ripxCartAttributeState._ripx_discount_unit
+      );
+    }
+    if (Array.isArray(targetProductIds) && targetProductIds.length > 0) {
+      _ripxCartFormTargetProductIds = targetProductIds;
+    } else if (
+      !Array.isArray(_ripxCartFormTargetProductIds) ||
+      _ripxCartFormTargetProductIds.length === 0
+    ) {
+      _ripxCartFormTargetProductIds = targetProductIds;
+    }
     installRipxCartAddInterceptors();
-    applyRipxStateToCartForms(targetProductIds);
+    applyRipxStateToCartForms(_ripxCartFormTargetProductIds);
     installRipxCartFormObserver();
     if (DEBUG)
       debugLog(
@@ -1826,6 +2142,10 @@
     if (out.pricePercent === undefined && out.price_percent !== undefined)
       out.pricePercent = out.price_percent;
     if (!out.priceBase && out.price_base) out.priceBase = out.price_base;
+    if (out.nativeVariantId === undefined && out.native_variant_id !== undefined)
+      out.nativeVariantId = out.native_variant_id;
+    if (!out.priceApplicationMethod && out.price_application_method)
+      out.priceApplicationMethod = out.price_application_method;
     if (out.roundTo === undefined && out.round_to !== undefined) out.roundTo = out.round_to;
     if (typeof out.priceMode === 'string') out.priceMode = out.priceMode.toLowerCase();
     if (out.priceMode === 'delta' || out.priceMode === 'dollar') out.priceMode = 'amount';
@@ -1879,10 +2199,49 @@
       merged.pricePercent = base.pricePercent;
       merged.priceBase = base.priceBase || merged.priceBase;
     }
+    if (base.nativeVariantId !== undefined && base.nativeVariantId !== null && merged.nativeVariantId == null) {
+      merged.nativeVariantId = base.nativeVariantId;
+    }
+    if (
+      base.priceApplicationMethod !== undefined &&
+      base.priceApplicationMethod !== null &&
+      merged.priceApplicationMethod == null
+    ) {
+      merged.priceApplicationMethod = base.priceApplicationMethod;
+    }
     if (base.roundTo !== undefined && base.roundTo !== null && merged.roundTo == null) {
       merged.roundTo = base.roundTo;
     }
     return merged;
+  }
+
+  function normalizePriceApplicationMethod(value) {
+    var raw = String(value || '')
+      .trim()
+      .toLowerCase();
+    if (raw === 'discounted_checkout_price') return 'discounted_checkout_price';
+    if (raw === 'native_variant_price') return 'native_variant_price';
+    if (raw === 'direct_price_override') return 'direct_price_override';
+    return 'auto';
+  }
+
+  function normalizeCartVariantId(value) {
+    if (value == null || value === '') return '';
+    var s = String(value).trim();
+    var m = s.match(/ProductVariant\/\s*(\d+)/i) || s.match(/\b(\d{6,})\b/);
+    return m ? m[1] : s;
+  }
+
+  function resolveStorefrontPriceApplicationMethod(configuredMethod, targetUnit, catalogUnit) {
+    var normalized = normalizePriceApplicationMethod(configuredMethod);
+    var target = Number(targetUnit);
+    var catalog = Number(catalogUnit);
+    var tolerance = 0.0001;
+    var isPriceIncrease = isFinite(target) && isFinite(catalog) && target > catalog + tolerance;
+    if (normalized === 'native_variant_price') return 'native_variant_price';
+    if (normalized === 'direct_price_override') return 'direct_price_override';
+    if (normalized === 'discounted_checkout_price') return 'discounted_checkout_price';
+    return isPriceIncrease ? 'native_variant_price' : 'discounted_checkout_price';
   }
 
   /**
@@ -2001,10 +2360,40 @@
 
     if (isNaN(priceNum) || !isFinite(priceNum)) return;
     priceNum = Math.max(0, Math.round(priceNum * 100) / 100);
+    var catalogUnitForCheckout = getCatalogPriceFromPage(currentPdpVariantId);
+    var discountUnit = null;
+    if (catalogUnitForCheckout != null && isFinite(Number(catalogUnitForCheckout))) {
+      discountUnit = Math.round((Number(catalogUnitForCheckout) - priceNum) * 100) / 100;
+      if (!(discountUnit > 0)) {
+        discountUnit = null;
+      }
+    }
     var roundToVal = parseRoundTo(cfg.roundTo);
     if (roundToVal > 0) {
       priceNum = Math.round(priceNum / roundToVal) * roundToVal;
       priceNum = Math.max(0, Math.round(priceNum * 100) / 100);
+      if (catalogUnitForCheckout != null && isFinite(Number(catalogUnitForCheckout))) {
+        discountUnit = Math.round((Number(catalogUnitForCheckout) - priceNum) * 100) / 100;
+        if (!(discountUnit > 0)) {
+          discountUnit = null;
+        }
+      }
+    }
+    var resolvedPriceApplicationMethod = resolveStorefrontPriceApplicationMethod(
+      cfg.priceApplicationMethod,
+      priceNum,
+      catalogUnitForCheckout
+    );
+    var nativeVariantIdForCart =
+      resolvedPriceApplicationMethod === 'native_variant_price'
+        ? normalizeCartVariantId(cfg.nativeVariantId)
+        : '';
+    if (
+      resolvedPriceApplicationMethod === 'native_variant_price' &&
+      !nativeVariantIdForCart &&
+      DEBUG
+    ) {
+      debugLog('applyPriceTest: native variant method selected but no mapped nativeVariantId found');
     }
 
     var display = formatShopPrice(priceNum);
@@ -2249,7 +2638,13 @@
         testId,
         variantIdForCart,
         getAssignmentProofFromVariant(variant),
-        [productId]
+        [productId],
+        { targetUnit: priceNum, discountUnit: discountUnit },
+        {
+          applicationMethod: resolvedPriceApplicationMethod,
+          nativeVariantId: nativeVariantIdForCart,
+          sourceVariantId: currentPdpVariantId,
+        }
       );
     }
   }
@@ -2370,7 +2765,7 @@
    */
   function paintAllProductsGlobalPrices(testId, variant, scope) {
     if (!variant || !variant.config) return;
-    if (scope === 'cart' && shouldPreferNativeCartRendering()) return;
+    if (scope === 'cart' && (shouldPreferNativeCartRendering() || shouldBlockCartFallbackPaint())) return;
     var cfg = variant.config;
     if (!canUseAllProductsGlobalFallback(cfg)) return;
     var pm = String(cfg.priceMode || '').toLowerCase();
@@ -2548,6 +2943,7 @@
             }
           }
         }
+        rememberRipxTargetUnitForProduct(pid, cardPriceNum);
         var priceEls = card.querySelectorAll(
           '.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price .money, .price-item, [data-price]'
         );
@@ -2560,6 +2956,7 @@
         });
       });
     });
+    applyRipxStateToCartForms(targetIds);
   }
 
   /**
@@ -2641,6 +3038,7 @@
           }
         }
       }
+      rememberRipxTargetUnitForProduct(pid, cardPriceNum);
       var priceEls = card.querySelectorAll(
         '.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price .money, .price-item, [data-price]'
       );
@@ -2652,6 +3050,7 @@
         el.setAttribute('data-ripx-price', '1');
       });
     });
+    applyRipxStateToCartForms(null);
 
     // If the theme lacks data-product-id entirely, try a safe all-products fallback for amount/percent.
     // (fixed mode cannot be inferred without knowing which product it belongs to).
@@ -2664,7 +3063,7 @@
    */
   function applyPriceTestToCart(testId, variant, targetIds) {
     if (!variant || !targetIds || !targetIds.length) return;
-    if (shouldPreferNativeCartRendering()) return;
+    if (shouldPreferNativeCartRendering() || shouldBlockCartFallbackPaint()) return;
     if (!variant.config) {
       injectPreviewCartAttributesWhenConfigMissing(testId, variant);
       return;
@@ -2824,7 +3223,7 @@
         null
       );
     }
-    if (shouldPreferNativeCartRendering()) return;
+    if (shouldPreferNativeCartRendering() || shouldBlockCartFallbackPaint()) return;
     schedulePaintAllProductsGlobalPrices(testId, variant, 'cart');
   }
 
@@ -4421,6 +4820,23 @@
       diagnostics: {
         getCurrentProductId: getCurrentProductId(),
         hasProductJson: !!getProductJson(),
+        cartAttributeState: _ripxCartAttributeState
+          ? {
+              priceTest: _ripxCartAttributeState._ripx_price_test || null,
+              variant: _ripxCartAttributeState._ripx_variant || null,
+              shop: _ripxCartAttributeState._ripx_shop || null,
+              targetUnit: _ripxCartAttributeState._ripx_target_unit || null,
+              discountUnit: _ripxCartAttributeState._ripx_discount_unit || null,
+              hasAssignmentSig: !!_ripxCartAttributeState._ripx_assignment_sig,
+              hasAssignmentTs: !!_ripxCartAttributeState._ripx_assignment_ts,
+              hasAssignmentUser: !!_ripxCartAttributeState._ripx_assignment_user,
+            }
+          : null,
+        cartFormTargetProductIds: Array.isArray(_ripxCartFormTargetProductIds)
+          ? _ripxCartFormTargetProductIds.slice()
+          : _ripxCartFormTargetProductIds || null,
+        rememberedTargetUnits: Object.assign({}, _ripxTargetUnitByProductId),
+        rememberedDiscountUnits: Object.assign({}, _ripxDiscountUnitByProductId),
         hasCartUiInDom: typeof hasCartUiInDom === 'function' ? hasCartUiInDom() : null,
         shouldRunAllProductsCartFallback:
           typeof shouldRunAllProductsCartFallback === 'function'
@@ -4513,6 +4929,9 @@
     window.__RIPX_TEST_HOOKS__.previewTestId = PREVIEW_TEST_ID;
     window.__RIPX_TEST_HOOKS__.setRipxCartAttributeState = function (payload) {
       _ripxCartAttributeState = payload || null;
+    };
+    window.__RIPX_TEST_HOOKS__.getRipxCartAttributeState = function () {
+      return _ripxCartAttributeState;
     };
   }
   debugLog('init', 'v' + SCRIPT_VERSION);

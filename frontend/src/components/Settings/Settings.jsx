@@ -982,6 +982,153 @@ function Settings() {
     }
     return 'Setup incomplete: required checks are not passing yet (script, diagnostics, tenant, or running price test).';
   }, [storeHealth.supportLevel]);
+  const priceMethodReadiness = useMemo(() => {
+    const discountFunctionAvailable =
+      checkoutDiag?.infrastructure?.discount_function_available === true;
+    const cartTransformAvailable =
+      checkoutDiag?.infrastructure?.cart_transform_function_available === true;
+    const scriptDetected = installation?.scriptVerified === true;
+    const nativeCartLevel = String(checkoutDiag?.support?.cart_rendering?.level || '')
+      .trim()
+      .toLowerCase();
+    const nativeCartConfirmed =
+      nativeCartLevel === 'ready' ||
+      nativeCartLevel === 'native_installed' ||
+      nativeCartLevel === 'native_supported';
+
+    return [
+      {
+        id: 'discounted_checkout_price',
+        title: 'Discounted Checkout Price',
+        tone:
+          checkoutDiag?.summary?.overall_ok && discountFunctionAvailable ? 'success' : 'warning',
+        status:
+          checkoutDiag?.summary?.overall_ok && discountFunctionAvailable ? 'Ready' : 'Needs review',
+        summary:
+          checkoutDiag?.summary?.overall_ok && discountFunctionAvailable
+            ? 'Discount function is present and checkout diagnostics are healthy.'
+            : 'This path needs a deployed discount function and passing checkout diagnostics.',
+        nextAction:
+          checkoutDiag?.summary?.overall_ok && discountFunctionAvailable
+            ? 'Best for lower-price tests when a checkout discount label is acceptable.'
+            : 'Run diagnostics and attach the RipX discount if this should power checkout pricing.',
+      },
+      {
+        id: 'native_variant_price',
+        title: 'Native Variant Price',
+        tone: scriptDetected ? (nativeCartConfirmed ? 'success' : 'attention') : 'warning',
+        status: scriptDetected
+          ? nativeCartConfirmed
+            ? 'Ready'
+            : 'Partially ready'
+          : 'Needs setup',
+        summary: scriptDetected
+          ? 'Storefront script can drive mapped-variant swaps for real product pricing.'
+          : 'The storefront script is not confirmed on the theme yet.',
+        nextAction: nativeCartConfirmed
+          ? 'Use this when mapped Shopify variants should behave like the real product price.'
+          : 'Mapped variants can still work, but add native cart rendering for the cleanest cart experience.',
+      },
+      {
+        id: 'direct_price_override',
+        title: 'Direct Price Override',
+        tone: cartTransformAvailable ? 'success' : 'warning',
+        status: cartTransformAvailable ? 'Ready for eligible stores' : 'Needs deploy',
+        summary: cartTransformAvailable
+          ? 'RipX cart transform is deployed, so direct override can run on Plus/dev hardened flows.'
+          : 'Cart Transform is not detected for this app on the shop yet.',
+        nextAction: cartTransformAvailable
+          ? 'Use for cleaner premium-price checkout UX without a discount label.'
+          : 'Deploy and activate the RipX cart transform before using Direct Price Override.',
+      },
+    ];
+  }, [checkoutDiag, installation?.scriptVerified]);
+  const selectedSettingsPresetKey = useMemo(() => {
+    const match = Object.entries(SETTINGS_PRESETS).find(([, preset]) => {
+      return (
+        Number(settings.minSampleSize) === Number(preset.minSampleSize) &&
+        Math.abs(Number(settings.confidenceLevel) - Number(preset.confidenceLevel)) < 0.001 &&
+        Boolean(settings.autoStopEnabled) === Boolean(preset.autoStopEnabled)
+      );
+    });
+    return match?.[0] || null;
+  }, [settings.minSampleSize, settings.confidenceLevel, settings.autoStopEnabled]);
+  const generalDefaultsOverview = useMemo(
+    () => [
+      {
+        id: 'preset',
+        label: 'Operating mode',
+        value: selectedSettingsPresetKey
+          ? SETTINGS_PRESETS[selectedSettingsPresetKey]?.label || 'Custom'
+          : 'Custom',
+        hint: selectedSettingsPresetKey
+          ? 'Matches one of the quick presets'
+          : 'Uses a custom mix of defaults',
+      },
+      {
+        id: 'sample',
+        label: 'Minimum sample',
+        value: `${Number(settings.minSampleSize || DEFAULT_SETTINGS.minSampleSize)}`,
+        hint: 'Visitors required before results are shown',
+      },
+      {
+        id: 'confidence',
+        label: 'Confidence target',
+        value: `${Math.round(
+          Number(settings.confidenceLevel || DEFAULT_SETTINGS.confidenceLevel) * 100
+        )}%`,
+        hint: 'Higher values wait for stronger evidence',
+      },
+      {
+        id: 'autostop',
+        label: 'Auto-stop',
+        value: settings.autoStopEnabled ? 'Enabled' : 'Manual',
+        hint: settings.autoStopEnabled
+          ? 'Tests can stop automatically when a winner is clear'
+          : 'Operators review and stop tests manually',
+      },
+    ],
+    [
+      selectedSettingsPresetKey,
+      settings.minSampleSize,
+      settings.confidenceLevel,
+      settings.autoStopEnabled,
+    ]
+  );
+  const integrationsOverview = useMemo(() => {
+    const ga4Configured = integrations?.ga4?.configured === true;
+    const bigQueryConfigured = integrations?.bigquery?.configured === true;
+    const lastExport = integrations?.bigquery?.lastExportAt || null;
+    const lastExportLabel = formatRelativeTime(lastExport);
+
+    return [
+      {
+        id: 'connections',
+        label: 'Connected tools',
+        value: `${configuredIntegrationCount}/${INTEGRATIONS_CONFIG.length}`,
+        hint:
+          configuredIntegrationCount > 0
+            ? 'Live analytics destinations configured'
+            : 'No destinations connected yet',
+      },
+      {
+        id: 'ga4',
+        label: 'GA4',
+        value: ga4Configured ? 'Active' : 'Not configured',
+        hint: ga4Configured
+          ? 'Measurement forwarding is enabled'
+          : 'Add Measurement ID and API secret',
+      },
+      {
+        id: 'bigquery',
+        label: 'BigQuery',
+        value: bigQueryConfigured ? 'Configured' : 'Not configured',
+        hint: bigQueryConfigured
+          ? `Last export ${lastExportLabel || 'not run yet'}`
+          : 'Connect GCP project, dataset, and service account',
+      },
+    ];
+  }, [configuredIntegrationCount, integrations]);
   const activeTabMeta = TAB_CONFIG[selectedTab] || null;
   const currentStoreLabel = String(installation?.domain || '').trim() || 'Not detected';
   const tabSummaries = useMemo(
@@ -1742,34 +1889,40 @@ function Settings() {
                                       </InlineStack>
                                     </div>
                                     {(checkoutDiag || installation) && (
-                                      <div className={styles.supportLevelLegend}>
-                                        <Text variant="headingSm" as="h3">
-                                          Support level legend
-                                        </Text>
-                                        <div className={styles.supportLevelLegendRow}>
-                                          <Badge tone="success">
-                                            Support: Native cart + checkout
-                                          </Badge>
-                                          <Text as="span" variant="bodySm" tone="subdued">
-                                            Checkout discounts are aligned and native cart rendering
-                                            is detected.
+                                      <div className={styles.checkoutReadinessSection}>
+                                        <div className={styles.checkoutReadinessHeader}>
+                                          <Text variant="headingSm" as="h3">
+                                            Price methods readiness
+                                          </Text>
+                                          <Text as="p" variant="bodySm" tone="subdued">
+                                            Which price-test paths are actually launch-ready on this
+                                            shop right now.
                                           </Text>
                                         </div>
-                                        <div className={styles.supportLevelLegendRow}>
-                                          <Badge tone="attention">
-                                            Support: Checkout aligned + cart fallback
-                                          </Badge>
-                                          <Text as="span" variant="bodySm" tone="subdued">
-                                            Checkout is aligned, but cart native rendering is not
-                                            confirmed for this theme yet.
-                                          </Text>
-                                        </div>
-                                        <div className={styles.supportLevelLegendRow}>
-                                          <Badge tone="warning">Support: Setup incomplete</Badge>
-                                          <Text as="span" variant="bodySm" tone="subdued">
-                                            Required checks are still failing and setup must be
-                                            completed.
-                                          </Text>
+                                        <div className={styles.checkoutReadinessGrid}>
+                                          {priceMethodReadiness.map(item => (
+                                            <div
+                                              key={item.id}
+                                              className={styles.checkoutReadinessCard}
+                                            >
+                                              <div className={styles.checkoutReadinessCardHeader}>
+                                                <Text
+                                                  as="span"
+                                                  variant="bodySm"
+                                                  fontWeight="semibold"
+                                                >
+                                                  {item.title}
+                                                </Text>
+                                                <Badge tone={item.tone}>{item.status}</Badge>
+                                              </div>
+                                              <Text as="p" variant="bodySm">
+                                                {item.summary}
+                                              </Text>
+                                              <Text as="p" variant="bodySm" tone="subdued">
+                                                {item.nextAction}
+                                              </Text>
+                                            </div>
+                                          ))}
                                         </div>
                                       </div>
                                     )}
@@ -2321,6 +2474,43 @@ function Settings() {
                           aria-labelledby="settings-tab-general"
                           className={`${styles.settingsContent} ${styles.settingsPanelLayout} ${styles.settingsPanelGeneral}`}
                         >
+                          <Card
+                            className={`${styles.settingsPanelCard} ${styles.settingsPanelCardFull} ${styles.settingsOverviewCard}`}
+                          >
+                            <Box padding="400">
+                              <BlockStack gap="300">
+                                <div className={styles.sectionHeader}>
+                                  <div className={styles.sectionHeaderIcon}>
+                                    <SettingsIcon />
+                                  </div>
+                                  <div className={styles.sectionHeaderContent}>
+                                    <Text variant="headingMd" as="h2">
+                                      Defaults snapshot
+                                    </Text>
+                                    <Text as="p" variant="bodySm" tone="subdued">
+                                      A quick view of the current baseline for all new tests before
+                                      you edit individual controls.
+                                    </Text>
+                                  </div>
+                                </div>
+                                <div className={styles.settingsOverviewGrid}>
+                                  {generalDefaultsOverview.map(item => (
+                                    <div key={item.id} className={styles.settingsOverviewMetric}>
+                                      <span className={styles.settingsOverviewLabel}>
+                                        {item.label}
+                                      </span>
+                                      <span className={styles.settingsOverviewValue}>
+                                        {item.value}
+                                      </span>
+                                      <span className={styles.settingsOverviewHint}>
+                                        {item.hint}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </BlockStack>
+                            </Box>
+                          </Card>
                           {isStandaloneMode() && (
                             <Card
                               className={`${styles.settingsPanelCard} ${styles.settingsPanelCardFull}`}
@@ -2420,6 +2610,22 @@ function Settings() {
 
                                 <div className={styles.testConfigCustom}>
                                   <span className={styles.configSubsection}>Customize</span>
+                                  <div className={styles.configCallout}>
+                                    <span className={styles.configCalloutLabel}>
+                                      Current operating mode
+                                    </span>
+                                    <span className={styles.configCalloutValue}>
+                                      {selectedSettingsPresetKey
+                                        ? SETTINGS_PRESETS[selectedSettingsPresetKey]?.label ||
+                                          'Custom'
+                                        : 'Custom'}
+                                    </span>
+                                    <span className={styles.configCalloutHint}>
+                                      {selectedSettingsPresetKey
+                                        ? 'You are aligned with one of RipX’s preset strategies.'
+                                        : 'These values are customized beyond the standard presets.'}
+                                    </span>
+                                  </div>
                                   <div className={styles.configFieldGroups}>
                                     <div className={styles.configFieldGroup}>
                                       <Text
@@ -2540,101 +2746,107 @@ function Settings() {
                               </BlockStack>
                             </Box>
                           </Card>
+                          <div className={styles.generalSideStack}>
+                            <Card
+                              className={`${styles.settingsPanelCard} ${styles.generalSideCard}`}
+                            >
+                              <Box padding="400">
+                                <BlockStack gap={CONTENT_GAP}>
+                                  <div className={styles.sectionHeader}>
+                                    <div className={styles.sectionHeaderIcon}>
+                                      <ChartVerticalIcon />
+                                    </div>
+                                    <div className={styles.sectionHeaderContent}>
+                                      <Text variant="headingMd" as="h2">
+                                        Webhooks
+                                      </Text>
+                                      <Text as="p" variant="bodySm" tone="subdued">
+                                        Send events to your server when tests complete or reach
+                                        significance. The button below saves both webhook settings
+                                        and test defaults (sample size, confidence, auto-stop).
+                                      </Text>
+                                    </div>
+                                  </div>
+                                  <div className={styles.panelCardBody}>
+                                    <FormLayout>
+                                      <TextField
+                                        label="Webhook URL"
+                                        value={settings.outboundWebhookUrl}
+                                        onChange={value => {
+                                          setSettings({ ...settings, outboundWebhookUrl: value });
+                                          setWebhookError(null);
+                                        }}
+                                        helpText="Leave empty to disable. Must be a valid URL when set."
+                                        placeholder="https://your-server.com/webhook"
+                                        autoComplete="off"
+                                        error={webhookError}
+                                      />
+                                      <ChoiceList
+                                        title="Send webhook when"
+                                        choices={WEBHOOK_EVENT_CHOICES}
+                                        selected={settings.outboundWebhookEvents}
+                                        onChange={selected =>
+                                          setSettings({
+                                            ...settings,
+                                            outboundWebhookEvents: selected.length
+                                              ? selected
+                                              : DEFAULT_SETTINGS.outboundWebhookEvents,
+                                          })
+                                        }
+                                        allowMultiple
+                                      />
 
-                          <Card className={`${styles.settingsPanelCard}`}>
-                            <Box padding="400">
-                              <BlockStack gap={CONTENT_GAP}>
-                                <div className={styles.sectionHeader}>
-                                  <div className={styles.sectionHeaderIcon}>
-                                    <ChartVerticalIcon />
+                                      <Box paddingBlockStart="400">
+                                        <Button
+                                          variant="primary"
+                                          onClick={handleSave}
+                                          loading={saving}
+                                        >
+                                          Save settings
+                                        </Button>
+                                      </Box>
+                                    </FormLayout>
                                   </div>
-                                  <div className={styles.sectionHeaderContent}>
-                                    <Text variant="headingMd" as="h2">
-                                      Webhooks
-                                    </Text>
-                                    <Text as="p" variant="bodySm" tone="subdued">
-                                      Send events to your server when tests complete or reach
-                                      significance. The button below saves both webhook settings and
-                                      test defaults (sample size, confidence, auto-stop).
-                                    </Text>
-                                  </div>
-                                </div>
-                                <div className={styles.panelCardBody}>
-                                  <FormLayout>
-                                    <TextField
-                                      label="Webhook URL"
-                                      value={settings.outboundWebhookUrl}
-                                      onChange={value => {
-                                        setSettings({ ...settings, outboundWebhookUrl: value });
-                                        setWebhookError(null);
-                                      }}
-                                      helpText="Leave empty to disable. Must be a valid URL when set."
-                                      placeholder="https://your-server.com/webhook"
-                                      autoComplete="off"
-                                      error={webhookError}
-                                    />
-                                    <ChoiceList
-                                      title="Send webhook when"
-                                      choices={WEBHOOK_EVENT_CHOICES}
-                                      selected={settings.outboundWebhookEvents}
-                                      onChange={selected =>
-                                        setSettings({
-                                          ...settings,
-                                          outboundWebhookEvents: selected.length
-                                            ? selected
-                                            : DEFAULT_SETTINGS.outboundWebhookEvents,
-                                        })
-                                      }
-                                      allowMultiple
-                                    />
+                                </BlockStack>
+                              </Box>
+                            </Card>
 
-                                    <Box paddingBlockStart="400">
-                                      <Button
-                                        variant="primary"
-                                        onClick={handleSave}
-                                        loading={saving}
-                                      >
-                                        Save settings
-                                      </Button>
-                                    </Box>
-                                  </FormLayout>
-                                </div>
-                              </BlockStack>
-                            </Box>
-                          </Card>
-
-                          <Card
-                            className={`${styles.settingsPanelCard} ${styles.settingsPanelCardFull} ${styles.quickLinksCard}`}
-                          >
-                            <Box padding="400">
-                              <BlockStack gap="300">
-                                <div className={styles.sectionHeader}>
-                                  <div className={styles.sectionHeaderIcon}>
-                                    <SettingsIcon />
+                            <Card
+                              className={`${styles.settingsPanelCard} ${styles.generalSideCard} ${styles.quickLinksCard}`}
+                            >
+                              <Box padding="400">
+                                <BlockStack gap="300">
+                                  <div className={styles.sectionHeader}>
+                                    <div className={styles.sectionHeaderIcon}>
+                                      <SettingsIcon />
+                                    </div>
+                                    <div className={styles.sectionHeaderContent}>
+                                      <Text variant="headingMd" as="h2">
+                                        User Preferences
+                                      </Text>
+                                      <Text as="p" variant="bodySm" tone="subdued">
+                                        Notifications, dashboard defaults, theme (custom schedule),
+                                        and export format are in{' '}
+                                        <Link
+                                          to={ROUTES.PROFILE}
+                                          className={styles.setupWizardLink}
+                                        >
+                                          Profile
+                                        </Link>{' '}
+                                        — Account (notifications), Preferences (theme, dashboard,
+                                        editor).
+                                      </Text>
+                                    </div>
                                   </div>
-                                  <div className={styles.sectionHeaderContent}>
-                                    <Text variant="headingMd" as="h2">
-                                      User Preferences
-                                    </Text>
-                                    <Text as="p" variant="bodySm" tone="subdued">
-                                      Notifications, dashboard defaults, theme (custom schedule),
-                                      and export format are in{' '}
-                                      <Link to={ROUTES.PROFILE} className={styles.setupWizardLink}>
-                                        Profile
-                                      </Link>{' '}
-                                      — Account (notifications), Preferences (theme, dashboard,
-                                      editor).
-                                    </Text>
-                                  </div>
-                                </div>
-                                <InlineStack gap="200" wrap>
-                                  <Link to={ROUTES.PROFILE} className={styles.quickLinkBtn}>
-                                    Open Profile
-                                  </Link>
-                                </InlineStack>
-                              </BlockStack>
-                            </Box>
-                          </Card>
+                                  <InlineStack gap="200" wrap>
+                                    <Link to={ROUTES.PROFILE} className={styles.quickLinkBtn}>
+                                      Open Profile
+                                    </Link>
+                                  </InlineStack>
+                                </BlockStack>
+                              </Box>
+                            </Card>
+                          </div>
                         </div>
                       )}
 
@@ -2661,32 +2873,49 @@ function Settings() {
                             className={`${styles.settingsPanelCard} ${styles.settingsPanelCardFull} ${styles.integrationsHeaderCard}`}
                           >
                             <Box padding="400">
-                              <div className={styles.sectionHeaderWithAction}>
-                                <div className={styles.sectionHeader}>
-                                  <div
-                                    className={`${styles.sectionHeaderIcon} ${styles.integrationsHeaderIcon}`}
+                              <BlockStack gap="300">
+                                <div className={styles.sectionHeaderWithAction}>
+                                  <div className={styles.sectionHeader}>
+                                    <div
+                                      className={`${styles.sectionHeaderIcon} ${styles.integrationsHeaderIcon}`}
+                                    >
+                                      <ChartVerticalIcon />
+                                    </div>
+                                    <div className={styles.sectionHeaderContent}>
+                                      <Text variant="headingMd" as="h2">
+                                        Analytics & Data
+                                      </Text>
+                                      <Text as="p" variant="bodySm" tone="subdued">
+                                        Connect GA4 and BigQuery to unify analytics and run advanced
+                                        queries.
+                                      </Text>
+                                    </div>
+                                  </div>
+                                  <Button
+                                    variant="plain"
+                                    onClick={handleRefreshIntegrations}
+                                    loading={integrationsRefreshing}
+                                    accessibilityLabel="Refresh integration status"
                                   >
-                                    <ChartVerticalIcon />
-                                  </div>
-                                  <div className={styles.sectionHeaderContent}>
-                                    <Text variant="headingMd" as="h2">
-                                      Analytics & Data
-                                    </Text>
-                                    <Text as="p" variant="bodySm" tone="subdued">
-                                      Connect GA4 and BigQuery to unify analytics and run advanced
-                                      queries.
-                                    </Text>
-                                  </div>
+                                    Refresh status
+                                  </Button>
                                 </div>
-                                <Button
-                                  variant="plain"
-                                  onClick={handleRefreshIntegrations}
-                                  loading={integrationsRefreshing}
-                                  accessibilityLabel="Refresh integration status"
-                                >
-                                  Refresh status
-                                </Button>
-                              </div>
+                                <div className={styles.settingsOverviewGrid}>
+                                  {integrationsOverview.map(item => (
+                                    <div key={item.id} className={styles.settingsOverviewMetric}>
+                                      <span className={styles.settingsOverviewLabel}>
+                                        {item.label}
+                                      </span>
+                                      <span className={styles.settingsOverviewValue}>
+                                        {item.value}
+                                      </span>
+                                      <span className={styles.settingsOverviewHint}>
+                                        {item.hint}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </BlockStack>
                             </Box>
                           </Card>
 
@@ -2896,15 +3125,26 @@ function Settings() {
                             className={`${styles.settingsPanelCard} ${styles.settingsPanelCardFull} ${styles.integrationsSaveCard}`}
                           >
                             <Box padding="400">
-                              <InlineStack align="end" gap="300">
-                                <Button
-                                  variant="primary"
-                                  onClick={handleSaveIntegrations}
-                                  loading={integrationsSaving}
-                                >
-                                  Save integration settings
-                                </Button>
-                              </InlineStack>
+                              <div className={styles.integrationsSaveBar}>
+                                <div className={styles.integrationsSaveCopy}>
+                                  <Text as="p" variant="bodySm" fontWeight="semibold">
+                                    Finish changes
+                                  </Text>
+                                  <Text as="p" variant="bodySm" tone="subdued">
+                                    Save after updating credentials or datasets so RipX can use the
+                                    latest analytics connections.
+                                  </Text>
+                                </div>
+                                <InlineStack align="end" gap="300">
+                                  <Button
+                                    variant="primary"
+                                    onClick={handleSaveIntegrations}
+                                    loading={integrationsSaving}
+                                  >
+                                    Save integration settings
+                                  </Button>
+                                </InlineStack>
+                              </div>
                             </Box>
                           </Card>
                         </div>

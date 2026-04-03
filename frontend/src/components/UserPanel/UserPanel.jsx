@@ -31,6 +31,7 @@ import {
   redirectToAppUrl,
   getConnectUrl,
   getUrlWithEmbedParams,
+  getNavigateToWithEmbed,
 } from '../../services';
 import { isShopifyStoreDomain, normalizeShopifyDomain } from '../../utils/shopifyAdmin';
 import { useAdminMe } from '../../hooks';
@@ -242,7 +243,7 @@ function UserPanel() {
               )}
             </p>
             <div className={styles.quickActions}>
-              <Link to={ROUTES.DOMAINS} className={styles.quickActionCard}>
+              <Link to={getNavigateToWithEmbed(ROUTES.DOMAINS)} className={styles.quickActionCard}>
                 <span className={styles.quickActionIcon}>
                   <Icon source={GlobeIcon} tone="base" />
                 </span>
@@ -255,7 +256,7 @@ function UserPanel() {
                 </span>
               </Link>
               {isAdmin && (
-                <Link to={ROUTES.ADMIN} className={styles.quickActionCard}>
+                <Link to={getNavigateToWithEmbed(ROUTES.ADMIN)} className={styles.quickActionCard}>
                   <span className={styles.quickActionIcon}>
                     <Icon source={SettingsIcon} tone="base" />
                   </span>

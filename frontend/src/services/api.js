@@ -125,6 +125,50 @@ export function withEmbeddedAppBasePath(path) {
   return `${basePath}${path}`;
 }
 
+/**
+ * Strip `/store/:shop/apps/:handle` so route checks match React Router basename
+ * (e.g. browser `/store/x/apps/y/admin` → `/admin`). Used by the 401 interceptor.
+ */
+export function getEmbeddedAppRelativePathname(pathname) {
+  const p = String(pathname || '');
+  const base = getEmbeddedAppBasePath(p);
+  if (!base) return p;
+  const rest = p.slice(base.length);
+  if (!rest || rest === '/') return '/';
+  return rest.startsWith('/') ? rest : `/${rest}`;
+}
+
+function normalizeResolvedShopCandidate(value) {
+  if (value === null || value === undefined) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+  // Guard against stale invalid value persisted from embedded host parsing.
+  if (trimmed.toLowerCase() === 'admin.shopify.com') return null;
+  if (/\.myshopify\.com$/i.test(trimmed)) return trimmed.toLowerCase();
+  return trimmed;
+}
+
+function parseShopFromEmbeddedHostParam(hostParam) {
+  const raw = String(hostParam || '').trim();
+  if (!raw) return null;
+  try {
+    const decoded = window.atob(raw).trim();
+    // Older behavior or direct values where host already includes a myshopify domain.
+    const directMatch = decoded.match(/([a-z0-9][a-z0-9-]*\.myshopify\.com)/i);
+    if (directMatch?.[1]) {
+      return directMatch[1].toLowerCase();
+    }
+    // Current Shopify Admin host payload shape: admin.shopify.com/store/{handle}
+    const handleMatch = decoded.match(/\/store\/([a-z0-9][a-z0-9-]*)/i);
+    if (handleMatch?.[1]) {
+      return `${handleMatch[1].toLowerCase()}.myshopify.com`;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 function pickEmbedSafeQueryParams(search) {
   const keepKeys = new Set(['host', 'shop']);
   const input = new URLSearchParams(search || '');
@@ -263,15 +307,28 @@ apiClient.interceptors.response.use(
         // ignore sessionStorage errors
       }
       // On Domains page, never redirect on domain/OAuth-related 401 — let DomainList show "Sign in required" and open Connect in new tab
-      const path = typeof window !== 'undefined' ? window.location.pathname : '';
+      const rawPath = typeof window !== 'undefined' ? window.location.pathname : '';
+      const path = getEmbeddedAppRelativePathname(rawPath);
       const requestUrl = String(error.config?.url || '');
+      const isAdminIdentityProbe = requestUrl.includes('/admin/me');
+      // /admin/me is an identity/role probe used in shell nav and AdminGuard.
+      // A 401 here should not force-login redirect from the global interceptor.
+      if (isAdminIdentityProbe) {
+        return Promise.reject(error);
+      }
       const isOnDomainsPage =
         path === ROUTES.DOMAINS || path === ROUTES.DOMAINS + '/' || path.includes('/domains');
       const isDomainsFlowRequest =
         requestUrl.includes('/me/domains') ||
         requestUrl.includes('/auth/start') ||
         requestUrl.includes('/account/stores');
+      const isOnAdminPage = path === ROUTES.ADMIN || path.startsWith(`${ROUTES.ADMIN}/`);
       if (isOnDomainsPage && isDomainsFlowRequest) {
+        return Promise.reject(error);
+      }
+      // On admin pages, never force login redirect from global interceptor.
+      // AdminGuard and per-page UX decide how to handle missing/expired auth.
+      if (isOnAdminPage) {
         return Promise.reject(error);
       }
       // Connection-status check: don't redirect so ShopifyConnectionBanner can show "Store not connected"
@@ -296,6 +353,12 @@ apiClient.interceptors.response.use(
           requestUrl.includes('/tests') ||
           isShopifyRoute);
       const isOnAppDomainRoute = /^\/app\/[^/]+/.test(path);
+      const isAccountStoresRequest = requestUrl.includes('/account/stores');
+      // /account/stores is used as a background probe on shell pages (e.g. UserPanel).
+      // A 401 there should not log out and bounce to Connect while navigating (including Admin).
+      if (isAccountStoresRequest && !isOnAppDomainRoute) {
+        return Promise.reject(error);
+      }
       // Let AppDomainLayout handle /account/stores 401 while switching domains.
       // It can redirect to /api/auth?shop=... without forcing a full sign-in page.
       const shouldSkipAccountStoresRedirect =
@@ -395,50 +458,37 @@ export function getShopDomain() {
   }
 
   const urlParams = new URLSearchParams(window.location.search);
-  const shop = urlParams.get('shop');
+  const shop = normalizeResolvedShopCandidate(urlParams.get('shop'));
   const host = urlParams.get('host');
-  let shopFromHost = null;
-
-  if (host) {
-    try {
-      const decodedHost = window.atob(host);
-      shopFromHost = decodedHost.split('/')[0] || null;
-    } catch (error) {
-      shopFromHost = null;
-    }
-  }
-  const shopFromAppBridge = window.Shopify?.shop;
+  const shopFromHost = parseShopFromEmbeddedHostParam(host);
+  const shopFromAppBridge = normalizeResolvedShopCandidate(window.Shopify?.shop);
   let storedShop = null;
 
   try {
-    storedShop = getAppCred(STORAGE_KEYS.SHOP_DOMAIN);
+    storedShop = normalizeResolvedShopCandidate(getAppCred(STORAGE_KEYS.SHOP_DOMAIN));
   } catch (error) {
     storedShop = null;
   }
 
   let currentStore = null;
   try {
-    currentStore = getAppCred(STORAGE_KEYS.CURRENT_STORE);
+    currentStore = normalizeResolvedShopCandidate(getAppCred(STORAGE_KEYS.CURRENT_STORE));
   } catch {
     currentStore = null;
   }
 
   let resolvedShop =
-    domainFromPath ||
+    normalizeResolvedShopCandidate(domainFromPath) ||
     shop ||
     shopFromAppBridge ||
     shopFromHost ||
     storedShop ||
     currentStore ||
-    import.meta.env.VITE_SHOP_DOMAIN ||
+    normalizeResolvedShopCandidate(import.meta.env.VITE_SHOP_DOMAIN) ||
     null;
 
   if (resolvedShop) {
-    resolvedShop = String(resolvedShop).trim();
-    // Normalize Shopify domains to lowercase so backend session lookup matches
-    if (/\.myshopify\.com$/i.test(resolvedShop)) {
-      resolvedShop = resolvedShop.toLowerCase();
-    }
+    resolvedShop = normalizeResolvedShopCandidate(resolvedShop);
     try {
       const fromSession = window.sessionStorage?.getItem(STORAGE_KEYS.SHOP_DOMAIN);
       const fromLocal = window.localStorage?.getItem(STORAGE_KEYS.SHOP_DOMAIN);
@@ -467,6 +517,58 @@ export function getPreviewDomain() {
     // ignore
   }
   return null;
+}
+
+/**
+ * Build `search` for React Router `navigate({ pathname, search })` so Shopify Admin embed
+ * keeps `host` and `shop` query params. Plain `navigate('/admin/...')` drops them and can
+ * break iframe context, session token refresh, or API auth that expects the shop in the URL.
+ * @param {{ shop?: string }} [options]
+ * @returns {string} e.g. `?shop=foo.myshopify.com&host=...` or `''`
+ */
+export function getEmbedSearchForNavigate(options = {}) {
+  if (typeof window === 'undefined') return '';
+  const safeParams = pickEmbedSafeQueryParams(window.location.search);
+  if (options.shop) {
+    safeParams.set('shop', String(options.shop).trim());
+  }
+  const shop = getShopDomain();
+  if (shop && /\.myshopify\.com$/i.test(String(shop).trim()) && !safeParams.get('shop')) {
+    safeParams.set('shop', String(shop).trim().toLowerCase());
+  }
+  const s = safeParams.toString();
+  return s ? `?${s}` : '';
+}
+
+/**
+ * React Router location object with merged embed + optional extra query params (e.g. `tab`).
+ * @param {string} pathname
+ * @param {Record<string, string>|null} [extraParams]
+ * @returns {{ pathname: string, search?: string }}
+ */
+export function getNavigateToWithEmbed(pathname, extraParams = null) {
+  const embed = new URLSearchParams(getEmbedSearchForNavigate().replace(/^\?/, ''));
+  if (extraParams && typeof extraParams === 'object') {
+    Object.entries(extraParams).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') embed.set(k, String(v));
+    });
+  }
+  const s = embed.toString();
+  return s ? { pathname, search: `?${s}` } : { pathname };
+}
+
+/**
+ * True when the URL carries Shopify Admin embed session hints (?shop= and/or ?host=).
+ * App.jsx uses this for `hasCreds` so the shell does not send users to Connect before
+ * getShopDomain() can read the query string or sync shop into storage (race on first paint).
+ */
+export function hasShopifyEmbedSessionHint() {
+  if (typeof window === 'undefined') return false;
+  const p = new URLSearchParams(window.location.search || '');
+  const shop = (p.get('shop') || '').trim();
+  if (shop) return true;
+  const host = (p.get('host') || '').trim();
+  return Boolean(host);
 }
 
 /**
@@ -630,7 +732,10 @@ export function hasEmailSession() {
  * Has any auth: shop, API key, or email session
  */
 export function hasCredentials() {
-  return hasCredentialsFromSources(getShopDomain(), getApiKey(), getEmailToken());
+  return (
+    hasCredentialsFromSources(getShopDomain(), getApiKey(), getEmailToken()) ||
+    hasShopifyEmbedSessionHint()
+  );
 }
 
 /**
@@ -728,8 +833,13 @@ export function apiRequest(method, endpoint, data = null, config = {}) {
       endpoint.startsWith('/account/stores') ||
       endpoint.startsWith('/support/'));
 
-  // When on /app/:domain, pass store so /account/stores returns correct currentStore (StoreSwitcher highlights the right store)
-  const storeParam = endpoint === '/account/stores' && shopDomain ? { store: shopDomain } : {};
+  // When on /app/:domain, pass store so /account/stores returns correct currentStore.
+  // Outside domain-scoped routes, avoid forcing a specific store context.
+  const currentPath =
+    typeof window !== 'undefined' ? getEmbeddedAppRelativePathname(window.location.pathname) : '';
+  const isOnAppDomainRoute = /^\/app\/[^/]+/.test(currentPath);
+  const storeParam =
+    endpoint === '/account/stores' && shopDomain && isOnAppDomainRoute ? { store: shopDomain } : {};
   const requestConfig = {
     method,
     url,

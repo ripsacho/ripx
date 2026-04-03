@@ -158,6 +158,81 @@ describe('validators.validateTestConfig', () => {
     );
   });
 
+  it('returns error when Native Variant Price has no mapped Shopify variant ID', () => {
+    const result = validators.validateTestConfig({
+      name: 'Test',
+      type: 'price',
+      variants: [
+        { name: 'Control', allocation: 50, config: { priceMode: 'fixed' } },
+        {
+          name: 'Variant A',
+          allocation: 50,
+          config: {
+            priceMode: 'fixed',
+            price: 39,
+            priceApplicationMethod: 'native_variant_price',
+          },
+        },
+      ],
+    });
+    expect(result.isValid).toBe(false);
+    expect(
+      result.errors.some(
+        e => e.includes('Native Variant Price') && e.includes('mapped Shopify variant ID')
+      )
+    ).toBe(true);
+  });
+
+  it('returns error when Discounted Checkout Price is used for a price increase', () => {
+    const result = validators.validateTestConfig({
+      name: 'Test',
+      type: 'price',
+      variants: [
+        { name: 'Control', allocation: 50, config: { priceMode: 'fixed' } },
+        {
+          name: 'Variant A',
+          allocation: 50,
+          config: {
+            priceMode: 'amount',
+            priceDelta: 5,
+            priceApplicationMethod: 'discounted_checkout_price',
+          },
+        },
+      ],
+    });
+    expect(result.isValid).toBe(false);
+    expect(
+      result.errors.some(
+        e => e.includes('Discounted Checkout Price') && e.includes('only supports lower prices')
+      )
+    ).toBe(true);
+  });
+
+  it('returns error when Direct Price Override is used for a lower price', () => {
+    const result = validators.validateTestConfig({
+      name: 'Test',
+      type: 'price',
+      variants: [
+        { name: 'Control', allocation: 50, config: { priceMode: 'fixed' } },
+        {
+          name: 'Variant A',
+          allocation: 50,
+          config: {
+            priceMode: 'amount',
+            priceDelta: -5,
+            priceApplicationMethod: 'direct_price_override',
+          },
+        },
+      ],
+    });
+    expect(result.isValid).toBe(false);
+    expect(
+      result.errors.some(
+        e => e.includes('Direct Price Override') && e.includes('hardened for price increases')
+      )
+    ).toBe(true);
+  });
+
   it('returns errors for missing name', () => {
     const result = validators.validateTestConfig({
       type: 'price',

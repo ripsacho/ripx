@@ -186,6 +186,17 @@ function hasSavedPriceConfigValue(cfg) {
   return false;
 }
 
+function getSavedPriceConfigIndices(variants) {
+  if (!Array.isArray(variants)) return [];
+  const indices = [];
+  variants.forEach((variant, index) => {
+    if (hasSavedPriceConfigValue(variant?.config || {})) {
+      indices.push(index);
+    }
+  });
+  return indices;
+}
+
 function normalizeVariantPriceConfigShape(variant) {
   if (!variant || typeof variant !== 'object') {
     return variant;
@@ -197,6 +208,8 @@ function normalizeVariantPriceConfigShape(variant) {
     'priceDelta',
     'pricePercent',
     'priceBase',
+    'priceApplicationMethod',
+    'nativeVariantId',
     'roundTo',
     'byProduct',
     'byVariant',
@@ -212,6 +225,263 @@ function normalizeVariantPriceConfigShape(variant) {
     return variant;
   }
   return { ...variant, config };
+}
+
+function NativeVariantMappingAssistant({
+  shopDomain,
+  disabled,
+  currentValue,
+  required = false,
+  preferredProductId = null,
+  title = 'Mapping assistant',
+  description = 'Search Shopify products and pick the real variant RipX should add to cart when native pricing is needed.',
+  onSelect,
+  onClear,
+}) {
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [expandedProductId, setExpandedProductId] = useState(null);
+  const normalizeProductIdForCompare = useCallback(value => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const gidMatch = raw.match(/Product\/\s*(\d+)/i);
+    if (gidMatch) return gidMatch[1];
+    const numericMatch = raw.match(/\b(\d{6,})\b/);
+    if (numericMatch) return numericMatch[1];
+    return raw;
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    if (disabled || !shopDomain) {
+      setProducts([]);
+      setError(null);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    apiGet('/shopify/product-variants', {
+      shop: shopDomain,
+      query: debouncedSearch.trim(),
+      ...(preferredProductId ? { productId: preferredProductId } : {}),
+      first: 18,
+      variantsFirst: 25,
+    })
+      .then(res => {
+        const list = res.data?.products || [];
+        const emptyReason = res.data?.empty_reason || null;
+        setProducts(list);
+        setError(list.length === 0 ? emptyReason : null);
+        if (list.length > 0) {
+          setExpandedProductId(prev => prev || list[0].id);
+        }
+      })
+      .catch(err => {
+        setProducts([]);
+        setError(
+          err?.response?.data?.error ||
+            err?.message ||
+            'Could not load Shopify variants for mapping.'
+        );
+      })
+      .finally(() => setLoading(false));
+  }, [debouncedSearch, disabled, shopDomain, preferredProductId]);
+
+  const normalizeVariantIdForCompare = useCallback(value => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const gidMatch = raw.match(/ProductVariant\/\s*(\d+)/i);
+    if (gidMatch) return gidMatch[1];
+    const numericMatch = raw.match(/\b(\d{6,})\b/);
+    if (numericMatch) return numericMatch[1];
+    return raw;
+  }, []);
+
+  const selectedVariantId = normalizeVariantIdForCompare(currentValue);
+  const selectedVariantMeta = useMemo(() => {
+    for (const product of products) {
+      for (const variant of product?.variants || []) {
+        if (normalizeVariantIdForCompare(variant.id) === selectedVariantId) {
+          return {
+            productTitle: product.title,
+            variantTitle: variant.displayName || variant.title,
+            price: variant.price,
+          };
+        }
+      }
+    }
+    return null;
+  }, [products, selectedVariantId, normalizeVariantIdForCompare]);
+
+  if (disabled) {
+    return (
+      <Banner tone="info" title="Variant mapping assistant">
+        Connect a Shopify store to search real products and variants here. You can still paste a
+        variant ID manually.
+      </Banner>
+    );
+  }
+
+  return (
+    <div className={styles.nativeVariantAssistant}>
+      <div className={styles.nativeVariantAssistantSummary}>
+        <div>
+          <Text as="p" variant="bodySm" fontWeight="semibold">
+            {title}
+          </Text>
+          <Text as="p" variant="bodySm" tone="subdued">
+            {description}
+          </Text>
+        </div>
+        <InlineStack gap="200" wrap>
+          <Badge tone={selectedVariantId ? 'success' : required ? 'critical' : 'info'} size="small">
+            {selectedVariantId ? 'Mapped' : required ? 'Required' : 'Optional'}
+          </Badge>
+          {selectedVariantId && (
+            <Button size="slim" variant="plain" onClick={onClear}>
+              Clear mapping
+            </Button>
+          )}
+        </InlineStack>
+      </div>
+
+      {(selectedVariantMeta || selectedVariantId) && (
+        <div className={styles.nativeVariantSelectedCard}>
+          <Text as="p" variant="bodySm" fontWeight="semibold">
+            Current mapped variant
+          </Text>
+          <Text as="p" variant="bodySm" tone="subdued">
+            {selectedVariantMeta
+              ? `${selectedVariantMeta.productTitle} -> ${selectedVariantMeta.variantTitle}${selectedVariantMeta.price ? ` (${selectedVariantMeta.price})` : ''}`
+              : `Variant ID ${selectedVariantId}`}
+          </Text>
+        </div>
+      )}
+
+      <div className={styles.storeResourceList}>
+        <div className={styles.storeResourceListHeader}>
+          <div className={styles.storeResourceListSearch}>
+            <TextField
+              label="Search Shopify variants"
+              labelHidden
+              value={search}
+              onChange={setSearch}
+              placeholder="Search products or variants..."
+              autoComplete="off"
+              clearButton
+              onClearButtonClick={() => setSearch('')}
+            />
+          </div>
+          <span className={styles.storeResourceSelectedBadge}>
+            {products.length} product{products.length === 1 ? '' : 's'}
+          </span>
+        </div>
+
+        {loading ? (
+          <div className={styles.storeResourceListLoading}>
+            <div className={styles.storeResourceListLoadingIcon}>
+              <Spinner size="small" />
+            </div>
+            <Text as="span" variant="bodySm" tone="subdued">
+              Loading Shopify variants...
+            </Text>
+          </div>
+        ) : error ? (
+          <div className={styles.storeResourceListEmpty}>
+            <div className={styles.storeResourceListEmptyIcon}>
+              <Icon source={ProductIcon} />
+            </div>
+            <Text as="p" variant="bodySm" tone="subdued">
+              {error}
+            </Text>
+          </div>
+        ) : products.length === 0 ? (
+          <div className={styles.storeResourceListEmpty}>
+            <div className={styles.storeResourceListEmptyIcon}>
+              <Icon source={ProductIcon} />
+            </div>
+            <Text as="p" variant="bodySm" tone="subdued">
+              {search ? 'No matching products or variants found.' : 'No products found yet.'}
+            </Text>
+          </div>
+        ) : (
+          <div className={styles.nativeVariantAssistantScroll}>
+            {products
+              .filter(product => {
+                if (!preferredProductId) return true;
+                return (
+                  normalizeProductIdForCompare(product.id) ===
+                  normalizeProductIdForCompare(preferredProductId)
+                );
+              })
+              .map(product => {
+                const isExpanded = expandedProductId === product.id;
+                return (
+                  <div key={product.id} className={styles.nativeVariantProductCard}>
+                    <button
+                      type="button"
+                      className={styles.nativeVariantProductHeader}
+                      onClick={() =>
+                        setExpandedProductId(prev => (prev === product.id ? null : product.id))
+                      }
+                    >
+                      <span className={styles.nativeVariantProductHeaderCopy}>
+                        <span className={styles.nativeVariantProductTitle}>{product.title}</span>
+                        <span className={styles.nativeVariantProductMeta}>
+                          {product.handle ? `/${product.handle}` : 'Product'} ·{' '}
+                          {(product.variants || []).length} variant
+                          {(product.variants || []).length === 1 ? '' : 's'}
+                        </span>
+                      </span>
+                      <Icon source={isExpanded ? ChevronDownIcon : ChevronRightIcon} />
+                    </button>
+                    <Collapsible open={isExpanded} id={`native-variant-product-${product.id}`}>
+                      <div className={styles.nativeVariantList}>
+                        {(product.variants || []).map(variant => {
+                          const normalizedId = normalizeVariantIdForCompare(variant.id);
+                          const selected = normalizedId === selectedVariantId;
+                          return (
+                            <button
+                              key={variant.id}
+                              type="button"
+                              className={`${styles.nativeVariantListItem} ${selected ? styles.nativeVariantListItemSelected : ''}`}
+                              onClick={() => onSelect(variant.id)}
+                            >
+                              <span className={styles.nativeVariantListCopy}>
+                                <span className={styles.nativeVariantListTitle}>
+                                  {variant.displayName || variant.title}
+                                </span>
+                                <span className={styles.nativeVariantListMeta}>
+                                  {variant.sku ? `SKU ${variant.sku}` : 'No SKU'}
+                                  {variant.price ? ` · ${variant.price}` : ''}
+                                  {variant.compareAtPrice
+                                    ? ` · compare-at ${variant.compareAtPrice}`
+                                    : ''}
+                                </span>
+                              </span>
+                              <Badge tone={selected ? 'success' : 'info'} size="small">
+                                {selected ? 'Selected' : 'Use variant'}
+                              </Badge>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </Collapsible>
+                  </div>
+                );
+              })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function TestWizard({
@@ -359,6 +629,12 @@ function TestWizard({
   const [storeResourceSearch, setStoreResourceSearch] = useState('');
   /** When store-resources API fails or returns empty_reason, show this instead of generic message */
   const [storeResourcesError, setStoreResourcesError] = useState(null);
+  const wizardUiStateKey = useMemo(
+    () => (mode === 'edit' && initialData?.id ? `ripx-test-wizard-ui:${initialData.id}` : null),
+    [mode, initialData?.id]
+  );
+  const pendingWizardUiStateRef = useRef(null);
+  const didRestoreWizardUiStateRef = useRef(false);
 
   const handleScopeSelect = useCallback((scope, tt, up, needsId) => {
     setIsDirty(true);
@@ -444,6 +720,61 @@ function TestWizard({
 
   const steps = buildWizardSteps(showTemplateStep, mode);
   const stepIds = getStepIds(showTemplateStep);
+
+  useEffect(() => {
+    pendingWizardUiStateRef.current = null;
+    didRestoreWizardUiStateRef.current = false;
+    if (!wizardUiStateKey || typeof window === 'undefined' || !window.sessionStorage) return;
+    try {
+      const raw = window.sessionStorage.getItem(wizardUiStateKey);
+      pendingWizardUiStateRef.current = raw ? JSON.parse(raw) : null;
+    } catch {
+      pendingWizardUiStateRef.current = null;
+    }
+  }, [wizardUiStateKey]);
+
+  useEffect(() => {
+    if (!wizardUiStateKey || didRestoreWizardUiStateRef.current) return;
+    const saved = pendingWizardUiStateRef.current;
+    const variantCount = Array.isArray(formData?.variants) ? formData.variants.length : 0;
+    if (saved && Number.isInteger(saved.selectedVariantIndex)) {
+      const restoredIndex = Math.max(
+        0,
+        Math.min(saved.selectedVariantIndex, Math.max(0, variantCount - 1))
+      );
+      setSelectedVariantIndex(restoredIndex);
+      hasVariantSelectionRef.current = true;
+    }
+    if (saved && Number.isInteger(saved.currentStep)) {
+      const restoredStep = Math.max(1, Math.min(saved.currentStep, steps.length));
+      setCurrentStep(restoredStep);
+    }
+    pendingWizardUiStateRef.current = null;
+    didRestoreWizardUiStateRef.current = true;
+  }, [wizardUiStateKey, formData?.variants, steps.length]);
+
+  useEffect(() => {
+    if (
+      !wizardUiStateKey ||
+      !didRestoreWizardUiStateRef.current ||
+      !isInitialized ||
+      typeof window === 'undefined' ||
+      !window.sessionStorage
+    ) {
+      return;
+    }
+    try {
+      window.sessionStorage.setItem(
+        wizardUiStateKey,
+        JSON.stringify({
+          currentStep,
+          selectedVariantIndex,
+        })
+      );
+    } catch (_error) {
+      return;
+    }
+  }, [wizardUiStateKey, currentStep, selectedVariantIndex, isInitialized]);
 
   useEffect(() => {
     if (!onTitleRender) return;
@@ -1431,11 +1762,9 @@ function TestWizard({
     if (!looksLikePriceTest) {
       return;
     }
-    const firstWithPriceConfig = (formData?.variants || []).findIndex(v =>
-      hasSavedPriceConfigValue(v?.config || {})
-    );
-    if (firstWithPriceConfig >= 0) {
-      setSelectedVariantIndex(firstWithPriceConfig);
+    const configuredIndices = getSavedPriceConfigIndices(formData?.variants || []);
+    if (configuredIndices.length === 1) {
+      setSelectedVariantIndex(configuredIndices[0]);
       hasVariantSelectionRef.current = true;
     }
   }, [variantCodesData, formData?.type, formData?.variants]);
@@ -1447,9 +1776,9 @@ function TestWizard({
     if (variants.length === 0) return;
     const currentCfg = variants[selectedVariantIndex]?.config || {};
     if (hasSavedPriceConfigValue(currentCfg)) return;
-    const firstConfigured = variants.findIndex(v => hasSavedPriceConfigValue(v?.config || {}));
-    if (firstConfigured >= 0 && firstConfigured !== selectedVariantIndex) {
-      setSelectedVariantIndex(firstConfigured);
+    const configuredIndices = getSavedPriceConfigIndices(variants);
+    if (configuredIndices.length === 1 && configuredIndices[0] !== selectedVariantIndex) {
+      setSelectedVariantIndex(configuredIndices[0]);
     }
   }, [currentStep, stepIds.traffic, formData?.type, formData?.variants, selectedVariantIndex]);
 
@@ -5665,6 +5994,201 @@ function TestWizard({
     { value: 'price', label: 'Selling price' },
     { value: 'compare_at', label: 'Compare-at price (list)' },
   ];
+  const PRICE_APPLICATION_METHOD_OPTIONS = [
+    { value: 'auto', label: 'Auto (recommended)' },
+    { value: 'discounted_checkout_price', label: 'Discounted Checkout Price' },
+    { value: 'native_variant_price', label: 'Native Variant Price' },
+    { value: 'direct_price_override', label: 'Direct Price Override' },
+  ];
+
+  const normalizePriceApplicationMethod = value => {
+    const raw = String(value || '')
+      .trim()
+      .toLowerCase();
+    if (raw === 'discounted_checkout_price') return 'discounted_checkout_price';
+    if (raw === 'native_variant_price') return 'native_variant_price';
+    if (raw === 'direct_price_override') return 'direct_price_override';
+    return 'auto';
+  };
+
+  const normalizeNativeVariantIdInput = value => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const gidMatch = raw.match(/ProductVariant\/\s*(\d+)/i);
+    if (gidMatch) return gidMatch[1];
+    const numericMatch = raw.match(/\b(\d{6,})\b/);
+    if (numericMatch) return numericMatch[1];
+    return raw;
+  };
+
+  const priceConfigImpliesIncrease = cfg => {
+    if (!cfg || typeof cfg !== 'object') return false;
+    const mode = String(cfg.priceMode || 'fixed').toLowerCase();
+    if (mode === 'amount') {
+      const n = Number(cfg.priceDelta);
+      return !Number.isNaN(n) && n > 0;
+    }
+    if (mode === 'percent') {
+      const n = Number(cfg.pricePercent);
+      return !Number.isNaN(n) && n < 0;
+    }
+    return false;
+  };
+
+  const priceConfigImpliesDecrease = cfg => {
+    if (!cfg || typeof cfg !== 'object') return false;
+    const mode = String(cfg.priceMode || 'fixed').toLowerCase();
+    if (mode === 'amount') {
+      const n = Number(cfg.priceDelta);
+      return !Number.isNaN(n) && n < 0;
+    }
+    if (mode === 'percent') {
+      const n = Number(cfg.pricePercent);
+      return !Number.isNaN(n) && n > 0;
+    }
+    return false;
+  };
+
+  const getPriceApplicationMethodMeta = cfgOrMethod => {
+    const cfg = cfgOrMethod && typeof cfgOrMethod === 'object' ? cfgOrMethod : null;
+    const method = cfg
+      ? normalizePriceApplicationMethod(cfg.priceApplicationMethod)
+      : normalizePriceApplicationMethod(cfgOrMethod);
+    const hasNativeVariantMapping =
+      !!cfg &&
+      cfg.nativeVariantId !== null &&
+      cfg.nativeVariantId !== undefined &&
+      String(cfg.nativeVariantId).trim() !== '';
+    const impliesIncrease = priceConfigImpliesIncrease(cfg);
+    if (method === 'discounted_checkout_price') {
+      return {
+        label: 'Discounted Checkout Price',
+        shortLabel: 'Discounted checkout',
+        helpText:
+          'Applies lower prices at checkout using Shopify discounts. Fastest to launch, but shoppers may see a discount in checkout.',
+        badges: [
+          { label: 'Recommended for lower prices', tone: 'success' },
+          { label: 'Easy setup', tone: 'info' },
+        ],
+        warning: impliesIncrease
+          ? 'This variant currently raises price. Discounted Checkout Price cannot apply increases. Use Auto or Native Variant Price instead.'
+          : 'Price increases are not supported with this method because Shopify discounts can only lower the checkout total.',
+      };
+    }
+    if (method === 'native_variant_price') {
+      return {
+        label: 'Native Variant Price',
+        shortLabel: 'Native variant',
+        helpText:
+          'Uses a mapped Shopify variant with its own real price so shoppers see the price as the product’s actual price.',
+        badges: [
+          { label: 'Actual product price', tone: 'success' },
+          { label: 'Supports price increases', tone: 'attention' },
+          { label: 'Requires mapped variants', tone: 'warning' },
+        ],
+        warning:
+          'This method needs alternate Shopify variants kept in sync for inventory, merchandising, and analytics.',
+      };
+    }
+    if (method === 'direct_price_override') {
+      const impliesDecrease = priceConfigImpliesDecrease(cfg);
+      return {
+        label: 'Direct Price Override',
+        shortLabel: 'Direct override',
+        helpText: impliesDecrease
+          ? 'Direct Price Override is in a hardened beta mode for premium and higher-price paths. Lower-price paths should use discounted checkout or mapped native variants.'
+          : 'Overrides the line price directly in cart and checkout for a cleaner pricing experience without a discount label.',
+        badges: [
+          { label: 'No discount label', tone: 'success' },
+          { label: 'Advanced', tone: 'attention' },
+          { label: 'Plus only', tone: 'warning' },
+        ],
+        warning: impliesDecrease
+          ? 'Current hardening only enables Direct Price Override for price increases / premium paths. Use Discounted Checkout Price or Native Variant Price for lower prices until signed pricing proofs are added.'
+          : 'This method requires Shopify Plus or a development store, an available cart-transform slot, and dedicated RipX transform activation for that shop.',
+      };
+    }
+    return {
+      label: 'Auto (recommended)',
+      shortLabel: 'Auto',
+      helpText:
+        'RipX chooses the most accurate checkout strategy automatically: discounted checkout for lower-price variants, and native variant pricing for higher-price variants.',
+      badges: [
+        { label: 'Recommended', tone: 'success' },
+        { label: 'Hybrid strategy', tone: 'info' },
+      ],
+      warning:
+        impliesIncrease && !hasNativeVariantMapping
+          ? 'This variant appears to raise price. Add a mapped Shopify variant ID so Auto can switch to Native Variant Price at checkout.'
+          : null,
+    };
+  };
+
+  const getPriceApplicationMethodShortLabel = cfgOrMethod =>
+    getPriceApplicationMethodMeta(cfgOrMethod).shortLabel;
+
+  const getPriceApplicationMethodConstraint = (methodOrCfg, cfgInput) => {
+    const cfg =
+      cfgInput && typeof cfgInput === 'object'
+        ? cfgInput
+        : methodOrCfg && typeof methodOrCfg === 'object'
+          ? methodOrCfg
+          : {};
+    const method =
+      cfgInput && typeof cfgInput === 'object'
+        ? normalizePriceApplicationMethod(methodOrCfg)
+        : normalizePriceApplicationMethod(cfg?.priceApplicationMethod || methodOrCfg);
+    const hasNativeVariantMapping = !!normalizeNativeVariantIdInput(cfg?.nativeVariantId);
+    const impliesIncrease = priceConfigImpliesIncrease(cfg);
+    const impliesDecrease = priceConfigImpliesDecrease(cfg);
+
+    if (method === 'discounted_checkout_price' && impliesIncrease) {
+      return {
+        blocked: true,
+        text: 'Unavailable for price increases because Shopify discounts can only lower checkout totals.',
+      };
+    }
+    if (method === 'direct_price_override' && impliesDecrease) {
+      return {
+        blocked: true,
+        text: 'Unavailable for lower-price paths until signed pricing proofs are added.',
+      };
+    }
+    if (method === 'native_variant_price' && !hasNativeVariantMapping) {
+      return {
+        blocked: false,
+        text: 'Needs a mapped Shopify variant before launch.',
+      };
+    }
+    if (method === 'auto' && impliesIncrease && !hasNativeVariantMapping) {
+      return {
+        blocked: false,
+        text: 'Auto can promote this to Native Variant Price once you add a mapped variant.',
+      };
+    }
+    if (method === 'direct_price_override') {
+      return {
+        blocked: false,
+        text: 'Requires Plus/dev eligibility and an active RipX cart transform.',
+      };
+    }
+    if (method === 'discounted_checkout_price') {
+      return {
+        blocked: false,
+        text: 'Best launch speed for lower-price paths.',
+      };
+    }
+    if (method === 'native_variant_price') {
+      return {
+        blocked: false,
+        text: 'Uses a real Shopify variant price and avoids discount labels.',
+      };
+    }
+    return {
+      blocked: false,
+      text: 'RipX will choose the best supported checkout method for this configuration.',
+    };
+  };
 
   const getPricePreview = (cfg, _variantName) => {
     const m = (cfg?.priceMode || 'fixed').toLowerCase();
@@ -5806,6 +6330,36 @@ function TestWizard({
         ? Number.parseFloat(exampleCompareAtPrice)
         : null;
     const simulationNeedsCompareAt = variants.some(v => configUsesCompareAtBase(v?.config || {}));
+    const priceIncreaseCount = variants.filter(v =>
+      priceConfigImpliesIncrease(v?.config || {})
+    ).length;
+    const priceDecreaseCount = variants.filter(v =>
+      priceConfigImpliesDecrease(v?.config || {})
+    ).length;
+    const mappingRequiredCount = variants.filter(v => {
+      const method = normalizePriceApplicationMethod(v?.config?.priceApplicationMethod);
+      return (
+        method === 'native_variant_price' ||
+        (method === 'auto' && priceConfigImpliesIncrease(v?.config || {}))
+      );
+    }).length;
+    const mappingReadyCount = variants.filter(v =>
+      Boolean(normalizeNativeVariantIdInput(v?.config?.nativeVariantId))
+    ).length;
+    const methodUsageSummary = variants.reduce((acc, variant) => {
+      const method = normalizePriceApplicationMethod(variant?.config?.priceApplicationMethod);
+      const label = getPriceApplicationMethodShortLabel(method);
+      acc[label] = (acc[label] || 0) + 1;
+      return acc;
+    }, {});
+    const methodUsageLabel =
+      Object.entries(methodUsageSummary)
+        .map(([label, count]) => `${label} ${count}`)
+        .join(' · ') || 'Auto';
+    const scopeLabel =
+      String(formData.target_type || '').toLowerCase() === 'product'
+        ? `${priceTargetProductIds.length || 1} selected product${priceTargetProductIds.length === 1 ? '' : 's'}`
+        : 'All products';
     const priceSimulation =
       parsedExampleCatalog !== null
         ? buildPriceSimulationRows({
@@ -5826,9 +6380,27 @@ function TestWizard({
     const renderPriceVariantEditor = index => {
       const variant = variants[index] || {};
       const mode = variant.config?.priceMode || 'fixed';
+      const applicationMethod = normalizePriceApplicationMethod(
+        variant.config?.priceApplicationMethod
+      );
+      const applicationMethodMeta = getPriceApplicationMethodMeta(
+        variant.config || applicationMethod
+      );
+      const hasNativeVariantMapping = !!normalizeNativeVariantIdInput(
+        variant.config?.nativeVariantId
+      );
+      const priceIncreaseConfigured = priceConfigImpliesIncrease(variant.config || {});
+      const priceDecreaseConfigured = priceConfigImpliesDecrease(variant.config || {});
+      const mappingRequired =
+        applicationMethod === 'native_variant_price' ||
+        (applicationMethod === 'auto' && priceIncreaseConfigured);
       const isFixed = mode === 'fixed';
       const isAmount = mode === 'amount';
       const isPercent = mode === 'percent';
+      const selectedMethodConstraint = getPriceApplicationMethodConstraint(
+        applicationMethod,
+        variant.config || {}
+      );
       return (
         <div
           className={styles.priceEditorPanel}
@@ -5916,6 +6488,12 @@ function TestWizard({
                     const over = baseCfg.byProduct && baseCfg.byProduct[productId];
                     const cfg =
                       over && typeof over === 'object' ? { ...baseCfg, ...over } : baseCfg;
+                    const pHasNativeVariantMapping = !!normalizeNativeVariantIdInput(
+                      cfg.nativeVariantId
+                    );
+                    const pMappingRequired =
+                      applicationMethod === 'native_variant_price' ||
+                      (applicationMethod === 'auto' && priceConfigImpliesIncrease(cfg));
                     const pMode = cfg.priceMode || 'fixed';
                     const pFixed = pMode === 'fixed';
                     const pAmount = pMode === 'amount';
@@ -5937,6 +6515,27 @@ function TestWizard({
                             <Text as="p" variant="headingSm" fontWeight="semibold">
                               {getProductLabelFromId(productId)}
                             </Text>
+                            {(applicationMethod === 'auto' ||
+                              applicationMethod === 'native_variant_price') && (
+                              <div className={styles.priceNestedStatusRow}>
+                                <Badge
+                                  tone={
+                                    pHasNativeVariantMapping
+                                      ? 'success'
+                                      : pMappingRequired
+                                        ? 'critical'
+                                        : 'info'
+                                  }
+                                  size="small"
+                                >
+                                  {pHasNativeVariantMapping
+                                    ? 'Per-product mapping ready'
+                                    : pMappingRequired
+                                      ? 'Per-product mapping required'
+                                      : 'Per-product mapping optional'}
+                                </Badge>
+                              </div>
+                            )}
                             <FormLayout>
                               <Select
                                 label="Price mode"
@@ -6018,7 +6617,48 @@ function TestWizard({
                                   max={100}
                                 />
                               )}
+                              {(applicationMethod === 'auto' ||
+                                applicationMethod === 'native_variant_price') && (
+                                <TextField
+                                  label="Mapped Shopify variant ID"
+                                  value={
+                                    cfg.nativeVariantId !== null &&
+                                    cfg.nativeVariantId !== undefined &&
+                                    cfg.nativeVariantId !== ''
+                                      ? String(cfg.nativeVariantId)
+                                      : ''
+                                  }
+                                  onChange={value =>
+                                    updateByProduct(
+                                      'nativeVariantId',
+                                      normalizeNativeVariantIdInput(value) || null
+                                    )
+                                  }
+                                  helpText="Optional per-product mapping for Native Variant Price / Auto."
+                                  placeholder="e.g. 40123456789"
+                                  autoComplete="off"
+                                />
+                              )}
                             </FormLayout>
+                            {(applicationMethod === 'auto' ||
+                              applicationMethod === 'native_variant_price') && (
+                              <NativeVariantMappingAssistant
+                                shopDomain={isShopifyFromRoute ? routeDomain : null}
+                                disabled={isStandalone || !isShopifyFromRoute || !routeDomain}
+                                preferredProductId={productId}
+                                currentValue={cfg.nativeVariantId}
+                                required={pMappingRequired}
+                                title="Per-product variant mapping"
+                                description="Pick the Shopify variant RipX should use for this product when checkout needs a real native price."
+                                onSelect={value =>
+                                  updateByProduct(
+                                    'nativeVariantId',
+                                    normalizeNativeVariantIdInput(value) || null
+                                  )
+                                }
+                                onClear={() => updateByProduct('nativeVariantId', null)}
+                              />
+                            )}
                             <div className={styles.pricePerVariantSection}>
                               <Text as="p" variant="bodySm" fontWeight="medium">
                                 Per-variant overrides (optional)
@@ -6033,6 +6673,13 @@ function TestWizard({
                                 : []
                               ).map(([vKey, vCfg]) => {
                                 const vMode = (vCfg?.priceMode || 'fixed').toLowerCase();
+                                const vHasNativeVariantMapping = !!normalizeNativeVariantIdInput(
+                                  vCfg?.nativeVariantId
+                                );
+                                const vMappingRequired =
+                                  applicationMethod === 'native_variant_price' ||
+                                  (applicationMethod === 'auto' &&
+                                    priceConfigImpliesIncrease(vCfg));
                                 const vFixed = vMode === 'fixed';
                                 const vAmount = vMode === 'amount';
                                 const vPercent = vMode === 'percent';
@@ -6181,6 +6828,68 @@ function TestWizard({
                                         min={-100}
                                         max={100}
                                       />
+                                    )}
+                                    {(applicationMethod === 'auto' ||
+                                      applicationMethod === 'native_variant_price') && (
+                                      <TextField
+                                        label="Mapped Shopify variant ID"
+                                        value={
+                                          vCfg.nativeVariantId !== null &&
+                                          vCfg.nativeVariantId !== undefined &&
+                                          vCfg.nativeVariantId !== ''
+                                            ? String(vCfg.nativeVariantId)
+                                            : ''
+                                        }
+                                        onChange={v =>
+                                          updateByVariant(
+                                            'nativeVariantId',
+                                            normalizeNativeVariantIdInput(v) || null
+                                          )
+                                        }
+                                        placeholder="e.g. 40123456789"
+                                        autoComplete="off"
+                                      />
+                                    )}
+                                    {(applicationMethod === 'auto' ||
+                                      applicationMethod === 'native_variant_price') && (
+                                      <div className={styles.pricePerVariantAssistantWrap}>
+                                        <div className={styles.priceNestedStatusRow}>
+                                          <Badge
+                                            tone={
+                                              vHasNativeVariantMapping
+                                                ? 'success'
+                                                : vMappingRequired
+                                                  ? 'critical'
+                                                  : 'info'
+                                            }
+                                            size="small"
+                                          >
+                                            {vHasNativeVariantMapping
+                                              ? 'Mapped override variant'
+                                              : vMappingRequired
+                                                ? 'Mapping required for this SKU'
+                                                : 'Optional mapping'}
+                                          </Badge>
+                                        </div>
+                                        <NativeVariantMappingAssistant
+                                          shopDomain={isShopifyFromRoute ? routeDomain : null}
+                                          disabled={
+                                            isStandalone || !isShopifyFromRoute || !routeDomain
+                                          }
+                                          preferredProductId={productId}
+                                          currentValue={vCfg.nativeVariantId}
+                                          required={vMappingRequired}
+                                          title="Per-SKU variant mapping"
+                                          description={`Pick the native Shopify variant RipX should swap to when source variant ${vKey.startsWith('__new_') ? 'this SKU' : vKey} is selected.`}
+                                          onSelect={value =>
+                                            updateByVariant(
+                                              'nativeVariantId',
+                                              normalizeNativeVariantIdInput(value) || null
+                                            )
+                                          }
+                                          onClear={() => updateByVariant('nativeVariantId', null)}
+                                        />
+                                      </div>
                                     )}
                                     <Button
                                       size="slim"
@@ -6386,6 +7095,228 @@ function TestWizard({
                     </FormLayout>
                   </div>
                 </div>
+                <div className={styles.priceSectionBlock}>
+                  <div className={styles.priceSectionBlockTitle}>
+                    <span className={styles.priceSectionBlockTitleText}>
+                      Checkout pricing method
+                    </span>
+                    <TooltipWrapper
+                      content="Choose how RipX should make this price show up beyond the product page. Auto chooses the most accurate method available. Native Variant Price and Direct Price Override avoid discount labels but need extra setup."
+                      accessibilityLabel="Checkout pricing method info"
+                      preferredPosition="above"
+                    >
+                      <span
+                        className={styles.priceSectionTitleInfoIcon}
+                        aria-hidden="true"
+                        tabIndex={0}
+                      >
+                        <Icon source={InfoIcon} />
+                      </span>
+                    </TooltipWrapper>
+                  </div>
+                  <div className={styles.priceSectionBlockContent}>
+                    <BlockStack gap="200">
+                      <div className={styles.priceMethodChoiceGrid} role="list">
+                        {PRICE_APPLICATION_METHOD_OPTIONS.map(option => {
+                          const optionMethod = normalizePriceApplicationMethod(option.value);
+                          const optionMeta = getPriceApplicationMethodMeta({
+                            ...(variant.config || {}),
+                            priceApplicationMethod: optionMethod,
+                          });
+                          const optionConstraint = getPriceApplicationMethodConstraint(
+                            optionMethod,
+                            variant.config || {}
+                          );
+                          const optionBlocked = Boolean(optionConstraint?.blocked);
+                          const optionSelected = applicationMethod === optionMethod;
+                          return (
+                            <button
+                              key={optionMethod}
+                              type="button"
+                              role="listitem"
+                              disabled={optionBlocked}
+                              className={`${styles.priceMethodChoiceCard} ${
+                                optionSelected ? styles.priceMethodChoiceCardActive : ''
+                              } ${optionBlocked ? styles.priceMethodChoiceCardDisabled : ''}`}
+                              onClick={() => {
+                                if (optionBlocked) return;
+                                setFormData(prev => {
+                                  const next = [...(prev.variants || [])];
+                                  next[index] = {
+                                    ...next[index],
+                                    config: {
+                                      ...next[index].config,
+                                      priceApplicationMethod: optionMethod,
+                                    },
+                                  };
+                                  return { ...prev, variants: next };
+                                });
+                              }}
+                            >
+                              <span className={styles.priceMethodChoiceTop}>
+                                <span className={styles.priceMethodChoiceTitle}>
+                                  {optionMeta.label}
+                                </span>
+                                <span
+                                  className={`${styles.priceMethodChoicePill} ${
+                                    optionSelected ? styles.priceMethodChoicePillSelected : ''
+                                  } ${optionBlocked ? styles.priceMethodChoicePillBlocked : ''}`}
+                                >
+                                  {optionSelected
+                                    ? 'Selected'
+                                    : optionBlocked
+                                      ? 'Unavailable'
+                                      : optionMethod === 'auto'
+                                        ? 'Recommended'
+                                        : 'Available'}
+                                </span>
+                              </span>
+                              <span className={styles.priceMethodChoiceBody}>
+                                {optionMeta.helpText}
+                              </span>
+                              {optionConstraint?.text && (
+                                <span className={styles.priceMethodChoiceMeta}>
+                                  {optionConstraint.text}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className={styles.priceMethodStatusGrid}>
+                        <div className={styles.priceMethodStatusCard}>
+                          <span className={styles.priceMethodStatusLabel}>Method outcome</span>
+                          <span className={styles.priceMethodStatusValue}>
+                            {applicationMethodMeta.shortLabel}
+                          </span>
+                        </div>
+                        <div className={styles.priceMethodStatusCard}>
+                          <span className={styles.priceMethodStatusLabel}>Mapping status</span>
+                          <span className={styles.priceMethodStatusValue}>
+                            {hasNativeVariantMapping
+                              ? 'Mapped to Shopify variant'
+                              : mappingRequired
+                                ? 'Mapping required'
+                                : 'No mapping required'}
+                          </span>
+                        </div>
+                        <div className={styles.priceMethodStatusCard}>
+                          <span className={styles.priceMethodStatusLabel}>Price direction</span>
+                          <span className={styles.priceMethodStatusValue}>
+                            {priceIncreaseConfigured
+                              ? 'Increase / premium'
+                              : priceDecreaseConfigured
+                                ? 'Lower price'
+                                : 'Equal / control'}
+                          </span>
+                        </div>
+                      </div>
+                      <InlineStack gap="200" wrap>
+                        {applicationMethodMeta.badges.map(badge => (
+                          <Badge key={badge.label} tone={badge.tone} size="small">
+                            {badge.label}
+                          </Badge>
+                        ))}
+                      </InlineStack>
+                      <Text as="p" variant="bodySm" tone="subdued">
+                        {applicationMethodMeta.helpText}
+                      </Text>
+                      {selectedMethodConstraint?.text && (
+                        <Text
+                          as="p"
+                          variant="bodySm"
+                          tone={selectedMethodConstraint.blocked ? 'critical' : 'subdued'}
+                        >
+                          {selectedMethodConstraint.text}
+                        </Text>
+                      )}
+                      {applicationMethodMeta.warning && (
+                        <Text as="p" variant="bodySm" tone="critical">
+                          {applicationMethodMeta.warning}
+                        </Text>
+                      )}
+                      {(applicationMethod === 'auto' ||
+                        applicationMethod === 'native_variant_price') && (
+                        <TextField
+                          label={
+                            applicationMethod === 'native_variant_price'
+                              ? 'Mapped Shopify variant ID'
+                              : 'Mapped Shopify variant ID (optional)'
+                          }
+                          value={
+                            variant.config?.nativeVariantId !== null &&
+                            variant.config?.nativeVariantId !== undefined &&
+                            variant.config?.nativeVariantId !== ''
+                              ? String(variant.config.nativeVariantId)
+                              : ''
+                          }
+                          onChange={value => {
+                            setFormData(prev => {
+                              const next = [...(prev.variants || [])];
+                              next[index] = {
+                                ...next[index],
+                                config: {
+                                  ...next[index].config,
+                                  nativeVariantId: normalizeNativeVariantIdInput(value) || null,
+                                },
+                              };
+                              return { ...prev, variants: next };
+                            });
+                          }}
+                          helpText={
+                            applicationMethod === 'native_variant_price'
+                              ? 'Required for Native Variant Price. RipX swaps add-to-cart to this Shopify variant.'
+                              : 'Recommended for Auto when this variant may need to use a real Shopify variant price.'
+                          }
+                          placeholder="e.g. 40123456789"
+                          autoComplete="off"
+                        />
+                      )}
+                      {(applicationMethod === 'auto' ||
+                        applicationMethod === 'native_variant_price') && (
+                        <NativeVariantMappingAssistant
+                          shopDomain={isShopifyFromRoute ? routeDomain : null}
+                          disabled={isStandalone || !isShopifyFromRoute || !routeDomain}
+                          currentValue={variant.config?.nativeVariantId}
+                          required={mappingRequired}
+                          onSelect={value => {
+                            setFormData(prev => {
+                              const next = [...(prev.variants || [])];
+                              next[index] = {
+                                ...next[index],
+                                config: {
+                                  ...next[index].config,
+                                  nativeVariantId: normalizeNativeVariantIdInput(value) || null,
+                                },
+                              };
+                              return { ...prev, variants: next };
+                            });
+                          }}
+                          onClear={() => {
+                            setFormData(prev => {
+                              const next = [...(prev.variants || [])];
+                              next[index] = {
+                                ...next[index],
+                                config: {
+                                  ...next[index].config,
+                                  nativeVariantId: null,
+                                },
+                              };
+                              return { ...prev, variants: next };
+                            });
+                          }}
+                        />
+                      )}
+                      {applicationMethod === 'native_variant_price' &&
+                        !normalizeNativeVariantIdInput(variant.config?.nativeVariantId) && (
+                          <Text as="p" variant="bodySm" tone="critical">
+                            Add a mapped Shopify variant ID so RipX can use a real native variant
+                            price instead of a discount-style checkout adjustment.
+                          </Text>
+                        )}
+                    </BlockStack>
+                  </div>
+                </div>
               </>
             )}
           </BlockStack>
@@ -6423,34 +7354,46 @@ function TestWizard({
       }
       return m;
     }, 0);
+    const mayUseDiscountedCheckout = variants.some(v => {
+      const method = normalizePriceApplicationMethod(v?.config?.priceApplicationMethod);
+      return method === 'auto' || method === 'discounted_checkout_price';
+    });
 
     return (
       <BlockStack gap="400">
         <div className={styles.priceStepRoot}>
           <div className={styles.priceBannerGroup}>
-            <Banner tone="warning" title="Checkout uses catalog price — product page display only">
+            <Banner tone="warning" title="Checkout pricing method">
               <div className={styles.priceBannerContent}>
                 <Text as="p" variant="bodySm" fontWeight="medium">
-                  RipX changes only the <strong>visible price on the product page</strong>. At
-                  checkout the customer pays your <strong>Shopify catalog price</strong> unless you
-                  align it.
+                  RipX can apply price tests in different ways beyond the product page. Use{' '}
+                  <strong>Discounted Checkout Price</strong> for fast lower-price tests,{' '}
+                  <strong>Native Variant Price</strong> when shoppers should see a real product
+                  price, or <strong>Direct Price Override</strong> for the cleanest advanced
+                  checkout UX on eligible stores.
                 </Text>
                 {!['product', 'all-products', 'all_products'].includes(
                   String(formData.target_type || '').toLowerCase()
                 ) && (
                   <Text as="p" variant="bodySm" tone="critical">
-                    Checkout price-alignment automation (Shopify Functions) currently supports{' '}
-                    <strong>Product / all-products scope</strong>. Use one of those for full parity.
+                    Checkout price-alignment automation currently supports{' '}
+                    <strong>Product / all-products scope</strong>. Use one of those for the most
+                    accurate parity across PDP, cart, and checkout.
                   </Text>
                 )}
                 <ul className={styles.priceBannerBullets}>
                   <li>
-                    To charge the test price: set catalog to the <strong>highest</strong> test
-                    price, then use automatic discounts or Shopify Plus/Functions.
+                    <strong>Auto (recommended)</strong> uses Discounted Checkout Price for lower
+                    prices and reserves Native Variant Price for higher-price experiences.
                   </li>
                   <li>
-                    Use Fixed price, $ off/on, or % off/on. Run <strong>2–4 weeks</strong>,{' '}
-                    <strong>200–300+ conversions per variant</strong>, 95% significance.
+                    <strong>Discounted Checkout Price</strong> is easiest to launch, but shoppers
+                    may see a discount in checkout.
+                  </li>
+                  <li>
+                    <strong>Native Variant Price</strong> and <strong>Direct Price Override</strong>{' '}
+                    keep pricing cleaner at checkout, but require mapped variants or store
+                    eligibility.
                   </li>
                 </ul>
                 <p className={styles.priceBannerDocRow}>
@@ -6465,13 +7408,14 @@ function TestWizard({
               </div>
             </Banner>
 
-            {maxFixedPrice > 0 && (
-              <Banner tone="warning" title="Checkout alignment">
+            {maxFixedPrice > 0 && mayUseDiscountedCheckout && (
+              <Banner tone="warning" title="Catalog guidance for discount-based checkout pricing">
                 <BlockStack gap="200">
                   <Text as="p" variant="bodySm">
-                    Set your Shopify product catalog price to at least{' '}
-                    <strong>${maxFixedPrice.toFixed(2)}</strong> (highest fixed price in this test),
-                    then use discounts or Plus/Functions for lower arms.
+                    If any variant uses <strong>Discounted Checkout Price</strong> or{' '}
+                    <strong>Auto</strong>, set your Shopify catalog price to at least{' '}
+                    <strong>${maxFixedPrice.toFixed(2)}</strong> (highest fixed price in this test)
+                    so lower-price arms can be aligned with discounts safely.
                   </Text>
                   <p className={styles.priceBannerDocRow}>
                     <Link
@@ -6784,6 +7728,7 @@ function TestWizard({
                                     priceDelta: config.priceDelta,
                                     pricePercent: config.pricePercent,
                                     priceBase: config.priceBase || 'price',
+                                    nativeVariantId: config.nativeVariantId || null,
                                   };
                               });
                             } else if (config.byProduct && typeof config.byProduct === 'object') {
@@ -6804,347 +7749,394 @@ function TestWizard({
           <div className={styles.priceConfigWrap}>
             <Card className={styles.priceSummaryCard}>
               <BlockStack gap="0">
-                <div className={styles.priceSummaryHeader}>
-                  <div className={styles.priceSummaryHeaderIcon}>
-                    <Icon source={CreditCardIcon} />
-                  </div>
-                  <BlockStack gap="100">
-                    <Text variant="headingMd" as="h3" fontWeight="semibold">
-                      Price summary
-                    </Text>
-                    <Text as="p" variant="bodySm" tone="subdued">
-                      Overview of all variants. Expand a row to configure its price.
-                    </Text>
-                  </BlockStack>
-                  <TooltipWrapper content="Type: Control (catalog) or Fixed / $ off/on / % off. Base: selling or compare-at price for $/% modes. Value: entered amount. Preview: what visitors see on PDP.">
-                    <span style={{ display: 'inline-flex', cursor: 'help', marginLeft: 'auto' }}>
-                      <Icon source={InfoIcon} />
-                    </span>
-                  </TooltipWrapper>
-                </div>
-                {variants.length > 0 && (
-                  <div className={styles.priceQuickFillStrip}>
-                    <Text as="span" variant="bodySm" fontWeight="medium">
-                      Quick fill (non-control variants):
-                    </Text>
-                    <InlineStack gap="200" blockAlign="center" wrap>
-                      <Select
-                        label="Rule"
-                        labelHidden
-                        options={[
-                          { label: '% off control', value: 'percent_off' },
-                          { label: '% on control', value: 'percent_on' },
-                          { label: '$ off control', value: 'amount_off' },
-                          { label: '$ on control', value: 'amount_on' },
-                        ]}
-                        value={quickFillRule}
-                        onChange={setQuickFillRule}
-                      />
-                      <div style={{ minWidth: '80px' }}>
-                        <TextField
-                          label="Value"
-                          labelHidden
-                          type="number"
-                          value={quickFillValue}
-                          onChange={setQuickFillValue}
-                          placeholder={quickFillRule.startsWith('percent') ? 'e.g. 10' : 'e.g. 5'}
-                          autoComplete="off"
-                        />
+                <div className={styles.priceConfigLayout}>
+                  <div className={styles.priceSummaryColumn}>
+                    <div className={styles.priceSummaryHeader}>
+                      <div className={styles.priceSummaryHeaderIcon}>
+                        <Icon source={CreditCardIcon} />
                       </div>
-                      <Select
-                        label="Round to nearest"
-                        labelHidden
-                        options={[
-                          { label: 'No rounding', value: '' },
-                          { label: '$0.01', value: '0.01' },
-                          { label: '$0.25', value: '0.25' },
-                          { label: '$0.50', value: '0.50' },
-                          { label: '$1', value: '1' },
-                        ]}
-                        value={quickFillRoundTo}
-                        onChange={setQuickFillRoundTo}
-                      />
-                      <Button
-                        size="slim"
-                        onClick={() => {
-                          const num = parseFloat(quickFillValue, 10);
-                          if (!Number.isFinite(num)) return;
-                          const isPercent = quickFillRule.startsWith('percent');
-                          const isOff = quickFillRule.endsWith('_off');
-                          const roundToVal = quickFillRoundTo
-                            ? parseFloat(quickFillRoundTo, 10)
-                            : null;
-                          setFormData(prev => {
-                            const nextVariants = (prev.variants || []).map(v => {
-                              if (getPriceTypeLabel(v.config) === 'Control') return v;
-                              const cfg = { ...(v.config || {}), priceBase: 'price' };
-                              if (isPercent) {
-                                cfg.priceMode = 'percent';
-                                cfg.pricePercent = isOff ? num : -num;
-                                cfg.price = null;
-                                cfg.priceDelta = null;
-                              } else {
-                                cfg.priceMode = 'amount';
-                                cfg.priceDelta = isOff ? -num : num;
-                                cfg.price = null;
-                                cfg.pricePercent = null;
-                              }
-                              if (Number.isFinite(roundToVal) && roundToVal > 0)
-                                cfg.roundTo = roundToVal;
-                              return { ...v, config: cfg };
-                            });
-                            return { ...prev, variants: nextVariants };
-                          });
-                        }}
-                      >
-                        Apply
-                      </Button>
-                    </InlineStack>
-                  </div>
-                )}
-                {variants.length > 0 && (
-                  <div className={styles.priceAtAGlance}>
-                    <Text as="span" variant="bodySm" fontWeight="medium" tone="subdued">
-                      At a glance:{' '}
-                    </Text>
-                    <Text as="span" variant="bodySm" tone="subdued">
-                      {variants
-                        .map((v, _i) => `${v.name}: ${getPricePreview(v.config, v.name)}`)
-                        .join(' · ')}
-                    </Text>
-                  </div>
-                )}
-                {variants.length > 0 && (
-                  <div className={styles.priceExamplePreview}>
-                    <InlineStack gap="200" blockAlign="center" wrap>
-                      <div style={{ minWidth: '140px' }}>
-                        <TextField
-                          label="Example catalog price"
-                          helpText="See what each variant would show for a given catalog price"
-                          type="number"
-                          value={exampleCatalogPrice}
-                          onChange={setExampleCatalogPrice}
-                          placeholder="e.g. 50"
-                          prefix="$"
-                          autoComplete="off"
-                          min={0}
-                          step={0.01}
-                        />
-                      </div>
-                      {simulationNeedsCompareAt && (
-                        <div style={{ minWidth: '180px' }}>
-                          <TextField
-                            label="Example compare-at price"
-                            helpText="Required when any variant uses Compare-at base"
-                            type="number"
-                            value={exampleCompareAtPrice}
-                            onChange={setExampleCompareAtPrice}
-                            placeholder="e.g. 80"
-                            prefix="$"
-                            autoComplete="off"
-                            min={0}
-                            step={0.01}
-                          />
-                        </div>
-                      )}
-                      {parsedExampleCatalog !== null &&
-                        (() => {
-                          const catalog = parsedExampleCatalog;
-                          if (simulationNeedsCompareAt && parsedExampleCompareAt === null) {
-                            return (
-                              <span className={styles.priceExamplePreviewResult}>
-                                Add an example compare-at price to simulate variants that use
-                                Compare-at base.
-                              </span>
-                            );
-                          }
-                          const parts = variants.map(v => {
-                            const effective = computeSimulationPrice(v.config, catalog, {
-                              compareAtPrice: parsedExampleCompareAt,
-                            });
-                            const label = v.name;
-                            if (effective === null || effective === undefined) return `${label}: —`;
-                            return `${label}: $${effective.toFixed(2)}`;
-                          });
-                          return (
-                            <span className={styles.priceExamplePreviewResult}>
-                              If catalog is ${catalog.toFixed(2)}: {parts.join(' · ')}
-                            </span>
-                          );
-                        })()}
-                    </InlineStack>
-                  </div>
-                )}
-                {priceSimulation.rows.length > 0 && (
-                  <div className={styles.priceSimulationWrap}>
-                    <div className={styles.priceSimulationHeader}>
-                      <InlineStack align="space-between" blockAlign="center" wrap>
-                        <BlockStack gap="100">
-                          <Text as="p" variant="bodySm" fontWeight="semibold">
-                            Effective price simulation
-                          </Text>
-                          <Text as="p" variant="bodySm" tone="subdued">
-                            Simulates what each variation would display for catalog $
-                            {parsedExampleCatalog.toFixed(2)}
-                            {priceSimulation.hasCompareAtBase &&
-                              parsedExampleCompareAt !== null &&
-                              ` (compare-at $${parsedExampleCompareAt.toFixed(2)})`}
-                            {formData.pricePerProduct ? ', including product/SKU overrides' : '.'}
-                          </Text>
-                        </BlockStack>
-                        <Button
-                          size="slim"
-                          onClick={() => downloadPriceSimulationCsv(priceSimulation.rows, variants)}
+                      <BlockStack gap="100">
+                        <Text variant="headingMd" as="h3" fontWeight="semibold">
+                          Price summary
+                        </Text>
+                        <Text as="p" variant="bodySm" tone="subdued">
+                          Overview of all variants. Expand a row to configure its price.
+                        </Text>
+                      </BlockStack>
+                      <TooltipWrapper content="Type: Control (catalog) or Fixed / $ off/on / % off. Base: selling or compare-at price for $/% modes. Value: entered amount. Preview: what visitors see on PDP.">
+                        <span
+                          style={{ display: 'inline-flex', cursor: 'help', marginLeft: 'auto' }}
                         >
-                          Export simulation CSV
-                        </Button>
-                      </InlineStack>
+                          <Icon source={InfoIcon} />
+                        </span>
+                      </TooltipWrapper>
                     </div>
-                    <div className={styles.priceSummaryTableWrap}>
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Scenario</th>
-                            {variants.map((v, idx) => (
-                              <th key={`sim-head-${idx}`}>{v.name || `Variant ${idx + 1}`}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {priceSimulation.rows.map(row => (
-                            <tr key={row.id}>
-                              <td>{row.label}</td>
-                              {row.prices.map((p, idx) => (
-                                <td key={`${row.id}-${idx}`}>{p}</td>
+                    {variants.length > 0 && (
+                      <div className={styles.priceQuickFillStrip}>
+                        <Text as="span" variant="bodySm" fontWeight="medium">
+                          Quick fill (non-control variants):
+                        </Text>
+                        <InlineStack gap="200" blockAlign="center" wrap>
+                          <Select
+                            label="Rule"
+                            labelHidden
+                            options={[
+                              { label: '% off control', value: 'percent_off' },
+                              { label: '% on control', value: 'percent_on' },
+                              { label: '$ off control', value: 'amount_off' },
+                              { label: '$ on control', value: 'amount_on' },
+                            ]}
+                            value={quickFillRule}
+                            onChange={setQuickFillRule}
+                          />
+                          <div style={{ minWidth: '80px' }}>
+                            <TextField
+                              label="Value"
+                              labelHidden
+                              type="number"
+                              value={quickFillValue}
+                              onChange={setQuickFillValue}
+                              placeholder={
+                                quickFillRule.startsWith('percent') ? 'e.g. 10' : 'e.g. 5'
+                              }
+                              autoComplete="off"
+                            />
+                          </div>
+                          <Select
+                            label="Round to nearest"
+                            labelHidden
+                            options={[
+                              { label: 'No rounding', value: '' },
+                              { label: '$0.01', value: '0.01' },
+                              { label: '$0.25', value: '0.25' },
+                              { label: '$0.50', value: '0.50' },
+                              { label: '$1', value: '1' },
+                            ]}
+                            value={quickFillRoundTo}
+                            onChange={setQuickFillRoundTo}
+                          />
+                          <Button
+                            size="slim"
+                            onClick={() => {
+                              const num = parseFloat(quickFillValue, 10);
+                              if (!Number.isFinite(num)) return;
+                              const isPercent = quickFillRule.startsWith('percent');
+                              const isOff = quickFillRule.endsWith('_off');
+                              const roundToVal = quickFillRoundTo
+                                ? parseFloat(quickFillRoundTo, 10)
+                                : null;
+                              setFormData(prev => {
+                                const nextVariants = (prev.variants || []).map(v => {
+                                  if (getPriceTypeLabel(v.config) === 'Control') return v;
+                                  const cfg = { ...(v.config || {}), priceBase: 'price' };
+                                  if (isPercent) {
+                                    cfg.priceMode = 'percent';
+                                    cfg.pricePercent = isOff ? num : -num;
+                                    cfg.price = null;
+                                    cfg.priceDelta = null;
+                                  } else {
+                                    cfg.priceMode = 'amount';
+                                    cfg.priceDelta = isOff ? -num : num;
+                                    cfg.price = null;
+                                    cfg.pricePercent = null;
+                                  }
+                                  if (Number.isFinite(roundToVal) && roundToVal > 0)
+                                    cfg.roundTo = roundToVal;
+                                  return { ...v, config: cfg };
+                                });
+                                return { ...prev, variants: nextVariants };
+                              });
+                            }}
+                          >
+                            Apply
+                          </Button>
+                        </InlineStack>
+                      </div>
+                    )}
+                    {variants.length > 0 && (
+                      <div className={styles.priceAtAGlanceGrid}>
+                        <div className={styles.priceAtAGlanceCard}>
+                          <span className={styles.priceAtAGlanceLabel}>Variant mix</span>
+                          <span className={styles.priceAtAGlanceValue}>
+                            {priceDecreaseCount} lower · {priceIncreaseCount} premium
+                          </span>
+                          <span className={styles.priceAtAGlanceHint}>
+                            Based on the current price rules
+                          </span>
+                        </div>
+                        <div className={styles.priceAtAGlanceCard}>
+                          <span className={styles.priceAtAGlanceLabel}>Methods in play</span>
+                          <span className={styles.priceAtAGlanceValue}>{methodUsageLabel}</span>
+                          <span className={styles.priceAtAGlanceHint}>
+                            Checkout execution mix across variants
+                          </span>
+                        </div>
+                        <div className={styles.priceAtAGlanceCard}>
+                          <span className={styles.priceAtAGlanceLabel}>Mappings ready</span>
+                          <span className={styles.priceAtAGlanceValue}>
+                            {mappingReadyCount}
+                            {mappingRequiredCount > 0 ? ` / ${mappingRequiredCount} required` : ''}
+                          </span>
+                          <span className={styles.priceAtAGlanceHint}>
+                            Needed for native or premium price paths
+                          </span>
+                        </div>
+                        <div className={styles.priceAtAGlanceCard}>
+                          <span className={styles.priceAtAGlanceLabel}>Product scope</span>
+                          <span className={styles.priceAtAGlanceValue}>{scopeLabel}</span>
+                          <span className={styles.priceAtAGlanceHint}>
+                            Controls where checkout alignment should apply
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                    {variants.length > 0 && (
+                      <div className={styles.priceExamplePreview}>
+                        <InlineStack gap="200" blockAlign="center" wrap>
+                          <div style={{ minWidth: '140px' }}>
+                            <TextField
+                              label="Example catalog price"
+                              helpText="See what each variant would show for a given catalog price"
+                              type="number"
+                              value={exampleCatalogPrice}
+                              onChange={setExampleCatalogPrice}
+                              placeholder="e.g. 50"
+                              prefix="$"
+                              autoComplete="off"
+                              min={0}
+                              step={0.01}
+                            />
+                          </div>
+                          {simulationNeedsCompareAt && (
+                            <div style={{ minWidth: '180px' }}>
+                              <TextField
+                                label="Example compare-at price"
+                                helpText="Required when any variant uses Compare-at base"
+                                type="number"
+                                value={exampleCompareAtPrice}
+                                onChange={setExampleCompareAtPrice}
+                                placeholder="e.g. 80"
+                                prefix="$"
+                                autoComplete="off"
+                                min={0}
+                                step={0.01}
+                              />
+                            </div>
+                          )}
+                          {parsedExampleCatalog !== null &&
+                            (() => {
+                              const catalog = parsedExampleCatalog;
+                              if (simulationNeedsCompareAt && parsedExampleCompareAt === null) {
+                                return (
+                                  <span className={styles.priceExamplePreviewResult}>
+                                    Add an example compare-at price to simulate variants that use
+                                    Compare-at base.
+                                  </span>
+                                );
+                              }
+                              const parts = variants.map(v => {
+                                const effective = computeSimulationPrice(v.config, catalog, {
+                                  compareAtPrice: parsedExampleCompareAt,
+                                });
+                                const label = v.name;
+                                if (effective === null || effective === undefined) {
+                                  return `${label}: —`;
+                                }
+                                return `${label}: $${effective.toFixed(2)}`;
+                              });
+                              return (
+                                <span className={styles.priceExamplePreviewResult}>
+                                  If catalog is ${catalog.toFixed(2)}: {parts.join(' · ')}
+                                </span>
+                              );
+                            })()}
+                        </InlineStack>
+                      </div>
+                    )}
+                    {priceSimulation.rows.length > 0 && (
+                      <div className={styles.priceSimulationWrap}>
+                        <div className={styles.priceSimulationHeader}>
+                          <InlineStack align="space-between" blockAlign="center" wrap>
+                            <BlockStack gap="100">
+                              <Text as="p" variant="bodySm" fontWeight="semibold">
+                                Effective price simulation
+                              </Text>
+                              <Text as="p" variant="bodySm" tone="subdued">
+                                Simulates what each variation would display for catalog $
+                                {parsedExampleCatalog.toFixed(2)}
+                                {priceSimulation.hasCompareAtBase &&
+                                  parsedExampleCompareAt !== null &&
+                                  ` (compare-at $${parsedExampleCompareAt.toFixed(2)})`}
+                                {formData.pricePerProduct
+                                  ? ', including product/SKU overrides'
+                                  : '.'}
+                              </Text>
+                            </BlockStack>
+                            <Button
+                              size="slim"
+                              onClick={() =>
+                                downloadPriceSimulationCsv(priceSimulation.rows, variants)
+                              }
+                            >
+                              Export simulation CSV
+                            </Button>
+                          </InlineStack>
+                        </div>
+                        <div className={styles.priceSummaryTableWrap}>
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>Scenario</th>
+                                {variants.map((v, idx) => (
+                                  <th key={`sim-head-${idx}`}>{v.name || `Variant ${idx + 1}`}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {priceSimulation.rows.map(row => (
+                                <tr key={row.id}>
+                                  <td>{row.label}</td>
+                                  {row.prices.map((p, idx) => (
+                                    <td key={`${row.id}-${idx}`}>{p}</td>
+                                  ))}
+                                </tr>
                               ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    {(priceSimulation.hasVariantOverrideRows || priceSimulation.truncated) && (
-                      <div className={styles.priceSimulationFootnote}>
-                        {priceSimulation.hasVariantOverrideRows &&
-                          'Includes SKU-specific rows where per-variant overrides are configured. '}
-                        {priceSimulation.hasMissingCompareAt &&
-                          'Rows that use Compare-at base show — until an example compare-at price is provided. '}
-                        {priceSimulation.truncated &&
-                          'Some scenarios are hidden to keep this preview concise.'}
+                            </tbody>
+                          </table>
+                        </div>
+                        {(priceSimulation.hasVariantOverrideRows || priceSimulation.truncated) && (
+                          <div className={styles.priceSimulationFootnote}>
+                            {priceSimulation.hasVariantOverrideRows &&
+                              'Includes SKU-specific rows where per-variant overrides are configured. '}
+                            {priceSimulation.hasMissingCompareAt &&
+                              'Rows that use Compare-at base show — until an example compare-at price is provided. '}
+                            {priceSimulation.truncated &&
+                              'Some scenarios are hidden to keep this preview concise.'}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
-                )}
-                {variants.length > 0 && (
-                  <div className={styles.priceAccordionActions}>
-                    <InlineStack gap="200" blockAlign="center">
-                      <Button
-                        size="slim"
-                        variant="plain"
-                        onClick={() =>
-                          setPriceAccordionExpandedIndices(variants.map((_, idx) => idx))
-                        }
-                      >
-                        Expand all
-                      </Button>
-                      <Button
-                        size="slim"
-                        variant="plain"
-                        onClick={() => setPriceAccordionExpandedIndices([])}
-                      >
-                        Collapse all
-                      </Button>
-                    </InlineStack>
-                  </div>
-                )}
-                <BlockStack gap="0">
-                  {variants.length === 0 ? (
-                    <div className={styles.priceEmptyState}>
-                      <div className={styles.priceEmptyStateIcon}>
-                        <Icon source={ProductIcon} />
+
+                  <div className={styles.priceConfigurationColumn}>
+                    {variants.length > 0 && (
+                      <div className={styles.priceAccordionActions}>
+                        <InlineStack gap="200" blockAlign="center">
+                          <Button
+                            size="slim"
+                            variant="plain"
+                            onClick={() =>
+                              setPriceAccordionExpandedIndices(variants.map((_, idx) => idx))
+                            }
+                          >
+                            Expand all
+                          </Button>
+                          <Button
+                            size="slim"
+                            variant="plain"
+                            onClick={() => setPriceAccordionExpandedIndices([])}
+                          >
+                            Collapse all
+                          </Button>
+                        </InlineStack>
                       </div>
-                      <Text as="p" variant="bodyMd" tone="subdued">
-                        Add variants in the <strong>Traffic</strong> step to configure prices.
-                      </Text>
-                    </div>
-                  ) : (
-                    <div className={styles.priceSummaryList}>
-                      <div className={styles.priceSummaryRowHead} aria-hidden="true">
-                        <span className={styles.priceSummaryColVariant}>Variant</span>
-                        <span className={styles.priceSummaryColAllocation}>Allocation</span>
-                        <span className={styles.priceSummaryColType}>Type</span>
-                        <span className={styles.priceSummaryColBase}>Base</span>
-                        <span className={styles.priceSummaryColValue}>Value</span>
-                        <span className={styles.priceSummaryColPreview}>Preview</span>
-                        <span className={styles.priceSummaryColChevron} />
-                      </div>
-                      {variants.map((v, i) => {
-                        const isControl = getPriceTypeLabel(v.config) === 'Control';
-                        const previewText =
-                          formData.pricePerProduct &&
-                          v.config?.byProduct &&
-                          Object.keys(v.config.byProduct || {}).length > 0
-                            ? 'Per product'
-                            : getPricePreview(v.config, v.name);
-                        const base =
-                          (v.config?.priceBase || 'price') === 'compare_at'
-                            ? 'Compare-at'
-                            : 'Selling';
-                        const isExpanded = priceAccordionExpandedIndices.includes(i);
-                        return (
-                          <div key={i} className={styles.priceSummaryAccordionItem}>
-                            <button
-                              type="button"
-                              className={`${styles.priceSummaryRow} ${styles.priceSummaryRowClickable} ${isExpanded ? styles.priceSummaryRowExpanded : ''}`}
-                              onClick={() =>
-                                setPriceAccordionExpandedIndices(prev =>
-                                  prev.includes(i) ? prev.filter(idx => idx !== i) : [...prev, i]
-                                )
-                              }
-                              aria-expanded={isExpanded}
-                              aria-controls={`price-accordion-body-${i}`}
-                              id={`price-accordion-head-${i}`}
-                            >
-                              <span className={styles.priceSummaryColVariant}>
-                                <span className={styles.priceSummaryRowVariant}>
-                                  {v.name}
-                                  <Badge tone={isControl ? 'info' : 'success'} size="small">
-                                    {getPriceTypeLabel(v.config)}
-                                  </Badge>
-                                </span>
-                              </span>
-                              <span className={styles.priceSummaryColAllocation}>
-                                {v.allocation ?? 0}%
-                              </span>
-                              <span className={styles.priceSummaryColType}>
-                                {getPriceTypeLabel(v.config)}
-                              </span>
-                              <span className={styles.priceSummaryColBase}>
-                                {v.config?.priceMode === 'amount' ||
-                                v.config?.priceMode === 'percent'
-                                  ? base
-                                  : '—'}
-                              </span>
-                              <span className={styles.priceSummaryColValue}>
-                                {getPriceValueCell(v)}
-                              </span>
-                              <span className={styles.priceSummaryColPreview} title={previewText}>
-                                {previewText}
-                              </span>
-                              <span className={styles.priceSummaryAccordionChevron} aria-hidden>
-                                <Icon source={ChevronDownIcon} />
-                              </span>
-                            </button>
-                            <Collapsible id={`price-accordion-body-${i}`} open={isExpanded}>
-                              <div className={styles.priceAccordionBody}>
-                                {renderPriceVariantEditor(i)}
-                              </div>
-                            </Collapsible>
+                    )}
+                    <BlockStack gap="0">
+                      {variants.length === 0 ? (
+                        <div className={styles.priceEmptyState}>
+                          <div className={styles.priceEmptyStateIcon}>
+                            <Icon source={ProductIcon} />
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </BlockStack>
+                          <Text as="p" variant="bodyMd" tone="subdued">
+                            Add variants in the <strong>Traffic</strong> step to configure prices.
+                          </Text>
+                        </div>
+                      ) : (
+                        <div className={styles.priceSummaryList}>
+                          <div className={styles.priceSummaryRowHead} aria-hidden="true">
+                            <span className={styles.priceSummaryColVariant}>Variant</span>
+                            <span className={styles.priceSummaryColAllocation}>Allocation</span>
+                            <span className={styles.priceSummaryColType}>Type</span>
+                            <span className={styles.priceSummaryColBase}>Base</span>
+                            <span className={styles.priceSummaryColValue}>Value</span>
+                            <span className={styles.priceSummaryColPreview}>Preview</span>
+                            <span className={styles.priceSummaryColChevron} />
+                          </div>
+                          {variants.map((v, i) => {
+                            const isControl = getPriceTypeLabel(v.config) === 'Control';
+                            const previewText =
+                              formData.pricePerProduct &&
+                              v.config?.byProduct &&
+                              Object.keys(v.config.byProduct || {}).length > 0
+                                ? 'Per product'
+                                : getPricePreview(v.config, v.name);
+                            const base =
+                              (v.config?.priceBase || 'price') === 'compare_at'
+                                ? 'Compare-at'
+                                : 'Selling';
+                            const isExpanded = priceAccordionExpandedIndices.includes(i);
+                            return (
+                              <div key={i} className={styles.priceSummaryAccordionItem}>
+                                <button
+                                  type="button"
+                                  className={`${styles.priceSummaryRow} ${styles.priceSummaryRowClickable} ${isExpanded ? styles.priceSummaryRowExpanded : ''}`}
+                                  onClick={() =>
+                                    setPriceAccordionExpandedIndices(prev =>
+                                      prev.includes(i)
+                                        ? prev.filter(idx => idx !== i)
+                                        : [...prev, i]
+                                    )
+                                  }
+                                  aria-expanded={isExpanded}
+                                  aria-controls={`price-accordion-body-${i}`}
+                                  id={`price-accordion-head-${i}`}
+                                >
+                                  <span className={styles.priceSummaryColVariant}>
+                                    <span className={styles.priceSummaryRowVariant}>
+                                      {v.name}
+                                      <Badge tone={isControl ? 'info' : 'success'} size="small">
+                                        {getPriceTypeLabel(v.config)}
+                                      </Badge>
+                                    </span>
+                                  </span>
+                                  <span className={styles.priceSummaryColAllocation}>
+                                    {v.allocation ?? 0}%
+                                  </span>
+                                  <span className={styles.priceSummaryColType}>
+                                    {getPriceTypeLabel(v.config)}
+                                  </span>
+                                  <span className={styles.priceSummaryColBase}>
+                                    {v.config?.priceMode === 'amount' ||
+                                    v.config?.priceMode === 'percent'
+                                      ? base
+                                      : '—'}
+                                  </span>
+                                  <span className={styles.priceSummaryColValue}>
+                                    {getPriceValueCell(v)}
+                                  </span>
+                                  <span
+                                    className={styles.priceSummaryColPreview}
+                                    title={previewText}
+                                  >
+                                    {previewText}
+                                  </span>
+                                  <span className={styles.priceSummaryAccordionChevron} aria-hidden>
+                                    <Icon source={ChevronDownIcon} />
+                                  </span>
+                                </button>
+                                <Collapsible id={`price-accordion-body-${i}`} open={isExpanded}>
+                                  <div className={styles.priceAccordionBody}>
+                                    {renderPriceVariantEditor(i)}
+                                  </div>
+                                </Collapsible>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </BlockStack>
+                  </div>
+                </div>
               </BlockStack>
             </Card>
           </div>

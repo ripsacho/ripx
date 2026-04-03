@@ -121,6 +121,22 @@ function pickCheckoutDiscountFunction(functionsList = []) {
   );
 }
 
+async function fetchShopifyFunctions(shopDomain, accessToken) {
+  const fnQuery = `
+    query ripxShopifyFunctions {
+      shopifyFunctions(first: 50) {
+        nodes {
+          id
+          title
+          apiType
+        }
+      }
+    }
+  `;
+  const fnResp = await shopifyService.requestAdminGraphql(shopDomain, accessToken, fnQuery);
+  return fnResp?.data?.shopifyFunctions?.nodes || [];
+}
+
 function escapeHtmlAttr(str) {
   if (typeof str !== 'string') {
     return '';
@@ -505,12 +521,23 @@ router.get(
     const extensionConfig = skipExtDiag
       ? { source: 'omit' }
       : extensionConfigInputFromReadResult(readRipxCheckoutExtensionConfigFile());
+    const fallbackSession = await getShopSession(shopDomain);
+    const accessToken = req.shopifyAccessToken || fallbackSession?.access_token || '';
+    let shopifyFunctions = [];
+    if (accessToken) {
+      try {
+        shopifyFunctions = await fetchShopifyFunctions(shopDomain, accessToken);
+      } catch (_error) {
+        shopifyFunctions = [];
+      }
+    }
 
     const body = buildCheckoutPriceDiagnostics({
       shopDomain,
       tenantRegistered: true,
       runningPriceTests,
       extensionConfig,
+      shopifyFunctions,
     });
 
     res.set('Cache-Control', 'no-store');
@@ -543,19 +570,7 @@ router.post(
     const requestedTitle = String(req.body?.title || '').trim();
     const discountTitle = requestedTitle || RIPX_DEFAULT_AUTOMATIC_DISCOUNT_TITLE;
     const discountClasses = resolveDiscountClasses(req.body?.discountClasses);
-    const fnQuery = `
-      query ripxShopifyFunctions {
-        shopifyFunctions(first: 50) {
-          nodes {
-            id
-            title
-            apiType
-          }
-        }
-      }
-    `;
-    const fnResp = await shopifyService.requestAdminGraphql(shopDomain, accessToken, fnQuery);
-    const functionNodes = fnResp?.data?.shopifyFunctions?.nodes || [];
+    const functionNodes = await fetchShopifyFunctions(shopDomain, accessToken);
     const chosenFunction = pickCheckoutDiscountFunction(functionNodes);
     if (!chosenFunction?.id) {
       return sendError(

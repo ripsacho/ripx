@@ -84,11 +84,6 @@ function requireAdmin(req, res, next) {
       return next(err);
     }
 
-    const shopDomain = req.shopDomain;
-    if (!shopDomain) {
-      return sendUnauthorized(res, 'Admin access requires shop or admin API key');
-    }
-
     if (req.authType === 'email' && req.email) {
       const adminEmails = getEnvAdminEmails();
       if (adminEmails.length > 0 && adminEmails.includes(req.email.trim().toLowerCase())) {
@@ -96,6 +91,11 @@ function requireAdmin(req, res, next) {
         req.adminRole = PLATFORM_ROLES.ADMIN; // env list grants admin; use DB if you need superadmin
         return next();
       }
+    }
+
+    const shopDomain = req.shopDomain;
+    if (!shopDomain) {
+      return sendUnauthorized(res, 'Admin access requires shop or admin API key');
     }
 
     const normalizedShop = shopDomain.toLowerCase().trim();

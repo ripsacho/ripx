@@ -1,6 +1,7 @@
 /**
  * Resolve RipX price-test line discount for Shopify checkout (Discount Function / Cart UI).
- * Uses same config shape as storefront script: priceMode, price, priceDelta, pricePercent, priceBase, roundTo, byProduct, byVariant.
+ * Uses same config shape as storefront script: priceMode, price, priceDelta, pricePercent, priceBase,
+ * priceApplicationMethod, roundTo, byProduct, byVariant.
  */
 
 const { verifyPriceAssignmentSignature } = require('../utils/priceAssignmentSignature');
@@ -164,6 +165,20 @@ function normalizeMergedPriceConfig(baseCfg, mergedCfg) {
     merged.priceBase = base.priceBase || merged.priceBase;
   }
   if (
+    base.nativeVariantId !== undefined &&
+    base.nativeVariantId !== null &&
+    (merged.nativeVariantId === undefined || merged.nativeVariantId === null)
+  ) {
+    merged.nativeVariantId = base.nativeVariantId;
+  }
+  if (
+    base.priceApplicationMethod !== undefined &&
+    base.priceApplicationMethod !== null &&
+    (merged.priceApplicationMethod === undefined || merged.priceApplicationMethod === null)
+  ) {
+    merged.priceApplicationMethod = base.priceApplicationMethod;
+  }
+  if (
     base.roundTo !== undefined &&
     base.roundTo !== null &&
     (merged.roundTo === undefined || merged.roundTo === null)
@@ -219,6 +234,82 @@ function getEffectivePriceConfig(cfg, productId, currentVariantId) {
     }
   }
   return normalizeMergedPriceConfig(cfg, merged);
+}
+
+function normalizePriceApplicationMethod(value) {
+  const raw = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (raw === 'discounted_checkout_price') {
+    return 'discounted_checkout_price';
+  }
+  if (raw === 'native_variant_price') {
+    return 'native_variant_price';
+  }
+  if (raw === 'direct_price_override') {
+    return 'direct_price_override';
+  }
+  return 'auto';
+}
+
+function resolveDiscountFunctionApplicationMethod({ configuredMethod, targetUnit, catalogUnit }) {
+  const normalized = normalizePriceApplicationMethod(configuredMethod);
+  const catalog = Number(catalogUnit);
+  const target = Number(targetUnit);
+  const tolerance = 0.0001;
+  const isPriceIncrease =
+    Number.isFinite(target) && Number.isFinite(catalog) && target > catalog + tolerance;
+
+  if (normalized === 'native_variant_price') {
+    return {
+      configuredMethod: normalized,
+      resolvedMethod: 'native_variant_price',
+      canApplyDiscountFunction: false,
+      reason: 'selected_native_variant_price',
+    };
+  }
+
+  if (normalized === 'direct_price_override') {
+    return {
+      configuredMethod: normalized,
+      resolvedMethod: 'direct_price_override',
+      canApplyDiscountFunction: false,
+      reason: 'selected_direct_price_override',
+    };
+  }
+
+  if (normalized === 'discounted_checkout_price') {
+    if (isPriceIncrease) {
+      return {
+        configuredMethod: normalized,
+        resolvedMethod: normalized,
+        canApplyDiscountFunction: false,
+        reason: 'price_increase_requires_native_variant_price',
+      };
+    }
+    return {
+      configuredMethod: normalized,
+      resolvedMethod: normalized,
+      canApplyDiscountFunction: true,
+      reason: null,
+    };
+  }
+
+  if (isPriceIncrease) {
+    return {
+      configuredMethod: 'auto',
+      resolvedMethod: 'native_variant_price',
+      canApplyDiscountFunction: false,
+      reason: 'auto_selected_native_variant_price',
+    };
+  }
+
+  return {
+    configuredMethod: 'auto',
+    resolvedMethod: 'discounted_checkout_price',
+    canApplyDiscountFunction: true,
+    reason: null,
+  };
 }
 
 function assignmentMatchesVariant(test, assignmentVariantId) {
@@ -405,6 +496,7 @@ function resolvePriceTestLineDiscount({
   debugMeta.useCompareAtBase = useCompareAtBase;
   debugMeta.basisUnit = Math.round(basisUnit * 100) / 100;
   debugMeta.roundTo = cfg.roundTo !== undefined && cfg.roundTo !== null ? cfg.roundTo : null;
+  debugMeta.priceApplicationMethod = normalizePriceApplicationMethod(cfg.priceApplicationMethod);
 
   if (useCompareAtBase && !hasValidCompareAt) {
     return finish({ applies: false, reason: 'compare_at_unavailable' });
@@ -458,6 +550,18 @@ function resolvePriceTestLineDiscount({
 
   targetUnit = applyRoundToUnitPrice(targetUnit, parseRoundTo(cfg.roundTo));
   debugMeta.targetUnit = Math.round(targetUnit * 100) / 100;
+
+  const applicationMethod = resolveDiscountFunctionApplicationMethod({
+    configuredMethod: cfg.priceApplicationMethod,
+    targetUnit,
+    catalogUnit,
+  });
+  debugMeta.configuredApplicationMethod = applicationMethod.configuredMethod;
+  debugMeta.resolvedApplicationMethod = applicationMethod.resolvedMethod;
+  debugMeta.canApplyDiscountFunction = applicationMethod.canApplyDiscountFunction;
+  if (!applicationMethod.canApplyDiscountFunction) {
+    return finish({ applies: false, reason: applicationMethod.reason });
+  }
 
   const targetLine = Math.round(targetUnit * qty * 100) / 100;
   const roundedLineTotal = Math.round(lineTotal * 100) / 100;

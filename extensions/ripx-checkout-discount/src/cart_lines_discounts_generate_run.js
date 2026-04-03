@@ -199,7 +199,7 @@ export function cartLinesDiscountsGenerateRun(input) {
   }
   const status = input.fetchResult?.status;
   const body = normalizeFetchBody(input.fetchResult?.jsonBody);
-  const rows = Array.isArray(body.lines) ? body.lines : [];
+  const rows = Array.isArray(body?.lines) ? body.lines : [];
   const byLineId = new Map(rows.map(row => [row.line_id, row]));
 
   const candidates = [];

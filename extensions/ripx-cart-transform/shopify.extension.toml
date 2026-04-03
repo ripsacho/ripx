@@ -1,0 +1,17 @@
+api_version = "2026-01"
+
+[[extensions]]
+name = "RipX cart transform"
+handle = "ripx-cart-transform"
+uid = "3754480b-7d93-ecee-5809-e459f63e4ea1969ecd0b"
+type = "function"
+description = "Apply direct RipX price overrides from cart line attributes on Plus/dev stores."
+
+[[extensions.targeting]]
+target = "cart.transform.run"
+input_query = "src/cart_transform_run.graphql"
+export = "cart-transform-run"
+
+[extensions.build]
+command = ""
+path = "dist/function.wasm"

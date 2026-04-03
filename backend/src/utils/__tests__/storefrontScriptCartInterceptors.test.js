@@ -206,6 +206,91 @@ describe('storefront script cart/add interceptors', () => {
     });
   });
 
+  it('swaps add-to-cart variant id for native variant pricing when source matches', async () => {
+    const { hooks, fetchCalls, windowObj } = bootStorefrontScriptHarness();
+    const attrs = hooks.getRipxCartAttrsPayload(
+      '77777777-7777-4777-8777-777777777777',
+      'variant-native',
+      'makripon.myshopify.com'
+    );
+    hooks.setRipxCartAttributeState({
+      ...attrs,
+      __ripx_price_application_method: 'native_variant_price',
+      __ripx_native_variant_id: '99999999999',
+      __ripx_source_variant_id: '12345678901',
+    });
+    hooks.installRipxCartAddInterceptors();
+
+    await windowObj.fetch('/cart/add.js', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 12345678901, quantity: 1 }),
+    });
+
+    const body = JSON.parse(fetchCalls[0].init.body);
+    expect(body.id).toBe('99999999999');
+    expect(body.properties).toMatchObject({
+      _ripx_price_test: '77777777-7777-4777-8777-777777777777',
+      _ripx_variant: 'variant-native',
+    });
+  });
+
+  it('patches direct override price method onto cart line properties', async () => {
+    const { hooks, fetchCalls, windowObj } = bootStorefrontScriptHarness();
+    const attrs = hooks.getRipxCartAttrsPayload(
+      '99999999-9999-4999-8999-999999999999',
+      'variant-direct',
+      'makripon.myshopify.com',
+      null,
+      { targetUnit: 84 }
+    );
+    hooks.setRipxCartAttributeState({
+      ...attrs,
+      _ripx_price_method: 'direct_price_override',
+      __ripx_price_application_method: 'direct_price_override',
+    });
+    hooks.installRipxCartAddInterceptors();
+
+    await windowObj.fetch('/cart/add.js', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 123, quantity: 1 }),
+    });
+
+    const body = JSON.parse(fetchCalls[0].init.body);
+    expect(body.properties).toMatchObject({
+      _ripx_price_test: '99999999-9999-4999-8999-999999999999',
+      _ripx_variant: 'variant-direct',
+      _ripx_target_unit: '84.00',
+      _ripx_price_method: 'direct_price_override',
+    });
+  });
+
+  it('does not swap add-to-cart variant id when native swap source does not match', async () => {
+    const { hooks, fetchCalls, windowObj } = bootStorefrontScriptHarness();
+    const attrs = hooks.getRipxCartAttrsPayload(
+      '88888888-8888-4888-8888-888888888888',
+      'variant-native',
+      'makripon.myshopify.com'
+    );
+    hooks.setRipxCartAttributeState({
+      ...attrs,
+      __ripx_price_application_method: 'native_variant_price',
+      __ripx_native_variant_id: '99999999999',
+      __ripx_source_variant_id: '12345678901',
+    });
+    hooks.installRipxCartAddInterceptors();
+
+    await windowObj.fetch('/cart/add.js', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 55555555555, quantity: 1 }),
+    });
+
+    const body = JSON.parse(fetchCalls[0].init.body);
+    expect(body.id).toBe(55555555555);
+  });
+
   it('does not overwrite existing RipX properties in JSON body', async () => {
     const { hooks, fetchCalls, windowObj } = bootStorefrontScriptHarness();
     const attrs = hooks.getRipxCartAttrsPayload(

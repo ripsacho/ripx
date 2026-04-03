@@ -29,6 +29,7 @@ import {
   ShieldCheckMarkIcon,
 } from '@shopify/polaris-icons';
 import { ROUTES, APP_META } from '../../constants';
+import { getEmbedSearchForNavigate } from '../../services';
 import TopBar from '../Layout/TopBar';
 import styles from './Admin.module.css';
 
@@ -178,6 +179,13 @@ function loadExpandedGroupsFromStorage() {
 function AdminLayout({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const navigateWithEmbed = useCallback(
+    pathname => {
+      const search = getEmbedSearchForNavigate();
+      navigate(search ? { pathname, search } : { pathname });
+    },
+    [navigate]
+  );
   const [collapsed, setCollapsed] = useState(false);
   const [navSearch, setNavSearch] = useState('');
   const [expandedGroups, setExpandedGroups] = useState(loadExpandedGroupsFromStorage);
@@ -336,7 +344,7 @@ function AdminLayout({ children }) {
                 <button
                   type="button"
                   className={styles.adminSidebarBrand}
-                  onClick={() => navigate(ROUTES.ADMIN_OVERVIEW)}
+                  onClick={() => navigateWithEmbed(ROUTES.ADMIN_OVERVIEW)}
                   aria-label="RipX Admin home"
                 >
                   <img
@@ -366,7 +374,7 @@ function AdminLayout({ children }) {
                   <button
                     type="button"
                     className={styles.adminSidebarLogoCollapsedBtn}
-                    onClick={() => navigate(ROUTES.ADMIN_OVERVIEW)}
+                    onClick={() => navigateWithEmbed(ROUTES.ADMIN_OVERVIEW)}
                     aria-label="RipX Admin home"
                   >
                     <img
@@ -522,7 +530,7 @@ function AdminLayout({ children }) {
                         <button
                           key={item.path}
                           type="button"
-                          onClick={() => navigate(item.path)}
+                          onClick={() => navigateWithEmbed(item.path)}
                           className={`${styles.adminNavItem} ${isActive ? styles.active : ''}`}
                           aria-current={isActive ? 'page' : undefined}
                           onMouseEnter={e => handleNavMouseEnter(item, e)}
@@ -590,7 +598,7 @@ function AdminLayout({ children }) {
                                         key={item.path}
                                         type="button"
                                         tabIndex={open ? undefined : -1}
-                                        onClick={() => navigate(item.path)}
+                                        onClick={() => navigateWithEmbed(item.path)}
                                         className={`${styles.adminNavItem} ${isActive ? styles.active : ''}`}
                                         aria-current={isActive ? 'page' : undefined}
                                       >
@@ -619,7 +627,7 @@ function AdminLayout({ children }) {
                                 <button
                                   key={item.path}
                                   type="button"
-                                  onClick={() => navigate(item.path)}
+                                  onClick={() => navigateWithEmbed(item.path)}
                                   className={`${styles.adminNavItem} ${isActive ? styles.active : ''}`}
                                   aria-current={isActive ? 'page' : undefined}
                                 >
@@ -661,7 +669,7 @@ function AdminLayout({ children }) {
                 <button
                   type="button"
                   className={styles.adminBackToApp}
-                  onClick={() => navigate(ROUTES.USER_PANEL)}
+                  onClick={() => navigateWithEmbed(ROUTES.USER_PANEL)}
                   aria-label="Back to app"
                 >
                   <span className={styles.adminSidebarBtnContent}>
@@ -676,7 +684,7 @@ function AdminLayout({ children }) {
                 <button
                   type="button"
                   className={styles.adminSidebarFooterLink}
-                  onClick={() => navigate(ROUTES.DOMAINS)}
+                  onClick={() => navigateWithEmbed(ROUTES.DOMAINS)}
                   aria-label="My domains"
                 >
                   <span className={styles.adminSidebarBtnContent}>
@@ -706,14 +714,14 @@ function AdminLayout({ children }) {
                 <button
                   type="button"
                   className={styles.adminFooterLink}
-                  onClick={() => navigate(ROUTES.ADMIN_SYSTEM_HEALTH)}
+                  onClick={() => navigateWithEmbed(ROUTES.ADMIN_SYSTEM_HEALTH)}
                 >
                   System health
                 </button>
                 <button
                   type="button"
                   className={styles.adminFooterLinkBtn}
-                  onClick={() => navigate(ROUTES.DOCS)}
+                  onClick={() => navigateWithEmbed(ROUTES.DOCS)}
                 >
                   Docs
                 </button>

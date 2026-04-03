@@ -292,6 +292,28 @@ function isEphemeralTunnelHost(hostname) {
   );
 }
 
+function normalizeShopifyFunctionsSnapshot(functionsList) {
+  if (!Array.isArray(functionsList)) {
+    return [];
+  }
+  return functionsList.filter(Boolean).map(fn => ({
+    id: fn.id || null,
+    title: fn.title || null,
+    apiType: fn.apiType || null,
+  }));
+}
+
+function pickFunctionByApiType(functionsList, matcher) {
+  const normalized = normalizeShopifyFunctionsSnapshot(functionsList);
+  const matched = normalized.filter(fn => matcher(String(fn.apiType || '').toLowerCase()));
+  const ripxMatched = matched.find(fn =>
+    String(fn.title || '')
+      .toLowerCase()
+      .includes('ripx')
+  );
+  return ripxMatched || matched[0] || null;
+}
+
 /**
  * Build diagnostics object (no I/O).
  * @param {object} [opts]
@@ -299,6 +321,7 @@ function isEphemeralTunnelHost(hostname) {
  * @param {boolean} [opts.tenantRegistered]
  * @param {number} [opts.runningPriceTests]
  * @param {{ source: 'omit'|'missing'|'present', contents?: string }} [opts.extensionConfig] — R5 drift: compare ripxConfig.js to .env (callers read file)
+ * @param {Array<{ id?: string, title?: string, apiType?: string }>} [opts.shopifyFunctions]
  */
 function buildCheckoutPriceDiagnostics(opts = {}) {
   const { batchUrl, appUrl, usedExplicitBatchUrl } = getConfiguredBatchResolveUrls();
@@ -453,7 +476,36 @@ function buildCheckoutPriceDiagnostics(opts = {}) {
     tenantRegistered = null,
     runningPriceTests = null,
     extensionConfig,
+    shopifyFunctions,
   } = opts;
+
+  const functionSnapshot = normalizeShopifyFunctionsSnapshot(shopifyFunctions);
+  const discountFunction = pickFunctionByApiType(functionSnapshot, apiType =>
+    apiType.includes('discount')
+  );
+  const cartTransformFunction = pickFunctionByApiType(
+    functionSnapshot,
+    apiType => apiType.includes('cart_transform') || apiType.includes('cart transform')
+  );
+
+  if (functionSnapshot.length > 0) {
+    checklist.push({
+      id: 'discount_function_available',
+      ok: Boolean(discountFunction?.id),
+      severity: discountFunction?.id ? 'ok' : 'warning',
+      message: discountFunction?.id
+        ? `Shop has a deployed discount function available for RipX checkout pricing (${discountFunction.title || discountFunction.id}).`
+        : 'No deployed Shopify discount function was found for this app on the shop.',
+    });
+    checklist.push({
+      id: 'cart_transform_function_available',
+      ok: Boolean(cartTransformFunction?.id),
+      severity: cartTransformFunction?.id ? 'ok' : 'warning',
+      message: cartTransformFunction?.id
+        ? `Shop has a deployed cart transform function available for Direct Price Override (${cartTransformFunction.title || cartTransformFunction.id}).`
+        : 'No deployed Shopify cart transform function was found for this app on the shop.',
+    });
+  }
 
   /** @type {Record<string, unknown>} */
   let infrastructureExtension = {};
@@ -504,6 +556,10 @@ function buildCheckoutPriceDiagnostics(opts = {}) {
       batch_compact_response: process.env.RIPX_PRICE_BATCH_FULL_RESPONSE !== 'true',
       price_batch_slow_log_ms: PRICE_BATCH_SLOW_LOG_MS,
       node_env: nodeEnv,
+      discount_function_available: Boolean(discountFunction?.id),
+      cart_transform_function_available: Boolean(cartTransformFunction?.id),
+      discount_function_id: discountFunction?.id || null,
+      cart_transform_function_id: cartTransformFunction?.id || null,
       ...infrastructureExtension,
     },
     support: {
@@ -522,6 +578,12 @@ function buildCheckoutPriceDiagnostics(opts = {}) {
           'data-ripx-native-cart-line="1"',
           'data-ripx-native-cart-block="1"',
         ],
+      },
+      direct_price_override: {
+        level: cartTransformFunction?.id ? 'available' : 'needs_deploy',
+        summary: cartTransformFunction?.id
+          ? 'Cart Transform infrastructure is deployed, so Direct Price Override can run on Plus/dev stores for the supported hardened flow.'
+          : 'Direct Price Override needs the RipX cart transform extension to be deployed on the shop before it can run.',
       },
     },
     checklist,

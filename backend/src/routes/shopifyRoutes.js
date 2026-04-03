@@ -211,6 +211,61 @@ router.get(
 );
 
 /**
+ * GET /api/shopify/product-variants
+ * List products with variants for native variant mapping UX.
+ * Query: query=optional search, first=optional product count, variantsFirst=optional variants per product
+ */
+router.get(
+  '/product-variants',
+  asyncHandler(async (req, res) => {
+    const shopDomain = req.shopDomain;
+    const accessToken = req.shopifyAccessToken;
+    const searchQuery = (req.query.query || '').trim() || undefined;
+    const productId = (req.query.productId || '').trim() || null;
+    const first = Math.min(parseInt(req.query.first, 10) || 24, 50);
+    const variantsFirst = Math.min(parseInt(req.query.variantsFirst, 10) || 25, 50);
+
+    try {
+      const products = productId
+        ? await shopifyService
+            .getProductWithVariants(shopDomain, accessToken, productId, variantsFirst)
+            .then(product => (product ? [product] : []))
+        : await shopifyService.listProductsWithVariants(
+            shopDomain,
+            accessToken,
+            searchQuery,
+            first,
+            variantsFirst
+          );
+      res.json({
+        success: true,
+        products: Array.isArray(products) ? products : [],
+      });
+    } catch (err) {
+      const msg = (err && err.message) || 'Could not load product variants from Shopify.';
+      const statusCode = err.response?.status ?? err.networkStatusCode ?? null;
+      if (statusCode === 401 || /401|unauthorized|invalid.*token|token.*invalid/i.test(msg)) {
+        return res.json({
+          success: true,
+          products: [],
+          empty_reason:
+            'Your store session has expired or the app was reinstalled. Open this app again from Shopify Admin to reconnect and refresh variant mappings.',
+        });
+      }
+      if (/access denied|scope|permission|403/i.test(msg)) {
+        return res.json({
+          success: true,
+          products: [],
+          empty_reason:
+            'Missing Shopify product permissions. Ensure read_products is enabled and reinstall the app if needed.',
+        });
+      }
+      throw err;
+    }
+  })
+);
+
+/**
  * GET /api/shopify/setup/status
  * Check App Proxy and App Embed status.
  */

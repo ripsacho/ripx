@@ -58,6 +58,7 @@ import {
   getApiKey,
   getEmailToken,
   hasEmailSession,
+  hasShopifyEmbedSessionHint,
   setQueryClientForPermissionInvalidation,
   apiPostPublic,
   getHealthUrl,
@@ -411,7 +412,8 @@ function AppContent() {
   const storedShopDomain = String(getShopDomain() || '')
     .trim()
     .toLowerCase();
-  const hasCreds = getShopDomain() || getApiKey() || hasEmailSession();
+  const hasCreds =
+    getShopDomain() || getApiKey() || hasEmailSession() || hasShopifyEmbedSessionHint();
   const discountLaunchDomain = shopFromQuery || currentRouteDomain || storedShopDomain || '';
   const [resolvedDiscountDomain, setResolvedDiscountDomain] = useState('');
   const [isResolvingDiscountDomain, setIsResolvingDiscountDomain] = useState(false);
@@ -775,7 +777,7 @@ function AppContent() {
     );
   }
 
-  if (!hasCreds && !isPublicPath) {
+  if (!hasCreds && !isPublicPath && !isAdminRoute) {
     return <Navigate to={{ pathname: ROUTES.CONNECT, search: location.search }} replace />;
   }
 

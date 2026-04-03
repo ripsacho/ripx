@@ -2,23 +2,26 @@
 
 client_id = "e7a7d74e7aaa14162e3951a559bda6c1"
 name = "RipperX"
-application_url = "https://splitter.echologyx.com/"
+application_url = "https://splitter.echologyx.com"
 embedded = true
 
-[webhooks]
-api_version = "2026-01"
+[build]
+automatically_update_urls_on_dev = true
 
-  [[webhooks.subscriptions]]
-  topics = [ "products/update" ]
-  uri = "/api/webhooks/products/update"
+[webhooks]
+api_version = "2026-04"
 
   [[webhooks.subscriptions]]
   topics = [ "app/uninstalled" ]
   uri = "/api/webhooks/app/uninstalled"
 
+  [[webhooks.subscriptions]]
+  topics = [ "products/update" ]
+  uri = "/api/webhooks/products/update"
+
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_content,read_online_store_pages,read_orders,read_products,write_products,read_discounts,write_discounts"
+scopes = "read_content,read_discounts,read_online_store_pages,read_orders,read_products,write_discounts,write_products"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 

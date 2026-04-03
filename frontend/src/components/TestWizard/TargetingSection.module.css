@@ -6821,6 +6821,18 @@
   flex-direction: column;
   gap: 24px;
 }
+.priceConfigLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+.priceSummaryColumn {
+  min-width: 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+.priceConfigurationColumn {
+  min-width: 0;
+}
 .priceStepAccent {
   height: 4px;
   background: linear-gradient(90deg, #0d9488 0%, #0891b2 50%, #06b6d4 100%);
@@ -6833,6 +6845,9 @@
   border: 1px solid rgba(6, 182, 212, 0.18);
   background: var(--p-color-bg-surface, #fff);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06), 0 1px 0 rgba(255, 255, 255, 0.6) inset;
+}
+.priceSummaryCard :global(.Polaris-ShadowBevel) {
+  overflow: visible;
 }
 .priceSummaryHeader {
   display: flex;
@@ -6896,6 +6911,48 @@
   min-width: 0;
   flex: 1 1 auto;
 }
+.priceAtAGlanceGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px 26px;
+  background: rgba(6, 182, 212, 0.04);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+.priceAtAGlanceCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(6, 182, 212, 0.14);
+  background: rgba(255, 255, 255, 0.72);
+}
+.priceAtAGlanceLabel {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.priceAtAGlanceValue {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.priceAtAGlanceHint {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  line-height: 1.45;
+}
+@media (min-width: 1180px) {
+  .priceAtAGlanceGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 .priceExamplePreview {
   padding: 12px 26px;
   background: rgba(139, 92, 246, 0.04);
@@ -6934,6 +6991,20 @@
 .priceAccordionActions {
   padding: 12px 26px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+@media (min-width: 1180px) {
+  .priceConfigLayout {
+    grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.35fr);
+    align-items: start;
+  }
+
+  .priceSummaryColumn {
+    position: sticky;
+    top: 92px;
+    align-self: start;
+    border-right: 1px solid rgba(0, 0, 0, 0.06);
+    border-bottom: none;
+  }
 }
 @media (max-width: 640px) {
   .priceQuickFillStrip {
@@ -7159,6 +7230,231 @@
   margin-bottom: 16px;
   display: block;
 }
+.priceMethodStatusGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.priceMethodChoiceGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.priceMethodChoiceCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(6, 182, 212, 0.16);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(6, 182, 212, 0.04) 100%);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease,
+    background 0.18s ease;
+}
+.priceMethodChoiceCard:hover:not(:disabled) {
+  border-color: rgba(6, 182, 212, 0.32);
+  box-shadow: 0 8px 24px rgba(6, 182, 212, 0.1);
+  transform: translateY(-1px);
+}
+.priceMethodChoiceCard:focus-visible {
+  outline: 2px solid rgba(6, 182, 212, 0.45);
+  outline-offset: 2px;
+}
+.priceMethodChoiceCardActive {
+  border-color: rgba(6, 182, 212, 0.42);
+  background: linear-gradient(180deg, rgba(6, 182, 212, 0.14) 0%, rgba(6, 182, 212, 0.05) 100%);
+  box-shadow: 0 0 0 1px rgba(6, 182, 212, 0.18), 0 10px 28px rgba(6, 182, 212, 0.12);
+}
+.priceMethodChoiceCardDisabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+  border-style: dashed;
+  background: linear-gradient(180deg, rgba(148, 163, 184, 0.12) 0%, rgba(148, 163, 184, 0.05) 100%);
+}
+.priceMethodChoiceTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.priceMethodChoiceTitle {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.35;
+}
+.priceMethodChoiceBody {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.priceMethodChoiceMeta {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  line-height: 1.45;
+}
+.priceMethodChoicePill {
+  flex-shrink: 0;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(6, 182, 212, 0.18);
+  background: rgba(6, 182, 212, 0.08);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.priceMethodChoicePillSelected {
+  border-color: rgba(6, 182, 212, 0.32);
+  background: rgba(6, 182, 212, 0.16);
+  color: var(--text-primary);
+}
+.priceMethodChoicePillBlocked {
+  border-color: rgba(220, 38, 38, 0.18);
+  background: rgba(220, 38, 38, 0.08);
+  color: #b91c1c;
+}
+.priceMethodStatusCard {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(6, 182, 212, 0.08) 0%, rgba(6, 182, 212, 0.02) 100%);
+  border: 1px solid rgba(6, 182, 212, 0.16);
+  min-width: 0;
+}
+.priceMethodStatusLabel {
+  display: block;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-bottom: 6px;
+}
+.priceMethodStatusValue {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+.nativeVariantAssistant {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 4px;
+}
+.nativeVariantAssistantSummary {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.nativeVariantSelectedCard {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  background: linear-gradient(180deg, rgba(34, 197, 94, 0.08) 0%, rgba(34, 197, 94, 0.03) 100%);
+}
+.nativeVariantAssistantScroll {
+  max-height: 360px;
+  overflow: auto;
+  padding: 8px 0 10px;
+}
+.nativeVariantAssistantScroll::-webkit-scrollbar {
+  width: 10px;
+}
+.nativeVariantAssistantScroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.18);
+}
+.nativeVariantProductCard {
+  margin: 8px 10px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.78);
+  overflow: hidden;
+}
+.nativeVariantProductHeader {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+  text-align: left;
+}
+.nativeVariantProductHeader:hover {
+  background: rgba(6, 182, 212, 0.06);
+}
+.nativeVariantProductHeaderCopy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.nativeVariantProductTitle {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.nativeVariantProductMeta {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+.nativeVariantList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 12px 12px;
+}
+.nativeVariantListItem {
+  width: 100%;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(249, 250, 251, 0.95);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+.nativeVariantListItem:hover {
+  border-color: rgba(6, 182, 212, 0.25);
+  background: rgba(6, 182, 212, 0.06);
+}
+.nativeVariantListItemSelected {
+  border-color: rgba(34, 197, 94, 0.3);
+  background: linear-gradient(180deg, rgba(34, 197, 94, 0.1) 0%, rgba(34, 197, 94, 0.04) 100%);
+}
+.nativeVariantListCopy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.nativeVariantListTitle {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.nativeVariantListMeta {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
 .priceQuickSetStrip {
   display: flex;
   align-items: center;
@@ -7183,9 +7479,23 @@
   align-items: start;
 }
 @media (max-width: 640px) {
+  .priceAtAGlanceGrid {
+    grid-template-columns: 1fr;
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+  .priceMethodChoiceGrid {
+    grid-template-columns: 1fr;
+  }
   .priceFormRow {
     grid-template-columns: 1fr;
     gap: 16px;
+  }
+  .priceMethodStatusGrid {
+    grid-template-columns: 1fr;
+  }
+  .nativeVariantAssistantSummary {
+    flex-direction: column;
   }
 }
 .pricePerProductGrid {
@@ -7215,6 +7525,11 @@
   margin-bottom: 4px;
   border-top: 1px solid rgba(0, 0, 0, 0.08);
 }
+.priceNestedStatusRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .pricePerVariantSection .Polaris-Button {
   margin-top: 12px;
 }
@@ -7237,6 +7552,13 @@
 .pricePerVariantRow .Polaris-Button {
   flex-shrink: 0;
   align-self: center;
+}
+.pricePerVariantAssistantWrap {
+  flex: 1 1 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
 }
 @media (max-width: 640px) {
   .pricePerVariantRow {

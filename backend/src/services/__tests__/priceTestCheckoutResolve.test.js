@@ -181,6 +181,94 @@ describe('priceTestCheckoutResolve', () => {
     expect(parseFloat(r.discountDecimal, 10)).toBeCloseTo(5, 2);
   });
 
+  it('auto application method keeps discount checkout for lower prices', () => {
+    const test = {
+      ...baseTest,
+      variants: [
+        {
+          id: 'var-b',
+          name: 'Variant B',
+          config: { priceMode: 'amount', priceDelta: -5, priceApplicationMethod: 'auto' },
+        },
+      ],
+    };
+    const r = resolvePriceTestLineDiscount({
+      test,
+      assignmentVariantId: 'var-b',
+      productId: '111',
+      linePresentmentTotal: 29.99,
+      quantity: 1,
+      debug: true,
+    });
+    expect(r.applies).toBe(true);
+    expect(parseFloat(r.discountDecimal, 10)).toBeCloseTo(5, 2);
+    expect(r.debug).toMatchObject({
+      configuredApplicationMethod: 'auto',
+      resolvedApplicationMethod: 'discounted_checkout_price',
+      canApplyDiscountFunction: true,
+    });
+  });
+
+  it('auto application method resolves price increases to native variant price', () => {
+    const test = {
+      ...baseTest,
+      variants: [
+        {
+          id: 'var-b',
+          name: 'Variant B',
+          config: { priceMode: 'amount', priceDelta: 5, priceApplicationMethod: 'auto' },
+        },
+      ],
+    };
+    const r = resolvePriceTestLineDiscount({
+      test,
+      assignmentVariantId: 'var-b',
+      productId: '111',
+      linePresentmentTotal: 29.99,
+      quantity: 1,
+      debug: true,
+    });
+    expect(r.applies).toBe(false);
+    expect(r.reason).toBe('auto_selected_native_variant_price');
+    expect(r.debug).toMatchObject({
+      configuredApplicationMethod: 'auto',
+      resolvedApplicationMethod: 'native_variant_price',
+      canApplyDiscountFunction: false,
+    });
+  });
+
+  it('explicit direct price override skips discount-function application', () => {
+    const test = {
+      ...baseTest,
+      variants: [
+        {
+          id: 'var-b',
+          name: 'Variant B',
+          config: {
+            priceMode: 'fixed',
+            price: 19.99,
+            priceApplicationMethod: 'direct_price_override',
+          },
+        },
+      ],
+    };
+    const r = resolvePriceTestLineDiscount({
+      test,
+      assignmentVariantId: 'var-b',
+      productId: '111',
+      linePresentmentTotal: 29.99,
+      quantity: 1,
+      debug: true,
+    });
+    expect(r.applies).toBe(false);
+    expect(r.reason).toBe('selected_direct_price_override');
+    expect(r.debug).toMatchObject({
+      configuredApplicationMethod: 'direct_price_override',
+      resolvedApplicationMethod: 'direct_price_override',
+      canApplyDiscountFunction: false,
+    });
+  });
+
   it('falls back to base mode when per-product override mode is incomplete', () => {
     const test = {
       ...baseTest,
