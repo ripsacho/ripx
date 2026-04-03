@@ -6401,6 +6401,22 @@ function TestWizard({
         applicationMethod,
         variant.config || {}
       );
+      const editorPreviewText = getPricePreview(variant.config, variant.name);
+      const editorRuleValue = getPriceValueCell(variant);
+      const editorStatusText = selectedMethodConstraint?.blocked
+        ? selectedMethodConstraint.text
+        : applicationMethod === 'native_variant_price' && !hasNativeVariantMapping
+          ? 'Needs a mapped Shopify variant before native checkout pricing can work.'
+          : mappingRequired && !hasNativeVariantMapping
+            ? 'Add a mapped Shopify variant for the most accurate premium checkout path.'
+            : 'Ready with the current setup.';
+      const editorStatusTone = selectedMethodConstraint?.blocked
+        ? 'critical'
+        : applicationMethod === 'native_variant_price' && !hasNativeVariantMapping
+          ? 'warning'
+          : mappingRequired && !hasNativeVariantMapping
+            ? 'attention'
+            : 'success';
       return (
         <div
           className={styles.priceEditorPanel}
@@ -6430,6 +6446,39 @@ function TestWizard({
                     Copy from {variants[index - 1].name || `Variant ${index}`}
                   </Button>
                 )}
+              </div>
+            </div>
+            <div className={styles.priceEditorIntroGrid}>
+              <div className={styles.priceEditorIntroCard}>
+                <span className={styles.priceEditorIntroLabel}>Display price</span>
+                <span className={styles.priceEditorIntroValue}>{editorPreviewText}</span>
+                <span className={styles.priceEditorIntroHint}>
+                  What shoppers should see on the product page.
+                </span>
+              </div>
+              <div className={styles.priceEditorIntroCard}>
+                <span className={styles.priceEditorIntroLabel}>Checkout path</span>
+                <span className={styles.priceEditorIntroValue}>
+                  {applicationMethodMeta.shortLabel}
+                </span>
+                <span className={styles.priceEditorIntroHint}>
+                  {applicationMethodMeta.helpText}
+                </span>
+              </div>
+              <div
+                className={`${styles.priceEditorIntroCard} ${
+                  editorStatusTone === 'critical'
+                    ? styles.priceEditorIntroCardCritical
+                    : editorStatusTone === 'warning'
+                      ? styles.priceEditorIntroCardWarning
+                      : editorStatusTone === 'attention'
+                        ? styles.priceEditorIntroCardAttention
+                        : styles.priceEditorIntroCardSuccess
+                }`}
+              >
+                <span className={styles.priceEditorIntroLabel}>Setup status</span>
+                <span className={styles.priceEditorIntroValue}>{editorRuleValue}</span>
+                <span className={styles.priceEditorIntroHint}>{editorStatusText}</span>
               </div>
             </div>
             {(isAmount || isPercent) && (
@@ -6479,9 +6528,15 @@ function TestWizard({
             )}
             {formData.pricePerProduct && priceTargetProductIds.length >= 1 ? (
               <BlockStack gap="400">
-                <Text as="p" variant="bodySm" fontWeight="semibold">
-                  Price per product
-                </Text>
+                <div className={styles.priceScopedIntro}>
+                  <Text as="p" variant="bodySm" fontWeight="semibold">
+                    Per-product pricing is enabled for this variant
+                  </Text>
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    Start with each product-level price card below, then add SKU-specific overrides
+                    only when a product needs exceptions.
+                  </Text>
+                </div>
                 <div className={styles.pricePerProductGrid}>
                   {priceTargetProductIds.map(productId => {
                     const baseCfg = variant.config || {};
@@ -6498,6 +6553,9 @@ function TestWizard({
                     const pFixed = pMode === 'fixed';
                     const pAmount = pMode === 'amount';
                     const pPercent = pMode === 'percent';
+                    const productRuleValue = getPriceValueCell({ ...variant, config: cfg });
+                    const productPreviewText = getPricePreview(cfg, variant.name);
+                    const productMethodLabel = getPriceApplicationMethodShortLabel(cfg);
                     const updateByProduct = (key, value) => {
                       setFormData(prev => {
                         const next = [...(prev.variants || [])];
@@ -6512,30 +6570,46 @@ function TestWizard({
                       <div key={productId} className={styles.pricePerProductCard}>
                         <Card sectioned>
                           <BlockStack gap="300">
-                            <Text as="p" variant="headingSm" fontWeight="semibold">
-                              {getProductLabelFromId(productId)}
-                            </Text>
-                            {(applicationMethod === 'auto' ||
-                              applicationMethod === 'native_variant_price') && (
-                              <div className={styles.priceNestedStatusRow}>
-                                <Badge
-                                  tone={
-                                    pHasNativeVariantMapping
-                                      ? 'success'
-                                      : pMappingRequired
-                                        ? 'critical'
-                                        : 'info'
-                                  }
-                                  size="small"
-                                >
-                                  {pHasNativeVariantMapping
-                                    ? 'Per-product mapping ready'
-                                    : pMappingRequired
-                                      ? 'Per-product mapping required'
-                                      : 'Per-product mapping optional'}
-                                </Badge>
-                              </div>
-                            )}
+                            <div className={styles.priceScopedCardHeader}>
+                              <BlockStack gap="150">
+                                <Text as="p" variant="headingSm" fontWeight="semibold">
+                                  {getProductLabelFromId(productId)}
+                                </Text>
+                                <div className={styles.priceNestedStatusRow}>
+                                  <Badge tone="info" size="small">
+                                    {getPriceTypeLabel(cfg)}
+                                  </Badge>
+                                  <Badge tone="attention" size="small">
+                                    {productRuleValue}
+                                  </Badge>
+                                  <Badge tone="success" size="small">
+                                    {productPreviewText}
+                                  </Badge>
+                                  <Badge tone="info" size="small">
+                                    {productMethodLabel}
+                                  </Badge>
+                                  {(applicationMethod === 'auto' ||
+                                    applicationMethod === 'native_variant_price') && (
+                                    <Badge
+                                      tone={
+                                        pHasNativeVariantMapping
+                                          ? 'success'
+                                          : pMappingRequired
+                                            ? 'critical'
+                                            : 'info'
+                                      }
+                                      size="small"
+                                    >
+                                      {pHasNativeVariantMapping
+                                        ? 'Mapping ready'
+                                        : pMappingRequired
+                                          ? 'Mapping required'
+                                          : 'Mapping optional'}
+                                    </Badge>
+                                  )}
+                                </div>
+                              </BlockStack>
+                            </div>
                             <FormLayout>
                               <Select
                                 label="Price mode"
@@ -6660,14 +6734,40 @@ function TestWizard({
                               />
                             )}
                             <div className={styles.pricePerVariantSection}>
-                              <Text as="p" variant="bodySm" fontWeight="medium">
-                                Per-variant overrides (optional)
-                              </Text>
-                              <Text as="p" variant="bodySm" tone="subdued">
-                                Set a different price for specific product variants (SKUs). Use the
-                                variant ID from Shopify Admin (product → variant ID in URL or API),
-                                e.g. 40123456789.
-                              </Text>
+                              <div className={styles.pricePerVariantSectionHeader}>
+                                <BlockStack gap="100">
+                                  <Text as="p" variant="bodySm" fontWeight="medium">
+                                    Per-SKU overrides
+                                  </Text>
+                                  <Text as="p" variant="bodySm" tone="subdued">
+                                    Add overrides only for product variants that need a different
+                                    price than this product-level default.
+                                  </Text>
+                                </BlockStack>
+                                <Button
+                                  size="slim"
+                                  variant="secondary"
+                                  onClick={() => {
+                                    setFormData(prev => {
+                                      const next = [...(prev.variants || [])];
+                                      const c = next[index]?.config || {};
+                                      const byProduct = { ...(c.byProduct || {}) };
+                                      const productOver = {
+                                        ...(byProduct[productId] || {}),
+                                        byVariant: { ...(byProduct[productId]?.byVariant || {}) },
+                                      };
+                                      productOver.byVariant['__new_' + Date.now()] = {
+                                        priceMode: 'fixed',
+                                      };
+                                      byProduct[productId] = productOver;
+                                      next[index] = { ...next[index], config: { ...c, byProduct } };
+                                      return { ...prev, variants: next };
+                                    });
+                                  }}
+                                >
+                                  Add SKU override
+                                </Button>
+                              </div>
                               {(over?.byVariant && typeof over.byVariant === 'object'
                                 ? Object.entries(over.byVariant)
                                 : []
@@ -6683,6 +6783,11 @@ function TestWizard({
                                 const vFixed = vMode === 'fixed';
                                 const vAmount = vMode === 'amount';
                                 const vPercent = vMode === 'percent';
+                                const skuRuleValue = getPriceValueCell({
+                                  ...variant,
+                                  config: vCfg,
+                                });
+                                const skuPreviewText = getPricePreview(vCfg, variant.name);
                                 const updateByVariant = (key, value) => {
                                   setFormData(prev => {
                                     const next = [...(prev.variants || [])];
@@ -6742,135 +6847,173 @@ function TestWizard({
                                 };
                                 return (
                                   <div key={vKey} className={styles.pricePerVariantRow}>
-                                    <TextField
-                                      label="Variant ID"
-                                      value={vKey.startsWith('__new_') ? '' : vKey}
-                                      onChange={val => {
-                                        if (val !== undefined && val !== null && String(val).trim())
-                                          setVariantId(vKey, val);
-                                      }}
-                                      placeholder="e.g. 40123456789"
-                                      autoComplete="off"
-                                    />
-                                    <Select
-                                      label="Price mode"
-                                      options={PRICE_MODES}
-                                      value={vMode}
-                                      onChange={value => updateByVariant('priceMode', value)}
-                                    />
-                                    {(vAmount || vPercent) && (
-                                      <Select
-                                        label="Base"
-                                        options={PRICE_BASE_OPTIONS}
-                                        value={vCfg.priceBase || 'price'}
-                                        onChange={value => updateByVariant('priceBase', value)}
-                                      />
-                                    )}
-                                    {vFixed && (
+                                    <div className={styles.pricePerVariantRowHeader}>
+                                      <BlockStack gap="100">
+                                        <Text as="p" variant="bodySm" fontWeight="semibold">
+                                          {vKey.startsWith('__new_')
+                                            ? 'New SKU override'
+                                            : `SKU ${vKey}`}
+                                        </Text>
+                                        <div className={styles.priceNestedStatusRow}>
+                                          <Badge tone="info" size="small">
+                                            {getPriceTypeLabel(vCfg)}
+                                          </Badge>
+                                          <Badge tone="attention" size="small">
+                                            {skuRuleValue}
+                                          </Badge>
+                                          <Badge tone="success" size="small">
+                                            {skuPreviewText}
+                                          </Badge>
+                                          {(applicationMethod === 'auto' ||
+                                            applicationMethod === 'native_variant_price') && (
+                                            <Badge
+                                              tone={
+                                                vHasNativeVariantMapping
+                                                  ? 'success'
+                                                  : vMappingRequired
+                                                    ? 'critical'
+                                                    : 'info'
+                                              }
+                                              size="small"
+                                            >
+                                              {vHasNativeVariantMapping
+                                                ? 'Mapping ready'
+                                                : vMappingRequired
+                                                  ? 'Mapping required'
+                                                  : 'Mapping optional'}
+                                            </Badge>
+                                          )}
+                                        </div>
+                                      </BlockStack>
+                                      <Button
+                                        size="slim"
+                                        variant="plain"
+                                        tone="critical"
+                                        onClick={removeVariantOverride}
+                                      >
+                                        Remove
+                                      </Button>
+                                    </div>
+                                    <div className={styles.pricePerVariantRowFields}>
                                       <TextField
-                                        label="Fixed price"
-                                        type="number"
-                                        value={
-                                          vCfg.price !== null &&
-                                          vCfg.price !== undefined &&
-                                          vCfg.price !== ''
-                                            ? String(vCfg.price)
-                                            : ''
-                                        }
-                                        onChange={v =>
-                                          updateByVariant('price', v === '' ? null : parseFloat(v))
-                                        }
-                                        placeholder="e.g. 24.99"
-                                        prefix="$"
-                                        min={0}
-                                        step={0.01}
-                                      />
-                                    )}
-                                    {vAmount && (
-                                      <TextField
-                                        label="Amount ($)"
-                                        type="number"
-                                        value={
-                                          vCfg.priceDelta !== null &&
-                                          vCfg.priceDelta !== undefined &&
-                                          vCfg.priceDelta !== ''
-                                            ? String(vCfg.priceDelta)
-                                            : ''
-                                        }
-                                        onChange={v =>
-                                          updateByVariant(
-                                            'priceDelta',
-                                            v === '' ? null : parseFloat(v)
+                                        label="Variant ID"
+                                        value={vKey.startsWith('__new_') ? '' : vKey}
+                                        onChange={val => {
+                                          if (
+                                            val !== undefined &&
+                                            val !== null &&
+                                            String(val).trim()
                                           )
-                                        }
-                                        placeholder="-5 or +2"
-                                      />
-                                    )}
-                                    {vPercent && (
-                                      <TextField
-                                        label="Percent"
-                                        type="number"
-                                        value={
-                                          vCfg.pricePercent !== null &&
-                                          vCfg.pricePercent !== undefined &&
-                                          vCfg.pricePercent !== ''
-                                            ? String(vCfg.pricePercent)
-                                            : ''
-                                        }
-                                        onChange={v =>
-                                          updateByVariant(
-                                            'pricePercent',
-                                            v === '' ? null : parseFloat(v)
-                                          )
-                                        }
-                                        placeholder="10 or -10"
-                                        suffix="%"
-                                        min={-100}
-                                        max={100}
-                                      />
-                                    )}
-                                    {(applicationMethod === 'auto' ||
-                                      applicationMethod === 'native_variant_price') && (
-                                      <TextField
-                                        label="Mapped Shopify variant ID"
-                                        value={
-                                          vCfg.nativeVariantId !== null &&
-                                          vCfg.nativeVariantId !== undefined &&
-                                          vCfg.nativeVariantId !== ''
-                                            ? String(vCfg.nativeVariantId)
-                                            : ''
-                                        }
-                                        onChange={v =>
-                                          updateByVariant(
-                                            'nativeVariantId',
-                                            normalizeNativeVariantIdInput(v) || null
-                                          )
-                                        }
+                                            setVariantId(vKey, val);
+                                        }}
                                         placeholder="e.g. 40123456789"
                                         autoComplete="off"
                                       />
-                                    )}
+                                      <Select
+                                        label="Price mode"
+                                        options={PRICE_MODES}
+                                        value={vMode}
+                                        onChange={value => updateByVariant('priceMode', value)}
+                                      />
+                                      {(vAmount || vPercent) && (
+                                        <Select
+                                          label="Base"
+                                          options={PRICE_BASE_OPTIONS}
+                                          value={vCfg.priceBase || 'price'}
+                                          onChange={value => updateByVariant('priceBase', value)}
+                                        />
+                                      )}
+                                      {vFixed && (
+                                        <TextField
+                                          label="Fixed price"
+                                          type="number"
+                                          value={
+                                            vCfg.price !== null &&
+                                            vCfg.price !== undefined &&
+                                            vCfg.price !== ''
+                                              ? String(vCfg.price)
+                                              : ''
+                                          }
+                                          onChange={v =>
+                                            updateByVariant(
+                                              'price',
+                                              v === '' ? null : parseFloat(v)
+                                            )
+                                          }
+                                          placeholder="e.g. 24.99"
+                                          prefix="$"
+                                          min={0}
+                                          step={0.01}
+                                        />
+                                      )}
+                                      {vAmount && (
+                                        <TextField
+                                          label="Amount ($)"
+                                          type="number"
+                                          value={
+                                            vCfg.priceDelta !== null &&
+                                            vCfg.priceDelta !== undefined &&
+                                            vCfg.priceDelta !== ''
+                                              ? String(vCfg.priceDelta)
+                                              : ''
+                                          }
+                                          onChange={v =>
+                                            updateByVariant(
+                                              'priceDelta',
+                                              v === '' ? null : parseFloat(v)
+                                            )
+                                          }
+                                          placeholder="-5 or +2"
+                                        />
+                                      )}
+                                      {vPercent && (
+                                        <TextField
+                                          label="Percent"
+                                          type="number"
+                                          value={
+                                            vCfg.pricePercent !== null &&
+                                            vCfg.pricePercent !== undefined &&
+                                            vCfg.pricePercent !== ''
+                                              ? String(vCfg.pricePercent)
+                                              : ''
+                                          }
+                                          onChange={v =>
+                                            updateByVariant(
+                                              'pricePercent',
+                                              v === '' ? null : parseFloat(v)
+                                            )
+                                          }
+                                          placeholder="10 or -10"
+                                          suffix="%"
+                                          min={-100}
+                                          max={100}
+                                        />
+                                      )}
+                                      {(applicationMethod === 'auto' ||
+                                        applicationMethod === 'native_variant_price') && (
+                                        <TextField
+                                          label="Mapped Shopify variant ID"
+                                          value={
+                                            vCfg.nativeVariantId !== null &&
+                                            vCfg.nativeVariantId !== undefined &&
+                                            vCfg.nativeVariantId !== ''
+                                              ? String(vCfg.nativeVariantId)
+                                              : ''
+                                          }
+                                          onChange={v =>
+                                            updateByVariant(
+                                              'nativeVariantId',
+                                              normalizeNativeVariantIdInput(v) || null
+                                            )
+                                          }
+                                          placeholder="e.g. 40123456789"
+                                          autoComplete="off"
+                                        />
+                                      )}
+                                    </div>
                                     {(applicationMethod === 'auto' ||
                                       applicationMethod === 'native_variant_price') && (
                                       <div className={styles.pricePerVariantAssistantWrap}>
-                                        <div className={styles.priceNestedStatusRow}>
-                                          <Badge
-                                            tone={
-                                              vHasNativeVariantMapping
-                                                ? 'success'
-                                                : vMappingRequired
-                                                  ? 'critical'
-                                                  : 'info'
-                                            }
-                                            size="small"
-                                          >
-                                            {vHasNativeVariantMapping
-                                              ? 'Mapped override variant'
-                                              : vMappingRequired
-                                                ? 'Mapping required for this SKU'
-                                                : 'Optional mapping'}
-                                          </Badge>
-                                        </div>
                                         <NativeVariantMappingAssistant
                                           shopDomain={isShopifyFromRoute ? routeDomain : null}
                                           disabled={
@@ -6891,40 +7034,9 @@ function TestWizard({
                                         />
                                       </div>
                                     )}
-                                    <Button
-                                      size="slim"
-                                      variant="plain"
-                                      tone="critical"
-                                      onClick={removeVariantOverride}
-                                    >
-                                      Remove
-                                    </Button>
                                   </div>
                                 );
                               })}
-                              <Button
-                                size="slim"
-                                variant="secondary"
-                                onClick={() => {
-                                  setFormData(prev => {
-                                    const next = [...(prev.variants || [])];
-                                    const c = next[index]?.config || {};
-                                    const byProduct = { ...(c.byProduct || {}) };
-                                    const productOver = {
-                                      ...(byProduct[productId] || {}),
-                                      byVariant: { ...(byProduct[productId]?.byVariant || {}) },
-                                    };
-                                    productOver.byVariant['__new_' + Date.now()] = {
-                                      priceMode: 'fixed',
-                                    };
-                                    byProduct[productId] = productOver;
-                                    next[index] = { ...next[index], config: { ...c, byProduct } };
-                                    return { ...prev, variants: next };
-                                  });
-                                }}
-                              >
-                                Add variant override
-                              </Button>
                             </div>
                           </BlockStack>
                         </Card>
@@ -6937,7 +7049,15 @@ function TestWizard({
               <>
                 <div className={styles.priceSectionBlock}>
                   <div className={styles.priceSectionBlockTitle}>
-                    <span className={styles.priceSectionBlockTitleText}>Price type</span>
+                    <div className={styles.priceSectionBlockTitleCopy}>
+                      <span className={styles.priceSectionBlockTitleText}>
+                        Choose display price rule
+                      </span>
+                      <span className={styles.priceSectionBlockTitleHint}>
+                        Decide whether this variant keeps catalog price, uses a fixed price, or
+                        changes by amount or percent.
+                      </span>
+                    </div>
                     <TooltipWrapper
                       content="Price mode: Control (catalog), Fixed, $ off/on, or % off. Price base (for $ or %): selling price or compare-at. Compare-at may be missing in some themes."
                       accessibilityLabel="Price type info"
@@ -6991,7 +7111,16 @@ function TestWizard({
                 </div>
                 <div className={styles.priceSectionBlock}>
                   <div className={styles.priceSectionBlockTitle}>
-                    <span className={styles.priceSectionBlockTitleText}>Price value</span>
+                    <div className={styles.priceSectionBlockTitleCopy}>
+                      <span className={styles.priceSectionBlockTitleText}>Set the price value</span>
+                      <span className={styles.priceSectionBlockTitleHint}>
+                        {isFixed
+                          ? 'Enter the exact selling price shoppers should see.'
+                          : isAmount
+                            ? 'Use a negative amount for a lower price or a positive amount for a premium.'
+                            : 'Use a positive percent for a lower price or a negative percent for a premium.'}
+                      </span>
+                    </div>
                     <TooltipWrapper
                       content="Fixed: exact price on PDP. Amount: catalog price + value (negative = off). Percent: positive = discount, negative = increase (e.g. 10 = 10% off, −10 = 10% on)."
                       accessibilityLabel="Price value info"
@@ -7097,9 +7226,15 @@ function TestWizard({
                 </div>
                 <div className={styles.priceSectionBlock}>
                   <div className={styles.priceSectionBlockTitle}>
-                    <span className={styles.priceSectionBlockTitleText}>
-                      Checkout pricing method
-                    </span>
+                    <div className={styles.priceSectionBlockTitleCopy}>
+                      <span className={styles.priceSectionBlockTitleText}>
+                        Choose checkout behavior
+                      </span>
+                      <span className={styles.priceSectionBlockTitleHint}>
+                        Pick how RipX should carry this variant&apos;s price beyond the product
+                        page.
+                      </span>
+                    </div>
                     <TooltipWrapper
                       content="Choose how RipX should make this price show up beyond the product page. Auto chooses the most accurate method available. Native Variant Price and Direct Price Override avoid discount labels but need extra setup."
                       accessibilityLabel="Checkout pricing method info"
@@ -7749,394 +7884,378 @@ function TestWizard({
           <div className={styles.priceConfigWrap}>
             <Card className={styles.priceSummaryCard}>
               <BlockStack gap="0">
-                <div className={styles.priceConfigLayout}>
-                  <div className={styles.priceSummaryColumn}>
-                    <div className={styles.priceSummaryHeader}>
-                      <div className={styles.priceSummaryHeaderIcon}>
-                        <Icon source={CreditCardIcon} />
+                <div className={styles.priceSummaryHeader}>
+                  <div className={styles.priceSummaryHeaderIcon}>
+                    <Icon source={CreditCardIcon} />
+                  </div>
+                  <BlockStack gap="100">
+                    <Text variant="headingMd" as="h3" fontWeight="semibold">
+                      Variant pricing
+                    </Text>
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      Review each variant, then expand a card to configure its display price and
+                      checkout behavior.
+                    </Text>
+                  </BlockStack>
+                  <TooltipWrapper content="Type: Control (catalog) or Fixed / $ off/on / % off. Preview: what visitors see on PDP. Checkout: how RipX carries the price beyond the product page.">
+                    <span style={{ display: 'inline-flex', cursor: 'help', marginLeft: 'auto' }}>
+                      <Icon source={InfoIcon} />
+                    </span>
+                  </TooltipWrapper>
+                </div>
+                {variants.length > 0 && (
+                  <div className={styles.priceQuickFillStrip}>
+                    <Text as="span" variant="bodySm" fontWeight="medium">
+                      Quick fill all non-control variants:
+                    </Text>
+                    <InlineStack gap="200" blockAlign="center" wrap>
+                      <Select
+                        label="Rule"
+                        labelHidden
+                        options={[
+                          { label: '% off control', value: 'percent_off' },
+                          { label: '% on control', value: 'percent_on' },
+                          { label: '$ off control', value: 'amount_off' },
+                          { label: '$ on control', value: 'amount_on' },
+                        ]}
+                        value={quickFillRule}
+                        onChange={setQuickFillRule}
+                      />
+                      <div style={{ minWidth: '80px' }}>
+                        <TextField
+                          label="Value"
+                          labelHidden
+                          type="number"
+                          value={quickFillValue}
+                          onChange={setQuickFillValue}
+                          placeholder={quickFillRule.startsWith('percent') ? 'e.g. 10' : 'e.g. 5'}
+                          autoComplete="off"
+                        />
                       </div>
-                      <BlockStack gap="100">
-                        <Text variant="headingMd" as="h3" fontWeight="semibold">
-                          Price summary
-                        </Text>
-                        <Text as="p" variant="bodySm" tone="subdued">
-                          Overview of all variants. Expand a row to configure its price.
-                        </Text>
-                      </BlockStack>
-                      <TooltipWrapper content="Type: Control (catalog) or Fixed / $ off/on / % off. Base: selling or compare-at price for $/% modes. Value: entered amount. Preview: what visitors see on PDP.">
-                        <span
-                          style={{ display: 'inline-flex', cursor: 'help', marginLeft: 'auto' }}
-                        >
-                          <Icon source={InfoIcon} />
-                        </span>
-                      </TooltipWrapper>
+                      <Select
+                        label="Round to nearest"
+                        labelHidden
+                        options={[
+                          { label: 'No rounding', value: '' },
+                          { label: '$0.01', value: '0.01' },
+                          { label: '$0.25', value: '0.25' },
+                          { label: '$0.50', value: '0.50' },
+                          { label: '$1', value: '1' },
+                        ]}
+                        value={quickFillRoundTo}
+                        onChange={setQuickFillRoundTo}
+                      />
+                      <Button
+                        size="slim"
+                        onClick={() => {
+                          const num = parseFloat(quickFillValue, 10);
+                          if (!Number.isFinite(num)) return;
+                          const isPercent = quickFillRule.startsWith('percent');
+                          const isOff = quickFillRule.endsWith('_off');
+                          const roundToVal = quickFillRoundTo
+                            ? parseFloat(quickFillRoundTo, 10)
+                            : null;
+                          setFormData(prev => {
+                            const nextVariants = (prev.variants || []).map(v => {
+                              if (getPriceTypeLabel(v.config) === 'Control') return v;
+                              const cfg = { ...(v.config || {}), priceBase: 'price' };
+                              if (isPercent) {
+                                cfg.priceMode = 'percent';
+                                cfg.pricePercent = isOff ? num : -num;
+                                cfg.price = null;
+                                cfg.priceDelta = null;
+                              } else {
+                                cfg.priceMode = 'amount';
+                                cfg.priceDelta = isOff ? -num : num;
+                                cfg.price = null;
+                                cfg.pricePercent = null;
+                              }
+                              if (Number.isFinite(roundToVal) && roundToVal > 0) {
+                                cfg.roundTo = roundToVal;
+                              }
+                              return { ...v, config: cfg };
+                            });
+                            return { ...prev, variants: nextVariants };
+                          });
+                        }}
+                      >
+                        Apply
+                      </Button>
+                    </InlineStack>
+                  </div>
+                )}
+                {variants.length > 0 && (
+                  <div className={styles.priceAtAGlanceGrid}>
+                    <div className={styles.priceAtAGlanceCard}>
+                      <span className={styles.priceAtAGlanceLabel}>Variant mix</span>
+                      <span className={styles.priceAtAGlanceValue}>
+                        {priceDecreaseCount} lower · {priceIncreaseCount} premium
+                      </span>
+                      <span className={styles.priceAtAGlanceHint}>
+                        Based on the current price rules
+                      </span>
                     </div>
-                    {variants.length > 0 && (
-                      <div className={styles.priceQuickFillStrip}>
-                        <Text as="span" variant="bodySm" fontWeight="medium">
-                          Quick fill (non-control variants):
-                        </Text>
-                        <InlineStack gap="200" blockAlign="center" wrap>
-                          <Select
-                            label="Rule"
-                            labelHidden
-                            options={[
-                              { label: '% off control', value: 'percent_off' },
-                              { label: '% on control', value: 'percent_on' },
-                              { label: '$ off control', value: 'amount_off' },
-                              { label: '$ on control', value: 'amount_on' },
-                            ]}
-                            value={quickFillRule}
-                            onChange={setQuickFillRule}
+                    <div className={styles.priceAtAGlanceCard}>
+                      <span className={styles.priceAtAGlanceLabel}>Methods in play</span>
+                      <span className={styles.priceAtAGlanceValue}>{methodUsageLabel}</span>
+                      <span className={styles.priceAtAGlanceHint}>
+                        Checkout execution mix across variants
+                      </span>
+                    </div>
+                    <div className={styles.priceAtAGlanceCard}>
+                      <span className={styles.priceAtAGlanceLabel}>Mappings ready</span>
+                      <span className={styles.priceAtAGlanceValue}>
+                        {mappingReadyCount}
+                        {mappingRequiredCount > 0 ? ` / ${mappingRequiredCount} required` : ''}
+                      </span>
+                      <span className={styles.priceAtAGlanceHint}>
+                        Needed for native or premium price paths
+                      </span>
+                    </div>
+                    <div className={styles.priceAtAGlanceCard}>
+                      <span className={styles.priceAtAGlanceLabel}>Product scope</span>
+                      <span className={styles.priceAtAGlanceValue}>{scopeLabel}</span>
+                      <span className={styles.priceAtAGlanceHint}>
+                        Controls where checkout alignment should apply
+                      </span>
+                    </div>
+                  </div>
+                )}
+                {variants.length > 0 && (
+                  <div className={styles.priceExamplePreview}>
+                    <InlineStack gap="200" blockAlign="center" wrap>
+                      <div style={{ minWidth: '140px' }}>
+                        <TextField
+                          label="Example catalog price"
+                          helpText="See what each variant would show for a given catalog price"
+                          type="number"
+                          value={exampleCatalogPrice}
+                          onChange={setExampleCatalogPrice}
+                          placeholder="e.g. 50"
+                          prefix="$"
+                          autoComplete="off"
+                          min={0}
+                          step={0.01}
+                        />
+                      </div>
+                      {simulationNeedsCompareAt && (
+                        <div style={{ minWidth: '180px' }}>
+                          <TextField
+                            label="Example compare-at price"
+                            helpText="Required when any variant uses Compare-at base"
+                            type="number"
+                            value={exampleCompareAtPrice}
+                            onChange={setExampleCompareAtPrice}
+                            placeholder="e.g. 80"
+                            prefix="$"
+                            autoComplete="off"
+                            min={0}
+                            step={0.01}
                           />
-                          <div style={{ minWidth: '80px' }}>
-                            <TextField
-                              label="Value"
-                              labelHidden
-                              type="number"
-                              value={quickFillValue}
-                              onChange={setQuickFillValue}
-                              placeholder={
-                                quickFillRule.startsWith('percent') ? 'e.g. 10' : 'e.g. 5'
-                              }
-                              autoComplete="off"
-                            />
-                          </div>
-                          <Select
-                            label="Round to nearest"
-                            labelHidden
-                            options={[
-                              { label: 'No rounding', value: '' },
-                              { label: '$0.01', value: '0.01' },
-                              { label: '$0.25', value: '0.25' },
-                              { label: '$0.50', value: '0.50' },
-                              { label: '$1', value: '1' },
-                            ]}
-                            value={quickFillRoundTo}
-                            onChange={setQuickFillRoundTo}
-                          />
-                          <Button
-                            size="slim"
-                            onClick={() => {
-                              const num = parseFloat(quickFillValue, 10);
-                              if (!Number.isFinite(num)) return;
-                              const isPercent = quickFillRule.startsWith('percent');
-                              const isOff = quickFillRule.endsWith('_off');
-                              const roundToVal = quickFillRoundTo
-                                ? parseFloat(quickFillRoundTo, 10)
-                                : null;
-                              setFormData(prev => {
-                                const nextVariants = (prev.variants || []).map(v => {
-                                  if (getPriceTypeLabel(v.config) === 'Control') return v;
-                                  const cfg = { ...(v.config || {}), priceBase: 'price' };
-                                  if (isPercent) {
-                                    cfg.priceMode = 'percent';
-                                    cfg.pricePercent = isOff ? num : -num;
-                                    cfg.price = null;
-                                    cfg.priceDelta = null;
-                                  } else {
-                                    cfg.priceMode = 'amount';
-                                    cfg.priceDelta = isOff ? -num : num;
-                                    cfg.price = null;
-                                    cfg.pricePercent = null;
-                                  }
-                                  if (Number.isFinite(roundToVal) && roundToVal > 0)
-                                    cfg.roundTo = roundToVal;
-                                  return { ...v, config: cfg };
-                                });
-                                return { ...prev, variants: nextVariants };
-                              });
-                            }}
-                          >
-                            Apply
-                          </Button>
-                        </InlineStack>
-                      </div>
-                    )}
-                    {variants.length > 0 && (
-                      <div className={styles.priceAtAGlanceGrid}>
-                        <div className={styles.priceAtAGlanceCard}>
-                          <span className={styles.priceAtAGlanceLabel}>Variant mix</span>
-                          <span className={styles.priceAtAGlanceValue}>
-                            {priceDecreaseCount} lower · {priceIncreaseCount} premium
-                          </span>
-                          <span className={styles.priceAtAGlanceHint}>
-                            Based on the current price rules
-                          </span>
                         </div>
-                        <div className={styles.priceAtAGlanceCard}>
-                          <span className={styles.priceAtAGlanceLabel}>Methods in play</span>
-                          <span className={styles.priceAtAGlanceValue}>{methodUsageLabel}</span>
-                          <span className={styles.priceAtAGlanceHint}>
-                            Checkout execution mix across variants
-                          </span>
-                        </div>
-                        <div className={styles.priceAtAGlanceCard}>
-                          <span className={styles.priceAtAGlanceLabel}>Mappings ready</span>
-                          <span className={styles.priceAtAGlanceValue}>
-                            {mappingReadyCount}
-                            {mappingRequiredCount > 0 ? ` / ${mappingRequiredCount} required` : ''}
-                          </span>
-                          <span className={styles.priceAtAGlanceHint}>
-                            Needed for native or premium price paths
-                          </span>
-                        </div>
-                        <div className={styles.priceAtAGlanceCard}>
-                          <span className={styles.priceAtAGlanceLabel}>Product scope</span>
-                          <span className={styles.priceAtAGlanceValue}>{scopeLabel}</span>
-                          <span className={styles.priceAtAGlanceHint}>
-                            Controls where checkout alignment should apply
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                    {variants.length > 0 && (
-                      <div className={styles.priceExamplePreview}>
-                        <InlineStack gap="200" blockAlign="center" wrap>
-                          <div style={{ minWidth: '140px' }}>
-                            <TextField
-                              label="Example catalog price"
-                              helpText="See what each variant would show for a given catalog price"
-                              type="number"
-                              value={exampleCatalogPrice}
-                              onChange={setExampleCatalogPrice}
-                              placeholder="e.g. 50"
-                              prefix="$"
-                              autoComplete="off"
-                              min={0}
-                              step={0.01}
-                            />
-                          </div>
-                          {simulationNeedsCompareAt && (
-                            <div style={{ minWidth: '180px' }}>
-                              <TextField
-                                label="Example compare-at price"
-                                helpText="Required when any variant uses Compare-at base"
-                                type="number"
-                                value={exampleCompareAtPrice}
-                                onChange={setExampleCompareAtPrice}
-                                placeholder="e.g. 80"
-                                prefix="$"
-                                autoComplete="off"
-                                min={0}
-                                step={0.01}
-                              />
-                            </div>
-                          )}
-                          {parsedExampleCatalog !== null &&
-                            (() => {
-                              const catalog = parsedExampleCatalog;
-                              if (simulationNeedsCompareAt && parsedExampleCompareAt === null) {
-                                return (
-                                  <span className={styles.priceExamplePreviewResult}>
-                                    Add an example compare-at price to simulate variants that use
-                                    Compare-at base.
-                                  </span>
-                                );
-                              }
-                              const parts = variants.map(v => {
-                                const effective = computeSimulationPrice(v.config, catalog, {
-                                  compareAtPrice: parsedExampleCompareAt,
-                                });
-                                const label = v.name;
-                                if (effective === null || effective === undefined) {
-                                  return `${label}: —`;
-                                }
-                                return `${label}: $${effective.toFixed(2)}`;
-                              });
-                              return (
-                                <span className={styles.priceExamplePreviewResult}>
-                                  If catalog is ${catalog.toFixed(2)}: {parts.join(' · ')}
-                                </span>
-                              );
-                            })()}
-                        </InlineStack>
-                      </div>
-                    )}
-                    {priceSimulation.rows.length > 0 && (
-                      <div className={styles.priceSimulationWrap}>
-                        <div className={styles.priceSimulationHeader}>
-                          <InlineStack align="space-between" blockAlign="center" wrap>
-                            <BlockStack gap="100">
-                              <Text as="p" variant="bodySm" fontWeight="semibold">
-                                Effective price simulation
-                              </Text>
-                              <Text as="p" variant="bodySm" tone="subdued">
-                                Simulates what each variation would display for catalog $
-                                {parsedExampleCatalog.toFixed(2)}
-                                {priceSimulation.hasCompareAtBase &&
-                                  parsedExampleCompareAt !== null &&
-                                  ` (compare-at $${parsedExampleCompareAt.toFixed(2)})`}
-                                {formData.pricePerProduct
-                                  ? ', including product/SKU overrides'
-                                  : '.'}
-                              </Text>
-                            </BlockStack>
-                            <Button
-                              size="slim"
-                              onClick={() =>
-                                downloadPriceSimulationCsv(priceSimulation.rows, variants)
-                              }
-                            >
-                              Export simulation CSV
-                            </Button>
-                          </InlineStack>
-                        </div>
-                        <div className={styles.priceSummaryTableWrap}>
-                          <table>
-                            <thead>
-                              <tr>
-                                <th>Scenario</th>
-                                {variants.map((v, idx) => (
-                                  <th key={`sim-head-${idx}`}>{v.name || `Variant ${idx + 1}`}</th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {priceSimulation.rows.map(row => (
-                                <tr key={row.id}>
-                                  <td>{row.label}</td>
-                                  {row.prices.map((p, idx) => (
-                                    <td key={`${row.id}-${idx}`}>{p}</td>
-                                  ))}
-                                </tr>
+                      )}
+                      {parsedExampleCatalog !== null &&
+                        (() => {
+                          const catalog = parsedExampleCatalog;
+                          if (simulationNeedsCompareAt && parsedExampleCompareAt === null) {
+                            return (
+                              <span className={styles.priceExamplePreviewResult}>
+                                Add an example compare-at price to simulate variants that use
+                                Compare-at base.
+                              </span>
+                            );
+                          }
+                          const parts = variants.map(v => {
+                            const effective = computeSimulationPrice(v.config, catalog, {
+                              compareAtPrice: parsedExampleCompareAt,
+                            });
+                            const label = v.name;
+                            if (effective === null || effective === undefined) return `${label}: —`;
+                            return `${label}: $${effective.toFixed(2)}`;
+                          });
+                          return (
+                            <span className={styles.priceExamplePreviewResult}>
+                              If catalog is ${catalog.toFixed(2)}: {parts.join(' · ')}
+                            </span>
+                          );
+                        })()}
+                    </InlineStack>
+                  </div>
+                )}
+                {priceSimulation.rows.length > 0 && (
+                  <div className={styles.priceSimulationWrap}>
+                    <div className={styles.priceSimulationHeader}>
+                      <InlineStack align="space-between" blockAlign="center" wrap>
+                        <BlockStack gap="100">
+                          <Text as="p" variant="bodySm" fontWeight="semibold">
+                            Effective price simulation
+                          </Text>
+                          <Text as="p" variant="bodySm" tone="subdued">
+                            Simulates what each variation would display for catalog $
+                            {parsedExampleCatalog.toFixed(2)}
+                            {priceSimulation.hasCompareAtBase &&
+                              parsedExampleCompareAt !== null &&
+                              ` (compare-at $${parsedExampleCompareAt.toFixed(2)})`}
+                            {formData.pricePerProduct ? ', including product/SKU overrides' : '.'}
+                          </Text>
+                        </BlockStack>
+                        <Button
+                          size="slim"
+                          onClick={() => downloadPriceSimulationCsv(priceSimulation.rows, variants)}
+                        >
+                          Export simulation CSV
+                        </Button>
+                      </InlineStack>
+                    </div>
+                    <div className={styles.priceSummaryTableWrap}>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Scenario</th>
+                            {variants.map((v, idx) => (
+                              <th key={`sim-head-${idx}`}>{v.name || `Variant ${idx + 1}`}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {priceSimulation.rows.map(row => (
+                            <tr key={row.id}>
+                              <td>{row.label}</td>
+                              {row.prices.map((p, idx) => (
+                                <td key={`${row.id}-${idx}`}>{p}</td>
                               ))}
-                            </tbody>
-                          </table>
-                        </div>
-                        {(priceSimulation.hasVariantOverrideRows || priceSimulation.truncated) && (
-                          <div className={styles.priceSimulationFootnote}>
-                            {priceSimulation.hasVariantOverrideRows &&
-                              'Includes SKU-specific rows where per-variant overrides are configured. '}
-                            {priceSimulation.hasMissingCompareAt &&
-                              'Rows that use Compare-at base show — until an example compare-at price is provided. '}
-                            {priceSimulation.truncated &&
-                              'Some scenarios are hidden to keep this preview concise.'}
-                          </div>
-                        )}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {(priceSimulation.hasVariantOverrideRows || priceSimulation.truncated) && (
+                      <div className={styles.priceSimulationFootnote}>
+                        {priceSimulation.hasVariantOverrideRows &&
+                          'Includes SKU-specific rows where per-variant overrides are configured. '}
+                        {priceSimulation.hasMissingCompareAt &&
+                          'Rows that use Compare-at base show — until an example compare-at price is provided. '}
+                        {priceSimulation.truncated &&
+                          'Some scenarios are hidden to keep this preview concise.'}
                       </div>
                     )}
                   </div>
-
-                  <div className={styles.priceConfigurationColumn}>
-                    {variants.length > 0 && (
-                      <div className={styles.priceAccordionActions}>
-                        <InlineStack gap="200" blockAlign="center">
-                          <Button
-                            size="slim"
-                            variant="plain"
-                            onClick={() =>
-                              setPriceAccordionExpandedIndices(variants.map((_, idx) => idx))
-                            }
-                          >
-                            Expand all
-                          </Button>
-                          <Button
-                            size="slim"
-                            variant="plain"
-                            onClick={() => setPriceAccordionExpandedIndices([])}
-                          >
-                            Collapse all
-                          </Button>
-                        </InlineStack>
+                )}
+                {variants.length > 0 && (
+                  <div className={styles.priceAccordionActions}>
+                    <InlineStack gap="200" blockAlign="center" wrap>
+                      <Button
+                        size="slim"
+                        variant="plain"
+                        onClick={() =>
+                          setPriceAccordionExpandedIndices(variants.map((_, idx) => idx))
+                        }
+                      >
+                        Expand all
+                      </Button>
+                      <Button
+                        size="slim"
+                        variant="plain"
+                        onClick={() => setPriceAccordionExpandedIndices([])}
+                      >
+                        Collapse all
+                      </Button>
+                    </InlineStack>
+                  </div>
+                )}
+                <BlockStack gap="0">
+                  {variants.length === 0 ? (
+                    <div className={styles.priceEmptyState}>
+                      <div className={styles.priceEmptyStateIcon}>
+                        <Icon source={ProductIcon} />
                       </div>
-                    )}
-                    <BlockStack gap="0">
-                      {variants.length === 0 ? (
-                        <div className={styles.priceEmptyState}>
-                          <div className={styles.priceEmptyStateIcon}>
-                            <Icon source={ProductIcon} />
-                          </div>
-                          <Text as="p" variant="bodyMd" tone="subdued">
-                            Add variants in the <strong>Traffic</strong> step to configure prices.
-                          </Text>
-                        </div>
-                      ) : (
-                        <div className={styles.priceSummaryList}>
-                          <div className={styles.priceSummaryRowHead} aria-hidden="true">
-                            <span className={styles.priceSummaryColVariant}>Variant</span>
-                            <span className={styles.priceSummaryColAllocation}>Allocation</span>
-                            <span className={styles.priceSummaryColType}>Type</span>
-                            <span className={styles.priceSummaryColBase}>Base</span>
-                            <span className={styles.priceSummaryColValue}>Value</span>
-                            <span className={styles.priceSummaryColPreview}>Preview</span>
-                            <span className={styles.priceSummaryColChevron} />
-                          </div>
-                          {variants.map((v, i) => {
-                            const isControl = getPriceTypeLabel(v.config) === 'Control';
-                            const previewText =
-                              formData.pricePerProduct &&
-                              v.config?.byProduct &&
-                              Object.keys(v.config.byProduct || {}).length > 0
-                                ? 'Per product'
-                                : getPricePreview(v.config, v.name);
-                            const base =
-                              (v.config?.priceBase || 'price') === 'compare_at'
-                                ? 'Compare-at'
-                                : 'Selling';
-                            const isExpanded = priceAccordionExpandedIndices.includes(i);
-                            return (
-                              <div key={i} className={styles.priceSummaryAccordionItem}>
-                                <button
-                                  type="button"
-                                  className={`${styles.priceSummaryRow} ${styles.priceSummaryRowClickable} ${isExpanded ? styles.priceSummaryRowExpanded : ''}`}
-                                  onClick={() =>
-                                    setPriceAccordionExpandedIndices(prev =>
-                                      prev.includes(i)
-                                        ? prev.filter(idx => idx !== i)
-                                        : [...prev, i]
-                                    )
-                                  }
-                                  aria-expanded={isExpanded}
-                                  aria-controls={`price-accordion-body-${i}`}
-                                  id={`price-accordion-head-${i}`}
-                                >
-                                  <span className={styles.priceSummaryColVariant}>
-                                    <span className={styles.priceSummaryRowVariant}>
-                                      {v.name}
-                                      <Badge tone={isControl ? 'info' : 'success'} size="small">
-                                        {getPriceTypeLabel(v.config)}
-                                      </Badge>
-                                    </span>
-                                  </span>
-                                  <span className={styles.priceSummaryColAllocation}>
-                                    {v.allocation ?? 0}%
-                                  </span>
-                                  <span className={styles.priceSummaryColType}>
+                      <Text as="p" variant="bodyMd" tone="subdued">
+                        Add variants in the <strong>Traffic</strong> step to configure prices.
+                      </Text>
+                    </div>
+                  ) : (
+                    <div className={styles.priceSummaryList}>
+                      {variants.map((v, i) => {
+                        const isControl = getPriceTypeLabel(v.config) === 'Control';
+                        const previewText =
+                          formData.pricePerProduct &&
+                          v.config?.byProduct &&
+                          Object.keys(v.config.byProduct || {}).length > 0
+                            ? 'Per product'
+                            : getPricePreview(v.config, v.name);
+                        const isExpanded = priceAccordionExpandedIndices.includes(i);
+                        return (
+                          <div key={i} className={styles.priceSummaryAccordionItem}>
+                            <button
+                              type="button"
+                              className={`${styles.priceSummaryRow} ${styles.priceSummaryRowClickable} ${isExpanded ? styles.priceSummaryRowExpanded : ''}`}
+                              onClick={() =>
+                                setPriceAccordionExpandedIndices(prev =>
+                                  prev.includes(i) ? prev.filter(idx => idx !== i) : [...prev, i]
+                                )
+                              }
+                              aria-expanded={isExpanded}
+                              aria-controls={`price-accordion-body-${i}`}
+                              id={`price-accordion-head-${i}`}
+                            >
+                              <span className={styles.priceSummaryRowMain}>
+                                <span className={styles.priceSummaryRowVariant}>{v.name}</span>
+                                <span className={styles.priceSummaryRowMetaChips}>
+                                  <Badge tone="info" size="small">
+                                    {v.allocation ?? 0}% traffic
+                                  </Badge>
+                                  <Badge tone={isControl ? 'info' : 'success'} size="small">
                                     {getPriceTypeLabel(v.config)}
-                                  </span>
-                                  <span className={styles.priceSummaryColBase}>
-                                    {v.config?.priceMode === 'amount' ||
-                                    v.config?.priceMode === 'percent'
-                                      ? base
-                                      : '—'}
-                                  </span>
-                                  <span className={styles.priceSummaryColValue}>
-                                    {getPriceValueCell(v)}
+                                  </Badge>
+                                  {formData.pricePerProduct &&
+                                    v.config?.byProduct &&
+                                    Object.keys(v.config.byProduct || {}).length > 0 && (
+                                      <Badge tone="attention" size="small">
+                                        Per product
+                                      </Badge>
+                                    )}
+                                </span>
+                              </span>
+                              <span className={styles.priceSummaryRowDetails}>
+                                <span className={styles.priceSummaryInfoBlock}>
+                                  <span className={styles.priceSummaryInfoLabel}>
+                                    Display price
                                   </span>
                                   <span
-                                    className={styles.priceSummaryColPreview}
+                                    className={styles.priceSummaryInfoValue}
                                     title={previewText}
                                   >
                                     {previewText}
                                   </span>
-                                  <span className={styles.priceSummaryAccordionChevron} aria-hidden>
-                                    <Icon source={ChevronDownIcon} />
+                                </span>
+                                <span className={styles.priceSummaryInfoBlock}>
+                                  <span className={styles.priceSummaryInfoLabel}>Checkout</span>
+                                  <span className={styles.priceSummaryInfoValue}>
+                                    {getPriceApplicationMethodShortLabel(v.config)}
                                   </span>
-                                </button>
-                                <Collapsible id={`price-accordion-body-${i}`} open={isExpanded}>
-                                  <div className={styles.priceAccordionBody}>
-                                    {renderPriceVariantEditor(i)}
-                                  </div>
-                                </Collapsible>
+                                </span>
+                                <span className={styles.priceSummaryInfoBlock}>
+                                  <span className={styles.priceSummaryInfoLabel}>Rule</span>
+                                  <span className={styles.priceSummaryInfoValue}>
+                                    {getPriceValueCell(v)}
+                                  </span>
+                                </span>
+                              </span>
+                              <span className={styles.priceSummaryAccordionChevron} aria-hidden>
+                                <Icon source={ChevronDownIcon} />
+                              </span>
+                            </button>
+                            <Collapsible id={`price-accordion-body-${i}`} open={isExpanded}>
+                              <div className={styles.priceAccordionBody}>
+                                {renderPriceVariantEditor(i)}
                               </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </BlockStack>
-                  </div>
-                </div>
+                            </Collapsible>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </BlockStack>
               </BlockStack>
             </Card>
           </div>
