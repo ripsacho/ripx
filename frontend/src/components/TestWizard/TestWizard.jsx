@@ -629,6 +629,9 @@ function TestWizard({
   const [storeResourceSearch, setStoreResourceSearch] = useState('');
   /** When store-resources API fails or returns empty_reason, show this instead of generic message */
   const [storeResourcesError, setStoreResourcesError] = useState(null);
+  const [checkoutDiagnostics, setCheckoutDiagnostics] = useState(null);
+  const [checkoutDiagnosticsLoading, setCheckoutDiagnosticsLoading] = useState(false);
+  const [checkoutDiagnosticsError, setCheckoutDiagnosticsError] = useState(null);
   const wizardUiStateKey = useMemo(
     () => (mode === 'edit' && initialData?.id ? `ripx-test-wizard-ui:${initialData.id}` : null),
     [mode, initialData?.id]
@@ -732,6 +735,44 @@ function TestWizard({
       pendingWizardUiStateRef.current = null;
     }
   }, [wizardUiStateKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!isShopifyFromRoute || isStandalone) {
+      setCheckoutDiagnostics(null);
+      setCheckoutDiagnosticsError(null);
+      setCheckoutDiagnosticsLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const loadCheckoutDiagnostics = async () => {
+      setCheckoutDiagnosticsLoading(true);
+      setCheckoutDiagnosticsError(null);
+      try {
+        const data = await apiGet('/settings/checkout-price-diagnostics');
+        if (!cancelled) {
+          setCheckoutDiagnostics(data || null);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setCheckoutDiagnostics(null);
+          setCheckoutDiagnosticsError(e?.message || 'Could not load checkout diagnostics');
+        }
+      } finally {
+        if (!cancelled) {
+          setCheckoutDiagnosticsLoading(false);
+        }
+      }
+    };
+
+    loadCheckoutDiagnostics();
+    return () => {
+      cancelled = true;
+    };
+  }, [isShopifyFromRoute, isStandalone, routeDomain]);
 
   useEffect(() => {
     if (!wizardUiStateKey || didRestoreWizardUiStateRef.current) return;
@@ -6000,6 +6041,17 @@ function TestWizard({
     { value: 'native_variant_price', label: 'Native Variant Price' },
     { value: 'direct_price_override', label: 'Direct Price Override' },
   ];
+  const cartTransformFunctionAvailable =
+    checkoutDiagnostics?.infrastructure?.cart_transform_function_available === true;
+  const discountFunctionAvailable =
+    checkoutDiagnostics?.infrastructure?.discount_function_available === true;
+  const directPriceOverrideReadiness = cartTransformFunctionAvailable
+    ? 'ready'
+    : checkoutDiagnosticsLoading
+      ? 'checking'
+      : checkoutDiagnosticsError
+        ? 'unknown'
+        : 'needs_deploy';
 
   const normalizePriceApplicationMethod = value => {
     const raw = String(value || '')
@@ -6094,38 +6146,81 @@ function TestWizard({
       const impliesDecrease = priceConfigImpliesDecrease(cfg);
       return {
         label: 'Direct Price Override',
-        shortLabel: 'Direct override',
+        shortLabel: 'Cart transform',
         helpText: impliesDecrease
-          ? 'Direct Price Override is in a hardened beta mode for premium and higher-price paths. Lower-price paths should use discounted checkout or mapped native variants.'
-          : 'Overrides the line price directly in cart and checkout for a cleaner pricing experience without a discount label.',
+          ? 'This is the Shopify Cart Transform path, but RipX currently hardens it for premium and higher-price paths only.'
+          : 'Uses Shopify Cart Transform Function API to override line pricing directly in cart and checkout without a discount label.',
         badges: [
           { label: 'No discount label', tone: 'success' },
+          { label: 'Cart Transform API', tone: 'info' },
           { label: 'Advanced', tone: 'attention' },
           { label: 'Plus only', tone: 'warning' },
         ],
         warning: impliesDecrease
           ? 'Current hardening only enables Direct Price Override for price increases / premium paths. Use Discounted Checkout Price or Native Variant Price for lower prices until signed pricing proofs are added.'
-          : 'This method requires Shopify Plus or a development store, an available cart-transform slot, and dedicated RipX transform activation for that shop.',
+          : directPriceOverrideReadiness === 'needs_deploy'
+            ? 'This store still needs the RipX cart transform deployed and active before Direct Price Override can run.'
+            : 'This method requires Shopify Plus or a development store, an available cart-transform slot, and dedicated RipX transform activation for that shop.',
       };
     }
     return {
       label: 'Auto (recommended)',
       shortLabel: 'Auto',
-      helpText:
-        'RipX chooses the most accurate checkout strategy automatically: discounted checkout for lower-price variants, and native variant pricing for higher-price variants.',
+      helpText: cartTransformFunctionAvailable
+        ? 'RipX chooses the best supported strategy automatically: discounted checkout for lower-price variants, and a premium path for higher-price variants.'
+        : 'RipX chooses the most accurate checkout strategy automatically: discounted checkout for lower-price variants, and native variant pricing for higher-price variants.',
       badges: [
         { label: 'Recommended', tone: 'success' },
         { label: 'Hybrid strategy', tone: 'info' },
       ],
       warning:
-        impliesIncrease && !hasNativeVariantMapping
-          ? 'This variant appears to raise price. Add a mapped Shopify variant ID so Auto can switch to Native Variant Price at checkout.'
-          : null,
+        impliesIncrease && cartTransformFunctionAvailable
+          ? 'This variant appears to raise price. For the cleanest result, prefer Direct Price Override because the cart transform is available on this shop.'
+          : impliesIncrease && !hasNativeVariantMapping
+            ? 'This variant appears to raise price. Add a mapped Shopify variant ID so Auto can switch to Native Variant Price at checkout.'
+            : null,
     };
   };
 
   const getPriceApplicationMethodShortLabel = cfgOrMethod =>
     getPriceApplicationMethodMeta(cfgOrMethod).shortLabel;
+
+  const getResolvedPriceApplicationMethodSummary = cfg => {
+    const method = normalizePriceApplicationMethod(cfg?.priceApplicationMethod);
+    const impliesIncrease = priceConfigImpliesIncrease(cfg || {});
+    const impliesDecrease = priceConfigImpliesDecrease(cfg || {});
+
+    if (method === 'auto') {
+      if (impliesIncrease && cartTransformFunctionAvailable) {
+        return {
+          label: 'Auto -> Cart transform',
+          detail: 'Premium path resolves to Direct Price Override on this shop.',
+        };
+      }
+      if (impliesIncrease) {
+        return {
+          label: 'Auto -> Native variant',
+          detail: 'Premium path falls back to Native Variant Price on this shop.',
+        };
+      }
+      if (impliesDecrease) {
+        return {
+          label: 'Auto -> Discounted checkout',
+          detail: 'Lower-price path resolves to checkout discount behavior.',
+        };
+      }
+      return {
+        label: 'Auto',
+        detail: 'RipX will choose the best supported path when this variant price changes.',
+      };
+    }
+
+    return {
+      label: getPriceApplicationMethodShortLabel(method),
+      detail: getPriceApplicationMethodMeta({ ...(cfg || {}), priceApplicationMethod: method })
+        .helpText,
+    };
+  };
 
   const getPriceApplicationMethodConstraint = (methodOrCfg, cfgInput) => {
     const cfg =
@@ -6151,7 +6246,7 @@ function TestWizard({
     if (method === 'direct_price_override' && impliesDecrease) {
       return {
         blocked: true,
-        text: 'Unavailable for lower-price paths until signed pricing proofs are added.',
+        text: 'Unavailable here because this variant lowers price. Direct Price Override is the Cart Transform path and is currently reserved for premium / higher-price paths.',
       };
     }
     if (method === 'native_variant_price' && !hasNativeVariantMapping) {
@@ -6169,7 +6264,14 @@ function TestWizard({
     if (method === 'direct_price_override') {
       return {
         blocked: false,
-        text: 'Requires Plus/dev eligibility and an active RipX cart transform.',
+        text:
+          directPriceOverrideReadiness === 'ready'
+            ? 'Uses the active RipX Cart Transform function on this Plus/dev-eligible shop.'
+            : directPriceOverrideReadiness === 'checking'
+              ? 'Checking whether the RipX Cart Transform function is active for this shop.'
+              : directPriceOverrideReadiness === 'needs_deploy'
+                ? 'This is the Cart Transform option. Deploy and activate the RipX cart transform to use it on this shop.'
+                : 'This is the Cart Transform option. Confirm Plus/dev eligibility and cart transform activation for this shop.',
       };
     }
     if (method === 'discounted_checkout_price') {
@@ -6347,8 +6449,7 @@ function TestWizard({
       Boolean(normalizeNativeVariantIdInput(v?.config?.nativeVariantId))
     ).length;
     const methodUsageSummary = variants.reduce((acc, variant) => {
-      const method = normalizePriceApplicationMethod(variant?.config?.priceApplicationMethod);
-      const label = getPriceApplicationMethodShortLabel(method);
+      const label = getResolvedPriceApplicationMethodSummary(variant?.config || {}).label;
       acc[label] = (acc[label] || 0) + 1;
       return acc;
     }, {});
@@ -6403,6 +6504,7 @@ function TestWizard({
       );
       const editorPreviewText = getPricePreview(variant.config, variant.name);
       const editorRuleValue = getPriceValueCell(variant);
+      const resolvedMethodSummary = getResolvedPriceApplicationMethodSummary(variant.config || {});
       const editorStatusText = selectedMethodConstraint?.blocked
         ? selectedMethodConstraint.text
         : applicationMethod === 'native_variant_price' && !hasNativeVariantMapping
@@ -6417,6 +6519,34 @@ function TestWizard({
           : mappingRequired && !hasNativeVariantMapping
             ? 'attention'
             : 'success';
+      const directOverrideRecommended =
+        priceIncreaseConfigured && cartTransformFunctionAvailable && !priceDecreaseConfigured;
+      const directOverrideUnavailableForCurrentPrice =
+        priceDecreaseConfigured || selectedMethodConstraint?.blocked;
+      const orderedPriceApplicationMethodOptions = [...PRICE_APPLICATION_METHOD_OPTIONS].sort(
+        (left, right) => {
+          const score = value => {
+            const method = normalizePriceApplicationMethod(value);
+            if (directOverrideRecommended) {
+              if (method === 'direct_price_override') return 0;
+              if (method === 'auto') return 1;
+              if (method === 'native_variant_price') return 2;
+              return 3;
+            }
+            if (priceDecreaseConfigured) {
+              if (method === 'discounted_checkout_price') return 0;
+              if (method === 'auto') return 1;
+              if (method === 'native_variant_price') return 2;
+              return 3;
+            }
+            if (method === 'auto') return 0;
+            if (method === 'native_variant_price') return 1;
+            if (method === 'direct_price_override') return 2;
+            return 3;
+          };
+          return score(left.value) - score(right.value);
+        }
+      );
       return (
         <div
           className={styles.priceEditorPanel}
@@ -6458,12 +6588,8 @@ function TestWizard({
               </div>
               <div className={styles.priceEditorIntroCard}>
                 <span className={styles.priceEditorIntroLabel}>Checkout path</span>
-                <span className={styles.priceEditorIntroValue}>
-                  {applicationMethodMeta.shortLabel}
-                </span>
-                <span className={styles.priceEditorIntroHint}>
-                  {applicationMethodMeta.helpText}
-                </span>
+                <span className={styles.priceEditorIntroValue}>{resolvedMethodSummary.label}</span>
+                <span className={styles.priceEditorIntroHint}>{resolvedMethodSummary.detail}</span>
               </div>
               <div
                 className={`${styles.priceEditorIntroCard} ${
@@ -7251,8 +7377,82 @@ function TestWizard({
                   </div>
                   <div className={styles.priceSectionBlockContent}>
                     <BlockStack gap="200">
+                      <div
+                        className={`${styles.priceMethodRecommendationCard} ${
+                          directOverrideRecommended
+                            ? styles.priceMethodRecommendationCardPreferred
+                            : directOverrideUnavailableForCurrentPrice
+                              ? styles.priceMethodRecommendationCardMuted
+                              : styles.priceMethodRecommendationCardInfo
+                        }`}
+                      >
+                        <div className={styles.priceMethodRecommendationHeader}>
+                          <BlockStack gap="100">
+                            <Text as="p" variant="bodySm" fontWeight="semibold">
+                              Direct Price Override = Shopify Cart Transform Function API
+                            </Text>
+                            <Text as="p" variant="bodySm" tone="subdued">
+                              {directOverrideRecommended
+                                ? 'This variant is a premium / higher-price path and your shop reports an active RipX cart transform, so Direct Price Override is the cleanest first choice.'
+                                : priceDecreaseConfigured
+                                  ? 'This variant currently lowers price, so the Cart Transform path is intentionally disabled here. Use Discounted Checkout Price for lower-price tests, or Native Variant Price if you need a real product price.'
+                                  : directPriceOverrideReadiness === 'needs_deploy'
+                                    ? 'This is the Cart Transform option, but the wizard does not detect an active RipX cart transform on this shop yet.'
+                                    : directPriceOverrideReadiness === 'checking'
+                                      ? 'RipX is checking whether the Cart Transform function is active for this shop.'
+                                      : 'Use this for the cleanest cart + checkout price presentation when your store is Plus/dev eligible and Cart Transform is active.'}
+                            </Text>
+                          </BlockStack>
+                          {directOverrideRecommended &&
+                            applicationMethod !== 'direct_price_override' && (
+                              <Button
+                                size="slim"
+                                onClick={() => {
+                                  setFormData(prev => {
+                                    const next = [...(prev.variants || [])];
+                                    next[index] = {
+                                      ...next[index],
+                                      config: {
+                                        ...next[index].config,
+                                        priceApplicationMethod: 'direct_price_override',
+                                      },
+                                    };
+                                    return { ...prev, variants: next };
+                                  });
+                                }}
+                              >
+                                Prioritize Direct Override
+                              </Button>
+                            )}
+                        </div>
+                        <div className={styles.priceMethodRecommendationMeta}>
+                          <Badge
+                            tone={
+                              directPriceOverrideReadiness === 'ready'
+                                ? 'success'
+                                : directPriceOverrideReadiness === 'needs_deploy'
+                                  ? 'warning'
+                                  : 'info'
+                            }
+                            size="small"
+                          >
+                            {directPriceOverrideReadiness === 'ready'
+                              ? 'Cart Transform ready'
+                              : directPriceOverrideReadiness === 'needs_deploy'
+                                ? 'Cart Transform not detected'
+                                : directPriceOverrideReadiness === 'checking'
+                                  ? 'Checking Cart Transform'
+                                  : 'Cart Transform status unknown'}
+                          </Badge>
+                          <Badge tone={discountFunctionAvailable ? 'success' : 'info'} size="small">
+                            {discountFunctionAvailable
+                              ? 'Discount function detected'
+                              : 'Discount function status not confirmed'}
+                          </Badge>
+                        </div>
+                      </div>
                       <div className={styles.priceMethodChoiceGrid} role="list">
-                        {PRICE_APPLICATION_METHOD_OPTIONS.map(option => {
+                        {orderedPriceApplicationMethodOptions.map(option => {
                           const optionMethod = normalizePriceApplicationMethod(option.value);
                           const optionMeta = getPriceApplicationMethodMeta({
                             ...(variant.config || {}),
@@ -7301,9 +7501,12 @@ function TestWizard({
                                     ? 'Selected'
                                     : optionBlocked
                                       ? 'Unavailable'
-                                      : optionMethod === 'auto'
-                                        ? 'Recommended'
-                                        : 'Available'}
+                                      : directOverrideRecommended &&
+                                          optionMethod === 'direct_price_override'
+                                        ? 'Best fit'
+                                        : optionMethod === 'auto'
+                                          ? 'Recommended'
+                                          : 'Available'}
                                 </span>
                               </span>
                               <span className={styles.priceMethodChoiceBody}>
@@ -7322,7 +7525,7 @@ function TestWizard({
                         <div className={styles.priceMethodStatusCard}>
                           <span className={styles.priceMethodStatusLabel}>Method outcome</span>
                           <span className={styles.priceMethodStatusValue}>
-                            {applicationMethodMeta.shortLabel}
+                            {resolvedMethodSummary.label}
                           </span>
                         </div>
                         <div className={styles.priceMethodStatusCard}>
@@ -10122,17 +10325,60 @@ function TestWizard({
             </span>
             Variants
           </div>
-          <div className={stepStyles.reviewVariantsList}>
-            {reviewVariants.map((v, i) => (
-              <div key={i} className={stepStyles.reviewVariantChip}>
-                <span
-                  className={stepStyles.reviewVariantChipColor}
-                  style={{ backgroundColor: getVariantColor(i) }}
-                />
-                {v.name}: {v.allocation}%
-              </div>
-            ))}
-          </div>
+          {isPriceReview ? (
+            <div className={stepStyles.reviewVariantGrid}>
+              {reviewVariants.map((v, i) => {
+                const reviewPreview = getPricePreview(v?.config || {}, v?.name);
+                const reviewRuleValue = getPriceValueCell(v);
+                const reviewMethod = getResolvedPriceApplicationMethodSummary(v?.config || {});
+                return (
+                  <div key={i} className={stepStyles.reviewVariantCard}>
+                    <div className={stepStyles.reviewVariantCardHeader}>
+                      <div className={stepStyles.reviewVariantCardTitleRow}>
+                        <span
+                          className={stepStyles.reviewVariantChipColor}
+                          style={{ backgroundColor: getVariantColor(i) }}
+                        />
+                        <span className={stepStyles.reviewVariantCardTitle}>{v.name}</span>
+                      </div>
+                      <Badge tone="info">{v.allocation}% traffic</Badge>
+                    </div>
+                    <div className={stepStyles.reviewVariantMetrics}>
+                      <div className={stepStyles.reviewVariantMetric}>
+                        <span className={stepStyles.reviewVariantMetricLabel}>Rule</span>
+                        <span className={stepStyles.reviewVariantMetricValue}>
+                          {reviewRuleValue}
+                        </span>
+                      </div>
+                      <div className={stepStyles.reviewVariantMetric}>
+                        <span className={stepStyles.reviewVariantMetricLabel}>Display price</span>
+                        <span className={stepStyles.reviewVariantMetricValue}>{reviewPreview}</span>
+                      </div>
+                      <div className={stepStyles.reviewVariantMetric}>
+                        <span className={stepStyles.reviewVariantMetricLabel}>Checkout path</span>
+                        <span className={stepStyles.reviewVariantMetricValue}>
+                          {reviewMethod.label}
+                        </span>
+                      </div>
+                    </div>
+                    <p className={stepStyles.reviewVariantCardHint}>{reviewMethod.detail}</p>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className={stepStyles.reviewVariantsList}>
+              {reviewVariants.map((v, i) => (
+                <div key={i} className={stepStyles.reviewVariantChip}>
+                  <span
+                    className={stepStyles.reviewVariantChipColor}
+                    style={{ backgroundColor: getVariantColor(i) }}
+                  />
+                  {v.name}: {v.allocation}%
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className={stepStyles.reviewSchedulingSection}>

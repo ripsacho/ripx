@@ -7220,6 +7220,38 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
+.priceMethodRecommendationCard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.92) 0%, rgba(255, 255, 255, 0.96) 100%);
+}
+.priceMethodRecommendationCardPreferred {
+  border-color: rgba(6, 182, 212, 0.28);
+  background: linear-gradient(180deg, rgba(6, 182, 212, 0.12) 0%, rgba(255, 255, 255, 0.96) 100%);
+}
+.priceMethodRecommendationCardMuted {
+  border-color: rgba(245, 158, 11, 0.22);
+  background: linear-gradient(180deg, rgba(245, 158, 11, 0.1) 0%, rgba(255, 255, 255, 0.96) 100%);
+}
+.priceMethodRecommendationCardInfo {
+  border-color: rgba(148, 163, 184, 0.22);
+}
+.priceMethodRecommendationHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.priceMethodRecommendationMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .priceMethodChoiceGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -7471,6 +7503,9 @@
   }
   .priceMethodChoiceGrid {
     grid-template-columns: 1fr;
+  }
+  .priceMethodRecommendationHeader {
+    flex-direction: column;
   }
   .priceFormRow {
     grid-template-columns: 1fr;

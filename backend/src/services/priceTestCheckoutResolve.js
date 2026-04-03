@@ -6,6 +6,104 @@
 
 const { verifyPriceAssignmentSignature } = require('../utils/priceAssignmentSignature');
 
+const SHOPIFY_FUNCTION_CAPABILITY_CACHE_TTL_MS = Math.max(
+  5000,
+  Number.parseInt(process.env.RIPX_SHOPIFY_FUNCTION_CAPABILITY_CACHE_TTL_MS || '60000', 10) || 60000
+);
+const shopCapabilityCache = new Map();
+
+function normalizeCapabilityDomain(domain) {
+  return typeof domain === 'string' ? domain.trim().toLowerCase() : '';
+}
+
+function hasCartTransformFunction(functionNodes) {
+  if (!Array.isArray(functionNodes)) {
+    return false;
+  }
+  return functionNodes.some(node => {
+    const apiType = String(node?.apiType || '')
+      .trim()
+      .toLowerCase();
+    return apiType.includes('cart_transform') || apiType.includes('cart transform');
+  });
+}
+
+async function getCheckoutMethodCapabilitiesForDomain(domain) {
+  const normalizedDomain = normalizeCapabilityDomain(domain);
+  if (!normalizedDomain) {
+    return {
+      directPriceOverrideAvailable: false,
+      cartTransformFunctionAvailable: false,
+      source: 'missing_domain',
+    };
+  }
+
+  const now = Date.now();
+  const cached = shopCapabilityCache.get(normalizedDomain);
+  if (cached && cached.expiresAt > now) {
+    return cached.value;
+  }
+
+  const pending = (async () => {
+    const { getShopSession } = require('../models/shopSession');
+    const shopifyService = require('./shopifyService');
+    const session = await getShopSession(normalizedDomain);
+    const accessToken = String(session?.access_token || '').trim();
+    if (!accessToken) {
+      return {
+        directPriceOverrideAvailable: false,
+        cartTransformFunctionAvailable: false,
+        source: 'missing_shop_session',
+      };
+    }
+
+    try {
+      const query = `
+        query ripxShopifyFunctions {
+          shopifyFunctions(first: 50) {
+            nodes {
+              id
+              title
+              apiType
+            }
+          }
+        }
+      `;
+      const response = await shopifyService.requestAdminGraphql(
+        normalizedDomain,
+        accessToken,
+        query
+      );
+      const functionNodes = response?.data?.shopifyFunctions?.nodes || [];
+      const cartTransformFunctionAvailable = hasCartTransformFunction(functionNodes);
+      return {
+        directPriceOverrideAvailable: cartTransformFunctionAvailable,
+        cartTransformFunctionAvailable,
+        source: 'shopify_admin',
+      };
+    } catch (error) {
+      return {
+        directPriceOverrideAvailable: false,
+        cartTransformFunctionAvailable: false,
+        source: 'lookup_error',
+        error: error?.message || 'lookup_failed',
+      };
+    }
+  })();
+
+  shopCapabilityCache.set(normalizedDomain, {
+    expiresAt: now + SHOPIFY_FUNCTION_CAPABILITY_CACHE_TTL_MS,
+    value: pending,
+  });
+
+  const resolved = await pending;
+  shopCapabilityCache.set(normalizedDomain, {
+    expiresAt: Date.now() + SHOPIFY_FUNCTION_CAPABILITY_CACHE_TTL_MS,
+    value: resolved,
+  });
+  return resolved;
+}
+
 function isPriceTestRowType(type) {
   const t = String(type || '').toLowerCase();
   return t === 'price' || t === 'pricing';
@@ -252,13 +350,19 @@ function normalizePriceApplicationMethod(value) {
   return 'auto';
 }
 
-function resolveDiscountFunctionApplicationMethod({ configuredMethod, targetUnit, catalogUnit }) {
+function resolveDiscountFunctionApplicationMethod({
+  configuredMethod,
+  targetUnit,
+  catalogUnit,
+  shopCapabilities,
+}) {
   const normalized = normalizePriceApplicationMethod(configuredMethod);
   const catalog = Number(catalogUnit);
   const target = Number(targetUnit);
   const tolerance = 0.0001;
   const isPriceIncrease =
     Number.isFinite(target) && Number.isFinite(catalog) && target > catalog + tolerance;
+  const canUseDirectPriceOverride = shopCapabilities?.directPriceOverrideAvailable === true;
 
   if (normalized === 'native_variant_price') {
     return {
@@ -298,9 +402,11 @@ function resolveDiscountFunctionApplicationMethod({ configuredMethod, targetUnit
   if (isPriceIncrease) {
     return {
       configuredMethod: 'auto',
-      resolvedMethod: 'native_variant_price',
+      resolvedMethod: canUseDirectPriceOverride ? 'direct_price_override' : 'native_variant_price',
       canApplyDiscountFunction: false,
-      reason: 'auto_selected_native_variant_price',
+      reason: canUseDirectPriceOverride
+        ? 'auto_selected_direct_price_override'
+        : 'auto_selected_native_variant_price',
     };
   }
 
@@ -408,6 +514,7 @@ function resolvePriceTestLineDiscount({
   assignmentUserId = '',
   /** Per-unit compare-at from CartLineCost.compareAtAmountPerQuantity (Shopify); required for priceBase compare_at parity with storefront. */
   compareAtUnitPrice = null,
+  shopCapabilities = null,
   debug = false,
 }) {
   const debugEnabled = debug === true;
@@ -555,6 +662,7 @@ function resolvePriceTestLineDiscount({
     configuredMethod: cfg.priceApplicationMethod,
     targetUnit,
     catalogUnit,
+    shopCapabilities,
   });
   debugMeta.configuredApplicationMethod = applicationMethod.configuredMethod;
   debugMeta.resolvedApplicationMethod = applicationMethod.resolvedMethod;
@@ -610,6 +718,7 @@ async function resolveCheckoutPriceBatchForDomain(
   opts = {}
 ) {
   const debugEnabled = opts && opts.debug === true;
+  let shopCapabilities = opts?.shopCapabilities || null;
   const testCache = new Map();
   /** Prefetch unique tests — single query when getTestsByIds is available (best under Shopify Function readTimeoutMs). */
   const uniqueTestIds = new Set();
@@ -776,7 +885,7 @@ async function resolveCheckoutPriceBatchForDomain(
           ? row.compare_at_amount_per_quantity
           : null;
 
-    const result = resolvePriceTestLineDiscount({
+    const resolveArgs = {
       test,
       assignmentVariantId: assignmentVariant,
       productId,
@@ -797,8 +906,20 @@ async function resolveCheckoutPriceBatchForDomain(
           ? ''
           : String(row.assignment_user).trim(),
       compareAtUnitPrice: compareRaw,
+      shopCapabilities,
       debug: debugEnabled,
-    });
+    };
+
+    let result = resolvePriceTestLineDiscount(resolveArgs);
+    if (result.reason === 'auto_selected_native_variant_price' && !shopCapabilities && domain) {
+      shopCapabilities = await getCheckoutMethodCapabilitiesForDomain(domain);
+      if (shopCapabilities?.directPriceOverrideAvailable === true) {
+        result = resolvePriceTestLineDiscount({
+          ...resolveArgs,
+          shopCapabilities,
+        });
+      }
+    }
 
     results.push({
       line_id: lineId,
@@ -816,6 +937,7 @@ async function resolveCheckoutPriceBatchForDomain(
 module.exports = {
   resolvePriceTestLineDiscount,
   resolveCheckoutPriceBatchForDomain,
+  getCheckoutMethodCapabilitiesForDomain,
   toNumericProductId,
   getEffectivePriceConfig,
   isPriceTestRowType,

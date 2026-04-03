@@ -114,11 +114,12 @@ git pull origin main
 git checkout -b hotfix/<short-name>
 
 # implement urgent fix
+npm run migrate
 npm run validate
 npm run build
 
 git add .
-git commit -m "fix: <short summary>"
+git commit -m "new fix"
 git push -u origin hotfix/<short-name>
 ```
 

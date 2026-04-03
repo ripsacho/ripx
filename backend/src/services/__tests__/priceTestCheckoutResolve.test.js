@@ -237,6 +237,35 @@ describe('priceTestCheckoutResolve', () => {
     });
   });
 
+  it('auto application method prefers direct price override for price increases when cart transform is available', () => {
+    const test = {
+      ...baseTest,
+      variants: [
+        {
+          id: 'var-b',
+          name: 'Variant B',
+          config: { priceMode: 'amount', priceDelta: 5, priceApplicationMethod: 'auto' },
+        },
+      ],
+    };
+    const r = resolvePriceTestLineDiscount({
+      test,
+      assignmentVariantId: 'var-b',
+      productId: '111',
+      linePresentmentTotal: 29.99,
+      quantity: 1,
+      shopCapabilities: { directPriceOverrideAvailable: true },
+      debug: true,
+    });
+    expect(r.applies).toBe(false);
+    expect(r.reason).toBe('auto_selected_direct_price_override');
+    expect(r.debug).toMatchObject({
+      configuredApplicationMethod: 'auto',
+      resolvedApplicationMethod: 'direct_price_override',
+      canApplyDiscountFunction: false,
+    });
+  });
+
   it('explicit direct price override skips discount-function application', () => {
     const test = {
       ...baseTest,
@@ -458,7 +487,7 @@ describe('priceTestCheckoutResolve', () => {
           qty: 1,
         },
       ],
-      async () => testRow,
+      () => testRow,
       undefined,
       { debug: true }
     );
@@ -474,6 +503,55 @@ describe('priceTestCheckoutResolve', () => {
         productId: '111',
         resultReason: null,
         applies: true,
+      },
+    });
+  });
+
+  it('resolveCheckoutPriceBatchForDomain prefers direct price override for auto premium paths when shop capability is provided', async () => {
+    const testUuid = '550e8400-e29b-41d4-a716-446655440066';
+    const testRow = {
+      id: testUuid,
+      type: 'price',
+      status: 'running',
+      target_type: 'product',
+      target_ids: ['gid://shopify/Product/111'],
+      variants: [
+        {
+          id: 'var-b',
+          name: 'Variant B',
+          config: { priceMode: 'amount', priceDelta: 5, priceApplicationMethod: 'auto' },
+        },
+      ],
+    };
+
+    const out = await resolveCheckoutPriceBatchForDomain(
+      'store.myshopify.com',
+      [
+        {
+          line_id: 'gid://shopify/CartLine/66',
+          test_id: testUuid,
+          assignment_variant: 'var-b',
+          product_id: '111',
+          line_total: 29.99,
+          qty: 1,
+        },
+      ],
+      () => testRow,
+      undefined,
+      {
+        debug: true,
+        shopCapabilities: { directPriceOverrideAvailable: true },
+      }
+    );
+
+    expect(out[0]).toMatchObject({
+      line_id: 'gid://shopify/CartLine/66',
+      applies: false,
+      reason: 'auto_selected_direct_price_override',
+      debug: {
+        configuredApplicationMethod: 'auto',
+        resolvedApplicationMethod: 'direct_price_override',
+        canApplyDiscountFunction: false,
       },
     });
   });

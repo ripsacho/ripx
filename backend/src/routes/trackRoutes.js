@@ -42,6 +42,7 @@ const {
 const {
   resolvePriceTestLineDiscount,
   resolveCheckoutPriceBatchForDomain,
+  getCheckoutMethodCapabilitiesForDomain,
 } = require('../services/priceTestCheckoutResolve');
 const {
   buildCheckoutPriceDiagnostics,
@@ -404,7 +405,7 @@ router.use(maintenanceCheck);
  */
 router.get(
   '/storefront-script-health',
-  asyncHandler(async (req, res) => {
+  asyncHandler((req, res) => {
     const scriptPath = getStorefrontScriptPath();
     let stat = null;
     try {
@@ -1414,7 +1415,7 @@ router.get(
       return res.status(404).json({ success: false, error: 'Test not found' });
     }
 
-    const result = resolvePriceTestLineDiscount({
+    const resolveArgs = {
       test,
       assignmentVariantId: String(assignment_variant).trim(),
       productId: String(product_id).trim(),
@@ -1439,7 +1440,18 @@ router.get(
           ? String(compare_at_unit).trim()
           : null,
       debug: isTruthyDebugFlag(debug) || isTruthyDebugFlag(req.get('x-ripx-debug')),
-    });
+    };
+
+    let result = resolvePriceTestLineDiscount(resolveArgs);
+    if (result.reason === 'auto_selected_native_variant_price') {
+      const shopCapabilities = await getCheckoutMethodCapabilitiesForDomain(domain);
+      if (shopCapabilities?.directPriceOverrideAvailable === true) {
+        result = resolvePriceTestLineDiscount({
+          ...resolveArgs,
+          shopCapabilities,
+        });
+      }
+    }
 
     res.set('Cache-Control', 'no-store');
     return res.json({

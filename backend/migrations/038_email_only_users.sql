@@ -41,8 +41,9 @@ BEGIN
 
     UPDATE users SET account_id = acc_id, updated_at = NOW() WHERE id = r.id;
 
-    UPDATE tenants SET account_id = acc_id, updated_at = NOW()
-    WHERE domain = r.shop_domain;
+    UPDATE tenants
+    SET account_id = acc_id, updated_at = NOW()
+    WHERE LOWER(TRIM(domain)) = LOWER(TRIM(r.shop_domain));
   END LOOP;
 END $$;
 
@@ -63,7 +64,38 @@ BEGIN
     keep_id := dup.ids[1];
     other_ids := dup.ids[2:array_length(dup.ids, 1)];
 
-    UPDATE user_domain_access SET user_id = keep_id WHERE user_id = ANY(other_ids);
+    -- Move domain access from duplicate users to kept user safely.
+    -- Use UPSERT to avoid UNIQUE(user_id, tenant_id) violations when both users already
+    -- have access to the same tenant. Preserve the strongest role.
+    WITH merged_access AS (
+      SELECT
+        tenant_id,
+        CASE MAX(
+          CASE role
+            WHEN 'owner' THEN 3
+            WHEN 'member' THEN 2
+            ELSE 1
+          END
+        )
+          WHEN 3 THEN 'owner'
+          WHEN 2 THEN 'member'
+          ELSE 'viewer'
+        END AS merged_role
+      FROM user_domain_access
+      WHERE user_id = ANY(other_ids)
+      GROUP BY tenant_id
+    )
+    INSERT INTO user_domain_access (user_id, tenant_id, role, created_at, updated_at)
+    SELECT keep_id, tenant_id, merged_role, NOW(), NOW()
+    FROM merged_access
+    ON CONFLICT (user_id, tenant_id)
+    DO UPDATE SET
+      role = CASE
+        WHEN user_domain_access.role = 'owner' OR EXCLUDED.role = 'owner' THEN 'owner'
+        WHEN user_domain_access.role = 'member' OR EXCLUDED.role = 'member' THEN 'member'
+        ELSE 'viewer'
+      END,
+      updated_at = NOW();
 
     DELETE FROM users WHERE id = ANY(other_ids);
   END LOOP;

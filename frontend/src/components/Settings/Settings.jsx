@@ -998,6 +998,35 @@ function Settings() {
 
     return [
       {
+        id: 'auto_resolution',
+        title: 'Auto Resolution',
+        tone:
+          checkoutDiag?.summary?.overall_ok && discountFunctionAvailable
+            ? cartTransformAvailable
+              ? 'success'
+              : scriptDetected
+                ? 'attention'
+                : 'warning'
+            : 'warning',
+        status:
+          checkoutDiag?.summary?.overall_ok && discountFunctionAvailable
+            ? cartTransformAvailable
+              ? 'Cart Transform first for premium paths'
+              : scriptDetected
+                ? 'Native variant fallback for premium paths'
+                : 'Discount path ready, premium path needs setup'
+            : 'Needs review',
+        summary:
+          checkoutDiag?.summary?.overall_ok && discountFunctionAvailable
+            ? cartTransformAvailable
+              ? 'Auto now resolves lower-price tests to Discounted Checkout Price and premium / higher-price tests to Direct Price Override on this shop.'
+              : 'Auto resolves lower-price tests to Discounted Checkout Price and falls back to Native Variant Price for premium / higher-price tests on this shop.'
+            : 'Auto can only be trusted once the required checkout pricing infrastructure is healthy.',
+        nextAction: cartTransformAvailable
+          ? 'Use Auto for mixed price-test portfolios when you want RipX to route premium paths into Cart Transform automatically.'
+          : 'If premium / higher-price tests should avoid discount labels, deploy Cart Transform so Auto can promote those paths to Direct Price Override.',
+      },
+      {
         id: 'discounted_checkout_price',
         title: 'Discounted Checkout Price',
         tone:
