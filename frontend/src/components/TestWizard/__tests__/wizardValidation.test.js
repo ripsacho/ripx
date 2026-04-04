@@ -297,7 +297,7 @@ describe('wizardValidation', () => {
         ).toBe(true);
       });
 
-      it('returns error when Direct Price Override is used for a lower price', () => {
+      it('does not error when Direct Price Override is used for a lower price', () => {
         const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
           stepIds: stepIdsWithTemplate,
           reviewStepId: 6,
@@ -326,7 +326,7 @@ describe('wizardValidation', () => {
           errors.some(
             e => e.includes('Direct Price Override') && e.includes('hardened for price increases')
           )
-        ).toBe(true);
+        ).toBe(false);
       });
 
       it('returns error when cssValidationErrors is non-empty', () => {

@@ -86,6 +86,28 @@
   /* Content Layout */
   --content-max-width: 1280px;
   --content-padding: 32px;
+  --ripx-page-inline-pad: clamp(16px, 3vw, 40px);
+  --ripx-page-bottom-pad: max(32px, env(safe-area-inset-bottom, 0px));
+  --ripx-page-max-content: min(1480px, 100%);
+  --ripx-surface-radius: 14px;
+  --ripx-surface-radius-lg: 20px;
+  --ripx-surface-shadow: 0 4px 20px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(0, 0, 0, 0.02);
+  --ripx-surface-shadow-hover:
+    0 8px 28px rgba(6, 182, 212, 0.09),
+    0 0 0 1px rgba(6, 182, 212, 0.08);
+  --ripx-interactive-lift: translateY(-1px);
+  --ripx-focus-outline: 2px solid rgba(6, 182, 212, 0.45);
+  --ripx-focus-ring: 0 0 0 3px rgba(6, 182, 212, 0.25);
+  --ripx-type-display-hero: clamp(1.9rem, 4vw, 2.5rem);
+  --ripx-type-display-page: clamp(1.4rem, 2.2vw, 1.75rem);
+  --ripx-type-title-lg: clamp(1.05rem, 1.3vw, 1.25rem);
+  --ripx-type-body-md: 0.9375rem;
+  --ripx-type-body-sm: 0.8125rem;
+  --ripx-type-micro: 0.75rem;
+  --ripx-space-2: 0.5rem;
+  --ripx-space-3: 0.75rem;
+  --ripx-space-4: 1rem;
+  --ripx-space-5: 1.25rem;
 
   /* Surface Elevation */
   --surface-1: 0 1px 3px var(--shadow-sm);
@@ -168,6 +190,8 @@
   --surface-1: 0 1px 3px var(--shadow-sm);
   --surface-2: 0 4px 12px var(--shadow-sm), 0 2px 6px var(--shadow-sm);
   --surface-3: 0 8px 24px var(--shadow-md), 0 2px 8px var(--shadow-sm);
+  --ripx-surface-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  --ripx-surface-shadow-hover: 0 10px 32px rgba(6, 182, 212, 0.1);
 }
 
 /* ============================================

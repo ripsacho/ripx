@@ -208,22 +208,6 @@ class Validators {
       }
       return false;
     };
-    const priceConfigImpliesDecrease = cfg => {
-      if (!cfg || typeof cfg !== 'object') {
-        return false;
-      }
-      const mode = String(cfg.priceMode || 'fixed').toLowerCase();
-      if (mode === 'amount') {
-        const n = Number(cfg.priceDelta);
-        return !Number.isNaN(n) && n < 0;
-      }
-      if (mode === 'percent') {
-        const n = Number(cfg.pricePercent);
-        return !Number.isNaN(n) && n > 0;
-      }
-      return false;
-    };
-
     if (!config.name || config.name.trim().length === 0) {
       errors.push('Test name is required');
     }
@@ -313,11 +297,6 @@ class Validators {
           ) {
             errors.push(
               `Variant ${i + 1}: Discounted Checkout Price only supports lower prices. Use Auto or Native Variant Price for price increases.`
-            );
-          }
-          if (applicationMethod === 'direct_price_override' && priceConfigImpliesDecrease(cfg)) {
-            errors.push(
-              `Variant ${i + 1}: Direct Price Override is currently hardened for price increases on Plus/dev stores. Use Discounted Checkout Price or Native Variant Price for lower prices.`
             );
           }
         });

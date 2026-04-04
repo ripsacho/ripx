@@ -208,7 +208,7 @@ describe('validators.validateTestConfig', () => {
     ).toBe(true);
   });
 
-  it('returns error when Direct Price Override is used for a lower price', () => {
+  it('allows Direct Price Override when the variant lowers price (manual method)', () => {
     const result = validators.validateTestConfig({
       name: 'Test',
       type: 'price',
@@ -225,12 +225,12 @@ describe('validators.validateTestConfig', () => {
         },
       ],
     });
-    expect(result.isValid).toBe(false);
+    expect(result.isValid).toBe(true);
     expect(
       result.errors.some(
         e => e.includes('Direct Price Override') && e.includes('hardened for price increases')
       )
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('returns errors for missing name', () => {

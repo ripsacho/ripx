@@ -7,7 +7,8 @@
   max-width: none;
   margin: 0;
   margin-bottom: -32px;
-  padding: 0 32px 32px;
+  padding: 0 var(--ripx-page-inline-pad, clamp(16px, 3vw, 40px))
+    var(--ripx-page-bottom-pad, 32px);
   position: relative;
 }
 
@@ -26,6 +27,7 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding-top: 0.5rem;
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
   margin-top: 0.25rem;
   position: relative;
   width: 100%;
@@ -60,6 +62,28 @@
   width: 100% !important;
 }
 
+.testsPage :global(.Polaris-Card) {
+  border-radius: var(--ripx-surface-radius, 14px);
+  box-shadow: var(
+    --ripx-surface-shadow,
+    0 4px 20px rgba(0, 0, 0, 0.04),
+    0 0 0 1px rgba(0, 0, 0, 0.02)
+  );
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+.testsPage :global(.Polaris-Card:hover) {
+  box-shadow: var(
+    --ripx-surface-shadow-hover,
+    0 8px 28px rgba(6, 182, 212, 0.09),
+    0 0 0 1px rgba(6, 182, 212, 0.08)
+  );
+  transform: translateY(-1px);
+}
+
 .testsPage :global(.Polaris-Page),
 .testsPage :global(.Polaris-Page__Content) {
   padding: 0 !important;
@@ -90,7 +114,7 @@
   display: flex;
   align-items: flex-start;
   flex-wrap: wrap;
-  gap: 1.5rem;
+  gap: var(--ripx-space-5, 1.25rem);
   margin: -0.5rem 0 1.75rem;
   padding: 2rem 2.25rem;
   background: linear-gradient(
@@ -100,8 +124,13 @@
     rgba(6, 182, 212, 0.05) 100%
   );
   border: 1px solid rgba(6, 182, 212, 0.18);
-  border-radius: 20px;
-  box-shadow: 0 8px 32px rgba(6, 182, 212, 0.06), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+  border-radius: var(--ripx-surface-radius-lg, 20px);
+  box-shadow: var(
+      --ripx-surface-shadow,
+      0 4px 20px rgba(0, 0, 0, 0.04),
+      0 0 0 1px rgba(0, 0, 0, 0.02)
+    ),
+    0 0 0 1px rgba(255, 255, 255, 0.5) inset;
   position: relative;
   overflow: hidden;
 }
@@ -137,15 +166,16 @@
 
 .testsHeroTitle {
   margin: 0;
-  font-size: 1.625rem;
+  font-size: var(--ripx-type-display-page, 1.625rem);
   font-weight: 800;
   letter-spacing: -0.04em;
   color: var(--text-primary);
+  line-height: 1.18;
 }
 
 .testsHeroSubtitle {
   margin: 0.4rem 0 0;
-  font-size: 0.9375rem;
+  font-size: var(--ripx-type-body-md, 0.9375rem);
   color: var(--text-secondary);
   line-height: 1.55;
 }
@@ -158,14 +188,14 @@
     rgba(6, 182, 212, 0.04) 100%
   );
   border-color: rgba(6, 182, 212, 0.22);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--ripx-surface-shadow, 0 4px 20px rgba(0, 0, 0, 0.3));
 }
 
 /* Header actions - Create Test + bulk actions when selected */
 .heroActions {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: var(--ripx-space-4, 1rem);
   flex-wrap: wrap;
 }
 
@@ -187,7 +217,10 @@
   background: linear-gradient(135deg, var(--futuristic-cyan) 0%, #0891b2 100%);
   color: white;
   cursor: pointer;
-  transition: all 0.22s cubic-bezier(0.25, 0.1, 0.25, 1);
+  transition:
+    transform 0.22s cubic-bezier(0.25, 0.1, 0.25, 1),
+    box-shadow 0.22s cubic-bezier(0.25, 0.1, 0.25, 1),
+    background 0.22s cubic-bezier(0.25, 0.1, 0.25, 1);
   box-shadow: 0 4px 14px rgba(6, 182, 212, 0.35);
   position: relative;
   overflow: hidden;
@@ -202,7 +235,7 @@
 }
 
 .createTestBtn:hover {
-  transform: translateY(-2px);
+  transform: var(--ripx-interactive-lift, translateY(-1px));
   box-shadow: 0 6px 20px rgba(6, 182, 212, 0.45);
   background: linear-gradient(135deg, #22d3ee 0%, var(--futuristic-cyan) 100%);
 }
@@ -216,6 +249,14 @@
   opacity: 0.7;
   cursor: not-allowed;
   transform: none;
+}
+
+.createTestBtn:focus-visible {
+  outline: var(--ripx-focus-outline, 2px solid rgba(6, 182, 212, 0.45));
+  outline-offset: 2px;
+  box-shadow:
+    0 4px 14px rgba(6, 182, 212, 0.35),
+    var(--ripx-focus-ring, 0 0 0 3px rgba(6, 182, 212, 0.25));
 }
 
 .createTestBtn :global(.Polaris-Icon) {
@@ -399,6 +440,18 @@
 }
 
 @media (max-width: 640px) {
+  .testsHero {
+    padding: 1.25rem 1.1rem;
+  }
+
+  .testsHeroTitle {
+    font-size: clamp(1.25rem, 5vw, 1.45rem);
+  }
+
+  .testsHeroSubtitle {
+    font-size: var(--ripx-type-body-sm, 0.8125rem);
+  }
+
   .heroActions {
     flex-direction: column;
     align-items: stretch;
@@ -488,6 +541,8 @@
 
 .testListCardTitle {
   display: block;
+  font-size: var(--ripx-type-body-md, 0.9375rem);
+  line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -526,7 +581,7 @@
 }
 
 .testListCardMetricLabel {
-  font-size: 0.75rem;
+  font-size: var(--ripx-type-micro, 0.75rem);
   color: var(--text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -534,7 +589,7 @@
 }
 
 .testListCardMetricValue {
-  font-size: 1rem;
+  font-size: var(--ripx-type-title-lg, 1rem);
   font-weight: 700;
   color: var(--text-primary);
 }
@@ -586,7 +641,12 @@
   background: linear-gradient(135deg, rgba(6, 182, 212, 0.06) 0%, rgba(139, 92, 246, 0.03) 100%);
   color: var(--accent-primary);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
 }
 
 .cardActionLink:hover {
@@ -594,10 +654,17 @@
   border-color: rgba(6, 182, 212, 0.4);
   color: var(--accent-primary);
   box-shadow: 0 2px 8px rgba(6, 182, 212, 0.15);
+  transform: var(--ripx-interactive-lift, translateY(-1px));
 }
 
 .cardActionLink:active {
   transform: scale(0.98);
+}
+
+.cardActionLink:focus-visible {
+  outline: var(--ripx-focus-outline, 2px solid rgba(6, 182, 212, 0.45));
+  outline-offset: 2px;
+  box-shadow: var(--ripx-focus-ring, 0 0 0 3px rgba(6, 182, 212, 0.25));
 }
 
 .cardActionLink :global(.Polaris-Icon) {
@@ -754,6 +821,22 @@
 @media (min-width: 480px) {
   .testListList .testListCardMetricsGrid {
     grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .testsPage :global(.Polaris-Card),
+  .testsHero,
+  .createTestBtn,
+  .cardActionLink {
+    transition: none !important;
+    animation: none !important;
+  }
+
+  .testsPage :global(.Polaris-Card:hover),
+  .createTestBtn:hover,
+  .cardActionLink:hover {
+    transform: none !important;
   }
 }
 

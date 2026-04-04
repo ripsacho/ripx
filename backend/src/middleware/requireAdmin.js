@@ -5,7 +5,8 @@
  * 0. (Optional) Client IP is in ADMIN_IP_ALLOWLIST when set.
  * 1. X-Admin-API-Key header matches ADMIN_API_KEY env (treated as superadmin), or
  * 2. (Local) req.shopDomain is in RIPX_ADMIN_SHOP_DOMAINS (comma-separated), or
- * 3. Authenticated user has users.role in ['admin','superadmin'] and status active.
+ * 3. Authenticated user has users.role in ['admin','superadmin'] (resolved by shop domain or email)
+ *    and status active/accepted.
  * Sets req.adminId for audit and req.adminRole for permission checks (admin | superadmin).
  * Dev bypass: only when ALLOW_DEV_ADMIN_BYPASS=true (no DB role required in development).
  */
@@ -94,27 +95,31 @@ function requireAdmin(req, res, next) {
     }
 
     const shopDomain = req.shopDomain;
-    if (!shopDomain) {
-      return sendUnauthorized(res, 'Admin access requires shop or admin API key');
-    }
-
-    const normalizedShop = shopDomain.toLowerCase().trim();
+    const email = req.email ? String(req.email).trim().toLowerCase() : null;
+    const normalizedShop = shopDomain ? shopDomain.toLowerCase().trim() : null;
 
     // Local / dev: env list of admin shop domains (no DB role required)
-    const envAdmins = getEnvAdminDomains();
-    if (envAdmins.length > 0 && envAdmins.includes(normalizedShop)) {
-      req.adminId = shopDomain;
-      req.adminRole = PLATFORM_ROLES.ADMIN;
-      return next();
+    if (normalizedShop) {
+      const envAdmins = getEnvAdminDomains();
+      if (envAdmins.length > 0 && envAdmins.includes(normalizedShop)) {
+        req.adminId = shopDomain;
+        req.adminRole = PLATFORM_ROLES.ADMIN;
+        return next();
+      }
+    }
+
+    const adminIdentity = shopDomain || email;
+    if (!adminIdentity) {
+      return sendUnauthorized(res, 'Admin access requires shop/email identity or admin API key');
     }
 
     try {
-      const user = await getRoleAndStatus(shopDomain);
+      const user = await getRoleAndStatus(adminIdentity);
       if (!user || !isPlatformAdmin(user.role)) {
         const allowDevBypass =
           process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_ADMIN_BYPASS === 'true';
         if (allowDevBypass) {
-          req.adminId = shopDomain;
+          req.adminId = adminIdentity;
           req.adminRole = PLATFORM_ROLES.ADMIN;
           return next();
         }
@@ -125,7 +130,7 @@ function requireAdmin(req, res, next) {
       if (!user.status || !allowedStatuses.includes(user.status)) {
         return res.status(403).json({ success: false, error: 'Account is locked or suspended' });
       }
-      req.adminId = shopDomain;
+      req.adminId = adminIdentity;
       req.adminRole = (user.role || PLATFORM_ROLES.ADMIN).toLowerCase();
       next();
     } catch (e) {

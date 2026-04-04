@@ -37,6 +37,7 @@ import {
   ClipboardIcon,
   PaintBrushFlatIcon,
   SettingsIcon,
+  InfoIcon,
 } from '@shopify/polaris-icons';
 import { PageShell } from '../Shared';
 import { CONTENT_GAP, ROUTES, APP_META, STORAGE_KEYS } from '../../constants';
@@ -157,6 +158,44 @@ const TAB_CONFIG_APP = [
 
 /** Account-level only (universal /settings) – theme/appearance; app-related config is in the app */
 const TAB_CONFIG_ACCOUNT = [{ id: 'appearance', label: 'Appearance', icon: PaintBrushFlatIcon }];
+
+/** Long-form help moved to tooltips on section titles */
+const SECTION_HELP = {
+  defaultsSnapshot:
+    'Current defaults for new tests: sample size, confidence, auto-stop, and webhook behavior.',
+  testConfiguration:
+    'Applies to new tests. Use a preset for speed, or Customize for manual control.',
+  webhooks: 'Send JSON to your endpoint when tests complete or reach significance.',
+  apiKeyStandalone: 'This shop is connected with an API key. Use Connect to switch keys.',
+  userPreferences:
+    'Account-level preferences (notifications, dashboard defaults, theme schedule, export format) are in Profile.',
+  analyticsData: 'Optional integrations: GA4 for event forwarding and BigQuery for exports.',
+  integrationsSave: 'Save writes GA4 and BigQuery credentials and dataset settings.',
+  targetingPresets: 'Saved audience presets from the Test Wizard, reusable on new tests.',
+  themeAppearance: 'Choose light, dark, or auto. For a custom schedule, use Profile → Preferences.',
+};
+
+function SectionTitleWithTip({
+  title,
+  tip,
+  asHeading = 'h2',
+  titleClassName,
+  variant = 'headingMd',
+  fontWeight,
+}) {
+  return (
+    <div className={styles.sectionHeaderTitleRow}>
+      <Text variant={variant} as={asHeading} className={titleClassName} fontWeight={fontWeight}>
+        {title}
+      </Text>
+      <Tooltip content={tip}>
+        <span className={styles.sectionHeaderTitleTip} tabIndex={0} aria-label={tip}>
+          <Icon source={InfoIcon} />
+        </span>
+      </Tooltip>
+    </div>
+  );
+}
 
 function tabIndexFromSearchParams(searchParams, tabConfig) {
   const tab = searchParams.get('tab');
@@ -1038,7 +1077,7 @@ function Settings() {
             ? cartTransformAvailable
               ? 'Cart Transform first for premium paths'
               : scriptDetected
-                ? 'Native variant fallback for premium paths'
+                ? 'Native Variant fallback for premium paths'
                 : 'Discount path ready, premium path needs setup'
             : 'Needs review',
         summary:
@@ -1089,11 +1128,11 @@ function Settings() {
         tone: cartTransformAvailable ? 'success' : 'warning',
         status: cartTransformAvailable ? 'Ready for eligible stores' : 'Needs deploy',
         summary: cartTransformAvailable
-          ? 'RipX cart transform is deployed, so direct override can run on Plus/dev hardened flows.'
+          ? 'RipX Cart Transform is deployed, so Direct Price Override can run on eligible Plus/dev stores.'
           : 'Cart Transform is not detected for this app on the shop yet.',
         nextAction: cartTransformAvailable
           ? 'Use for cleaner premium-price checkout UX without a discount label.'
-          : 'Deploy and activate the RipX cart transform before using Direct Price Override.',
+          : 'Deploy and activate RipX Cart Transform before using Direct Price Override.',
       },
     ];
   }, [checkoutDiag, installation?.scriptVerified]);
@@ -1200,6 +1239,21 @@ function Settings() {
     }),
     [setupComplete, configuredIntegrationCount, targetingPresets]
   );
+
+  const appSettingsSubtitleHelp =
+    'Manage snippet and checkout setup, defaults, integrations, presets, and appearance for this shop.';
+
+  const metricTips = useMemo(
+    () => ({
+      activeSection: 'Currently selected tab.',
+      store: 'Shop currently being configured.',
+      connections: 'Connected GA4 and BigQuery integrations.',
+      checks: 'Setup health checks for snippet, discount, and checkout alignment.',
+    }),
+    []
+  );
+
+  const densityHelp = 'Comfortable adds more spacing. Compact shows more on screen.';
   return (
     <PageShell
       message={message}
@@ -1222,11 +1276,24 @@ function Settings() {
                       <h1 className={styles.settingsShellTitle}>
                         {isAppSettings ? 'App settings' : 'Account settings'}
                       </h1>
-                      <p className={styles.settingsShellSubtitle}>
-                        {isAppSettings
-                          ? 'Configure installation, tests, connections, and appearance for this shop.'
-                          : 'Theme and appearance. Open the app from Home for tests and installation.'}
-                      </p>
+                      <div className={styles.settingsShellSubtitleRow}>
+                        <p className={styles.settingsShellSubtitle}>
+                          {isAppSettings
+                            ? 'Snippet, checkout, integrations, and appearance for this shop.'
+                            : 'Theme and appearance. Open the app from Home for tests and installation.'}
+                        </p>
+                        {isAppSettings && (
+                          <Tooltip content={appSettingsSubtitleHelp}>
+                            <span
+                              className={styles.settingsShellSubtitleHint}
+                              tabIndex={0}
+                              aria-label="More about app settings"
+                            >
+                              <Icon source={InfoIcon} />
+                            </span>
+                          </Tooltip>
+                        )}
+                      </div>
                     </div>
                   </div>
                   {isAppSettings && (
@@ -1272,20 +1339,53 @@ function Settings() {
                     aria-label="Store overview"
                   >
                     <div className={styles.settingsMetricCell}>
-                      <span className={styles.settingsMetricLabel}>Active section</span>
+                      <span className={styles.settingsMetricLabelWithTip}>
+                        <span className={styles.settingsMetricLabel}>Active section</span>
+                        <Tooltip content={metricTips.activeSection}>
+                          <span
+                            className={styles.settingsMetricTip}
+                            tabIndex={0}
+                            aria-label={metricTips.activeSection}
+                          >
+                            <Icon source={InfoIcon} />
+                          </span>
+                        </Tooltip>
+                      </span>
                       <span className={styles.settingsMetricValue}>
                         <Icon source={activeTabMeta?.icon || SettingsIcon} />
                         <span>{activeTabMeta?.label || 'Settings'}</span>
                       </span>
                     </div>
                     <div className={styles.settingsMetricCell}>
-                      <span className={styles.settingsMetricLabel}>Store</span>
+                      <span className={styles.settingsMetricLabelWithTip}>
+                        <span className={styles.settingsMetricLabel}>Store</span>
+                        <Tooltip content={metricTips.store}>
+                          <span
+                            className={styles.settingsMetricTip}
+                            tabIndex={0}
+                            aria-label={metricTips.store}
+                          >
+                            <Icon source={InfoIcon} />
+                          </span>
+                        </Tooltip>
+                      </span>
                       <span className={styles.settingsMetricValue} title={currentStoreLabel}>
                         {currentStoreLabel}
                       </span>
                     </div>
                     <div className={styles.settingsMetricCell}>
-                      <span className={styles.settingsMetricLabel}>Connections</span>
+                      <span className={styles.settingsMetricLabelWithTip}>
+                        <span className={styles.settingsMetricLabel}>Connections</span>
+                        <Tooltip content={metricTips.connections}>
+                          <span
+                            className={styles.settingsMetricTip}
+                            tabIndex={0}
+                            aria-label={metricTips.connections}
+                          >
+                            <Icon source={InfoIcon} />
+                          </span>
+                        </Tooltip>
+                      </span>
                       <span className={styles.settingsMetricValue}>
                         {configuredIntegrationCount}/{INTEGRATIONS_CONFIG.length}
                         <span className={styles.settingsMetricHint}>
@@ -1294,7 +1394,18 @@ function Settings() {
                       </span>
                     </div>
                     <div className={styles.settingsMetricCell}>
-                      <span className={styles.settingsMetricLabel}>Checks</span>
+                      <span className={styles.settingsMetricLabelWithTip}>
+                        <span className={styles.settingsMetricLabel}>Checks</span>
+                        <Tooltip content={metricTips.checks}>
+                          <span
+                            className={styles.settingsMetricTip}
+                            tabIndex={0}
+                            aria-label={metricTips.checks}
+                          >
+                            <Icon source={InfoIcon} />
+                          </span>
+                        </Tooltip>
+                      </span>
                       <span className={styles.settingsMetricValue}>
                         {storeHealth.ready ? 'Passing' : `${storeHealth.failed.length} to fix`}
                       </span>
@@ -1449,14 +1560,35 @@ function Settings() {
                         }`}
                       >
                         {!(isAppSettings && activeTabId === 'installation') && (
-                          <Text as="p" variant="bodySm" tone="subdued">
-                            {tabSummaries[activeTabId] || 'Manage this section.'}
-                          </Text>
+                          <Tooltip
+                            content={
+                              tabSummaries[activeTabId] ||
+                              'Tips and context for the tab you selected.'
+                            }
+                          >
+                            <span className={styles.settingsContextTabHint} tabIndex={0}>
+                              <span className={styles.settingsContextTabHintIcon} aria-hidden>
+                                <Icon source={InfoIcon} />
+                              </span>
+                              <span>About this tab</span>
+                            </span>
+                          </Tooltip>
                         )}
-                        <InlineStack gap="100" wrap blockAlign="center">
-                          <Text as="span" variant="bodySm" tone="subdued">
-                            Density
-                          </Text>
+                        <InlineStack gap="150" wrap blockAlign="center">
+                          <Tooltip content={densityHelp}>
+                            <span className={styles.settingsDensityGroup}>
+                              <Text as="span" variant="bodySm" tone="subdued">
+                                Density
+                              </Text>
+                              <span
+                                className={styles.settingsMetricTip}
+                                tabIndex={0}
+                                aria-label={densityHelp}
+                              >
+                                <Icon source={InfoIcon} />
+                              </span>
+                            </span>
+                          </Tooltip>
                           <Button
                             size="micro"
                             pressed={layoutDensity === 'comfortable'}
@@ -2037,7 +2169,7 @@ function Settings() {
                                           to={ROUTES.appDocs(installation.domain)}
                                           className={styles.installDocLink}
                                         >
-                                          Documentation
+                                          Setup guide (snippets & checkout)
                                         </Link>
                                       )}
                                     </InlineStack>
@@ -2549,7 +2681,7 @@ function Settings() {
                                         </Text>
                                         <Text as="p" variant="bodySm" tone="subdued">
                                           RipX defines only two function extensions in this
-                                          codebase: checkout discount and cart transform. Below is
+                                          codebase: checkout discount and Cart Transform. Below is
                                           what Admin API returns for your store (validation /
                                           refresh).
                                         </Text>
@@ -2833,13 +2965,10 @@ function Settings() {
                                     <SettingsIcon />
                                   </div>
                                   <div className={styles.sectionHeaderContent}>
-                                    <Text variant="headingMd" as="h2">
-                                      Defaults snapshot
-                                    </Text>
-                                    <Text as="p" variant="bodySm" tone="subdued">
-                                      A quick view of the current baseline for all new tests before
-                                      you edit individual controls.
-                                    </Text>
+                                    <SectionTitleWithTip
+                                      title="Defaults snapshot"
+                                      tip={SECTION_HELP.defaultsSnapshot}
+                                    />
                                   </div>
                                 </div>
                                 <div className={styles.settingsOverviewGrid}>
@@ -2871,13 +3000,13 @@ function Settings() {
                                       <SettingsIcon />
                                     </div>
                                     <div className={styles.sectionHeaderContent}>
-                                      <Text variant="headingMd" as="h2">
-                                        API Key
-                                      </Text>
+                                      <SectionTitleWithTip
+                                        title="API Key"
+                                        tip={SECTION_HELP.apiKeyStandalone}
+                                      />
                                       <Text as="p" variant="bodySm" tone="subdued">
-                                        Connected via API key. To use a different key, go to{' '}
-                                        <Link to={ROUTES.CONNECT}>Connect</Link> or clear storage
-                                        and reload.
+                                        <Link to={ROUTES.CONNECT}>Connect</Link> to change keys, or
+                                        clear storage and reload.
                                       </Text>
                                     </div>
                                   </div>
@@ -2894,12 +3023,10 @@ function Settings() {
                                     <TargetIcon />
                                   </div>
                                   <div className={styles.sectionHeaderContent}>
-                                    <Text variant="headingMd" as="h2">
-                                      Test Configuration
-                                    </Text>
-                                    <Text as="p" variant="bodySm" tone="subdued">
-                                      Choose a preset or customize. Settings apply to all new tests.
-                                    </Text>
+                                    <SectionTitleWithTip
+                                      title="Test configuration"
+                                      tip={SECTION_HELP.testConfiguration}
+                                    />
                                   </div>
                                 </div>
 
@@ -3106,14 +3233,10 @@ function Settings() {
                                       <ChartVerticalIcon />
                                     </div>
                                     <div className={styles.sectionHeaderContent}>
-                                      <Text variant="headingMd" as="h2">
-                                        Webhooks
-                                      </Text>
-                                      <Text as="p" variant="bodySm" tone="subdued">
-                                        Send events to your server when tests complete or reach
-                                        significance. The button below saves both webhook settings
-                                        and test defaults (sample size, confidence, auto-stop).
-                                      </Text>
+                                      <SectionTitleWithTip
+                                        title="Webhooks"
+                                        tip={SECTION_HELP.webhooks}
+                                      />
                                     </div>
                                   </div>
                                   <div className={styles.panelCardBody}>
@@ -3170,20 +3293,18 @@ function Settings() {
                                       <SettingsIcon />
                                     </div>
                                     <div className={styles.sectionHeaderContent}>
-                                      <Text variant="headingMd" as="h2">
-                                        User Preferences
-                                      </Text>
+                                      <SectionTitleWithTip
+                                        title="User preferences"
+                                        tip={SECTION_HELP.userPreferences}
+                                      />
                                       <Text as="p" variant="bodySm" tone="subdued">
-                                        Notifications, dashboard defaults, theme (custom schedule),
-                                        and export format are in{' '}
                                         <Link
                                           to={ROUTES.PROFILE}
                                           className={styles.setupWizardLink}
                                         >
-                                          Profile
+                                          Open Profile
                                         </Link>{' '}
-                                        — Account (notifications), Preferences (theme, dashboard,
-                                        editor).
+                                        for notifications, theme, and dashboard.
                                       </Text>
                                     </div>
                                   </div>
@@ -3231,13 +3352,10 @@ function Settings() {
                                       <ChartVerticalIcon />
                                     </div>
                                     <div className={styles.sectionHeaderContent}>
-                                      <Text variant="headingMd" as="h2">
-                                        Analytics & Data
-                                      </Text>
-                                      <Text as="p" variant="bodySm" tone="subdued">
-                                        Connect GA4 and BigQuery to unify analytics and run advanced
-                                        queries.
-                                      </Text>
+                                      <SectionTitleWithTip
+                                        title="Analytics & data"
+                                        tip={SECTION_HELP.analyticsData}
+                                      />
                                     </div>
                                   </div>
                                   <Button
@@ -3293,13 +3411,16 @@ function Settings() {
                                             className={`${styles.sectionHeaderContent} ${styles.integrationCardHeader}`}
                                           >
                                             <div className={styles.integrationCardTitleRow}>
-                                              <Text
-                                                variant="headingMd"
-                                                as="h2"
-                                                className={styles.integrationCardTitle}
-                                              >
-                                                {title}
-                                              </Text>
+                                              <SectionTitleWithTip
+                                                title={title}
+                                                tip={
+                                                  isLoading
+                                                    ? 'Loading integration details…'
+                                                    : (data?.hint ?? configHint)
+                                                }
+                                                asHeading="h3"
+                                                titleClassName={styles.integrationCardTitle}
+                                              />
                                               {!isLoading && (
                                                 <Badge
                                                   tone={configured ? 'success' : 'info'}
@@ -3315,14 +3436,6 @@ function Settings() {
                                                 </Badge>
                                               )}
                                             </div>
-                                            <Text
-                                              as="p"
-                                              variant="bodySm"
-                                              tone="subdued"
-                                              className={styles.integrationCardHint}
-                                            >
-                                              {isLoading ? 'Loading…' : (data?.hint ?? configHint)}
-                                            </Text>
                                           </div>
                                         </div>
                                         <div className={styles.panelCardBody}>
@@ -3476,13 +3589,13 @@ function Settings() {
                             <Box padding="400">
                               <div className={styles.integrationsSaveBar}>
                                 <div className={styles.integrationsSaveCopy}>
-                                  <Text as="p" variant="bodySm" fontWeight="semibold">
-                                    Finish changes
-                                  </Text>
-                                  <Text as="p" variant="bodySm" tone="subdued">
-                                    Save after updating credentials or datasets so RipX can use the
-                                    latest analytics connections.
-                                  </Text>
+                                  <SectionTitleWithTip
+                                    title="Finish changes"
+                                    tip={SECTION_HELP.integrationsSave}
+                                    asHeading="p"
+                                    variant="bodySm"
+                                    fontWeight="semibold"
+                                  />
                                 </div>
                                 <InlineStack align="end" gap="300">
                                   <Button
@@ -3516,19 +3629,18 @@ function Settings() {
                                     <PaintBrushFlatIcon />
                                   </div>
                                   <div className={styles.sectionHeaderContent}>
-                                    <Text variant="headingMd" as="h2">
-                                      Theme
-                                    </Text>
+                                    <SectionTitleWithTip
+                                      title="Theme"
+                                      tip={SECTION_HELP.themeAppearance}
+                                    />
                                     <Text as="p" variant="bodySm" tone="subdued">
-                                      Choose how the app looks. Auto switches by time of day. For a
-                                      custom schedule (e.g. dark after 7pm), use{' '}
+                                      Custom schedule:{' '}
                                       <Link
                                         to={`${ROUTES.PROFILE}?tab=preferences`}
                                         className={styles.setupWizardLink}
                                       >
                                         Profile → Preferences
                                       </Link>
-                                      .
                                     </Text>
                                   </div>
                                 </div>
@@ -3593,13 +3705,10 @@ function Settings() {
                                     <TargetIcon />
                                   </div>
                                   <div className={styles.sectionHeaderContent}>
-                                    <Text variant="headingMd" as="h2">
-                                      Targeting Presets
-                                    </Text>
-                                    <Text as="p" variant="bodySm" tone="subdued">
-                                      Saved segment presets for reuse when creating tests. Save
-                                      targeting as a preset in the test wizard.
-                                    </Text>
+                                    <SectionTitleWithTip
+                                      title="Targeting presets"
+                                      tip={SECTION_HELP.targetingPresets}
+                                    />
                                   </div>
                                 </div>
                                 <div className={styles.panelCardBody}>

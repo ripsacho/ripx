@@ -19,6 +19,7 @@ The function only overrides lines where `_ripx_price_method === direct_price_ove
 
 ## Important constraints
 
+- When `_ripx_price_method === direct_price_override`, the function applies the target unit price whether it is above or below the current line unit price (merchant-selected method on the variant).
 - Shopify allows a maximum of one cart transform function per store.
 - `lineUpdate` is only available on Plus / dev stores.
 - Shopify rejects `lineUpdate` operations when selling plans are involved.

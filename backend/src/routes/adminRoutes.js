@@ -64,7 +64,7 @@ const userDomainAccess = require('../models/userDomainAccess');
 /**
  * GET /api/admin/me - Current user identity (any authenticated shop).
  * Does not require admin role; returns role so UI can show/hide admin features.
- * Role: users.role, or RIPX_ADMIN_SHOP_DOMAINS, or 'admin' in development.
+ * Role: users.role (resolved by shop domain or email), or RIPX_ADMIN_SHOP_DOMAINS, or env admin email.
  */
 router.get(
   '/me',
@@ -72,20 +72,22 @@ router.get(
   asyncHandler(async (req, res) => {
     let role = null;
     let status = 'active';
+    const normalizedEmail = req.email ? String(req.email).trim().toLowerCase() : null;
+    const adminIdentity = req.shopDomain || normalizedEmail;
     if (req.authType === 'email' && req.email) {
       const adminEmails = (process.env.RIPX_ADMIN_EMAIL || '')
         .split(',')
         .map(e => e.trim().toLowerCase())
         .filter(Boolean);
-      if (adminEmails.includes(req.email.trim().toLowerCase())) {
+      if (normalizedEmail && adminEmails.includes(normalizedEmail)) {
         role = 'admin';
       }
     }
-    if (!role) {
-      const user = await getRoleAndStatus(req.shopDomain);
+    if (!role && adminIdentity) {
+      const user = await getRoleAndStatus(adminIdentity);
       status = user?.status ?? 'active';
       role = user?.role ?? null;
-      if (!role) {
+      if (!role && req.shopDomain) {
         const envAdmins = getEnvAdminDomains();
         const normalized = (req.shopDomain || '').toLowerCase().trim();
         if (envAdmins.length > 0 && envAdmins.includes(normalized)) {
@@ -95,7 +97,7 @@ router.get(
     }
     const permissions = getPermissionsForRole(role);
     return sendSuccess(res, HTTP_STATUS.OK, {
-      adminId: req.shopDomain || req.email,
+      adminId: req.shopDomain || normalizedEmail,
       shopDomain: req.shopDomain || null,
       role,
       status,

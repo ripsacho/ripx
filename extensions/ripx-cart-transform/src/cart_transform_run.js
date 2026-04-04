@@ -16,10 +16,6 @@ function amountsMatch(a, b) {
   return Math.abs(Number(a) - Number(b)) < 0.0001;
 }
 
-function isLowerPriceTarget(targetUnit, currentUnit) {
-  return Number(targetUnit) < Number(currentUnit) - 0.0001;
-}
-
 /**
  * @param {Input['cart']['lines'][number]} line
  * @returns {boolean}
@@ -43,11 +39,6 @@ function shouldApplyDirectOverride(line) {
     return false;
   }
   if (currentUnit === null) {
-    return false;
-  }
-  // Cart Transform cannot verify client-provided discounted target prices against the backend.
-  // Keep this path hardened for premium / price-increase overrides until signed pricing proofs exist.
-  if (isLowerPriceTarget(targetUnit, currentUnit)) {
     return false;
   }
   if (amountsMatch(targetUnit, currentUnit)) {
