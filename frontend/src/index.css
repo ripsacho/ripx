@@ -2159,6 +2159,25 @@ textarea:focus-visible {
   transition: margin-bottom 0.2s ease-out, padding 0.25s ease;
 }
 
+/*
+ * Bottom edge of the sticky header stack (TopBar + sticky step bar), measured from the
+ * viewport top. Used by nested sticky UI (e.g. price variant accordion row) so it never
+ * sits under the wizard steps. Tune if step bar layout changes.
+ */
+.wizard-page {
+  --ripx-wizard-sticky-stack-bottom: 168px;
+}
+@media (max-width: 900px) {
+  .wizard-page {
+    --ripx-wizard-sticky-stack-bottom: 152px;
+  }
+}
+@media (max-width: 640px) {
+  .wizard-page {
+    --ripx-wizard-sticky-stack-bottom: 142px;
+  }
+}
+
 /* Progress steps - in flow until you scroll; then sticks below TopBar (create + test detail) */
 .wizard-page .wizard-progress-bar {
   position: sticky;
