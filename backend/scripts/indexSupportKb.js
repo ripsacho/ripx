@@ -97,8 +97,7 @@ async function getEmbedding(text, apiKey, retries = 3) {
         );
         await sleep(waitMs);
         continue;
-      }
-      if (err.status === 429 || err.code === 'insufficient_quota') {
+      } else if (isRateLimit) {
         console.error(
           '\nOpenAI quota exceeded. Add billing at https://platform.openai.com, or run with --no-embed to index content only (no RAG until you re-run with embeddings).'
         );

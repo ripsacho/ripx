@@ -8388,7 +8388,11 @@ function TestWizard({
                             : getPricePreview(v.config, v.name);
                         const isExpanded = priceAccordionExpandedIndices.includes(i);
                         return (
-                          <div key={i} className={styles.priceSummaryAccordionItem}>
+                          <div
+                            key={i}
+                            className={styles.priceSummaryAccordionItem}
+                            style={{ ['--variant-accent']: getVariantColor(i) }}
+                          >
                             <button
                               type="button"
                               className={`${styles.priceSummaryRow} ${styles.priceSummaryRowClickable} ${isExpanded ? styles.priceSummaryRowExpanded : ''}`}
@@ -8402,6 +8406,9 @@ function TestWizard({
                               id={`price-accordion-head-${i}`}
                             >
                               <span className={styles.priceSummaryRowMain}>
+                                <span className={styles.priceSummaryRowEyebrow}>
+                                  Variant {i + 1} of {variants.length}
+                                </span>
                                 <span className={styles.priceSummaryRowVariant}>{v.name}</span>
                                 <span className={styles.priceSummaryRowMetaChips}>
                                   <Badge tone="info" size="small">
@@ -8417,6 +8424,15 @@ function TestWizard({
                                         Per product
                                       </Badge>
                                     )}
+                                </span>
+                                <span
+                                  className={`${styles.priceSummaryStatusPill} ${
+                                    isExpanded
+                                      ? styles.priceSummaryStatusPillActive
+                                      : styles.priceSummaryStatusPillMuted
+                                  }`}
+                                >
+                                  {isExpanded ? 'Editing now' : 'Open configuration'}
                                 </span>
                               </span>
                               <span className={styles.priceSummaryRowDetails}>
