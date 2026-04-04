@@ -106,6 +106,7 @@ router.get(
     const rawType = (req.query.type || '').toLowerCase().trim();
     const searchQuery = (req.query.query || '').trim() || undefined;
     const first = Math.min(parseInt(req.query.first, 10) || 100, 100);
+    const afterCursor = (req.query.after || '').trim() || null;
 
     const typeMap = {
       product: 'products',
@@ -124,6 +125,7 @@ router.get(
     }
 
     let list;
+    let productsPageInfo = null;
     let emptyReason = null; // Set when list is empty due to scope/API error so frontend can show it
     const handleListError = (err, resourceLabel) => {
       const msg = (err && err.message) || String(err);
@@ -176,7 +178,15 @@ router.get(
 
     try {
       if (type === 'products') {
-        list = await shopifyService.listProducts(shopDomain, accessToken, searchQuery, first);
+        const result = await shopifyService.listProducts(
+          shopDomain,
+          accessToken,
+          searchQuery,
+          first,
+          afterCursor
+        );
+        list = result.list;
+        productsPageInfo = result.pageInfo;
       } else if (type === 'collections') {
         list = await shopifyService.listCollections(shopDomain, accessToken, searchQuery, first);
       } else {
@@ -194,6 +204,7 @@ router.get(
     } catch (err) {
       if (type === 'products') {
         list = handleListError(err, 'products');
+        productsPageInfo = null;
       } else if (type === 'collections') {
         list = handleListError(err, 'collections');
       } else {
@@ -206,6 +217,7 @@ router.get(
       type: rawType,
       resources: Array.isArray(list) ? list : [],
       ...(emptyReason && { empty_reason: emptyReason }),
+      ...(productsPageInfo && { page_info: productsPageInfo }),
     });
   })
 );

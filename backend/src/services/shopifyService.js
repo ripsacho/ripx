@@ -172,25 +172,25 @@ class ShopifyService {
   }
 
   /**
-   * List products for store resource selector (targeting)
+   * List products for store resource selector (targeting).
    *
-   * @param {string} shopDomain - Shop domain
-   * @param {string} accessToken - Access token
-   * @param {string} [searchQuery] - Optional search query
-   * @param {number} [first] - Max items (default 100)
-   * @returns {Promise<Array<{id: string, title: string, handle: string}>>}
+   * @param {string} [after] - GraphQL cursor for pagination
+   * @returns {Promise<{ list: Array<{id: string, title: string, handle: string, imageUrl: string|null}>, pageInfo: { hasNextPage: boolean, endCursor: string|null } }>}
    */
-  async listProducts(shopDomain, accessToken, searchQuery = '', first = 100) {
+  async listProducts(shopDomain, accessToken, searchQuery = '', first = 100, after = null) {
     const session = this.getSession(shopDomain, accessToken);
     const client = new this.api.clients.Graphql({ session });
     const query = `
-      query listProducts($first: Int!, $query: String) {
-        products(first: $first, query: $query) {
+      query listProducts($first: Int!, $query: String, $after: String) {
+        products(first: $first, query: $query, after: $after) {
           edges {
             node {
               id
               title
               handle
+              featuredImage {
+                url
+              }
             }
           }
           pageInfo { hasNextPage endCursor }
@@ -198,19 +198,37 @@ class ShopifyService {
       }
     `;
     try {
+      const capped = Math.min(Math.max(1, first), 100);
       const response = await client.request(query, {
-        variables: { first, query: searchQuery || null },
+        variables: {
+          first: capped,
+          query: searchQuery || null,
+          after: after || null,
+        },
       });
       const edges = response.data?.products?.edges || [];
+      const pageInfo = response.data?.products?.pageInfo || {
+        hasNextPage: false,
+        endCursor: null,
+      };
       const list = edges.map(e => ({
         id: e.node.id,
         title: e.node.title || '(Untitled)',
         handle: e.node.handle || '',
+        imageUrl: e.node.featuredImage?.url || null,
       }));
-      list.sort((a, b) =>
-        (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' })
-      );
-      return list;
+      if (!after) {
+        list.sort((a, b) =>
+          (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' })
+        );
+      }
+      return {
+        list,
+        pageInfo: {
+          hasNextPage: !!pageInfo.hasNextPage,
+          endCursor: pageInfo.endCursor || null,
+        },
+      };
     } catch (error) {
       logger.error('Error listing products', { error: error.message, shopDomain });
       throw error;

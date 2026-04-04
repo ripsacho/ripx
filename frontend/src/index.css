@@ -2165,16 +2165,17 @@ textarea:focus-visible {
  * sits under the wizard steps. Tune if step bar layout changes.
  */
 .wizard-page {
-  --ripx-wizard-sticky-stack-bottom: 168px;
+  /* TopBar + sticky step bar + small buffer so accordion “Variant x of y” eyebrow is not clipped */
+  --ripx-wizard-sticky-stack-bottom: 186px;
 }
 @media (max-width: 900px) {
   .wizard-page {
-    --ripx-wizard-sticky-stack-bottom: 152px;
+    --ripx-wizard-sticky-stack-bottom: 170px;
   }
 }
 @media (max-width: 640px) {
   .wizard-page {
-    --ripx-wizard-sticky-stack-bottom: 142px;
+    --ripx-wizard-sticky-stack-bottom: 158px;
   }
 }
 
