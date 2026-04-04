@@ -260,6 +260,10 @@ function Settings() {
   const [previewProbeError, setPreviewProbeError] = useState(null);
   /** Installation → checkout card: keep primary actions visible; tuck tools & long copy here */
   const [installAdvancedOpen, setInstallAdvancedOpen] = useState(false);
+  const [installDebugJsonOpen, setInstallDebugJsonOpen] = useState(false);
+  const [shopifyFnInventory, setShopifyFnInventory] = useState(null);
+  const [shopifyFnInventoryLoading, setShopifyFnInventoryLoading] = useState(false);
+  const [shopifyFnInventoryError, setShopifyFnInventoryError] = useState(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -350,6 +354,25 @@ function Settings() {
     }
   }, []);
 
+  const fetchShopifyFnInventory = useCallback(async () => {
+    if (!installation?.domain) return;
+    setShopifyFnInventoryLoading(true);
+    setShopifyFnInventoryError(null);
+    try {
+      const res = await apiGet('/settings/shopify-functions-inventory');
+      const data = unwrapData(res);
+      setShopifyFnInventory(data);
+      if (data && data.success === false && data.error) {
+        setShopifyFnInventoryError(String(data.error));
+      }
+    } catch (e) {
+      setShopifyFnInventoryError(e?.message || 'Could not load Shopify functions inventory');
+      setShopifyFnInventory(null);
+    } finally {
+      setShopifyFnInventoryLoading(false);
+    }
+  }, [installation?.domain]);
+
   const runCheckoutDiagnostics = useCallback(async () => {
     if (!installation?.domain) return;
     setCheckoutDiagLoading(true);
@@ -362,12 +385,13 @@ function Settings() {
         throw new Error(data?.error || 'Invalid diagnostics response');
       }
       setCheckoutDiag(data);
+      await fetchShopifyFnInventory();
     } catch (e) {
       setCheckoutDiagError(e?.message || 'Could not load diagnostics');
     } finally {
       setCheckoutDiagLoading(false);
     }
-  }, [installation?.domain]);
+  }, [installation?.domain, fetchShopifyFnInventory]);
 
   const ensureCheckoutDiscount = useCallback(async () => {
     if (!installation?.domain) return;
@@ -752,6 +776,7 @@ function Settings() {
   };
 
   const activeTabId = TAB_IDS[selectedTab];
+
   const handleTabNavKeyDown = useCallback(
     e => {
       const count = TAB_CONFIG.length;
@@ -1812,8 +1837,9 @@ function Settings() {
                                         </Text>
                                         <Text as="p" variant="bodySm" tone="subdued">
                                           Confirms your discount function and API can align checkout
-                                          with running price tests. Run checks after changing app
-                                          URL or secrets.
+                                          with price tests. You do not need a running price test to
+                                          deploy extensions or create the automatic discount. Run
+                                          checks after changing app URL or secrets.
                                         </Text>
                                       </div>
                                     </div>
@@ -1991,6 +2017,14 @@ function Settings() {
                                     )}
                                     <InlineStack gap="300" blockAlign="center" wrap>
                                       <Button
+                                        disclosure={installDebugJsonOpen ? 'up' : 'down'}
+                                        onClick={() => setInstallDebugJsonOpen(o => !o)}
+                                      >
+                                        {installDebugJsonOpen
+                                          ? 'Hide debug JSON'
+                                          : 'Show debug JSON'}
+                                      </Button>
+                                      <Button
                                         disclosure={installAdvancedOpen ? 'up' : 'down'}
                                         onClick={() => setInstallAdvancedOpen(o => !o)}
                                       >
@@ -2007,6 +2041,27 @@ function Settings() {
                                         </Link>
                                       )}
                                     </InlineStack>
+                                    <Collapsible
+                                      open={installDebugJsonOpen}
+                                      id="install-debug-json"
+                                    >
+                                      <BlockStack gap="200">
+                                        <Text variant="headingSm" as="h3">
+                                          Debug payloads
+                                        </Text>
+                                        <Text as="p" variant="bodySm" tone="subdued">
+                                          Checkout diagnostics and Shopify functions inventory (copy
+                                          for support). Redact secrets before sharing externally.
+                                        </Text>
+                                        <pre className={styles.checkoutDiagDebugBox}>
+                                          {JSON.stringify(
+                                            { checkoutDiag, shopifyFnInventory },
+                                            null,
+                                            2
+                                          )}
+                                        </pre>
+                                      </BlockStack>
+                                    </Collapsible>
                                     {checkoutDiagLoading && (
                                       <InlineStack gap="200" blockAlign="center">
                                         <Spinner size="small" />
@@ -2470,6 +2525,271 @@ function Settings() {
                                           )}
                                       </BlockStack>
                                     </Collapsible>
+                                  </BlockStack>
+                                </Box>
+                              </Card>
+                            )}
+
+                          {installation &&
+                            installation.platform === 'shopify' &&
+                            !installationLoading &&
+                            !installationError && (
+                              <Card
+                                className={`${styles.settingsPanelCard} ${styles.shopifyFnInventoryCard}`}
+                              >
+                                <Box padding="500">
+                                  <BlockStack gap="400">
+                                    <div className={styles.sectionHeader}>
+                                      <div className={styles.sectionHeaderIcon}>
+                                        <CodeIcon />
+                                      </div>
+                                      <div className={styles.sectionHeaderContent}>
+                                        <Text variant="headingMd" as="h2">
+                                          Shopify Functions (this app)
+                                        </Text>
+                                        <Text as="p" variant="bodySm" tone="subdued">
+                                          RipX defines only two function extensions in this
+                                          codebase: checkout discount and cart transform. Below is
+                                          what Admin API returns for your store (validation /
+                                          refresh).
+                                        </Text>
+                                      </div>
+                                    </div>
+                                    {shopifyFnInventoryError && (
+                                      <Banner
+                                        tone="critical"
+                                        onDismiss={() => setShopifyFnInventoryError(null)}
+                                      >
+                                        {shopifyFnInventoryError}
+                                      </Banner>
+                                    )}
+                                    {!shopifyFnInventory &&
+                                      !shopifyFnInventoryLoading &&
+                                      !shopifyFnInventoryError && (
+                                        <Banner tone="info">
+                                          <Text as="p" variant="bodySm">
+                                            Tap <strong>Refresh validation</strong> to load
+                                            functions from Shopify Admin. This is read-only and does
+                                            not change your store.
+                                          </Text>
+                                        </Banner>
+                                      )}
+                                    {shopifyFnInventory?.success &&
+                                      shopifyFnInventory?.summary?.totalFunctionsReturned === 0 && (
+                                        <Banner tone="warning">
+                                          <Text as="p" variant="bodySm">
+                                            No functions were returned for this app on this store.
+                                            Deploy extensions from your dev machine (
+                                            <code className={styles.checkoutDiagMono}>
+                                              shopify app deploy
+                                            </code>
+                                            ), then refresh. Confirm the app is installed on this
+                                            development store.
+                                          </Text>
+                                        </Banner>
+                                      )}
+                                    {shopifyFnInventory?.readiness && (
+                                      <InlineStack gap="200" wrap blockAlign="center">
+                                        <Badge
+                                          tone={
+                                            shopifyFnInventory.readiness
+                                              .discount_function_for_checkout
+                                              ? 'success'
+                                              : 'warning'
+                                          }
+                                        >
+                                          Discount path:{' '}
+                                          {shopifyFnInventory.readiness
+                                            .discount_function_for_checkout
+                                            ? 'ready'
+                                            : 'not detected'}
+                                        </Badge>
+                                        <Badge
+                                          tone={
+                                            shopifyFnInventory.readiness
+                                              .cart_transform_for_direct_price
+                                              ? 'success'
+                                              : 'warning'
+                                          }
+                                        >
+                                          Direct price path:{' '}
+                                          {shopifyFnInventory.readiness
+                                            .cart_transform_for_direct_price
+                                            ? 'ready'
+                                            : 'not detected'}
+                                        </Badge>
+                                      </InlineStack>
+                                    )}
+                                    {((Array.isArray(shopifyFnInventory?.manifestNotes) &&
+                                      shopifyFnInventory.manifestNotes.length > 0) ||
+                                      (Array.isArray(shopifyFnInventory?.operationalNotes) &&
+                                        shopifyFnInventory.operationalNotes.length > 0)) && (
+                                      <Banner tone="info">
+                                        <BlockStack gap="100">
+                                          {Array.isArray(shopifyFnInventory?.manifestNotes) &&
+                                            shopifyFnInventory.manifestNotes.map((n, i) => (
+                                              <Text as="p" variant="bodySm" key={`mn-${i}`}>
+                                                {n}
+                                              </Text>
+                                            ))}
+                                          {Array.isArray(shopifyFnInventory?.operationalNotes) &&
+                                            shopifyFnInventory.operationalNotes.map((n, i) => (
+                                              <Text as="p" variant="bodySm" key={`on-${i}`}>
+                                                {n}
+                                              </Text>
+                                            ))}
+                                        </BlockStack>
+                                      </Banner>
+                                    )}
+                                    <InlineStack gap="300" wrap blockAlign="center">
+                                      <Button
+                                        variant={!shopifyFnInventory ? 'primary' : undefined}
+                                        onClick={fetchShopifyFnInventory}
+                                        loading={shopifyFnInventoryLoading}
+                                      >
+                                        Refresh validation
+                                      </Button>
+                                      {shopifyFnInventory?.generatedAt && (
+                                        <Text as="span" variant="bodySm" tone="subdued">
+                                          Last fetch:{' '}
+                                          {formatRelativeTime(shopifyFnInventory.generatedAt)}
+                                        </Text>
+                                      )}
+                                      {shopifyFnInventory?.summary && (
+                                        <Badge tone="info">
+                                          {shopifyFnInventory.summary.totalFunctionsReturned}{' '}
+                                          function
+                                          {shopifyFnInventory.summary.totalFunctionsReturned === 1
+                                            ? ''
+                                            : 's'}{' '}
+                                          in API list
+                                        </Badge>
+                                      )}
+                                    </InlineStack>
+                                    {shopifyFnInventoryLoading && (
+                                      <InlineStack gap="200" blockAlign="center">
+                                        <Spinner size="small" />
+                                        <Text as="span" variant="bodySm" tone="subdued">
+                                          Querying Shopify Admin (shopifyFunctions)…
+                                        </Text>
+                                      </InlineStack>
+                                    )}
+                                    {Array.isArray(shopifyFnInventory?.expectations) &&
+                                      shopifyFnInventory.expectations.length > 0 && (
+                                        <div>
+                                          <Text variant="headingSm" as="h3">
+                                            Expected vs detected
+                                          </Text>
+                                          <div className={styles.shopifyFnInventoryTableWrap}>
+                                            <table className={styles.shopifyFnInventoryTable}>
+                                              <thead>
+                                                <tr>
+                                                  <th scope="col">Role</th>
+                                                  <th scope="col">Status</th>
+                                                  <th scope="col">Matched function</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody>
+                                                {shopifyFnInventory.expectations.map(row => (
+                                                  <tr key={row.key}>
+                                                    <td>
+                                                      <Text
+                                                        as="span"
+                                                        variant="bodySm"
+                                                        fontWeight="semibold"
+                                                      >
+                                                        {row.label}
+                                                      </Text>
+                                                      <Text as="p" variant="bodySm" tone="subdued">
+                                                        {row.description}
+                                                      </Text>
+                                                    </td>
+                                                    <td>
+                                                      <Badge
+                                                        tone={row.detected ? 'success' : 'warning'}
+                                                      >
+                                                        {row.detected ? 'Detected' : 'Missing'}
+                                                      </Badge>
+                                                      <Text as="p" variant="bodySm" tone="subdued">
+                                                        {row.candidateCount} candidate
+                                                        {row.candidateCount === 1 ? '' : 's'}
+                                                      </Text>
+                                                    </td>
+                                                    <td>
+                                                      {row.matchedFunction ? (
+                                                        <>
+                                                          <code className={styles.checkoutDiagMono}>
+                                                            {row.matchedFunction.title || '—'}
+                                                          </code>
+                                                          <Text
+                                                            as="p"
+                                                            variant="bodySm"
+                                                            tone="subdued"
+                                                          >
+                                                            {row.matchedFunction.apiType || '—'}
+                                                          </Text>
+                                                          <Text
+                                                            as="p"
+                                                            variant="bodySm"
+                                                            tone="subdued"
+                                                          >
+                                                            ID: {row.matchedFunction.id || '—'}
+                                                          </Text>
+                                                        </>
+                                                      ) : (
+                                                        <Text
+                                                          as="p"
+                                                          variant="bodySm"
+                                                          tone="subdued"
+                                                        >
+                                                          Deploy the matching extension, then
+                                                          refresh.
+                                                        </Text>
+                                                      )}
+                                                    </td>
+                                                  </tr>
+                                                ))}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        </div>
+                                      )}
+                                    {Array.isArray(shopifyFnInventory?.shopifyFunctions) &&
+                                      shopifyFnInventory.shopifyFunctions.length > 0 && (
+                                        <div>
+                                          <Text variant="headingSm" as="h3">
+                                            All functions returned (Admin API)
+                                          </Text>
+                                          <div className={styles.shopifyFnInventoryTableWrap}>
+                                            <table className={styles.shopifyFnInventoryTable}>
+                                              <thead>
+                                                <tr>
+                                                  <th scope="col">Title</th>
+                                                  <th scope="col">API type</th>
+                                                  <th scope="col">ID</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody>
+                                                {shopifyFnInventory.shopifyFunctions.map(fn => (
+                                                  <tr key={fn.id || fn.title}>
+                                                    <td>{fn.title || '—'}</td>
+                                                    <td>
+                                                      <code className={styles.checkoutDiagMono}>
+                                                        {fn.apiType || '—'}
+                                                      </code>
+                                                    </td>
+                                                    <td>
+                                                      <code className={styles.checkoutDiagMono}>
+                                                        {fn.id || '—'}
+                                                      </code>
+                                                    </td>
+                                                  </tr>
+                                                ))}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        </div>
+                                      )}
                                   </BlockStack>
                                 </Box>
                               </Card>

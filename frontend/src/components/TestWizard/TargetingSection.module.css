@@ -7838,17 +7838,26 @@
 .productScopeCardCompact {
   border-radius: 14px;
 }
-.productScopeSectionCompact {
+/* Compound selector so gap wins over .productScopeSection (28px / 32px at 768px+) */
+.productScopeSection.productScopeSectionCompact {
+  gap: 10px;
   padding: 14px 16px 16px;
 }
 .productScopeHeaderCompact {
-  margin-bottom: 12px;
+  margin-bottom: 0;
+  padding-bottom: 0;
 }
 .productScopeHeaderCompactTop {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
+}
+.productScopeHeaderCompact > p,
+.productScopeHeaderCompact .Polaris-Text {
+  margin: 0;
+  max-width: 52em;
+  line-height: 1.45;
 }
 .productScopeHeaderInfo {
   display: inline-flex;
@@ -7875,7 +7884,18 @@
 }
 
 .productScopeSectionCompact .productScopeOptionsWrap {
-  margin-top: 4px;
+  margin-top: 0;
+  gap: 8px;
+}
+.productScopeSectionCompact .productScopeOptionsLabel {
+  padding: 4px 10px;
+  font-size: 0.625rem;
+  letter-spacing: 0.1em;
+}
+.productScopeSectionCompact .productScopeOptionsRow {
+  padding: 16px 18px;
+  gap: 14px;
+  border-radius: 14px;
 }
 .productScopeSectionCompact .productScopeOptionsRow .scopeCard.scopeCardOption {
   padding: 10px 12px;

@@ -20,6 +20,7 @@ const {
   readRipxCheckoutExtensionConfigFile,
   extensionConfigInputFromReadResult,
 } = require('../services/priceCheckoutDiagnostics');
+const { buildShopifyFunctionsInventory } = require('../services/shopifyFunctionsInventory');
 const { SCRIPT_VERSION } = require('../utils/storefrontScriptRuntime');
 const shopifyService = require('../services/shopifyService');
 const { getShopSession } = require('../models/shopSession');
@@ -493,6 +494,49 @@ ${resourceHints}<script src="${scriptUrl}" defer crossorigin="anonymous" fetchpr
     next(error);
   }
 });
+
+/**
+ * GET /api/settings/shopify-functions-inventory
+ * Lists shopifyFunctions for this app on the store + RipX manifest expectations (discount + cart transform).
+ */
+router.get(
+  '/shopify-functions-inventory',
+  asyncHandler(async (req, res) => {
+    const shopDomain = req.shopDomain;
+    if (!shopDomain) {
+      return sendError(res, 401, 'Shop domain required');
+    }
+
+    const fallbackSession = await getShopSession(shopDomain);
+    const accessToken = req.shopifyAccessToken || fallbackSession?.access_token || '';
+    if (!accessToken) {
+      const empty = buildShopifyFunctionsInventory([], shopDomain);
+      res.set('Cache-Control', 'no-store');
+      return res.json({
+        ...empty,
+        success: false,
+        error:
+          'Missing Shopify access token for this shop. Re-open RipX from Shopify Admin and try again.',
+      });
+    }
+
+    let shopifyFunctions = [];
+    try {
+      shopifyFunctions = await fetchShopifyFunctions(shopDomain, accessToken);
+    } catch (e) {
+      const empty = buildShopifyFunctionsInventory([], shopDomain);
+      res.set('Cache-Control', 'no-store');
+      return res.json({
+        ...empty,
+        success: false,
+        error: e?.message || 'Failed to query shopifyFunctions',
+      });
+    }
+
+    res.set('Cache-Control', 'no-store');
+    return res.json(buildShopifyFunctionsInventory(shopifyFunctions, shopDomain));
+  })
+);
 
 /**
  * GET /api/settings/checkout-price-diagnostics

@@ -3446,24 +3446,6 @@ div[class*="Polaris-Modal"][class*="Dialog"]:has([data-template-editor]) {
   min-width: 520px !important;
 }
 
-/* Price test — product picker (wide two-pane layout; overrides default max-width: 500px) */
-.Polaris-Modal-Dialog:has([data-price-product-picker-modal]),
-div[class*="Polaris-Modal"][class*="Dialog"]:has([data-price-product-picker-modal]) {
-  width: min(96vw, 1280px) !important;
-  max-width: min(96vw, 1280px) !important;
-  min-width: min(92vw, 880px) !important;
-  max-height: min(90vh, 720px) !important;
-}
-@media (max-width: 900px) {
-  .Polaris-Modal-Dialog:has([data-price-product-picker-modal]),
-  div[class*="Polaris-Modal"][class*="Dialog"]:has([data-price-product-picker-modal]) {
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: 100% !important;
-    max-height: 92vh !important;
-  }
-}
-
 /* Modal overlay/backdrop - project look: subtle cyan tint + blur */
 [class*="Polaris-Modal"][class*="Backdrop"],
 [class*="Modal"][class*="Backdrop"] {
@@ -3485,6 +3467,56 @@ div[class*="Modal__Dialog"] {
   position: relative;
   max-width: min(500px, 92vw);
   transition: box-shadow var(--transition-base), border-color var(--transition-base);
+}
+
+/*
+ * Price test — product picker (must follow general modal panel rule above).
+ * Outer role=dialog stays full-viewport + flex-centers the inner panel; width lives on
+ * .Polaris-Modal-Dialog__Modal only — otherwise the panel sticks top-left.
+ */
+.Polaris-Modal-Dialog:has([data-price-product-picker-modal]) {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  height: 100% !important;
+  min-height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.Polaris-Modal-Dialog__Modal:has([data-price-product-picker-modal]) {
+  width: min(96vw, 1280px) !important;
+  max-width: min(96vw, 1280px) !important;
+  min-width: min(92vw, 880px) !important;
+  max-height: min(90vh, 720px) !important;
+  margin: 0 !important;
+  flex-shrink: 0 !important;
+  align-self: center !important;
+}
+
+@media (max-width: 900px) {
+  .Polaris-Modal-Dialog__Modal:has([data-price-product-picker-modal]) {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    max-height: 92vh !important;
+  }
+}
+
+body:not(.admin-page) .Polaris-Modal-Dialog__Container:has([data-price-product-picker-modal]),
+body:not(.admin-page) div[class*='Polaris-Modal-Dialog__Container']:has([data-price-product-picker-modal]) {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  align-items: center !important;
+  padding: 1rem !important;
+  box-sizing: border-box !important;
 }
 
 /* Add domain modal (My domains) – container: center and comfortable padding */

@@ -1219,18 +1219,18 @@ function Dashboard() {
                 ) : tests.length === 0 ? (
                   <div className={styles.emptyStateAdvanced}>
                     <div className={styles.emptyStateIcon}>🧪</div>
-                    <h3 className={styles.emptyStateTitle}>Ready to optimize your store?</h3>
+                    <h3 className={styles.emptyStateTitle}>Run your first experiment</h3>
                     <p className={styles.emptyStateDesc}>
-                      Create your first test in 3 steps: pick a type, configure variants, and
-                      launch. Test pricing, content, shipping, and offers — names and settings are
-                      auto-suggested.
+                      The wizard walks you through type, variants, and launch. RipX assigns traffic,
+                      measures outcomes, and surfaces significance so you can ship what works —
+                      pricing, content, shipping, and more.
                     </p>
                     <div className={styles.emptyStateActions}>
                       <Button onClick={() => navigate(routes.createTest)} size="large">
-                        Create Your First Test
+                        Create test
                       </Button>
                       <Button onClick={() => navigate(routes.createTest)} variant="plain">
-                        Explore test types
+                        Open test wizard
                       </Button>
                     </div>
                   </div>

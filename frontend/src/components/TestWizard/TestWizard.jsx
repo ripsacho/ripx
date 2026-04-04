@@ -6395,7 +6395,7 @@ function TestWizard({
             : directPriceOverrideReadiness === 'checking'
               ? 'Checking whether the RipX Cart Transform function is active for this shop.'
               : directPriceOverrideReadiness === 'needs_deploy'
-                ? 'This is the Cart Transform option. Deploy and activate the RipX cart transform to use it on this shop.'
+                ? 'Deploy extensions/ripx-cart-transform on this shop. Shopify allows only one cart transform per store—another app may be using the slot.'
                 : 'This is the Cart Transform option. Confirm Plus/dev eligibility and cart transform activation for this shop.',
       };
     }
@@ -7532,7 +7532,7 @@ function TestWizard({
                                   : priceDecreaseConfigured
                                     ? 'This variant currently lowers price, so the Cart Transform path is intentionally disabled here. Use Discounted Checkout Price for lower-price tests, or Native Variant Price if you need a real product price.'
                                     : directPriceOverrideReadiness === 'needs_deploy'
-                                      ? 'This is the Cart Transform option, but the wizard does not detect an active RipX cart transform on this shop yet.'
+                                      ? 'This is the Cart Transform option, but RipX does not see its cart transform on this shop. Deploy extensions/ripx-cart-transform (e.g. shopify app deploy). Shopify only allows one cart transform function per store—if another app already uses that slot, RipX’s function cannot appear until that is resolved.'
                                       : directPriceOverrideReadiness === 'checking'
                                         ? 'RipX is checking whether the Cart Transform function is active for this shop.'
                                         : 'Use this for the cleanest cart + checkout price presentation when your store is Plus/dev eligible and Cart Transform is active.'}

@@ -955,16 +955,17 @@ function TestList() {
                       <LoadingSkeleton type="table" count={5} />
                     ) : tests.length === 0 ? (
                       <EmptyState
-                        heading="Create your first AB test"
+                        heading="Run your first experiment"
                         action={{
-                          content: 'Create Test',
+                          content: 'Create test',
                           onAction: () => navigate(routes.createTest),
                         }}
                         image="https://cdn.shopify.com/s/files/1/0757/9955/files/empty-state.svg"
                       >
                         <p>
-                          Start optimizing your store by creating an AB test. Test prices, content,
-                          shipping, and more to maximize conversions.
+                          Measure impact with clear assignment and reporting: price tests, content,
+                          shipping, and more. RipX tracks variants and significance so you can roll
+                          out winners with confidence.
                         </p>
                       </EmptyState>
                     ) : (
