@@ -3446,6 +3446,24 @@ div[class*="Polaris-Modal"][class*="Dialog"]:has([data-template-editor]) {
   min-width: 520px !important;
 }
 
+/* Price test — product picker (wide two-pane layout; overrides default max-width: 500px) */
+.Polaris-Modal-Dialog:has([data-price-product-picker-modal]),
+div[class*="Polaris-Modal"][class*="Dialog"]:has([data-price-product-picker-modal]) {
+  width: min(96vw, 1280px) !important;
+  max-width: min(96vw, 1280px) !important;
+  min-width: min(92vw, 880px) !important;
+  max-height: min(90vh, 720px) !important;
+}
+@media (max-width: 900px) {
+  .Polaris-Modal-Dialog:has([data-price-product-picker-modal]),
+  div[class*="Polaris-Modal"][class*="Dialog"]:has([data-price-product-picker-modal]) {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    max-height: 92vh !important;
+  }
+}
+
 /* Modal overlay/backdrop - project look: subtle cyan tint + blur */
 [class*="Polaris-Modal"][class*="Backdrop"],
 [class*="Modal"][class*="Backdrop"] {

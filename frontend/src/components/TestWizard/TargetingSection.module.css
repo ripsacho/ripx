@@ -4438,6 +4438,47 @@
   outline-offset: 2px;
 }
 
+.scopeCardLabelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  flex-wrap: wrap;
+}
+.scopeCardSelectedProducts .scopeCardContent {
+  gap: 6px;
+}
+.scopeCardCountPill {
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(248, 250, 252, 0.96);
+  color: var(--p-color-text-subdued, #6d7175);
+}
+.scopeCardCountPillHasSelection {
+  border-color: rgba(6, 182, 212, 0.42);
+  background: linear-gradient(
+    135deg,
+    rgba(6, 182, 212, 0.16) 0%,
+    rgba(255, 255, 255, 0.98) 100%
+  );
+  color: color-mix(in srgb, #0f172a 78%, #06b6d4 22%);
+}
+.scopeCardActive.scopeCardSelectedProducts .scopeCardCountPillHasSelection {
+  box-shadow: 0 2px 10px rgba(6, 182, 212, 0.2);
+}
+.productScopeStandaloneIds {
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
 /* Product scope section (price test variant config) – layout and UI */
 .productScopeSection {
   display: flex;
@@ -6865,6 +6906,92 @@
   background: var(--p-color-bg-surface, #fff);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06), 0 1px 0 rgba(255, 255, 255, 0.6) inset;
 }
+.priceSummaryCardCompact .priceSummaryHeader {
+  padding: 12px 16px;
+  gap: 12px;
+}
+.priceSummaryCardCompact .priceSummaryHeaderIcon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+}
+.priceSummaryCardCompact .priceSummaryHeaderIcon svg,
+.priceSummaryCardCompact .priceSummaryHeaderIcon .Polaris-Icon {
+  width: 18px;
+  height: 18px;
+}
+.priceVariantToolsToggle {
+  padding: 0 12px 10px;
+}
+.priceVariantToolsToggleBtn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.96);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.priceVariantToolsToggleBtn:hover {
+  border-color: rgba(6, 182, 212, 0.28);
+}
+.priceVariantToolsToggleBtnOpen {
+  border-color: rgba(6, 182, 212, 0.32);
+  box-shadow: 0 2px 10px rgba(6, 182, 212, 0.1);
+}
+.priceVariantToolsToggleLabel {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--p-color-text, #202223);
+}
+.priceVariantToolsToggleHint {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--p-color-text-subdued, #6d7175);
+}
+.priceVariantToolsToggleChevron {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(6, 182, 212, 0.08);
+  transition: transform 0.2s ease;
+}
+.priceVariantToolsToggleBtnOpen .priceVariantToolsToggleChevron {
+  transform: rotate(180deg);
+}
+.priceSummaryCardCompact .priceQuickFillStrip {
+  padding: 10px 14px 10px 18px;
+  margin-left: 2px;
+}
+.priceSummaryCardCompact .priceAtAGlanceGrid {
+  padding: 10px 14px;
+  gap: 8px;
+}
+.priceSummaryCardCompact .priceAtAGlanceCard {
+  padding: 10px 12px;
+  border-radius: 12px;
+}
+.priceSummaryCardCompact .priceExamplePreview {
+  padding: 10px 14px;
+}
+.priceSummaryCardCompact .priceSimulationWrap {
+  padding: 10px 14px 12px;
+}
+.priceSummaryCardCompact .priceAccordionActions {
+  padding: 8px 14px 12px;
+}
 .priceSummaryHeader {
   display: flex;
   align-items: center;
@@ -7764,8 +7891,8 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 20px;
-  min-height: 360px;
-  max-height: min(70vh, 560px);
+  min-height: 420px;
+  max-height: min(72vh, 600px);
 }
 @media (max-width: 768px) {
   .priceProductPickerGrid {
