@@ -6845,8 +6845,17 @@
   background: var(--p-color-bg-surface, #fff);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06), 0 1px 0 rgba(255, 255, 255, 0.6) inset;
 }
+/* Sticky variant headers / inner sticky section titles need a visible overflow chain */
+.priceSummaryCard:has(.priceSummaryRowExpanded) {
+  overflow: visible;
+}
 .priceSummaryCard :global(.Polaris-ShadowBevel) {
   overflow: visible;
+}
+/* Polaris Card wraps content in Box with overflow clip — breaks position:sticky */
+.priceSummaryCard:has(.priceSummaryRowExpanded) :global(.Polaris-Box) {
+  --pc-box-overflow-x: visible;
+  --pc-box-overflow-y: visible;
 }
 .priceSummaryHeader {
   display: flex;
@@ -7842,14 +7851,13 @@
   box-shadow: 0 4px 14px rgba(15, 23, 42, 0.05);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.18s ease;
 }
-.priceSummaryAccordionItem:has(.priceSummaryRowExpanded) {
-  overflow: visible;
-}
-.priceSummaryAccordionItem:hover {
+/* transform on an ancestor breaks sticky positioning; skip lift when expanded */
+.priceSummaryAccordionItem:not(:has(.priceSummaryRowExpanded)):hover {
   transform: translateY(-1px);
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
 }
 .priceSummaryAccordionItem:has(.priceSummaryRowExpanded) {
+  overflow: visible;
   border-color: color-mix(in srgb, var(--variant-accent) 34%, rgba(15, 23, 42, 0.1));
   box-shadow:
     0 16px 34px color-mix(in srgb, var(--variant-accent) 16%, rgba(15, 23, 42, 0.1)),
@@ -7926,19 +7934,19 @@
 .priceSummaryRowExpanded {
   position: sticky;
   top: var(--price-accordion-sticky-top);
-  z-index: 9;
+  /* Above accordion body + sibling cards; below app chrome is handled by top offset */
+  z-index: 24;
+  /* Solid base avoids backdrop-filter subpixel clipping under sticky + overflow fixes */
   background: linear-gradient(
     90deg,
     color-mix(in srgb, var(--variant-accent) 12%, white 88%) 0%,
-    rgba(255, 255, 255, 0.96) 58%
+    rgba(255, 255, 255, 0.98) 58%
   );
   border-bottom: none;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.7),
     0 10px 26px -16px rgba(15, 23, 42, 0.35),
     0 4px 12px -8px rgba(6, 182, 212, 0.22);
-  backdrop-filter: blur(18px) saturate(1.04);
-  -webkit-backdrop-filter: blur(18px) saturate(1.04);
 }
 .priceSummaryAccordionItem:has(.priceSummaryRowExpanded) .priceSummaryRowClickable {
   border-bottom: 1px solid rgba(15, 23, 42, 0.06);
@@ -8012,13 +8020,15 @@
 .priceAccordionBody {
   width: 100%;
   box-sizing: border-box;
-  padding: 0 16px 16px;
+  padding: 0 16px 20px;
   margin: 0;
   border-radius: 0;
   background: linear-gradient(180deg, var(--p-color-bg-surface-secondary, #f4f5f6) 0%, var(--p-color-bg-surface-secondary, #f0f1f2) 100%);
   border-top: 1px solid rgba(15, 23, 42, 0.06);
   box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.03), 0 1px 0 rgba(255, 255, 255, 0.5);
   transition: box-shadow 0.2s ease;
+  /* Let inner sticky section titles reach the viewport */
+  overflow: visible;
 }
 .priceSummaryAccordionItem:has(.priceSummaryRowExpanded) .priceAccordionBody {
   background: linear-gradient(
@@ -8035,7 +8045,7 @@
   width: 100%;
   box-sizing: border-box;
   padding: 20px 22px 24px;
-  margin-top: 16px;
+  margin-top: 12px;
   border-radius: 16px;
   max-width: none;
   background: rgba(255, 255, 255, 0.82);
@@ -8043,7 +8053,8 @@
   border-left: 4px solid color-mix(in srgb, var(--variant-accent) 42%, white 58%);
   box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
   position: relative;
-  overflow: hidden;
+  /* overflow:hidden clips sticky step titles inside the editor */
+  overflow: visible;
 }
 .priceAccordionBody .priceEditorPanel::before {
   content: '';
@@ -8072,7 +8083,7 @@
 .priceAccordionBody .priceEditorPanel > div {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 12px 20px;
+  gap: 16px 20px;
   counter-reset: price-step;
 }
 .priceAccordionBody .priceEditorPanel > div > .priceEditorHeader,
@@ -8085,7 +8096,7 @@
 @media (min-width: 768px) {
   .priceAccordionBody .priceEditorPanel > div {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 18px 28px;
+    gap: 22px 28px;
   }
 }
 @media (min-width: 1200px) {
@@ -8253,14 +8264,13 @@
   .priceAccordionBody .priceSectionBlockTitle {
     position: sticky;
     top: var(--price-section-title-sticky-top, 220px);
-    z-index: 7;
+    /* Below sticky accordion row (z-index 24), above section body */
+    z-index: 12;
     background: linear-gradient(
       180deg,
       color-mix(in srgb, var(--variant-accent, #06b6d4) 7%, rgba(255, 255, 255, 0.99) 93%) 0%,
-      rgba(255, 255, 255, 0.94) 100%
+      rgba(255, 255, 255, 0.97) 100%
     );
-    backdrop-filter: blur(12px) saturate(1.06);
-    -webkit-backdrop-filter: blur(12px) saturate(1.06);
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.65),
       0 6px 14px -10px rgba(15, 23, 42, 0.22);
