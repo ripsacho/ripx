@@ -21,6 +21,7 @@
  * The server sends short Cache-Control for script.js (activeTests are embedded); hard-refresh or wait for max-age after starting/stopping tests.
  *
  * Debug: Set window.__RIPX_DEBUG__ = true before the script loads to enable console logs (no PII).
+ * Runtime toggle: call window.RipX.setDebug(true) / window.RipX.setDebug(false) from console.
  * With debug on, cart/add interception logs [RipX] lines: path matched, patched vs unchanged body, near-miss paths, missing line state.
  * Version: Exposed as window.RipX.version / window.ABTestTracker.version for support.
  */
@@ -58,7 +59,44 @@
   }
   const consentRequired = !!CONFIG.consentRequired;
   const SCRIPT_VERSION = (CONFIG.version && String(CONFIG.version)) || '1.0.0';
-  const DEBUG = !!(typeof window !== 'undefined' && window.__RIPX_DEBUG__);
+  const DEBUG_STORAGE_KEY = '__RIPX_DEBUG__';
+  function coerceBooleanFlag(value) {
+    if (value === true || value === false) return value;
+    var raw = String(value == null ? '' : value)
+      .trim()
+      .toLowerCase();
+    if (raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on') return true;
+    if (raw === '0' || raw === 'false' || raw === 'no' || raw === 'off') return false;
+    return null;
+  }
+  function readStoredDebugFlag() {
+    try {
+      var fromWindow = coerceBooleanFlag(window.__RIPX_DEBUG__);
+      if (fromWindow !== null) return fromWindow;
+    } catch (eW) {}
+    try {
+      var fromLocalStorage =
+        window.localStorage && coerceBooleanFlag(window.localStorage.getItem(DEBUG_STORAGE_KEY));
+      if (fromLocalStorage !== null) return fromLocalStorage;
+    } catch (eLs) {}
+    return false;
+  }
+  function persistDebugFlag(enabled) {
+    try {
+      if (!window.localStorage) return;
+      if (enabled) window.localStorage.setItem(DEBUG_STORAGE_KEY, '1');
+      else window.localStorage.removeItem(DEBUG_STORAGE_KEY);
+    } catch (ePersist) {}
+  }
+  var DEBUG = readStoredDebugFlag();
+  function setDebugEnabled(enabled, persist) {
+    DEBUG = !!enabled;
+    try {
+      window.__RIPX_DEBUG__ = DEBUG;
+    } catch (eWin) {}
+    if (persist !== false) persistDebugFlag(DEBUG);
+    return DEBUG;
+  }
   var _ripxNativeFetch = typeof window.fetch === 'function' ? window.fetch.bind(window) : null;
   const ANTI_FLICKER_MAX_MS = 1400;
   var antiFlickerState = { active: false, pending: 0, timeoutId: null };
@@ -131,6 +169,66 @@
   function debugLog() {
     if (DEBUG && typeof console !== 'undefined' && console.log) {
       console.log.apply(console, ['[RipX]'].concat(Array.prototype.slice.call(arguments)));
+    }
+  }
+  async function debugCartSnapshot(options) {
+    var opts = options && typeof options === 'object' ? options : {};
+    try {
+      if (typeof fetch !== 'function') {
+        return { ok: false, error: 'fetch_unavailable' };
+      }
+      var res = await fetch('/cart.js', { method: 'GET', credentials: 'same-origin' });
+      if (!res || !res.ok) {
+        return { ok: false, error: 'cart_fetch_failed', status: res ? res.status : null };
+      }
+      var cart = await res.json();
+      var items = Array.isArray(cart && cart.items)
+        ? cart.items.map(function (item, idx) {
+            var p = item && item.properties ? item.properties : {};
+            var priceMethod =
+              p._ripx_price_method ||
+              p._ripx_price_application_method ||
+              p.__ripx_price_application_method ||
+              null;
+            var targetUnit = p._ripx_target_unit || null;
+            var hasSellingPlan = !!(item && item.selling_plan_allocation);
+            return {
+              row: idx + 1,
+              key: item && item.key ? item.key : null,
+              variantId: item && item.variant_id ? item.variant_id : null,
+              title:
+                item && (item.product_title || item.title)
+                  ? item.product_title || item.title
+                  : null,
+              quantity: item && item.quantity ? item.quantity : 0,
+              priceMethod: priceMethod,
+              targetUnit: targetUnit,
+              priceTest: p._ripx_price_test || null,
+              assignedVariant: p._ripx_variant || null,
+              hasSellingPlan: hasSellingPlan,
+              transformEligible:
+                !hasSellingPlan &&
+                String(priceMethod || '').toLowerCase() === 'direct_price_override' &&
+                targetUnit !== null &&
+                targetUnit !== '',
+            };
+          })
+        : [];
+      if (opts.log !== false && typeof console !== 'undefined') {
+        if (console.groupCollapsed) console.groupCollapsed('[RipX] cart debug snapshot');
+        if (console.table) console.table(items);
+        if (console.log) console.log('cart', cart);
+        if (console.groupEnd) console.groupEnd();
+      }
+      return {
+        ok: true,
+        itemCount: items.length,
+        currency: cart && cart.currency ? cart.currency : null,
+        items: items,
+        cart: opts.includeRaw ? cart : undefined,
+      };
+    } catch (err) {
+      return { ok: false, error: err && (err.message || String(err)) };
     }
   }
   /** Fetch with timeout to avoid hanging on slow/failed networks. Uses AbortController. */
@@ -5013,6 +5111,19 @@
     applyPriceTest,
     reapplyPriceTests: null,
     reapplyCartFormRipxProps: null,
+    setDebug: function (enabled, options) {
+      var persist = !(options && options.persist === false);
+      var next = setDebugEnabled(!!enabled, persist);
+      if (typeof console !== 'undefined' && console.info) {
+        console.info(
+          '[RipX] debug',
+          next ? 'enabled' : 'disabled',
+          persist ? '(persisted)' : '(session)'
+        );
+      }
+      return next;
+    },
+    debugCart: debugCartSnapshot,
     debugStatus,
     version: SCRIPT_VERSION,
   };
