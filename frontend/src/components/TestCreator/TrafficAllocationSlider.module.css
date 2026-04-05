@@ -1,3 +1,7 @@
+:root {
+  --traffic-time-200: 0.2s;
+  --traffic-time-250: 0.25s;
+}
 /* Traffic Allocation - Advanced / Smart UI */
 
 .wrapper {
@@ -108,7 +112,7 @@
   font-weight: 600;
   border-radius: 8px;
   cursor: pointer;
-  transition: background 0.2s, border-color 0.2s, color 0.2s;
+  transition: background var(--traffic-time-200), border-color var(--traffic-time-200), color var(--traffic-time-200);
   border: 1px solid var(--traffic-border);
   background: #fff;
   color: var(--traffic-text);
@@ -348,7 +352,7 @@
   cursor: default;
   border: 1px solid rgba(0, 0, 0, 0.07);
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
-  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  transition: box-shadow var(--traffic-time-200) ease, border-color var(--traffic-time-200) ease;
   user-select: none;
   -webkit-user-select: none;
   touch-action: none;
@@ -378,7 +382,7 @@
   justify-content: space-between;
   cursor: grab;
   background: var(--segment-color);
-  transition: box-shadow 0.25s ease, top 0.2s ease, bottom 0.2s ease, filter 0.2s ease;
+  transition: box-shadow var(--traffic-time-250) ease, top var(--traffic-time-200) ease, bottom var(--traffic-time-200) ease, filter var(--traffic-time-200) ease;
   overflow: hidden;
   padding: 0 4px;
 }
@@ -475,7 +479,7 @@
   border: 1px solid rgba(6, 182, 212, 0.35);
   border-radius: 4px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  transition: box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  transition: box-shadow var(--traffic-time-200) ease, border-color var(--traffic-time-200) ease, background var(--traffic-time-200) ease;
 }
 
 .handle:hover {
@@ -670,7 +674,7 @@
   border: 1px solid var(--traffic-border);
   background: #fff;
   overflow: hidden;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: border-color var(--traffic-time-200), box-shadow var(--traffic-time-200);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
@@ -743,7 +747,7 @@
   line-height: 1;
   border-radius: 8px;
   cursor: pointer;
-  transition: background 0.2s, border-color 0.2s, color 0.2s;
+  transition: background var(--traffic-time-200), border-color var(--traffic-time-200), color var(--traffic-time-200);
 }
 
 .variantCardRemoveBtn:hover {
@@ -804,7 +808,7 @@
   font-variant-numeric: tabular-nums;
   color: var(--traffic-text);
   cursor: pointer;
-  transition: background 0.2s, border-color 0.2s, color 0.2s;
+  transition: background var(--traffic-time-200), border-color var(--traffic-time-200), color var(--traffic-time-200);
   flex-shrink: 0;
 }
 
@@ -836,7 +840,7 @@
   border-radius: 8px;
   text-align: center;
   outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: border-color var(--traffic-time-200), box-shadow var(--traffic-time-200);
   appearance: textfield;
   -moz-appearance: textfield;
 }
@@ -884,7 +888,7 @@
   font-weight: 600;
   color: var(--traffic-text);
   cursor: pointer;
-  transition: background 0.2s, border-color 0.2s, color 0.2s;
+  transition: background var(--traffic-time-200), border-color var(--traffic-time-200), color var(--traffic-time-200);
 }
 
 .cardActionBtnIcon {
@@ -980,7 +984,7 @@
   border-radius: 8px;
   cursor: pointer;
   text-align: left;
-  transition: background 0.2s;
+  transition: background var(--traffic-time-200);
 }
 
 .variantNameDisplay:hover {
@@ -1029,7 +1033,7 @@
   padding: 2px 6px;
   background: var(--traffic-bg);
   border-radius: 6px;
-  transition: opacity 0.2s, transform 0.2s;
+  transition: opacity var(--traffic-time-200), transform var(--traffic-time-200);
 }
 
 .variantNameEdit {
@@ -1047,7 +1051,7 @@
   border: 1px solid var(--traffic-accent);
   border-radius: 8px;
   outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: border-color var(--traffic-time-200), box-shadow var(--traffic-time-200);
 }
 
 .variantNameInput:focus {
@@ -1071,7 +1075,7 @@
   --tooltip-text: #f6f6f7;
   --tooltip-border: rgba(255, 255, 255, 0.08);
   --tooltip-shadow: 0 10px 32px rgba(0, 0, 0, 0.28), 0 4px 12px rgba(0, 0, 0, 0.15);
-  animation: tooltipFadeIn 0.2s ease-out;
+  animation: tooltipFadeIn var(--traffic-time-200) ease-out;
 }
 
 @keyframes tooltipFadeIn {

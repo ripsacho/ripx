@@ -1,3 +1,13 @@
+:root {
+  --user-panel-time-200: 0.2s;
+  --user-panel-time-220: 0.22s;
+  --user-panel-time-250: 0.25s;
+  --user-panel-time-450: 0.45s;
+  --user-panel-time-600: 0.6s;
+  --user-panel-time-6000: 6s;
+  --user-panel-time-18000: 18s;
+  --user-panel-time-20000: 20s;
+}
 /* User Panel – drastic command-center layout */
 
 .panelPage {
@@ -58,7 +68,7 @@
     #06b6d4 100%
   );
   opacity: 0.98;
-  animation: heroGradientShift 18s ease-in-out infinite alternate;
+  animation: heroGradientShift var(--user-panel-time-18000) ease-in-out infinite alternate;
 }
 
 @keyframes heroGradientShift {
@@ -75,7 +85,7 @@
   height: 5px;
   background: linear-gradient(90deg, #06b6d4, #a78bfa, #06b6d4);
   background-size: 200% 100%;
-  animation: heroBarShift 6s ease-in-out infinite;
+  animation: heroBarShift var(--user-panel-time-6000) ease-in-out infinite;
   opacity: 0.95;
 }
 
@@ -115,7 +125,7 @@
   pointer-events: none;
   filter: blur(60px);
   opacity: 0.4;
-  animation: heroOrbFloat 20s ease-in-out infinite;
+  animation: heroOrbFloat var(--user-panel-time-20000) ease-in-out infinite;
 }
 
 .heroOrb1 {
@@ -146,7 +156,7 @@
   position: relative;
   z-index: 1;
   max-width: 760px;
-  animation: heroFadeIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: heroFadeIn var(--user-panel-time-600) cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 @keyframes heroFadeIn {
@@ -219,7 +229,7 @@
   border-radius: 16px;
   text-decoration: none;
   color: #fff;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all var(--user-panel-time-250) cubic-bezier(0.4, 0, 0.2, 1);
   min-width: 220px;
   backdrop-filter: blur(8px);
 }
@@ -333,7 +343,7 @@
   text-decoration: none;
   padding: 0.5rem 0.75rem;
   border-radius: 10px;
-  transition: background 0.2s ease, color 0.2s ease;
+  transition: background var(--user-panel-time-200) ease, color var(--user-panel-time-200) ease;
 }
 
 .statsCta:hover {
@@ -405,7 +415,7 @@
   border-radius: 16px;
   text-decoration: none;
   color: var(--text-primary);
-  transition: all 0.22s ease;
+  transition: all var(--user-panel-time-220) ease;
   position: relative;
   overflow: hidden;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
@@ -420,7 +430,7 @@
   height: 3px;
   background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
   opacity: 0;
-  transition: opacity 0.22s ease;
+  transition: opacity var(--user-panel-time-220) ease;
 }
 
 .accountTile:hover {
@@ -463,7 +473,7 @@
   top: 1rem;
   right: 1rem;
   opacity: 0.5;
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition: opacity var(--user-panel-time-200) ease, transform var(--user-panel-time-200) ease;
 }
 
 .accountTile:hover .accountTileArrow {
@@ -555,7 +565,7 @@
   text-decoration: none;
   padding: 0.4rem 0.75rem;
   border-radius: 8px;
-  transition: background 0.2s ease, color 0.2s ease;
+  transition: background var(--user-panel-time-200) ease, color var(--user-panel-time-200) ease;
 }
 
 .emptyLink:hover {
@@ -662,7 +672,7 @@
   border-radius: 12px;
   border: 1px solid rgba(6, 182, 212, 0.4);
   background: rgba(6, 182, 212, 0.1);
-  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+  transition: background var(--user-panel-time-200) ease, border-color var(--user-panel-time-200) ease, color var(--user-panel-time-200) ease, transform var(--user-panel-time-200) ease;
 }
 
 .domainsSectionPrimaryAction:hover {
@@ -695,7 +705,7 @@
   border-radius: 12px;
   border: 1px solid rgba(6, 182, 212, 0.35);
   background: rgba(6, 182, 212, 0.08);
-  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  transition: background var(--user-panel-time-200) ease, border-color var(--user-panel-time-200) ease, color var(--user-panel-time-200) ease;
   flex-shrink: 0;
 }
 
@@ -745,7 +755,7 @@
   text-decoration: none;
   padding: 0.5rem 0.75rem;
   border-radius: 10px;
-  transition: background 0.2s ease, color 0.2s ease;
+  transition: background var(--user-panel-time-200) ease, color var(--user-panel-time-200) ease;
 }
 
 .sectionAction:hover {
@@ -786,9 +796,9 @@
   border: 1px solid var(--border-secondary);
   background: var(--bg-primary);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all var(--user-panel-time-250) cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
-  animation: domainTileIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation: domainTileIn var(--user-panel-time-450) cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 [data-theme='dark'] .domainTile {

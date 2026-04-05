@@ -1,3 +1,6 @@
+:root {
+  --custom-tabs-time-300: 0.3s;
+}
 /* Custom Tabs Component Styles */
 .custom-tabs-container {
   margin: var(--spacing-md) 0;
@@ -167,7 +170,7 @@
 .custom-tabs-panel {
   padding-top: var(--spacing-lg);
   margin-top: var(--spacing-md);
-  animation: fadeInUp 0.3s ease-out;
+  animation: fadeInUp var(--custom-tabs-time-300) ease-out;
 }
 
 @keyframes fadeInUp {

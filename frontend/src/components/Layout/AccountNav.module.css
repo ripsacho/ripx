@@ -1,3 +1,7 @@
+:root {
+  --account-nav-time-150: 0.15s;
+  --account-nav-time-200: 0.2s;
+}
 /* AccountNav – app bar for Home, My domains, Admin */
 
 .accountNav {
@@ -90,7 +94,7 @@
   color: var(--text-primary);
   text-decoration: none;
   border-radius: 8px;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background var(--account-nav-time-150) ease, color var(--account-nav-time-150) ease;
 }
 
 .accountNavLink:hover {
@@ -119,7 +123,7 @@
   text-decoration: none;
   border-radius: 10px;
   box-shadow: 0 2px 10px rgba(6, 182, 212, 0.35);
-  transition: box-shadow 0.2s ease, opacity 0.2s ease;
+  transition: box-shadow var(--account-nav-time-200) ease, opacity var(--account-nav-time-200) ease;
 }
 
 .accountNavLinkAdmin:hover {
@@ -142,7 +146,7 @@
   border: none;
   border-radius: 8px;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background var(--account-nav-time-150) ease, color var(--account-nav-time-150) ease;
 }
 
 .accountNavSignOut:hover {

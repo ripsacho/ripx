@@ -1,3 +1,7 @@
+:root {
+  --test-creator-time-300: 0.3s;
+  --test-creator-time-4000: 4s;
+}
 /* Create Test page - matches Settings/Profile/Setup layout */
 .createPage {
   display: flex;
@@ -133,7 +137,7 @@
   height: 6px;
   border-radius: 50%;
   background: rgba(6, 182, 212, 0.2);
-  transition: all 0.3s ease;
+  transition: all var(--test-creator-time-300) ease;
 }
 
 .createHeroDotActive {
@@ -165,7 +169,7 @@
   color: var(--accent-primary);
   flex-shrink: 0;
   box-shadow: 0 4px 16px rgba(6, 182, 212, 0.25);
-  animation: createHeroIconGlow 4s ease-in-out infinite;
+  animation: createHeroIconGlow var(--test-creator-time-4000) ease-in-out infinite;
 }
 
 @keyframes createHeroIconGlow {

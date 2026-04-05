@@ -1,3 +1,8 @@
+:root {
+  --event-explorer-time-250: 0.25s;
+  --event-explorer-time-300: 0.3s;
+  --event-explorer-time-8000: 8s;
+}
 /* EventExplorer - Full-width premium section */
 
 .eventsSection {
@@ -11,7 +16,7 @@
   );
   border: 1px solid rgba(0, 0, 0, 0.05);
   box-shadow: 0 6px 32px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(0, 0, 0, 0.02);
-  transition: all 0.3s ease;
+  transition: all var(--event-explorer-time-300) ease;
 }
 
 [data-theme="dark"] .eventsSection {
@@ -35,7 +40,7 @@
     transparent
   );
   background-size: 200% 100%;
-  animation: eventsGradientShift 8s ease infinite;
+  animation: eventsGradientShift var(--event-explorer-time-8000) ease infinite;
   opacity: 0.7;
 }
 
@@ -69,7 +74,7 @@
   border-radius: 16px;
   background: rgba(6, 182, 212, 0.04);
   border: 1px solid rgba(6, 182, 212, 0.15);
-  transition: all 0.25s ease;
+  transition: all var(--event-explorer-time-250) ease;
 }
 
 .eventsSetupCard:hover {
@@ -141,7 +146,7 @@
   border-radius: 16px;
   overflow: hidden;
   border: 1px solid rgba(6, 182, 212, 0.15);
-  transition: all 0.25s ease;
+  transition: all var(--event-explorer-time-250) ease;
 }
 
 .eventsTableWrapper:hover {

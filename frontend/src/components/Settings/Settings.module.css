@@ -15,6 +15,13 @@
   /* Rhythm & radii — inherited by panels */
   --settings-gap-panel: 1.5rem;
   --settings-gap-panel-lg: 2rem;
+  --settings-motion-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --settings-motion-fast: 0.16s;
+  --settings-motion-base: 0.22s;
+  --settings-motion-slow: 0.32s;
+  --settings-anim-fade: 0.35s ease-out;
+  --settings-anim-pulse: 2.5s ease-in-out infinite;
+  --settings-anim-shimmer: 1.8s ease-in-out infinite;
   --settings-radius-card: var(--ripx-surface-radius, 14px);
   --settings-shadow-card: var(
     --ripx-surface-shadow,
@@ -512,7 +519,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.65rem 1rem;
-  padding: 0.25rem 0 0.75rem;
+  padding: 0.25rem 0 0.5rem;
   margin-bottom: 0.2rem;
   border-bottom: 1px solid rgba(6, 182, 212, 0.08);
 }
@@ -572,7 +579,9 @@
   padding: 0.35rem 0.5rem;
   margin: -0.35rem -0.5rem;
   border-radius: 8px;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition:
+    background var(--settings-motion-fast) var(--settings-motion-ease),
+    color var(--settings-motion-fast) var(--settings-motion-ease);
 }
 
 .installDocLink:hover {
@@ -694,7 +703,7 @@
   color: var(--text-secondary);
   background: transparent;
   cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all var(--settings-motion-base) var(--settings-motion-ease);
 }
 
 .settingsTab:hover {
@@ -729,12 +738,22 @@
 
 .settingsWorkspace {
   display: block;
-  transition: grid-template-columns 0.28s ease;
+  transition: grid-template-columns var(--settings-motion-slow) var(--settings-motion-ease);
+}
+
+.settingsWorkspaceWithRail {
+  display: block;
+}
+
+.settingsWorkspaceWithRailCollapsed {
+  display: block;
 }
 
 .settingsRail {
   display: none;
-  transition: width 0.28s ease, opacity 0.24s ease;
+  transition:
+    width var(--settings-motion-slow) var(--settings-motion-ease),
+    opacity var(--settings-motion-base) var(--settings-motion-ease);
 }
 
 .settingsRailCollapsed {
@@ -748,11 +767,85 @@
   padding: 0.75rem;
 }
 
+.settingsRailHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+}
+
+.settingsRailTitle {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+
+.settingsRailToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 1px solid rgba(6, 182, 212, 0.18);
+  border-radius: 8px;
+  background: rgba(6, 182, 212, 0.06);
+  color: var(--text-secondary);
+  padding: 0.24rem 0.45rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background var(--settings-motion-fast) var(--settings-motion-ease),
+    border-color var(--settings-motion-fast) var(--settings-motion-ease),
+    color var(--settings-motion-fast) var(--settings-motion-ease);
+}
+
+.settingsRailToggle:hover {
+  background: rgba(6, 182, 212, 0.12);
+  border-color: rgba(6, 182, 212, 0.26);
+  color: var(--text-primary);
+}
+
+.settingsRailToggle:focus-visible {
+  outline: var(--ripx-focus-outline, 2px solid rgba(6, 182, 212, 0.45));
+  outline-offset: 2px;
+}
+
+.settingsRailToggle svg {
+  width: 14px;
+  height: 14px;
+}
+
+.settingsRailToggleLabel {
+  white-space: nowrap;
+}
+
 .settingsRailTabs {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
   margin-top: 0.35rem;
+}
+
+.settingsRailTooltipWrap {
+  display: block;
+  width: 100%;
+  opacity: 0.94;
+  transform: translateY(0);
+  filter: saturate(0.98);
+  transition:
+    opacity var(--settings-motion-fast) var(--settings-motion-ease),
+    transform var(--settings-motion-fast) var(--settings-motion-ease),
+    filter var(--settings-motion-base) var(--settings-motion-ease);
+}
+
+.settingsRailTooltipWrap:hover,
+.settingsRailTooltipWrap:focus-within,
+.settingsRailTooltipWrapActive {
+  opacity: 1;
+  transform: translateY(-1px);
+  filter: saturate(1.04);
 }
 
 .settingsRailTab {
@@ -768,7 +861,7 @@
   cursor: pointer;
   text-align: left;
   font-size: 0.85rem;
-  transition: all 0.2s ease;
+  transition: all var(--settings-motion-base) var(--settings-motion-ease);
   position: relative;
   overflow: hidden;
 }
@@ -782,7 +875,7 @@
   width: 0;
   border-radius: 0 8px 8px 0;
   background: linear-gradient(180deg, var(--futuristic-cyan), var(--futuristic-violet));
-  transition: width 0.2s ease;
+  transition: width var(--settings-motion-base) var(--settings-motion-ease);
 }
 
 .settingsRailTabLabel {
@@ -818,7 +911,32 @@
   padding-right: 0.45rem;
 }
 
-.settingsRailCollapsed .settingsRailTabLabel,
+.settingsRailCollapsed .settingsRailTitle,
+.settingsRailCollapsed .settingsRailToggleLabel {
+  display: none;
+}
+
+.settingsRailCollapsed .settingsRailHeader {
+  justify-content: center;
+}
+
+.settingsRailCollapsed .settingsRailToggle {
+  padding: 0.24rem;
+}
+
+.settingsRailCollapsed .settingsRailTabLabel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 8px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .settingsRailCollapsed .settingsRailStatusDot {
   display: none;
 }
@@ -840,6 +958,44 @@
   width: 3px;
 }
 
+@media (min-width: 1180px) {
+  .settingsWorkspaceWithRail {
+    display: grid;
+    grid-template-columns: minmax(190px, 220px) minmax(0, 1fr);
+    gap: 1rem;
+    align-items: start;
+  }
+
+  .settingsWorkspaceWithRailCollapsed {
+    display: grid;
+    grid-template-columns: 84px minmax(0, 1fr);
+    gap: 0.8rem;
+    align-items: start;
+  }
+
+  .settingsWorkspaceWithRail .settingsRail {
+    display: block;
+    position: sticky;
+    top: 0.75rem;
+    align-self: start;
+  }
+
+  .settingsWorkspaceWithRailCollapsed .settingsRail {
+    display: block;
+    position: sticky;
+    top: 0.75rem;
+    align-self: start;
+  }
+
+  .settingsWorkspaceWithRail .settingsPanels {
+    min-width: 0;
+  }
+
+  .settingsWorkspaceWithRailCollapsed .settingsPanels {
+    min-width: 0;
+  }
+}
+
 [data-theme='dark'] .settingsTabBar {
   border-color: rgba(6, 182, 212, 0.22);
   background: rgba(15, 23, 42, 0.62);
@@ -848,6 +1004,11 @@
 [data-theme='dark'] .settingsRailBlock {
   background: rgba(15, 23, 42, 0.68);
   border-color: rgba(6, 182, 212, 0.2);
+}
+
+[data-theme='dark'] .settingsRailToggle {
+  background: rgba(6, 182, 212, 0.1);
+  border-color: rgba(6, 182, 212, 0.28);
 }
 
 .checkoutDiagActionBar {
@@ -866,7 +1027,9 @@
 }
 
 .checkoutDiagActionBar :global(.Polaris-Button) {
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  transition:
+    transform var(--settings-motion-fast) var(--settings-motion-ease),
+    box-shadow var(--settings-motion-fast) var(--settings-motion-ease);
 }
 
 .checkoutDiagActionBar :global(.Polaris-Button):hover {
@@ -927,7 +1090,7 @@
   padding-top: 0.5rem;
   min-height: 280px;
   width: 100%;
-  animation: settingsContentFade 0.35s ease-out;
+  animation: settingsContentFade var(--settings-anim-fade);
 }
 
 /* Standard panel layout - same for all tabs (Installation-style) */
@@ -1277,7 +1440,7 @@
   min-width: 52px;
   border-radius: 10px;
   font-weight: 600;
-  transition: all 0.2s ease;
+  transition: all var(--settings-motion-base) var(--settings-motion-ease);
 }
 
 .configQuickSelect :global(.Polaris-Button--pressed) {
@@ -1350,9 +1513,9 @@
 .settingsPanelIntegrations .integrationCardWrapper {
   min-width: 0;
   transition:
-    border-color 0.22s ease,
-    box-shadow 0.22s ease,
-    transform 0.22s ease;
+    border-color var(--settings-motion-base) var(--settings-motion-ease),
+    box-shadow var(--settings-motion-base) var(--settings-motion-ease),
+    transform var(--settings-motion-base) var(--settings-motion-ease);
 }
 
 .settingsPanelIntegrations .integrationCardWrapper:hover {
@@ -1434,7 +1597,7 @@
   height: 56px;
   border-radius: 16px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
-  transition: transform 0.25s ease;
+  transition: transform var(--settings-motion-base) var(--settings-motion-ease);
   flex-shrink: 0;
 }
 
@@ -1590,9 +1753,9 @@
   border: 1px solid rgba(6, 182, 212, 0.14);
   box-shadow: var(--settings-shadow-card, 0 4px 20px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(0, 0, 0, 0.02));
   transition:
-    border-color 0.22s ease,
-    box-shadow 0.22s ease,
-    transform 0.22s ease;
+    border-color var(--settings-motion-base) var(--settings-motion-ease),
+    box-shadow var(--settings-motion-base) var(--settings-motion-ease),
+    transform var(--settings-motion-base) var(--settings-motion-ease);
 }
 
 .settingsPage :global(.Polaris-Card)::before {
@@ -1653,7 +1816,7 @@
   background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
   border: 2px solid var(--border-secondary);
   border-radius: 18px;
-  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all var(--settings-motion-slow) var(--settings-motion-ease);
   position: relative;
   overflow: hidden;
 }
@@ -1667,7 +1830,7 @@
   height: 3px;
   background: linear-gradient(90deg, transparent, rgba(6, 182, 212, 0.2), transparent);
   opacity: 0;
-  transition: opacity 0.3s ease;
+  transition: opacity var(--settings-motion-slow) var(--settings-motion-ease);
 }
 
 .integrationCard:hover {
@@ -1699,7 +1862,7 @@
   height: 3px;
   background: linear-gradient(90deg, var(--status-success), rgba(52, 168, 83, 0.5));
   border-radius: 18px 18px 0 0;
-  animation: integrationPulse 2.5s ease-in-out infinite;
+  animation: integrationPulse var(--settings-anim-pulse);
 }
 
 @keyframes integrationPulse {
@@ -1877,7 +2040,7 @@
   border: 2px solid var(--border-secondary);
   border-radius: 18px;
   cursor: pointer;
-  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all var(--settings-motion-slow) var(--settings-motion-ease);
 }
 
 .themePreviewCard:hover {
@@ -2080,7 +2243,9 @@
   background: linear-gradient(135deg, var(--futuristic-cyan), var(--futuristic-violet));
   border-radius: 12px;
   text-decoration: none;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform var(--settings-motion-base) var(--settings-motion-ease),
+    box-shadow var(--settings-motion-base) var(--settings-motion-ease);
   box-shadow: 0 4px 14px rgba(6, 182, 212, 0.35);
 }
 
@@ -2120,11 +2285,11 @@
   border-radius: 10px;
   text-decoration: none;
   transition:
-    background 0.2s ease,
-    border-color 0.2s ease,
-    color 0.2s ease,
-    box-shadow 0.2s ease,
-    transform 0.2s ease;
+    background var(--settings-motion-base) var(--settings-motion-ease),
+    border-color var(--settings-motion-base) var(--settings-motion-ease),
+    color var(--settings-motion-base) var(--settings-motion-ease),
+    box-shadow var(--settings-motion-base) var(--settings-motion-ease),
+    transform var(--settings-motion-base) var(--settings-motion-ease);
 }
 
 .quickLinkBtn:hover {
@@ -2172,25 +2337,25 @@
 .snippetSectionHeader {
   display: flex;
   align-items: flex-start;
-  gap: 1.25rem;
+  gap: 0.9rem;
 }
 
 .snippetSectionHeaderIcon {
-  width: 56px;
-  height: 56px;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 16px;
+  border-radius: 12px;
   background: linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(139, 92, 246, 0.12));
   color: var(--accent-primary);
   flex-shrink: 0;
-  box-shadow: 0 4px 16px rgba(6, 182, 212, 0.15);
+  box-shadow: 0 3px 10px rgba(6, 182, 212, 0.14);
 }
 
 .snippetSectionHeaderIcon svg {
-  width: 28px;
-  height: 28px;
+  width: 20px;
+  height: 20px;
 }
 
 .snippetSectionHeaderContent {
@@ -2203,8 +2368,8 @@
 
 .snippetSectionTitle {
   margin: 0 !important;
-  font-size: 1.5rem !important;
-  font-weight: 800 !important;
+  font-size: 1.15rem !important;
+  font-weight: 700 !important;
   letter-spacing: -0.03em !important;
   color: var(--text-primary) !important;
 }
@@ -2247,15 +2412,15 @@
 
 .snippetSectionDesc {
   margin: 0 !important;
-  font-size: 0.9375rem !important;
-  line-height: 1.55 !important;
+  font-size: 0.8125rem !important;
+  line-height: 1.45 !important;
   color: var(--text-secondary) !important;
 }
 
 .snippetSection {
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: 1rem;
 }
 
 .snippetBlock {
@@ -2264,13 +2429,13 @@
   gap: 0;
   padding: 0;
   background: linear-gradient(180deg, rgba(6, 182, 212, 0.06) 0%, rgba(0, 0, 0, 0.03) 100%);
-  border: 2px solid rgba(6, 182, 212, 0.18);
-  border-radius: 18px;
-  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  border-radius: 12px;
+  transition: all var(--settings-motion-slow) var(--settings-motion-ease);
   width: 100%;
   min-width: 0;
   overflow: hidden;
-  box-shadow: 0 4px 20px rgba(6, 182, 212, 0.06);
+  box-shadow: 0 2px 10px rgba(6, 182, 212, 0.05);
 }
 
 [data-theme='dark'] .snippetBlock {
@@ -2288,16 +2453,16 @@
 }
 
 .snippetBlock:hover {
-  border-color: rgba(6, 182, 212, 0.4);
-  box-shadow: 0 10px 36px rgba(6, 182, 212, 0.12);
+  border-color: rgba(6, 182, 212, 0.32);
+  box-shadow: 0 6px 18px rgba(6, 182, 212, 0.1);
 }
 
 .snippetBlockHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 1rem 1.5rem;
+  gap: 0.65rem;
+  padding: 0.55rem 0.8rem;
   background: rgba(0, 0, 0, 0.02);
   border-bottom: 1px solid rgba(6, 182, 212, 0.1);
   flex-wrap: wrap;
@@ -2312,7 +2477,7 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.8125rem;
+  font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -2333,7 +2498,7 @@
 /* Code area - terminal/IDE style */
 .snippetCodeWrap {
   position: relative;
-  padding: 1.25rem 1.5rem 1.5rem;
+  padding: 0.7rem 0.8rem 0.8rem;
 }
 
 .snippetCodeWrap::before {
@@ -2350,17 +2515,17 @@
 
 .snippetPre {
   margin: 0;
-  padding: 0 0 0 0.75rem;
+  padding: 0 0 0 0.55rem;
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
-  font-size: 0.9rem;
-  line-height: 1.75;
+  font-size: 0.76rem;
+  line-height: 1.42;
   color: var(--text-primary);
   overflow-x: auto;
   overflow-wrap: break-word;
   word-break: break-word;
   white-space: pre-wrap;
   word-break: break-all;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.005em;
   max-width: 100%;
   overflow-x: auto;
 }
@@ -2393,10 +2558,10 @@
 
 .snippetUrl {
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
-  font-size: 0.875rem;
-  padding: 1.125rem 1.5rem;
+  font-size: 0.72rem;
+  padding: 0.7rem 0.85rem;
   background: rgba(0, 0, 0, 0.04);
-  border-radius: 12px;
+  border-radius: 9px;
   display: block;
   overflow-wrap: break-word;
   word-break: break-all;
@@ -2405,7 +2570,9 @@
   flex: 1;
   min-width: 0;
   border: 1px solid rgba(6, 182, 212, 0.12);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    border-color var(--settings-motion-base) var(--settings-motion-ease),
+    box-shadow var(--settings-motion-base) var(--settings-motion-ease);
 }
 
 .snippetUrl:hover {
@@ -2424,9 +2591,9 @@
 .snippetBlock.snippetBlockInline {
   flex-direction: row;
   align-items: center;
-  gap: 1.25rem;
+  gap: 0.75rem;
   flex-wrap: wrap;
-  padding: 1.25rem 1.5rem;
+  padding: 0.75rem 0.85rem;
 }
 
 .snippetBlock.snippetBlockInline::before {
@@ -2434,11 +2601,11 @@
 }
 
 .snippetBlock.snippetBlockAlt {
-  padding: 1.25rem 1.5rem 1.5rem;
+  padding: 0.75rem 0.85rem 0.85rem;
 }
 
 .snippetBlock.snippetBlockAlt .snippetPre {
-  padding: 0 0 1rem;
+  padding: 0 0 0.35rem;
 }
 
 .snippetUrlActions {
@@ -2452,7 +2619,8 @@
 }
 
 .settingsPanelInstallation .snippetPre {
-  font-size: 0.9375rem;
+  font-size: 0.74rem;
+  line-height: 1.42;
 }
 
 .installSteps {
@@ -2524,7 +2692,7 @@
   gap: 1rem;
   padding: 1rem 0;
   border-bottom: 1px solid var(--border-secondary);
-  transition: background 0.2s ease;
+  transition: background var(--settings-motion-base) var(--settings-motion-ease);
 }
 
 .toggleRow:hover {
@@ -2575,7 +2743,7 @@
   border-radius: 18px;
   cursor: pointer;
   text-align: left;
-  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all var(--settings-motion-slow) var(--settings-motion-ease);
 }
 
 .presetCard:hover {
@@ -2639,8 +2807,7 @@
   background: linear-gradient(180deg, var(--bg-tertiary) 0%, rgba(6, 182, 212, 0.02) 100%);
   border: 1px solid var(--border-secondary);
   border-radius: 16px;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all var(--settings-motion-slow) var(--settings-motion-ease);
 }
 
 .presetCardItem:hover {
@@ -2664,7 +2831,7 @@
   border: 1px solid var(--border-secondary);
   border-radius: 10px;
   margin-bottom: 0.5rem;
-  transition: all 0.2s ease;
+  transition: all var(--settings-motion-base) var(--settings-motion-ease);
 }
 
 [data-theme='dark'] .presetRow {
@@ -2703,7 +2870,7 @@
   background: linear-gradient(180deg, rgba(6, 182, 212, 0.06) 0%, rgba(6, 182, 212, 0.02) 100%);
   border: 2px dashed rgba(6, 182, 212, 0.3);
   border-radius: 18px;
-  transition: all 0.3s ease;
+  transition: all var(--settings-motion-slow) var(--settings-motion-ease);
 }
 
 .presetsEmpty:hover {
@@ -2740,7 +2907,9 @@
   background: linear-gradient(135deg, var(--futuristic-cyan), var(--futuristic-violet));
   border-radius: 12px;
   text-decoration: none;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform var(--settings-motion-base) var(--settings-motion-ease),
+    box-shadow var(--settings-motion-base) var(--settings-motion-ease);
   box-shadow: 0 4px 14px rgba(6, 182, 212, 0.35);
   margin-top: 0.25rem;
 }
@@ -2830,7 +2999,7 @@
   border: 1px solid rgba(6, 182, 212, 0.22);
   border-radius: 10px;
   text-decoration: none;
-  transition: all 0.2s ease;
+  transition: all var(--settings-motion-base) var(--settings-motion-ease);
 }
 
 .aboutDocsLink:hover {
@@ -2895,7 +3064,7 @@
     var(--bg-tertiary) 80%
   );
   background-size: 200% 100%;
-  animation: settingsShimmer 1.8s ease-in-out infinite;
+  animation: settingsShimmer var(--settings-anim-shimmer);
 }
 
 /* Loading skeleton */
@@ -2910,7 +3079,7 @@
     var(--bg-tertiary) 80%
   );
   background-size: 200% 100%;
-  animation: settingsShimmer 1.8s ease-in-out infinite;
+  animation: settingsShimmer var(--settings-anim-shimmer);
   border-radius: 18px;
   border: 1px solid var(--border-secondary);
 }
@@ -2941,7 +3110,8 @@
   .settingsPage :global(.Polaris-Card),
   .settingsShellQuickNav :global(.Polaris-Button),
   .checkoutDiagActionBar :global(.Polaris-Button),
-  .settingsRailTab {
+  .settingsRailTab,
+  .settingsRailTooltipWrap {
     transition: none;
   }
   .integrationCardWrapper:hover,

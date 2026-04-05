@@ -4,6 +4,17 @@
  */
 
 .adminLayout {
+  --admin-time-100: 0.1s;
+  --admin-time-120: 0.12s;
+  --admin-time-150: 0.15s;
+  --admin-time-160: 0.16s;
+  --admin-time-200: 0.2s;
+  --admin-time-220: 0.22s;
+  --admin-time-280: 0.28s;
+  --admin-time-300: 0.3s;
+  --admin-time-350: 0.35s;
+  --admin-time-380: 0.38s;
+  --admin-time-2200: 2.2s;
   display: flex;
   gap: 0;
   min-height: 100vh;
@@ -87,7 +98,7 @@
   border-radius: 0;
   box-shadow: 2px 0 20px -4px var(--shadow-lg), 0 0 0 1px var(--border-secondary);
   overflow: hidden;
-  transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1), background-color var(--transition-slow, 0.2s ease);
+  transition: width var(--admin-time-280) cubic-bezier(0.4, 0, 0.2, 1), background-color var(--transition-slow, var(--admin-time-200) ease);
 }
 
 .adminSidebar.collapsed {
@@ -130,7 +141,7 @@
   z-index: 1060;
   color: var(--text-primary);
   transform-origin: left center;
-  animation: adminDrawerUnfold 0.22s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: adminDrawerUnfold var(--admin-time-220) cubic-bezier(0.22, 1, 0.36, 1) forwards;
   overflow: hidden;
   pointer-events: none;
 }
@@ -249,7 +260,7 @@
   cursor: pointer;
   text-align: left;
   border-radius: 8px;
-  transition: background 0.2s ease;
+  transition: background var(--admin-time-200) ease;
 }
 
 .adminSidebarBrand:hover {
@@ -267,7 +278,7 @@
   background: none;
   cursor: pointer;
   border-radius: 10px;
-  transition: background 0.2s ease, opacity 0.2s ease;
+  transition: background var(--admin-time-200) ease, opacity var(--admin-time-200) ease;
 }
 
 .adminSidebarLogoCollapsedBtn:hover {
@@ -334,7 +345,7 @@
   background: #ffffff;
   color: #202223;
   cursor: pointer;
-  transition: opacity 0.2s ease, background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  transition: opacity var(--admin-time-200) ease, background var(--admin-time-200) ease, border-color var(--admin-time-200) ease, color var(--admin-time-200) ease;
   opacity: 0;
   pointer-events: none;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
@@ -396,7 +407,7 @@
   background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all var(--transition-smooth, 0.2s ease);
+  transition: all var(--transition-smooth, var(--admin-time-200) ease);
   flex-shrink: 0;
   position: relative;
   box-shadow: 0 2px 4px var(--shadow-sm);
@@ -639,9 +650,9 @@
   font-size: 0.8125rem;
   border-radius: 10px;
   transition:
-    border-color 0.22s ease,
-    box-shadow 0.22s ease,
-    background 0.22s ease;
+    border-color var(--admin-time-220) ease,
+    box-shadow var(--admin-time-220) ease,
+    background var(--admin-time-220) ease;
 }
 
 .adminNavSearch :global(.Polaris-TextField__Input:focus) {
@@ -683,7 +694,7 @@
   border-radius: 50%;
   background: linear-gradient(135deg, var(--futuristic-cyan), var(--futuristic-violet));
   box-shadow: 0 0 10px rgba(6, 182, 212, 0.75);
-  animation: adminNavPulse 2.2s ease-in-out infinite;
+  animation: adminNavPulse var(--admin-time-2200) ease-in-out infinite;
 }
 
 @keyframes adminNavPulse {
@@ -779,11 +790,11 @@
     0 0 16px -6px rgba(6, 182, 212, 0.35),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
   transition:
-    transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
-    border-color 0.2s ease,
-    box-shadow 0.2s ease,
-    background 0.2s ease,
-    color 0.2s ease;
+    transform var(--admin-time-200) cubic-bezier(0.34, 1.56, 0.64, 1),
+    border-color var(--admin-time-200) ease,
+    box-shadow var(--admin-time-200) ease,
+    background var(--admin-time-200) ease,
+    color var(--admin-time-200) ease;
 }
 
 .adminNavBulkChip:hover {
@@ -813,7 +824,7 @@
   height: 22px;
   border-radius: 6px;
   background: rgba(6, 182, 212, 0.15);
-  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: transform var(--admin-time-300) cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .adminNavBulkChipIcon :global(svg) {
@@ -913,8 +924,8 @@
   display: grid;
   grid-template-rows: 0fr;
   transition:
-    grid-template-rows 0.38s cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 0.28s ease;
+    grid-template-rows var(--admin-time-380) cubic-bezier(0.4, 0, 0.2, 1),
+    opacity var(--admin-time-280) ease;
   opacity: 0.88;
 }
 
@@ -946,10 +957,10 @@
   font-family: inherit;
   overflow: hidden;
   transition:
-    background 0.22s ease,
-    color 0.22s ease,
-    border-color 0.22s ease,
-    box-shadow 0.22s ease;
+    background var(--admin-time-220) ease,
+    color var(--admin-time-220) ease,
+    border-color var(--admin-time-220) ease,
+    box-shadow var(--admin-time-220) ease;
 }
 
 [data-theme='dark'] .adminNavGroupToggle {
@@ -968,7 +979,7 @@
     transparent 100%
   );
   opacity: 0;
-  transition: opacity 0.35s ease;
+  transition: opacity var(--admin-time-350) ease;
   pointer-events: none;
 }
 
@@ -1057,10 +1068,10 @@
   border: 1px solid rgba(6, 182, 212, 0.18);
   opacity: 0.95;
   transition:
-    transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1),
-    background 0.22s ease,
-    border-color 0.22s ease,
-    box-shadow 0.22s ease;
+    transform var(--admin-time-380) cubic-bezier(0.34, 1.56, 0.64, 1),
+    background var(--admin-time-220) ease,
+    border-color var(--admin-time-220) ease,
+    box-shadow var(--admin-time-220) ease;
 }
 
 .adminNavGroupChevron :global(svg) {
@@ -1157,7 +1168,7 @@
   border: 1px solid rgba(6, 182, 212, 0.28);
   border-radius: 8px;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition: background var(--admin-time-150) ease, border-color var(--admin-time-150) ease, color var(--admin-time-150) ease;
 }
 
 .adminNavEmptyClear:hover {
@@ -1199,7 +1210,7 @@
   margin: 0 0.25rem;
   border-radius: 10px;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all var(--admin-time-200) cubic-bezier(0.4, 0, 0.2, 1);
   background: transparent;
   border: none;
   color: var(--text-secondary);
@@ -1259,7 +1270,7 @@
   height: 32px;
   flex-shrink: 0;
   border-radius: 8px;
-  transition: background 0.2s ease, color 0.2s ease;
+  transition: background var(--admin-time-200) ease, color var(--admin-time-200) ease;
 }
 
 .adminNavItem:hover .adminNavIcon {
@@ -1325,7 +1336,7 @@
   align-items: center;
   gap: 0;
   pointer-events: none;
-  animation: adminFloatingBackToTopIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  animation: adminFloatingBackToTopIn var(--admin-time-350) cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
 .adminFloatingBackToTopWrap > * {
@@ -1349,7 +1360,7 @@
   white-space: nowrap;
   opacity: 0;
   transform: translateX(12px);
-  transition: opacity 0.22s ease, transform 0.22s ease, color 0.2s ease, border-color 0.2s ease;
+  transition: opacity var(--admin-time-220) ease, transform var(--admin-time-220) ease, color var(--admin-time-200) ease, border-color var(--admin-time-200) ease;
   z-index: 0;
 }
 
@@ -1376,7 +1387,7 @@
     0 4px 14px rgba(0, 0, 0, 0.08),
     0 2px 6px rgba(6, 182, 212, 0.06);
   cursor: pointer;
-  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.22s ease, background 0.22s ease, color 0.22s ease;
+  transition: transform var(--admin-time-220) cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow var(--admin-time-220) ease, background var(--admin-time-220) ease, color var(--admin-time-220) ease;
 }
 
 .adminFloatingBackToTop:hover {
@@ -1563,7 +1574,7 @@
   font-weight: 500;
   letter-spacing: 0.01em;
   cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  transition: background var(--admin-time-200) ease, color var(--admin-time-200) ease, border-color var(--admin-time-200) ease;
 }
 
 .adminSidebarBtnContent {
@@ -1646,7 +1657,7 @@
   font-weight: 500;
   letter-spacing: 0.01em;
   cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  transition: background var(--admin-time-200) ease, color var(--admin-time-200) ease, border-color var(--admin-time-200) ease;
 }
 
 .adminSidebar:not(.collapsed) .adminSidebarFooterLink .adminSidebarBtnContent {
@@ -1724,7 +1735,7 @@
   font-size: 0.8125rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--admin-time-200) ease;
   flex-shrink: 0;
   letter-spacing: 0.02em;
   box-shadow: 0 1px 3px rgba(6, 182, 212, 0.12);
@@ -1825,7 +1836,7 @@
   padding: 0.35rem 0.65rem;
   border-radius: 8px;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition: background var(--admin-time-150) ease, border-color var(--admin-time-150) ease, color var(--admin-time-150) ease;
 }
 
 .adminFooterLink:hover,
@@ -1917,7 +1928,7 @@
   font-size: 0.8125rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: background var(--admin-time-200) ease, border-color var(--admin-time-200) ease, box-shadow var(--admin-time-200) ease;
 }
 
 .adminHeroBack:hover {
@@ -2518,7 +2529,7 @@
   border: 1px solid transparent;
   text-decoration: none;
   cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  transition: background var(--admin-time-200) ease, border-color var(--admin-time-200) ease, color var(--admin-time-200) ease;
   white-space: nowrap;
 }
 
@@ -2546,7 +2557,7 @@
   background: transparent;
   border: 1px solid rgba(6, 182, 212, 0.3);
   cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease;
+  transition: background var(--admin-time-200) ease, border-color var(--admin-time-200) ease;
   white-space: nowrap;
 }
 
@@ -2988,7 +2999,7 @@
 .adminListToolbar :global(.Polaris-TextField__Input),
 .adminListToolbar :global(.Polaris-Select__Input) {
   border-radius: 8px;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color var(--admin-time-150) ease, box-shadow var(--admin-time-150) ease;
 }
 
 .adminListToolbar :global(.Polaris-TextField__Input:focus),
@@ -3033,8 +3044,8 @@
 .adminBtnGhost {
   border-radius: 10px !important;
   font-weight: 600 !important;
-  transition: transform 0.12s ease, box-shadow 0.16s ease, border-color 0.16s ease,
-    background 0.16s ease !important;
+  transition: transform var(--admin-time-120) ease, box-shadow var(--admin-time-160) ease, border-color var(--admin-time-160) ease,
+    background var(--admin-time-160) ease !important;
 }
 
 .adminBtnSecondary {
@@ -3156,7 +3167,7 @@
   font-size: 0.8125rem;
   font-weight: 500;
   border-radius: 8px;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+  transition: background var(--admin-time-150) ease, color var(--admin-time-150) ease, border-color var(--admin-time-150) ease, box-shadow var(--admin-time-150) ease, transform var(--admin-time-100) ease;
 }
 
 .adminListActions :global(.Polaris-Button:hover):not(:disabled),
@@ -3238,7 +3249,7 @@
   padding: 0;
   font-size: inherit;
   text-decoration: none;
-  transition: color 0.15s ease, text-decoration 0.15s ease;
+  transition: color var(--admin-time-150) ease, text-decoration var(--admin-time-150) ease;
 }
 
 .adminListLink:hover {
@@ -3455,7 +3466,7 @@
   padding: 0.875rem 1rem 1rem;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   flex-shrink: 0;
-  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  transition: box-shadow var(--admin-time-200) ease, border-color var(--admin-time-200) ease;
   position: relative;
   overflow: hidden;
 }

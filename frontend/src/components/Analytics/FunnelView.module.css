@@ -1,3 +1,9 @@
+:root {
+  --funnel-view-time-200: 0.2s;
+  --funnel-view-time-250: 0.25s;
+  --funnel-view-time-300: 0.3s;
+  --funnel-view-time-8000: 8s;
+}
 /* FunnelView - Full-width premium section */
 
 .funnelSection {
@@ -11,7 +17,7 @@
   );
   border: 1px solid rgba(0, 0, 0, 0.05);
   box-shadow: 0 6px 32px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(0, 0, 0, 0.02);
-  transition: all 0.3s ease;
+  transition: all var(--funnel-view-time-300) ease;
 }
 
 [data-theme="dark"] .funnelSection {
@@ -35,7 +41,7 @@
     transparent
   );
   background-size: 200% 100%;
-  animation: funnelGradientShift 8s ease infinite;
+  animation: funnelGradientShift var(--funnel-view-time-8000) ease infinite;
   opacity: 0.7;
 }
 
@@ -98,7 +104,7 @@
   );
   color: var(--accent-primary);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--funnel-view-time-200) ease;
 }
 
 .funnelCompareBtn:hover {
@@ -128,7 +134,7 @@
   overflow: hidden;
   border: 1px solid rgba(6, 182, 212, 0.15);
   background: rgba(255, 255, 255, 0.6);
-  transition: all 0.25s ease;
+  transition: all var(--funnel-view-time-250) ease;
 }
 
 .funnelVariantCard:hover {
@@ -189,7 +195,7 @@
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.7);
   border: 1px solid rgba(0, 0, 0, 0.05);
-  transition: all 0.25s ease;
+  transition: all var(--funnel-view-time-250) ease;
 }
 
 .funnelStatCard:hover {

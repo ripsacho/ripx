@@ -38,6 +38,8 @@ import {
   PaintBrushFlatIcon,
   SettingsIcon,
   InfoIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
 } from '@shopify/polaris-icons';
 import { PageShell } from '../Shared';
 import { CONTENT_GAP, ROUTES, APP_META, STORAGE_KEYS } from '../../constants';
@@ -100,6 +102,13 @@ const CONFIDENCE_QUICK = [
   { label: '90%', value: 0.9 },
   { label: '95%', value: 0.95 },
   { label: '99%', value: 0.99 },
+];
+const APP_SETTINGS_SECTION_IDS = [
+  'installation',
+  'general',
+  'integrations',
+  'appearance',
+  'presets',
 ];
 
 /** Default settings values - single source for initial state and validation */
@@ -290,7 +299,17 @@ function Settings() {
       return 'comfortable';
     }
   });
+  const [sectionRailCollapsed, setSectionRailCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return window.localStorage.getItem('ripx_settings_section_rail_collapsed_v1') === '1';
+    } catch {
+      return false;
+    }
+  });
   const autoDiscountSetupHandledRef = useRef(false);
+  const settingsBodyRef = useRef(null);
+  const appSectionNodesRef = useRef({});
   const [previewProbeTestId, setPreviewProbeTestId] = useState('');
   const [previewProbeVariant, setPreviewProbeVariant] = useState('');
   const [previewProbeLoading, setPreviewProbeLoading] = useState(false);
@@ -303,6 +322,9 @@ function Settings() {
   const [shopifyFnInventory, setShopifyFnInventory] = useState(null);
   const [shopifyFnInventoryLoading, setShopifyFnInventoryLoading] = useState(false);
   const [shopifyFnInventoryError, setShopifyFnInventoryError] = useState(null);
+  const [activeAppSectionId, setActiveAppSectionId] = useState(APP_SETTINGS_SECTION_IDS[0]);
+  const [activeRailTooltipId, setActiveRailTooltipId] = useState(null);
+  const railTooltipTimerRef = useRef(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -312,6 +334,38 @@ function Settings() {
       // Ignore persistence failures.
     }
   }, [layoutDensity]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(
+        'ripx_settings_section_rail_collapsed_v1',
+        sectionRailCollapsed ? '1' : '0'
+      );
+    } catch {
+      // Ignore persistence failures.
+    }
+  }, [sectionRailCollapsed]);
+
+  const clearRailTooltipTimer = useCallback(() => {
+    if (railTooltipTimerRef.current) {
+      clearTimeout(railTooltipTimerRef.current);
+      railTooltipTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearRailTooltipTimer();
+    };
+  }, [clearRailTooltipTimer]);
+
+  useEffect(() => {
+    if (!sectionRailCollapsed) {
+      clearRailTooltipTimer();
+      setActiveRailTooltipId(null);
+    }
+  }, [sectionRailCollapsed, clearRailTooltipTimer]);
 
   const fetchSettings = useCallback(async () => {
     setSettingsLoadError(false);
@@ -815,6 +869,81 @@ function Settings() {
   };
 
   const activeTabId = TAB_IDS[selectedTab];
+  const setAppSectionNode = useCallback((sectionId, node) => {
+    if (node) {
+      appSectionNodesRef.current[sectionId] = node;
+      return;
+    }
+    delete appSectionNodesRef.current[sectionId];
+  }, []);
+
+  const scrollToAppSection = useCallback(sectionId => {
+    const container = settingsBodyRef.current;
+    const target = appSectionNodesRef.current[sectionId];
+    if (!container || !target) return;
+    const containerRect = container.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const stickyOffset = 88;
+    const nextTop = container.scrollTop + (targetRect.top - containerRect.top) - stickyOffset;
+    container.scrollTo({ top: Math.max(0, nextTop), behavior: 'smooth' });
+    setActiveAppSectionId(sectionId);
+  }, []);
+
+  const scheduleRailTooltipOpen = useCallback(
+    sectionId => {
+      clearRailTooltipTimer();
+      railTooltipTimerRef.current = setTimeout(() => {
+        setActiveRailTooltipId(sectionId);
+      }, 180);
+    },
+    [clearRailTooltipTimer]
+  );
+
+  const hideRailTooltip = useCallback(() => {
+    clearRailTooltipTimer();
+    setActiveRailTooltipId(null);
+  }, [clearRailTooltipTimer]);
+
+  useEffect(() => {
+    if (!isAppSettings || loading) return;
+    const container = settingsBodyRef.current;
+    if (!container) return;
+
+    const updateActiveSection = () => {
+      const containerTop = container.getBoundingClientRect().top;
+      const anchorTop = containerTop + 112;
+      let activeSection = APP_SETTINGS_SECTION_IDS[0];
+      let bestDelta = -Infinity;
+      let firstAhead = null;
+
+      APP_SETTINGS_SECTION_IDS.forEach(id => {
+        const node = appSectionNodesRef.current[id];
+        if (!node) return;
+        const delta = node.getBoundingClientRect().top - anchorTop;
+        if (delta <= 0 && delta > bestDelta) {
+          bestDelta = delta;
+          activeSection = id;
+        }
+        if (delta > 0 && (!firstAhead || delta < firstAhead.delta)) {
+          firstAhead = { id, delta };
+        }
+      });
+
+      if (bestDelta === -Infinity && firstAhead?.id) {
+        activeSection = firstAhead.id;
+      }
+
+      setActiveAppSectionId(prev => (prev === activeSection ? prev : activeSection));
+    };
+
+    updateActiveSection();
+    container.addEventListener('scroll', updateActiveSection, { passive: true });
+    window.addEventListener('resize', updateActiveSection);
+    return () => {
+      container.removeEventListener('scroll', updateActiveSection);
+      window.removeEventListener('resize', updateActiveSection);
+    };
+  }, [isAppSettings, loading]);
 
   const handleTabNavKeyDown = useCallback(
     e => {
@@ -1222,6 +1351,42 @@ function Settings() {
       },
     ];
   }, [configuredIntegrationCount, integrations]);
+  const showAllAppSections = isAppSettings;
+  const appSettingsSectionIndex = useMemo(
+    () => [
+      {
+        id: 'installation',
+        label: 'Installation',
+        shortLabel: 'IN',
+        status: setupComplete ? 'ok' : 'warn',
+      },
+      {
+        id: 'general',
+        label: 'Test defaults',
+        shortLabel: 'TD',
+        status: 'neutral',
+      },
+      {
+        id: 'integrations',
+        label: 'Connections',
+        shortLabel: 'CN',
+        status: configuredIntegrationCount > 0 ? 'ok' : 'neutral',
+      },
+      {
+        id: 'appearance',
+        label: 'Appearance',
+        shortLabel: 'AP',
+        status: 'neutral',
+      },
+      {
+        id: 'presets',
+        label: 'Audience presets',
+        shortLabel: 'PR',
+        status: Array.isArray(targetingPresets) && targetingPresets.length > 0 ? 'ok' : 'neutral',
+      },
+    ],
+    [setupComplete, configuredIntegrationCount, targetingPresets]
+  );
   const activeTabMeta = TAB_CONFIG[selectedTab] || null;
   const currentStoreLabel = String(installation?.domain || '').trim() || 'Not detected';
   const tabSummaries = useMemo(
@@ -1340,20 +1505,38 @@ function Settings() {
                   >
                     <div className={styles.settingsMetricCell}>
                       <span className={styles.settingsMetricLabelWithTip}>
-                        <span className={styles.settingsMetricLabel}>Active section</span>
-                        <Tooltip content={metricTips.activeSection}>
+                        <span className={styles.settingsMetricLabel}>
+                          {showAllAppSections ? 'Layout' : 'Active section'}
+                        </span>
+                        <Tooltip
+                          content={
+                            showAllAppSections
+                              ? 'App Settings now uses a continuous layout with all sections visible.'
+                              : metricTips.activeSection
+                          }
+                        >
                           <span
                             className={styles.settingsMetricTip}
                             tabIndex={0}
-                            aria-label={metricTips.activeSection}
+                            aria-label={
+                              showAllAppSections
+                                ? 'Continuous app settings layout'
+                                : metricTips.activeSection
+                            }
                           >
                             <Icon source={InfoIcon} />
                           </span>
                         </Tooltip>
                       </span>
                       <span className={styles.settingsMetricValue}>
-                        <Icon source={activeTabMeta?.icon || SettingsIcon} />
-                        <span>{activeTabMeta?.label || 'Settings'}</span>
+                        <Icon
+                          source={
+                            showAllAppSections ? SettingsIcon : activeTabMeta?.icon || SettingsIcon
+                          }
+                        />
+                        <span>
+                          {showAllAppSections ? 'All sections' : activeTabMeta?.label || 'Settings'}
+                        </span>
                       </span>
                     </div>
                     <div className={styles.settingsMetricCell}>
@@ -1413,67 +1596,69 @@ function Settings() {
                   </div>
                 )}
 
-                <div className={styles.settingsShellQuickNav}>
-                  <span className={styles.settingsShellQuickNavLabel}>Jump to</span>
-                  <div className={styles.settingsShellQuickNavScroll}>
-                    <InlineStack gap="150" wrap={false} blockAlign="center">
-                      {isAppSettings && (
-                        <>
-                          <Button
-                            size="slim"
-                            variant="plain"
-                            onClick={() => {
-                              const i = TAB_IDS.indexOf('installation');
-                              if (i >= 0) setSelectedTab(i);
-                            }}
-                          >
-                            Installation
-                          </Button>
-                          <Button
-                            size="slim"
-                            variant="plain"
-                            onClick={() => {
-                              const i = TAB_IDS.indexOf('general');
-                              if (i >= 0) setSelectedTab(i);
-                            }}
-                          >
-                            Test defaults
-                          </Button>
-                          <Button
-                            size="slim"
-                            variant="plain"
-                            onClick={() => {
-                              const i = TAB_IDS.indexOf('integrations');
-                              if (i >= 0) setSelectedTab(i);
-                            }}
-                          >
-                            Connections
-                          </Button>
-                          <Button
-                            size="slim"
-                            variant="plain"
-                            onClick={() => {
-                              const i = TAB_IDS.indexOf('presets');
-                              if (i >= 0) setSelectedTab(i);
-                            }}
-                          >
-                            Audience presets
-                          </Button>
-                        </>
-                      )}
-                      <Button
-                        size="slim"
-                        variant="plain"
-                        onClick={() => {
-                          const i = TAB_IDS.indexOf('appearance');
-                          if (i >= 0) setSelectedTab(i);
-                        }}
-                      >
-                        Appearance
-                      </Button>
-                    </InlineStack>
+                {!showAllAppSections && (
+                  <div className={styles.settingsShellQuickNav}>
+                    <span className={styles.settingsShellQuickNavLabel}>Jump to</span>
+                    <div className={styles.settingsShellQuickNavScroll}>
+                      <InlineStack gap="150" wrap={false} blockAlign="center">
+                        {isAppSettings && (
+                          <>
+                            <Button
+                              size="slim"
+                              variant="plain"
+                              onClick={() => {
+                                const i = TAB_IDS.indexOf('installation');
+                                if (i >= 0) setSelectedTab(i);
+                              }}
+                            >
+                              Installation
+                            </Button>
+                            <Button
+                              size="slim"
+                              variant="plain"
+                              onClick={() => {
+                                const i = TAB_IDS.indexOf('general');
+                                if (i >= 0) setSelectedTab(i);
+                              }}
+                            >
+                              Test defaults
+                            </Button>
+                            <Button
+                              size="slim"
+                              variant="plain"
+                              onClick={() => {
+                                const i = TAB_IDS.indexOf('integrations');
+                                if (i >= 0) setSelectedTab(i);
+                              }}
+                            >
+                              Connections
+                            </Button>
+                            <Button
+                              size="slim"
+                              variant="plain"
+                              onClick={() => {
+                                const i = TAB_IDS.indexOf('presets');
+                                if (i >= 0) setSelectedTab(i);
+                              }}
+                            >
+                              Audience presets
+                            </Button>
+                          </>
+                        )}
+                        <Button
+                          size="slim"
+                          variant="plain"
+                          onClick={() => {
+                            const i = TAB_IDS.indexOf('appearance');
+                            if (i >= 0) setSelectedTab(i);
+                          }}
+                        >
+                          Appearance
+                        </Button>
+                      </InlineStack>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {!isAppSettings && (
@@ -1507,36 +1692,41 @@ function Settings() {
 
             <main
               id="settings-main"
+              ref={settingsBodyRef}
               className={styles.settingsBody}
               aria-label={isAppSettings ? 'App settings content' : 'Account settings content'}
             >
-              <div className={styles.settingsTabStickyWrap}>
-                <nav
-                  className={`${styles.settingsTabBar} ${styles.settingsTopNav}`}
-                  role="tablist"
-                  aria-label={isAppSettings ? 'App settings sections' : 'Account settings sections'}
-                  onKeyDown={handleTabNavKeyDown}
-                >
-                  {TAB_CONFIG.map((tab, i) => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      role="tab"
-                      tabIndex={selectedTab === i ? 0 : -1}
-                      aria-selected={selectedTab === i}
-                      aria-controls={`settings-panel-${tab.id}`}
-                      id={`settings-tab-${tab.id}`}
-                      className={`${styles.settingsTab} ${selectedTab === i ? styles.settingsTabActive : ''}`}
-                      onClick={() => setSelectedTab(i)}
-                    >
-                      <span className={styles.settingsTabIcon}>
-                        <Icon source={tab.icon} />
-                      </span>
-                      {tab.label}
-                    </button>
-                  ))}
-                </nav>
-              </div>
+              {!showAllAppSections && (
+                <div className={styles.settingsTabStickyWrap}>
+                  <nav
+                    className={`${styles.settingsTabBar} ${styles.settingsTopNav}`}
+                    role="tablist"
+                    aria-label={
+                      isAppSettings ? 'App settings sections' : 'Account settings sections'
+                    }
+                    onKeyDown={handleTabNavKeyDown}
+                  >
+                    {TAB_CONFIG.map((tab, i) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        role="tab"
+                        tabIndex={selectedTab === i ? 0 : -1}
+                        aria-selected={selectedTab === i}
+                        aria-controls={`settings-panel-${tab.id}`}
+                        id={`settings-tab-${tab.id}`}
+                        className={`${styles.settingsTab} ${selectedTab === i ? styles.settingsTabActive : ''}`}
+                        onClick={() => setSelectedTab(i)}
+                      >
+                        <span className={styles.settingsTabIcon}>
+                          <Icon source={tab.icon} />
+                        </span>
+                        {tab.label}
+                      </button>
+                    ))}
+                  </nav>
+                </div>
+              )}
               <BlockStack gap={CONTENT_GAP}>
                 {loading ? (
                   <div className={styles.settingsLoadingSkeleton}>
@@ -1545,32 +1735,146 @@ function Settings() {
                     <div className={styles.loadingSkeletonCard} style={{ height: 160 }} />
                   </div>
                 ) : (
-                  <div className={styles.settingsWorkspace}>
+                  <div
+                    className={`${styles.settingsWorkspace} ${
+                      showAllAppSections ? styles.settingsWorkspaceWithRail : ''
+                    } ${
+                      showAllAppSections && sectionRailCollapsed
+                        ? styles.settingsWorkspaceWithRailCollapsed
+                        : ''
+                    }`}
+                  >
+                    {showAllAppSections && (
+                      <aside
+                        className={`${styles.settingsRail} ${
+                          sectionRailCollapsed ? styles.settingsRailCollapsed : ''
+                        }`}
+                        aria-label="App settings section index"
+                      >
+                        <div className={styles.settingsRailBlock}>
+                          <div className={styles.settingsRailHeader}>
+                            <Text as="p" variant="bodySm" className={styles.settingsRailTitle}>
+                              Sections
+                            </Text>
+                            <button
+                              type="button"
+                              className={styles.settingsRailToggle}
+                              onClick={() => setSectionRailCollapsed(prev => !prev)}
+                              aria-label={
+                                sectionRailCollapsed
+                                  ? 'Expand section rail'
+                                  : 'Collapse section rail'
+                              }
+                              title={sectionRailCollapsed ? 'Expand' : 'Collapse'}
+                            >
+                              <Icon
+                                source={sectionRailCollapsed ? ChevronRightIcon : ChevronLeftIcon}
+                              />
+                              <span className={styles.settingsRailToggleLabel}>
+                                {sectionRailCollapsed ? 'Expand' : 'Collapse'}
+                              </span>
+                            </button>
+                          </div>
+                          <div className={styles.settingsRailTabs}>
+                            {appSettingsSectionIndex.map(section => {
+                              const statusClass =
+                                section.status === 'ok'
+                                  ? styles.settingsRailStatusOk
+                                  : section.status === 'warn'
+                                    ? styles.settingsRailStatusWarn
+                                    : styles.settingsRailStatusNeutral;
+                              const railButton = (
+                                <button
+                                  type="button"
+                                  className={`${styles.settingsRailTab} ${
+                                    activeAppSectionId === section.id
+                                      ? styles.settingsRailTabActive
+                                      : ''
+                                  }`}
+                                  onClick={() => scrollToAppSection(section.id)}
+                                  aria-current={
+                                    activeAppSectionId === section.id ? 'true' : undefined
+                                  }
+                                  aria-label={section.label}
+                                  title={sectionRailCollapsed ? undefined : section.label}
+                                >
+                                  <span className={styles.settingsRailTabLabel}>
+                                    {sectionRailCollapsed ? section.shortLabel : section.label}
+                                  </span>
+                                  <span
+                                    className={`${styles.settingsRailStatusDot} ${statusClass}`}
+                                    aria-hidden="true"
+                                  />
+                                </button>
+                              );
+                              if (sectionRailCollapsed) {
+                                return (
+                                  <Tooltip
+                                    key={section.id}
+                                    content={section.label}
+                                    preferredPosition="right"
+                                    active={activeRailTooltipId === section.id}
+                                  >
+                                    <span
+                                      className={`${styles.settingsRailTooltipWrap} ${
+                                        activeRailTooltipId === section.id
+                                          ? styles.settingsRailTooltipWrapActive
+                                          : ''
+                                      }`}
+                                      onMouseEnter={() => scheduleRailTooltipOpen(section.id)}
+                                      onMouseLeave={hideRailTooltip}
+                                      onFocus={() => {
+                                        clearRailTooltipTimer();
+                                        setActiveRailTooltipId(section.id);
+                                      }}
+                                      onBlur={hideRailTooltip}
+                                    >
+                                      {railButton}
+                                    </span>
+                                  </Tooltip>
+                                );
+                              }
+                              return <React.Fragment key={section.id}>{railButton}</React.Fragment>;
+                            })}
+                          </div>
+                        </div>
+                      </aside>
+                    )}
                     <div
                       className={styles.settingsPanels}
                       role="region"
                       aria-live="polite"
-                      aria-label={isAppSettings ? 'App settings panel' : 'Account settings panel'}
+                      aria-label={
+                        isAppSettings ? 'App settings sections' : 'Account settings panel'
+                      }
                     >
                       <div
                         className={`${styles.settingsContextStrip} ${
-                          isAppSettings && activeTabId === 'installation'
+                          !showAllAppSections && isAppSettings && activeTabId === 'installation'
                             ? styles.settingsContextStripMinimal
                             : ''
                         }`}
                       >
-                        {!(isAppSettings && activeTabId === 'installation') && (
+                        {!(
+                          !showAllAppSections &&
+                          isAppSettings &&
+                          activeTabId === 'installation'
+                        ) && (
                           <Tooltip
                             content={
-                              tabSummaries[activeTabId] ||
-                              'Tips and context for the tab you selected.'
+                              showAllAppSections
+                                ? 'All App Settings sections are visible in one organized page. Scroll to edit setup, defaults, integrations, presets, and appearance without switching tabs.'
+                                : tabSummaries[activeTabId] ||
+                                  'Tips and context for the tab you selected.'
                             }
                           >
                             <span className={styles.settingsContextTabHint} tabIndex={0}>
                               <span className={styles.settingsContextTabHintIcon} aria-hidden>
                                 <Icon source={InfoIcon} />
                               </span>
-                              <span>About this tab</span>
+                              <span>
+                                {showAllAppSections ? 'About this page' : 'About this tab'}
+                              </span>
                             </span>
                           </Tooltip>
                         )}
@@ -1605,11 +1909,15 @@ function Settings() {
                           </Button>
                         </InlineStack>
                       </div>
-                      {isAppSettings && activeTabId === 'installation' && (
+                      {isAppSettings && (showAllAppSections || activeTabId === 'installation') && (
                         <div
                           id="settings-panel-installation"
-                          role="tabpanel"
-                          aria-labelledby="settings-tab-installation"
+                          ref={node => setAppSectionNode('installation', node)}
+                          role={showAllAppSections ? 'region' : 'tabpanel'}
+                          aria-labelledby={
+                            showAllAppSections ? undefined : 'settings-tab-installation'
+                          }
+                          aria-label={showAllAppSections ? 'Installation settings' : undefined}
                           className={`${styles.settingsContent} ${styles.settingsPanelLayout} ${styles.settingsPanelInstallation}`}
                         >
                           <Card
@@ -2948,11 +3256,13 @@ function Settings() {
                         </div>
                       )}
 
-                      {isAppSettings && activeTabId === 'general' && (
+                      {isAppSettings && (showAllAppSections || activeTabId === 'general') && (
                         <div
                           id="settings-panel-general"
-                          role="tabpanel"
-                          aria-labelledby="settings-tab-general"
+                          ref={node => setAppSectionNode('general', node)}
+                          role={showAllAppSections ? 'region' : 'tabpanel'}
+                          aria-labelledby={showAllAppSections ? undefined : 'settings-tab-general'}
+                          aria-label={showAllAppSections ? 'Test defaults settings' : undefined}
                           className={`${styles.settingsContent} ${styles.settingsPanelLayout} ${styles.settingsPanelGeneral}`}
                         >
                           <Card
@@ -3320,11 +3630,15 @@ function Settings() {
                         </div>
                       )}
 
-                      {isAppSettings && activeTabId === 'integrations' && (
+                      {isAppSettings && (showAllAppSections || activeTabId === 'integrations') && (
                         <div
                           id="settings-panel-integrations"
-                          role="tabpanel"
-                          aria-labelledby="settings-tab-integrations"
+                          ref={node => setAppSectionNode('integrations', node)}
+                          role={showAllAppSections ? 'region' : 'tabpanel'}
+                          aria-labelledby={
+                            showAllAppSections ? undefined : 'settings-tab-integrations'
+                          }
+                          aria-label={showAllAppSections ? 'Integrations settings' : undefined}
                           className={`${styles.settingsContent} ${styles.settingsPanelLayout} ${styles.settingsPanelIntegrations}`}
                         >
                           {integrationsError && (
@@ -3612,11 +3926,15 @@ function Settings() {
                         </div>
                       )}
 
-                      {activeTabId === 'appearance' && (
+                      {(showAllAppSections || activeTabId === 'appearance') && (
                         <div
                           id="settings-panel-appearance"
-                          role="tabpanel"
-                          aria-labelledby="settings-tab-appearance"
+                          ref={node => setAppSectionNode('appearance', node)}
+                          role={showAllAppSections ? 'region' : 'tabpanel'}
+                          aria-labelledby={
+                            showAllAppSections ? undefined : 'settings-tab-appearance'
+                          }
+                          aria-label={showAllAppSections ? 'Appearance settings' : undefined}
                           className={`${styles.settingsContent} ${styles.settingsPanelLayout} ${styles.settingsPanelAppearance}`}
                         >
                           <Card
@@ -3688,11 +4006,13 @@ function Settings() {
                         </div>
                       )}
 
-                      {isAppSettings && activeTabId === 'presets' && (
+                      {isAppSettings && (showAllAppSections || activeTabId === 'presets') && (
                         <div
                           id="settings-panel-presets"
-                          role="tabpanel"
-                          aria-labelledby="settings-tab-presets"
+                          ref={node => setAppSectionNode('presets', node)}
+                          role={showAllAppSections ? 'region' : 'tabpanel'}
+                          aria-labelledby={showAllAppSections ? undefined : 'settings-tab-presets'}
+                          aria-label={showAllAppSections ? 'Audience presets settings' : undefined}
                           className={`${styles.settingsContent} ${styles.settingsPanelLayout} ${styles.settingsPanelPresets}`}
                         >
                           <Card

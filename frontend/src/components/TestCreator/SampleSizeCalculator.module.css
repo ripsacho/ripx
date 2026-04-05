@@ -1,3 +1,6 @@
+:root {
+  --sample-size-time-200: 0.2s;
+}
 /* Sample Size Calculator - self-contained module */
 
 .root {
@@ -46,7 +49,7 @@
   font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+  transition: background var(--sample-size-time-200), color var(--sample-size-time-200), box-shadow var(--sample-size-time-200);
   font-family: inherit;
   color: var(--calc-muted);
   background: transparent;
@@ -101,7 +104,7 @@
   border: 1px solid var(--calc-border);
   border-radius: var(--calc-radius);
   position: relative;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: border-color var(--sample-size-time-200), box-shadow var(--sample-size-time-200);
 }
 
 .section::before {
@@ -148,7 +151,7 @@
   font-size: 0.8125rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--sample-size-time-200);
   font-family: inherit;
   color: var(--calc-muted);
 }

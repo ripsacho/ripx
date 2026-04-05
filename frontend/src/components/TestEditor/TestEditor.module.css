@@ -1,3 +1,7 @@
+:root {
+  --test-editor-time-100: 0.1s;
+  --test-editor-time-150: 0.15s;
+}
 /**
  * Test Editor – Visual & Code editor layout and styling
  * Matches project design system (gradient accents, cards, spacing)
@@ -61,7 +65,7 @@
   font-weight: 600;
   text-decoration: none;
   cursor: pointer;
-  transition: background 0.15s, transform 0.1s;
+  transition: background var(--test-editor-time-150), transform var(--test-editor-time-100);
 }
 
 .previewOpenEditorBtn:hover {

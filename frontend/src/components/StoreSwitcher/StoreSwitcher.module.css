@@ -1,3 +1,8 @@
+:root {
+  --store-switcher-time-50: 0.05s;
+  --store-switcher-time-200: 0.2s;
+  --store-switcher-time-2800: 2.8s;
+}
 /* Store Switcher - Multi-store dropdown, matches TopBar action group */
 
 .storeSwitcher {
@@ -13,7 +18,7 @@
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  transition: background var(--store-switcher-time-200) ease, border-color var(--store-switcher-time-200) ease, color var(--store-switcher-time-200) ease, box-shadow var(--store-switcher-time-200) ease;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 
@@ -44,7 +49,7 @@
 .chevron {
   flex-shrink: 0;
   opacity: 0.65;
-  transition: transform 0.2s ease;
+  transition: transform var(--store-switcher-time-200) ease;
 }
 
 .storeSwitcher.active .chevron {
@@ -54,7 +59,7 @@
 
 /* Brief pulse after switching store (paired with store-switch toast) */
 .storeSwitcher.justSwitched {
-  animation: storeSwitcherPulse 2.8s ease-out 0.05s both;
+  animation: storeSwitcherPulse var(--store-switcher-time-2800) ease-out var(--store-switcher-time-50) both;
   border-color: rgba(6, 182, 212, 0.55);
   background: rgba(6, 182, 212, 0.12);
   box-shadow: 0 0 0 0 rgba(6, 182, 212, 0.35), 0 2px 12px rgba(6, 182, 212, 0.2);

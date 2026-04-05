@@ -1,3 +1,31 @@
+:root {
+  --not-found-time-30: 0.03s;
+  --not-found-time-100: 0.1s;
+  --not-found-time-200: 0.2s;
+  --not-found-time-250: 0.25s;
+  --not-found-time-300: 0.3s;
+  --not-found-time-350: 0.35s;
+  --not-found-time-400: 0.4s;
+  --not-found-time-450: 0.45s;
+  --not-found-time-500: 0.5s;
+  --not-found-time-650: 0.65s;
+  --not-found-time-700: 0.7s;
+  --not-found-time-750: 0.75s;
+  --not-found-time-850: 0.85s;
+  --not-found-time-1000: 1s;
+  --not-found-time-2200: 2.2s;
+  --not-found-time-2800: 2.8s;
+  --not-found-time-3000: 3s;
+  --not-found-time-3500: 3.5s;
+  --not-found-time-4000: 4s;
+  --not-found-time-6000: 6s;
+  --not-found-time-10000: 10s;
+  --not-found-time-12000: 12s;
+  --not-found-time-14000: 14s;
+  --not-found-time-20000: 20s;
+  --not-found-time-25000: 25s;
+  --not-found-time-30000: 30s;
+}
 /* 404 – Advanced tech layout */
 .wrapper {
   position: relative;
@@ -22,7 +50,7 @@
   background-image: linear-gradient(rgba(6, 182, 212, 0.08) 1px, transparent 1px),
     linear-gradient(90deg, rgba(6, 182, 212, 0.08) 1px, transparent 1px);
   background-size: 36px 36px;
-  animation: gridPulse 4s ease-in-out infinite;
+  animation: gridPulse var(--not-found-time-4000) ease-in-out infinite;
 }
 
 .grid2 {
@@ -37,7 +65,7 @@
     ),
     linear-gradient(-45deg, rgba(139, 92, 246, 0.04) 1px, transparent 1px);
   background-size: 64px 64px;
-  animation: gridRotate 30s linear infinite;
+  animation: gridRotate var(--not-found-time-30000) linear infinite;
 }
 
 @keyframes gridPulse {
@@ -96,7 +124,7 @@
     transparent 70%
   );
   border-radius: 50%;
-  animation: orbFloat 12s ease-in-out infinite;
+  animation: orbFloat var(--not-found-time-12000) ease-in-out infinite;
 }
 
 @keyframes orbFloat {
@@ -127,7 +155,7 @@
     rgba(6, 182, 212, 0.06) 60px,
     rgba(6, 182, 212, 0.06) 61px
   );
-  animation: circuitMove 20s linear infinite;
+  animation: circuitMove var(--not-found-time-20000) linear infinite;
 }
 
 .circuitLine2 {
@@ -138,7 +166,7 @@
     rgba(139, 92, 246, 0.05) 80px,
     rgba(139, 92, 246, 0.05) 81px
   );
-  animation: circuitMove 25s linear infinite reverse;
+  animation: circuitMove var(--not-found-time-25000) linear infinite reverse;
 }
 
 @keyframes circuitMove {
@@ -161,7 +189,7 @@
     rgba(0, 0, 0, 0.04) 2px,
     rgba(0, 0, 0, 0.04) 4px
   );
-  animation: scanline 6s linear infinite;
+  animation: scanline var(--not-found-time-6000) linear infinite;
   opacity: 0.7;
 }
 
@@ -175,7 +203,7 @@
     rgba(6, 182, 212, 0.02) 3px,
     rgba(6, 182, 212, 0.02) 4px
   );
-  animation: scanlineHorizontal 14s linear infinite;
+  animation: scanlineHorizontal var(--not-found-time-14000) linear infinite;
 }
 
 [data-theme='dark'] .scanline {
@@ -212,7 +240,7 @@
   inset: 0;
   opacity: 0.03;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  animation: noiseFlicker 0.5s steps(2) infinite;
+  animation: noiseFlicker var(--not-found-time-500) steps(2) infinite;
   pointer-events: none;
 }
 
@@ -236,7 +264,7 @@
   background: var(--futuristic-cyan, #06b6d4);
   border-radius: 50%;
   box-shadow: 0 0 10px var(--futuristic-cyan, #06b6d4);
-  animation: particleRise var(--dur, 10s) ease-in-out infinite;
+  animation: particleRise var(--dur, var(--not-found-time-10000)) ease-in-out infinite;
   animation-delay: var(--delay, 0s);
   opacity: 0.6;
 }
@@ -277,8 +305,8 @@
   max-width: 540px;
   opacity: 0;
   transform: translateY(20px) scale(0.98);
-  transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
-    transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: opacity var(--not-found-time-700) cubic-bezier(0.22, 1, 0.36, 1),
+    transform var(--not-found-time-700) cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .content.visible {
@@ -300,7 +328,7 @@
   border-radius: 8px;
   opacity: 0;
   transform: translateY(8px);
-  transition: opacity 0.5s ease 0.1s, transform 0.5s ease 0.1s;
+  transition: opacity var(--not-found-time-500) ease var(--not-found-time-100), transform var(--not-found-time-500) ease var(--not-found-time-100);
   box-shadow: 0 0 20px rgba(6, 182, 212, 0.08);
 }
 
@@ -330,7 +358,7 @@
   background: var(--futuristic-cyan, #06b6d4);
   margin-left: 2px;
   vertical-align: text-bottom;
-  animation: cursorBlink 1s step-end infinite;
+  animation: cursorBlink var(--not-found-time-1000) step-end infinite;
 }
 
 @keyframes cursorBlink {
@@ -350,7 +378,7 @@
   margin-bottom: 0.75rem;
   opacity: 0;
   transform: scale(0.9);
-  transition: opacity 0.5s ease 0.2s, transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s;
+  transition: opacity var(--not-found-time-500) ease var(--not-found-time-200), transform var(--not-found-time-500) cubic-bezier(0.34, 1.56, 0.64, 1) var(--not-found-time-200);
 }
 
 .content.visible .errorCodeWrap {
@@ -377,7 +405,7 @@
   );
   -webkit-background-clip: text;
   background-clip: text;
-  animation: glowPulse 3s ease-in-out infinite;
+  animation: glowPulse var(--not-found-time-3000) ease-in-out infinite;
 }
 
 @keyframes glowPulse {
@@ -407,7 +435,7 @@
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  animation: glitch 3.5s ease-in-out infinite;
+  animation: glitch var(--not-found-time-3500) ease-in-out infinite;
 }
 
 .errorCode::before,
@@ -430,12 +458,12 @@
 }
 
 .errorCode::before {
-  animation: glitchShift1 2.8s ease-in-out infinite;
+  animation: glitchShift1 var(--not-found-time-2800) ease-in-out infinite;
   transform: translate(-3px, 0);
 }
 
 .errorCode::after {
-  animation: glitchShift2 2.2s ease-in-out infinite;
+  animation: glitchShift2 var(--not-found-time-2200) ease-in-out infinite;
   transform: translate(3px, 0);
 }
 
@@ -530,9 +558,9 @@
   display: inline-block;
   opacity: 0;
   transform: translateY(8px);
-  transition: opacity 0.35s ease calc(0.4s + var(--char-i) * 0.03s),
-    transform 0.35s ease calc(0.4s + var(--char-i) * 0.03s),
-    color 0.3s ease;
+  transition: opacity var(--not-found-time-350) ease calc(var(--not-found-time-400) + var(--char-i) * var(--not-found-time-30)),
+    transform var(--not-found-time-350) ease calc(var(--not-found-time-400) + var(--char-i) * var(--not-found-time-30)),
+    color var(--not-found-time-300) ease;
 }
 
 .content.visible .titleChar {
@@ -551,7 +579,7 @@
   line-height: 1.5;
   opacity: 0;
   transform: translateY(6px);
-  transition: opacity 0.45s ease 0.65s, transform 0.45s ease 0.65s;
+  transition: opacity var(--not-found-time-450) ease var(--not-found-time-650), transform var(--not-found-time-450) ease var(--not-found-time-650);
 }
 
 .content.visible .subtitle {
@@ -575,7 +603,7 @@
   overflow: hidden;
   opacity: 0;
   transform: translateY(6px);
-  transition: opacity 0.45s ease 0.75s, transform 0.45s ease 0.75s;
+  transition: opacity var(--not-found-time-450) ease var(--not-found-time-750), transform var(--not-found-time-450) ease var(--not-found-time-750);
 }
 
 .content.visible .pathDisplay {
@@ -597,7 +625,7 @@
     transparent 60%
   );
   transform: translateX(-100%);
-  animation: pathShimmer 3s ease-in-out infinite;
+  animation: pathShimmer var(--not-found-time-3000) ease-in-out infinite;
 }
 
 @keyframes pathShimmer {
@@ -628,7 +656,7 @@
   gap: 0.75rem;
   opacity: 0;
   transform: translateY(10px);
-  transition: opacity 0.5s ease 0.85s, transform 0.5s ease 0.85s;
+  transition: opacity var(--not-found-time-500) ease var(--not-found-time-850), transform var(--not-found-time-500) ease var(--not-found-time-850);
 }
 
 .content.visible .actions {
@@ -654,7 +682,7 @@
   border-radius: 10px;
   cursor: pointer;
   overflow: hidden;
-  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  transition: transform var(--not-found-time-250) ease, box-shadow var(--not-found-time-250) ease;
   box-shadow: 0 2px 12px rgba(6, 182, 212, 0.25);
 }
 
@@ -678,7 +706,7 @@
     transparent 55%
   );
   transform: translateX(-100%);
-  transition: transform 0.5s ease;
+  transition: transform var(--not-found-time-500) ease;
 }
 
 .primaryBtn:hover .btnShine {
@@ -694,7 +722,7 @@
     transparent 50%
   );
   opacity: 0;
-  transition: opacity 0.2s ease;
+  transition: opacity var(--not-found-time-200) ease;
 }
 
 .primaryBtn:hover .btnGlow {
@@ -715,8 +743,8 @@
   border: 1px solid var(--border-secondary, #e2e8f0);
   border-radius: 10px;
   cursor: pointer;
-  transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease,
-    transform 0.2s ease, box-shadow 0.2s ease;
+  transition: color var(--not-found-time-200) ease, background var(--not-found-time-200) ease, border-color var(--not-found-time-200) ease,
+    transform var(--not-found-time-200) ease, box-shadow var(--not-found-time-200) ease;
 }
 
 .secondaryBtn:hover {

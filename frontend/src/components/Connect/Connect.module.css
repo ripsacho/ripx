@@ -31,6 +31,36 @@
 
 /* ========== Root layout: two panels ========== */
 .connectRoot {
+  --connect-time-60: 0.06s;
+  --connect-time-120: 0.12s;
+  --connect-time-150: 0.15s;
+  --connect-time-200: 0.2s;
+  --connect-time-250: 0.25s;
+  --connect-time-280: 0.28s;
+  --connect-time-300: 0.3s;
+  --connect-time-320: 0.32s;
+  --connect-time-350: 0.35s;
+  --connect-time-400: 0.4s;
+  --connect-time-480: 0.48s;
+  --connect-time-600: 0.6s;
+  --connect-time-700: 0.7s;
+  --connect-time-820: 0.82s;
+  --connect-time-880: 0.88s;
+  --connect-time-900: 0.9s;
+  --connect-time-1000: 1s;
+  --connect-time-1350: 1.35s;
+  --connect-time-1400: 1.4s;
+  --connect-time-2000: 2s;
+  --connect-time-2400: 2.4s;
+  --connect-time-3000: 3s;
+  --connect-time-4000: 4s;
+  --connect-time-5000: 5s;
+  --connect-time-6000: 6s;
+  --connect-time-8000: 8s;
+  --connect-time-18000: 18s;
+  --connect-time-20000: 20s;
+  --connect-time-22000: 22s;
+  --connect-time-25000: 25s;
   display: flex;
   flex-direction: column;
   min-height: 100vh;
@@ -93,7 +123,7 @@
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-  transition: background 0.25s ease, border-color 0.25s ease;
+  transition: background var(--connect-time-250) ease, border-color var(--connect-time-250) ease;
   overflow: hidden;
 }
 
@@ -115,7 +145,7 @@
     transparent 100%
   );
   background-size: 200% 100%;
-  animation: topBarShimmer 6s ease-in-out infinite;
+  animation: topBarShimmer var(--connect-time-6000) ease-in-out infinite;
   pointer-events: none;
 }
 
@@ -187,7 +217,7 @@
   color: var(--text-secondary);
   text-decoration: none;
   border-radius: 10px;
-  transition: background 0.28s cubic-bezier(0.25, 0.1, 0.25, 1), color 0.28s cubic-bezier(0.25, 0.1, 0.25, 1);
+  transition: background var(--connect-time-280) cubic-bezier(0.25, 0.1, 0.25, 1), color var(--connect-time-280) cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
 .connectTopBarLink:hover {
@@ -220,7 +250,7 @@
     linear-gradient(rgba(6, 182, 212, 0.03) 1px, transparent 1px),
     linear-gradient(90deg, rgba(6, 182, 212, 0.03) 1px, transparent 1px);
   background-size: 48px 48px;
-  animation: idleGridShift 20s linear infinite;
+  animation: idleGridShift var(--connect-time-20000) linear infinite;
 }
 
 .connectIdleGrid::before {
@@ -233,7 +263,7 @@
     rgba(6, 182, 212, 0.02) 50%,
     transparent 100%
   );
-  animation: idleGridPulse 6s ease-in-out infinite;
+  animation: idleGridPulse var(--connect-time-6000) ease-in-out infinite;
 }
 
 @keyframes idleGridShift {
@@ -264,7 +294,7 @@
     radial-gradient(2px 2px at 60% 20%, rgba(167, 139, 250, 0.18), transparent);
   background-size: 200% 200%;
   background-position: 0% 0%, 100% 100%, 50% 50%, 80% 20%;
-  animation: idleDotsFloat 25s ease-in-out infinite;
+  animation: idleDotsFloat var(--connect-time-25000) ease-in-out infinite;
   opacity: 0.8;
 }
 
@@ -295,7 +325,7 @@
     rgba(6, 182, 212, 0.12) 10px
   );
   background-size: 28px 28px;
-  animation: idleCircuitMove 18s linear infinite;
+  animation: idleCircuitMove var(--connect-time-18000) linear infinite;
 }
 
 .connectIdleCircuit::before {
@@ -310,7 +340,7 @@
     rgba(167, 139, 250, 0.08) 14px
   );
   background-size: 32px 32px;
-  animation: idleCircuitMoveAlt 22s linear infinite;
+  animation: idleCircuitMoveAlt var(--connect-time-22000) linear infinite;
 }
 
 @keyframes idleCircuitMove {
@@ -393,7 +423,7 @@
     transparent 100%
   );
   opacity: 0.9;
-  animation: centerDividerBreathe 3s ease-in-out infinite;
+  animation: centerDividerBreathe var(--connect-time-3000) ease-in-out infinite;
 }
 
 @keyframes centerDividerBreathe {
@@ -438,7 +468,7 @@
     transparent 100%
   );
   border-radius: 2px;
-  animation: centerDividerScan 4s ease-in-out infinite;
+  animation: centerDividerScan var(--connect-time-4000) ease-in-out infinite;
   box-shadow: 0 0 20px rgba(6, 182, 212, 0.15), 0 0 40px rgba(167, 139, 250, 0.08);
 }
 
@@ -484,7 +514,7 @@
 
 /* Iris sweep: subtle dim then restore (depth) */
 .phaseFlipIn .connectPanelsSwap {
-  animation: irisSweepBrightness 2.4s cubic-bezier(0.33, 0.5, 0.2, 1) forwards;
+  animation: irisSweepBrightness var(--connect-time-2400) cubic-bezier(0.33, 0.5, 0.2, 1) forwards;
 }
 
 @keyframes irisSweepBrightness {
@@ -528,12 +558,12 @@
 }
 
 .transitionTechOverlayActive .transitionScanLine {
-  animation: transitionScanDown 1s cubic-bezier(0.25, 0, 0.15, 1) forwards;
+  animation: transitionScanDown var(--connect-time-1000) cubic-bezier(0.25, 0, 0.15, 1) forwards;
 }
 
 
 .transitionTechOverlayActive .transitionTechGrid {
-  animation: techGridPulse 0.6s ease-out forwards;
+  animation: techGridPulse var(--connect-time-600) ease-out forwards;
 }
 
 /* Subtle grid overlay – tech/HUD feel */
@@ -599,7 +629,7 @@
 }
 
 .transitionTechOverlayActive .transitionScanLineTrail {
-  animation: transitionScanDownTrail 1s cubic-bezier(0.25, 0, 0.15, 1) 0.06s forwards;
+  animation: transitionScanDownTrail var(--connect-time-1000) cubic-bezier(0.25, 0, 0.15, 1) var(--connect-time-60) forwards;
 }
 
 @keyframes transitionScanDownTrail {
@@ -677,7 +707,7 @@
 .phaseEntering .connectViewOutgoing {
   z-index: 1;
   /* Smooth handoff from iris (no snap from scale/filter) */
-  transition: transform 0.12s ease-out, filter 0.12s ease-out;
+  transition: transform var(--connect-time-120) ease-out, filter var(--connect-time-120) ease-out;
 }
 
 .phaseEntering .connectViewIncoming {
@@ -864,8 +894,8 @@
     0 4px 24px rgba(0, 0, 0, 0.2),
     0 0 0 1px rgba(255, 255, 255, 0.06) inset,
     -4px 0 24px -4px rgba(6, 182, 212, 0.25);
-  transition: box-shadow 0.3s ease, border-left-color 0.3s ease;
-  animation: heroEdgeGlow 4s ease-in-out infinite;
+  transition: box-shadow var(--connect-time-300) ease, border-left-color var(--connect-time-300) ease;
+  animation: heroEdgeGlow var(--connect-time-4000) ease-in-out infinite;
 }
 
 @keyframes heroEdgeGlow {
@@ -1012,7 +1042,7 @@
     radial-gradient(ellipse 80% 60% at 70% 30%, rgba(6, 182, 212, 0.04) 0%, transparent 50%),
     radial-gradient(ellipse 60% 80% at 30% 70%, rgba(167, 139, 250, 0.03) 0%, transparent 50%);
   pointer-events: none;
-  animation: panelFormGlow 8s ease-in-out infinite alternate;
+  animation: panelFormGlow var(--connect-time-8000) ease-in-out infinite alternate;
 }
 
 @keyframes panelFormGlow {
@@ -1059,7 +1089,7 @@
 /* Keep hero bg visible during stagger exit – no blank panel / fade before slide */
 
 .phaseExiting .connectViewOutgoing .connectPanelLeft .heroContent > * {
-  animation: staggerSlideOutLeft 0.9s cubic-bezier(0.33, 0.5, 0.2, 1) both;
+  animation: staggerSlideOutLeft var(--connect-time-900) cubic-bezier(0.33, 0.5, 0.2, 1) both;
   opacity: 1;
 }
 
@@ -1070,7 +1100,7 @@
 .phaseExiting .connectViewOutgoing .connectPanelLeft .heroContent > *:nth-child(5) { animation-delay: 270ms; }
 
 .phaseExiting .connectViewOutgoing .connectPanelLeft.panelForm .connectPanelInner > * {
-  animation: staggerSlideOutLeft 0.9s cubic-bezier(0.33, 0.5, 0.2, 1) both;
+  animation: staggerSlideOutLeft var(--connect-time-900) cubic-bezier(0.33, 0.5, 0.2, 1) both;
 }
 
 .phaseExiting .connectViewOutgoing .connectPanelLeft.panelForm .connectPanelInner > *:nth-child(1) { animation-delay: 0ms; }
@@ -1081,7 +1111,7 @@
 .phaseExiting .connectViewOutgoing .connectPanelLeft.panelForm .connectPanelInner > *:nth-child(6) { animation-delay: 375ms; }
 
 .phaseExiting .connectViewOutgoing .connectPanelRight .heroContent > * {
-  animation: staggerSlideOutRight 0.9s cubic-bezier(0.33, 0.5, 0.2, 1) both;
+  animation: staggerSlideOutRight var(--connect-time-900) cubic-bezier(0.33, 0.5, 0.2, 1) both;
 }
 
 .phaseExiting .connectViewOutgoing .connectPanelRight .heroContent > *:nth-child(1) { animation-delay: 0ms; }
@@ -1091,7 +1121,7 @@
 .phaseExiting .connectViewOutgoing .connectPanelRight .heroContent > *:nth-child(5) { animation-delay: 270ms; }
 
 .phaseExiting .connectViewOutgoing .connectPanelRight.panelForm .connectPanelInner > * {
-  animation: staggerSlideOutRight 0.9s cubic-bezier(0.33, 0.5, 0.2, 1) both;
+  animation: staggerSlideOutRight var(--connect-time-900) cubic-bezier(0.33, 0.5, 0.2, 1) both;
 }
 
 .phaseExiting .connectViewOutgoing .connectPanelRight.panelForm .connectPanelInner > *:nth-child(1) { animation-delay: 0ms; }
@@ -1153,7 +1183,7 @@
 .phaseExiting .connectViewOutgoing .connectPanelLeft.panelForm .connectPanelInner > *:nth-child(1),
 .phaseExiting .connectViewOutgoing .connectPanelRight .heroContent > *:nth-child(1),
 .phaseExiting .connectViewOutgoing .connectPanelRight.panelForm .connectPanelInner > *:nth-child(1) {
-  animation-duration: 0.7s;
+  animation-duration: var(--connect-time-700);
   animation-timing-function: cubic-bezier(0.33, 0.5, 0.2, 1);
 }
 
@@ -1190,7 +1220,7 @@
 }
 
 .phaseEntering .connectViewOutgoing .connectPanelLeft .heroContent > * {
-  animation: staggerSlideInLeft 1s cubic-bezier(0.33, 0.5, 0.2, 1) forwards;
+  animation: staggerSlideInLeft var(--connect-time-1000) cubic-bezier(0.33, 0.5, 0.2, 1) forwards;
   opacity: 0;
 }
 
@@ -1201,7 +1231,7 @@
 .phaseEntering .connectViewOutgoing .connectPanelLeft .heroContent > *:nth-child(5) { animation-delay: 320ms; }
 
 .phaseEntering .connectViewOutgoing .connectPanelLeft.panelForm .connectPanelInner > * {
-  animation: staggerSlideInLeft 1s cubic-bezier(0.33, 0.5, 0.2, 1) forwards;
+  animation: staggerSlideInLeft var(--connect-time-1000) cubic-bezier(0.33, 0.5, 0.2, 1) forwards;
   opacity: 0;
 }
 
@@ -1213,7 +1243,7 @@
 .phaseEntering .connectViewOutgoing .connectPanelLeft.panelForm .connectPanelInner > *:nth-child(6) { animation-delay: 450ms; }
 
 .phaseEntering .connectViewOutgoing .connectPanelRight .heroContent > * {
-  animation: staggerSlideInRight 1s cubic-bezier(0.33, 0.5, 0.2, 1) forwards;
+  animation: staggerSlideInRight var(--connect-time-1000) cubic-bezier(0.33, 0.5, 0.2, 1) forwards;
   opacity: 0;
 }
 
@@ -1224,7 +1254,7 @@
 .phaseEntering .connectViewOutgoing .connectPanelRight .heroContent > *:nth-child(5) { animation-delay: 320ms; }
 
 .phaseEntering .connectViewOutgoing .connectPanelRight.panelForm .connectPanelInner > * {
-  animation: staggerSlideInRight 1s cubic-bezier(0.33, 0.5, 0.2, 1) forwards;
+  animation: staggerSlideInRight var(--connect-time-1000) cubic-bezier(0.33, 0.5, 0.2, 1) forwards;
   opacity: 0;
 }
 
@@ -1274,7 +1304,7 @@
 
 /* Auth card: tech lift + glow + animated border sweep on enter */
 .phaseEntering .connectViewOutgoing .panelForm .authCard {
-  animation: authCardLift 0.9s cubic-bezier(0.34, 1.2, 0.64, 1) 0.35s both;
+  animation: authCardLift var(--connect-time-900) cubic-bezier(0.34, 1.2, 0.64, 1) var(--connect-time-350) both;
   position: relative;
   overflow: visible;
 }
@@ -1298,7 +1328,7 @@
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
-  animation: authCardBorderSweep 1.4s cubic-bezier(0.33, 0.5, 0.2, 1) 0.4s forwards;
+  animation: authCardBorderSweep var(--connect-time-1400) cubic-bezier(0.33, 0.5, 0.2, 1) var(--connect-time-400) forwards;
   opacity: 0;
 }
 
@@ -1395,7 +1425,7 @@
     transparent 100%
   );
   background-size: 220% 100%;
-  animation: panelShine 1.35s cubic-bezier(0.25, 0, 0.2, 1) 0.3s forwards;
+  animation: panelShine var(--connect-time-1350) cubic-bezier(0.25, 0, 0.2, 1) var(--connect-time-300) forwards;
   opacity: 0;
 }
 
@@ -1473,7 +1503,7 @@
   .phaseExiting .connectViewOutgoing .connectPanelRight.panelForm .connectPanelInner > * {
     animation: none !important;
     opacity: 0;
-    transition: opacity 0.15s ease;
+    transition: opacity var(--connect-time-150) ease;
   }
 
   .phaseFlipIn .connectViewOutgoing,
@@ -1558,7 +1588,7 @@
   .phaseExiting .connectViewOutgoing .connectPanelRight.panelForm .connectPanelInner > * {
     animation: none;
     opacity: 0;
-    transition: opacity 0.2s ease-out;
+    transition: opacity var(--connect-time-200) ease-out;
   }
 
   .phaseFlipIn .connectViewOutgoing,
@@ -1613,7 +1643,7 @@
     #06b6d4 100%
   );
   opacity: 0.98;
-  animation: heroGradientShift 18s ease-in-out infinite alternate;
+  animation: heroGradientShift var(--connect-time-18000) ease-in-out infinite alternate;
 }
 
 .heroGradient::before {
@@ -1656,7 +1686,7 @@
   background-size: 36px 36px;
   pointer-events: none;
   opacity: 0.85;
-  animation: heroGridPulse 8s ease-in-out infinite alternate;
+  animation: heroGridPulse var(--connect-time-8000) ease-in-out infinite alternate;
 }
 
 @keyframes heroGridPulse {
@@ -1672,7 +1702,7 @@
   position: relative;
   z-index: 1;
   max-width: 400px;
-  animation: heroFadeIn 0.88s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+  animation: heroFadeIn var(--connect-time-880) cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
 }
 
 @keyframes heroFadeIn {
@@ -1825,7 +1855,7 @@
   max-width: 440px;
   position: relative;
   z-index: 1;
-  animation: connectInnerIn 0.82s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+  animation: connectInnerIn var(--connect-time-820) cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
 }
 
 @keyframes connectInnerIn {
@@ -1873,7 +1903,7 @@
   border-radius: 50%;
   background: var(--futuristic-cyan);
   box-shadow: 0 0 10px rgba(6, 182, 212, 0.6);
-  animation: liveDotPulse 2s ease-in-out infinite;
+  animation: liveDotPulse var(--connect-time-2000) ease-in-out infinite;
 }
 
 @keyframes liveDotPulse {
@@ -1920,7 +1950,7 @@
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  animation: authBrandShimmer 8s ease-in-out infinite;
+  animation: authBrandShimmer var(--connect-time-8000) ease-in-out infinite;
 }
 
 @keyframes authBrandShimmer {
@@ -1952,7 +1982,7 @@
   border-radius: 10px;
   border: 1px solid rgba(6, 182, 212, 0.3);
   background: rgba(6, 182, 212, 0.06);
-  transition: background 0.32s cubic-bezier(0.25, 0.1, 0.25, 1), border-color 0.32s ease, color 0.32s ease;
+  transition: background var(--connect-time-320) cubic-bezier(0.25, 0.1, 0.25, 1), border-color var(--connect-time-320) ease, color var(--connect-time-320) ease;
 }
 
 .authLink:hover {
@@ -2030,7 +2060,7 @@
   color: var(--futuristic-cyan);
   font-size: 0.85em;
   cursor: help;
-  transition: background 0.2s ease, color 0.2s ease, transform 0.15s ease;
+  transition: background var(--connect-time-200) ease, color var(--connect-time-200) ease, transform var(--connect-time-150) ease;
   flex-shrink: 0;
 }
 
@@ -2113,7 +2143,7 @@
     0 4px 16px -4px rgba(0, 0, 0, 0.06),
     0 20px 48px -12px rgba(6, 182, 212, 0.12);
   overflow: hidden;
-  transition: box-shadow 0.28s ease, border-color 0.28s ease;
+  transition: box-shadow var(--connect-time-280) ease, border-color var(--connect-time-280) ease;
 }
 
 /* Tech scan line – moves down the card periodically */
@@ -2133,7 +2163,7 @@
     transparent 100%
   );
   box-shadow: 0 0 16px rgba(6, 182, 212, 0.3);
-  animation: authCardScan 5s ease-in-out infinite;
+  animation: authCardScan var(--connect-time-5000) ease-in-out infinite;
   pointer-events: none;
 }
 
@@ -2176,7 +2206,7 @@
     transparent 55%
   );
   pointer-events: none;
-  animation: authCardCornerPulse 4s ease-in-out infinite;
+  animation: authCardCornerPulse var(--connect-time-4000) ease-in-out infinite;
   z-index: 0;
 }
 
@@ -2290,7 +2320,7 @@
   border: none;
   border-radius: 10px;
   cursor: pointer;
-  transition: color 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+  transition: color var(--connect-time-280) cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .authTab:hover {
@@ -2313,7 +2343,7 @@
   box-shadow:
     0 2px 10px rgba(0, 0, 0, 0.06),
     0 0 0 1px rgba(6, 182, 212, 0.08);
-  transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+  transition: transform var(--connect-time-320) cubic-bezier(0.32, 0.72, 0, 1);
   z-index: 0;
 }
 
@@ -2344,8 +2374,8 @@
 
 .authPanel {
   transition:
-    opacity 0.48s cubic-bezier(0.25, 0.1, 0.25, 1),
-    transform 0.48s cubic-bezier(0.25, 0.1, 0.25, 1);
+    opacity var(--connect-time-480) cubic-bezier(0.25, 0.1, 0.25, 1),
+    transform var(--connect-time-480) cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
 .authPanelActive {
@@ -2386,7 +2416,7 @@
   background: linear-gradient(135deg, rgba(6, 182, 212, 0.06), rgba(139, 92, 246, 0.04));
   border-left: 3px solid rgba(6, 182, 212, 0.5);
   border-radius: 0 10px 10px 0;
-  transition: background 0.25s ease;
+  transition: background var(--connect-time-250) ease;
 }
 
 .authPanelHint:hover {
@@ -2430,7 +2460,7 @@
 .authFormActions :global(button) {
   position: relative;
   background: linear-gradient(135deg, var(--futuristic-cyan), #0891b2) !important;
-  animation: authButtonGlow 3s ease-in-out infinite;
+  animation: authButtonGlow var(--connect-time-3000) ease-in-out infinite;
   border: none !important;
   color: #fff !important;
   font-weight: 600 !important;
@@ -2439,7 +2469,7 @@
   padding: 0.75rem 1.25rem !important;
   border-radius: 12px !important;
   box-shadow: 0 4px 16px rgba(6, 182, 212, 0.38) !important;
-  transition: box-shadow 0.35s cubic-bezier(0.25, 0.1, 0.25, 1), transform 0.32s cubic-bezier(0.25, 0.1, 0.25, 1) !important;
+  transition: box-shadow var(--connect-time-350) cubic-bezier(0.25, 0.1, 0.25, 1), transform var(--connect-time-320) cubic-bezier(0.25, 0.1, 0.25, 1) !important;
 }
 
 .authFormActions :global(button:hover) {
@@ -2504,7 +2534,7 @@
   border: none;
   cursor: pointer;
   border-radius: 12px;
-  transition: color 0.25s ease, background 0.25s ease, transform 0.2s ease;
+  transition: color var(--connect-time-250) ease, background var(--connect-time-250) ease, transform var(--connect-time-200) ease;
 }
 
 .authSwitch:hover {
@@ -2541,7 +2571,7 @@
   border-radius: 1px;
   transform: scaleX(0);
   transform-origin: right;
-  transition: transform 0.25s cubic-bezier(0.33, 0.5, 0.2, 1);
+  transition: transform var(--connect-time-250) cubic-bezier(0.33, 0.5, 0.2, 1);
 }
 
 .authSwitch:hover .authSwitchAccent::after {
@@ -2598,7 +2628,7 @@
   margin: -0.2rem 0 0 -0.2rem;
   border-radius: 8px;
   border: 1px solid transparent;
-  transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+  transition: color var(--connect-time-200) ease, background var(--connect-time-200) ease, border-color var(--connect-time-200) ease;
 }
 
 .otpBack:hover {
@@ -2662,7 +2692,7 @@
   border-radius: 12px;
   background: var(--bg-primary, #fff);
   color: var(--text-primary);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color var(--connect-time-200) ease, box-shadow var(--connect-time-200) ease;
   -webkit-appearance: none;
   appearance: none;
 }

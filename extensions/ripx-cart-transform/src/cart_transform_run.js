@@ -16,6 +16,24 @@ function amountsMatch(a, b) {
   return Math.abs(Number(a) - Number(b)) < 0.0001;
 }
 
+function isDirectOverrideMethod(value) {
+  const normalized = normalizePriceMethod(value);
+  return (
+    normalized === DIRECT_OVERRIDE_METHOD ||
+    normalized === 'direct-override' ||
+    normalized === 'directoverride'
+  );
+}
+
+function getConfiguredPriceMethod(line) {
+  return (
+    line?.ripxPriceMethod?.value ||
+    line?.ripxPriceApplicationMethod?.value ||
+    line?.ripxPriceApplicationMethodLegacy?.value ||
+    ''
+  );
+}
+
 /**
  * @param {Input['cart']['lines'][number]} line
  * @returns {boolean}
@@ -24,10 +42,11 @@ function shouldApplyDirectOverride(line) {
   if (!line || !line.id) {
     return false;
   }
-  if (!line.ripxTest?.value || !line.ripxVariant?.value) {
+  if (line.sellingPlanAllocation) {
+    // Shopify rejects lineUpdate for subscription lines.
     return false;
   }
-  if (normalizePriceMethod(line.ripxPriceMethod?.value) !== DIRECT_OVERRIDE_METHOD) {
+  if (!isDirectOverrideMethod(getConfiguredPriceMethod(line))) {
     return false;
   }
   if (line.merchandise?.__typename !== 'ProductVariant') {
@@ -64,7 +83,7 @@ function buildLineUpdateOperation(line) {
     price: {
       adjustment: {
         fixedPricePerUnit: {
-          amount: Number(targetUnit.toFixed(2)),
+          amount: targetUnit.toFixed(2),
         },
       },
     },

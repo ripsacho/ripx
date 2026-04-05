@@ -1,3 +1,6 @@
+:root {
+  --setup-wizard-time-200: 0.2s;
+}
 /* Page layout - matches Settings/Profile */
 .setupPage {
   display: flex;
@@ -359,7 +362,7 @@
   color: var(--text-secondary);
   background: var(--bg-tertiary);
   border: 2px solid rgba(6, 182, 212, 0.2);
-  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  transition: background var(--setup-wizard-time-200) ease, border-color var(--setup-wizard-time-200) ease, color var(--setup-wizard-time-200) ease;
 }
 
 .stepPillDone {
@@ -395,7 +398,7 @@
   border-radius: 14px;
   border-left: 4px solid rgba(6, 182, 212, 0.4);
   box-shadow: 0 4px 16px rgba(6, 182, 212, 0.06);
-  transition: box-shadow 0.2s ease, border-left-color 0.2s ease;
+  transition: box-shadow var(--setup-wizard-time-200) ease, border-left-color var(--setup-wizard-time-200) ease;
 }
 
 .standaloneStepCard:hover {

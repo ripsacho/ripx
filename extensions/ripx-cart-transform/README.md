@@ -14,15 +14,17 @@ It reads RipX line item properties already injected by `shopify/storefront-scrip
 - `_ripx_variant`
 - `_ripx_target_unit`
 - `_ripx_price_method`
+- `_ripx_price_application_method` (fallback)
+- `__ripx_price_application_method` (legacy fallback)
 
-The function only overrides lines where `_ripx_price_method === direct_price_override`.
+The function only overrides lines where the resolved price method is `direct_price_override`.
 
 ## Important constraints
 
 - When `_ripx_price_method === direct_price_override`, the function applies the target unit price whether it is above or below the current line unit price (merchant-selected method on the variant).
 - Shopify allows a maximum of one cart transform function per store.
 - `lineUpdate` is only available on Plus / dev stores.
-- Shopify rejects `lineUpdate` operations when selling plans are involved.
+- Shopify rejects `lineUpdate` operations when selling plans are involved. RipX skips those lines.
 - This function has no network access; it depends entirely on the storefront-injected RipX line properties.
 
 ## Local workflow

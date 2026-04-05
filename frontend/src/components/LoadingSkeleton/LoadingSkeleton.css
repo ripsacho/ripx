@@ -1,3 +1,6 @@
+:root {
+  --loading-skeleton-time-1800: 1.8s;
+}
 /* Loading Skeleton Styles - Premium shimmer */
 
 .skeleton {
@@ -27,7 +30,7 @@
     transparent 100%
   );
   background-size: 200% 100%;
-  animation: skeleton-shimmer 1.8s ease-in-out infinite;
+  animation: skeleton-shimmer var(--loading-skeleton-time-1800) ease-in-out infinite;
 }
 
 [data-theme="dark"] .skeleton-line {
@@ -122,7 +125,7 @@
     transparent 100%
   );
   background-size: 200% 100%;
-  animation: skeleton-shimmer 1.8s ease-in-out infinite;
+  animation: skeleton-shimmer var(--loading-skeleton-time-1800) ease-in-out infinite;
 }
 
 .skeleton-metric-card {
@@ -151,7 +154,7 @@
     transparent 100%
   );
   background-size: 200% 100%;
-  animation: skeleton-shimmer 1.8s ease-in-out infinite;
+  animation: skeleton-shimmer var(--loading-skeleton-time-1800) ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

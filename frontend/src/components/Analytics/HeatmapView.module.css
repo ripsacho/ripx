@@ -1,3 +1,9 @@
+:root {
+  --heatmap-view-time-200: 0.2s;
+  --heatmap-view-time-250: 0.25s;
+  --heatmap-view-time-300: 0.3s;
+  --heatmap-view-time-8000: 8s;
+}
 /* HeatmapView - Full-width premium section */
 
 .heatmapSection {
@@ -11,7 +17,7 @@
   );
   border: 1px solid rgba(0, 0, 0, 0.05);
   box-shadow: 0 6px 32px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(0, 0, 0, 0.02);
-  transition: all 0.3s ease;
+  transition: all var(--heatmap-view-time-300) ease;
 }
 
 [data-theme="dark"] .heatmapSection {
@@ -35,7 +41,7 @@
     transparent
   );
   background-size: 200% 100%;
-  animation: heatmapGradientShift 8s ease infinite;
+  animation: heatmapGradientShift var(--heatmap-view-time-8000) ease infinite;
   opacity: 0.7;
 }
 
@@ -100,7 +106,7 @@
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.6);
   border: 1px solid rgba(0, 0, 0, 0.05);
-  transition: all 0.25s ease;
+  transition: all var(--heatmap-view-time-250) ease;
 }
 
 .heatmapBlock:hover {
@@ -136,7 +142,7 @@
 .heatmapClickCell {
   border-radius: 4px;
   min-height: 12px;
-  transition: opacity 0.2s ease;
+  transition: opacity var(--heatmap-view-time-200) ease;
 }
 
 .heatmapClickCell:hover {
@@ -177,7 +183,7 @@
   height: 100%;
   background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
   border-radius: 6px;
-  transition: width 0.3s ease;
+  transition: width var(--heatmap-view-time-300) ease;
 }
 
 .heatmapScrollCount {

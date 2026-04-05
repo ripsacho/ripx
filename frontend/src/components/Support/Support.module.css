@@ -8,6 +8,11 @@
   --support-glow: rgba(6, 182, 212, 0.25);
   --support-surface: rgba(255, 255, 255, 0.85);
   --support-edge: rgba(6, 182, 212, 0.15);
+  --support-time-150: 0.15s;
+  --support-time-200: 0.2s;
+  --support-time-250: 0.25s;
+  --support-time-1400: 1.4s;
+  --support-time-2500: 2.5s;
   /* Layout spacing scale (8px base) */
   --space-1: 8px;
   --space-2: 16px;
@@ -71,7 +76,7 @@
 .supportPage :global(.Polaris-Page__Header a) {
   color: var(--text-secondary, #64748b);
   font-weight: 500;
-  transition: color 0.2s ease;
+  transition: color var(--support-time-200) ease;
 }
 
 .supportPage :global(.Polaris-Page__Header a:hover) {
@@ -187,7 +192,7 @@
     0 0 0 1px rgba(255, 255, 255, 0.6) inset,
     0 2px 12px rgba(6, 182, 212, 0.15),
     0 0 24px -8px rgba(6, 182, 212, 0.2);
-  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+  transition: box-shadow var(--support-time-250) ease, border-color var(--support-time-250) ease;
 }
 
 .heroBadge:hover {
@@ -297,7 +302,7 @@
   border: 1px solid var(--border-secondary);
   border-radius: 12px;
   text-decoration: none;
-  transition: all 0.25s ease;
+  transition: all var(--support-time-250) ease;
   box-shadow: var(--shadow-sm);
 }
 
@@ -368,7 +373,7 @@
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   box-shadow: var(--surface-2);
-  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  transition: transform var(--support-time-250) ease, box-shadow var(--support-time-250) ease, border-color var(--support-time-250) ease;
   overflow: hidden;
 }
 
@@ -473,7 +478,7 @@
   font-weight: 600 !important;
   border-radius: 14px !important;
   width: 100%;
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
+  transition: box-shadow var(--support-time-200) ease, transform var(--support-time-200) ease;
 }
 
 .actionCardCta :global(.Polaris-Button--variantPrimary) {
@@ -550,7 +555,7 @@
   background: transparent;
   color: var(--text-secondary, #64748b);
   cursor: pointer;
-  transition: all 0.25s ease;
+  transition: all var(--support-time-250) ease;
   text-align: center;
   position: relative;
 }
@@ -697,7 +702,7 @@
   min-height: 48px !important;
   font-size: 1rem !important;
   line-height: 1.5 !important;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  transition: border-color var(--support-time-200) ease, box-shadow var(--support-time-200) ease, background var(--support-time-200) ease;
   box-sizing: border-box;
 }
 
@@ -748,7 +753,7 @@
   min-height: 48px !important;
   font-size: 1rem !important;
   line-height: 1.5 !important;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color var(--support-time-200) ease, box-shadow var(--support-time-200) ease;
   box-sizing: border-box;
 }
 
@@ -787,7 +792,7 @@
   font-size: 1rem !important;
   font-weight: 600 !important;
   border-radius: 14px !important;
-  transition: transform 0.15s ease, box-shadow 0.2s ease;
+  transition: transform var(--support-time-150) ease, box-shadow var(--support-time-200) ease;
   box-sizing: border-box;
 }
 
@@ -832,7 +837,7 @@
     0 0 0 1px rgba(255, 255, 255, 0.25) inset,
     0 2px 8px rgba(6, 182, 212, 0.3),
     0 0 20px -6px rgba(6, 182, 212, 0.35);
-  transition: box-shadow 0.25s ease, transform 0.2s ease, background 0.25s ease;
+  transition: box-shadow var(--support-time-250) ease, transform var(--support-time-200) ease, background var(--support-time-250) ease;
 }
 
 .tabCardForm :global(button[type='submit']):hover:not(:disabled) {
@@ -910,7 +915,7 @@
   background: var(--bg-secondary);
   border: 1px solid var(--border-secondary);
   box-shadow: var(--shadow-sm);
-  transition: background 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  transition: background var(--support-time-250) ease, box-shadow var(--support-time-250) ease, border-color var(--support-time-250) ease;
 }
 
 .tabCardList :global(.Polaris-List__Item:hover) {
@@ -998,7 +1003,7 @@
     0 0 12px rgba(6, 182, 212, 0.5),
     0 0 24px -8px rgba(6, 182, 212, 0.4);
   flex-shrink: 0;
-  animation: chatStatusPulse 2.5s ease-in-out infinite;
+  animation: chatStatusPulse var(--support-time-2500) ease-in-out infinite;
 }
 
 @keyframes chatStatusPulse {
@@ -1023,7 +1028,7 @@
   background: linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(248,252,255,0.92) 100%);
   color: var(--text-secondary, #64748b);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  transition: border-color 0.25s ease, background 0.25s ease, color 0.2s ease, box-shadow 0.25s ease;
+  transition: border-color var(--support-time-250) ease, background var(--support-time-250) ease, color var(--support-time-200) ease, box-shadow var(--support-time-250) ease;
 }
 
 .chatHeaderClear:hover:not(:disabled) {
@@ -1085,7 +1090,7 @@
   background: var(--bg-active, rgba(6, 182, 212, 0.1));
   border: 1px solid var(--border-accent);
   box-shadow: var(--shadow-sm);
-  transition: box-shadow 0.25s ease, transform 0.2s ease;
+  transition: box-shadow var(--support-time-250) ease, transform var(--support-time-200) ease;
 }
 
 .chatBubbleUser:hover {
@@ -1100,7 +1105,7 @@
   background: var(--bg-secondary);
   border: 1px solid var(--border-secondary);
   box-shadow: var(--shadow-sm);
-  transition: box-shadow 0.25s ease, transform 0.2s ease;
+  transition: box-shadow var(--support-time-250) ease, transform var(--support-time-200) ease;
 }
 
 .chatBubbleAssistant:hover {
@@ -1161,7 +1166,7 @@
   border-radius: 50%;
   background: linear-gradient(135deg, var(--support-cyan), var(--support-violet));
   opacity: 0.9;
-  animation: chatTypingBounce 1.4s ease-in-out infinite both;
+  animation: chatTypingBounce var(--support-time-1400) ease-in-out infinite both;
 }
 
 .chatTypingDot:nth-child(2) {
@@ -1198,7 +1203,7 @@
   background: var(--bg-tertiary);
   border: 1px solid var(--border-secondary);
   box-shadow: none;
-  transition: background 0.2s ease, border-color 0.2s ease;
+  transition: background var(--support-time-200) ease, border-color var(--support-time-200) ease;
 }
 
 .supportPage .chatComposer:hover {
@@ -1282,7 +1287,7 @@
   border-radius: 8px !important;
   background: var(--futuristic-cyan) !important;
   color: var(--text-inverse) !important;
-  transition: background 0.15s ease, transform 0.15s ease;
+  transition: background var(--support-time-150) ease, transform var(--support-time-150) ease;
 }
 
 .supportPage .chatComposerSend :global(.Polaris-Icon) {
@@ -1355,7 +1360,7 @@
   border: 1px solid var(--border-secondary);
   background: var(--bg-tertiary);
   box-shadow: var(--shadow-sm);
-  transition: border-color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease, color 0.2s ease, transform 0.2s ease;
+  transition: border-color var(--support-time-250) ease, background var(--support-time-250) ease, box-shadow var(--support-time-250) ease, color var(--support-time-200) ease, transform var(--support-time-200) ease;
   font-size: 0.9375rem;
   font-weight: 600;
   color: var(--text-primary);
@@ -1417,7 +1422,7 @@
   font-weight: 600;
   font-size: 0.9375rem;
   color: #334155;
-  transition: border-color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease, color 0.2s ease, transform 0.2s ease;
+  transition: border-color var(--support-time-250) ease, background var(--support-time-250) ease, box-shadow var(--support-time-250) ease, color var(--support-time-200) ease, transform var(--support-time-200) ease;
 }
 
 .stillNeedHelp :global(button:hover) {
@@ -1524,7 +1529,7 @@
   background: #0e7490;
   color: #fff;
   box-shadow: 0 4px 14px rgba(6, 182, 212, 0.4), 0 2px 6px rgba(0, 0, 0, 0.1);
-  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  transition: transform var(--support-time-200) ease, box-shadow var(--support-time-200) ease, background var(--support-time-200) ease;
   z-index: 9998;
 }
 
@@ -1598,7 +1603,7 @@
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   z-index: 9998;
-  animation: bubbleFadeIn 0.2s ease-out;
+  animation: bubbleFadeIn var(--support-time-200) ease-out;
 }
 
 @keyframes bubbleFadeIn {
@@ -1627,7 +1632,7 @@
   flex-direction: column;
   z-index: 9999;
   overflow: hidden;
-  animation: bubbleSlideIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: bubbleSlideIn var(--support-time-250) cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .bubbleWindow::before {
@@ -1759,7 +1764,7 @@
   color: var(--text-secondary);
   cursor: pointer;
   border-radius: 999px;
-  transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: color var(--support-time-200) ease, background var(--support-time-200) ease, border-color var(--support-time-200) ease, box-shadow var(--support-time-200) ease;
 }
 
 .bubbleChatClear:hover:not(:disabled) {
@@ -1828,7 +1833,7 @@
   background: var(--bg-tertiary);
   border: 1px solid var(--border-secondary);
   box-shadow: none;
-  transition: background 0.2s ease, border-color 0.2s ease;
+  transition: background var(--support-time-200) ease, border-color var(--support-time-200) ease;
 }
 
 .bubbleComposer:hover {
@@ -1900,7 +1905,7 @@
   border-radius: 8px !important;
   background: var(--futuristic-cyan) !important;
   color: var(--text-inverse) !important;
-  transition: background 0.15s ease, transform 0.15s ease;
+  transition: background var(--support-time-150) ease, transform var(--support-time-150) ease;
 }
 
 .bubbleComposerSend :global(.Polaris-Icon) {

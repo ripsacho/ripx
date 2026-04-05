@@ -256,7 +256,7 @@ export default function AdminOverview() {
             </Text>
           </div>
           <div className={styles.adminQuickActionsWrap}>
-            <span className={styles.adminQuickActionsLabel}>Jump to</span>
+            <span className={styles.adminQuickActionsLabel}>Quick links</span>
             <div
               ref={quickActionsRef}
               className={styles.adminQuickActionsList}

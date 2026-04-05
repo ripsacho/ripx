@@ -21,6 +21,17 @@ query Input {
       ripxPriceMethod: attribute(key: "_ripx_price_method") {
         value
       }
+      ripxPriceApplicationMethod: attribute(key: "_ripx_price_application_method") {
+        value
+      }
+      ripxPriceApplicationMethodLegacy: attribute(key: "__ripx_price_application_method") {
+        value
+      }
+      sellingPlanAllocation {
+        sellingPlan {
+          id
+        }
+      }
       merchandise {
         __typename
         ... on ProductVariant {
