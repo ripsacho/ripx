@@ -2431,10 +2431,14 @@
     return isPriceIncrease ? 'native_variant_price' : 'discounted_checkout_price';
   }
 
-  function getConfiguredCheckoutMethodProof(cfg) {
+  function getConfiguredCheckoutMethodProof(cfg, targetUnit, catalogUnit) {
     if (!cfg || typeof cfg !== 'object') return null;
-    var method = normalizePriceApplicationMethod(cfg.priceApplicationMethod);
-    if (method !== 'direct_price_override') return null;
+    var configuredMethod = normalizePriceApplicationMethod(cfg.priceApplicationMethod);
+    var method =
+      configuredMethod === 'auto'
+        ? resolveStorefrontPriceApplicationMethod(configuredMethod, targetUnit, catalogUnit)
+        : configuredMethod;
+    if (!method || method === 'auto') return null;
     return { applicationMethod: method };
   }
 
@@ -3107,7 +3111,9 @@
         testId,
         variantIdForCart,
         getAssignmentProofFromVariant(variant),
-        targetIds
+        targetIds,
+        null,
+        getConfiguredCheckoutMethodProof(variant.config)
       );
     }
     var cartUi =
@@ -3221,7 +3227,10 @@
       injectPriceTestCartAttributes(
         testId,
         variantIdForCart,
-        getAssignmentProofFromVariant(variant)
+        getAssignmentProofFromVariant(variant),
+        null,
+        null,
+        getConfiguredCheckoutMethodProof(variant.config)
       );
     }
     var cartUi =

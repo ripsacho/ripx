@@ -20,6 +20,7 @@ function isDirectOverrideMethod(value) {
   const normalized = normalizePriceMethod(value);
   return (
     normalized === DIRECT_OVERRIDE_METHOD ||
+    normalized === 'direct_override' ||
     normalized === 'direct-override' ||
     normalized === 'directoverride'
   );
