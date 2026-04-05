@@ -2392,6 +2392,33 @@
     return m ? m[1] : s;
   }
 
+  function resolveMappedNativeVariantId(cfg, variant) {
+    function pickMappedVariantId(config) {
+      if (!config || typeof config !== 'object') return '';
+      var candidates = [
+        config.nativeVariantId,
+        config.native_variant_id,
+        config.mappedVariantId,
+        config.mapped_variant_id,
+        config.shopifyVariantId,
+        config.shopify_variant_id,
+      ];
+      for (var i = 0; i < candidates.length; i += 1) {
+        var normalized = normalizeCartVariantId(candidates[i]);
+        if (normalized) return normalized;
+      }
+      return '';
+    }
+
+    var fromEffective = pickMappedVariantId(cfg);
+    if (fromEffective) return fromEffective;
+
+    var baseCfg =
+      variant && variant.config && typeof variant.config === 'object' ? variant.config : null;
+    if (!baseCfg || baseCfg === cfg) return '';
+    return pickMappedVariantId(baseCfg);
+  }
+
   function resolveStorefrontPriceApplicationMethod(configuredMethod, targetUnit, catalogUnit) {
     var normalized = normalizePriceApplicationMethod(configuredMethod);
     var target = Number(targetUnit);
@@ -2554,7 +2581,7 @@
     var configuredPriceApplicationMethod = normalizePriceApplicationMethod(
       cfg.priceApplicationMethod
     );
-    var mappedNativeVariantId = normalizeCartVariantId(cfg.nativeVariantId);
+    var mappedNativeVariantId = resolveMappedNativeVariantId(cfg, variant);
     var isPriceIncreaseForCheckout =
       catalogUnitForCheckout != null &&
       isFinite(Number(catalogUnitForCheckout)) &&
