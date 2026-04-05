@@ -6271,7 +6271,7 @@ function TestWizard({
         label: 'Direct Price Override',
         shortLabel: 'Cart Transform',
         helpText:
-          'Uses Cart Transform to set cart line unit price directly (no discount label). Works for higher or lower test prices when available.',
+          'Uses Cart Transform to set cart line unit price directly (no discount label). Manual selections stay strict: RipX does not auto-switch this method.',
         badges: [
           { label: 'No discount label', tone: 'success' },
           { label: 'Cart Transform API', tone: 'info' },
@@ -6282,7 +6282,7 @@ function TestWizard({
           directPriceOverrideReadiness === 'needs_deploy'
             ? 'Deploy the RipX Cart Transform first. Shopify allows one Cart Transform per store.'
             : impliesIncrease
-              ? 'Higher-price overrides can be ignored on some live shops. If cart price does not increase, use Native Variant Price for this variant.'
+              ? 'Higher-price overrides can be ignored on some live shops. Manual Direct Price Override does not auto-fallback. Use Auto or switch this variant to Native Variant Price if needed.'
               : null,
       };
     }
@@ -6298,7 +6298,7 @@ function TestWizard({
       ],
       warning:
         impliesIncrease && cartTransformFunctionAvailable
-          ? 'This variant raises price. Try Direct Price Override first; if live cart price does not increase, switch to Native Variant Price.'
+          ? 'This variant raises price. Auto can switch between Cart Transform and Native Variant when needed.'
           : impliesIncrease && !hasNativeVariantMapping
             ? 'This variant raises price. Add a mapped Shopify variant so Auto can use Native Variant at checkout.'
             : null,
@@ -6318,7 +6318,7 @@ function TestWizard({
         return {
           label: 'Auto -> Cart Transform',
           detail:
-            'Higher-price path resolves to Direct Price Override on this shop. If live cart price does not increase, switch this variant to Native Variant Price.',
+            'Higher-price path resolves to Direct Price Override on this shop. Auto may still switch to Native Variant when required.',
         };
       }
       if (impliesIncrease) {
@@ -6344,7 +6344,7 @@ function TestWizard({
         label: getPriceApplicationMethodShortLabel(method),
         detail:
           directPriceOverrideReadiness === 'ready'
-            ? 'Direct Price Override is selected for a higher-price path. If live cart price stays unchanged, switch to Native Variant Price for this variant.'
+            ? 'Direct Price Override is selected for a higher-price path. This manual selection stays strict and does not auto-switch methods.'
             : getPriceApplicationMethodMeta({ ...(cfg || {}), priceApplicationMethod: method })
                 .helpText,
       };
@@ -6395,7 +6395,7 @@ function TestWizard({
         text:
           directPriceOverrideReadiness === 'ready'
             ? impliesIncrease
-              ? 'Uses the active RipX Cart Transform on this Plus/dev-eligible shop. If live cart price does not increase, switch to Native Variant Price for higher targets.'
+              ? 'Uses the active RipX Cart Transform on this Plus/dev-eligible shop. Manual selection stays strict (no auto-fallback).'
               : 'Uses the active RipX Cart Transform on this Plus/dev-eligible shop.'
             : directPriceOverrideReadiness === 'checking'
               ? 'Checking Cart Transform status for this shop.'
@@ -7899,9 +7899,8 @@ function TestWizard({
                       <strong>Discounted Checkout Price</strong> for fast lower-price tests,{' '}
                       <strong>Native Variant Price</strong> when shoppers should see a real product
                       price, or <strong>Direct Price Override</strong> for the cleanest advanced
-                      checkout UX on eligible stores. If a higher-price Direct Price Override does
-                      not raise live cart totals, use <strong>Native Variant Price</strong> for that
-                      variant.
+                      checkout UX on eligible stores. Manual method selections are strict; only{' '}
+                      <strong>Auto</strong> can switch strategies.
                     </Text>
                     {!['product', 'all-products', 'all_products'].includes(
                       String(formData.target_type || '').toLowerCase()
@@ -7915,8 +7914,8 @@ function TestWizard({
                     <ul className={styles.priceBannerBullets}>
                       <li>
                         <strong>Auto (recommended)</strong> uses Discounted Checkout Price for lower
-                        prices. For higher prices, it prefers Direct Price Override when Cart
-                        Transform is available, otherwise Native Variant Price.
+                        prices. For higher prices, it can switch between Direct Price Override and
+                        Native Variant based on live capability.
                       </li>
                       <li>
                         <strong>Discounted Checkout Price</strong> is easiest to launch, but
@@ -7925,8 +7924,8 @@ function TestWizard({
                       <li>
                         <strong>Native Variant Price</strong> and{' '}
                         <strong>Direct Price Override</strong> keep pricing cleaner at checkout, but
-                        require mapped variants or store eligibility. For higher prices, switch to
-                        Native Variant if Direct Price Override does not apply on your live shop.
+                        require mapped variants or store eligibility. Manual choices remain fixed
+                        until you change them.
                       </li>
                     </ul>
                     <p className={styles.priceBannerDocRow}>

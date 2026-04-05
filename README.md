@@ -22,6 +22,9 @@ npm run build         # production frontend build
 # npm run shopify:checkout-discount:prepare && shopify app deploy
 # Direct price override cart transform (Shopify Plus / dev stores):
 # npm run shopify:cart-transform:prepare && shopify app deploy
+# Pricing method behavior:
+# - Manual selection is strict (Direct Price Override / Native Variant / Discounted Checkout do not auto-switch).
+# - Only Auto mode can switch strategy at runtime.
 ```
 
 Production deploy (host, SSH key, IP, and process manager) is environment-specific — keep those steps in your private runbook, not in the repo.
