@@ -6317,7 +6317,8 @@ function TestWizard({
       if (impliesIncrease && cartTransformFunctionAvailable) {
         return {
           label: 'Auto -> Cart Transform',
-          detail: 'Higher-price path resolves to Direct Price Override on this shop.',
+          detail:
+            'Higher-price path resolves to Direct Price Override on this shop. If live cart price does not increase, switch this variant to Native Variant Price.',
         };
       }
       if (impliesIncrease) {
@@ -6335,6 +6336,17 @@ function TestWizard({
       return {
         label: 'Auto',
         detail: 'RipX chooses the best supported path for this variant.',
+      };
+    }
+
+    if (method === 'direct_price_override' && impliesIncrease) {
+      return {
+        label: getPriceApplicationMethodShortLabel(method),
+        detail:
+          directPriceOverrideReadiness === 'ready'
+            ? 'Direct Price Override is selected for a higher-price path. If live cart price stays unchanged, switch to Native Variant Price for this variant.'
+            : getPriceApplicationMethodMeta({ ...(cfg || {}), priceApplicationMethod: method })
+                .helpText,
       };
     }
 
@@ -7887,7 +7899,9 @@ function TestWizard({
                       <strong>Discounted Checkout Price</strong> for fast lower-price tests,{' '}
                       <strong>Native Variant Price</strong> when shoppers should see a real product
                       price, or <strong>Direct Price Override</strong> for the cleanest advanced
-                      checkout UX on eligible stores.
+                      checkout UX on eligible stores. If a higher-price Direct Price Override does
+                      not raise live cart totals, use <strong>Native Variant Price</strong> for that
+                      variant.
                     </Text>
                     {!['product', 'all-products', 'all_products'].includes(
                       String(formData.target_type || '').toLowerCase()
@@ -7911,7 +7925,8 @@ function TestWizard({
                       <li>
                         <strong>Native Variant Price</strong> and{' '}
                         <strong>Direct Price Override</strong> keep pricing cleaner at checkout, but
-                        require mapped variants or store eligibility.
+                        require mapped variants or store eligibility. For higher prices, switch to
+                        Native Variant if Direct Price Override does not apply on your live shop.
                       </li>
                     </ul>
                     <p className={styles.priceBannerDocRow}>
