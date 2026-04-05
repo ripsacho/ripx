@@ -2551,9 +2551,22 @@
       priceNum,
       catalogUnitForCheckout
     );
+    var configuredPriceApplicationMethod = normalizePriceApplicationMethod(
+      cfg.priceApplicationMethod
+    );
+    var mappedNativeVariantId = normalizeCartVariantId(cfg.nativeVariantId);
+    var isPriceIncreaseForCheckout =
+      catalogUnitForCheckout != null &&
+      isFinite(Number(catalogUnitForCheckout)) &&
+      Number(priceNum) > Number(catalogUnitForCheckout) + 0.0001;
+    var shouldUseNativeVariantFallbackForDirectIncrease =
+      configuredPriceApplicationMethod === 'direct_price_override' &&
+      isPriceIncreaseForCheckout &&
+      !!mappedNativeVariantId;
     var nativeVariantIdForCart =
-      resolvedPriceApplicationMethod === 'native_variant_price'
-        ? normalizeCartVariantId(cfg.nativeVariantId)
+      resolvedPriceApplicationMethod === 'native_variant_price' ||
+      shouldUseNativeVariantFallbackForDirectIncrease
+        ? mappedNativeVariantId
         : '';
     if (
       resolvedPriceApplicationMethod === 'native_variant_price' &&
@@ -2562,6 +2575,12 @@
     ) {
       debugLog(
         'applyPriceTest: native variant method selected but no mapped nativeVariantId found'
+      );
+    }
+    if (shouldUseNativeVariantFallbackForDirectIncrease && DEBUG) {
+      debugLog(
+        'applyPriceTest: direct override increase fallback -> native variant swap enabled',
+        mappedNativeVariantId
       );
     }
 
