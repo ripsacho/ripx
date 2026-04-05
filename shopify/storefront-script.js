@@ -2821,6 +2821,25 @@
     }
 
     if (variantIdForCart != null && String(variantIdForCart).trim() !== '') {
+      var sourceVariantIdForCart = normalizeCartVariantId(currentPdpVariantId);
+      if (!sourceVariantIdForCart) {
+        var variantIdInputForCart =
+          document.querySelector('form[action*="cart/add"] input[name="id"]') ||
+          document.querySelector('form[action*="/cart/add"] input[name="id"]') ||
+          document.querySelector('input[name="id"]');
+        if (variantIdInputForCart && variantIdInputForCart.value) {
+          sourceVariantIdForCart = normalizeCartVariantId(variantIdInputForCart.value);
+        }
+      }
+      if (!sourceVariantIdForCart) {
+        var jsonForCart = getProductJson();
+        if (jsonForCart && Array.isArray(jsonForCart.variants) && jsonForCart.variants.length > 0) {
+          var fallbackSourceVariant = jsonForCart.selectedVariant || jsonForCart.variants[0];
+          sourceVariantIdForCart = normalizeCartVariantId(
+            fallbackSourceVariant && fallbackSourceVariant.id
+          );
+        }
+      }
       window.__RIPX_PRICE_TEST_CTX__ = { testId: testId, variantId: variantIdForCart };
       injectPriceTestCartAttributes(
         testId,
@@ -2831,7 +2850,7 @@
         {
           applicationMethod: resolvedPriceApplicationMethod,
           nativeVariantId: nativeVariantIdForCart,
-          sourceVariantId: currentPdpVariantId,
+          sourceVariantId: sourceVariantIdForCart,
         }
       );
     }
