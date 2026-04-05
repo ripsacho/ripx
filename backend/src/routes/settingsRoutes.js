@@ -122,6 +122,29 @@ function pickCheckoutDiscountFunction(functionsList = []) {
   );
 }
 
+function pickCartTransformFunction(functionsList = []) {
+  if (!Array.isArray(functionsList) || functionsList.length === 0) {
+    return null;
+  }
+  const normalized = functionsList.filter(Boolean);
+  const cartTransforms = normalized.filter(fn => {
+    const apiType = String(fn?.apiType || '')
+      .trim()
+      .toLowerCase();
+    return apiType.includes('cart_transform') || apiType.includes('cart transform');
+  });
+  const ripxCartTransform = cartTransforms.find(fn =>
+    String(fn?.title || '')
+      .trim()
+      .toLowerCase()
+      .includes('ripx')
+  );
+  if (ripxCartTransform) {
+    return ripxCartTransform;
+  }
+  return cartTransforms.length > 0 ? cartTransforms[0] : null;
+}
+
 async function fetchShopifyFunctions(shopDomain, accessToken) {
   const fnQuery = `
     query ripxShopifyFunctions {
@@ -136,6 +159,22 @@ async function fetchShopifyFunctions(shopDomain, accessToken) {
   `;
   const fnResp = await shopifyService.requestAdminGraphql(shopDomain, accessToken, fnQuery);
   return fnResp?.data?.shopifyFunctions?.nodes || [];
+}
+
+async function fetchCartTransformsViaAdmin(shopDomain, accessToken) {
+  const queryText = `
+    query ripxExistingCartTransforms {
+      cartTransforms(first: 20) {
+        nodes {
+          id
+          functionId
+          blockOnFailure
+        }
+      }
+    }
+  `;
+  const resp = await shopifyService.requestAdminGraphql(shopDomain, accessToken, queryText);
+  return resp?.data?.cartTransforms?.nodes || [];
 }
 
 function escapeHtmlAttr(str) {
@@ -870,6 +909,122 @@ router.get(
       inspectedCount: automaticDiscounts.length,
       targetTitle,
       targetDiscountId: requestedId || null,
+    });
+  })
+);
+
+/**
+ * POST /api/settings/cart-transform/ensure
+ * Ensures the RipX cart transform is installed on the shop.
+ */
+router.post(
+  '/cart-transform/ensure',
+  asyncHandler(async (req, res) => {
+    const shopDomain = req.shopDomain;
+    if (!shopDomain) {
+      return sendError(res, 401, 'Shop domain required');
+    }
+
+    const fallbackSession = await getShopSession(shopDomain);
+    const accessToken = req.shopifyAccessToken || fallbackSession?.access_token || '';
+    if (!accessToken) {
+      return sendError(
+        res,
+        400,
+        'Missing Shopify access token for this shop. Re-open RipX from Shopify Admin and try again.'
+      );
+    }
+
+    const functionNodes = await fetchShopifyFunctions(shopDomain, accessToken);
+    const chosenFunction = pickCartTransformFunction(functionNodes);
+    if (!chosenFunction?.id) {
+      return sendError(
+        res,
+        404,
+        'No cart transform function found for this app on the shop. Deploy ripx-cart-transform and try again.'
+      );
+    }
+
+    const existingTransforms = await fetchCartTransformsViaAdmin(shopDomain, accessToken);
+    const chosenFunctionId = String(chosenFunction.id || '').trim();
+    const alreadyInstalled = existingTransforms.find(
+      node => String(node?.functionId || '').trim() === chosenFunctionId
+    );
+    if (alreadyInstalled) {
+      return res.json({
+        success: true,
+        created: false,
+        cartTransform: alreadyInstalled,
+        function: {
+          id: chosenFunction.id,
+          title: chosenFunction.title || null,
+          apiType: chosenFunction.apiType || null,
+        },
+      });
+    }
+
+    if (existingTransforms.length > 0) {
+      return sendError(
+        res,
+        409,
+        'A different cart transform is already installed on this shop. Shopify allows only one cart transform per store.',
+        {
+          existingCartTransforms: existingTransforms,
+          function: {
+            id: chosenFunction.id,
+            title: chosenFunction.title || null,
+            apiType: chosenFunction.apiType || null,
+          },
+        }
+      );
+    }
+
+    const createMutation = `
+      mutation ripxCreateCartTransform($functionId: ID!) {
+        cartTransformCreate(functionId: $functionId) {
+          cartTransform {
+            id
+            functionId
+            blockOnFailure
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+    const createResp = await shopifyService.requestAdminGraphql(
+      shopDomain,
+      accessToken,
+      createMutation,
+      { functionId: chosenFunction.id }
+    );
+    const payload = createResp?.data?.cartTransformCreate;
+    const userErrors = Array.isArray(payload?.userErrors) ? payload.userErrors : [];
+    if (userErrors.length > 0 || !payload?.cartTransform?.id) {
+      return sendError(res, 400, userErrors[0]?.message || 'Could not install cart transform.', {
+        function: {
+          id: chosenFunction.id,
+          title: chosenFunction.title || null,
+          apiType: chosenFunction.apiType || null,
+        },
+        shopifyUserErrors: userErrors.map(err => ({
+          field: Array.isArray(err?.field) ? err.field.join('.') : err?.field || null,
+          message: err?.message || null,
+        })),
+      });
+    }
+
+    return res.json({
+      success: true,
+      created: true,
+      cartTransform: payload.cartTransform,
+      function: {
+        id: chosenFunction.id,
+        title: chosenFunction.title || null,
+        apiType: chosenFunction.apiType || null,
+      },
     });
   })
 );
