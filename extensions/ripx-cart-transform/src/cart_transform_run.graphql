@@ -3,6 +3,9 @@ query Input {
     ripxCartTransformTestAmount: attribute(key: "_ripx_cart_transform_test_amount") {
       value
     }
+    ripxCartTransformTestVariantId: attribute(key: "_ripx_cart_transform_test_variant_id") {
+      value
+    }
     lines {
       id
       quantity

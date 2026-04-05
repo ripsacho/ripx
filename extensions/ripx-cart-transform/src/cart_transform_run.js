@@ -37,6 +37,23 @@ function getForcedCartTransformTestAmount(input) {
   return parseDecimal(input?.cart?.ripxCartTransformTestAmount?.value);
 }
 
+function getForcedCartTransformTestVariantId(input) {
+  const raw = String(input?.cart?.ripxCartTransformTestVariantId?.value || '').trim();
+  return raw || '';
+}
+
+function normalizeVariantId(value) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return '';
+  }
+  const gidMatch = raw.match(/\/(\d+)$/);
+  if (gidMatch && gidMatch[1]) {
+    return gidMatch[1];
+  }
+  return raw.replace(/\D+/g, '') || raw;
+}
+
 function resolveLineTargetUnit(line, forcedTestAmount) {
   if (forcedTestAmount !== null && forcedTestAmount >= 0) {
     return forcedTestAmount;
@@ -82,29 +99,40 @@ function getLineAttributeValue(line, aliasNames = [], keys = []) {
 /**
  * @param {Input['cart']['lines'][number]} line
  * @param {number | null} forcedTestAmount
+ * @param {string} forcedTestVariantId
  * @returns {boolean}
  */
-function shouldApplyDirectOverride(line, forcedTestAmount) {
+function shouldApplyDirectOverride(line, forcedTestAmount, forcedTestVariantId) {
   if (!line || !line.id) {
-    return false;
-  }
-  const ripxMarker = getLineAttributeValue(
-    line,
-    ['ripxTest', 'ripxVariant', 'ripxShop'],
-    ['_ripx_price_test', '_ripx_variant', '_ripx_shop']
-  );
-  if (!ripxMarker) {
     return false;
   }
   if (line.sellingPlanAllocation) {
     // Shopify rejects lineUpdate for subscription lines.
     return false;
   }
-  if (!isDirectOverrideMethod(getConfiguredPriceMethod(line))) {
-    return false;
-  }
   if (line.merchandise?.__typename !== 'ProductVariant') {
     return false;
+  }
+  const isForcedDocTestMode = forcedTestAmount !== null && forcedTestAmount >= 0;
+  if (isForcedDocTestMode) {
+    if (forcedTestVariantId) {
+      const lineVariantId = normalizeVariantId(line?.merchandise?.id);
+      if (!lineVariantId || lineVariantId !== normalizeVariantId(forcedTestVariantId)) {
+        return false;
+      }
+    }
+  } else {
+    const ripxMarker = getLineAttributeValue(
+      line,
+      ['ripxTest', 'ripxVariant', 'ripxShop'],
+      ['_ripx_price_test', '_ripx_variant', '_ripx_shop']
+    );
+    if (!ripxMarker) {
+      return false;
+    }
+    if (!isDirectOverrideMethod(getConfiguredPriceMethod(line))) {
+      return false;
+    }
   }
   const targetUnit = resolveLineTargetUnit(line, forcedTestAmount);
   const currentUnit = parseDecimal(line.cost?.amountPerQuantity?.amount);
@@ -123,10 +151,11 @@ function shouldApplyDirectOverride(line, forcedTestAmount) {
 /**
  * @param {Input['cart']['lines'][number]} line
  * @param {number | null} forcedTestAmount
+ * @param {string} forcedTestVariantId
  * @returns {Operation['lineUpdate'] | null}
  */
-function buildLineUpdateOperation(line, forcedTestAmount) {
-  if (!shouldApplyDirectOverride(line, forcedTestAmount)) {
+function buildLineUpdateOperation(line, forcedTestAmount, forcedTestVariantId) {
+  if (!shouldApplyDirectOverride(line, forcedTestAmount, forcedTestVariantId)) {
     return null;
   }
   const targetUnit = resolveLineTargetUnit(line, forcedTestAmount);
@@ -152,9 +181,10 @@ function buildLineUpdateOperation(line, forcedTestAmount) {
 export function cartTransformRun(input) {
   const operations = [];
   const forcedTestAmount = getForcedCartTransformTestAmount(input);
+  const forcedTestVariantId = getForcedCartTransformTestVariantId(input);
   const cartLines = input?.cart?.lines || [];
   for (const line of cartLines) {
-    const lineUpdate = buildLineUpdateOperation(line, forcedTestAmount);
+    const lineUpdate = buildLineUpdateOperation(line, forcedTestAmount, forcedTestVariantId);
     if (lineUpdate) {
       operations.push({ lineUpdate });
     }

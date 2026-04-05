@@ -63,6 +63,13 @@ To run a controlled verification using Shopify's `fixedPricePerUnit` behavior, s
 - Key: `_ripx_cart_transform_test_amount`
 - Value: decimal unit amount (for example `642.95`)
 
-When this attribute is present, RipX uses that amount as the cart-transform unit target for eligible
-`direct_price_override` lines (instead of per-line `_ripx_target_unit`). Remove the attribute to return
-to normal behavior.
+When this attribute is present, the function enters a forced documentation-check mode and applies
+`fixedPricePerUnit` using that amount (no RipX line property or method requirement).
+
+Optional filter:
+
+- Key: `_ripx_cart_transform_test_variant_id`
+- Value: Shopify variant id (numeric id or gid)
+
+Use the optional variant filter to target one variant line only. Remove test attributes to return to normal
+RipX behavior.
