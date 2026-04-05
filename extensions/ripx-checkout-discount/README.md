@@ -59,6 +59,7 @@ See also **`backend/docs/PRODUCT_EXCELLENCE_ROADMAP.md`** for the long-term prod
 - **`pricing` vs `price`** — Both types are accepted in the resolver and in running-test counts.
 
 - **Selection strategy `ALL`**: multiple cart lines each get their own fixed-amount discount. (`FIRST` would only apply one candidate.)
+- **Method safety**: lines marked `_ripx_price_method` / `_ripx_price_application_method` as `direct_price_override` or `native_variant_price` are excluded from discount application and local fallback.
 - **HTTP errors**: if the batch URL returns a non-2xx status, or JSON without `success` / `lines`, the function applies no discounts.
 - **Header** `X-RipX-Client: ripx-checkout-discount` is sent for server log filtering.
 - **Shopify network limits** ([performance & resilience](https://shopify.dev/docs/apps/build/functions/network-access/performance-and-resilience)):

@@ -1,6 +1,30 @@
 import { HttpRequestMethod } from '../generated/api';
 import { RIPX_CHECKOUT_PRICE_SECRET, RIPX_PRICE_RESOLVE_BATCH_URL } from './ripxConfig';
 
+function normalizePriceMethod(value) {
+  const raw = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (raw === 'direct_override' || raw === 'directoverride' || raw === 'direct-override') {
+    return 'direct_price_override';
+  }
+  if (raw === 'discounted' || raw === 'checkout_discount') {
+    return 'discounted_checkout_price';
+  }
+  if (raw === 'native_variant' || raw === 'native-variant') {
+    return 'native_variant_price';
+  }
+  return raw;
+}
+
+function resolveLinePriceMethod(line) {
+  return normalizePriceMethod(
+    line?.ripxPriceMethod?.value ||
+      line?.ripxPriceApplicationMethod?.value ||
+      line?.ripxPriceApplicationMethodLegacy?.value
+  );
+}
+
 /**
  * @param {import("../generated/api").RipxCartLinesFetch} input
  */
@@ -33,7 +57,11 @@ export function cartLinesDiscountsGenerateFetch(input) {
   for (const line of input.cart?.lines || []) {
     const testId = line.ripxTest?.value?.trim();
     const assignmentVariant = line.ripxVariant?.value?.trim();
+    const linePriceMethod = resolveLinePriceMethod(line);
     if (!testId || !assignmentVariant) {
+      continue;
+    }
+    if (linePriceMethod === 'direct_price_override' || linePriceMethod === 'native_variant_price') {
       continue;
     }
     if (line.merchandise?.__typename !== 'ProductVariant') {

@@ -25,6 +25,15 @@ query RipxCartLinesFetch {
       ripxVariant: attribute(key: "_ripx_variant") {
         value
       }
+      ripxPriceMethod: attribute(key: "_ripx_price_method") {
+        value
+      }
+      ripxPriceApplicationMethod: attribute(key: "_ripx_price_application_method") {
+        value
+      }
+      ripxPriceApplicationMethodLegacy: attribute(key: "__ripx_price_application_method") {
+        value
+      }
       ripxAssignmentSig: attribute(key: "_ripx_assignment_sig") {
         value
       }

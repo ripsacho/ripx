@@ -8,6 +8,38 @@ import {
   RIPX_CHECKOUT_PROBE_ATTRIBUTE_MATRIX,
 } from './ripxConfig';
 
+function normalizePriceMethod(value) {
+  const raw = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (raw === 'direct_override' || raw === 'directoverride' || raw === 'direct-override') {
+    return 'direct_price_override';
+  }
+  if (raw === 'discounted' || raw === 'checkout_discount') {
+    return 'discounted_checkout_price';
+  }
+  if (raw === 'native_variant' || raw === 'native-variant') {
+    return 'native_variant_price';
+  }
+  return raw;
+}
+
+function resolveLinePriceMethod(line) {
+  return normalizePriceMethod(
+    line?.ripxPriceMethod?.value ||
+      line?.ripxPriceApplicationMethod?.value ||
+      line?.ripxPriceApplicationMethodLegacy?.value
+  );
+}
+
+function canApplyCheckoutDiscountForLineMethod(line) {
+  const method = resolveLinePriceMethod(line);
+  if (!method) {
+    return true;
+  }
+  return method !== 'direct_price_override' && method !== 'native_variant_price';
+}
+
 function normalizeFetchBody(jsonBody) {
   if (jsonBody == null) {
     return null;
@@ -50,6 +82,9 @@ function buildLocalFallbackCandidates(cartLines) {
   for (const line of cartLines || []) {
     const discountUnitRaw = line?.ripxDiscountUnit?.value;
     const targetUnitRaw = line?.ripxTargetUnit?.value;
+    if (!canApplyCheckoutDiscountForLineMethod(line)) {
+      continue;
+    }
     const qty = Math.max(1, Number(line?.quantity) || 1);
     const subtotal = Number.parseFloat(String(line?.cost?.subtotalAmount?.amount || '').trim());
     // Probe mode proved the function executes. When fetch data is missing,
