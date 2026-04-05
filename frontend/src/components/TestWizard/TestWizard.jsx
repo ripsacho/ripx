@@ -6281,7 +6281,9 @@ function TestWizard({
         warning:
           directPriceOverrideReadiness === 'needs_deploy'
             ? 'Deploy the RipX Cart Transform first. Shopify allows one Cart Transform per store.'
-            : null,
+            : impliesIncrease
+              ? 'Higher-price overrides can be ignored on some live shops. If cart price does not increase, use Native Variant Price for this variant.'
+              : null,
       };
     }
     return {
@@ -6296,7 +6298,7 @@ function TestWizard({
       ],
       warning:
         impliesIncrease && cartTransformFunctionAvailable
-          ? 'This variant raises price. Prefer Direct Price Override for the cleanest checkout experience.'
+          ? 'This variant raises price. Try Direct Price Override first; if live cart price does not increase, switch to Native Variant Price.'
           : impliesIncrease && !hasNativeVariantMapping
             ? 'This variant raises price. Add a mapped Shopify variant so Auto can use Native Variant at checkout.'
             : null,
@@ -6380,7 +6382,9 @@ function TestWizard({
         blocked: false,
         text:
           directPriceOverrideReadiness === 'ready'
-            ? 'Uses the active RipX Cart Transform on this Plus/dev-eligible shop.'
+            ? impliesIncrease
+              ? 'Uses the active RipX Cart Transform on this Plus/dev-eligible shop. If live cart price does not increase, switch to Native Variant Price for higher targets.'
+              : 'Uses the active RipX Cart Transform on this Plus/dev-eligible shop.'
             : directPriceOverrideReadiness === 'checking'
               ? 'Checking Cart Transform status for this shop.'
               : directPriceOverrideReadiness === 'needs_deploy'
