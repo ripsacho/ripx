@@ -19,6 +19,22 @@ jest.mock('../../utils/maintenanceMode', () => ({
   isMaintenanceActiveForDomain: jest.fn().mockReturnValue(false),
 }));
 
+// Prevent background intervals/processors from starting in integration tests.
+jest.mock('../../jobs/scheduledTestsProcessor', () => ({}));
+jest.mock('../../jobs/archiveProcessor', () => ({}));
+jest.mock('../../jobs/guardrailProcessor', () => ({
+  startGuardrailProcessor: jest.fn(),
+}));
+jest.mock('../../jobs/autoStopProcessor', () => ({
+  startAutoStopProcessor: jest.fn(),
+}));
+jest.mock('../../jobs/significanceAlertProcessor', () => ({
+  startSignificanceAlertProcessor: jest.fn(),
+}));
+jest.mock('../../jobs/productSyncProcessor', () => ({
+  startProductSyncProcessor: jest.fn(),
+}));
+
 // Load app after mocks so health handler uses mocked modules
 const app = require('../../app');
 

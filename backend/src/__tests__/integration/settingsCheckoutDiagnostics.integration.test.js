@@ -30,6 +30,22 @@ jest.mock('../../middleware/auth', () => ({
   },
 }));
 
+// Prevent background intervals/processors from starting in integration tests.
+jest.mock('../../jobs/scheduledTestsProcessor', () => ({}));
+jest.mock('../../jobs/archiveProcessor', () => ({}));
+jest.mock('../../jobs/guardrailProcessor', () => ({
+  startGuardrailProcessor: jest.fn(),
+}));
+jest.mock('../../jobs/autoStopProcessor', () => ({
+  startAutoStopProcessor: jest.fn(),
+}));
+jest.mock('../../jobs/significanceAlertProcessor', () => ({
+  startSignificanceAlertProcessor: jest.fn(),
+}));
+jest.mock('../../jobs/productSyncProcessor', () => ({
+  startProductSyncProcessor: jest.fn(),
+}));
+
 const app = require('../../app');
 
 describe('checkout diagnostics route contracts', () => {
