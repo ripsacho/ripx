@@ -1,15 +1,43 @@
 {% comment %}
-  RipX App Embed — loads via Shopify App Proxy (/apps/ripx/script.js).
+  RipX App Embed — primary load via Shopify App Proxy (/apps/ripx/script.js).
+  Fallback: if proxy fails (e.g. stale dev preview tunnel), load direct public script endpoint.
   target: head — earlier fetch than body embeds; defer avoids blocking HTML parse.
-  fetchpriority="high" reduces A/B flicker (use low if LCP regresses on image-heavy themes).
   ?v= must stay in sync with backend storefrontScriptRuntime.js SCRIPT_VERSION (currently 2).
 {% endcomment %}
 
-<script
-  src="https://{{ request.host }}/apps/ripx/script.js?v=2"
-  defer
-  fetchpriority="high"
-></script>
+<script>
+  (function () {
+    var shopHost = '{{ request.host }}';
+    var version = '2';
+    var primarySrc = 'https://' + shopHost + '/apps/ripx/script.js?v=' + version;
+    var fallbackSrc =
+      'https://splitter.echologyx.com/api/track/script.js?shop=' +
+      encodeURIComponent(shopHost) +
+      '&v=' +
+      version;
+    var loaded = false;
+
+    function loadScript(src, isFallback) {
+      if (loaded) return;
+      var tag = document.createElement('script');
+      tag.src = src;
+      tag.defer = true;
+      tag.setAttribute('fetchpriority', 'high');
+      tag.crossOrigin = 'anonymous';
+      tag.onload = function () {
+        loaded = true;
+      };
+      if (!isFallback) {
+        tag.onerror = function () {
+          loadScript(fallbackSrc, true);
+        };
+      }
+      document.head.appendChild(tag);
+    }
+
+    loadScript(primarySrc, false);
+  })();
+</script>
 
 {% schema %}
 {
