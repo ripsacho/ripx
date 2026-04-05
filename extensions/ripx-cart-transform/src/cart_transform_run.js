@@ -33,6 +33,17 @@ function getConfiguredPriceMethod(line) {
   );
 }
 
+function getForcedCartTransformTestAmount(input) {
+  return parseDecimal(input?.cart?.ripxCartTransformTestAmount?.value);
+}
+
+function resolveLineTargetUnit(line, forcedTestAmount) {
+  if (forcedTestAmount !== null && forcedTestAmount >= 0) {
+    return forcedTestAmount;
+  }
+  return parseDecimal(getLineAttributeValue(line, ['ripxTargetUnit'], ['_ripx_target_unit']));
+}
+
 function getLineAttributeValue(line, aliasNames = [], keys = []) {
   for (const aliasName of aliasNames) {
     const value = line?.[aliasName]?.value;
@@ -70,9 +81,10 @@ function getLineAttributeValue(line, aliasNames = [], keys = []) {
 
 /**
  * @param {Input['cart']['lines'][number]} line
+ * @param {number | null} forcedTestAmount
  * @returns {boolean}
  */
-function shouldApplyDirectOverride(line) {
+function shouldApplyDirectOverride(line, forcedTestAmount) {
   if (!line || !line.id) {
     return false;
   }
@@ -94,9 +106,7 @@ function shouldApplyDirectOverride(line) {
   if (line.merchandise?.__typename !== 'ProductVariant') {
     return false;
   }
-  const targetUnit = parseDecimal(
-    getLineAttributeValue(line, ['ripxTargetUnit'], ['_ripx_target_unit'])
-  );
+  const targetUnit = resolveLineTargetUnit(line, forcedTestAmount);
   const currentUnit = parseDecimal(line.cost?.amountPerQuantity?.amount);
   if (targetUnit === null || targetUnit < 0) {
     return false;
@@ -112,15 +122,14 @@ function shouldApplyDirectOverride(line) {
 
 /**
  * @param {Input['cart']['lines'][number]} line
+ * @param {number | null} forcedTestAmount
  * @returns {Operation['lineUpdate'] | null}
  */
-function buildLineUpdateOperation(line) {
-  if (!shouldApplyDirectOverride(line)) {
+function buildLineUpdateOperation(line, forcedTestAmount) {
+  if (!shouldApplyDirectOverride(line, forcedTestAmount)) {
     return null;
   }
-  const targetUnit = parseDecimal(
-    getLineAttributeValue(line, ['ripxTargetUnit'], ['_ripx_target_unit'])
-  );
+  const targetUnit = resolveLineTargetUnit(line, forcedTestAmount);
   if (targetUnit === null) {
     return null;
   }
@@ -142,9 +151,10 @@ function buildLineUpdateOperation(line) {
  */
 export function cartTransformRun(input) {
   const operations = [];
+  const forcedTestAmount = getForcedCartTransformTestAmount(input);
   const cartLines = input?.cart?.lines || [];
   for (const line of cartLines) {
-    const lineUpdate = buildLineUpdateOperation(line);
+    const lineUpdate = buildLineUpdateOperation(line, forcedTestAmount);
     if (lineUpdate) {
       operations.push({ lineUpdate });
     }

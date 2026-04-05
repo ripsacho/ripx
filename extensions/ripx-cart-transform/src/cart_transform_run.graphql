@@ -1,5 +1,8 @@
 query Input {
   cart {
+    ripxCartTransformTestAmount: attribute(key: "_ripx_cart_transform_test_amount") {
+      value
+    }
     lines {
       id
       quantity

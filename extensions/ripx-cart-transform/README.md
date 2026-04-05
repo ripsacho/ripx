@@ -55,3 +55,14 @@ shopify app deploy --config shopify.app.ripperx.toml
 ## Verify on the store
 
 In the embedded app, open **App settings → Installation → Shopify Functions (this app)** and use **Refresh validation**. You should see the cart transform listed under Admin API `shopifyFunctions`. No running price test is required for deployment or validation.
+
+## Fixed-amount verification check (doc-style)
+
+To run a controlled verification using Shopify's `fixedPricePerUnit` behavior, set a cart attribute:
+
+- Key: `_ripx_cart_transform_test_amount`
+- Value: decimal unit amount (for example `642.95`)
+
+When this attribute is present, RipX uses that amount as the cart-transform unit target for eligible
+`direct_price_override` lines (instead of per-line `_ripx_target_unit`). Remove the attribute to return
+to normal behavior.

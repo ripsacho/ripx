@@ -296,7 +296,8 @@ async function main() {
   if (!shopDomain) {
     console.error('Usage: SHOP_DOMAIN=store.myshopify.com node seed-dummy-data.js');
     console.error('   or: node seed-dummy-data.js store.myshopify.com');
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   const options = {
@@ -317,10 +318,11 @@ async function main() {
     console.log('Refresh your dashboard and analytics to see the data.');
   } catch (err) {
     console.error('Seed failed:', err.message);
-    process.exit(1);
+    process.exitCode = 1;
   } finally {
     const { closeDatabase } = require('../src/utils/database');
-    await closeDatabase();
+    await closeDatabase().catch(() => {});
+    process.exit(process.exitCode ?? 0);
   }
 }
 
