@@ -2504,6 +2504,20 @@
 
     var variantIdForCart = variant.variantId != null ? variant.variantId : variant.id;
     var currentPdpVariantId = getSelectedVariantId();
+    if (currentPdpVariantId == null || String(currentPdpVariantId).trim() === '') {
+      var jsonForVariantSelection = getProductJson();
+      if (
+        jsonForVariantSelection &&
+        Array.isArray(jsonForVariantSelection.variants) &&
+        jsonForVariantSelection.variants.length > 0
+      ) {
+        var fallbackSelectedVariant =
+          jsonForVariantSelection.selectedVariant || jsonForVariantSelection.variants[0];
+        if (fallbackSelectedVariant && fallbackSelectedVariant.id != null) {
+          currentPdpVariantId = fallbackSelectedVariant.id;
+        }
+      }
+    }
     var cfg = getEffectivePriceConfig(variant.config, productId, currentPdpVariantId);
     var priceMode = (cfg.priceMode || 'fixed').toLowerCase();
     if (priceMode === 'control') return;
