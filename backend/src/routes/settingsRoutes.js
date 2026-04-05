@@ -980,7 +980,7 @@ router.post(
     }
 
     const createMutation = `
-      mutation ripxCreateCartTransform($functionId: ID!) {
+      mutation ripxCreateCartTransform($functionId: String!) {
         cartTransformCreate(functionId: $functionId) {
           cartTransform {
             id
@@ -1025,6 +1025,54 @@ router.post(
         title: chosenFunction.title || null,
         apiType: chosenFunction.apiType || null,
       },
+    });
+  })
+);
+
+/**
+ * GET /api/settings/cart-transform/status
+ * Lists installed cartTransforms and whether this app's cart transform function is installed.
+ */
+router.get(
+  '/cart-transform/status',
+  asyncHandler(async (req, res) => {
+    const shopDomain = req.shopDomain;
+    if (!shopDomain) {
+      return sendError(res, 401, 'Shop domain required');
+    }
+
+    const fallbackSession = await getShopSession(shopDomain);
+    const accessToken = req.shopifyAccessToken || fallbackSession?.access_token || '';
+    if (!accessToken) {
+      return sendError(
+        res,
+        400,
+        'Missing Shopify access token for this shop. Re-open RipX from Shopify Admin and try again.'
+      );
+    }
+
+    const functionNodes = await fetchShopifyFunctions(shopDomain, accessToken);
+    const chosenFunction = pickCartTransformFunction(functionNodes);
+    const existingTransforms = await fetchCartTransformsViaAdmin(shopDomain, accessToken);
+    const chosenFunctionId = String(chosenFunction?.id || '').trim();
+    const matchedTransforms = existingTransforms.filter(
+      node => String(node?.functionId || '').trim() === chosenFunctionId
+    );
+
+    return res.json({
+      success: true,
+      function: chosenFunction
+        ? {
+            id: chosenFunction.id,
+            title: chosenFunction.title || null,
+            apiType: chosenFunction.apiType || null,
+          }
+        : null,
+      installedCount: existingTransforms.length,
+      installedTransforms: existingTransforms,
+      matchedCount: matchedTransforms.length,
+      matchedTransforms,
+      installedForRipxFunction: matchedTransforms.length > 0,
     });
   })
 );
