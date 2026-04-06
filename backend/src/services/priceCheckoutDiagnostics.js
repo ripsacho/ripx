@@ -112,9 +112,38 @@ function parseExportedStringLiteral(rawLiteral) {
 }
 
 /**
+ * Parse boolean literal in export const assignment.
+ * Accepts: true, false, "true", "false", 'true', 'false'
+ * @param {string} rawLiteral
+ * @returns {{ ok: true, value: boolean } | { ok: false }}
+ */
+function parseExportedBooleanLiteral(rawLiteral) {
+  const literal = String(rawLiteral || '').trim();
+  if (literal === 'true') {
+    return { ok: true, value: true };
+  }
+  if (literal === 'false') {
+    return { ok: true, value: false };
+  }
+  const strParsed = parseExportedStringLiteral(literal);
+  if (strParsed.ok) {
+    const normalized = String(strParsed.value || '')
+      .trim()
+      .toLowerCase();
+    if (normalized === 'true') {
+      return { ok: true, value: true };
+    }
+    if (normalized === 'false') {
+      return { ok: true, value: false };
+    }
+  }
+  return { ok: false };
+}
+
+/**
  * Parse batch URL + secret from generated ripxConfig.js (ESM export const ... = JSON.stringify(...)).
  * @param {string} source
- * @returns {{ batchUrl: string, secret: string } | { error: string }}
+ * @returns {{ batchUrl: string, secret: string, probeAlwaysDiscount: boolean, probeAttributeMatrix: boolean } | { error: string }}
  */
 function parseRipxCheckoutExtensionConfig(source) {
   if (!source || typeof source !== 'string') {
@@ -122,12 +151,18 @@ function parseRipxCheckoutExtensionConfig(source) {
   }
   const batchRe = /export\s+const\s+RIPX_PRICE_RESOLVE_BATCH_URL\s*=\s*([^;]+);/m;
   const secretRe = /export\s+const\s+RIPX_CHECKOUT_PRICE_SECRET\s*=\s*([^;]+);/m;
+  const probeAlwaysRe = /export\s+const\s+RIPX_CHECKOUT_PROBE_ALWAYS_DISCOUNT\s*=\s*([^;]+);/m;
+  const probeMatrixRe = /export\s+const\s+RIPX_CHECKOUT_PROBE_ATTRIBUTE_MATRIX\s*=\s*([^;]+);/m;
   const batchM = source.match(batchRe);
   const secretM = source.match(secretRe);
+  const probeAlwaysM = source.match(probeAlwaysRe);
+  const probeMatrixM = source.match(probeMatrixRe);
   if (!batchM) {
     return { error: 'missing_batch_export' };
   }
   let secret = '';
+  let probeAlwaysDiscount = false;
+  let probeAttributeMatrix = false;
   const batchParsed = parseExportedStringLiteral(batchM[1]);
   if (!batchParsed.ok) {
     return { error: 'invalid_batch_literal' };
@@ -144,10 +179,57 @@ function parseRipxCheckoutExtensionConfig(source) {
     }
     secret = secretParsed.value;
   }
+  if (probeAlwaysM) {
+    const probeAlwaysParsed = parseExportedBooleanLiteral(probeAlwaysM[1]);
+    if (!probeAlwaysParsed.ok) {
+      return { error: 'invalid_probe_always_literal' };
+    }
+    probeAlwaysDiscount = probeAlwaysParsed.value;
+  }
+  if (probeMatrixM) {
+    const probeMatrixParsed = parseExportedBooleanLiteral(probeMatrixM[1]);
+    if (!probeMatrixParsed.ok) {
+      return { error: 'invalid_probe_matrix_literal' };
+    }
+    probeAttributeMatrix = probeMatrixParsed.value;
+  }
   return {
     batchUrl: stripTrailingSlashes(batchUrl.trim()),
     secret: secret.trim(),
+    probeAlwaysDiscount,
+    probeAttributeMatrix,
   };
+}
+
+function buildRipxCheckoutExtensionConfigSource({
+  batchUrl,
+  secret = '',
+  probeAlwaysDiscount = false,
+  probeAttributeMatrix = false,
+}) {
+  return `/**
+ * Synced from root .env via: npm run shopify:checkout-discount:sync-config
+ * (or: node scripts/write-ripx-checkout-config.js)
+ * Do not commit real secrets if this file is public; use CI env + sync before build.
+ */
+export const RIPX_PRICE_RESOLVE_BATCH_URL = ${JSON.stringify(String(batchUrl || '').trim())};
+
+export const RIPX_CHECKOUT_PRICE_SECRET = ${JSON.stringify(String(secret || '').trim())};
+
+export const RIPX_CHECKOUT_PROBE_ALWAYS_DISCOUNT = ${JSON.stringify(Boolean(probeAlwaysDiscount))};
+export const RIPX_CHECKOUT_PROBE_ATTRIBUTE_MATRIX = ${JSON.stringify(Boolean(probeAttributeMatrix))};
+`;
+}
+
+function getRipxCheckoutExtensionConfigAbsolutePath() {
+  return path.join(__dirname, '../../../', RIPX_EXTENSION_CONFIG_RELATIVE_PATH);
+}
+
+function writeRipxCheckoutExtensionConfigFile(options) {
+  const absolutePath = getRipxCheckoutExtensionConfigAbsolutePath();
+  const source = buildRipxCheckoutExtensionConfigSource(options || {});
+  fs.writeFileSync(absolutePath, source, 'utf8');
+  return { absolutePath, source };
 }
 
 /**
@@ -606,6 +688,9 @@ module.exports = {
   parseRipxCheckoutExtensionConfig,
   buildExtensionConfigDiagnostics,
   readRipxCheckoutExtensionConfigFile,
+  writeRipxCheckoutExtensionConfigFile,
+  buildRipxCheckoutExtensionConfigSource,
+  getRipxCheckoutExtensionConfigAbsolutePath,
   extensionConfigInputFromReadResult,
   RIPX_EXTENSION_CONFIG_RELATIVE_PATH,
 };

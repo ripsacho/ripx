@@ -177,9 +177,84 @@ describe('API integration', () => {
     });
   });
 
+  describe('POST /api/track/checkout-assignment', () => {
+    it('returns 400 when required fields are missing', async () => {
+      const res = await request(app).post('/api/track/checkout-assignment').send({});
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body.error).toMatch(/test_id|checkout_id|shop|site|invalid/i);
+    });
+
+    it('returns 400 when test_id is invalid', async () => {
+      const res = await request(app).post('/api/track/checkout-assignment').send({
+        shop: 'test.myshopify.com',
+        test_id: 'bad-id',
+        checkout_id: 'checkout-123',
+      });
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body.error).toMatch(/test_id|invalid/i);
+    });
+  });
+
+  describe('POST /api/track/checkout-conversion', () => {
+    it('returns 400 when required fields are missing', async () => {
+      const res = await request(app).post('/api/track/checkout-conversion').send({});
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body.error).toMatch(/test_id|checkout_id|shop|site|invalid/i);
+    });
+
+    it('returns 400 when test_id is invalid', async () => {
+      const res = await request(app).post('/api/track/checkout-conversion').send({
+        shop: 'test.myshopify.com',
+        test_id: 'bad-id',
+        checkout_id: 'checkout-123',
+      });
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body.error).toMatch(/test_id|invalid/i);
+    });
+  });
+
   describe('Protected routes (require auth)', () => {
     it('GET /api/tests returns 401 when no credentials', async () => {
       const res = await request(app).get('/api/tests');
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('POST /api/ui-events returns 401 when no credentials', async () => {
+      const res = await request(app).post('/api/ui-events').send({
+        event: 'topbar_new_test_click',
+        source: 'topbar',
+      });
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('GET /api/tests/:id/price-rollout-csv returns 401 when no credentials', async () => {
+      const res = await request(app).get(
+        '/api/tests/00000000-0000-4000-8000-000000000001/price-rollout-csv'
+      );
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('GET /api/settings/checkout-price-function-config returns 401 when no credentials', async () => {
+      const res = await request(app).get('/api/settings/checkout-price-function-config');
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('PUT /api/settings/checkout-price-function-config returns 401 when no credentials', async () => {
+      const res = await request(app).put('/api/settings/checkout-price-function-config').send({
+        syncFromEnv: true,
+      });
       expect(res.status).toBe(401);
       expect(res.body).toHaveProperty('success', false);
       expect(res.body).toHaveProperty('error');

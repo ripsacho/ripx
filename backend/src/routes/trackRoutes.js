@@ -1182,6 +1182,176 @@ router.get(
 );
 
 /**
+ * POST /api/track/checkout-assignment
+ * Resolve assignment for Checkout UI extensions using a checkout-scoped user key.
+ * Body/query: shop|shop_domain|site, test_id, checkout_id, optional current_url/current_pathname/device/customer/country.
+ * Requires checkout secret when RIPX_CHECKOUT_PRICE_SECRET is configured.
+ */
+router.post(
+  '/checkout-assignment',
+  asyncHandler(async (req, res) => {
+    if (!requireCheckoutPriceAuth(req, res)) {
+      return;
+    }
+
+    const body = req.body || {};
+    const testIdRaw = body.test_id ?? req.query.test_id;
+    const shopRaw = body.shop ?? body.shop_domain ?? req.query.shop ?? req.query.shop_domain;
+    const siteRaw = body.site ?? req.query.site;
+    const checkoutIdRaw = body.checkout_id ?? req.query.checkout_id;
+
+    const testId = String(testIdRaw || '').trim();
+    const checkoutId = String(checkoutIdRaw || '').trim();
+    if (!validators.isValidUUID(testId)) {
+      return res.status(400).json({ success: false, error: 'Invalid or missing test_id' });
+    }
+    if (!checkoutId) {
+      return res.status(400).json({ success: false, error: 'Missing checkout_id' });
+    }
+
+    const domain = await resolveTenantDomain(shopRaw, siteRaw);
+    if (!domain) {
+      return res.status(400).json({ success: false, error: 'Invalid shop or site' });
+    }
+    const tenant = await getTenantByDomain(domain);
+    if (tenant && isTenantSuspendedOrBlocked(tenant)) {
+      return res.status(403).json({ success: false, error: 'Access suspended' });
+    }
+
+    const userId = `checkout:${checkoutId}`;
+    const context = {
+      device: body.device ?? req.query.device ?? null,
+      customer: body.customer ?? req.query.customer ?? null,
+      country: body.country ?? req.query.country ?? null,
+      user_agent: req.headers['user-agent'] || null,
+    };
+    const currentUrl = body.current_url ?? req.query.current_url;
+    const currentPathname = body.current_pathname ?? req.query.current_pathname;
+    if (currentUrl && String(currentUrl).trim()) {
+      context.current_url = String(currentUrl).trim();
+      context.current_pathname = getPathnameFromUrl(context.current_url);
+    }
+    if (currentPathname && String(currentPathname).trim()) {
+      context.current_pathname = String(currentPathname).trim();
+    }
+
+    const variant = await abTestEngine.getVariant(testId, userId, domain, context);
+    if (!variant) {
+      return res.json({ success: true, assignment: null });
+    }
+    const signedVariant = withAssignmentSignature(variant, testId, userId, domain);
+    return res.json({
+      success: true,
+      assignment: {
+        test_id: testId,
+        user_id: userId,
+        variant_id: signedVariant.variantId,
+        variant_name: signedVariant.variantName || null,
+        config: signedVariant.config || {},
+        assignment_sig: signedVariant.assignment_sig || null,
+        assignment_ts: signedVariant.assignment_ts || null,
+        assignment_user: signedVariant.assignment_user || null,
+      },
+    });
+  })
+);
+
+/**
+ * POST /api/track/checkout-conversion
+ * Track a checkout UI extension conversion event for a checkout-scoped user key.
+ * Body/query: shop|shop_domain|site, test_id, checkout_id, optional event_name/event_value/metadata.
+ * Requires checkout secret when RIPX_CHECKOUT_PRICE_SECRET is configured.
+ */
+router.post(
+  '/checkout-conversion',
+  asyncHandler(async (req, res) => {
+    if (!requireCheckoutPriceAuth(req, res)) {
+      return;
+    }
+
+    const body = req.body || {};
+    const testIdRaw = body.test_id ?? req.query.test_id;
+    const shopRaw = body.shop ?? body.shop_domain ?? req.query.shop ?? req.query.shop_domain;
+    const siteRaw = body.site ?? req.query.site;
+    const checkoutIdRaw = body.checkout_id ?? req.query.checkout_id;
+
+    const testId = String(testIdRaw || '').trim();
+    const checkoutId = String(checkoutIdRaw || '').trim();
+    if (!validators.isValidUUID(testId)) {
+      return res.status(400).json({ success: false, error: 'Invalid or missing test_id' });
+    }
+    if (!checkoutId) {
+      return res.status(400).json({ success: false, error: 'Missing checkout_id' });
+    }
+
+    const domain = await resolveTenantDomain(shopRaw, siteRaw);
+    if (!domain || !(await tenantExists(domain))) {
+      return res.status(403).json({ success: false, error: 'Site not registered' });
+    }
+    const tenant = await getTenantByDomain(domain);
+    if (tenant && isTenantSuspendedOrBlocked(tenant)) {
+      return res.status(403).json({ success: false, error: 'Access suspended' });
+    }
+
+    const userId = `checkout:${checkoutId}`;
+    const context = {
+      device: body.device ?? req.query.device ?? null,
+      customer: body.customer ?? req.query.customer ?? null,
+      country: body.country ?? req.query.country ?? null,
+      user_agent: req.headers['user-agent'] || null,
+    };
+    const currentUrl = body.current_url ?? req.query.current_url;
+    if (currentUrl && String(currentUrl).trim()) {
+      context.current_url = String(currentUrl).trim();
+      context.current_pathname = getPathnameFromUrl(context.current_url);
+    }
+    const variant = await abTestEngine.getVariant(testId, userId, domain, context);
+    if (!variant) {
+      return res.status(404).json({ success: false, error: 'Test not found or not running' });
+    }
+
+    const eventNameRaw = body.event_name ?? req.query.event_name;
+    const eventName = String(eventNameRaw || 'checkout_extension_conversion')
+      .trim()
+      .slice(0, 120);
+    const eventValueRaw = body.event_value ?? req.query.event_value;
+    const eventValue =
+      eventValueRaw === undefined || eventValueRaw === null || eventValueRaw === ''
+        ? 0
+        : Number(eventValueRaw);
+    const metadata = body.metadata && typeof body.metadata === 'object' ? body.metadata : {};
+
+    const eventPayload = {
+      test_id: testId,
+      variant_id: variant.variantId,
+      user_id: userId,
+      shop_domain: domain,
+      event_type: 'conversion',
+      event_name: eventName || null,
+      event_value: Number.isFinite(eventValue) ? eventValue : 0,
+      metadata: {
+        source: 'checkout_ui_extension',
+        checkout_id: checkoutId,
+        ...metadata,
+      },
+    };
+    await trackEvent(eventPayload);
+    try {
+      const ga4Service = require('../services/ga4Service');
+      ga4Service.forwardToGA4(eventPayload, userId);
+    } catch (_) {
+      // best-effort
+    }
+
+    return res.json({
+      success: true,
+      variant_id: variant.variantId,
+      event_name: eventName,
+    });
+  })
+);
+
+/**
  * GET /api/track/preview
  * Return a specific variant config for preview links.
  */

@@ -682,7 +682,12 @@ function TestWizard({
     setAdvancedSectionsOpen(prev => ({ ...prev, [key]: !prev[key] }));
   const [storeResources, setStoreResources] = useState([]);
   const [storeResourcesLoading, setStoreResourcesLoading] = useState(false);
+  const [storeResourcesLoadingMore, setStoreResourcesLoadingMore] = useState(false);
   const [storeResourceSearch, setStoreResourceSearch] = useState('');
+  const [storeResourcesPageInfo, setStoreResourcesPageInfo] = useState({
+    hasNextPage: false,
+    endCursor: null,
+  });
   /** When store-resources API fails or returns empty_reason, show this instead of generic message */
   const [storeResourcesError, setStoreResourcesError] = useState(null);
   const [priceProductModalOpen, setPriceProductModalOpen] = useState(false);
@@ -965,15 +970,18 @@ function TestWizard({
   useEffect(() => {
     if (isStandalone || !['product', 'collection', 'page'].includes(targetTypeForResources)) {
       setStoreResources([]);
+      setStoreResourcesPageInfo({ hasNextPage: false, endCursor: null });
       return;
     }
     // Use route domain explicitly so the correct Shopify store is queried (avoids wrong-shop when multiple stores)
     const shop = isShopifyFromRoute ? routeDomain : null;
     if (!shop) {
       setStoreResources([]);
+      setStoreResourcesPageInfo({ hasNextPage: false, endCursor: null });
       return;
     }
     setStoreResourcesLoading(true);
+    setStoreResourcesLoadingMore(false);
     setStoreResourcesError(null);
     const query = encodeURIComponent(storeResourceSearchDebounced.trim());
     apiGet(`/shopify/store-resources?type=${targetTypeForResources}&query=${query}&first=100`, {
@@ -983,10 +991,17 @@ function TestWizard({
         const list = res.data?.resources || [];
         const emptyReason = res.data?.empty_reason || null;
         setStoreResources(list);
+        setStoreResourcesPageInfo(
+          res.data?.page_info || {
+            hasNextPage: false,
+            endCursor: null,
+          }
+        );
         setStoreResourcesError(list.length === 0 && emptyReason ? emptyReason : null);
       })
       .catch(err => {
         setStoreResources([]);
+        setStoreResourcesPageInfo({ hasNextPage: false, endCursor: null });
         const msg =
           err?.response?.data?.error ||
           err?.message ||
@@ -1000,6 +1015,67 @@ function TestWizard({
     isStandalone,
     isShopifyFromRoute,
     routeDomain,
+  ]);
+
+  const handleLoadMoreStoreResources = useCallback(async () => {
+    if (
+      isStandalone ||
+      !isShopifyFromRoute ||
+      !routeDomain ||
+      !['product', 'collection', 'page'].includes(targetTypeForResources) ||
+      !storeResourcesPageInfo?.hasNextPage ||
+      !storeResourcesPageInfo?.endCursor ||
+      storeResourcesLoadingMore
+    ) {
+      return;
+    }
+    const shop = routeDomain;
+    const query = encodeURIComponent(storeResourceSearchDebounced.trim());
+    setStoreResourcesLoadingMore(true);
+    try {
+      const res = await apiGet(
+        `/shopify/store-resources?type=${targetTypeForResources}&query=${query}&first=100&after=${encodeURIComponent(storeResourcesPageInfo.endCursor)}`,
+        { shop }
+      );
+      const incoming = Array.isArray(res.data?.resources) ? res.data.resources : [];
+      if (incoming.length > 0) {
+        setStoreResources(prev => {
+          const seen = new Set((prev || []).map(r => String(r?.id || '')));
+          const merged = [...(prev || [])];
+          incoming.forEach(item => {
+            const id = String(item?.id || '');
+            if (id && !seen.has(id)) {
+              seen.add(id);
+              merged.push(item);
+            }
+          });
+          return merged;
+        });
+      }
+      setStoreResourcesPageInfo(
+        res.data?.page_info || {
+          hasNextPage: false,
+          endCursor: null,
+        }
+      );
+    } catch (err) {
+      setStoreResourcesError(
+        err?.response?.data?.error ||
+          err?.message ||
+          'Could not load more store resources. Please retry.'
+      );
+    } finally {
+      setStoreResourcesLoadingMore(false);
+    }
+  }, [
+    isStandalone,
+    isShopifyFromRoute,
+    routeDomain,
+    targetTypeForResources,
+    storeResourcesPageInfo?.hasNextPage,
+    storeResourcesPageInfo?.endCursor,
+    storeResourcesLoadingMore,
+    storeResourceSearchDebounced,
   ]);
 
   useEffect(() => {
@@ -3646,104 +3722,123 @@ function TestWizard({
                                                   }
                                                 };
                                                 return (
-                                                  <div className={styles.storeResourceListScroll}>
-                                                    {storeResources.map(r => (
-                                                      <button
-                                                        key={r.id}
-                                                        type="button"
-                                                        className={`${styles.storeResourceItem} ${selectedIds.includes(r.id) ? styles.storeResourceItemSelected : ''}`}
-                                                        onClick={() => toggleSelection(r.id)}
-                                                      >
-                                                        <span
-                                                          className={styles.storeResourceItemIcon}
-                                                          aria-hidden
-                                                        >
-                                                          <Icon source={ResourceIcon} />
-                                                        </span>
-                                                        <span
-                                                          className={
-                                                            styles.storeResourceItemContent
-                                                          }
+                                                  <>
+                                                    <div className={styles.storeResourceListScroll}>
+                                                      {storeResources.map(r => (
+                                                        <button
+                                                          key={r.id}
+                                                          type="button"
+                                                          className={`${styles.storeResourceItem} ${selectedIds.includes(r.id) ? styles.storeResourceItemSelected : ''}`}
+                                                          onClick={() => toggleSelection(r.id)}
                                                         >
                                                           <span
+                                                            className={styles.storeResourceItemIcon}
+                                                            aria-hidden
+                                                          >
+                                                            <Icon source={ResourceIcon} />
+                                                          </span>
+                                                          <span
                                                             className={
-                                                              styles.storeResourceItemTitle
+                                                              styles.storeResourceItemContent
                                                             }
                                                           >
-                                                            {r.title}
+                                                            <span
+                                                              className={
+                                                                styles.storeResourceItemTitle
+                                                              }
+                                                            >
+                                                              {r.title}
+                                                            </span>
+                                                            {r.handle && (
+                                                              <span
+                                                                className={
+                                                                  styles.storeResourceItemHandle
+                                                                }
+                                                              >
+                                                                /{r.handle}
+                                                              </span>
+                                                            )}
                                                           </span>
-                                                          {r.handle && (
+                                                          <span
+                                                            className={
+                                                              styles.storeResourceItemCheck
+                                                            }
+                                                            onClick={e => e.stopPropagation()}
+                                                          >
+                                                            <Checkbox
+                                                              label=""
+                                                              labelHidden
+                                                              checked={selectedIds.includes(r.id)}
+                                                              onChange={() => toggleSelection(r.id)}
+                                                              id={`store-resource-${String(r.id).replace(/[^a-zA-Z0-9-]/g, '_')}`}
+                                                            />
+                                                          </span>
+                                                        </button>
+                                                      ))}
+                                                      {missingIds.map(id => (
+                                                        <button
+                                                          key={id}
+                                                          type="button"
+                                                          className={`${styles.storeResourceItem} ${styles.storeResourceItemSelected}`}
+                                                          onClick={() => toggleSelection(id)}
+                                                        >
+                                                          <span
+                                                            className={styles.storeResourceItemIcon}
+                                                            aria-hidden
+                                                          >
+                                                            <Icon source={ResourceIcon} />
+                                                          </span>
+                                                          <span
+                                                            className={
+                                                              styles.storeResourceItemContent
+                                                            }
+                                                          >
+                                                            <span
+                                                              className={
+                                                                styles.storeResourceItemTitle
+                                                              }
+                                                            >
+                                                              {id.replace(/.*\//, '')} (saved)
+                                                            </span>
                                                             <span
                                                               className={
                                                                 styles.storeResourceItemHandle
                                                               }
                                                             >
-                                                              /{r.handle}
+                                                              Previously selected
                                                             </span>
-                                                          )}
-                                                        </span>
-                                                        <span
-                                                          className={styles.storeResourceItemCheck}
-                                                          onClick={e => e.stopPropagation()}
-                                                        >
-                                                          <Checkbox
-                                                            label=""
-                                                            labelHidden
-                                                            checked={selectedIds.includes(r.id)}
-                                                            onChange={() => toggleSelection(r.id)}
-                                                            id={`store-resource-${String(r.id).replace(/[^a-zA-Z0-9-]/g, '_')}`}
-                                                          />
-                                                        </span>
-                                                      </button>
-                                                    ))}
-                                                    {missingIds.map(id => (
-                                                      <button
-                                                        key={id}
-                                                        type="button"
-                                                        className={`${styles.storeResourceItem} ${styles.storeResourceItemSelected}`}
-                                                        onClick={() => toggleSelection(id)}
+                                                          </span>
+                                                          <span
+                                                            className={
+                                                              styles.storeResourceItemCheck
+                                                            }
+                                                            onClick={e => e.stopPropagation()}
+                                                          >
+                                                            <Checkbox
+                                                              label=""
+                                                              labelHidden
+                                                              checked
+                                                              onChange={() => toggleSelection(id)}
+                                                              id={`store-resource-saved-${String(id).replace(/[^a-zA-Z0-9-]/g, '_')}`}
+                                                            />
+                                                          </span>
+                                                        </button>
+                                                      ))}
+                                                    </div>
+                                                    {storeResourcesPageInfo?.hasNextPage && (
+                                                      <div
+                                                        className={styles.storeResourceListFooter}
                                                       >
-                                                        <span
-                                                          className={styles.storeResourceItemIcon}
-                                                          aria-hidden
+                                                        <Button
+                                                          size="slim"
+                                                          onClick={handleLoadMoreStoreResources}
+                                                          loading={storeResourcesLoadingMore}
                                                         >
-                                                          <Icon source={ResourceIcon} />
-                                                        </span>
-                                                        <span
-                                                          className={
-                                                            styles.storeResourceItemContent
-                                                          }
-                                                        >
-                                                          <span
-                                                            className={
-                                                              styles.storeResourceItemTitle
-                                                            }
-                                                          >
-                                                            {id.replace(/.*\//, '')} (saved)
-                                                          </span>
-                                                          <span
-                                                            className={
-                                                              styles.storeResourceItemHandle
-                                                            }
-                                                          >
-                                                            Previously selected
-                                                          </span>
-                                                        </span>
-                                                        <span
-                                                          className={styles.storeResourceItemCheck}
-                                                          onClick={e => e.stopPropagation()}
-                                                        >
-                                                          <Checkbox
-                                                            label=""
-                                                            labelHidden
-                                                            checked
-                                                            onChange={() => toggleSelection(id)}
-                                                            id={`store-resource-saved-${String(id).replace(/[^a-zA-Z0-9-]/g, '_')}`}
-                                                          />
-                                                        </span>
-                                                      </button>
-                                                    ))}
-                                                  </div>
+                                                          Load more
+                                                        </Button>
+                                                      </div>
+                                                    )}
+                                                  </>
                                                 );
                                               })()
                                             )}
@@ -8936,21 +9031,22 @@ function TestWizard({
 
   const renderVariantTemplateModule = () => (
     <BlockStack gap="400">
-      <Banner tone="info" title="Template is for reference or theme use">
+      <Banner tone="info" title="Template + theme metadata for internal implementation">
         <Text as="p" variant="bodySm">
-          Shopify chooses the template at request time. To serve a different template per variant,
-          implement the switch in your theme (e.g. read a cookie) or use a{' '}
-          <strong>Split URL</strong> test and point each variant to a URL that uses that template.
+          Shopify chooses the template at request time. Use these fields to map each variant to your
+          theme implementation (template handle, optional theme id, optional section id), or use a{' '}
+          <strong>Split URL</strong> test and point each variant to a URL that already renders the
+          target template.
         </Text>
       </Banner>
       <Text variant="bodyMd" color="subdued" as="p">
-        Select the template for each variant.
+        Set template details per variant for internal theme/template tests.
       </Text>
       {(formData.variants || []).map((variant, index) => (
         <Card key={`template-${index}`} sectioned>
           <FormLayout>
             <TextField
-              label={variant.name}
+              label={`${variant.name} template`}
               value={variant.config?.template ?? ''}
               onChange={value => {
                 const next = [...(formData.variants || [])];
@@ -8961,7 +9057,37 @@ function TestWizard({
                 setFormData({ ...formData, variants: next });
               }}
               placeholder="e.g. alternate or custom"
-              helpText="Template handle or ID"
+              helpText="Template handle or ID used by your theme logic"
+              autoComplete="off"
+            />
+            <TextField
+              label={`${variant.name} theme ID (optional)`}
+              value={variant.config?.themeId ?? ''}
+              onChange={value => {
+                const next = [...(formData.variants || [])];
+                next[index] = {
+                  ...next[index],
+                  config: { ...next[index].config, themeId: value },
+                };
+                setFormData({ ...formData, variants: next });
+              }}
+              placeholder="e.g. 123456789"
+              helpText="Useful when variants map to different themes"
+              autoComplete="off"
+            />
+            <TextField
+              label={`${variant.name} section ID (optional)`}
+              value={variant.config?.sectionId ?? ''}
+              onChange={value => {
+                const next = [...(formData.variants || [])];
+                next[index] = {
+                  ...next[index],
+                  config: { ...next[index].config, sectionId: value },
+                };
+                setFormData({ ...formData, variants: next });
+              }}
+              placeholder="e.g. main-product or hero-banner"
+              helpText="Optional section key for section-level variant injection"
               autoComplete="off"
             />
           </FormLayout>

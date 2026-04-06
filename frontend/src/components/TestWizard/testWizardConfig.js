@@ -90,12 +90,16 @@ export const TEST_TEMPLATES = {
     name: 'Template',
     icon: '📄',
     description:
-      'Compare different theme templates per variant. Template choice is stored for reference; apply it in your theme (e.g. cookie) or use Split URL to send users to URLs that use each template.',
+      'Compare different theme templates per variant. Configure template handle plus optional theme/section targeting for internal implementation, or use Split URL to route users to URLs that render each template.',
     defaultConfig: {
       type: 'content',
       variants: [
-        { name: 'Control', allocation: 50, config: { template: '' } },
-        { name: 'Variant A', allocation: 50, config: { template: '' } },
+        { name: 'Control', allocation: 50, config: { template: '', themeId: '', sectionId: '' } },
+        {
+          name: 'Variant A',
+          allocation: 50,
+          config: { template: '', themeId: '', sectionId: '' },
+        },
       ],
     },
   },

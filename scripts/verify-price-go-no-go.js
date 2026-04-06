@@ -79,11 +79,26 @@ function evaluate(pipeline, assignment, selectedShop, options = {}) {
     warnings.push('Pipeline summary is unknown; verify diagnostics output for details.');
   }
 
-  const checkoutReady = String(pipeline?.support?.checkout_alignment?.level || '') === 'ready';
+  const checkoutLevel = String(pipeline?.support?.checkout_alignment?.level || '');
+  const checkoutReady = checkoutLevel === 'ready';
   if (!checkoutReady) {
     const checkoutSummary =
       pipeline?.support?.checkout_alignment?.summary || 'Checkout alignment support is not ready.';
-    blockers.push(`Checkout alignment not ready: ${checkoutSummary}`);
+    if (failedErrors.length > 0) {
+      blockers.push(`Checkout alignment not ready: ${checkoutSummary}`);
+    } else {
+      warnings.push(`Checkout alignment has warnings: ${checkoutSummary}`);
+    }
+  }
+
+  const hasShopContext = Boolean(selectedShop);
+  const directPriceLevel = String(pipeline?.support?.direct_price_override?.level || '');
+  if (hasShopContext && directPriceLevel && directPriceLevel !== 'available') {
+    blockers.push('Direct Price Override infrastructure is not available for the selected shop.');
+  } else if (!hasShopContext && directPriceLevel && directPriceLevel !== 'available') {
+    warnings.push(
+      'Direct Price Override availability is unknown without --shop context; run verifier with --shop=your-store.myshopify.com for a live decision.'
+    );
   }
 
   if (selectedShop) {

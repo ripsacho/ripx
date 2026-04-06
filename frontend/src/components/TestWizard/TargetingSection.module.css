@@ -5055,6 +5055,14 @@
   color: var(--futuristic-cyan);
 }
 
+.storeResourceListFooter {
+  display: flex;
+  justify-content: center;
+  padding: 10px 12px 14px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(248, 250, 252, 0.72);
+}
+
 .panelSectionPageTargeting .quickSelectChips {
   margin-top: 4px;
 }

@@ -405,14 +405,15 @@ class ShopifyService {
    * @param {string} accessToken - Access token
    * @param {string} [searchQuery] - Optional search query
    * @param {number} [first] - Max items (default 100)
-   * @returns {Promise<Array<{id: string, title: string, handle: string}>>}
+   * @param {string|null} [after] - GraphQL cursor for pagination
+   * @returns {Promise<{ list: Array<{id: string, title: string, handle: string}>, pageInfo: { hasNextPage: boolean, endCursor: string|null } }>}
    */
-  async listCollections(shopDomain, accessToken, searchQuery = '', first = 100) {
+  async listCollections(shopDomain, accessToken, searchQuery = '', first = 100, after = null) {
     const session = this.getSession(shopDomain, accessToken);
     const client = new this.api.clients.Graphql({ session });
     const query = `
-      query listCollections($first: Int!, $query: String) {
-        collections(first: $first, query: $query) {
+      query listCollections($first: Int!, $query: String, $after: String) {
+        collections(first: $first, query: $query, after: $after) {
           edges {
             node {
               id
@@ -425,19 +426,36 @@ class ShopifyService {
       }
     `;
     try {
+      const capped = Math.min(Math.max(1, first), 100);
       const response = await client.request(query, {
-        variables: { first, query: searchQuery || null },
+        variables: {
+          first: capped,
+          query: searchQuery || null,
+          after: after || null,
+        },
       });
       const edges = response.data?.collections?.edges || [];
+      const pageInfo = response.data?.collections?.pageInfo || {
+        hasNextPage: false,
+        endCursor: null,
+      };
       const list = edges.map(e => ({
         id: e.node.id,
         title: e.node.title || '(Untitled)',
         handle: e.node.handle || '',
       }));
-      list.sort((a, b) =>
-        (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' })
-      );
-      return list;
+      if (!after) {
+        list.sort((a, b) =>
+          (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' })
+        );
+      }
+      return {
+        list,
+        pageInfo: {
+          hasNextPage: !!pageInfo.hasNextPage,
+          endCursor: pageInfo.endCursor || null,
+        },
+      };
     } catch (error) {
       logger.error('Error listing collections', { error: error.message, shopDomain });
       throw error;
@@ -451,14 +469,15 @@ class ShopifyService {
    * @param {string} accessToken - Access token
    * @param {string} [searchQuery] - Optional search query
    * @param {number} [first] - Max items (default 100)
-   * @returns {Promise<Array<{id: string, title: string, handle: string}>>}
+   * @param {string|null} [after] - GraphQL cursor for pagination
+   * @returns {Promise<{ list: Array<{id: string, title: string, handle: string}>, pageInfo: { hasNextPage: boolean, endCursor: string|null } }>}
    */
-  async listPages(shopDomain, accessToken, searchQuery = '', first = 100) {
+  async listPages(shopDomain, accessToken, searchQuery = '', first = 100, after = null) {
     const session = this.getSession(shopDomain, accessToken);
     const client = new this.api.clients.Graphql({ session });
     const query = `
-      query listPages($first: Int!, $query: String) {
-        pages(first: $first, query: $query) {
+      query listPages($first: Int!, $query: String, $after: String) {
+        pages(first: $first, query: $query, after: $after) {
           edges {
             node {
               id
@@ -471,19 +490,36 @@ class ShopifyService {
       }
     `;
     try {
+      const capped = Math.min(Math.max(1, first), 100);
       const response = await client.request(query, {
-        variables: { first, query: searchQuery || null },
+        variables: {
+          first: capped,
+          query: searchQuery || null,
+          after: after || null,
+        },
       });
       const edges = response.data?.pages?.edges || [];
+      const pageInfo = response.data?.pages?.pageInfo || {
+        hasNextPage: false,
+        endCursor: null,
+      };
       const list = edges.map(e => ({
         id: e.node.id,
         title: e.node.title || '(Untitled)',
         handle: e.node.handle || '',
       }));
-      list.sort((a, b) =>
-        (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' })
-      );
-      return list;
+      if (!after) {
+        list.sort((a, b) =>
+          (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' })
+        );
+      }
+      return {
+        list,
+        pageInfo: {
+          hasNextPage: !!pageInfo.hasNextPage,
+          endCursor: pageInfo.endCursor || null,
+        },
+      };
     } catch (error) {
       logger.error('Error listing pages', { error: error.message, shopDomain });
       throw error;

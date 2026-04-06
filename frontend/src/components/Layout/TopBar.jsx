@@ -4,7 +4,7 @@
  * Premium top navigation bar matching site UI - gradient accent, breadcrumb, action group
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { InlineStack, Popover, Text, BlockStack, Button, Icon, Tooltip } from '@shopify/polaris';
 import {
@@ -20,6 +20,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   getShopDomain,
   apiGet,
+  apiPost,
   apiPut,
   getConnectUrl,
   getNavigateToWithEmbed,
@@ -65,6 +66,17 @@ function TopBar({
       navigate(getNavigateToWithEmbed(pathname, extraParams));
     },
     [navigate]
+  );
+  const trackUiEvent = useCallback(
+    (event, payload = {}) => {
+      apiPost('/ui-events', {
+        event,
+        source: 'topbar',
+        path: location.pathname,
+        ...payload,
+      }).catch(() => {});
+    },
+    [location.pathname]
   );
   const { data: adminMeData, isAdmin, isLoading, role } = useAdminMe();
   const showAdminEntry = Boolean(!isLoading && isAdmin && role);
@@ -114,7 +126,13 @@ function TopBar({
     redirectToAppUrl(url);
   }, [appDomain]);
 
-  const toggleUserMenu = useCallback(() => setUserMenuActive(a => !a), []);
+  const toggleUserMenu = useCallback(() => {
+    setUserMenuActive(active => {
+      const next = !active;
+      if (next) trackUiEvent('topbar_user_menu_open');
+      return next;
+    });
+  }, [trackUiEvent]);
 
   const breadcrumb = useMemo(
     () => getBreadcrumb(location.pathname, location.search),
@@ -136,9 +154,21 @@ function TopBar({
     }
   }, []);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (notificationsActive) fetchNotifications();
   }, [notificationsActive, fetchNotifications]);
+
+  useEffect(() => {
+    if (!userMenuActive && !helpPopoverActive && !notificationsActive) return undefined;
+    const onKeyDown = event => {
+      if (event.key !== 'Escape') return;
+      setUserMenuActive(false);
+      setHelpPopoverActive(false);
+      setNotificationsActive(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [userMenuActive, helpPopoverActive, notificationsActive]);
 
   const handleMarkRead = useCallback(async id => {
     try {
@@ -161,6 +191,14 @@ function TopBar({
   }, []);
 
   const closeUserMenu = useCallback(() => setUserMenuActive(false), []);
+  const handleUserMenuNavigate = useCallback(
+    (destination, extraParams = null) => {
+      closeUserMenu();
+      trackUiEvent('topbar_user_menu_navigate', { target: destination });
+      navigateWithEmbed(destination, extraParams);
+    },
+    [closeUserMenu, navigateWithEmbed, trackUiEvent]
+  );
 
   const handleLogout = useCallback(() => {
     setUserMenuActive(false);
@@ -240,7 +278,10 @@ function TopBar({
         {appDomain && (
           <button
             type="button"
-            onClick={() => navigateWithEmbed(ROUTES.appCreateTest(appDomain))}
+            onClick={() => {
+              trackUiEvent('topbar_new_test_click', { target: ROUTES.appCreateTest(appDomain) });
+              navigateWithEmbed(ROUTES.appCreateTest(appDomain));
+            }}
             className={styles.newTestBtn}
             aria-label="Create new A/B test"
             title="Create a new A/B test"
@@ -259,7 +300,13 @@ function TopBar({
               <Tooltip content="Help" preferredPosition="below">
                 <button
                   type="button"
-                  onClick={() => setHelpPopoverActive(a => !a)}
+                  onClick={() =>
+                    setHelpPopoverActive(active => {
+                      const next = !active;
+                      if (next) trackUiEvent('topbar_help_open');
+                      return next;
+                    })
+                  }
                   aria-label="Help – Documentation and Support"
                   aria-expanded={helpPopoverActive}
                   aria-haspopup="true"
@@ -286,6 +333,7 @@ function TopBar({
                   className={styles.helpPopoverLink}
                   onClick={() => {
                     setHelpPopoverActive(false);
+                    trackUiEvent('topbar_help_navigate', { target: docsPath });
                     navigateWithEmbed(docsPath);
                   }}
                 >
@@ -296,6 +344,7 @@ function TopBar({
                   className={styles.helpPopoverLink}
                   onClick={() => {
                     setHelpPopoverActive(false);
+                    trackUiEvent('topbar_help_navigate', { target: supportPath });
                     navigateWithEmbed(supportPath);
                   }}
                 >
@@ -307,7 +356,10 @@ function TopBar({
           <Tooltip content="Support" preferredPosition="below">
             <button
               type="button"
-              onClick={() => navigateWithEmbed(supportPath)}
+              onClick={() => {
+                trackUiEvent('topbar_support_click', { target: supportPath });
+                navigateWithEmbed(supportPath);
+              }}
               aria-label="Go to Support"
               aria-current={location.pathname === supportPath ? 'page' : undefined}
               className={`${styles.iconBtn} ${location.pathname === supportPath ? styles.active : ''}`}
@@ -339,7 +391,13 @@ function TopBar({
               >
                 <button
                   type="button"
-                  onClick={() => setNotificationsActive(a => !a)}
+                  onClick={() =>
+                    setNotificationsActive(active => {
+                      const next = !active;
+                      if (next) trackUiEvent('topbar_notifications_open');
+                      return next;
+                    })
+                  }
                   aria-label={
                     unreadCount > 0 ? `Notifications (${unreadCount} unread)` : 'Notifications'
                   }
@@ -518,6 +576,7 @@ function TopBar({
                         type="button"
                         onClick={() => {
                           closeUserMenu();
+                          trackUiEvent('topbar_user_menu_navigate', { target: 'connect_shopify' });
                           handleConnectStore();
                         }}
                         className={styles.userMenuConnectBtn}
@@ -536,10 +595,7 @@ function TopBar({
                   type="button"
                   className={styles.menuItem}
                   role="menuitem"
-                  onClick={() => {
-                    closeUserMenu();
-                    navigateWithEmbed(ROUTES.USER_PANEL);
-                  }}
+                  onClick={() => handleUserMenuNavigate(ROUTES.USER_PANEL)}
                 >
                   Home
                 </button>
@@ -547,10 +603,7 @@ function TopBar({
                   type="button"
                   className={styles.menuItem}
                   role="menuitem"
-                  onClick={() => {
-                    closeUserMenu();
-                    navigateWithEmbed(ROUTES.DOMAINS);
-                  }}
+                  onClick={() => handleUserMenuNavigate(ROUTES.DOMAINS)}
                 >
                   My domains
                 </button>
@@ -559,10 +612,7 @@ function TopBar({
                     type="button"
                     className={styles.menuItem}
                     role="menuitem"
-                    onClick={() => {
-                      closeUserMenu();
-                      navigateWithEmbed(ROUTES.ADMIN);
-                    }}
+                    onClick={() => handleUserMenuNavigate(ROUTES.ADMIN)}
                   >
                     Admin
                   </button>
@@ -575,10 +625,7 @@ function TopBar({
                   type="button"
                   className={styles.menuItem}
                   role="menuitem"
-                  onClick={() => {
-                    closeUserMenu();
-                    navigateWithEmbed(settingsPath);
-                  }}
+                  onClick={() => handleUserMenuNavigate(settingsPath)}
                 >
                   {appDomain ? 'App settings' : 'Account settings'}
                 </button>
@@ -586,10 +633,7 @@ function TopBar({
                   type="button"
                   className={styles.menuItem}
                   role="menuitem"
-                  onClick={() => {
-                    closeUserMenu();
-                    navigateWithEmbed(notificationsPath);
-                  }}
+                  onClick={() => handleUserMenuNavigate(notificationsPath)}
                 >
                   Notifications
                 </button>
@@ -597,10 +641,7 @@ function TopBar({
                   type="button"
                   className={styles.menuItem}
                   role="menuitem"
-                  onClick={() => {
-                    closeUserMenu();
-                    navigateWithEmbed(ROUTES.PROFILE, { tab: 'account' });
-                  }}
+                  onClick={() => handleUserMenuNavigate(ROUTES.PROFILE, { tab: 'account' })}
                 >
                   Account & API keys
                 </button>
@@ -612,10 +653,7 @@ function TopBar({
                   type="button"
                   className={styles.menuItem}
                   role="menuitem"
-                  onClick={() => {
-                    closeUserMenu();
-                    navigateWithEmbed(profilePath);
-                  }}
+                  onClick={() => handleUserMenuNavigate(profilePath)}
                 >
                   My Profile
                 </button>
@@ -623,10 +661,7 @@ function TopBar({
                   type="button"
                   className={styles.menuItem}
                   role="menuitem"
-                  onClick={() => {
-                    closeUserMenu();
-                    navigateWithEmbed(ROUTES.PROFILE, { tab: 'preferences' });
-                  }}
+                  onClick={() => handleUserMenuNavigate(ROUTES.PROFILE, { tab: 'preferences' })}
                 >
                   Preferences
                 </button>
@@ -634,10 +669,7 @@ function TopBar({
                   type="button"
                   className={styles.menuItem}
                   role="menuitem"
-                  onClick={() => {
-                    closeUserMenu();
-                    navigateWithEmbed(docsPath);
-                  }}
+                  onClick={() => handleUserMenuNavigate(docsPath)}
                 >
                   Documentation
                 </button>
@@ -648,7 +680,10 @@ function TopBar({
                   type="button"
                   className={`${styles.menuItem} ${styles.menuItemDestructive}`}
                   role="menuitem"
-                  onClick={handleLogout}
+                  onClick={() => {
+                    trackUiEvent('topbar_user_menu_logout');
+                    handleLogout();
+                  }}
                 >
                   Logout
                 </button>

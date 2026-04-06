@@ -180,11 +180,15 @@ describe('priceCheckoutDiagnostics', () => {
     const src = `
 export const RIPX_PRICE_RESOLVE_BATCH_URL = ${JSON.stringify('https://api.example.com/api/track/price-resolve-batch')};
 export const RIPX_CHECKOUT_PRICE_SECRET = ${JSON.stringify('secret-one')};
+export const RIPX_CHECKOUT_PROBE_ALWAYS_DISCOUNT = false;
+export const RIPX_CHECKOUT_PROBE_ATTRIBUTE_MATRIX = true;
 `;
     const p = parseRipxCheckoutExtensionConfig(src);
     expect(p).toMatchObject({
       batchUrl: 'https://api.example.com/api/track/price-resolve-batch',
       secret: 'secret-one',
+      probeAlwaysDiscount: false,
+      probeAttributeMatrix: true,
     });
   });
 
@@ -199,11 +203,32 @@ export const RIPX_CHECKOUT_PRICE_SECRET = ${JSON.stringify('secret-one')};
   it('parseRipxCheckoutExtensionConfig accepts single-quoted literals in hand-edited config', () => {
     const { parseRipxCheckoutExtensionConfig } = require('../priceCheckoutDiagnostics');
     const p = parseRipxCheckoutExtensionConfig(
-      "export const RIPX_PRICE_RESOLVE_BATCH_URL = 'https://api.example.com/api/track/price-resolve-batch';\nexport const RIPX_CHECKOUT_PRICE_SECRET = '';"
+      "export const RIPX_PRICE_RESOLVE_BATCH_URL = 'https://api.example.com/api/track/price-resolve-batch';\nexport const RIPX_CHECKOUT_PRICE_SECRET = '';\nexport const RIPX_CHECKOUT_PROBE_ALWAYS_DISCOUNT = 'true';"
     );
     expect(p).toMatchObject({
       batchUrl: 'https://api.example.com/api/track/price-resolve-batch',
       secret: '',
+      probeAlwaysDiscount: true,
+    });
+  });
+
+  it('buildRipxCheckoutExtensionConfigSource outputs parseable content', () => {
+    const {
+      buildRipxCheckoutExtensionConfigSource,
+      parseRipxCheckoutExtensionConfig,
+    } = require('../priceCheckoutDiagnostics');
+    const source = buildRipxCheckoutExtensionConfigSource({
+      batchUrl: 'https://api.example.com/api/track/price-resolve-batch',
+      secret: 'abc123',
+      probeAlwaysDiscount: true,
+      probeAttributeMatrix: false,
+    });
+    const parsed = parseRipxCheckoutExtensionConfig(source);
+    expect(parsed).toMatchObject({
+      batchUrl: 'https://api.example.com/api/track/price-resolve-batch',
+      secret: 'abc123',
+      probeAlwaysDiscount: true,
+      probeAttributeMatrix: false,
     });
   });
 

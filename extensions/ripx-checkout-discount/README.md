@@ -41,11 +41,27 @@ RipX cannot click Shopify Admin for you. Work through this once per production a
 
 7. **Smoke test** — Add a line from a running price test, open checkout, confirm the charged line total matches the test price.
 
+### Fast recovery (when diagnostics show config drift)
+
+If `verify:price-pipeline` reports `extension_config_matches_env` drift, run from repo root:
+
+```bash
+npm run shopify:checkout-discount:sync-config
+npm run shopify:checkout-discount:build
+shopify app deploy
+npm run verify:price-go-no-go -- --shop=your-store.myshopify.com
+```
+
+This ensures extension config matches server `.env` and re-checks readiness with live shop context.
+
 ## Server-side QA (RipX API)
 
 Before debugging checkout, verify the backend is configured for the Discount Function:
 
 - **RipX app UI:** **Settings → Installation** → **Checkout price test health** → **Run check** — uses **`GET /api/settings/checkout-price-diagnostics`** (session auth, same JSON as the public route; avoids browser CORS when the UI is on another origin).
+- **Config API (session auth):**
+  - **`GET /api/settings/checkout-price-function-config`** — returns env + extension `ripxConfig.js` snapshot, masked secret previews, and drift status.
+  - **`PUT /api/settings/checkout-price-function-config`** — writes extension `ripxConfig.js` using either explicit values (`batchUrl`, `checkoutSecret`, probe flags) or `{ "syncFromEnv": true }`.
 - **`GET /api/track/price-checkout-diagnostics`** — no auth; batch URL, HTTPS, secret mode, batch max, and (when `src/ripxConfig.js` exists on the API filesystem) **drift vs server `.env`** — batch URL + `RIPX_CHECKOUT_PRICE_SECRET`. Omit with **`RIPX_DIAGNOSTICS_SKIP_EXTENSION_CONFIG=true`** in minimal images.
 - **`GET /api/track/price-checkout-diagnostics?shop=your-store.myshopify.com`** — same, plus registered-tenant check and count of **running** tests with `type=price`.
 
@@ -73,6 +89,7 @@ See also **`backend/docs/PRODUCT_EXCELLENCE_ROADMAP.md`** for the long-term prod
 - **`npm run shopify:checkout-discount:sync-config`** — generates `src/ripxConfig.js` from root `.env`:
   - **`RIPX_PRICE_RESOLVE_BATCH_URL`** if set, else **`APP_URL`** + `/api/track/price-resolve-batch`
   - **`RIPX_CHECKOUT_PRICE_SECRET`** optional
+  - Also syncs checkout UI extension config at `extensions/ripx-checkout-ui/src/ripxConfig.js` when present.
 - Or edit **`src/ripxConfig.js`** manually and run **`npm run shopify:checkout-discount:build`** only.
 
 Then **`shopify app deploy`** / **`shopify app dev`** so Admin can attach the function to a discount.

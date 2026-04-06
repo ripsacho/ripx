@@ -20,6 +20,8 @@ npm run shopify:dev   # or: shopify app dev --reset
 npm run build         # production frontend build
 # Checkout price function (Shopify Plus + network access): set APP_URL / secrets in .env, then:
 # npm run shopify:checkout-discount:prepare && shopify app deploy
+# Checkout UI block extension (Shopify Plus): set checkout UI env values in .env, then:
+# npm run shopify:checkout-ui:prepare && shopify app deploy
 # Direct price override cart transform (Shopify Plus / dev stores):
 # npm run shopify:cart-transform:prepare && shopify app deploy
 # Pricing method behavior:
@@ -148,7 +150,7 @@ Rollback (no rebuild):
 
 **Health (unauthenticated, rate-limited):** `GET /live` or `GET /api/live` — liveness (no DB). `GET /ready` or `GET /api/ready` — readiness (DB + Redis, minimal JSON; 503 when DB is down). `GET /health` or `GET /api/health` — full JSON for the app (maintenance/announcement, version, uptime). Tune with `RATE_LIMIT_HEALTH_WINDOW_MS` and `RATE_LIMIT_HEALTH_MAX`.
 
-**Checkout price QA:** **Settings → Installation → Checkout price test health** (calls authenticated `GET /api/settings/checkout-price-diagnostics` and returns full diagnostics). Public: `GET /api/track/price-checkout-diagnostics?shop=store.myshopify.com` returns a redacted payload by default (set `RIPX_PUBLIC_CHECKOUT_DIAGNOSTICS_FULL=true` only when you explicitly want full public output). **CLI (same checks, uses `.env`):** `npm run verify:price-pipeline` — optional `RIPX_VERIFY_SHOP=store.myshopify.com` with DB for tenant + running price-test count. **Signed-assignment migration checker:** `npm run verify:price-assignment-readiness` (optional `RIPX_VERIFY_SHOP=...` for synthetic signed/unsigned probe). See `extensions/ripx-checkout-discount/README.md`. **Docs:** [Shopify checkout resolver guide](docs/SHOPIFY_CHECKOUT_PRICE_RESOLVER.md). Roadmap: `backend/docs/PRODUCT_EXCELLENCE_ROADMAP.md`.
+**Checkout price QA:** **Settings → Installation → Checkout price test health** (calls authenticated `GET /api/settings/checkout-price-diagnostics` and returns full diagnostics). Public: `GET /api/track/price-checkout-diagnostics?shop=store.myshopify.com` returns a redacted payload by default (set `RIPX_PUBLIC_CHECKOUT_DIAGNOSTICS_FULL=true` only when you explicitly want full public output). **CLI (same checks, uses `.env`):** `npm run verify:price-pipeline` — optional `RIPX_VERIFY_SHOP=store.myshopify.com` with DB for tenant + running price-test count. **Signed-assignment migration checker:** `npm run verify:price-assignment-readiness` (optional `RIPX_VERIFY_SHOP=...` for synthetic signed/unsigned probe). See `extensions/ripx-checkout-discount/README.md` and `extensions/ripx-checkout-ui/README.md`. **Docs:** [Shopify checkout resolver guide](docs/SHOPIFY_CHECKOUT_PRICE_RESOLVER.md). Roadmap: `backend/docs/PRODUCT_EXCELLENCE_ROADMAP.md`.
 
 **Local admin:** In `.env` set `RIPX_ADMIN_SHOP_DOMAINS=your-store.myshopify.com` to access the Admin panel at `/admin` without setting DB roles. Production: see [docs/getting-started/ADMIN_SETUP.md](docs/getting-started/ADMIN_SETUP.md).
 

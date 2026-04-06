@@ -159,6 +159,7 @@ const tenantRoutes = require('./routes/tenantRoutes');
 const accountRoutes = require('./routes/accountRoutes');
 const authRoutes = require('./routes/authRoutes');
 const meRoutes = require('./routes/meRoutes');
+const uiEventsRoutes = require('./routes/uiEventsRoutes');
 const { requireEmailSession } = require('./middleware/requireEmailSession');
 const adminRoutes = require('./routes/adminRoutes');
 const apiDocsRoutes = require('./routes/apiDocsRoutes');
@@ -759,6 +760,7 @@ app.use('/api/profile', authenticate, profileRoutes);
 app.use('/api/settings', authenticate, settingsRoutes);
 app.use('/api/targeting-presets', authenticate, targetingPresetRoutes);
 app.use('/api/notifications', authenticate, notificationRoutes);
+app.use('/api/ui-events', authenticate, uiEventsRoutes);
 app.use('/api/support', supportRoutes); // Ticket submit (public) + My tickets (authenticated)
 app.use('/api/admin', adminRoutes); // Admin panel (requireAdmin inside router)
 

@@ -1,0 +1,9 @@
+{
+  "name": "ripx-checkout-ui",
+  "version": "0.0.1",
+  "private": true,
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@shopify/ui-extensions": "^2026.1.1"
+  }
+}

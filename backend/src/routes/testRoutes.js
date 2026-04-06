@@ -51,6 +51,240 @@ function normalizeHoldout(value) {
   return { value: parsed };
 }
 
+function isPriceLikeTestType(type) {
+  const t = String(type || '')
+    .trim()
+    .toLowerCase();
+  return t === 'price' || t === 'pricing';
+}
+
+function parseTargetIds(targetIds, targetId) {
+  let ids = targetIds;
+  if (typeof ids === 'string') {
+    try {
+      ids = JSON.parse(ids);
+    } catch {
+      ids = null;
+    }
+  }
+  if (Array.isArray(ids)) {
+    return ids.filter(Boolean).map(v => String(v));
+  }
+  if (targetId !== undefined && targetId !== null && String(targetId).trim() !== '') {
+    return [String(targetId)];
+  }
+  return [];
+}
+
+function normalizePriceMode(config) {
+  const mode = String(config?.priceMode || '')
+    .trim()
+    .toLowerCase();
+  if (mode) {
+    return mode;
+  }
+  if (config?.price !== undefined && config?.price !== null && String(config.price).trim() !== '') {
+    return 'fixed';
+  }
+  if (
+    config?.priceDelta !== undefined &&
+    config?.priceDelta !== null &&
+    String(config.priceDelta).trim() !== ''
+  ) {
+    return 'amount';
+  }
+  if (
+    config?.pricePercent !== undefined &&
+    config?.pricePercent !== null &&
+    String(config.pricePercent).trim() !== ''
+  ) {
+    return 'percent';
+  }
+  return 'control';
+}
+
+function hasAnyPriceSignal(config) {
+  if (!config || typeof config !== 'object') {
+    return false;
+  }
+  const mode = normalizePriceMode(config);
+  if (mode === 'control') {
+    return false;
+  }
+  if (mode === 'fixed') {
+    return (
+      config.price !== undefined && config.price !== null && String(config.price).trim() !== ''
+    );
+  }
+  if (mode === 'amount') {
+    return (
+      config.priceDelta !== undefined &&
+      config.priceDelta !== null &&
+      String(config.priceDelta).trim() !== ''
+    );
+  }
+  if (mode === 'percent') {
+    return (
+      config.pricePercent !== undefined &&
+      config.pricePercent !== null &&
+      String(config.pricePercent).trim() !== ''
+    );
+  }
+  return false;
+}
+
+function findWinnerVariant(test, analytics) {
+  const variants = Array.isArray(test?.variants) ? test.variants : [];
+  if (variants.length === 0) {
+    return null;
+  }
+  const winnerIdentity = analytics?.significance?.winner;
+  if (winnerIdentity !== undefined && winnerIdentity !== null) {
+    const winnerKey = String(winnerIdentity).trim();
+    const matched = variants.find(v => {
+      if (!v) {
+        return false;
+      }
+      const id = v.id !== undefined && v.id !== null ? String(v.id).trim() : '';
+      const name = v.name !== undefined && v.name !== null ? String(v.name).trim() : '';
+      return winnerKey === id || winnerKey === name;
+    });
+    if (matched) {
+      return matched;
+    }
+  }
+
+  const analyticsRows = Array.isArray(analytics?.variants) ? analytics.variants : [];
+  if (analyticsRows.length > 0) {
+    const best = analyticsRows
+      .map(a => ({
+        id: a?.id !== undefined && a?.id !== null ? String(a.id).trim() : '',
+        name: a?.name !== undefined && a?.name !== null ? String(a.name).trim() : '',
+        conversions: Number(a?.conversions || 0),
+      }))
+      .sort((a, b) => b.conversions - a.conversions)[0];
+    if (best) {
+      const fromAnalytics = variants.find(v => {
+        const id = v?.id !== undefined && v?.id !== null ? String(v.id).trim() : '';
+        const name = v?.name !== undefined && v?.name !== null ? String(v.name).trim() : '';
+        return (best.id && id === best.id) || (best.name && name === best.name);
+      });
+      if (fromAnalytics) {
+        return fromAnalytics;
+      }
+    }
+  }
+
+  const priced = variants.find(v => hasAnyPriceSignal(v?.config || {}));
+  if (priced) {
+    return priced;
+  }
+  return variants[0] || null;
+}
+
+function csvEscape(value) {
+  if (value === undefined || value === null) {
+    return '';
+  }
+  const s = String(value);
+  if (/[",\n]/.test(s)) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+function buildRolloutRows(test, winnerVariant) {
+  const config =
+    winnerVariant && winnerVariant.config && typeof winnerVariant.config === 'object'
+      ? winnerVariant.config
+      : {};
+  const targetIds = parseTargetIds(test.target_ids, test.target_id);
+  const globalConfig = { ...config };
+  delete globalConfig.byProduct;
+  delete globalConfig.byVariant;
+
+  const common = {
+    test_id: test.id,
+    test_name: test.name,
+    winner_variant_id:
+      winnerVariant?.id !== undefined && winnerVariant?.id !== null ? String(winnerVariant.id) : '',
+    winner_variant_name: winnerVariant?.name ? String(winnerVariant.name) : '',
+    target_type: test.target_type || '',
+    target_ids: targetIds.join('|'),
+  };
+
+  const toRow = (scope, cfg, productId = '', variantId = '') => ({
+    ...common,
+    scope,
+    product_id: productId,
+    variant_id: variantId,
+    price_mode: normalizePriceMode(cfg),
+    price: cfg?.price ?? '',
+    price_delta: cfg?.priceDelta ?? '',
+    price_percent: cfg?.pricePercent ?? '',
+    price_base: cfg?.priceBase ?? '',
+    round_to: cfg?.roundTo ?? '',
+    price_application_method: cfg?.priceApplicationMethod ?? '',
+    native_variant_id: cfg?.nativeVariantId ?? '',
+  });
+
+  const rows = [];
+  if (hasAnyPriceSignal(globalConfig) || Object.keys(globalConfig).length > 0) {
+    rows.push(toRow('global', globalConfig));
+  }
+
+  const byProduct =
+    config.byProduct && typeof config.byProduct === 'object' ? config.byProduct : {};
+  Object.entries(byProduct).forEach(([productId, productCfgRaw]) => {
+    const productCfg =
+      productCfgRaw && typeof productCfgRaw === 'object' ? { ...productCfgRaw } : productCfgRaw;
+    if (!productCfg || typeof productCfg !== 'object') {
+      return;
+    }
+    const byVariant =
+      productCfg.byVariant && typeof productCfg.byVariant === 'object' ? productCfg.byVariant : {};
+    delete productCfg.byVariant;
+    const mergedProductCfg = { ...globalConfig, ...productCfg };
+    rows.push(toRow('product', mergedProductCfg, productId, ''));
+
+    Object.entries(byVariant).forEach(([variantId, variantCfgRaw]) => {
+      if (!variantCfgRaw || typeof variantCfgRaw !== 'object') {
+        return;
+      }
+      const mergedVariantCfg = { ...mergedProductCfg, ...variantCfgRaw };
+      rows.push(toRow('product_variant', mergedVariantCfg, productId, variantId));
+    });
+  });
+
+  const rootByVariant =
+    config.byVariant && typeof config.byVariant === 'object' ? config.byVariant : {};
+  Object.entries(rootByVariant).forEach(([variantId, variantCfgRaw]) => {
+    if (!variantCfgRaw || typeof variantCfgRaw !== 'object') {
+      return;
+    }
+    rows.push(toRow('variant', { ...globalConfig, ...variantCfgRaw }, '', variantId));
+  });
+
+  return rows;
+}
+
+function buildCsv(headers, rows) {
+  const head = headers.map(csvEscape).join(',');
+  const body = rows.map(row => headers.map(h => csvEscape(row[h])).join(',')).join('\n');
+  return `${head}\n${body}\n`;
+}
+
+function safeFileName(value) {
+  const raw = String(value || 'price-test')
+    .trim()
+    .toLowerCase();
+  const cleaned = raw
+    .replace(/[^a-z0-9-_]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return cleaned || 'price-test';
+}
+
 /** Ensure test has variant_count for consistent frontend display */
 function ensureVariantCount(test) {
   if (!test) {
@@ -145,6 +379,75 @@ router.post(
       payload.warning = 'Overlapping tests may affect results';
     }
     return sendSuccess(res, HTTP_STATUS.CREATED, payload, SUCCESS_MESSAGES.TEST_CREATED);
+  })
+);
+
+/**
+ * GET /api/tests/:id/price-rollout-csv
+ * Export winning price configuration as CSV for rollout/import workflows.
+ */
+router.get(
+  '/:id/price-rollout-csv',
+  validateTestId,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const shopDomain = req.shopDomain;
+    const test = await getTestById(id, shopDomain);
+    if (!test) {
+      return sendNotFound(res, 'Test');
+    }
+    if (!isPriceLikeTestType(test.type)) {
+      return sendValidationError(res, ['Rollout CSV is available only for price tests.']);
+    }
+
+    let analytics = null;
+    try {
+      const analyticsService = require('../services/analytics');
+      analytics = await analyticsService.getTestAnalytics(id, shopDomain);
+    } catch (_err) {
+      analytics = null;
+    }
+
+    const winnerVariant = findWinnerVariant(test, analytics);
+    if (!winnerVariant) {
+      return sendValidationError(res, [
+        'Could not determine a winner variant to build rollout CSV.',
+      ]);
+    }
+
+    const rows = buildRolloutRows(test, winnerVariant);
+    if (!rows.length) {
+      return sendValidationError(res, [
+        'No price configuration found on the winner variant for CSV export.',
+      ]);
+    }
+
+    const headers = [
+      'test_id',
+      'test_name',
+      'winner_variant_id',
+      'winner_variant_name',
+      'target_type',
+      'target_ids',
+      'scope',
+      'product_id',
+      'variant_id',
+      'price_mode',
+      'price',
+      'price_delta',
+      'price_percent',
+      'price_base',
+      'round_to',
+      'price_application_method',
+      'native_variant_id',
+    ];
+    const csv = buildCsv(headers, rows);
+    const stamp = new Date().toISOString().slice(0, 10);
+    const fileName = `${safeFileName(test.name)}-rollout-${stamp}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.status(200).send(csv);
   })
 );
 

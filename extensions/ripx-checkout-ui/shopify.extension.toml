@@ -1,0 +1,15 @@
+api_version = "2026-01"
+
+[[extensions]]
+name = "RipX checkout UI experiment"
+handle = "ripx-checkout-ui"
+type = "ui_extension"
+description = "Render checkout experiment content by fetching RipX assignment and tracking conversion events."
+
+[[extensions.targeting]]
+target = "purchase.checkout.block.render"
+module = "./src/Checkout.jsx"
+
+[extensions.capabilities]
+api_access = true
+network_access = true

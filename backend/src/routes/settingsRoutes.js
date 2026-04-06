@@ -17,8 +17,13 @@ const userDomainAccess = require('../models/userDomainAccess');
 const { SETTINGS_BOUNDS } = require('../constants');
 const {
   buildCheckoutPriceDiagnostics,
+  getConfiguredBatchResolveUrls,
+  parseRipxCheckoutExtensionConfig,
+  writeRipxCheckoutExtensionConfigFile,
+  RIPX_EXTENSION_CONFIG_RELATIVE_PATH,
   readRipxCheckoutExtensionConfigFile,
   extensionConfigInputFromReadResult,
+  buildExtensionConfigDiagnostics,
 } = require('../services/priceCheckoutDiagnostics');
 const { buildShopifyFunctionsInventory } = require('../services/shopifyFunctionsInventory');
 const { SCRIPT_VERSION } = require('../utils/storefrontScriptRuntime');
@@ -187,6 +192,53 @@ function escapeHtmlAttr(str) {
     .replace(/'/g, '&#39;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
+}
+
+function normalizeBooleanInput(value, fallback) {
+  if (value === undefined || value === null) {
+    return Boolean(fallback);
+  }
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  const s = String(value).trim().toLowerCase();
+  if (s === 'true' || s === '1' || s === 'yes') {
+    return true;
+  }
+  if (s === 'false' || s === '0' || s === 'no') {
+    return false;
+  }
+  return Boolean(fallback);
+}
+
+function maskSecretPreview(secret) {
+  const s = String(secret || '').trim();
+  if (!s) {
+    return '';
+  }
+  if (s.length <= 4) {
+    return '****';
+  }
+  return `****${s.slice(-4)}`;
+}
+
+function normalizeAbsoluteHttpUrl(value) {
+  const raw = String(value || '')
+    .trim()
+    .replace(/\/+$/, '');
+  if (!raw) {
+    return '';
+  }
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    return null;
+  }
+  return parsed.toString().replace(/\/+$/, '');
 }
 
 /**
@@ -625,6 +677,218 @@ router.get(
 
     res.set('Cache-Control', 'no-store');
     return res.json(body);
+  })
+);
+
+/**
+ * GET /api/settings/checkout-price-function-config
+ * Return current checkout discount extension config + env drift status.
+ */
+router.get(
+  '/checkout-price-function-config',
+  asyncHandler(async (req, res) => {
+    const shopDomain = req.shopDomain;
+    if (!shopDomain) {
+      return sendError(res, 401, 'Shop domain required');
+    }
+
+    const { batchUrl: envBatchUrl, usedExplicitBatchUrl } = getConfiguredBatchResolveUrls();
+    const envSecret = String(process.env.RIPX_CHECKOUT_PRICE_SECRET || '').trim();
+    const readResult = readRipxCheckoutExtensionConfigFile();
+    const extSource = extensionConfigInputFromReadResult(readResult);
+    const extDiag =
+      extSource.source === 'present'
+        ? buildExtensionConfigDiagnostics({
+            envBatchUrl,
+            envSecret,
+            extensionSource: 'present',
+            extensionContents: extSource.contents || '',
+          })
+        : extSource.source === 'missing'
+          ? buildExtensionConfigDiagnostics({
+              envBatchUrl,
+              envSecret,
+              extensionSource: 'missing',
+            })
+          : { checklist: [], infrastructurePatch: {}, recommendations: [] };
+
+    const parsed =
+      extSource.source === 'present'
+        ? parseRipxCheckoutExtensionConfig(extSource.contents || '')
+        : { error: 'missing_extension_config' };
+    const parseOk = !('error' in parsed);
+    const extensionBatchUrl = parseOk ? parsed.batchUrl : '';
+    const extensionSecret = parseOk ? parsed.secret : '';
+    const extensionProbeAlwaysDiscount = parseOk ? parsed.probeAlwaysDiscount : false;
+    const extensionProbeAttributeMatrix = parseOk ? parsed.probeAttributeMatrix : false;
+
+    const extCheck = Array.isArray(extDiag.checklist)
+      ? extDiag.checklist.find(c => c.id === 'extension_config_matches_env')
+      : null;
+    const missingCheck = Array.isArray(extDiag.checklist)
+      ? extDiag.checklist.find(c => c.id === 'extension_config_file')
+      : null;
+
+    return res.json({
+      success: true,
+      config: {
+        extensionConfigPath: RIPX_EXTENSION_CONFIG_RELATIVE_PATH,
+        extensionConfigStatus: extSource.source,
+        environment: {
+          batchUrl: envBatchUrl || '',
+          batchUrlSource: usedExplicitBatchUrl ? 'RIPX_PRICE_RESOLVE_BATCH_URL' : 'APP_URL',
+          checkoutSecretConfigured: Boolean(envSecret),
+          checkoutSecretPreview: maskSecretPreview(envSecret),
+        },
+        extension: {
+          parseOk,
+          parseError: parseOk ? null : parsed.error || null,
+          batchUrl: extensionBatchUrl,
+          checkoutSecretConfigured: Boolean(extensionSecret),
+          checkoutSecretPreview: maskSecretPreview(extensionSecret),
+          probeAlwaysDiscount: extensionProbeAlwaysDiscount,
+          probeAttributeMatrix: extensionProbeAttributeMatrix,
+        },
+        drift: {
+          ok: extCheck ? Boolean(extCheck.ok) : missingCheck ? Boolean(missingCheck.ok) : null,
+          severity: extCheck?.severity || missingCheck?.severity || null,
+          message: extCheck?.message || missingCheck?.message || null,
+          extensionBatchUrlMatchesEnv:
+            extDiag?.infrastructurePatch?.extension_batch_url_matches_env ?? null,
+          extensionSecretMatchesEnv:
+            extDiag?.infrastructurePatch?.extension_secret_matches_env ?? null,
+        },
+        recommendations: Array.isArray(extDiag.recommendations) ? extDiag.recommendations : [],
+        commands: {
+          syncConfig: 'npm run shopify:checkout-discount:sync-config',
+          build: 'npm run shopify:checkout-discount:build',
+          deploy: 'shopify app deploy',
+        },
+      },
+    });
+  })
+);
+
+/**
+ * PUT /api/settings/checkout-price-function-config
+ * Update extension ripxConfig.js from explicit values or sync from env.
+ */
+router.put(
+  '/checkout-price-function-config',
+  asyncHandler(async (req, res) => {
+    const shopDomain = req.shopDomain;
+    if (!shopDomain) {
+      return sendError(res, 401, 'Shop domain required');
+    }
+
+    const syncFromEnv = normalizeBooleanInput(req.body?.syncFromEnv, false);
+    const envBatch = String(getConfiguredBatchResolveUrls().batchUrl || '').trim();
+    const envSecret = String(process.env.RIPX_CHECKOUT_PRICE_SECRET || '').trim();
+    const envProbeAlwaysDiscount =
+      String(process.env.RIPX_CHECKOUT_PROBE_ALWAYS_DISCOUNT || '')
+        .trim()
+        .toLowerCase() === 'true';
+    const envProbeAttributeMatrix =
+      String(process.env.RIPX_CHECKOUT_PROBE_ATTRIBUTE_MATRIX || '')
+        .trim()
+        .toLowerCase() === 'true';
+
+    const currentReadResult = readRipxCheckoutExtensionConfigFile();
+    const currentParsed =
+      currentReadResult.source === 'present'
+        ? parseRipxCheckoutExtensionConfig(currentReadResult.contents || '')
+        : { error: 'missing_extension_config' };
+    const currentOk = !('error' in currentParsed);
+
+    const requestedBatchRaw =
+      req.body?.batchUrl !== undefined && req.body?.batchUrl !== null
+        ? String(req.body.batchUrl).trim()
+        : null;
+    const requestedSecretRaw =
+      req.body?.checkoutSecret !== undefined && req.body?.checkoutSecret !== null
+        ? String(req.body.checkoutSecret)
+        : null;
+
+    const nextBatchUrlRaw = syncFromEnv
+      ? envBatch
+      : requestedBatchRaw !== null
+        ? requestedBatchRaw
+        : currentOk
+          ? currentParsed.batchUrl || ''
+          : envBatch || '';
+    const nextBatchUrl = normalizeAbsoluteHttpUrl(nextBatchUrlRaw);
+    if (!nextBatchUrl) {
+      return sendError(
+        res,
+        400,
+        'Invalid batchUrl. Provide an absolute http(s) URL (for example https://your-app.com/api/track/price-resolve-batch).'
+      );
+    }
+
+    const nextSecret = syncFromEnv
+      ? envSecret
+      : requestedSecretRaw !== null
+        ? requestedSecretRaw.trim()
+        : currentOk
+          ? String(currentParsed.secret || '').trim()
+          : '';
+
+    const nextProbeAlwaysDiscount = syncFromEnv
+      ? envProbeAlwaysDiscount
+      : normalizeBooleanInput(
+          req.body?.probeAlwaysDiscount,
+          currentOk ? currentParsed.probeAlwaysDiscount : false
+        );
+    const nextProbeAttributeMatrix = syncFromEnv
+      ? envProbeAttributeMatrix
+      : normalizeBooleanInput(
+          req.body?.probeAttributeMatrix,
+          currentOk ? currentParsed.probeAttributeMatrix : false
+        );
+
+    const writeResult = writeRipxCheckoutExtensionConfigFile({
+      batchUrl: nextBatchUrl,
+      secret: nextSecret,
+      probeAlwaysDiscount: nextProbeAlwaysDiscount,
+      probeAttributeMatrix: nextProbeAttributeMatrix,
+    });
+
+    const diag = buildExtensionConfigDiagnostics({
+      envBatchUrl: envBatch,
+      envSecret,
+      extensionSource: 'present',
+      extensionContents: writeResult.source,
+    });
+    const extCheck = Array.isArray(diag.checklist)
+      ? diag.checklist.find(c => c.id === 'extension_config_matches_env')
+      : null;
+
+    return res.json({
+      success: true,
+      updated: true,
+      syncedFromEnv: syncFromEnv,
+      config: {
+        extensionConfigPath: RIPX_EXTENSION_CONFIG_RELATIVE_PATH,
+        batchUrl: nextBatchUrl,
+        checkoutSecretConfigured: Boolean(nextSecret),
+        checkoutSecretPreview: maskSecretPreview(nextSecret),
+        probeAlwaysDiscount: nextProbeAlwaysDiscount,
+        probeAttributeMatrix: nextProbeAttributeMatrix,
+      },
+      drift: {
+        ok: extCheck ? Boolean(extCheck.ok) : null,
+        severity: extCheck?.severity || null,
+        message: extCheck?.message || null,
+        extensionBatchUrlMatchesEnv:
+          diag?.infrastructurePatch?.extension_batch_url_matches_env ?? null,
+        extensionSecretMatchesEnv: diag?.infrastructurePatch?.extension_secret_matches_env ?? null,
+      },
+      recommendations: Array.isArray(diag.recommendations) ? diag.recommendations : [],
+      commands: {
+        build: 'npm run shopify:checkout-discount:build',
+        deploy: 'shopify app deploy',
+      },
+    });
   })
 );
 

@@ -20,7 +20,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import Toast from '../Toast/Toast';
 import PartyPop from '../PartyPop/PartyPop';
 import LoadingSkeleton from '../LoadingSkeleton/LoadingSkeleton';
-import { apiPost, apiPut, unwrapData, getShopDomain } from '../../services';
+import { apiPost, apiPut, apiRequest, unwrapData, getShopDomain } from '../../services';
 import TestWizard from '../TestWizard/TestWizard';
 import { PageShell } from '../Shared';
 import {
@@ -64,6 +64,7 @@ function TestDetail() {
   const [errorMessage, setErrorMessage] = useState(null);
   const [idsModalOpen, setIdsModalOpen] = useState(false);
   const [copyToast, setCopyToast] = useState(null);
+  const [rolloutCsvLoading, setRolloutCsvLoading] = useState(false);
   const [preLaunchOpen, setPreLaunchOpen] = useState(false);
   const [preLaunchChecked, setPreLaunchChecked] = useState({
     hypothesis: false,
@@ -294,6 +295,41 @@ function TestDetail() {
       setActionLoading(false);
     }
   };
+
+  const handleDownloadRolloutCsv = useCallback(async () => {
+    setRolloutCsvLoading(true);
+    setErrorMessage(null);
+    try {
+      const response = await apiRequest('GET', `/tests/${id}/price-rollout-csv`, null, {
+        responseType: 'text',
+        headers: { Accept: 'text/csv' },
+        transformResponse: [data => data],
+      });
+      const csv = response?.data || '';
+      const disposition = response?.headers?.['content-disposition'] || '';
+      const match = disposition.match(/filename="([^"]+)"/i);
+      const fileName = match?.[1] || `price-rollout-${id}.csv`;
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      setSuccessMessage('Rollout CSV downloaded');
+    } catch (err) {
+      setErrorMessage(
+        err?.response?.data?.details?.[0] ||
+          err?.response?.data?.error ||
+          err?.message ||
+          'Failed to download rollout CSV'
+      );
+    } finally {
+      setRolloutCsvLoading(false);
+    }
+  }, [id]);
 
   const handleSaveCode = async codePayload => {
     const response = await apiPut(`/tests/${id}/variants/codes`, codePayload);
@@ -722,6 +758,20 @@ function TestDetail() {
                         <Icon source={ExportIcon} />
                         Export
                       </button>
+                      {(String(test?.type || '').toLowerCase() === 'price' ||
+                        String(test?.type || '').toLowerCase() === 'pricing') &&
+                        isStopped && (
+                          <button
+                            type="button"
+                            className={styles.detailSecondaryBtn}
+                            onClick={handleDownloadRolloutCsv}
+                            disabled={rolloutCsvLoading}
+                            title="Download winner price mapping CSV"
+                          >
+                            <Icon source={ExportIcon} />
+                            {rolloutCsvLoading ? 'Preparing CSV…' : 'Rollout CSV'}
+                          </button>
+                        )}
                       <button
                         type="button"
                         className={styles.detailSecondaryBtn}

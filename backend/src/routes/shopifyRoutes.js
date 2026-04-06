@@ -125,7 +125,7 @@ router.get(
     }
 
     let list;
-    let productsPageInfo = null;
+    let resourcePageInfo = null;
     let emptyReason = null; // Set when list is empty due to scope/API error so frontend can show it
     const handleListError = (err, resourceLabel) => {
       const msg = (err && err.message) || String(err);
@@ -186,12 +186,28 @@ router.get(
           afterCursor
         );
         list = result.list;
-        productsPageInfo = result.pageInfo;
+        resourcePageInfo = result.pageInfo;
       } else if (type === 'collections') {
-        list = await shopifyService.listCollections(shopDomain, accessToken, searchQuery, first);
+        const result = await shopifyService.listCollections(
+          shopDomain,
+          accessToken,
+          searchQuery,
+          first,
+          afterCursor
+        );
+        list = result.list;
+        resourcePageInfo = result.pageInfo;
       } else {
         try {
-          list = await shopifyService.listPages(shopDomain, accessToken, searchQuery, first);
+          const result = await shopifyService.listPages(
+            shopDomain,
+            accessToken,
+            searchQuery,
+            first,
+            afterCursor
+          );
+          list = result.list;
+          resourcePageInfo = result.pageInfo;
         } catch (err) {
           list = handleListError(err, 'pages');
           if (list.length === 0 && !emptyReason) {
@@ -204,9 +220,10 @@ router.get(
     } catch (err) {
       if (type === 'products') {
         list = handleListError(err, 'products');
-        productsPageInfo = null;
+        resourcePageInfo = null;
       } else if (type === 'collections') {
         list = handleListError(err, 'collections');
+        resourcePageInfo = null;
       } else {
         throw err;
       }
@@ -217,7 +234,7 @@ router.get(
       type: rawType,
       resources: Array.isArray(list) ? list : [],
       ...(emptyReason && { empty_reason: emptyReason }),
-      ...(productsPageInfo && { page_info: productsPageInfo }),
+      ...(resourcePageInfo && { page_info: resourcePageInfo }),
     });
   })
 );
