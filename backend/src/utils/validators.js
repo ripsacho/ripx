@@ -171,43 +171,6 @@ class Validators {
    */
   validateTestConfig(config) {
     const errors = [];
-    const normalizePriceApplicationMethod = value => {
-      const raw = String(value || '')
-        .trim()
-        .toLowerCase();
-      if (raw === 'discounted_checkout_price') {
-        return 'discounted_checkout_price';
-      }
-      if (raw === 'native_variant_price') {
-        return 'native_variant_price';
-      }
-      if (raw === 'direct_price_override') {
-        return 'direct_price_override';
-      }
-      return 'auto';
-    };
-    const hasNativeVariantMapping = cfg =>
-      !!(
-        cfg &&
-        cfg.nativeVariantId !== null &&
-        cfg.nativeVariantId !== undefined &&
-        String(cfg.nativeVariantId).trim() !== ''
-      );
-    const priceConfigImpliesIncrease = cfg => {
-      if (!cfg || typeof cfg !== 'object') {
-        return false;
-      }
-      const mode = String(cfg.priceMode || 'fixed').toLowerCase();
-      if (mode === 'amount') {
-        const n = Number(cfg.priceDelta);
-        return !Number.isNaN(n) && n > 0;
-      }
-      if (mode === 'percent') {
-        const n = Number(cfg.pricePercent);
-        return !Number.isNaN(n) && n < 0;
-      }
-      return false;
-    };
     if (!config.name || config.name.trim().length === 0) {
       errors.push('Test name is required');
     }
@@ -256,7 +219,7 @@ class Validators {
         }
       });
 
-      // Price test: at least one non-control variant must have a price/discount configured
+      // Price test: at least one non-control variant must have a price configured
       const isPriceType =
         (config.type || '').toLowerCase() === 'price' ||
         (config.type || '').toLowerCase() === 'pricing';
@@ -265,7 +228,6 @@ class Validators {
         config.variants.forEach((v, i) => {
           const cfg = v?.config || {};
           const mode = (cfg.priceMode || 'fixed').toLowerCase();
-          const applicationMethod = normalizePriceApplicationMethod(cfg.priceApplicationMethod);
           const isControl =
             i === 0 ||
             (mode === 'fixed' &&
@@ -286,23 +248,10 @@ class Validators {
           if (!isControl && hasPrice) {
             hasNonControlWithPrice = true;
           }
-          if (applicationMethod === 'native_variant_price' && !hasNativeVariantMapping(cfg)) {
-            errors.push(
-              `Variant ${i + 1}: Native Variant Price requires a mapped Shopify variant ID.`
-            );
-          }
-          if (
-            applicationMethod === 'discounted_checkout_price' &&
-            priceConfigImpliesIncrease(cfg)
-          ) {
-            errors.push(
-              `Variant ${i + 1}: Discounted Checkout Price only supports lower prices. Use Auto or Native Variant Price for price increases.`
-            );
-          }
         });
         if (!hasNonControlWithPrice) {
           errors.push(
-            'Price test: at least one test variant (non-control) must have a price or discount configured.'
+            'Price test: at least one test variant (non-control) must have a price configured.'
           );
         }
       }

@@ -25,7 +25,7 @@ const { SCRIPT_VERSION } = require('../utils/storefrontScriptRuntime');
 const shopifyService = require('../services/shopifyService');
 const { getShopSession } = require('../models/shopSession');
 
-const RIPX_DEFAULT_AUTOMATIC_DISCOUNT_TITLE = 'RipX Price Test Function';
+const RIPX_DEFAULT_AUTOMATIC_DISCOUNT_TITLE = 'RipX Offer Checkout Function';
 const ALLOWED_DISCOUNT_CLASSES = new Set(['PRODUCT', 'ORDER', 'SHIPPING']);
 
 function buildDiscountEnsureTroubleshooting({ shopDomain, chosenFunction, attemptedTitles = [] }) {

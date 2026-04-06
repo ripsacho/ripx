@@ -56,14 +56,34 @@ function evaluate(pipeline, assignment, selectedShop, options = {}) {
   const blockers = [];
   const warnings = [];
 
-  const pipelineOk = Boolean(pipeline?.summary?.overall_ok);
-  if (!pipelineOk) {
-    blockers.push('Pipeline diagnostics are not fully passing.');
+  const checklist = Array.isArray(pipeline?.checklist) ? pipeline.checklist : [];
+  const failedErrors = checklist.filter(
+    c => c && c.ok === false && String(c.severity || '').toLowerCase() === 'error'
+  );
+  const failedWarnings = checklist.filter(
+    c => c && c.ok === false && String(c.severity || '').toLowerCase() !== 'error'
+  );
+
+  failedErrors.forEach(c => {
+    blockers.push(`Pipeline check failed (${c.id}): ${c.message || 'see diagnostics output'}`);
+  });
+  failedWarnings.forEach(c => {
+    warnings.push(`Pipeline warning (${c.id}): ${c.message || 'see diagnostics output'}`);
+  });
+
+  if (
+    failedErrors.length === 0 &&
+    failedWarnings.length === 0 &&
+    String(pipeline?.summary?.overall_status || '').toLowerCase() === 'unknown'
+  ) {
+    warnings.push('Pipeline summary is unknown; verify diagnostics output for details.');
   }
 
   const checkoutReady = String(pipeline?.support?.checkout_alignment?.level || '') === 'ready';
   if (!checkoutReady) {
-    blockers.push('Checkout alignment support is not ready.');
+    const checkoutSummary =
+      pipeline?.support?.checkout_alignment?.summary || 'Checkout alignment support is not ready.';
+    blockers.push(`Checkout alignment not ready: ${checkoutSummary}`);
   }
 
   if (selectedShop) {
@@ -93,6 +113,9 @@ function evaluate(pipeline, assignment, selectedShop, options = {}) {
   }
 
   const verdict = blockers.length === 0 ? 'go' : 'no-go';
+  const recommendationLines = Array.isArray(pipeline?.recommendations)
+    ? pipeline.recommendations.filter(Boolean).slice(0, 3)
+    : [];
   return {
     success: true,
     verdict,
@@ -122,6 +145,7 @@ function evaluate(pipeline, assignment, selectedShop, options = {}) {
         : [
             'Resolve blockers above, then rerun this verifier.',
             'Use scripts/verify-price-pipeline.js --json and scripts/verify-price-assignment-readiness.js --json for deeper details.',
+            ...recommendationLines,
           ],
   };
 }

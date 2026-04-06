@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import './PartyPop.css';
 
 const LEFT_CANNON_PIECES = [
@@ -141,20 +141,25 @@ function PartyPop({
   const [burstSeed, setBurstSeed] = useState(1);
   const resolvedDuration =
     duration || (isSubtle ? (isCinematic ? 1200 : 900) : isUltra ? 2550 : 1950);
-  const ultraBoost = isUltra
-    ? arr =>
-        arr.concat(
-          arr.map((p, idx) => ({
-            ...p,
-            x: p.x * 1.12 + (idx % 2 === 0 ? 26 : -26),
-            y: p.y * 1.08,
-            d: p.d + 260 + idx * 12,
-            s: (p.s || 1) * 1.18,
-          }))
-        )
-    : arr => arr;
-  const withMotion = (arr, seed, magnitude = 1) =>
-    isCinematic ? arr : varyPieces(arr, seed, magnitude);
+  const ultraBoost = useCallback(
+    arr =>
+      isUltra
+        ? arr.concat(
+            arr.map((p, idx) => ({
+              ...p,
+              x: p.x * 1.12 + (idx % 2 === 0 ? 26 : -26),
+              y: p.y * 1.08,
+              d: p.d + 260 + idx * 12,
+              s: (p.s || 1) * 1.18,
+            }))
+          )
+        : arr,
+    [isUltra]
+  );
+  const withMotion = useCallback(
+    (arr, seed, magnitude = 1) => (isCinematic ? arr : varyPieces(arr, seed, magnitude)),
+    [isCinematic]
+  );
   const leftPieces = useMemo(
     () =>
       withMotion(
@@ -164,7 +169,7 @@ function PartyPop({
         burstSeed,
         isSubtle ? 0.45 : isUltra ? 1.25 : 1
       ),
-    [burstSeed, isSubtle, isUltra, isCinematic]
+    [burstSeed, isSubtle, isUltra, isCinematic, ultraBoost, withMotion]
   );
   const rightPieces = useMemo(
     () =>
@@ -175,7 +180,7 @@ function PartyPop({
         burstSeed + 17,
         isSubtle ? 0.45 : isUltra ? 1.25 : 1
       ),
-    [burstSeed, isSubtle, isUltra, isCinematic]
+    [burstSeed, isSubtle, isUltra, isCinematic, ultraBoost, withMotion]
   );
   const sparks = useMemo(
     () =>
@@ -186,7 +191,7 @@ function PartyPop({
         burstSeed + 33,
         isSubtle ? 0.5 : isUltra ? 1.35 : 1
       ),
-    [burstSeed, isSubtle, isUltra, isCinematic]
+    [burstSeed, isSubtle, isUltra, isCinematic, ultraBoost, withMotion]
   );
   const streamers = useMemo(
     () =>
@@ -195,7 +200,7 @@ function PartyPop({
         burstSeed + 49,
         isUltra ? 1.2 : 0.95
       ),
-    [burstSeed, isSubtle, isUltra, isCinematic]
+    [burstSeed, isSubtle, isUltra, isCinematic, ultraBoost, withMotion]
   );
   const topRain = useMemo(
     () =>
@@ -204,7 +209,7 @@ function PartyPop({
         burstSeed + 65,
         isUltra ? 1.2 : 0.95
       ),
-    [burstSeed, isSubtle, isUltra, isCinematic]
+    [burstSeed, isSubtle, isUltra, isCinematic, ultraBoost, withMotion]
   );
   const comets = useMemo(
     () =>
@@ -213,7 +218,7 @@ function PartyPop({
         burstSeed + 81,
         isUltra ? 1.32 : 1.05
       ),
-    [burstSeed, isSubtle, isUltra, isCinematic]
+    [burstSeed, isSubtle, isUltra, isCinematic, ultraBoost, withMotion]
   );
   const rays = useMemo(
     () =>
@@ -222,7 +227,7 @@ function PartyPop({
         burstSeed + 97,
         isSubtle ? 0.68 : isUltra ? 1.35 : 1.08
       ),
-    [burstSeed, isSubtle, isUltra, isCinematic]
+    [burstSeed, isSubtle, isUltra, isCinematic, ultraBoost, withMotion]
   );
   const twinkles = useMemo(
     () =>
@@ -235,7 +240,7 @@ function PartyPop({
         burstSeed + 113,
         isSubtle ? 0.62 : isUltra ? 1.3 : 1
       ),
-    [burstSeed, isSubtle, isUltra, isCinematic]
+    [burstSeed, isSubtle, isUltra, isCinematic, ultraBoost, withMotion]
   );
   const orbits = useMemo(
     () =>
@@ -244,7 +249,7 @@ function PartyPop({
         burstSeed + 129,
         isSubtle ? 0.55 : isUltra ? 1.35 : 1
       ),
-    [burstSeed, isSubtle, isUltra, isCinematic]
+    [burstSeed, isSubtle, isUltra, isCinematic, withMotion]
   );
   const fireworks = useMemo(
     () => (isUltra ? (isCinematic ? FIREWORKS.slice(0, 2) : FIREWORKS) : []),

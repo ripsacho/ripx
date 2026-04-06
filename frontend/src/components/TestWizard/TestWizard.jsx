@@ -227,7 +227,62 @@ function normalizeVariantPriceConfigShape(variant) {
   return { ...variant, config };
 }
 
-function NativeVariantMappingAssistant({
+function enforceDirectPriceOverrideOnConfig(config) {
+  if (!config || typeof config !== 'object') {
+    return config;
+  }
+  const next = {
+    ...config,
+    priceApplicationMethod: 'direct_price_override',
+  };
+  if (next.byProduct && typeof next.byProduct === 'object') {
+    next.byProduct = Object.fromEntries(
+      Object.entries(next.byProduct).map(([productId, override]) => {
+        if (!override || typeof override !== 'object') return [productId, override];
+        const productOverride = {
+          ...override,
+          priceApplicationMethod: 'direct_price_override',
+        };
+        if (productOverride.byVariant && typeof productOverride.byVariant === 'object') {
+          productOverride.byVariant = Object.fromEntries(
+            Object.entries(productOverride.byVariant).map(([variantKey, variantOverride]) => {
+              if (!variantOverride || typeof variantOverride !== 'object') {
+                return [variantKey, variantOverride];
+              }
+              return [
+                variantKey,
+                {
+                  ...variantOverride,
+                  priceApplicationMethod: 'direct_price_override',
+                },
+              ];
+            })
+          );
+        }
+        return [productId, productOverride];
+      })
+    );
+  }
+  if (next.byVariant && typeof next.byVariant === 'object') {
+    next.byVariant = Object.fromEntries(
+      Object.entries(next.byVariant).map(([variantKey, variantOverride]) => {
+        if (!variantOverride || typeof variantOverride !== 'object') {
+          return [variantKey, variantOverride];
+        }
+        return [
+          variantKey,
+          {
+            ...variantOverride,
+            priceApplicationMethod: 'direct_price_override',
+          },
+        ];
+      })
+    );
+  }
+  return next;
+}
+
+function _NativeVariantMappingAssistant({
   shopDomain,
   disabled,
   currentValue,
@@ -569,6 +624,7 @@ function TestWizard({
   const [catalogConfirmedForPriceTest, setCatalogConfirmedForPriceTest] = useState(false); // optional confirmation on Review (does not block submit)
   const [lastSimulationExportAt, setLastSimulationExportAt] = useState(null);
   const [simulationExportToast, setSimulationExportToast] = useState(null);
+  const [priceMatrixActionToast, setPriceMatrixActionToast] = useState(null);
   const [antiFlickerToast, setAntiFlickerToast] = useState(null);
   useEffect(() => {
     const n = formData.variants?.length ?? 0;
@@ -641,6 +697,12 @@ function TestWizard({
   });
   const [priceModalError, setPriceModalError] = useState(null);
   const [priceProductMetaById, setPriceProductMetaById] = useState({});
+  const [priceMatrixProductsById, setPriceMatrixProductsById] = useState({});
+  const [priceMatrixLoadingById, setPriceMatrixLoadingById] = useState({});
+  const [priceMatrixErrorById, setPriceMatrixErrorById] = useState({});
+  const [priceMatrixBulkMode, setPriceMatrixBulkMode] = useState('amount');
+  const [priceMatrixBulkValue, setPriceMatrixBulkValue] = useState('');
+  const [priceMatrixUndoByScope, setPriceMatrixUndoByScope] = useState({});
   const [priceGuideCheckoutOpen, setPriceGuideCheckoutOpen] = useState(false);
   const [priceGuideSampleOpen, setPriceGuideSampleOpen] = useState(false);
   const [priceVariantToolsExpanded, setPriceVariantToolsExpanded] = useState(false);
@@ -1038,6 +1100,91 @@ function TestWizard({
   }, [routeDomain, priceModalPageInfo, priceModalSearchDebounced, priceModalLoadingMore]);
 
   useEffect(() => {
+    const targetProductIds =
+      formData.target_type === 'product'
+        ? formData.target_ids?.length
+          ? formData.target_ids
+          : formData.target_id
+            ? [formData.target_id]
+            : []
+        : [];
+    if (
+      !formData.pricePerProduct ||
+      targetProductIds.length === 0 ||
+      isStandalone ||
+      !isShopifyFromRoute ||
+      !routeDomain
+    ) {
+      return;
+    }
+    let cancelled = false;
+    targetProductIds.forEach(productId => {
+      if (!productId) return;
+      if (priceMatrixProductsById[productId] || priceMatrixLoadingById[productId]) return;
+      setPriceMatrixLoadingById(prev => ({ ...prev, [productId]: true }));
+      setPriceMatrixErrorById(prev => ({ ...prev, [productId]: null }));
+      apiGet('/shopify/product-variants', {
+        shop: routeDomain,
+        productId,
+        first: 1,
+        variantsFirst: 100,
+      })
+        .then(res => {
+          if (cancelled) return;
+          const product = Array.isArray(res.data?.products) ? res.data.products[0] : null;
+          const normalized = product
+            ? {
+                id: product.id || productId,
+                title: product.title || priceProductMetaById[productId]?.title || String(productId),
+                handle: product.handle || '',
+                variants: Array.isArray(product.variants) ? product.variants : [],
+              }
+            : null;
+          setPriceMatrixProductsById(prev => ({
+            ...prev,
+            [productId]: normalized || {
+              id: productId,
+              title: priceProductMetaById[productId]?.title || String(productId),
+              handle: priceProductMetaById[productId]?.handle || '',
+              variants: [],
+            },
+          }));
+          if (!normalized && res.data?.empty_reason) {
+            setPriceMatrixErrorById(prev => ({ ...prev, [productId]: res.data.empty_reason }));
+          }
+        })
+        .catch(err => {
+          if (cancelled) return;
+          setPriceMatrixErrorById(prev => ({
+            ...prev,
+            [productId]:
+              err?.response?.data?.error ||
+              err?.message ||
+              'Could not load variants and current prices for this product.',
+          }));
+        })
+        .finally(() => {
+          if (cancelled) return;
+          setPriceMatrixLoadingById(prev => ({ ...prev, [productId]: false }));
+        });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    formData.pricePerProduct,
+    formData.target_type,
+    formData.target_id,
+    formData.target_ids,
+    isStandalone,
+    isShopifyFromRoute,
+    routeDomain,
+    priceMatrixProductsById,
+    priceMatrixLoadingById,
+    priceProductMetaById,
+  ]);
+
+  useEffect(() => {
     if (isStandalone && (placementSection === 'device' || placementSection === 'audience')) {
       setPlacementSection('page');
     }
@@ -1411,6 +1558,9 @@ function TestWizard({
       selectedTemplate ||
       data.goal?.template_key ||
       inferTemplateKeyFromVariants(data.variants, data.type);
+    const isPriceLikeTest =
+      ['price', 'pricing'].includes(String(data.type || '').toLowerCase()) ||
+      ['price', 'pricing'].includes(String(templateKey || '').toLowerCase());
 
     const goal = {
       type: data.goal?.type || 'conversion',
@@ -1419,10 +1569,16 @@ function TestWizard({
       secondary: Array.isArray(data.goal?.secondary) ? data.goal.secondary : [],
     };
 
-    const normalizedVariants = normalizeVariantAllocations(variantsWithCode).map(v => ({
-      ...v,
-      allocation: Number(v.allocation) || 0,
-    }));
+    const normalizedVariants = normalizeVariantAllocations(variantsWithCode).map(v => {
+      const nextVariant = {
+        ...v,
+        allocation: Number(v.allocation) || 0,
+      };
+      if (isPriceLikeTest) {
+        nextVariant.config = enforceDirectPriceOverrideOnConfig(nextVariant.config || {});
+      }
+      return nextVariant;
+    });
 
     // Omit frontend-only fields that are not columns on tests (e.g. pricePerProduct is UI state; per-product config lives in variants[].config.byProduct)
     const { pricePerProduct: _pricePerProduct, ...dataForApi } = data;
@@ -6160,16 +6316,8 @@ function TestWizard({
     { value: 'price', label: 'Selling price' },
     { value: 'compare_at', label: 'Compare-at price (list)' },
   ];
-  const PRICE_APPLICATION_METHOD_OPTIONS = [
-    { value: 'auto', label: 'Auto (recommended)' },
-    { value: 'discounted_checkout_price', label: 'Discounted Checkout Price' },
-    { value: 'native_variant_price', label: 'Native Variant Price' },
-    { value: 'direct_price_override', label: 'Direct Price Override' },
-  ];
   const cartTransformFunctionAvailable =
     checkoutDiagnostics?.infrastructure?.cart_transform_function_available === true;
-  const discountFunctionAvailable =
-    checkoutDiagnostics?.infrastructure?.discount_function_available === true;
   const directPriceOverrideReadiness = cartTransformFunctionAvailable
     ? 'ready'
     : checkoutDiagnosticsLoading
@@ -6502,6 +6650,8 @@ function TestWizard({
 
   const getProductLabelFromId = id => {
     if (!id) return 'Product';
+    const meta = priceProductMetaById[id];
+    if (meta?.title) return meta.title;
     const s = String(id);
     const m = s.match(/Product\/(\d+)/);
     return m ? `Product ${m[1]}` : s;
@@ -6568,25 +6718,8 @@ function TestWizard({
     const priceDecreaseCount = variants.filter(v =>
       priceConfigImpliesDecrease(v?.config || {})
     ).length;
-    const mappingRequiredCount = variants.filter(v => {
-      const method = normalizePriceApplicationMethod(v?.config?.priceApplicationMethod);
-      return (
-        method === 'native_variant_price' ||
-        (method === 'auto' && priceConfigImpliesIncrease(v?.config || {}))
-      );
-    }).length;
-    const mappingReadyCount = variants.filter(v =>
-      Boolean(normalizeNativeVariantIdInput(v?.config?.nativeVariantId))
-    ).length;
-    const methodUsageSummary = variants.reduce((acc, variant) => {
-      const label = getResolvedPriceApplicationMethodSummary(variant?.config || {}).label;
-      acc[label] = (acc[label] || 0) + 1;
-      return acc;
-    }, {});
     const methodUsageLabel =
-      Object.entries(methodUsageSummary)
-        .map(([label, count]) => `${label} ${count}`)
-        .join(' · ') || 'Auto';
+      variants.length > 0 ? `Direct Price Override ${variants.length}` : 'Direct Price Override';
     const scopeLabel =
       String(formData.target_type || '').toLowerCase() === 'product'
         ? `${priceTargetProductIds.length || 1} selected product${priceTargetProductIds.length === 1 ? '' : 's'}`
@@ -6611,30 +6744,38 @@ function TestWizard({
     const renderPriceVariantEditor = index => {
       const variant = variants[index] || {};
       const mode = variant.config?.priceMode || 'fixed';
-      const applicationMethod = normalizePriceApplicationMethod(
-        variant.config?.priceApplicationMethod
-      );
-      const applicationMethodMeta = getPriceApplicationMethodMeta(
-        variant.config || applicationMethod
-      );
+      const applicationMethod = 'direct_price_override';
       const hasNativeVariantMapping = !!normalizeNativeVariantIdInput(
         variant.config?.nativeVariantId
       );
       const priceIncreaseConfigured = priceConfigImpliesIncrease(variant.config || {});
-      const priceDecreaseConfigured = priceConfigImpliesDecrease(variant.config || {});
       const mappingRequired =
         applicationMethod === 'native_variant_price' ||
         (applicationMethod === 'auto' && priceIncreaseConfigured);
       const isFixed = mode === 'fixed';
       const isAmount = mode === 'amount';
       const isPercent = mode === 'percent';
-      const selectedMethodConstraint = getPriceApplicationMethodConstraint(
-        applicationMethod,
-        variant.config || {}
-      );
+      const matrixBulkParsedValue = Number(priceMatrixBulkValue);
+      const matrixBulkValueValid =
+        String(priceMatrixBulkValue).trim() !== '' && Number.isFinite(matrixBulkParsedValue);
+      const cloneMatrixUndoValue = value => {
+        if (!value || typeof value !== 'object') return null;
+        try {
+          return JSON.parse(JSON.stringify(value));
+        } catch (_error) {
+          return { ...value };
+        }
+      };
+      const selectedMethodConstraint = getPriceApplicationMethodConstraint(applicationMethod, {
+        ...(variant.config || {}),
+        priceApplicationMethod: applicationMethod,
+      });
       const editorPreviewText = getPricePreview(variant.config, variant.name);
       const editorRuleValue = getPriceValueCell(variant);
-      const resolvedMethodSummary = getResolvedPriceApplicationMethodSummary(variant.config || {});
+      const resolvedMethodSummary = getResolvedPriceApplicationMethodSummary({
+        ...(variant.config || {}),
+        priceApplicationMethod: applicationMethod,
+      });
       const editorStatusText = selectedMethodConstraint?.blocked
         ? selectedMethodConstraint.text
         : applicationMethod === 'native_variant_price' && !hasNativeVariantMapping
@@ -6649,32 +6790,6 @@ function TestWizard({
           : mappingRequired && !hasNativeVariantMapping
             ? 'attention'
             : 'success';
-      const directOverrideRecommended =
-        priceIncreaseConfigured && cartTransformFunctionAvailable && !priceDecreaseConfigured;
-      const orderedPriceApplicationMethodOptions = [...PRICE_APPLICATION_METHOD_OPTIONS].sort(
-        (left, right) => {
-          const score = value => {
-            const method = normalizePriceApplicationMethod(value);
-            if (directOverrideRecommended) {
-              if (method === 'direct_price_override') return 0;
-              if (method === 'auto') return 1;
-              if (method === 'native_variant_price') return 2;
-              return 3;
-            }
-            if (priceDecreaseConfigured) {
-              if (method === 'discounted_checkout_price') return 0;
-              if (method === 'auto') return 1;
-              if (method === 'native_variant_price') return 2;
-              return 3;
-            }
-            if (method === 'auto') return 0;
-            if (method === 'native_variant_price') return 1;
-            if (method === 'direct_price_override') return 2;
-            return 3;
-          };
-          return score(left.value) - score(right.value);
-        }
-      );
       return (
         <div
           className={styles.priceEditorPanel}
@@ -6818,522 +6933,625 @@ function TestWizard({
                 <BlockStack gap="400">
                   <div className={styles.priceScopedIntro}>
                     <Text as="p" variant="bodySm" fontWeight="semibold">
-                      Per-product pricing is enabled for this variant
+                      Per-product price matrix is enabled for this variant
                     </Text>
                     <Text as="p" variant="bodySm" tone="subdued">
-                      Start with each product-level price card below, then add SKU-specific
-                      overrides only when a product needs exceptions.
+                      Edit product rows and SKU rows in one place. &quot;New selling&quot; is the
+                      applied price override; &quot;New actual&quot; is an optional list-price
+                      reference.
                     </Text>
                   </div>
-                  <div className={styles.pricePerProductGrid}>
-                    {priceTargetProductIds.map(productId => {
-                      const baseCfg = variant.config || {};
-                      const over = baseCfg.byProduct && baseCfg.byProduct[productId];
-                      const cfg =
-                        over && typeof over === 'object' ? { ...baseCfg, ...over } : baseCfg;
-                      const pHasNativeVariantMapping = !!normalizeNativeVariantIdInput(
-                        cfg.nativeVariantId
-                      );
-                      const pMappingRequired =
-                        applicationMethod === 'native_variant_price' ||
-                        (applicationMethod === 'auto' && priceConfigImpliesIncrease(cfg));
-                      const pMode = cfg.priceMode || 'fixed';
-                      const pFixed = pMode === 'fixed';
-                      const pAmount = pMode === 'amount';
-                      const pPercent = pMode === 'percent';
-                      const productRuleValue = getPriceValueCell({ ...variant, config: cfg });
-                      const productPreviewText = getPricePreview(cfg, variant.name);
-                      const productMethodLabel = getPriceApplicationMethodShortLabel(cfg);
-                      const updateByProduct = (key, value) => {
-                        setFormData(prev => {
-                          const next = [...(prev.variants || [])];
-                          const c = next[index]?.config || {};
-                          const byProduct = { ...(c.byProduct || {}) };
-                          byProduct[productId] = { ...(byProduct[productId] || {}), [key]: value };
-                          next[index] = { ...next[index], config: { ...c, byProduct } };
-                          return { ...prev, variants: next };
-                        });
-                      };
-                      return (
-                        <div key={productId} className={styles.pricePerProductCard}>
-                          <Card sectioned>
-                            <BlockStack gap="300">
-                              <div className={styles.priceScopedCardHeader}>
-                                <BlockStack gap="150">
-                                  <Text as="p" variant="headingSm" fontWeight="semibold">
-                                    {getProductLabelFromId(productId)}
-                                  </Text>
-                                  <div className={styles.priceNestedStatusRow}>
-                                    <Badge tone="info" size="small">
-                                      {getPriceTypeLabel(cfg)}
-                                    </Badge>
-                                    <Badge tone="attention" size="small">
-                                      {productRuleValue}
-                                    </Badge>
-                                    <Badge tone="success" size="small">
-                                      {productPreviewText}
-                                    </Badge>
-                                    <Badge tone="info" size="small">
-                                      {productMethodLabel}
-                                    </Badge>
-                                    {(applicationMethod === 'auto' ||
-                                      applicationMethod === 'native_variant_price') && (
+                  <div className={styles.priceMatrixBulkBar}>
+                    <InlineStack gap="200" blockAlign="center" wrap>
+                      <Text as="span" variant="bodySm" fontWeight="semibold">
+                        Bulk update
+                      </Text>
+                      <Select
+                        label="Bulk mode"
+                        labelHidden
+                        options={[
+                          { label: 'Amount (+/-)', value: 'amount' },
+                          { label: 'Percent (+/-)', value: 'percent' },
+                        ]}
+                        value={priceMatrixBulkMode}
+                        onChange={setPriceMatrixBulkMode}
+                      />
+                      <div className={styles.priceMatrixBulkValueField}>
+                        <TextField
+                          label="Bulk value"
+                          labelHidden
+                          type="number"
+                          value={priceMatrixBulkValue}
+                          onChange={setPriceMatrixBulkValue}
+                          placeholder={
+                            priceMatrixBulkMode === 'amount' ? 'e.g. -5 or +2' : 'e.g. -10 or +8'
+                          }
+                          suffix={priceMatrixBulkMode === 'percent' ? '%' : ''}
+                          autoComplete="off"
+                        />
+                      </div>
+                      <Button
+                        size="slim"
+                        disabled={!matrixBulkValueValid}
+                        onClick={() => {
+                          if (!matrixBulkValueValid) return;
+                          const applicableProductIds = [];
+                          let applicableRowCount = 0;
+                          priceTargetProductIds.forEach(productId => {
+                            const matrixProduct = priceMatrixProductsById[productId];
+                            const variantsForProduct = Array.isArray(matrixProduct?.variants)
+                              ? matrixProduct.variants
+                              : [];
+                            const countForProduct = variantsForProduct.filter(productVariant => {
+                              const variantKey = normalizeNativeVariantIdInput(productVariant?.id);
+                              const currentSelling = Number(productVariant?.price);
+                              return Boolean(variantKey) && Number.isFinite(currentSelling);
+                            }).length;
+                            if (countForProduct > 0) {
+                              applicableProductIds.push(productId);
+                              applicableRowCount += countForProduct;
+                            }
+                          });
+                          if (applicableProductIds.length === 0) {
+                            setPriceMatrixActionToast({
+                              message:
+                                'No rows available for bulk update yet. Wait for products to load.',
+                              type: 'info',
+                            });
+                            return;
+                          }
+                          setPriceMatrixUndoByScope(prevUndo => {
+                            const nextUndo = { ...prevUndo };
+                            const currentByProduct = variant.config?.byProduct || {};
+                            applicableProductIds.forEach(productId => {
+                              const undoKey = `${index}::${productId}`;
+                              const hasProductOverride = Object.prototype.hasOwnProperty.call(
+                                currentByProduct,
+                                productId
+                              );
+                              nextUndo[undoKey] = {
+                                hadOverride: hasProductOverride,
+                                value: hasProductOverride
+                                  ? cloneMatrixUndoValue(currentByProduct[productId])
+                                  : null,
+                              };
+                            });
+                            return nextUndo;
+                          });
+                          setFormData(prev => {
+                            const next = [...(prev.variants || [])];
+                            const c = next[index]?.config || {};
+                            const byProduct = { ...(c.byProduct || {}) };
+                            applicableProductIds.forEach(productId => {
+                              const matrixProduct = priceMatrixProductsById[productId];
+                              const variantsForProduct = Array.isArray(matrixProduct?.variants)
+                                ? matrixProduct.variants
+                                : [];
+                              if (!variantsForProduct.length) return;
+                              const productOver = {
+                                ...(byProduct[productId] || {}),
+                                byVariant: { ...(byProduct[productId]?.byVariant || {}) },
+                              };
+                              variantsForProduct.forEach(productVariant => {
+                                const variantKey = normalizeNativeVariantIdInput(
+                                  productVariant?.id
+                                );
+                                if (!variantKey) return;
+                                const currentSelling = Number(productVariant?.price);
+                                if (!Number.isFinite(currentSelling)) return;
+                                const nextSelling =
+                                  priceMatrixBulkMode === 'percent'
+                                    ? currentSelling * (1 + matrixBulkParsedValue / 100)
+                                    : currentSelling + matrixBulkParsedValue;
+                                const roundedSelling = Math.max(
+                                  0,
+                                  Math.round(nextSelling * 100) / 100
+                                );
+                                const rowOver = {
+                                  ...(productOver.byVariant?.[variantKey] || {}),
+                                  priceMode: 'fixed',
+                                  priceBase: 'price',
+                                  price: roundedSelling,
+                                };
+                                productOver.byVariant[variantKey] = rowOver;
+                              });
+                              byProduct[productId] = productOver;
+                            });
+                            next[index] = { ...next[index], config: { ...c, byProduct } };
+                            return { ...prev, variants: next };
+                          });
+                          setPriceMatrixActionToast({
+                            message: `Applied bulk ${priceMatrixBulkMode === 'percent' ? `${matrixBulkParsedValue}%` : `$${matrixBulkParsedValue.toFixed(2)}`} to ${applicableRowCount} row${applicableRowCount === 1 ? '' : 's'} across ${applicableProductIds.length} product${applicableProductIds.length === 1 ? '' : 's'}.`,
+                            type: 'success',
+                          });
+                        }}
+                      >
+                        Apply to all rows
+                      </Button>
+                    </InlineStack>
+                  </div>
+                  <div className={styles.priceMatrixWrap}>
+                    <table className={styles.priceMatrixTable}>
+                      <thead>
+                        <tr>
+                          <th>Product</th>
+                          <th>Variant</th>
+                          <th>Current actual</th>
+                          <th>Current selling</th>
+                          <th>New actual</th>
+                          <th>New selling</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {priceTargetProductIds.map(productId => {
+                          const matrixProduct = priceMatrixProductsById[productId];
+                          const productLabel =
+                            matrixProduct?.title || getProductLabelFromId(productId);
+                          const productOver =
+                            (variant.config?.byProduct && variant.config.byProduct[productId]) ||
+                            {};
+                          const productHasOverrides =
+                            productOver &&
+                            typeof productOver === 'object' &&
+                            Object.keys(productOver).length > 0;
+                          const scopeKey = `${index}::${productId}`;
+                          const undoSnapshot = priceMatrixUndoByScope[scopeKey] || null;
+                          const rememberProductUndo = byProductMap => {
+                            const hasProductOverride = Object.prototype.hasOwnProperty.call(
+                              byProductMap,
+                              productId
+                            );
+                            setPriceMatrixUndoByScope(prevUndo => ({
+                              ...prevUndo,
+                              [scopeKey]: {
+                                hadOverride: hasProductOverride,
+                                value: hasProductOverride
+                                  ? cloneMatrixUndoValue(byProductMap[productId])
+                                  : null,
+                              },
+                            }));
+                          };
+                          const undoLastProductAction = () => {
+                            if (!undoSnapshot) return;
+                            setFormData(prev => {
+                              const next = [...(prev.variants || [])];
+                              const c = next[index]?.config || {};
+                              const byProduct = { ...(c.byProduct || {}) };
+                              if (undoSnapshot.hadOverride) {
+                                byProduct[productId] =
+                                  cloneMatrixUndoValue(undoSnapshot.value) || {};
+                              } else {
+                                delete byProduct[productId];
+                              }
+                              const nextConfig = { ...c };
+                              if (Object.keys(byProduct).length > 0) {
+                                nextConfig.byProduct = byProduct;
+                              } else {
+                                delete nextConfig.byProduct;
+                              }
+                              next[index] = {
+                                ...next[index],
+                                config: nextConfig,
+                              };
+                              return { ...prev, variants: next };
+                            });
+                            setPriceMatrixUndoByScope(prevUndo => {
+                              const nextUndo = { ...prevUndo };
+                              delete nextUndo[scopeKey];
+                              return nextUndo;
+                            });
+                            setPriceMatrixActionToast({
+                              message: `Undid last action for ${productLabel}.`,
+                              type: 'success',
+                            });
+                          };
+                          const applyBulkToSingleProduct = () => {
+                            if (!matrixBulkValueValid) return;
+                            const variantsForProduct = Array.isArray(matrixProduct?.variants)
+                              ? matrixProduct.variants
+                              : [];
+                            if (!variantsForProduct.length) return;
+                            setFormData(prev => {
+                              const next = [...(prev.variants || [])];
+                              const c = next[index]?.config || {};
+                              const byProduct = { ...(c.byProduct || {}) };
+                              rememberProductUndo(byProduct);
+                              const productEntry = {
+                                ...(byProduct[productId] || {}),
+                                byVariant: { ...(byProduct[productId]?.byVariant || {}) },
+                              };
+                              variantsForProduct.forEach(productVariant => {
+                                const variantKey = normalizeNativeVariantIdInput(
+                                  productVariant?.id
+                                );
+                                if (!variantKey) return;
+                                const currentSelling = Number(productVariant?.price);
+                                if (!Number.isFinite(currentSelling)) return;
+                                const nextSelling =
+                                  priceMatrixBulkMode === 'percent'
+                                    ? currentSelling * (1 + matrixBulkParsedValue / 100)
+                                    : currentSelling + matrixBulkParsedValue;
+                                const roundedSelling = Math.max(
+                                  0,
+                                  Math.round(nextSelling * 100) / 100
+                                );
+                                productEntry.byVariant[variantKey] = {
+                                  ...(productEntry.byVariant?.[variantKey] || {}),
+                                  priceMode: 'fixed',
+                                  priceBase: 'price',
+                                  price: roundedSelling,
+                                };
+                              });
+                              byProduct[productId] = productEntry;
+                              next[index] = {
+                                ...next[index],
+                                config: { ...c, byProduct },
+                              };
+                              return { ...prev, variants: next };
+                            });
+                            setPriceMatrixActionToast({
+                              message: `Applied bulk ${priceMatrixBulkMode === 'percent' ? `${matrixBulkParsedValue}%` : `$${matrixBulkParsedValue.toFixed(2)}`} to ${productLabel}.`,
+                              type: 'success',
+                            });
+                          };
+                          const clearSingleProductOverrides = () => {
+                            setFormData(prev => {
+                              const next = [...(prev.variants || [])];
+                              const c = next[index]?.config || {};
+                              const byProduct = { ...(c.byProduct || {}) };
+                              rememberProductUndo(byProduct);
+                              delete byProduct[productId];
+                              const nextConfig = { ...c };
+                              if (Object.keys(byProduct).length > 0) {
+                                nextConfig.byProduct = byProduct;
+                              } else {
+                                delete nextConfig.byProduct;
+                              }
+                              next[index] = {
+                                ...next[index],
+                                config: nextConfig,
+                              };
+                              return { ...prev, variants: next };
+                            });
+                            setPriceMatrixActionToast({
+                              message: `Reset all edits for ${productLabel}.`,
+                              type: 'success',
+                            });
+                          };
+                          const clearSingleProductFieldOverrides = field => {
+                            setFormData(prev => {
+                              const next = [...(prev.variants || [])];
+                              const c = next[index]?.config || {};
+                              const byProduct = { ...(c.byProduct || {}) };
+                              rememberProductUndo(byProduct);
+                              const productEntry = { ...(byProduct[productId] || {}) };
+                              const byVariant = { ...(productEntry.byVariant || {}) };
+
+                              if (field === 'price') {
+                                delete productEntry.price;
+                                delete productEntry.priceMode;
+                                delete productEntry.priceBase;
+                              } else if (field === 'compareAtPrice') {
+                                delete productEntry.compareAtPrice;
+                              }
+
+                              Object.entries(byVariant).forEach(([variantId, row]) => {
+                                const rowEntry = { ...(row || {}) };
+                                if (field === 'price') {
+                                  delete rowEntry.price;
+                                  delete rowEntry.priceMode;
+                                  delete rowEntry.priceBase;
+                                } else if (field === 'compareAtPrice') {
+                                  delete rowEntry.compareAtPrice;
+                                }
+                                if (Object.keys(rowEntry).length === 0) delete byVariant[variantId];
+                                else byVariant[variantId] = rowEntry;
+                              });
+
+                              if (Object.keys(byVariant).length > 0)
+                                productEntry.byVariant = byVariant;
+                              else delete productEntry.byVariant;
+
+                              if (Object.keys(productEntry).length === 0) {
+                                delete byProduct[productId];
+                              } else {
+                                byProduct[productId] = productEntry;
+                              }
+
+                              const nextConfig = { ...c };
+                              if (Object.keys(byProduct).length > 0)
+                                nextConfig.byProduct = byProduct;
+                              else delete nextConfig.byProduct;
+
+                              next[index] = {
+                                ...next[index],
+                                config: nextConfig,
+                              };
+                              return { ...prev, variants: next };
+                            });
+                            setPriceMatrixActionToast({
+                              message:
+                                field === 'compareAtPrice'
+                                  ? `Reverted New actual for ${productLabel}.`
+                                  : `Reverted New selling for ${productLabel}.`,
+                              type: 'success',
+                            });
+                          };
+                          const productVariants =
+                            Array.isArray(matrixProduct?.variants) &&
+                            matrixProduct.variants.length > 0
+                              ? matrixProduct.variants
+                              : [
+                                  {
+                                    id: null,
+                                    displayName: 'All variants',
+                                    price: null,
+                                    compareAtPrice: null,
+                                  },
+                                ];
+                          const rowCount = Math.max(1, productVariants.length);
+                          const productRowStates = productVariants.map(productVariant => {
+                            const variantKey = normalizeNativeVariantIdInput(productVariant?.id);
+                            const variantOver =
+                              variantKey &&
+                              productOver?.byVariant &&
+                              typeof productOver.byVariant === 'object'
+                                ? productOver.byVariant[variantKey] || {}
+                                : {};
+                            const newActualValue =
+                              variantOver?.compareAtPrice ??
+                              (!variantKey ? productOver?.compareAtPrice : null) ??
+                              '';
+                            const newSellingValue =
+                              variantOver?.price ?? (!variantKey ? productOver?.price : null) ?? '';
+                            const currentActual = Number(productVariant?.compareAtPrice);
+                            const currentSelling = Number(productVariant?.price);
+                            const parsedNewActual =
+                              newActualValue !== '' && Number.isFinite(Number(newActualValue))
+                                ? Number(newActualValue)
+                                : null;
+                            const parsedNewSelling =
+                              newSellingValue !== '' && Number.isFinite(Number(newSellingValue))
+                                ? Number(newSellingValue)
+                                : null;
+                            const hasActualChange =
+                              parsedNewActual !== null &&
+                              (!Number.isFinite(currentActual) ||
+                                Math.abs(parsedNewActual - currentActual) >= 0.001);
+                            const hasSellingChange =
+                              parsedNewSelling !== null &&
+                              (!Number.isFinite(currentSelling) ||
+                                Math.abs(parsedNewSelling - currentSelling) >= 0.001);
+                            const rowHasChanges = hasActualChange || hasSellingChange;
+                            return {
+                              productVariant,
+                              variantKey,
+                              newActualValue,
+                              newSellingValue,
+                              currentActual,
+                              currentSelling,
+                              hasActualChange,
+                              hasSellingChange,
+                              rowHasChanges,
+                            };
+                          });
+                          const productEditedRows = productRowStates.filter(
+                            rowState => rowState.rowHasChanges
+                          ).length;
+                          const productEditedActualRows = productRowStates.filter(
+                            rowState => rowState.hasActualChange
+                          ).length;
+                          const productEditedSellingRows = productRowStates.filter(
+                            rowState => rowState.hasSellingChange
+                          ).length;
+                          return productRowStates.map((rowState, rowIndex) => {
+                            const {
+                              productVariant,
+                              variantKey,
+                              newActualValue,
+                              newSellingValue,
+                              currentActual,
+                              currentSelling,
+                              hasActualChange,
+                              hasSellingChange,
+                              rowHasChanges,
+                            } = rowState;
+
+                            const updateRowOverride = (field, value) => {
+                              setFormData(prev => {
+                                const next = [...(prev.variants || [])];
+                                const c = next[index]?.config || {};
+                                const byProduct = { ...(c.byProduct || {}) };
+                                const productEntry = {
+                                  ...(byProduct[productId] || {}),
+                                  byVariant: { ...(byProduct[productId]?.byVariant || {}) },
+                                };
+                                if (variantKey) {
+                                  const rowEntry = {
+                                    ...(productEntry.byVariant?.[variantKey] || {}),
+                                  };
+                                  if (field === 'price') {
+                                    if (value === null) {
+                                      delete rowEntry.price;
+                                      delete rowEntry.priceMode;
+                                      delete rowEntry.priceBase;
+                                    } else {
+                                      rowEntry.priceMode = 'fixed';
+                                      rowEntry.priceBase = 'price';
+                                      rowEntry.price = value;
+                                    }
+                                  } else if (field === 'compareAtPrice') {
+                                    if (value === null) delete rowEntry.compareAtPrice;
+                                    else rowEntry.compareAtPrice = value;
+                                  }
+                                  if (Object.keys(rowEntry).length === 0) {
+                                    delete productEntry.byVariant[variantKey];
+                                  } else {
+                                    productEntry.byVariant[variantKey] = rowEntry;
+                                  }
+                                } else {
+                                  if (field === 'price') {
+                                    if (value === null) {
+                                      delete productEntry.price;
+                                      delete productEntry.priceMode;
+                                      delete productEntry.priceBase;
+                                    } else {
+                                      productEntry.priceMode = 'fixed';
+                                      productEntry.priceBase = 'price';
+                                      productEntry.price = value;
+                                    }
+                                  } else if (field === 'compareAtPrice') {
+                                    if (value === null) delete productEntry.compareAtPrice;
+                                    else productEntry.compareAtPrice = value;
+                                  }
+                                }
+                                byProduct[productId] = productEntry;
+                                next[index] = {
+                                  ...next[index],
+                                  config: { ...c, byProduct },
+                                };
+                                return { ...prev, variants: next };
+                              });
+                            };
+
+                            return (
+                              <tr
+                                key={`${productId}-${variantKey || 'all'}-${rowIndex}`}
+                                className={`${rowIndex === 0 ? styles.priceMatrixProductStartRow : ''} ${rowHasChanges ? styles.priceMatrixRowChanged : ''}`}
+                              >
+                                {rowIndex === 0 && (
+                                  <td rowSpan={rowCount} className={styles.priceMatrixProductCell}>
+                                    <div className={styles.priceMatrixProductTitle}>
+                                      {matrixProduct?.title || getProductLabelFromId(productId)}
+                                    </div>
+                                    <div className={styles.priceMatrixProductMetaRow}>
                                       <Badge
-                                        tone={
-                                          pHasNativeVariantMapping
-                                            ? 'success'
-                                            : pMappingRequired
-                                              ? 'critical'
-                                              : 'info'
-                                        }
+                                        tone={productEditedRows > 0 ? 'success' : 'info'}
                                         size="small"
                                       >
-                                        {pHasNativeVariantMapping
-                                          ? 'Mapping ready'
-                                          : pMappingRequired
-                                            ? 'Mapping required'
-                                            : 'Mapping optional'}
+                                        Edited rows {productEditedRows}/{rowCount}
                                       </Badge>
+                                    </div>
+                                    <div className={styles.priceMatrixProductActions}>
+                                      <Button
+                                        size="slim"
+                                        variant="plain"
+                                        disabled={!matrixBulkValueValid}
+                                        onClick={applyBulkToSingleProduct}
+                                      >
+                                        Apply bulk to product
+                                      </Button>
+                                      <Button
+                                        size="slim"
+                                        variant="plain"
+                                        disabled={productEditedActualRows === 0}
+                                        onClick={() =>
+                                          clearSingleProductFieldOverrides('compareAtPrice')
+                                        }
+                                      >
+                                        Revert New actual
+                                      </Button>
+                                      <Button
+                                        size="slim"
+                                        variant="plain"
+                                        disabled={productEditedSellingRows === 0}
+                                        onClick={() => clearSingleProductFieldOverrides('price')}
+                                      >
+                                        Revert New selling
+                                      </Button>
+                                      <Button
+                                        size="slim"
+                                        variant="plain"
+                                        disabled={!undoSnapshot}
+                                        onClick={undoLastProductAction}
+                                      >
+                                        Undo last product action
+                                      </Button>
+                                      <Button
+                                        size="slim"
+                                        variant="plain"
+                                        tone="critical"
+                                        disabled={!productHasOverrides}
+                                        onClick={clearSingleProductOverrides}
+                                      >
+                                        Reset product edits
+                                      </Button>
+                                    </div>
+                                    {priceMatrixLoadingById[productId] && (
+                                      <div className={styles.priceMatrixProductSubtle}>
+                                        Loading variants...
+                                      </div>
                                     )}
-                                  </div>
-                                </BlockStack>
-                              </div>
-                              <FormLayout>
-                                <Select
-                                  label="Price mode"
-                                  options={PRICE_MODES}
-                                  value={pMode}
-                                  onChange={value => updateByProduct('priceMode', value)}
-                                />
-                                {(pAmount || pPercent) && (
-                                  <Select
-                                    label="Price base"
-                                    options={PRICE_BASE_OPTIONS}
-                                    value={cfg.priceBase || 'price'}
-                                    onChange={value => updateByProduct('priceBase', value)}
-                                  />
+                                    {priceMatrixErrorById[productId] && (
+                                      <div className={styles.priceMatrixProductError}>
+                                        {priceMatrixErrorById[productId]}
+                                      </div>
+                                    )}
+                                  </td>
                                 )}
-                                {pFixed && (
+                                <td>
+                                  {productVariant?.displayName ||
+                                    productVariant?.title ||
+                                    'Default'}
+                                </td>
+                                <td>
+                                  {Number.isFinite(currentActual)
+                                    ? `$${currentActual.toFixed(2)}`
+                                    : '-'}
+                                </td>
+                                <td>
+                                  {Number.isFinite(currentSelling)
+                                    ? `$${currentSelling.toFixed(2)}`
+                                    : '-'}
+                                </td>
+                                <td
+                                  className={hasActualChange ? styles.priceMatrixChangedCell : ''}
+                                >
                                   <TextField
-                                    label="Fixed price"
+                                    label="New actual"
+                                    labelHidden
                                     type="number"
-                                    value={
-                                      cfg.price !== null &&
-                                      cfg.price !== undefined &&
-                                      cfg.price !== ''
-                                        ? String(cfg.price)
-                                        : ''
-                                    }
-                                    onChange={value =>
-                                      updateByProduct(
-                                        'price',
-                                        value === '' ? null : parseFloat(value)
-                                      )
-                                    }
-                                    placeholder="e.g. 24.99"
+                                    value={newActualValue === null ? '' : String(newActualValue)}
+                                    onChange={val => {
+                                      const parsed = val === '' ? null : Number.parseFloat(val);
+                                      updateRowOverride(
+                                        'compareAtPrice',
+                                        parsed === null || Number.isFinite(parsed) ? parsed : null
+                                      );
+                                    }}
+                                    placeholder="Optional"
                                     prefix="$"
-                                    min={0}
-                                    step={0.01}
-                                  />
-                                )}
-                                {pAmount && (
-                                  <TextField
-                                    label="Amount ($)"
-                                    type="number"
-                                    value={
-                                      cfg.priceDelta !== null &&
-                                      cfg.priceDelta !== undefined &&
-                                      cfg.priceDelta !== ''
-                                        ? String(cfg.priceDelta)
-                                        : ''
-                                    }
-                                    onChange={value =>
-                                      updateByProduct(
-                                        'priceDelta',
-                                        value === '' ? null : parseFloat(value)
-                                      )
-                                    }
-                                    placeholder="e.g. -5 or +2"
-                                  />
-                                )}
-                                {pPercent && (
-                                  <TextField
-                                    label="Percent"
-                                    type="number"
-                                    value={
-                                      cfg.pricePercent !== null &&
-                                      cfg.pricePercent !== undefined &&
-                                      cfg.pricePercent !== ''
-                                        ? String(cfg.pricePercent)
-                                        : ''
-                                    }
-                                    onChange={value =>
-                                      updateByProduct(
-                                        'pricePercent',
-                                        value === '' ? null : parseFloat(value)
-                                      )
-                                    }
-                                    placeholder="e.g. 10 or -10"
-                                    suffix="%"
-                                    min={-100}
-                                    max={100}
-                                  />
-                                )}
-                                {(applicationMethod === 'auto' ||
-                                  applicationMethod === 'native_variant_price') && (
-                                  <TextField
-                                    label="Mapped Shopify variant ID"
-                                    value={
-                                      cfg.nativeVariantId !== null &&
-                                      cfg.nativeVariantId !== undefined &&
-                                      cfg.nativeVariantId !== ''
-                                        ? String(cfg.nativeVariantId)
-                                        : ''
-                                    }
-                                    onChange={value =>
-                                      updateByProduct(
-                                        'nativeVariantId',
-                                        normalizeNativeVariantIdInput(value) || null
-                                      )
-                                    }
-                                    helpText="Optional per-product mapping for Native Variant Price / Auto."
-                                    placeholder="e.g. 40123456789"
                                     autoComplete="off"
                                   />
-                                )}
-                              </FormLayout>
-                              {(applicationMethod === 'auto' ||
-                                applicationMethod === 'native_variant_price') && (
-                                <NativeVariantMappingAssistant
-                                  shopDomain={isShopifyFromRoute ? routeDomain : null}
-                                  disabled={isStandalone || !isShopifyFromRoute || !routeDomain}
-                                  preferredProductId={productId}
-                                  currentValue={cfg.nativeVariantId}
-                                  required={pMappingRequired}
-                                  title="Per-product variant mapping"
-                                  description="Pick the Shopify variant RipX should use for this product when checkout needs a real native price."
-                                  onSelect={value =>
-                                    updateByProduct(
-                                      'nativeVariantId',
-                                      normalizeNativeVariantIdInput(value) || null
-                                    )
+                                </td>
+                                <td
+                                  className={
+                                    hasSellingChange ? styles.priceMatrixChangedCellStrong : ''
                                   }
-                                  onClear={() => updateByProduct('nativeVariantId', null)}
-                                />
-                              )}
-                              <div className={styles.pricePerVariantSection}>
-                                <div className={styles.pricePerVariantSectionHeader}>
-                                  <BlockStack gap="100">
-                                    <Text as="p" variant="bodySm" fontWeight="medium">
-                                      Per-SKU overrides
-                                    </Text>
-                                    <Text as="p" variant="bodySm" tone="subdued">
-                                      Add overrides only for product variants that need a different
-                                      price than this product-level default.
-                                    </Text>
-                                  </BlockStack>
-                                  <Button
-                                    size="slim"
-                                    variant="secondary"
-                                    onClick={() => {
-                                      setFormData(prev => {
-                                        const next = [...(prev.variants || [])];
-                                        const c = next[index]?.config || {};
-                                        const byProduct = { ...(c.byProduct || {}) };
-                                        const productOver = {
-                                          ...(byProduct[productId] || {}),
-                                          byVariant: { ...(byProduct[productId]?.byVariant || {}) },
-                                        };
-                                        productOver.byVariant['__new_' + Date.now()] = {
-                                          priceMode: 'fixed',
-                                        };
-                                        byProduct[productId] = productOver;
-                                        next[index] = {
-                                          ...next[index],
-                                          config: { ...c, byProduct },
-                                        };
-                                        return { ...prev, variants: next };
-                                      });
+                                >
+                                  <TextField
+                                    label="New selling"
+                                    labelHidden
+                                    type="number"
+                                    value={newSellingValue === null ? '' : String(newSellingValue)}
+                                    onChange={val => {
+                                      const parsed = val === '' ? null : Number.parseFloat(val);
+                                      updateRowOverride(
+                                        'price',
+                                        parsed === null || Number.isFinite(parsed) ? parsed : null
+                                      );
                                     }}
-                                  >
-                                    Add SKU override
-                                  </Button>
-                                </div>
-                                {(over?.byVariant && typeof over.byVariant === 'object'
-                                  ? Object.entries(over.byVariant)
-                                  : []
-                                ).map(([vKey, vCfg]) => {
-                                  const vMode = (vCfg?.priceMode || 'fixed').toLowerCase();
-                                  const vHasNativeVariantMapping = !!normalizeNativeVariantIdInput(
-                                    vCfg?.nativeVariantId
-                                  );
-                                  const vMappingRequired =
-                                    applicationMethod === 'native_variant_price' ||
-                                    (applicationMethod === 'auto' &&
-                                      priceConfigImpliesIncrease(vCfg));
-                                  const vFixed = vMode === 'fixed';
-                                  const vAmount = vMode === 'amount';
-                                  const vPercent = vMode === 'percent';
-                                  const skuRuleValue = getPriceValueCell({
-                                    ...variant,
-                                    config: vCfg,
-                                  });
-                                  const skuPreviewText = getPricePreview(vCfg, variant.name);
-                                  const updateByVariant = (key, value) => {
-                                    setFormData(prev => {
-                                      const next = [...(prev.variants || [])];
-                                      const c = next[index]?.config || {};
-                                      const byProduct = { ...(c.byProduct || {}) };
-                                      const productOver = {
-                                        ...(byProduct[productId] || {}),
-                                        byVariant: { ...(byProduct[productId]?.byVariant || {}) },
-                                      };
-                                      productOver.byVariant[vKey] = {
-                                        ...(productOver.byVariant[vKey] || {}),
-                                        [key]: value,
-                                      };
-                                      byProduct[productId] = productOver;
-                                      next[index] = { ...next[index], config: { ...c, byProduct } };
-                                      return { ...prev, variants: next };
-                                    });
-                                  };
-                                  const removeVariantOverride = () => {
-                                    setFormData(prev => {
-                                      const next = [...(prev.variants || [])];
-                                      const c = next[index]?.config || {};
-                                      const byProduct = { ...(c.byProduct || {}) };
-                                      const productOver = { ...(byProduct[productId] || {}) };
-                                      const byVariant = { ...(productOver.byVariant || {}) };
-                                      delete byVariant[vKey];
-                                      byProduct[productId] = {
-                                        ...productOver,
-                                        byVariant: Object.keys(byVariant).length
-                                          ? byVariant
-                                          : undefined,
-                                      };
-                                      next[index] = { ...next[index], config: { ...c, byProduct } };
-                                      return { ...prev, variants: next };
-                                    });
-                                  };
-                                  const setVariantId = (oldKey, newValue) => {
-                                    const normalized =
-                                      String(newValue || '')
-                                        .trim()
-                                        .replace(/^gid:\/\/shopify\/ProductVariant\/\s*/i, '') ||
-                                      null;
-                                    if (!normalized || normalized === oldKey) return;
-                                    setFormData(prev => {
-                                      const next = [...(prev.variants || [])];
-                                      const c = next[index]?.config || {};
-                                      const byProduct = { ...(c.byProduct || {}) };
-                                      const productOver = { ...(byProduct[productId] || {}) };
-                                      const byVariant = { ...(productOver.byVariant || {}) };
-                                      const config = byVariant[oldKey];
-                                      delete byVariant[oldKey];
-                                      byVariant[normalized] = config;
-                                      byProduct[productId] = { ...productOver, byVariant };
-                                      next[index] = { ...next[index], config: { ...c, byProduct } };
-                                      return { ...prev, variants: next };
-                                    });
-                                  };
-                                  return (
-                                    <div key={vKey} className={styles.pricePerVariantRow}>
-                                      <div className={styles.pricePerVariantRowHeader}>
-                                        <BlockStack gap="100">
-                                          <Text as="p" variant="bodySm" fontWeight="semibold">
-                                            {vKey.startsWith('__new_')
-                                              ? 'New SKU override'
-                                              : `SKU ${vKey}`}
-                                          </Text>
-                                          <div className={styles.priceNestedStatusRow}>
-                                            <Badge tone="info" size="small">
-                                              {getPriceTypeLabel(vCfg)}
-                                            </Badge>
-                                            <Badge tone="attention" size="small">
-                                              {skuRuleValue}
-                                            </Badge>
-                                            <Badge tone="success" size="small">
-                                              {skuPreviewText}
-                                            </Badge>
-                                            {(applicationMethod === 'auto' ||
-                                              applicationMethod === 'native_variant_price') && (
-                                              <Badge
-                                                tone={
-                                                  vHasNativeVariantMapping
-                                                    ? 'success'
-                                                    : vMappingRequired
-                                                      ? 'critical'
-                                                      : 'info'
-                                                }
-                                                size="small"
-                                              >
-                                                {vHasNativeVariantMapping
-                                                  ? 'Mapping ready'
-                                                  : vMappingRequired
-                                                    ? 'Mapping required'
-                                                    : 'Mapping optional'}
-                                              </Badge>
-                                            )}
-                                          </div>
-                                        </BlockStack>
-                                        <Button
-                                          size="slim"
-                                          variant="plain"
-                                          tone="critical"
-                                          onClick={removeVariantOverride}
-                                        >
-                                          Remove
-                                        </Button>
-                                      </div>
-                                      <div className={styles.pricePerVariantRowFields}>
-                                        <TextField
-                                          label="Variant ID"
-                                          value={vKey.startsWith('__new_') ? '' : vKey}
-                                          onChange={val => {
-                                            if (
-                                              val !== undefined &&
-                                              val !== null &&
-                                              String(val).trim()
-                                            )
-                                              setVariantId(vKey, val);
-                                          }}
-                                          placeholder="e.g. 40123456789"
-                                          autoComplete="off"
-                                        />
-                                        <Select
-                                          label="Price mode"
-                                          options={PRICE_MODES}
-                                          value={vMode}
-                                          onChange={value => updateByVariant('priceMode', value)}
-                                        />
-                                        {(vAmount || vPercent) && (
-                                          <Select
-                                            label="Base"
-                                            options={PRICE_BASE_OPTIONS}
-                                            value={vCfg.priceBase || 'price'}
-                                            onChange={value => updateByVariant('priceBase', value)}
-                                          />
-                                        )}
-                                        {vFixed && (
-                                          <TextField
-                                            label="Fixed price"
-                                            type="number"
-                                            value={
-                                              vCfg.price !== null &&
-                                              vCfg.price !== undefined &&
-                                              vCfg.price !== ''
-                                                ? String(vCfg.price)
-                                                : ''
-                                            }
-                                            onChange={v =>
-                                              updateByVariant(
-                                                'price',
-                                                v === '' ? null : parseFloat(v)
-                                              )
-                                            }
-                                            placeholder="e.g. 24.99"
-                                            prefix="$"
-                                            min={0}
-                                            step={0.01}
-                                          />
-                                        )}
-                                        {vAmount && (
-                                          <TextField
-                                            label="Amount ($)"
-                                            type="number"
-                                            value={
-                                              vCfg.priceDelta !== null &&
-                                              vCfg.priceDelta !== undefined &&
-                                              vCfg.priceDelta !== ''
-                                                ? String(vCfg.priceDelta)
-                                                : ''
-                                            }
-                                            onChange={v =>
-                                              updateByVariant(
-                                                'priceDelta',
-                                                v === '' ? null : parseFloat(v)
-                                              )
-                                            }
-                                            placeholder="-5 or +2"
-                                          />
-                                        )}
-                                        {vPercent && (
-                                          <TextField
-                                            label="Percent"
-                                            type="number"
-                                            value={
-                                              vCfg.pricePercent !== null &&
-                                              vCfg.pricePercent !== undefined &&
-                                              vCfg.pricePercent !== ''
-                                                ? String(vCfg.pricePercent)
-                                                : ''
-                                            }
-                                            onChange={v =>
-                                              updateByVariant(
-                                                'pricePercent',
-                                                v === '' ? null : parseFloat(v)
-                                              )
-                                            }
-                                            placeholder="10 or -10"
-                                            suffix="%"
-                                            min={-100}
-                                            max={100}
-                                          />
-                                        )}
-                                        {(applicationMethod === 'auto' ||
-                                          applicationMethod === 'native_variant_price') && (
-                                          <TextField
-                                            label="Mapped Shopify variant ID"
-                                            value={
-                                              vCfg.nativeVariantId !== null &&
-                                              vCfg.nativeVariantId !== undefined &&
-                                              vCfg.nativeVariantId !== ''
-                                                ? String(vCfg.nativeVariantId)
-                                                : ''
-                                            }
-                                            onChange={v =>
-                                              updateByVariant(
-                                                'nativeVariantId',
-                                                normalizeNativeVariantIdInput(v) || null
-                                              )
-                                            }
-                                            placeholder="e.g. 40123456789"
-                                            autoComplete="off"
-                                          />
-                                        )}
-                                      </div>
-                                      {(applicationMethod === 'auto' ||
-                                        applicationMethod === 'native_variant_price') && (
-                                        <div className={styles.pricePerVariantAssistantWrap}>
-                                          <NativeVariantMappingAssistant
-                                            shopDomain={isShopifyFromRoute ? routeDomain : null}
-                                            disabled={
-                                              isStandalone || !isShopifyFromRoute || !routeDomain
-                                            }
-                                            preferredProductId={productId}
-                                            currentValue={vCfg.nativeVariantId}
-                                            required={vMappingRequired}
-                                            title="Per-SKU variant mapping"
-                                            description={`Pick the native Shopify variant RipX should swap to when source variant ${vKey.startsWith('__new_') ? 'this SKU' : vKey} is selected.`}
-                                            onSelect={value =>
-                                              updateByVariant(
-                                                'nativeVariantId',
-                                                normalizeNativeVariantIdInput(value) || null
-                                              )
-                                            }
-                                            onClear={() => updateByVariant('nativeVariantId', null)}
-                                          />
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </BlockStack>
-                          </Card>
-                        </div>
-                      );
-                    })}
+                                    placeholder="Required to apply"
+                                    prefix="$"
+                                    autoComplete="off"
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          });
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 </BlockStack>
               ) : (
@@ -7520,17 +7738,14 @@ function TestWizard({
                   <div className={styles.priceSectionBlock}>
                     <div className={styles.priceSectionBlockTitle}>
                       <div className={styles.priceSectionBlockTitleCopy}>
-                        <span className={styles.priceSectionBlockTitleText}>
-                          Choose checkout behavior
-                        </span>
+                        <span className={styles.priceSectionBlockTitleText}>Checkout behavior</span>
                         <span className={styles.priceSectionBlockTitleHint}>
-                          Pick how RipX should carry this variant&apos;s price beyond the product
-                          page.
+                          Simplified mode: Direct Price Override only.
                         </span>
                       </div>
                       <TooltipWrapper
-                        content="Choose how RipX should carry this price beyond PDP. Auto picks the best supported method. Native Variant Price and Direct Price Override avoid discount labels but require extra setup."
-                        accessibilityLabel="Checkout pricing method info"
+                        content="All price variants in this editor are saved with Direct Price Override. Use Offer tests for promo/discount campaigns."
+                        accessibilityLabel="Checkout behavior info"
                         preferredPosition="above"
                       >
                         <span
@@ -7563,32 +7778,9 @@ function TestWizard({
                                   ? 'Checking Cart Transform'
                                   : 'Cart Transform status unknown'}
                           </Badge>
-                          <Badge tone={discountFunctionAvailable ? 'success' : 'info'} size="small">
-                            {discountFunctionAvailable
-                              ? 'Discount function detected'
-                              : 'Discount function status not confirmed'}
+                          <Badge tone="success" size="small">
+                            Direct Price Override locked
                           </Badge>
-                          {directOverrideRecommended &&
-                            applicationMethod !== 'direct_price_override' && (
-                              <Button
-                                size="slim"
-                                onClick={() => {
-                                  setFormData(prev => {
-                                    const next = [...(prev.variants || [])];
-                                    next[index] = {
-                                      ...next[index],
-                                      config: {
-                                        ...next[index].config,
-                                        priceApplicationMethod: 'direct_price_override',
-                                      },
-                                    };
-                                    return { ...prev, variants: next };
-                                  });
-                                }}
-                              >
-                                Use Direct Override
-                              </Button>
-                            )}
                         </InlineStack>
                         {directPriceOverrideReadiness === 'needs_deploy' && (
                           <Banner tone="warning" title="Cart Transform not detected">
@@ -7599,209 +7791,15 @@ function TestWizard({
                             </Text>
                           </Banner>
                         )}
-                        <fieldset className={styles.priceMethodFieldset}>
-                          <legend className={styles.priceMethodRadioLegendOffscreen}>
-                            Checkout pricing method
-                          </legend>
-                          <div
-                            className={styles.priceMethodRadioList}
-                            role="radiogroup"
-                            aria-label="Checkout pricing method"
-                          >
-                            {orderedPriceApplicationMethodOptions.map(option => {
-                              const optionMethod = normalizePriceApplicationMethod(option.value);
-                              const optionMeta = getPriceApplicationMethodMeta({
-                                ...(variant.config || {}),
-                                priceApplicationMethod: optionMethod,
-                              });
-                              const optionConstraint = getPriceApplicationMethodConstraint(
-                                optionMethod,
-                                variant.config || {}
-                              );
-                              const optionBlocked = Boolean(optionConstraint?.blocked);
-                              const optionSelected = applicationMethod === optionMethod;
-                              const tooltipLines = [
-                                optionMeta.label,
-                                optionMeta.helpText,
-                                optionConstraint?.text,
-                                optionMeta.warning,
-                              ].filter(Boolean);
-                              const tooltipContent = tooltipLines.join('\n\n');
-                              const rowHint = optionBlocked
-                                ? 'Unavailable'
-                                : !optionSelected &&
-                                    directOverrideRecommended &&
-                                    optionMethod === 'direct_price_override'
-                                  ? 'Suggested'
-                                  : null;
-                              return (
-                                <label
-                                  key={optionMethod}
-                                  className={`${styles.priceMethodRadioRow} ${
-                                    optionSelected ? styles.priceMethodRadioRowSelected : ''
-                                  } ${optionBlocked ? styles.priceMethodRadioRowBlocked : ''}`}
-                                >
-                                  <input
-                                    type="radio"
-                                    name={`ripx-price-checkout-method-${index}`}
-                                    checked={optionSelected}
-                                    disabled={optionBlocked}
-                                    onChange={() => {
-                                      if (optionBlocked) return;
-                                      setFormData(prev => {
-                                        const next = [...(prev.variants || [])];
-                                        next[index] = {
-                                          ...next[index],
-                                          config: {
-                                            ...next[index].config,
-                                            priceApplicationMethod: optionMethod,
-                                          },
-                                        };
-                                        return { ...prev, variants: next };
-                                      });
-                                    }}
-                                  />
-                                  <span className={styles.priceMethodRadioLabel}>
-                                    {optionMeta.shortLabel}
-                                  </span>
-                                  {rowHint && (
-                                    <span className={styles.priceMethodRadioHint}>{rowHint}</span>
-                                  )}
-                                  <TooltipWrapper
-                                    content={tooltipContent}
-                                    accessibilityLabel={`${optionMeta.label} details`}
-                                    preferredPosition="above"
-                                  >
-                                    <span className={styles.priceMethodRadioInfo} tabIndex={0}>
-                                      <Icon source={InfoIcon} />
-                                    </span>
-                                  </TooltipWrapper>
-                                </label>
-                              );
-                            })}
-                          </div>
-                        </fieldset>
-                        <div className={styles.priceMethodStatusGrid}>
-                          <div className={styles.priceMethodStatusCard}>
-                            <span className={styles.priceMethodStatusLabel}>Method outcome</span>
-                            <span className={styles.priceMethodStatusValue}>
-                              {resolvedMethodSummary.label}
-                            </span>
-                          </div>
-                          <div className={styles.priceMethodStatusCard}>
-                            <span className={styles.priceMethodStatusLabel}>Mapping status</span>
-                            <span className={styles.priceMethodStatusValue}>
-                              {hasNativeVariantMapping
-                                ? 'Mapped to Shopify variant'
-                                : mappingRequired
-                                  ? 'Mapping required'
-                                  : 'No mapping required'}
-                            </span>
-                          </div>
-                          <div className={styles.priceMethodStatusCard}>
-                            <span className={styles.priceMethodStatusLabel}>Price direction</span>
-                            <span className={styles.priceMethodStatusValue}>
-                              {priceIncreaseConfigured
-                                ? 'Increase / premium'
-                                : priceDecreaseConfigured
-                                  ? 'Lower price'
-                                  : 'Equal / control'}
-                            </span>
-                          </div>
-                        </div>
-                        {selectedMethodConstraint?.text && (
-                          <Text
-                            as="p"
-                            variant="bodySm"
-                            tone={selectedMethodConstraint.blocked ? 'critical' : 'subdued'}
-                          >
-                            {selectedMethodConstraint.text}
-                          </Text>
-                        )}
-                        {applicationMethodMeta.warning && (
-                          <Text as="p" variant="bodySm" tone="critical">
-                            {applicationMethodMeta.warning}
-                          </Text>
-                        )}
-                        {(applicationMethod === 'auto' ||
-                          applicationMethod === 'native_variant_price') && (
-                          <TextField
-                            label={
-                              applicationMethod === 'native_variant_price'
-                                ? 'Mapped Shopify variant ID'
-                                : 'Mapped Shopify variant ID (optional)'
-                            }
-                            value={
-                              variant.config?.nativeVariantId !== null &&
-                              variant.config?.nativeVariantId !== undefined &&
-                              variant.config?.nativeVariantId !== ''
-                                ? String(variant.config.nativeVariantId)
-                                : ''
-                            }
-                            onChange={value => {
-                              setFormData(prev => {
-                                const next = [...(prev.variants || [])];
-                                next[index] = {
-                                  ...next[index],
-                                  config: {
-                                    ...next[index].config,
-                                    nativeVariantId: normalizeNativeVariantIdInput(value) || null,
-                                  },
-                                };
-                                return { ...prev, variants: next };
-                              });
-                            }}
-                            helpText={
-                              applicationMethod === 'native_variant_price'
-                                ? 'Required for Native Variant Price. RipX swaps add-to-cart to this Shopify variant.'
-                                : 'Recommended for Auto when this variant may need to use a real Shopify variant price.'
-                            }
-                            placeholder="e.g. 40123456789"
-                            autoComplete="off"
-                          />
-                        )}
-                        {(applicationMethod === 'auto' ||
-                          applicationMethod === 'native_variant_price') && (
-                          <NativeVariantMappingAssistant
-                            shopDomain={isShopifyFromRoute ? routeDomain : null}
-                            disabled={isStandalone || !isShopifyFromRoute || !routeDomain}
-                            currentValue={variant.config?.nativeVariantId}
-                            required={mappingRequired}
-                            onSelect={value => {
-                              setFormData(prev => {
-                                const next = [...(prev.variants || [])];
-                                next[index] = {
-                                  ...next[index],
-                                  config: {
-                                    ...next[index].config,
-                                    nativeVariantId: normalizeNativeVariantIdInput(value) || null,
-                                  },
-                                };
-                                return { ...prev, variants: next };
-                              });
-                            }}
-                            onClear={() => {
-                              setFormData(prev => {
-                                const next = [...(prev.variants || [])];
-                                next[index] = {
-                                  ...next[index],
-                                  config: {
-                                    ...next[index].config,
-                                    nativeVariantId: null,
-                                  },
-                                };
-                                return { ...prev, variants: next };
-                              });
-                            }}
-                          />
-                        )}
-                        {applicationMethod === 'native_variant_price' &&
-                          !normalizeNativeVariantIdInput(variant.config?.nativeVariantId) && (
-                            <Text as="p" variant="bodySm" tone="critical">
-                              Add a mapped Shopify variant ID so RipX can use a real Native Variant
-                              price instead of a discount-style checkout adjustment.
-                            </Text>
-                          )}
+                        <Text as="p" variant="bodySm" tone="subdued">
+                          This simplified price editor always saves{' '}
+                          <strong>Direct Price Override</strong> for each variant and product
+                          override. If you want promotion-style discount campaigns, use{' '}
+                          <strong>Offer tests</strong>.
+                        </Text>
+                        <Text as="p" variant="bodySm" tone="subdued">
+                          Current variant path: <strong>{resolvedMethodSummary.label}</strong>
+                        </Text>
                       </BlockStack>
                     </div>
                   </div>
@@ -7826,26 +7824,6 @@ function TestWizard({
         getPriceValueCell(v),
         isPerProduct ? 'Per product' : getPricePreview(cfg, v.name),
       ];
-    });
-
-    const maxFixedPrice = variants.reduce((m, v) => {
-      const cfg = v.config || {};
-      const p = cfg.price;
-      if (p !== null && p !== undefined && p !== '' && !Number.isNaN(Number(p)))
-        m = Math.max(m, Number(p));
-      const byProduct = cfg.byProduct;
-      if (byProduct && typeof byProduct === 'object') {
-        Object.values(byProduct).forEach(ov => {
-          const op = ov?.price;
-          if (op !== null && op !== undefined && op !== '' && !Number.isNaN(Number(op)))
-            m = Math.max(m, Number(op));
-        });
-      }
-      return m;
-    }, 0);
-    const mayUseDiscountedCheckout = variants.some(v => {
-      const method = normalizePriceApplicationMethod(v?.config?.priceApplicationMethod);
-      return method === 'auto' || method === 'discounted_checkout_price';
     });
 
     const togglePriceTargetProduct = (productId, isSelected) => {
@@ -7895,12 +7873,9 @@ function TestWizard({
                 <Collapsible open={priceGuideCheckoutOpen} id="price-guide-checkout">
                   <div className={styles.priceGuideBody}>
                     <Text as="p" variant="bodySm" fontWeight="medium">
-                      RipX can apply price tests in different ways beyond PDP. Use{' '}
-                      <strong>Discounted Checkout Price</strong> for fast lower-price tests,{' '}
-                      <strong>Native Variant Price</strong> when shoppers should see a real product
-                      price, or <strong>Direct Price Override</strong> for the cleanest advanced
-                      checkout UX on eligible stores. Manual method selections are strict; only{' '}
-                      <strong>Auto</strong> can switch strategies.
+                      Price tests in this simplified editor use{' '}
+                      <strong>Direct Price Override</strong> only. This keeps the flow cleaner while
+                      your app is in development.
                     </Text>
                     {!['product', 'all-products', 'all_products'].includes(
                       String(formData.target_type || '').toLowerCase()
@@ -7913,19 +7888,12 @@ function TestWizard({
                     )}
                     <ul className={styles.priceBannerBullets}>
                       <li>
-                        <strong>Auto (recommended)</strong> uses Discounted Checkout Price for lower
-                        prices. For higher prices, it can switch between Direct Price Override and
-                        Native Variant based on live capability.
+                        <strong>Direct Price Override</strong> is fixed for all price variants and
+                        product-level overrides in this mode.
                       </li>
                       <li>
-                        <strong>Discounted Checkout Price</strong> is easiest to launch, but
-                        shoppers may see a discount in checkout.
-                      </li>
-                      <li>
-                        <strong>Native Variant Price</strong> and{' '}
-                        <strong>Direct Price Override</strong> keep pricing cleaner at checkout, but
-                        require mapped variants or store eligibility. Manual choices remain fixed
-                        until you change them.
+                        Use <strong>Offer tests</strong> for promotion-style discount campaigns
+                        (percent off, fixed off, free shipping).
                       </li>
                     </ul>
                     <p className={styles.priceBannerDocRow}>
@@ -7941,27 +7909,12 @@ function TestWizard({
                 </Collapsible>
               </div>
 
-              {maxFixedPrice > 0 && mayUseDiscountedCheckout && (
-                <Banner tone="warning" title="Catalog price for discount-based checkout">
-                  <BlockStack gap="200">
-                    <Text as="p" variant="bodySm">
-                      If any variant uses <strong>Discounted Checkout Price</strong> or{' '}
-                      <strong>Auto</strong>, set your Shopify catalog price to at least{' '}
-                      <strong>${maxFixedPrice.toFixed(2)}</strong> (highest fixed price in this
-                      test) so lower-price arms can be aligned with discounts safely.
-                    </Text>
-                    <p className={styles.priceBannerDocRow}>
-                      <Link
-                        to={`${ROUTES.DOCS}#price-testing`}
-                        className={styles.priceDocLink}
-                        rel="noopener noreferrer"
-                      >
-                        Open Price testing guide →
-                      </Link>
-                    </p>
-                  </BlockStack>
-                </Banner>
-              )}
+              <Banner tone="info" title="Direct Price mode enabled">
+                <Text as="p" variant="bodySm">
+                  Advanced checkout method selection is hidden. Every price variant saves as Direct
+                  Price Override to keep setup focused and consistent during development.
+                </Text>
+              </Banner>
 
               <div className={styles.priceGuideToggleRow}>
                 <button
@@ -8399,15 +8352,18 @@ function TestWizard({
                               </span>
                             </div>
                             <div className={styles.priceAtAGlanceCard}>
-                              <span className={styles.priceAtAGlanceLabel}>Mappings ready</span>
+                              <span className={styles.priceAtAGlanceLabel}>Cart Transform</span>
                               <span className={styles.priceAtAGlanceValue}>
-                                {mappingReadyCount}
-                                {mappingRequiredCount > 0
-                                  ? ` / ${mappingRequiredCount} required`
-                                  : ''}
+                                {directPriceOverrideReadiness === 'ready'
+                                  ? 'Ready'
+                                  : directPriceOverrideReadiness === 'needs_deploy'
+                                    ? 'Not detected'
+                                    : directPriceOverrideReadiness === 'checking'
+                                      ? 'Checking'
+                                      : 'Unknown'}
                               </span>
                               <span className={styles.priceAtAGlanceHint}>
-                                Needed for native or premium price paths
+                                Direct Price Override availability
                               </span>
                             </div>
                             <div className={styles.priceAtAGlanceCard}>
@@ -8656,7 +8612,7 @@ function TestWizard({
                                 <span className={styles.priceSummaryInfoBlock}>
                                   <span className={styles.priceSummaryInfoLabel}>Checkout</span>
                                   <span className={styles.priceSummaryInfoValue}>
-                                    {getPriceApplicationMethodShortLabel(v.config)}
+                                    Direct Price Override
                                   </span>
                                 </span>
                                 <span className={styles.priceSummaryInfoBlock}>
@@ -10955,6 +10911,14 @@ function TestWizard({
           type={simulationExportToast.type}
           onClose={() => setSimulationExportToast(null)}
           duration={3000}
+        />
+      )}
+      {priceMatrixActionToast && (
+        <Toast
+          message={priceMatrixActionToast.message}
+          type={priceMatrixActionToast.type}
+          onClose={() => setPriceMatrixActionToast(null)}
+          duration={2200}
         />
       )}
       {antiFlickerToast && (

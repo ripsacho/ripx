@@ -564,9 +564,9 @@ npm run dev`}
       return (
         <BlockStack gap="400">
           <DocCallout type="warning" title="Key takeaway">
-            Price tests change only the <strong>visible price on the product page (PDP)</strong>.
-            Checkout uses your <strong>Shopify catalog price</strong> unless you align it (catalog =
-            highest test price + discounts or Functions).
+            Price tests now use <strong>Direct Price Override</strong> as the default path: target
+            prices can apply across storefront surfaces and checkout when Cart Transform is
+            installed. Use <strong>Offer tests</strong> for promo/discount campaigns.
           </DocCallout>
           <Text variant="headingMd" as="h4">
             Where the test price appears
@@ -577,22 +577,22 @@ npm run dev`}
               [
                 'Product page (PDP) — main block',
                 'Yes',
-                'Only place RipX reliably paints the test price',
+                'Primary surface; variant changes are re-evaluated automatically.',
               ],
               [
                 'Collection / PLP grids',
-                'No',
-                'Script does not change prices on collection or search result cards',
+                'Yes',
+                'Applies on targeted cards when product markers/selectors are available in theme markup.',
               ],
               [
                 'Cart drawer / mini-cart',
-                'Best-effort',
-                'Theme-dependent; script may not find line-item elements',
+                'Yes',
+                'Charged line price is sourced from Cart Transform; cart DOM paint fallback is intentionally disabled.',
               ],
               [
                 'Checkout',
-                'No (unless you add alignment)',
-                'Customer pays catalog price unless you use options below',
+                'Yes (with Cart Transform attached)',
+                'Checkout reads transformed line prices; verify function attachment in Setup/Settings.',
               ],
             ]}
           />
@@ -603,24 +603,19 @@ npm run dev`}
             headers={['Approach', 'Checkout matches test?', 'Who can use it']}
             rows={[
               [
-                'Catalog = highest + automatic discount',
-                'Yes (if discount applies the right amount per segment)',
-                'Any plan; you or an app create the discount',
+                'Price test + Direct Price Override (Cart Transform)',
+                'Yes',
+                'Plus/dev stores with RipX Cart Transform attached',
               ],
               [
-                'Shopify Plus + Cart Transform',
-                'Yes; Function overrides line price at checkout',
-                'Plus only; one Cart Transform per store',
+                'Offer test + Discount Function',
+                'Yes (for promotions)',
+                'Any supported store with discount function/network access configured',
               ],
               [
-                'Discount Function + cart attribute',
-                'Yes; Function reads attributes and applies discount',
-                'Any plan; build/deploy a Discount Function (up to 25 per store)',
-              ],
-              [
-                'Display-only (RipX today, no Function)',
-                'No',
-                'Use for perception tests or combine with above',
+                'Legacy compatibility methods',
+                'Depends on old test config',
+                'Readable for older tests; new Price tests are saved as Direct Price Override',
               ],
             ]}
           />
@@ -629,9 +624,9 @@ npm run dev`}
           </Text>
           <StepList
             steps={[
-              'Set your product catalog price to the highest price in the test (e.g. the highest variant).',
-              'Use automatic discounts (manual or app) to give $ or % off for lower arms, or use Shopify Plus Cart Transform or a Discount Function that reads cart attributes.',
-              'RipX injects attributes[_ripx_price_test] and attributes[_ripx_variant] into the cart — a Discount Function can read these at checkout and apply the correct discount so charged price matches the displayed price.',
+              'Deploy and attach the RipX Cart Transform function in Shopify so Direct Price Override is active.',
+              'Configure product/variant matrix values in your Price test and verify cart + checkout match target unit prices.',
+              'Use Offer tests when the intent is campaign-style discounts (percent/amount/free-shipping) instead of final price-level testing.',
             ]}
           />
           <Text variant="headingMd" as="h4">
@@ -665,24 +660,24 @@ npm run dev`}
           <ul className={styles.bulletList}>
             <li>
               <strong>Checkout alignment:</strong> If charged price should match displayed price,
-              set catalog to the highest test price and use discounts or a Discount Function for
-              lower arms.
+              verify Cart Transform is attached and Price &amp; Offer readiness is green in
+              Settings.
             </li>
             <li>
-              <strong>Feeds &amp; ads:</strong> Google Shopping, Meta, etc. use catalog price;
-              raising catalog to max test price affects what appears in feeds.
+              <strong>Feeds &amp; ads:</strong> Catalog feeds still come from Shopify catalog
+              values. Keep merchandising/feed strategy separate from experiment overrides.
             </li>
             <li>
               <strong>Bundles:</strong> If you use a bundle app with Cart Transform, only one
-              transform runs per store — prefer a Discount Function or display-only for price tests.
+              transform runs per store — coordinate ownership or use Offer tests where appropriate.
             </li>
             <li>
               <strong>Subscriptions:</strong> Selling plans block Cart Transform price overrides;
-              use display-only with caution on subscription products.
+              validate subscription products separately before launch.
             </li>
             <li>
-              <strong>Product targeting:</strong> RipX applies the test price only on product pages
-              for targeted products; collection-only targeting does not change PDP price.
+              <strong>Product targeting:</strong> RipX applies pricing to targeted products across
+              PDP, listing, and cart surfaces when theme selectors/markers are present.
             </li>
           </ul>
           <Text variant="headingMd" as="h4">
@@ -728,8 +723,8 @@ npm run dev`}
               test design.
             </li>
             <li>
-              Check cart and checkout: if you want charged price = displayed price, set catalog to
-              the highest test price and use a Discount Function or automatic discounts.
+              Check cart and checkout: confirm charged unit price matches the target unit and Cart
+              Transform is attached for the store.
             </li>
             <li>Product scope is correct (all products vs selected products).</li>
             <li>
@@ -784,9 +779,9 @@ npm run dev`}
           <p>
             <strong>When you stop a price test:</strong> (1) Decide which variant’s prices to keep.
             (2) Update your Shopify catalog to the winning prices (or use a CSV export if RipX
-            supports it) so checkout and feeds reflect the winner. (3) If you had set catalog to the
-            highest for checkout alignment, adjust discounts or catalog so the winning price is the
-            new baseline. (4) Document the outcome and any segment learnings for future tests.
+            supports it) so catalog and merchandising match the winner. (3) Remove temporary test
+            overrides/offer rules that are no longer needed. (4) Document the outcome and any
+            segment learnings for future tests.
           </p>
           <Text variant="headingMd" as="h4">
             Price presentation (optional)
@@ -817,13 +812,13 @@ npm run dev`}
               ],
               [
                 'Checkout shows different price',
-                'Display-only tests don’t change checkout. Set catalog to the highest test price and use automatic discounts or a Discount Function so checkout matches.',
+                'Confirm Cart Transform is attached, cart lines include RipX properties, and Price & Offer readiness diagnostics are green.',
               ],
             ]}
           />
           <DocCallout type="info" title="Best practice">
-            Run price tests 2–4 weeks with 200+ conversions per variant. Set catalog to the highest
-            test price when using discounts or Functions so checkout matches the displayed price.
+            Run price tests 2-4 weeks with 200+ conversions per variant. Track both revenue and
+            margin, and verify the same variant behavior on PDP, cart, and checkout before launch.
           </DocCallout>
         </BlockStack>
       );

@@ -11,7 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../../.env') });
-const { query } = require('../src/utils/database');
+const { query, closeDatabase } = require('../src/utils/database');
 
 async function markApplied() {
   await query(`
@@ -27,7 +27,9 @@ async function markApplied() {
     .sort((a, b) => {
       const numA = parseInt(a.match(/^(\d+)/)?.[1] || '0', 10);
       const numB = parseInt(b.match(/^(\d+)/)?.[1] || '0', 10);
-      if (numA !== numB) {return numA - numB;}
+      if (numA !== numB) {
+        return numA - numB;
+      }
       return a.localeCompare(b);
     });
   for (const file of files) {
@@ -39,9 +41,16 @@ async function markApplied() {
   console.log('Done. Total files marked:', files.length);
 }
 
-markApplied()
-  .then(() => process.exit(0))
-  .catch(err => {
+async function main() {
+  try {
+    await markApplied();
+  } catch (err) {
     console.error(err);
-    process.exit(1);
-  });
+    process.exitCode = 1;
+  } finally {
+    await closeDatabase().catch(() => {});
+    process.exit(process.exitCode ?? 0);
+  }
+}
+
+main();

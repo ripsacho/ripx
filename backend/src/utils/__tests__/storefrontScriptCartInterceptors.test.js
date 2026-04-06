@@ -75,7 +75,7 @@ function bootStorefrontScriptHarness(opts = {}) {
     Headers,
     fetch: jest.fn((input, init) => {
       fetchCalls.push({ input, init });
-      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
     }),
     XMLHttpRequest: FakeXMLHttpRequest,
     Shopify: { shop: 'makripon.myshopify.com' },
@@ -504,10 +504,10 @@ describe('storefront script cart/add interceptors', () => {
       headers: { 'Content-Type': 'application/json' },
       clone() {
         return {
-          text: async () => JSON.stringify({ id: 123, quantity: 1 }),
+          text: () => Promise.resolve(JSON.stringify({ id: 123, quantity: 1 })),
         };
       },
-      text: async () => JSON.stringify({ id: 123, quantity: 1 }),
+      text: () => Promise.resolve(JSON.stringify({ id: 123, quantity: 1 })),
     };
 
     await windowObj.fetch(requestLike);

@@ -637,7 +637,7 @@ async function loadHealthKvExtras() {
   return { maintenanceValue, maintenanceMessage, announcementBanner };
 }
 
-const liveHandler = async (req, res) => {
+const liveHandler = (req, res) => {
   if (isShuttingDown) {
     res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
       status: 'shutting_down',

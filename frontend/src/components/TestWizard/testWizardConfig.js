@@ -10,19 +10,19 @@ export const TEST_TEMPLATES = {
     name: 'Price Test',
     icon: '💰',
     description:
-      'Test discounts or price increases per cohort. PDP display only (product targets). Use fixed price, $ off/on, or % off/on. Run 2–4 weeks with 200+ conversions per variant for significance. Use Revenue or Profit as primary metric (Goal step). Checkout = catalog unless you align it — see banner and Documentation (Price testing).',
+      'Test direct price changes (lower or higher) per cohort. PDP display only (product targets). Use fixed price, $ off/on, or % off/on. Run 2–4 weeks with 200+ conversions per variant for significance. Use Revenue or Profit as primary metric (Goal step). Use Offer Test for promo-style discounts.',
     defaultConfig: {
       type: 'price',
       variants: [
         {
           name: 'Control',
           allocation: 50,
-          config: { price: null, priceApplicationMethod: 'auto' },
+          config: { price: null, priceApplicationMethod: 'direct_price_override' },
         },
         {
           name: 'Variant A',
           allocation: 50,
-          config: { price: null, priceApplicationMethod: 'auto' },
+          config: { price: null, priceApplicationMethod: 'direct_price_override' },
         },
       ],
     },
@@ -38,12 +38,12 @@ export const TEST_TEMPLATES = {
         {
           name: 'Control',
           allocation: 50,
-          config: { price: null, priceApplicationMethod: 'auto' },
+          config: { price: null, priceApplicationMethod: 'direct_price_override' },
         },
         {
           name: 'Variant A',
           allocation: 50,
-          config: { price: null, priceApplicationMethod: 'auto' },
+          config: { price: null, priceApplicationMethod: 'direct_price_override' },
         },
       ],
     },
@@ -128,7 +128,7 @@ export const TEST_TEMPLATES = {
     name: 'Offer Test',
     icon: '🎁',
     description:
-      'Test discount or free-shipping offers per variant. RipX assigns the variant; apply the discount at checkout via a Discount Function or discount codes.',
+      'Test discount or free-shipping offers per variant. Use this for promo campaigns (instead of Price Test). RipX assigns the variant; apply the discount at checkout via a Discount Function or discount codes.',
     defaultConfig: {
       type: 'offer',
       variants: [

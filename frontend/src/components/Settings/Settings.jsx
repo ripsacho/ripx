@@ -71,6 +71,8 @@ const INTEGRATIONS_CONFIG = [
   },
 ];
 
+const OFFER_CHECKOUT_FUNCTION_TITLE = 'RipX Offer Checkout Function';
+
 /** One-click presets for autonomous configuration */
 const SETTINGS_PRESETS = {
   recommended: {
@@ -543,7 +545,7 @@ function Settings() {
     setCheckoutDiscountListCheckError(null);
     try {
       const res = await apiPost('/settings/checkout-price-discount/ensure', {
-        title: 'RipX Price Test Function',
+        title: OFFER_CHECKOUT_FUNCTION_TITLE,
       });
       const data = unwrapData(res);
       if (!data || data.success === false || !data.discount) {
@@ -553,7 +555,7 @@ function Settings() {
         created: data.created === true,
         titleAdjusted: data.titleAdjusted === true,
         discountId: data.discount.discountId || null,
-        title: data.discount.title || 'RipX Price Test Function',
+        title: data.discount.title || OFFER_CHECKOUT_FUNCTION_TITLE,
         status: data.discount.status || null,
       });
       setCheckoutDiscountListCheck(data?.listCheck || null);
@@ -614,7 +616,7 @@ function Settings() {
     setCheckoutDiscountListCheckError(null);
     try {
       const res = await apiGet('/settings/checkout-price-discount/status', {
-        title: 'RipX Price Test Function',
+        title: OFFER_CHECKOUT_FUNCTION_TITLE,
         discount_id: String(checkoutDiscountEnsureResult?.discountId || '').trim() || undefined,
       });
       const data = unwrapData(res);
@@ -1229,87 +1231,46 @@ function Settings() {
     const cartTransformAvailable =
       checkoutDiag?.infrastructure?.cart_transform_function_available === true;
     const scriptDetected = installation?.scriptVerified === true;
-    const nativeCartLevel = String(checkoutDiag?.support?.cart_rendering?.level || '')
-      .trim()
-      .toLowerCase();
-    const nativeCartConfirmed =
-      nativeCartLevel === 'ready' ||
-      nativeCartLevel === 'native_installed' ||
-      nativeCartLevel === 'native_supported';
 
     return [
       {
-        id: 'auto_resolution',
-        title: 'Auto Resolution',
-        tone:
-          checkoutDiag?.summary?.overall_ok && discountFunctionAvailable
-            ? cartTransformAvailable
-              ? 'success'
-              : scriptDetected
-                ? 'attention'
-                : 'warning'
-            : 'warning',
-        status:
-          checkoutDiag?.summary?.overall_ok && discountFunctionAvailable
-            ? cartTransformAvailable
-              ? 'Cart Transform first for premium paths'
-              : scriptDetected
-                ? 'Native Variant fallback for premium paths'
-                : 'Discount path ready, premium path needs setup'
-            : 'Needs review',
-        summary:
-          checkoutDiag?.summary?.overall_ok && discountFunctionAvailable
-            ? cartTransformAvailable
-              ? 'Auto now resolves lower-price tests to Discounted Checkout Price and premium / higher-price tests to Direct Price Override on this shop.'
-              : 'Auto resolves lower-price tests to Discounted Checkout Price and falls back to Native Variant Price for premium / higher-price tests on this shop.'
-            : 'Auto can only be trusted once the required checkout pricing infrastructure is healthy.',
+        id: 'price_direct_override',
+        title: 'Price tests (Direct Price Override)',
+        tone: cartTransformAvailable ? 'success' : 'warning',
+        status: cartTransformAvailable ? 'Ready' : 'Needs deploy',
+        summary: cartTransformAvailable
+          ? 'Cart Transform is available, so Price tests can apply direct unit prices at cart and checkout.'
+          : 'Cart Transform is not detected yet, so Price tests cannot apply direct checkout price overrides reliably.',
         nextAction: cartTransformAvailable
-          ? 'Use Auto for mixed price-test portfolios when you want RipX to route premium paths into Cart Transform automatically.'
-          : 'If premium / higher-price tests should avoid discount labels, deploy Cart Transform so Auto can promote those paths to Direct Price Override.',
+          ? 'Use Price tests for lower or higher selling prices. Configure per-product and per-variant values in the matrix.'
+          : 'Deploy and activate RipX Cart Transform first, then rerun diagnostics.',
       },
       {
-        id: 'discounted_checkout_price',
-        title: 'Discounted Checkout Price',
+        id: 'offer_discount_path',
+        title: 'Offer tests (Discount function)',
         tone:
           checkoutDiag?.summary?.overall_ok && discountFunctionAvailable ? 'success' : 'warning',
         status:
-          checkoutDiag?.summary?.overall_ok && discountFunctionAvailable ? 'Ready' : 'Needs review',
+          checkoutDiag?.summary?.overall_ok && discountFunctionAvailable ? 'Ready' : 'Needs setup',
         summary:
           checkoutDiag?.summary?.overall_ok && discountFunctionAvailable
-            ? 'Discount function is present and checkout diagnostics are healthy.'
-            : 'This path needs a deployed discount function and passing checkout diagnostics.',
+            ? 'Discount function infrastructure is healthy for promo and offer campaigns.'
+            : 'Offer checkout path needs the RipX discount function attached and diagnostics passing.',
         nextAction:
           checkoutDiag?.summary?.overall_ok && discountFunctionAvailable
-            ? 'Best for lower-price tests when a checkout discount label is acceptable.'
-            : 'Run diagnostics and attach the RipX discount if this should power checkout pricing.',
+            ? 'Use Offer tests for discount messaging, promo campaigns, and free-shipping incentives.'
+            : 'Attach the RipX discount function in this screen, then verify again.',
       },
       {
-        id: 'native_variant_price',
-        title: 'Native Variant Price',
-        tone: scriptDetected ? (nativeCartConfirmed ? 'success' : 'attention') : 'warning',
-        status: scriptDetected
-          ? nativeCartConfirmed
-            ? 'Ready'
-            : 'Partially ready'
-          : 'Needs setup',
+        id: 'legacy_compatibility',
+        title: 'Legacy compatibility',
+        tone: scriptDetected ? 'attention' : 'warning',
+        status: scriptDetected ? 'Supported (legacy)' : 'Script missing',
         summary: scriptDetected
-          ? 'Storefront script can drive mapped-variant swaps for real product pricing.'
-          : 'The storefront script is not confirmed on the theme yet.',
-        nextAction: nativeCartConfirmed
-          ? 'Use this when mapped Shopify variants should behave like the real product price.'
-          : 'Mapped variants can still work, but add native cart rendering for the cleanest cart experience.',
-      },
-      {
-        id: 'direct_price_override',
-        title: 'Direct Price Override',
-        tone: cartTransformAvailable ? 'success' : 'warning',
-        status: cartTransformAvailable ? 'Ready for eligible stores' : 'Needs deploy',
-        summary: cartTransformAvailable
-          ? 'RipX Cart Transform is deployed, so Direct Price Override can run on eligible Plus/dev stores.'
-          : 'Cart Transform is not detected for this app on the shop yet.',
-        nextAction: cartTransformAvailable
-          ? 'Use for cleaner premium-price checkout UX without a discount label.'
-          : 'Deploy and activate RipX Cart Transform before using Direct Price Override.',
+          ? 'Legacy checkout methods from older tests remain readable, but new Price tests are saved as Direct Price Override.'
+          : 'Storefront script is not confirmed, so legacy fallback behaviors are not guaranteed.',
+        nextAction:
+          'Keep older tests running as-is during migration. Create new promo campaigns with Offer tests and new pricing campaigns with the matrix-based Price tests.',
       },
     ];
   }, [checkoutDiag, installation?.scriptVerified]);
@@ -2477,11 +2438,11 @@ function Settings() {
                                       <div className={styles.checkoutReadinessSection}>
                                         <div className={styles.checkoutReadinessHeader}>
                                           <Text variant="headingSm" as="h3">
-                                            Price methods readiness
+                                            Price & Offer readiness
                                           </Text>
                                           <Text as="p" variant="bodySm" tone="subdued">
-                                            Which price-test paths are actually launch-ready on this
-                                            shop right now.
+                                            Verify the direct pricing path (Price tests) and promo
+                                            path (Offer tests) before launch.
                                           </Text>
                                         </div>
                                         <div className={styles.checkoutReadinessGrid}>
@@ -2861,8 +2822,8 @@ function Settings() {
                                           <Text as="p" variant="bodySm" tone="subdued">
                                             RipX keeps one automatic discount so checkout can call
                                             your function. After attaching, confirm{' '}
-                                            <strong>RipX Price Test Function</strong> appears in
-                                            Shopify.
+                                            <strong>{OFFER_CHECKOUT_FUNCTION_TITLE}</strong> appears
+                                            in Shopify.
                                           </Text>
                                           <ol className={styles.checkoutDiagVerifyList}>
                                             <li>

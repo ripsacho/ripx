@@ -418,6 +418,7 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
                     </span>
                     {!collapsed && (
                       <Text
+                        className="sidebar-nav-label"
                         variant="bodyMd"
                         fontWeight={active ? 'semibold' : 'regular'}
                         tone={active ? 'base' : 'subdued'}

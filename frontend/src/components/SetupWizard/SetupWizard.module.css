@@ -20,7 +20,8 @@
   flex: 1;
   min-height: 0;
   width: 100%;
-  max-width: none;
+  max-width: min(1420px, 100%);
+  margin: 0 auto;
 }
 
 .setupBody {
@@ -29,10 +30,23 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding-top: 0.5rem;
+  padding-bottom: max(2rem, env(safe-area-inset-bottom, 0px));
   margin-top: 0.25rem;
   position: relative;
   width: 100%;
   max-width: none;
+}
+
+.setupBody :global(.Polaris-Layout__Section) {
+  min-width: 0;
+}
+
+.setupBody :global(.Polaris-Layout) {
+  align-items: start;
+}
+
+.setupBody :global(.Polaris-Layout__Section--secondary) {
+  min-width: 320px;
 }
 
 .setupBody::-webkit-scrollbar {
@@ -91,7 +105,7 @@
 /* Hero - premium (matches Settings/Profile) */
 .setupHero {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   flex-wrap: wrap;
   gap: 1.5rem;
   margin: -0.5rem 0 1.75rem;
@@ -153,6 +167,31 @@
   line-height: 1.55;
 }
 
+.setupHero :global(.Polaris-ButtonGroup) {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.setupPage :global(.Polaris-Button) {
+  transition:
+    transform var(--setup-wizard-time-200) ease,
+    box-shadow var(--setup-wizard-time-200) ease;
+}
+
+.setupPage :global(.Polaris-Button):focus-visible {
+  outline: 2px solid rgba(6, 182, 212, 0.55);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .setupPage :global(.Polaris-Button):hover {
+    transform: translateY(-1px);
+  }
+}
+
 [data-theme='dark'] .setupHero {
   background: linear-gradient(
     165deg,
@@ -189,6 +228,7 @@
 .statusCard {
   border: 1px solid rgba(98, 108, 116, 0.2);
   background: #ffffff;
+  box-shadow: 0 6px 20px rgba(6, 182, 212, 0.06);
 }
 
 .statusBadges {
@@ -198,6 +238,7 @@
 .stepsCard {
   background: linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.95) 50%, rgba(6, 182, 212, 0.04) 100%);
   border: 1px solid rgba(6, 182, 212, 0.18);
+  box-shadow: 0 6px 20px rgba(6, 182, 212, 0.06);
 }
 
 .stepsGrid {
@@ -313,6 +354,16 @@
   border: 1px solid rgba(6, 182, 212, 0.2);
   box-shadow: 0 6px 18px rgba(6, 182, 212, 0.08);
   transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+  height: 100%;
+}
+
+.stepCard:focus-within,
+.standaloneStepCard:focus-within,
+.railCard:focus-within {
+  border-color: rgba(6, 182, 212, 0.36);
+  box-shadow:
+    0 0 0 2px rgba(6, 182, 212, 0.18),
+    0 10px 24px rgba(6, 182, 212, 0.14);
 }
 
 .stepCard:hover {
@@ -324,6 +375,55 @@
 @media (max-width: 840px) {
   .stepsGrid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1024px) {
+  .setupBody :global(.Polaris-Layout__Section--secondary) {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .setupHero {
+    padding: 1.4rem 1.2rem;
+    gap: 1rem;
+  }
+
+  .setupHero :global(.Polaris-ButtonGroup) {
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-start;
+  }
+}
+
+[data-theme='dark'] .statusCard {
+  border-color: rgba(6, 182, 212, 0.22);
+  background: linear-gradient(180deg, rgba(20, 20, 20, 0.96) 0%, rgba(14, 20, 28, 0.95) 100%);
+}
+
+[data-theme='dark'] .stepsCard {
+  border-color: rgba(6, 182, 212, 0.24);
+  background: linear-gradient(
+    165deg,
+    rgba(18, 18, 18, 0.98) 0%,
+    rgba(6, 182, 212, 0.08) 58%,
+    rgba(18, 18, 18, 0.98) 100%
+  );
+}
+
+[data-theme='dark'] .stepCard {
+  border-color: rgba(6, 182, 212, 0.24);
+  background: linear-gradient(180deg, rgba(19, 19, 19, 0.98) 0%, rgba(14, 20, 28, 0.96) 100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stepCard,
+  .standaloneStepCard,
+  .railCard,
+  .setupPage :global(.Polaris-Button) {
+    transition: none !important;
+    transform: none !important;
   }
 }
 
@@ -439,13 +539,24 @@
 }
 
 .setupLink {
-  color: var(--futuristic-cyan);
+  color: #0e7490;
   font-weight: 500;
   text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+[data-theme='dark'] .setupLink {
+  color: #67e8f9;
 }
 
 .setupLink:hover {
   text-decoration: underline;
+}
+
+.setupLink:focus-visible {
+  outline: 2px solid rgba(6, 182, 212, 0.55);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 /* Standalone: script verified card (success state) */

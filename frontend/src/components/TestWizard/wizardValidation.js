@@ -95,51 +95,6 @@ export function getWizardStepErrors(stepId, options) {
     }
   }
 
-  function normalizePriceApplicationMethod(value) {
-    const raw = String(value || '')
-      .trim()
-      .toLowerCase();
-    if (raw === 'discounted_checkout_price') return 'discounted_checkout_price';
-    if (raw === 'native_variant_price') return 'native_variant_price';
-    if (raw === 'direct_price_override') return 'direct_price_override';
-    return 'auto';
-  }
-
-  function hasNativeVariantMapping(cfg) {
-    return !!(
-      cfg &&
-      cfg.nativeVariantId !== null &&
-      cfg.nativeVariantId !== undefined &&
-      String(cfg.nativeVariantId).trim() !== ''
-    );
-  }
-
-  function priceConfigImpliesIncrease(cfg) {
-    if (!cfg || typeof cfg !== 'object') return false;
-    const mode = (cfg.priceMode || 'fixed').toLowerCase();
-    if (mode === 'amount') {
-      const n = Number(cfg.priceDelta);
-      return !Number.isNaN(n) && n > 0;
-    }
-    if (mode === 'percent') {
-      const n = Number(cfg.pricePercent);
-      return !Number.isNaN(n) && n < 0;
-    }
-    return false;
-  }
-
-  function validatePriceApplicationMethod(cfg, label) {
-    const method = normalizePriceApplicationMethod(cfg?.priceApplicationMethod);
-    if (method === 'native_variant_price' && !hasNativeVariantMapping(cfg)) {
-      errors.push(`${label}: Native Variant Price requires a mapped Shopify variant ID.`);
-    }
-    if (method === 'discounted_checkout_price' && priceConfigImpliesIncrease(cfg)) {
-      errors.push(
-        `${label}: Discounted Checkout Price only supports lower prices. Use Auto or Native Variant Price for price increases.`
-      );
-    }
-  }
-
   // Step 1 (template step) – only when showTemplateStep
   if (showTemplateStep && stepId === 1) {
     const nameToCheck = formData.name?.trim() || initialData?.name?.trim();
@@ -276,7 +231,6 @@ export function getWizardStepErrors(stepId, options) {
           hasNonControlWithPriceCode = true;
         }
         validatePriceRange(cfg, v?.name || `Variant ${i + 1}`, true);
-        validatePriceApplicationMethod(cfg, v?.name || `Variant ${i + 1}`);
       });
       formData.variants.forEach((v, i) => {
         const byProduct = v?.config?.byProduct;
@@ -287,10 +241,6 @@ export function getWizardStepErrors(stepId, options) {
             `${v?.name || `Variant ${i + 1}`}: per-product override (${productId})`,
             true
           );
-          validatePriceApplicationMethod(
-            override,
-            `${v?.name || `Variant ${i + 1}`}: per-product override (${productId})`
-          );
           const byVariant = override?.byVariant;
           if (!byVariant || typeof byVariant !== 'object') return;
           Object.entries(byVariant).forEach(([vKey, vCfg]) => {
@@ -299,16 +249,12 @@ export function getWizardStepErrors(stepId, options) {
               `${v?.name || `Variant ${i + 1}`}: per-variant override (${vKey})`,
               true
             );
-            validatePriceApplicationMethod(
-              vCfg,
-              `${v?.name || `Variant ${i + 1}`}: per-variant override (${vKey})`
-            );
           });
         });
       });
       if (formData.variants.length > 1 && !hasNonControlWithPriceCode) {
         errors.push(
-          'At least one test variant (non-control) must have a price or discount configured. Go to Traffic step → Variant configuration.'
+          'At least one test variant (non-control) must have a price configured. Go to Traffic step → Variant configuration.'
         );
       }
     }
@@ -391,11 +337,10 @@ export function getWizardStepErrors(stepId, options) {
           hasNonControlWithPriceReview = true;
         }
         validatePriceRange(cfg, v?.name || `Variant ${i + 1}`, false);
-        validatePriceApplicationMethod(cfg, v?.name || `Variant ${i + 1}`);
       });
       if (formData.variants.length > 1 && !hasNonControlWithPriceReview) {
         errors.push(
-          'At least one test variant (non-control) must have a price or discount configured. Go to Traffic step → Variant configuration to set prices.'
+          'At least one test variant (non-control) must have a price configured. Go to Traffic step → Variant configuration to set prices.'
         );
       }
       // Per-product / per-variant overrides: validate nested price config on review
@@ -408,10 +353,6 @@ export function getWizardStepErrors(stepId, options) {
             `${v?.name || `Variant ${i + 1}`}: per-product override (${_productId})`,
             false
           );
-          validatePriceApplicationMethod(
-            override,
-            `${v?.name || `Variant ${i + 1}`}: per-product override (${_productId})`
-          );
           const byVariant = override?.byVariant;
           if (!byVariant || typeof byVariant !== 'object') return;
           Object.entries(byVariant).forEach(([vKey, vCfg]) => {
@@ -419,10 +360,6 @@ export function getWizardStepErrors(stepId, options) {
               vCfg,
               `${v?.name || `Variant ${i + 1}`}: per-variant override (${vKey})`,
               false
-            );
-            validatePriceApplicationMethod(
-              vCfg,
-              `${v?.name || `Variant ${i + 1}`}: per-variant override (${vKey})`
             );
           });
         });

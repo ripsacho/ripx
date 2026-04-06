@@ -158,32 +158,7 @@ describe('validators.validateTestConfig', () => {
     );
   });
 
-  it('returns error when Native Variant Price has no mapped Shopify variant ID', () => {
-    const result = validators.validateTestConfig({
-      name: 'Test',
-      type: 'price',
-      variants: [
-        { name: 'Control', allocation: 50, config: { priceMode: 'fixed' } },
-        {
-          name: 'Variant A',
-          allocation: 50,
-          config: {
-            priceMode: 'fixed',
-            price: 39,
-            priceApplicationMethod: 'native_variant_price',
-          },
-        },
-      ],
-    });
-    expect(result.isValid).toBe(false);
-    expect(
-      result.errors.some(
-        e => e.includes('Native Variant Price') && e.includes('mapped Shopify variant ID')
-      )
-    ).toBe(true);
-  });
-
-  it('returns error when Discounted Checkout Price is used for a price increase', () => {
+  it('does not add method-specific errors for legacy priceApplicationMethod values', () => {
     const result = validators.validateTestConfig({
       name: 'Test',
       type: 'price',
@@ -200,37 +175,9 @@ describe('validators.validateTestConfig', () => {
         },
       ],
     });
-    expect(result.isValid).toBe(false);
-    expect(
-      result.errors.some(
-        e => e.includes('Discounted Checkout Price') && e.includes('only supports lower prices')
-      )
-    ).toBe(true);
-  });
-
-  it('allows Direct Price Override when the variant lowers price (manual method)', () => {
-    const result = validators.validateTestConfig({
-      name: 'Test',
-      type: 'price',
-      variants: [
-        { name: 'Control', allocation: 50, config: { priceMode: 'fixed' } },
-        {
-          name: 'Variant A',
-          allocation: 50,
-          config: {
-            priceMode: 'amount',
-            priceDelta: -5,
-            priceApplicationMethod: 'direct_price_override',
-          },
-        },
-      ],
-    });
     expect(result.isValid).toBe(true);
-    expect(
-      result.errors.some(
-        e => e.includes('Direct Price Override') && e.includes('hardened for price increases')
-      )
-    ).toBe(false);
+    expect(result.errors.some(e => e.includes('Native Variant Price'))).toBe(false);
+    expect(result.errors.some(e => e.includes('Discounted Checkout Price'))).toBe(false);
   });
 
   it('returns errors for missing name', () => {

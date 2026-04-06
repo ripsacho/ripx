@@ -12,10 +12,10 @@ jest.mock('../../utils/maintenanceMode', () => ({
   isMaintenanceActiveForDomain: jest.fn().mockReturnValue(false),
 }));
 
-const mockTenantExists = jest.fn(async domain =>
+const mockTenantExists = jest.fn(domain =>
   ['test.myshopify.com', 'makripon.myshopify.com'].includes(String(domain || '').toLowerCase())
 );
-const mockGetTenantByDomain = jest.fn(async domain =>
+const mockGetTenantByDomain = jest.fn(domain =>
   domain ? { domain: String(domain).toLowerCase(), status: 'active' } : null
 );
 
