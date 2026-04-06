@@ -107,8 +107,8 @@ const APP_SETTINGS_SECTION_IDS = [
   'installation',
   'general',
   'integrations',
-  'appearance',
   'presets',
+  'appearance',
 ];
 
 /** Default settings values - single source for initial state and validation */
@@ -217,6 +217,8 @@ function Settings() {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const isAppSettings = /^\/app\/[^/]+\/settings$/.test(location.pathname);
+  const isGuidedSetupMode =
+    isAppSettings && String(searchParams.get('guided_setup') || '').trim() === '1';
   const TAB_CONFIG = isAppSettings ? TAB_CONFIG_APP : TAB_CONFIG_ACCOUNT;
   const TAB_IDS = useMemo(() => TAB_CONFIG.map(t => t.id), [TAB_CONFIG]);
 
@@ -250,10 +252,23 @@ function Settings() {
     [setSearchParams, TAB_CONFIG.length, TAB_IDS]
   );
 
+  const clearGuidedSetupMode = useCallback(() => {
+    setSearchParams(
+      prev => {
+        const next = new URLSearchParams(prev);
+        next.delete('guided_setup');
+        next.delete('source');
+        return next;
+      },
+      { replace: true }
+    );
+  }, [setSearchParams]);
+
   useEffect(() => {
     const index = tabIndexFromSearchParams(searchParams, TAB_CONFIG);
     setSelectedTabState(index);
   }, [searchParams, TAB_CONFIG]);
+
   const [settings, setSettings] = useState({ ...DEFAULT_SETTINGS });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -299,6 +314,15 @@ function Settings() {
       return 'comfortable';
     }
   });
+  const [settingsLayoutMode, setSettingsLayoutMode] = useState(() => {
+    if (typeof window === 'undefined') return 'tabbed';
+    try {
+      const saved = window.localStorage.getItem('ripx_settings_layout_mode_v1');
+      return saved === 'all' ? 'all' : 'tabbed';
+    } catch {
+      return 'tabbed';
+    }
+  });
   const [sectionRailCollapsed, setSectionRailCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
     try {
@@ -327,6 +351,17 @@ function Settings() {
   const railTooltipTimerRef = useRef(null);
 
   useEffect(() => {
+    if (!isGuidedSetupMode) return;
+    if (settingsLayoutMode !== 'tabbed') {
+      setSettingsLayoutMode('tabbed');
+    }
+    const installationIndex = TAB_IDS.indexOf('installation');
+    if (installationIndex >= 0 && selectedTab !== installationIndex) {
+      setSelectedTab(installationIndex);
+    }
+  }, [isGuidedSetupMode, settingsLayoutMode, TAB_IDS, selectedTab, setSelectedTab]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
       window.localStorage.setItem('ripx_settings_density_v1', layoutDensity);
@@ -334,6 +369,19 @@ function Settings() {
       // Ignore persistence failures.
     }
   }, [layoutDensity]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      if (!isAppSettings) {
+        window.localStorage.removeItem('ripx_settings_layout_mode_v1');
+        return;
+      }
+      window.localStorage.setItem('ripx_settings_layout_mode_v1', settingsLayoutMode);
+    } catch {
+      // Ignore persistence failures.
+    }
+  }, [isAppSettings, settingsLayoutMode]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1351,7 +1399,7 @@ function Settings() {
       },
     ];
   }, [configuredIntegrationCount, integrations]);
-  const showAllAppSections = isAppSettings;
+  const showAllAppSections = isAppSettings && settingsLayoutMode === 'all';
   const appSettingsSectionIndex = useMemo(
     () => [
       {
@@ -1373,16 +1421,16 @@ function Settings() {
         status: configuredIntegrationCount > 0 ? 'ok' : 'neutral',
       },
       {
-        id: 'appearance',
-        label: 'Appearance',
-        shortLabel: 'AP',
-        status: 'neutral',
-      },
-      {
         id: 'presets',
         label: 'Audience presets',
         shortLabel: 'PR',
         status: Array.isArray(targetingPresets) && targetingPresets.length > 0 ? 'ok' : 'neutral',
+      },
+      {
+        id: 'appearance',
+        label: 'Appearance',
+        shortLabel: 'AP',
+        status: 'neutral',
       },
     ],
     [setupComplete, configuredIntegrationCount, targetingPresets]
@@ -1444,7 +1492,7 @@ function Settings() {
                       <div className={styles.settingsShellSubtitleRow}>
                         <p className={styles.settingsShellSubtitle}>
                           {isAppSettings
-                            ? 'Snippet, checkout, integrations, and appearance for this shop.'
+                            ? 'Setup, checkout, defaults, integrations, presets, and appearance for this shop.'
                             : 'Theme and appearance. Open the app from Home for tests and installation.'}
                         </p>
                         {isAppSettings && (
@@ -1595,70 +1643,6 @@ function Settings() {
                     </div>
                   </div>
                 )}
-
-                {!showAllAppSections && (
-                  <div className={styles.settingsShellQuickNav}>
-                    <span className={styles.settingsShellQuickNavLabel}>Jump to</span>
-                    <div className={styles.settingsShellQuickNavScroll}>
-                      <InlineStack gap="150" wrap={false} blockAlign="center">
-                        {isAppSettings && (
-                          <>
-                            <Button
-                              size="slim"
-                              variant="plain"
-                              onClick={() => {
-                                const i = TAB_IDS.indexOf('installation');
-                                if (i >= 0) setSelectedTab(i);
-                              }}
-                            >
-                              Installation
-                            </Button>
-                            <Button
-                              size="slim"
-                              variant="plain"
-                              onClick={() => {
-                                const i = TAB_IDS.indexOf('general');
-                                if (i >= 0) setSelectedTab(i);
-                              }}
-                            >
-                              Test defaults
-                            </Button>
-                            <Button
-                              size="slim"
-                              variant="plain"
-                              onClick={() => {
-                                const i = TAB_IDS.indexOf('integrations');
-                                if (i >= 0) setSelectedTab(i);
-                              }}
-                            >
-                              Connections
-                            </Button>
-                            <Button
-                              size="slim"
-                              variant="plain"
-                              onClick={() => {
-                                const i = TAB_IDS.indexOf('presets');
-                                if (i >= 0) setSelectedTab(i);
-                              }}
-                            >
-                              Audience presets
-                            </Button>
-                          </>
-                        )}
-                        <Button
-                          size="slim"
-                          variant="plain"
-                          onClick={() => {
-                            const i = TAB_IDS.indexOf('appearance');
-                            if (i >= 0) setSelectedTab(i);
-                          }}
-                        >
-                          Appearance
-                        </Button>
-                      </InlineStack>
-                    </div>
-                  </div>
-                )}
               </div>
 
               {!isAppSettings && (
@@ -1686,6 +1670,18 @@ function Settings() {
                 >
                   Couldn&apos;t load app settings. Check your connection and try again. You can
                   still use Installation, Integrations, and other tabs.
+                </Banner>
+              )}
+              {isGuidedSetupMode && (
+                <Banner
+                  tone="info"
+                  title="Guided setup mode"
+                  action={{ content: 'Exit guided mode', onAction: clearGuidedSetupMode }}
+                >
+                  <p>
+                    You&apos;re in focused setup mode. Complete Installation first, then continue to
+                    other settings.
+                  </p>
                 </Banner>
               )}
             </div>
@@ -1879,6 +1875,38 @@ function Settings() {
                           </Tooltip>
                         )}
                         <InlineStack gap="150" wrap blockAlign="center">
+                          {isAppSettings && !isGuidedSetupMode && (
+                            <>
+                              <Tooltip content="Sections view is cleaner for day-to-day work. All sections keeps everything on one page for audits and bulk updates.">
+                                <span className={styles.settingsDensityGroup}>
+                                  <Text as="span" variant="bodySm" tone="subdued">
+                                    View
+                                  </Text>
+                                  <span
+                                    className={styles.settingsMetricTip}
+                                    tabIndex={0}
+                                    aria-label="Choose between section tabs or one-page layout"
+                                  >
+                                    <Icon source={InfoIcon} />
+                                  </span>
+                                </span>
+                              </Tooltip>
+                              <Button
+                                size="micro"
+                                pressed={settingsLayoutMode === 'tabbed'}
+                                onClick={() => setSettingsLayoutMode('tabbed')}
+                              >
+                                Sections
+                              </Button>
+                              <Button
+                                size="micro"
+                                pressed={settingsLayoutMode === 'all'}
+                                onClick={() => setSettingsLayoutMode('all')}
+                              >
+                                All sections
+                              </Button>
+                            </>
+                          )}
                           <Tooltip content={densityHelp}>
                             <span className={styles.settingsDensityGroup}>
                               <Text as="span" variant="bodySm" tone="subdued">

@@ -231,6 +231,123 @@
       return { ok: false, error: err && (err.message || String(err)) };
     }
   }
+
+  function ensureRipxPaintScopeStats(scope) {
+    var key = scope && String(scope).trim() ? String(scope).trim() : 'unknown';
+    if (!_ripxPaintStats.byScope[key]) {
+      _ripxPaintStats.byScope[key] = {
+        attempts: 0,
+        textWrites: 0,
+        attrWrites: 0,
+        mutations: 0,
+        unchanged: 0,
+      };
+    }
+    return _ripxPaintStats.byScope[key];
+  }
+
+  function recordRipxPaintEvent(scope, textWrites, attrWrites) {
+    var textCount = Number(textWrites) || 0;
+    var attrCount = Number(attrWrites) || 0;
+    var mutations = Math.max(0, textCount + attrCount);
+    var bucket = ensureRipxPaintScopeStats(scope);
+    bucket.attempts += 1;
+    bucket.textWrites += textCount;
+    bucket.attrWrites += attrCount;
+    bucket.mutations += mutations;
+    if (mutations === 0) bucket.unchanged += 1;
+    _ripxPaintStats.totals.attempts += 1;
+    _ripxPaintStats.totals.textWrites += textCount;
+    _ripxPaintStats.totals.attrWrites += attrCount;
+    _ripxPaintStats.totals.mutations += mutations;
+    if (mutations === 0) _ripxPaintStats.totals.unchanged += 1;
+    _ripxPaintStats.lastEventAt = Date.now();
+  }
+
+  function recordRipxPaintScheduleEvent(kind) {
+    var k = kind && String(kind).trim() ? String(kind).trim() : '';
+    if (!k) return;
+    if (!_ripxPaintStats.schedules[k]) _ripxPaintStats.schedules[k] = 0;
+    _ripxPaintStats.schedules[k] += 1;
+    _ripxPaintStats.lastEventAt = Date.now();
+  }
+
+  function getRipxPaintStatsSnapshot() {
+    var now = Date.now();
+    var byScope = {};
+    var scopeKeys = Object.keys(_ripxPaintStats.byScope || {});
+    for (var i = 0; i < scopeKeys.length; i++) {
+      var key = scopeKeys[i];
+      var bucket = _ripxPaintStats.byScope[key] || {};
+      byScope[key] = {
+        attempts: Number(bucket.attempts) || 0,
+        textWrites: Number(bucket.textWrites) || 0,
+        attrWrites: Number(bucket.attrWrites) || 0,
+        mutations: Number(bucket.mutations) || 0,
+        unchanged: Number(bucket.unchanged) || 0,
+      };
+    }
+    var totals = _ripxPaintStats.totals || {};
+    var schedules = {};
+    var scheduleKeys = Object.keys(_ripxPaintStats.schedules || {});
+    for (var j = 0; j < scheduleKeys.length; j++) {
+      var sk = scheduleKeys[j];
+      schedules[sk] = Number(_ripxPaintStats.schedules[sk]) || 0;
+    }
+    var attempts = Number(totals.attempts) || 0;
+    var mutations = Number(totals.mutations) || 0;
+    return {
+      sinceMs: Number(_ripxPaintStats.since) || now,
+      sinceIso: new Date(Number(_ripxPaintStats.since) || now).toISOString(),
+      elapsedMs: Math.max(0, now - (Number(_ripxPaintStats.since) || now)),
+      lastEventAtMs:
+        _ripxPaintStats.lastEventAt != null ? Number(_ripxPaintStats.lastEventAt) || null : null,
+      lastEventAtIso:
+        _ripxPaintStats.lastEventAt != null
+          ? new Date(Number(_ripxPaintStats.lastEventAt)).toISOString()
+          : null,
+      totals: {
+        attempts: attempts,
+        textWrites: Number(totals.textWrites) || 0,
+        attrWrites: Number(totals.attrWrites) || 0,
+        mutations: mutations,
+        unchanged: Number(totals.unchanged) || 0,
+        mutationRate: attempts > 0 ? Math.round((mutations / attempts) * 1000) / 1000 : 0,
+      },
+      schedules: schedules,
+      byScope: byScope,
+    };
+  }
+
+  function resetRipxPaintStats() {
+    _ripxPaintStats = createRipxPaintStats();
+  }
+
+  function debugPaintStats(options) {
+    var opts = options && typeof options === 'object' ? options : {};
+    if (opts.reset === true) {
+      resetRipxPaintStats();
+    }
+    var snapshot = getRipxPaintStatsSnapshot();
+    if (opts.log !== false && typeof console !== 'undefined') {
+      if (console.groupCollapsed) console.groupCollapsed('[RipX] paint stats');
+      if (console.table) {
+        var totalsRow = Object.assign({ scope: 'totals' }, snapshot.totals);
+        console.table([totalsRow]);
+        var scopeRows = [];
+        var scopeKeys = Object.keys(snapshot.byScope || {});
+        for (var i = 0; i < scopeKeys.length; i++) {
+          var scope = scopeKeys[i];
+          scopeRows.push(Object.assign({ scope: scope }, snapshot.byScope[scope]));
+        }
+        if (scopeRows.length) console.table(scopeRows);
+      }
+      if (console.log) console.log('schedules', snapshot.schedules);
+      if (console.groupEnd) console.groupEnd();
+    }
+    return { ok: true, stats: snapshot };
+  }
+
   /** Fetch with timeout to avoid hanging on slow/failed networks. Uses AbortController. */
   function fetchWithTimeout(url, options, timeoutMs) {
     var t = typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : 10000;
@@ -541,6 +658,16 @@
   var _ripxCartNativeStateInFlight = null;
   var _ripxCartNativeStateTimer = null;
   var _ripxGlobalPaintScheduleAtByKey = {};
+  function createRipxPaintStats() {
+    return {
+      since: Date.now(),
+      lastEventAt: null,
+      totals: { attempts: 0, textWrites: 0, attrWrites: 0, mutations: 0, unchanged: 0 },
+      byScope: {},
+      schedules: { requested: 0, deduped: 0, skippedCartDisabled: 0 },
+    };
+  }
+  var _ripxPaintStats = createRipxPaintStats();
 
   function getVariantCachePromise() {
     if (_variantCachePromise) return _variantCachePromise;
@@ -2758,13 +2885,28 @@
           }
         } catch (e0) {}
         seen.add(el);
+        var textWrites = 0;
+        var attrWrites = 0;
         // Avoid continuous mutation churn by writing only when value changed.
         if (el.textContent !== currentDisplay) {
           el.textContent = currentDisplay;
+          textWrites += 1;
         }
-        el.setAttribute('data-test-variant', String(variantIdForCart));
-        el.setAttribute('data-test-id', String(testId));
-        el.setAttribute('data-ripx-price', '1');
+        var variantStr = String(variantIdForCart);
+        if (el.getAttribute('data-test-variant') !== variantStr) {
+          el.setAttribute('data-test-variant', variantStr);
+          attrWrites += 1;
+        }
+        var testStr = String(testId);
+        if (el.getAttribute('data-test-id') !== testStr) {
+          el.setAttribute('data-test-id', testStr);
+          attrWrites += 1;
+        }
+        if (el.getAttribute('data-ripx-price') !== '1') {
+          el.setAttribute('data-ripx-price', '1');
+          attrWrites += 1;
+        }
+        recordRipxPaintEvent('pdp', textWrites, attrWrites);
       }
       specificSelectors.forEach(function (sel) {
         try {
@@ -2933,24 +3075,31 @@
     return catalog;
   }
 
-  function paintPriceNode(el, display, testId, variantIdForCart) {
+  function paintPriceNode(el, display, testId, variantIdForCart, scope) {
     if (!el || !display) return;
+    var textWrites = 0;
+    var attrWrites = 0;
     if (el.textContent !== display) {
       el.textContent = display;
+      textWrites += 1;
     }
     if (variantIdForCart != null && String(variantIdForCart).trim() !== '') {
       var variantStr = String(variantIdForCart);
       if (el.getAttribute('data-test-variant') !== variantStr) {
         el.setAttribute('data-test-variant', variantStr);
+        attrWrites += 1;
       }
     }
     var testStr = String(testId);
     if (el.getAttribute('data-test-id') !== testStr) {
       el.setAttribute('data-test-id', testStr);
+      attrWrites += 1;
     }
     if (el.getAttribute('data-ripx-price') !== '1') {
       el.setAttribute('data-ripx-price', '1');
+      attrWrites += 1;
     }
+    recordRipxPaintEvent(scope || 'listing', textWrites, attrWrites);
   }
 
   /**
@@ -3101,7 +3250,13 @@
           }
           var display = formatShopPrice(adjusted);
           if (!display) return;
-          paintPriceNode(el, display, testId, variantIdForCart);
+          paintPriceNode(
+            el,
+            display,
+            testId,
+            variantIdForCart,
+            scope === 'cart' ? 'cart_global_fallback' : 'listing_global_fallback'
+          );
         });
       } catch (e) {}
     });
@@ -3109,13 +3264,20 @@
 
   /** Themes hydrate cards/cart after first paint — schedule a few passes without stacking duplicate deltas. */
   function schedulePaintAllProductsGlobalPrices(testId, variant, scope) {
-    if (scope === 'cart' && shouldDisableCartUiPricePaint()) return;
+    recordRipxPaintScheduleEvent('requested');
+    if (scope === 'cart' && shouldDisableCartUiPricePaint()) {
+      recordRipxPaintScheduleEvent('skippedCartDisabled');
+      return;
+    }
     var variantKey = variant && (variant.variantId != null ? variant.variantId : variant.id);
     var scheduleKey =
       String(scope || '') + '::' + String(testId || '') + '::' + String(variantKey || '');
     var now = Date.now();
     var lastScheduledAt = Number(_ripxGlobalPaintScheduleAtByKey[scheduleKey] || 0);
-    if (now - lastScheduledAt < 120) return;
+    if (now - lastScheduledAt < 120) {
+      recordRipxPaintScheduleEvent('deduped');
+      return;
+    }
     _ripxGlobalPaintScheduleAtByKey[scheduleKey] = now;
     paintAllProductsGlobalPrices(testId, variant, scope);
     var run = function () {
@@ -3230,7 +3392,7 @@
         );
         priceEls.forEach(function (el) {
           if (!el || inCartUi(el)) return;
-          paintPriceNode(el, cardDisplay, testId, variantIdForCart);
+          paintPriceNode(el, cardDisplay, testId, variantIdForCart, 'listing_cards');
         });
       });
     });
@@ -3343,7 +3505,7 @@
       );
       priceEls.forEach(function (el) {
         if (!el || inCartUi(el)) return;
-        paintPriceNode(el, cardDisplay, testId, variantIdForCart);
+        paintPriceNode(el, cardDisplay, testId, variantIdForCart, 'collection_cards');
       });
     });
     applyRipxStateToCartForms(null);
@@ -5123,6 +5285,7 @@
       },
       ripXApi: {
         reapplyPriceTestsType: window.RipX ? typeof window.RipX.reapplyPriceTests : 'n/a',
+        debugPaintStatsType: window.RipX ? typeof window.RipX.debugPaintStats : 'n/a',
       },
       requestedTestId: tid,
       variant: variant,
@@ -5201,6 +5364,7 @@
           fallbackPaintCount: cartUiFallbackPaintCount(),
           preferNativeRendering: shouldPreferNativeCartRendering(),
         },
+        paintStats: getRipxPaintStatsSnapshot(),
       },
       checkout: {
         storefrontScriptRunsOnHostedCheckout: false,
@@ -5246,6 +5410,7 @@
     },
     debugCart: debugCartSnapshot,
     debugStatus,
+    debugPaintStats: debugPaintStats,
     version: SCRIPT_VERSION,
   };
   window.ABTestTracker = api;

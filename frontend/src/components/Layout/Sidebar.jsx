@@ -58,10 +58,12 @@ const baseNavigationGroups = (domain = null) => {
       ],
     },
     {
-      label: 'Setup',
+      label: 'Setup & Settings',
       items: [
-        { path: setup, label: 'Setup Wizard', icon: CompassIcon },
-        ...(appSettings ? [{ path: appSettings, label: 'App settings', icon: SettingsIcon }] : []),
+        { path: setup, label: 'Setup (guided)', icon: CompassIcon },
+        ...(appSettings
+          ? [{ path: appSettings, label: 'Settings (advanced)', icon: SettingsIcon }]
+          : []),
       ],
     },
   ];
