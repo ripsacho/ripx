@@ -1,4 +1,7 @@
-import { Banner, BlockStack, Button, Text, extension } from '@shopify/ui-extensions/checkout';
+import '@shopify/ui-extensions/preact';
+import { h, render } from 'preact';
+import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
+import { useAttributes, useCheckoutToken, useShop } from '@shopify/ui-extensions/checkout/preact';
 import {
   RIPX_CHECKOUT_ASSIGNMENT_URL,
   RIPX_CHECKOUT_CONVERSION_URL,
@@ -6,15 +9,6 @@ import {
   RIPX_CHECKOUT_UI_SHOP_DOMAIN,
   RIPX_CHECKOUT_UI_TEST_ID,
 } from './ripxConfig';
-
-const TARGET = 'purchase.checkout.block.render';
-
-function readCurrent(value) {
-  if (value && typeof value === 'object' && 'current' in value) {
-    return value.current;
-  }
-  return value;
-}
 
 function normalizeShopDomain(input) {
   const raw = String(input || '')
@@ -38,247 +32,221 @@ function normalizeShopDomain(input) {
   return '';
 }
 
-function getCheckoutAttribute(api, key) {
-  const attrs = readCurrent(api?.attributes);
-  if (!Array.isArray(attrs)) {
-    return '';
-  }
-  const hit = attrs.find(row => String(row?.key || '').trim() === key);
+function getAttribute(attributes, key) {
+  const rows = Array.isArray(attributes) ? attributes : [];
+  const hit = rows.find(row => String(row?.key || '').trim() === key);
   return String(hit?.value || '').trim();
 }
 
-function getCheckoutId(api) {
-  const candidates = [
-    readCurrent(api?.checkoutToken),
-    readCurrent(api?.token),
-    readCurrent(api?.checkout?.token),
-    getCheckoutAttribute(api, '_ripx_checkout_id'),
-  ];
-  for (const candidate of candidates) {
-    const value = String(candidate || '').trim();
-    if (value) {
-      return value;
+function CheckoutExperiment() {
+  const attributes = useAttributes() || [];
+  const checkoutToken = useCheckoutToken();
+  const shop = useShop();
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [assignment, setAssignment] = useState(null);
+  const [sendingConversion, setSendingConversion] = useState(false);
+  const [impressionTracked, setImpressionTracked] = useState(false);
+
+  const shopDomain = useMemo(() => {
+    const configured = normalizeShopDomain(RIPX_CHECKOUT_UI_SHOP_DOMAIN);
+    if (configured) {
+      return configured;
     }
-  }
-  return '';
-}
+    return normalizeShopDomain(shop?.myshopifyDomain || shop?.storefrontUrl || '');
+  }, [shop]);
 
-function getShopDomain(api) {
-  const configured = normalizeShopDomain(RIPX_CHECKOUT_UI_SHOP_DOMAIN);
-  if (configured) {
-    return configured;
-  }
-  const candidates = [
-    readCurrent(api?.shop?.myshopifyDomain),
-    readCurrent(api?.shop?.storeDomain),
-    readCurrent(api?.shop?.storefrontUrl),
-    readCurrent(api?.shop),
-  ];
-  for (const candidate of candidates) {
-    const normalized = normalizeShopDomain(candidate);
-    if (normalized) {
-      return normalized;
+  const checkoutId = useMemo(() => {
+    const direct = String(checkoutToken || '').trim();
+    if (direct) {
+      return direct;
     }
-  }
-  return '';
-}
+    return getAttribute(attributes, '_ripx_checkout_id');
+  }, [checkoutToken, attributes]);
 
-function getTestId(api) {
-  const configured = String(RIPX_CHECKOUT_UI_TEST_ID || '').trim();
-  if (configured) {
-    return configured;
-  }
-  return getCheckoutAttribute(api, '_ripx_checkout_test');
-}
-
-export default extension(TARGET, (root, api) => {
-  const state = {
-    loading: true,
-    error: '',
-    assignment: null,
-    shopDomain: '',
-    checkoutId: '',
-    testId: '',
-    sendingConversion: false,
-    impressionTracked: false,
-  };
-
-  const wrapper = root.createComponent(BlockStack, { spacing: 'tight' });
-  root.appendChild(wrapper);
-
-  function setChildren(parent, children) {
-    if (typeof parent.replaceChildren === 'function') {
-      parent.replaceChildren(...children);
-      return;
+  const testId = useMemo(() => {
+    const configured = String(RIPX_CHECKOUT_UI_TEST_ID || '').trim();
+    if (configured) {
+      return configured;
     }
-    if (Array.isArray(parent.children)) {
-      while (parent.children.length) {
-        parent.removeChild(parent.children[0]);
+    return getAttribute(attributes, '_ripx_checkout_test');
+  }, [attributes]);
+
+  const trackConversion = useCallback(
+    async (eventName, metadata = {}) => {
+      if (
+        sendingConversion ||
+        !RIPX_CHECKOUT_CONVERSION_URL ||
+        !shopDomain ||
+        !checkoutId ||
+        !testId
+      ) {
+        return;
+      }
+      setSendingConversion(true);
+      try {
+        await fetch(RIPX_CHECKOUT_CONVERSION_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(RIPX_CHECKOUT_PRICE_SECRET
+              ? { 'X-RipX-Price-Secret': RIPX_CHECKOUT_PRICE_SECRET }
+              : {}),
+          },
+          body: JSON.stringify({
+            secret: RIPX_CHECKOUT_PRICE_SECRET || undefined,
+            shop: shopDomain,
+            test_id: testId,
+            checkout_id: checkoutId,
+            event_name: eventName,
+            metadata,
+          }),
+        });
+      } catch (_) {
+        // Best-effort tracking only.
+      } finally {
+        setSendingConversion(false);
+      }
+    },
+    [sendingConversion, shopDomain, checkoutId, testId]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadAssignment() {
+      if (!RIPX_CHECKOUT_ASSIGNMENT_URL) {
+        setLoading(false);
+        setError(
+          'Assignment URL is not configured. Run npm run shopify:checkout-ui:sync-config and redeploy.'
+        );
+        return;
+      }
+      if (!shopDomain || !checkoutId || !testId) {
+        setLoading(false);
+        setError(
+          'Missing checkout context. Ensure shop domain, checkout token, and test id are available.'
+        );
+        return;
+      }
+      setLoading(true);
+      setError('');
+      try {
+        const response = await fetch(RIPX_CHECKOUT_ASSIGNMENT_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(RIPX_CHECKOUT_PRICE_SECRET
+              ? { 'X-RipX-Price-Secret': RIPX_CHECKOUT_PRICE_SECRET }
+              : {}),
+          },
+          body: JSON.stringify({
+            secret: RIPX_CHECKOUT_PRICE_SECRET || undefined,
+            shop: shopDomain,
+            test_id: testId,
+            checkout_id: checkoutId,
+          }),
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload?.success) {
+          throw new Error(payload?.error || `Assignment request failed (${response.status})`);
+        }
+        if (cancelled) {
+          return;
+        }
+        setAssignment(payload.assignment || null);
+        setLoading(false);
+        setError('');
+      } catch (e) {
+        if (cancelled) {
+          return;
+        }
+        setAssignment(null);
+        setLoading(false);
+        setError(String(e?.message || 'Could not fetch assignment'));
       }
     }
-    children.forEach(child => parent.appendChild(child));
-  }
+    void loadAssignment();
+    return () => {
+      cancelled = true;
+    };
+  }, [shopDomain, checkoutId, testId]);
 
-  function render() {
-    if (state.loading) {
-      setChildren(wrapper, [
-        root.createComponent(Banner, { status: 'info' }, [
-          root.createComponent(Text, {}, 'RipX checkout experiment is loading.'),
-        ]),
-      ]);
+  useEffect(() => {
+    if (!assignment || impressionTracked) {
       return;
     }
+    setImpressionTracked(true);
+    void trackConversion('checkout_extension_impression', {
+      variant_id: assignment?.variant_id || null,
+    });
+  }, [assignment, impressionTracked, trackConversion]);
 
-    if (state.error) {
-      setChildren(wrapper, [
-        root.createComponent(
-          Banner,
-          { status: 'critical', title: 'RipX checkout test unavailable' },
-          [root.createComponent(Text, {}, state.error)]
-        ),
-      ]);
-      return;
-    }
+  const cfg =
+    assignment && assignment.config && typeof assignment.config === 'object'
+      ? assignment.config
+      : {};
+  const variantName = String(
+    assignment?.variant_name || assignment?.variant_id || 'Assigned'
+  ).trim();
+  const title =
+    String(cfg.checkout_title || cfg.title || '').trim() || `RipX Variant: ${variantName}`;
+  const message = String(cfg.checkout_message || cfg.message || '').trim();
+  const cta = String(cfg.checkout_cta_label || cfg.cta_label || 'Track conversion').trim();
 
-    if (!state.assignment) {
-      setChildren(wrapper, [
-        root.createComponent(Banner, { status: 'info', title: 'No checkout variant assigned' }, [
-          root.createComponent(
-            Text,
-            {},
-            'This block did not receive an active checkout assignment for the current test.'
-          ),
-        ]),
-      ]);
-      return;
-    }
-
-    const cfg =
-      state.assignment.config && typeof state.assignment.config === 'object'
-        ? state.assignment.config
-        : {};
-    const title = String(cfg.checkout_title || cfg.title || '').trim();
-    const message = String(cfg.checkout_message || cfg.message || '').trim();
-    const cta = String(cfg.checkout_cta_label || cfg.cta_label || 'Track conversion').trim();
-    const variantName = String(
-      state.assignment.variant_name || state.assignment.variant_id || 'Assigned'
+  if (loading) {
+    return h(
+      's-banner',
+      { heading: 'RipX checkout experiment', tone: 'info' },
+      h('s-text', null, 'Loading assignment...')
     );
-
-    const bodyChildren = [];
-    bodyChildren.push(root.createComponent(Text, {}, title || `RipX Variant: ${variantName}`));
-    if (message) {
-      bodyChildren.push(root.createComponent(Text, {}, message));
-    }
-    bodyChildren.push(root.createComponent(Text, {}, `Test ID: ${state.testId}`));
-    bodyChildren.push(
-      root.createComponent(
-        Button,
+  }
+  if (error) {
+    return h(
+      's-banner',
+      { heading: 'RipX checkout test unavailable', tone: 'critical' },
+      h('s-text', null, error)
+    );
+  }
+  if (!assignment) {
+    return h(
+      's-banner',
+      { heading: 'No checkout variant assigned', tone: 'info' },
+      h(
+        's-text',
+        null,
+        'This block did not receive an active checkout assignment for the current test.'
+      )
+    );
+  }
+  return h(
+    's-stack',
+    { direction: 'block', gap: 'tight' },
+    h(
+      's-banner',
+      { heading: title, tone: 'success' },
+      message ? h('s-text', null, message) : null,
+      h('s-text', null, `Test ID: ${testId}`),
+      h(
+        's-button',
         {
-          kind: 'secondary',
-          loading: state.sendingConversion,
-          onPress: () => {
+          variant: 'secondary',
+          loading: sendingConversion,
+          onClick: () =>
             void trackConversion('checkout_extension_cta_click', {
-              variant_id: state.assignment?.variant_id || null,
-            });
-          },
+              variant_id: assignment?.variant_id || null,
+            }),
         },
         cta
       )
-    );
+    )
+  );
+}
 
-    setChildren(wrapper, [root.createComponent(Banner, { status: 'success' }, bodyChildren)]);
+export default function extension() {
+  const mountTarget = globalThis?.document?.body;
+  if (!mountTarget) {
+    return;
   }
-
-  async function trackConversion(eventName, metadata = {}) {
-    if (state.sendingConversion || !RIPX_CHECKOUT_CONVERSION_URL) {
-      return;
-    }
-    state.sendingConversion = true;
-    render();
-    try {
-      await fetch(RIPX_CHECKOUT_CONVERSION_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(RIPX_CHECKOUT_PRICE_SECRET
-            ? { 'X-RipX-Price-Secret': RIPX_CHECKOUT_PRICE_SECRET }
-            : {}),
-        },
-        body: JSON.stringify({
-          secret: RIPX_CHECKOUT_PRICE_SECRET || undefined,
-          shop: state.shopDomain,
-          test_id: state.testId,
-          checkout_id: state.checkoutId,
-          event_name: eventName,
-          metadata,
-        }),
-      });
-    } catch (_) {
-      // Best-effort tracking only.
-    } finally {
-      state.sendingConversion = false;
-      render();
-    }
-  }
-
-  async function initialize() {
-    state.shopDomain = getShopDomain(api);
-    state.checkoutId = getCheckoutId(api);
-    state.testId = getTestId(api);
-
-    if (!RIPX_CHECKOUT_ASSIGNMENT_URL) {
-      state.loading = false;
-      state.error =
-        'Assignment URL is not configured. Run npm run shopify:checkout-ui:sync-config and redeploy.';
-      render();
-      return;
-    }
-    if (!state.shopDomain || !state.checkoutId || !state.testId) {
-      state.loading = false;
-      state.error =
-        'Missing checkout context. Ensure shop domain, checkout token, and test id are available.';
-      render();
-      return;
-    }
-
-    try {
-      const response = await fetch(RIPX_CHECKOUT_ASSIGNMENT_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(RIPX_CHECKOUT_PRICE_SECRET
-            ? { 'X-RipX-Price-Secret': RIPX_CHECKOUT_PRICE_SECRET }
-            : {}),
-        },
-        body: JSON.stringify({
-          secret: RIPX_CHECKOUT_PRICE_SECRET || undefined,
-          shop: state.shopDomain,
-          test_id: state.testId,
-          checkout_id: state.checkoutId,
-        }),
-      });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error || `Assignment request failed (${response.status})`);
-      }
-      state.assignment = payload.assignment || null;
-      state.loading = false;
-      state.error = '';
-      render();
-      if (state.assignment && !state.impressionTracked) {
-        state.impressionTracked = true;
-        void trackConversion('checkout_extension_impression', {
-          variant_id: state.assignment?.variant_id || null,
-        });
-      }
-    } catch (error) {
-      state.loading = false;
-      state.assignment = null;
-      state.error = String(error?.message || 'Could not fetch assignment');
-      render();
-    }
-  }
-
-  render();
-  void initialize();
-});
+  render(h(CheckoutExperiment), mountTarget);
+}
