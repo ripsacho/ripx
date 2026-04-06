@@ -540,6 +540,7 @@
   };
   var _ripxCartNativeStateInFlight = null;
   var _ripxCartNativeStateTimer = null;
+  var _ripxGlobalPaintScheduleAtByKey = {};
 
   function getVariantCachePromise() {
     if (_variantCachePromise) return _variantCachePromise;
@@ -1916,6 +1917,14 @@
     return !!st.hasDiscounts;
   }
 
+  /**
+   * Keep native cart/checkout pricing as single source of truth.
+   * This disables visual cart repaint to avoid double price updates.
+   */
+  function shouldDisableCartUiPricePaint() {
+    return true;
+  }
+
   function formMatchesTargetProductIds(form, targetProductIds) {
     if (!form || !Array.isArray(targetProductIds) || targetProductIds.length === 0) return true;
     var scoped = targetProductIds
@@ -2908,6 +2917,42 @@
     return num;
   }
 
+  function getStableCatalogPriceForElement(el) {
+    if (!el) return null;
+    var srcAttr = el.getAttribute && el.getAttribute('data-ripx-catalog-src');
+    if (srcAttr != null && String(srcAttr).trim() !== '') {
+      var parsedSrc = parseFloat(String(srcAttr).trim(), 10);
+      if (!isNaN(parsedSrc) && isFinite(parsedSrc)) {
+        return parsedSrc;
+      }
+    }
+    var catalog = parsePriceFromDisplay(el);
+    if (catalog != null && el.setAttribute) {
+      el.setAttribute('data-ripx-catalog-src', String(catalog));
+    }
+    return catalog;
+  }
+
+  function paintPriceNode(el, display, testId, variantIdForCart) {
+    if (!el || !display) return;
+    if (el.textContent !== display) {
+      el.textContent = display;
+    }
+    if (variantIdForCart != null && String(variantIdForCart).trim() !== '') {
+      var variantStr = String(variantIdForCart);
+      if (el.getAttribute('data-test-variant') !== variantStr) {
+        el.setAttribute('data-test-variant', variantStr);
+      }
+    }
+    var testStr = String(testId);
+    if (el.getAttribute('data-test-id') !== testStr) {
+      el.setAttribute('data-test-id', testStr);
+    }
+    if (el.getAttribute('data-ripx-price') !== '1') {
+      el.setAttribute('data-ripx-price', '1');
+    }
+  }
+
   /**
    * All-products fallback painter for amount/percent price tests.
    * Some themes don't include data-product-id on listing cards or cart rows, which breaks per-product matching.
@@ -2996,7 +3041,12 @@
    */
   function paintAllProductsGlobalPrices(testId, variant, scope) {
     if (!variant || !variant.config) return;
-    if (scope === 'cart' && (shouldPreferNativeCartRendering() || shouldBlockCartFallbackPaint()))
+    if (
+      scope === 'cart' &&
+      (shouldDisableCartUiPricePaint() ||
+        shouldPreferNativeCartRendering() ||
+        shouldBlockCartFallbackPaint())
+    )
       return;
     var cfg = variant.config;
     if (!canUseAllProductsGlobalFallback(cfg)) return;
@@ -3040,17 +3090,7 @@
           if (tgn === 'S' || tgn === 'DEL' || tgn === 'STRIKE') return;
           if (!isLeafPricePaintNode(el)) return;
           if (scope === 'listing' && inCartUi(el)) return;
-          var catalog = null;
-          var srcAttr = el.getAttribute('data-ripx-catalog-src');
-          if (srcAttr != null && String(srcAttr).trim() !== '') {
-            var parsedSrc = parseFloat(String(srcAttr).trim(), 10);
-            catalog = isNaN(parsedSrc) ? null : parsedSrc;
-          } else {
-            catalog = parsePriceFromDisplay(el);
-            if (catalog != null) {
-              el.setAttribute('data-ripx-catalog-src', String(catalog));
-            }
-          }
+          var catalog = getStableCatalogPriceForElement(el);
           if (catalog == null) return;
           var adjusted = computeAllProductsAdjustedPrice(catalog, cfg);
           if (adjusted == null) return;
@@ -3061,12 +3101,7 @@
           }
           var display = formatShopPrice(adjusted);
           if (!display) return;
-          el.textContent = display;
-          if (variantIdForCart != null && String(variantIdForCart).trim() !== '') {
-            el.setAttribute('data-test-variant', String(variantIdForCart));
-          }
-          el.setAttribute('data-test-id', String(testId));
-          el.setAttribute('data-ripx-price', '1');
+          paintPriceNode(el, display, testId, variantIdForCart);
         });
       } catch (e) {}
     });
@@ -3074,6 +3109,14 @@
 
   /** Themes hydrate cards/cart after first paint — schedule a few passes without stacking duplicate deltas. */
   function schedulePaintAllProductsGlobalPrices(testId, variant, scope) {
+    if (scope === 'cart' && shouldDisableCartUiPricePaint()) return;
+    var variantKey = variant && (variant.variantId != null ? variant.variantId : variant.id);
+    var scheduleKey =
+      String(scope || '') + '::' + String(testId || '') + '::' + String(variantKey || '');
+    var now = Date.now();
+    var lastScheduledAt = Number(_ripxGlobalPaintScheduleAtByKey[scheduleKey] || 0);
+    if (now - lastScheduledAt < 120) return;
+    _ripxGlobalPaintScheduleAtByKey[scheduleKey] = now;
     paintAllProductsGlobalPrices(testId, variant, scope);
     var run = function () {
       paintAllProductsGlobalPrices(testId, variant, scope);
@@ -3164,7 +3207,7 @@
             '.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price, [data-price]'
           );
           if (priceEl) {
-            var catalog = parsePriceFromDisplay(priceEl);
+            var catalog = getStableCatalogPriceForElement(priceEl);
             if (catalog != null) {
               if (priceMode === 'amount' && cfg.priceDelta != null) {
                 var delta = parseFloat(cfg.priceDelta, 10);
@@ -3187,10 +3230,7 @@
         );
         priceEls.forEach(function (el) {
           if (!el || inCartUi(el)) return;
-          el.textContent = cardDisplay;
-          el.setAttribute('data-test-variant', String(variantIdForCart));
-          el.setAttribute('data-test-id', String(testId));
-          el.setAttribute('data-ripx-price', '1');
+          paintPriceNode(el, cardDisplay, testId, variantIdForCart);
         });
       });
     });
@@ -3280,7 +3320,7 @@
           '.price .money, .price, [data-product-price], .money, .price-item--regular, .price-item__regular, .product-price, [data-price]'
         );
         if (priceEl) {
-          var catalog = parsePriceFromDisplay(priceEl);
+          var catalog = getStableCatalogPriceForElement(priceEl);
           if (catalog != null) {
             if (priceMode === 'amount' && cfg.priceDelta != null) {
               var delta = parseFloat(cfg.priceDelta, 10);
@@ -3303,10 +3343,7 @@
       );
       priceEls.forEach(function (el) {
         if (!el || inCartUi(el)) return;
-        el.textContent = cardDisplay;
-        el.setAttribute('data-test-variant', String(variantIdForCart));
-        el.setAttribute('data-test-id', String(testId));
-        el.setAttribute('data-ripx-price', '1');
+        paintPriceNode(el, cardDisplay, testId, variantIdForCart);
       });
     });
     applyRipxStateToCartForms(null);
@@ -3322,12 +3359,28 @@
    */
   function applyPriceTestToCart(testId, variant, targetIds) {
     if (!variant || !targetIds || !targetIds.length) return;
-    if (shouldPreferNativeCartRendering() || shouldBlockCartFallbackPaint()) return;
     if (!variant.config) {
       injectPreviewCartAttributesWhenConfigMissing(testId, variant);
       return;
     }
     var variantIdForCart = variant.variantId != null ? variant.variantId : variant.id;
+    if (variantIdForCart != null && String(variantIdForCart).trim() !== '') {
+      window.__RIPX_PRICE_TEST_CTX__ = { testId: testId, variantId: variantIdForCart };
+      var proofTargetId = targetIds[0] || null;
+      var proofCfg = proofTargetId
+        ? getEffectivePriceConfig(variant.config, proofTargetId, null)
+        : variant.config;
+      injectPriceTestCartAttributes(
+        testId,
+        variantIdForCart,
+        getAssignmentProofFromVariant(variant),
+        targetIds,
+        null,
+        getConfiguredCheckoutMethodProof(proofCfg)
+      );
+    }
+    if (shouldDisableCartUiPricePaint()) return;
+    if (shouldPreferNativeCartRendering() || shouldBlockCartFallbackPaint()) return;
     var cartContainers =
       '.cart-drawer, #CartDrawer, .drawer--cart, [data-cart-drawer], #cart-form, form[action*="/cart"], .cart-items, main .cart';
     var containers = document.querySelectorAll(cartContainers);
@@ -3489,6 +3542,7 @@
         fallbackProof
       );
     }
+    if (shouldDisableCartUiPricePaint()) return;
     if (shouldPreferNativeCartRendering() || shouldBlockCartFallbackPaint()) return;
     schedulePaintAllProductsGlobalPrices(testId, variant, 'cart');
   }
