@@ -1466,6 +1466,17 @@ function Settings() {
     []
   );
 
+  const appSettingsDomain = useMemo(() => {
+    const match = location.pathname.match(/^\/app\/([^/]+)\/settings$/);
+    if (!match || !match[1]) return '';
+    try {
+      return decodeURIComponent(match[1]);
+    } catch {
+      return match[1];
+    }
+  }, [location.pathname]);
+  const setupWizardPath = appSettingsDomain ? ROUTES.appSetup(appSettingsDomain) : ROUTES.SETUP;
+
   const densityHelp = 'Comfortable adds more spacing. Compact shows more on screen.';
   return (
     <PageShell
@@ -1644,6 +1655,47 @@ function Settings() {
                   </div>
                 )}
               </div>
+              {isAppSettings && (
+                <div
+                  className={styles.settingsCommandBar}
+                  role="region"
+                  aria-label="Workflow actions"
+                >
+                  <div className={styles.settingsCommandBarMeta}>
+                    <Text as="p" variant="headingSm">
+                      Workflow
+                    </Text>
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      Use guided setup for onboarding, then switch to advanced controls for ongoing
+                      operations.
+                    </Text>
+                  </div>
+                  <InlineStack gap="200" wrap blockAlign="center">
+                    <Button size="slim" variant="primary" url={setupWizardPath}>
+                      Open Setup Wizard
+                    </Button>
+                    <Button
+                      size="slim"
+                      onClick={() => {
+                        const i = TAB_IDS.indexOf('installation');
+                        if (i >= 0) setSelectedTab(i);
+                      }}
+                    >
+                      Open Installation
+                    </Button>
+                    {!isGuidedSetupMode && (
+                      <Button
+                        size="slim"
+                        onClick={() =>
+                          setSettingsLayoutMode(prev => (prev === 'all' ? 'tabbed' : 'all'))
+                        }
+                      >
+                        {showAllAppSections ? 'Use Sections view' : 'Show All sections'}
+                      </Button>
+                    )}
+                  </InlineStack>
+                </div>
+              )}
 
               {!isAppSettings && (
                 <Card className={`${styles.settingsPanelCard} ${styles.settingsPanelCardFull}`}>
@@ -1681,6 +1733,16 @@ function Settings() {
                   <p>
                     You&apos;re in focused setup mode. Complete Installation first, then continue to
                     other settings.
+                  </p>
+                </Banner>
+              )}
+              {isAppSettings && !setupComplete && !isGuidedSetupMode && (
+                <Banner tone="warning" title="Finish setup first for best results">
+                  <p>
+                    Complete guided setup before editing advanced settings.{' '}
+                    <Link to={setupWizardPath} className={styles.installDocLink}>
+                      Open Setup Wizard
+                    </Link>
                   </p>
                 </Banner>
               )}

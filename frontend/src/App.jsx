@@ -175,6 +175,7 @@ import {
   Analytics,
   AnalyticsOverview,
   Settings,
+  SetupWizard,
   Profile,
   Documentation,
   Support,
@@ -232,21 +233,6 @@ function ExportWrapper() {
 
 function PromoLinksWrapper() {
   return <PromoLinks />;
-}
-
-function SetupRouteRedirect() {
-  const { domain } = useParams();
-  const location = useLocation();
-  if (!domain) {
-    return <Navigate to={ROUTES.SETTINGS} replace />;
-  }
-  const next = new URLSearchParams(location.search || '');
-  next.set('tab', 'installation');
-  next.set('guided_setup', '1');
-  if (!next.get('source')) {
-    next.set('source', 'setup_route');
-  }
-  return <Navigate to={`${ROUTES.appSettings(domain)}?${next.toString()}`} replace />;
 }
 
 /** Auth check status: we validate session once before showing protected app content to avoid flash of app then redirect. */
@@ -1117,7 +1103,7 @@ function AppContent() {
                   path="setup"
                   element={
                     <Suspense fallback={<RouteLoading />}>
-                      <SetupRouteRedirect />
+                      <SetupWizard />
                     </Suspense>
                   }
                 />

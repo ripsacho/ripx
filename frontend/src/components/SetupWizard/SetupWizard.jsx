@@ -205,15 +205,20 @@ function SetupWizard() {
                   WordPress, Webflow, custom HTML, etc.
                 </p>
               </div>
-              <InlineStack gap="200">
+              <InlineStack gap="200" blockAlign="center" wrap>
                 {scriptVerified ? (
                   <Badge tone="success">Script detected</Badge>
                 ) : (
                   <Badge tone="attention">Script not detected yet</Badge>
                 )}
-                <Button onClick={fetchInstallation} loading={installationLoading} size="slim">
-                  Refresh
-                </Button>
+                <ButtonGroup>
+                  <Button onClick={fetchInstallation} loading={installationLoading} size="slim">
+                    Refresh
+                  </Button>
+                  <Button url={settingsPath} size="slim">
+                    Advanced settings
+                  </Button>
+                </ButtonGroup>
               </InlineStack>
             </div>
 
@@ -489,9 +494,14 @@ function SetupWizard() {
                 Guided setup — status auto-refreshes every 30s until complete
               </p>
             </div>
-            <Button onClick={checkSetupStatus} loading={checking}>
-              Refresh status
-            </Button>
+            <ButtonGroup>
+              <Button onClick={checkSetupStatus} loading={checking}>
+                Refresh status
+              </Button>
+              <Button url={settingsPath} size="slim">
+                Advanced settings
+              </Button>
+            </ButtonGroup>
           </div>
 
           <div className={styles.setupBody}>

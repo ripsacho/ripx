@@ -4,7 +4,7 @@
  * Premium collapsible sidebar with enhanced UI
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { BlockStack, Text, Icon } from '@shopify/polaris';
 import {
@@ -20,8 +20,10 @@ import {
 } from '@shopify/polaris-icons';
 import { ROUTES } from '../../constants';
 import { useTests } from '../../hooks';
+import { apiGet } from '../../services';
 import { prefetchOnHover } from '../../utils/prefetch';
 import { getAppDomainFromPath } from '../../utils/breadcrumb';
+import { isShopifyStoreDomain } from '../../utils/shopifyAdmin';
 
 const baseNavigationGroups = (domain = null) => {
   const dash = domain ? ROUTES.appDashboard(domain) : ROUTES.DASHBOARD;
@@ -80,6 +82,7 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
   const appDomain = getAppDomainFromPath(location.pathname);
   const isAccountContext =
     !appDomain && (location.pathname === ROUTES.USER_PANEL || location.pathname === ROUTES.DOMAINS);
+  const [setupHealth, setSetupHealth] = useState({ loading: false, ready: null });
 
   const personalizationCount = useMemo(
     () =>
@@ -101,6 +104,34 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
     }
     return baseNavigationGroups(appDomain);
   }, [isAccountContext, appDomain]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!appDomain || !isShopifyStoreDomain(appDomain)) {
+      setSetupHealth({ loading: false, ready: null });
+      return () => {
+        cancelled = true;
+      };
+    }
+    setSetupHealth({ loading: true, ready: null });
+    apiGet('/shopify/setup/status')
+      .then(response => {
+        if (cancelled) return;
+        const data = response?.data || {};
+        const ready =
+          Boolean(data?.appUrl) &&
+          Boolean(data?.proxyTargetUrl) &&
+          Boolean(data?.embedStatus?.detected) &&
+          Boolean(data?.proxyStatus?.ok);
+        setSetupHealth({ loading: false, ready });
+      })
+      .catch(() => {
+        if (!cancelled) setSetupHealth({ loading: false, ready: null });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [appDomain]);
 
   const handleNavMouseEnter = useCallback(
     (item, el) => {
@@ -357,10 +388,33 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
                 const IconComponent = item.icon;
                 const badgeCount =
                   item.badgeKey === 'personalization' ? personalizationCount : null;
+                const setupPath = appDomain ? ROUTES.appSetup(appDomain) : ROUTES.SETUP;
+                const isSetupHealthApplicable =
+                  isShopifyStoreDomain(appDomain || '') &&
+                  item.path === setupPath &&
+                  (setupHealth.loading || setupHealth.ready !== null);
+                const setupHealthToneClass = setupHealth.loading
+                  ? 'sidebar-nav-badge--neutral'
+                  : setupHealth.ready
+                    ? 'sidebar-nav-badge--success'
+                    : 'sidebar-nav-badge--warning';
+                const setupHealthLabel = setupHealth.loading
+                  ? 'Checking'
+                  : setupHealth.ready
+                    ? 'Ready'
+                    : 'Needs setup';
+                const showSetupHealthBadge = !collapsed && isSetupHealthApplicable;
+                const showSetupHealthDot = collapsed && isSetupHealthApplicable;
                 const content = (
                   <>
                     <span className="sidebar-nav-icon">
                       <Icon source={IconComponent} />
+                      {showSetupHealthDot && (
+                        <span
+                          className={`sidebar-nav-status-dot ${setupHealthToneClass}`}
+                          aria-hidden="true"
+                        />
+                      )}
                     </span>
                     {!collapsed && (
                       <Text
@@ -376,6 +430,11 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
                       badgeCount !== null &&
                       badgeCount !== undefined &&
                       badgeCount > 0 && <span className="sidebar-nav-badge">{badgeCount}</span>}
+                    {showSetupHealthBadge && (
+                      <span className={`sidebar-nav-badge ${setupHealthToneClass}`}>
+                        {setupHealthLabel}
+                      </span>
+                    )}
                     {active && !collapsed && <span className="sidebar-nav-active-dot" />}
                   </>
                 );
@@ -409,9 +468,16 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
                           minHeight: hoverDrawer.height,
                         }}
                       >
-                        <Text variant="bodyMd" fontWeight="semibold" as="span">
-                          {hoverDrawer.label}
-                        </Text>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.125rem' }}>
+                          <Text variant="bodyMd" fontWeight="semibold" as="span">
+                            {hoverDrawer.label}
+                          </Text>
+                          {showSetupHealthDot && (
+                            <Text variant="bodySm" as="span" tone="subdued">
+                              {setupHealthLabel}
+                            </Text>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
