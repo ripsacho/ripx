@@ -134,6 +134,7 @@ git restore "frontend/dist/index.html" "frontend/dist/ripx-storefront.js"
 git clean -fd "frontend/dist/assets"
 git pull
 NODE_OPTIONS=--max-old-space-size=4096 npm run build --prefix frontend
+npm run migrate
 pm2 restart ripx --update-env
 ```
 
