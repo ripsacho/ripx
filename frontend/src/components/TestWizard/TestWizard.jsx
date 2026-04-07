@@ -97,6 +97,118 @@ import { shouldHydrateInitialData } from './initialDataHydration';
 const HOMEPAGE_URL_PATTERN_SHOPIFY = '^/$|^/index';
 /** URL pattern for standalone sites: root, /index, /index.html, /index.php, /default.html (reliable across hosts) */
 const HOMEPAGE_URL_PATTERN_STANDALONE = '^/$|^/index(\\.html|\\.php)?$|^/default\\.html$';
+const MAX_VISUAL_EDITOR_HISTORY = 40;
+const VISUAL_EDITOR_POSITIONS = ['after', 'before', 'afterbegin', 'beforeend'];
+const VISUAL_EDITOR_MUTATION_TYPES = ['none', 'hide', 'show', 'set_text', 'set_attr', 'set_style'];
+
+function createEmptyVisualEditorRule() {
+  return {
+    selector: '',
+    css: '',
+    js: '',
+    position: 'after',
+    mutation_type: 'none',
+    mutation_text: '',
+    mutation_attribute: '',
+    mutation_attribute_value: '',
+    mutation_style: '',
+  };
+}
+
+function normalizeVisualEditorRule(rawRule) {
+  const base = createEmptyVisualEditorRule();
+  const rule = rawRule && typeof rawRule === 'object' ? rawRule : {};
+  const mutationType = String(rule.mutation_type || base.mutation_type)
+    .toLowerCase()
+    .trim();
+  return {
+    selector: String(rule.selector || '').trim(),
+    css: String(rule.css || '').trim(),
+    js: String(rule.js || '').trim(),
+    position: VISUAL_EDITOR_POSITIONS.includes(rule.position) ? rule.position : base.position,
+    mutation_type: VISUAL_EDITOR_MUTATION_TYPES.includes(mutationType)
+      ? mutationType
+      : base.mutation_type,
+    mutation_text:
+      rule.mutation_text === undefined || rule.mutation_text === null
+        ? base.mutation_text
+        : String(rule.mutation_text),
+    mutation_attribute: String(rule.mutation_attribute || '').trim(),
+    mutation_attribute_value:
+      rule.mutation_attribute_value === undefined || rule.mutation_attribute_value === null
+        ? base.mutation_attribute_value
+        : String(rule.mutation_attribute_value),
+    mutation_style: String(rule.mutation_style || '').trim(),
+  };
+}
+
+function cloneVisualEditorRules(rawRules) {
+  return Array.from({ length: 5 }, (_, i) => ({
+    ...normalizeVisualEditorRule((rawRules || [])[i]),
+  }));
+}
+
+function buildGeneratedVisualRuleCode(rule) {
+  const r = normalizeVisualEditorRule(rule);
+  const selector = r.selector || '/* selector required */';
+  const lines = [];
+  lines.push(`const el = document.querySelector(${JSON.stringify(selector)});`);
+  lines.push('if (el) {');
+  if (r.mutation_type === 'hide') {
+    lines.push("  el.style.setProperty('display', 'none', 'important');");
+  } else if (r.mutation_type === 'show') {
+    lines.push("  el.style.removeProperty('display');");
+    lines.push("  el.style.removeProperty('visibility');");
+    lines.push("  el.removeAttribute('hidden');");
+  } else if (r.mutation_type === 'set_text') {
+    lines.push(`  el.textContent = ${JSON.stringify(r.mutation_text || '')};`);
+  } else if (r.mutation_type === 'set_attr') {
+    const attrName = String(r.mutation_attribute || '').trim();
+    if (attrName) {
+      const attrValue = String(r.mutation_attribute_value || '');
+      if (attrValue) {
+        lines.push(`  el.setAttribute(${JSON.stringify(attrName)}, ${JSON.stringify(attrValue)});`);
+      } else {
+        lines.push(`  el.removeAttribute(${JSON.stringify(attrName)});`);
+      }
+    } else {
+      lines.push('  // Add an attribute name to generate set/remove attribute code.');
+    }
+  } else if (r.mutation_type === 'set_style') {
+    const styleLines = String(r.mutation_style || '')
+      .split(';')
+      .map(part => part.trim())
+      .filter(Boolean);
+    if (styleLines.length > 0) {
+      styleLines.forEach(decl => {
+        const colon = decl.indexOf(':');
+        if (colon > 0) {
+          const key = decl.slice(0, colon).trim();
+          const value = decl.slice(colon + 1).trim();
+          if (key && value) {
+            lines.push(`  el.style.setProperty(${JSON.stringify(key)}, ${JSON.stringify(value)});`);
+          }
+        }
+      });
+    } else {
+      lines.push('  // Add CSS declarations (e.g. color: #111; font-weight: 700;).');
+    }
+  } else {
+    lines.push('  // No quick mutation selected.');
+  }
+  lines.push('}');
+  if (r.css) {
+    lines.push('');
+    lines.push('/* CSS snippet */');
+    lines.push(r.css);
+  }
+  if (r.js) {
+    lines.push('');
+    lines.push('/* JS snippet */');
+    lines.push(r.js);
+  }
+  return lines.join('\n');
+}
 
 const DEFAULT_FORM_DATA = {
   name: '',
@@ -131,13 +243,7 @@ const DEFAULT_FORM_DATA = {
     device_rules: [],
     audience_rules: [],
     js_targeting: { enabled: false, code: '' },
-    visual_editor_rules: [
-      { selector: '', css: '', js: '', position: 'after' },
-      { selector: '', css: '', js: '', position: 'after' },
-      { selector: '', css: '', js: '', position: 'after' },
-      { selector: '', css: '', js: '', position: 'after' },
-      { selector: '', css: '', js: '', position: 'after' },
-    ],
+    visual_editor_rules: Array.from({ length: 5 }, () => createEmptyVisualEditorRule()),
   },
   holdout_percent: 0,
   scheduled_start_at: '',
@@ -614,6 +720,7 @@ function TestWizard({
   const [visualSnippetPanelExpanded, setVisualSnippetPanelExpanded] = useState(false);
   const [visualSnippetActiveElementIndex, setVisualSnippetActiveElementIndex] = useState(0); // which element (rule index 0–4) is shown in the snippet panel
   const [visualRuleActiveTab, setVisualRuleActiveTab] = useState({}); // { ruleIndex: 'selector'|'css'|'js' }
+  const [visualRuleHistoryByVariant, setVisualRuleHistoryByVariant] = useState({});
   const [_priceCardExpanded, _setPriceCardExpanded] = useState({}); // { variantIndex: boolean } — missing key = expanded (reserved for future use)
   const [priceAccordionExpandedIndices, setPriceAccordionExpandedIndices] = useState([]); // which variant accordions are open (array of indices; allows expand all)
   const [quickFillRule, setQuickFillRule] = useState('percent_off'); // 'percent_off' | 'percent_on' | 'amount_off' | 'amount_on'
@@ -657,6 +764,133 @@ function TestWizard({
   useEffect(() => {
     changingSelectorIndexRef.current = changingSelectorIndex;
   }, [changingSelectorIndex]);
+  useEffect(() => {
+    const n = formData.variants?.length || 0;
+    setVisualRuleHistoryByVariant(prev => {
+      let changed = false;
+      const next = {};
+      Object.entries(prev || {}).forEach(([key, value]) => {
+        const idx = Number(key);
+        if (Number.isInteger(idx) && idx >= 0 && idx < n) {
+          next[key] = value;
+        } else {
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [formData.variants?.length]);
+
+  const applyVisualRulesChange = useCallback(
+    (variantIndex, updater, { recordHistory = true } = {}) => {
+      const count = formDataRef.current?.variants?.length || 0;
+      if (count <= 0) return;
+      const resolvedIndex = Math.min(Math.max(0, Number(variantIndex) || 0), count - 1);
+      let previousRulesSnapshot = null;
+      setFormData(prev => {
+        const variants = [...(prev.variants || [])];
+        const variant = variants[resolvedIndex];
+        const config = { ...(variant?.config || {}) };
+        const nextRules = cloneVisualEditorRules(config.visual_editor_rules);
+        previousRulesSnapshot = cloneVisualEditorRules(nextRules);
+        updater(nextRules);
+        config.visual_editor_rules = cloneVisualEditorRules(nextRules);
+        variants[resolvedIndex] = { ...variant, config };
+        return { ...prev, variants };
+      });
+      if (recordHistory && previousRulesSnapshot) {
+        const historyKey = String(resolvedIndex);
+        setVisualRuleHistoryByVariant(prev => {
+          const current = prev[historyKey] || { past: [], future: [] };
+          const nextPast = [...(current.past || []), previousRulesSnapshot].slice(
+            -MAX_VISUAL_EDITOR_HISTORY
+          );
+          return {
+            ...prev,
+            [historyKey]: { past: nextPast, future: [] },
+          };
+        });
+      }
+      setIsDirty(true);
+      setVisualEditorDirty(true);
+    },
+    []
+  );
+
+  const undoVisualRuleChange = useCallback(
+    variantIndex => {
+      const count = formDataRef.current?.variants?.length || 0;
+      if (count <= 0) return false;
+      const resolvedIndex = Math.min(Math.max(0, Number(variantIndex) || 0), count - 1);
+      const historyKey = String(resolvedIndex);
+      const history = visualRuleHistoryByVariant[historyKey] || { past: [], future: [] };
+      const previousSnapshot = history.past?.[history.past.length - 1];
+      if (!previousSnapshot) return false;
+      const currentRules = cloneVisualEditorRules(
+        formDataRef.current?.variants?.[resolvedIndex]?.config?.visual_editor_rules
+      );
+      setFormData(prev => {
+        const variants = [...(prev.variants || [])];
+        const variant = variants[resolvedIndex];
+        const config = { ...(variant?.config || {}) };
+        config.visual_editor_rules = cloneVisualEditorRules(previousSnapshot);
+        variants[resolvedIndex] = { ...variant, config };
+        return { ...prev, variants };
+      });
+      setVisualRuleHistoryByVariant(prev => {
+        const current = prev[historyKey] || { past: [], future: [] };
+        const nextPast = (current.past || []).slice(0, -1);
+        const nextFuture = [currentRules, ...(current.future || [])].slice(
+          0,
+          MAX_VISUAL_EDITOR_HISTORY
+        );
+        return {
+          ...prev,
+          [historyKey]: { past: nextPast, future: nextFuture },
+        };
+      });
+      setIsDirty(true);
+      setVisualEditorDirty(true);
+      return true;
+    },
+    [visualRuleHistoryByVariant]
+  );
+
+  const redoVisualRuleChange = useCallback(
+    variantIndex => {
+      const count = formDataRef.current?.variants?.length || 0;
+      if (count <= 0) return false;
+      const resolvedIndex = Math.min(Math.max(0, Number(variantIndex) || 0), count - 1);
+      const historyKey = String(resolvedIndex);
+      const history = visualRuleHistoryByVariant[historyKey] || { past: [], future: [] };
+      const nextSnapshot = history.future?.[0];
+      if (!nextSnapshot) return false;
+      const currentRules = cloneVisualEditorRules(
+        formDataRef.current?.variants?.[resolvedIndex]?.config?.visual_editor_rules
+      );
+      setFormData(prev => {
+        const variants = [...(prev.variants || [])];
+        const variant = variants[resolvedIndex];
+        const config = { ...(variant?.config || {}) };
+        config.visual_editor_rules = cloneVisualEditorRules(nextSnapshot);
+        variants[resolvedIndex] = { ...variant, config };
+        return { ...prev, variants };
+      });
+      setVisualRuleHistoryByVariant(prev => {
+        const current = prev[historyKey] || { past: [], future: [] };
+        const nextPast = [...(current.past || []), currentRules].slice(-MAX_VISUAL_EDITOR_HISTORY);
+        const nextFuture = (current.future || []).slice(1);
+        return {
+          ...prev,
+          [historyKey]: { past: nextPast, future: nextFuture },
+        };
+      });
+      setIsDirty(true);
+      setVisualEditorDirty(true);
+      return true;
+    },
+    [visualRuleHistoryByVariant]
+  );
   const [savePresetName, setSavePresetName] = useState('');
   const [loadedPresetId, setLoadedPresetId] = useState('');
   const [placementSection, setPlacementSection] = useState('page'); // 'page' | 'device' | 'audience' | 'holdout' | 'advanced'
@@ -1377,22 +1611,10 @@ function TestWizard({
             variant.config && typeof variant.config === 'object' ? { ...variant.config } : {};
           const serverCode = variant?.code ?? variant?.config?.code ?? config?.code ?? '';
           const veRules = Array.isArray(config.visual_editor_rules)
-            ? Array.from(
-                { length: 5 },
-                (_, i) =>
-                  config.visual_editor_rules[i] || {
-                    selector: '',
-                    css: '',
-                    js: '',
-                    position: 'after',
-                  }
+            ? Array.from({ length: 5 }, (_, i) =>
+                normalizeVisualEditorRule(config.visual_editor_rules[i])
               )
-            : Array.from({ length: 5 }, () => ({
-                selector: '',
-                css: '',
-                js: '',
-                position: 'after',
-              }));
+            : Array.from({ length: 5 }, () => createEmptyVisualEditorRule());
           if (
             vIdx === 0 &&
             Array.isArray(initialData.segments?.visual_editor_rules) &&
@@ -1400,15 +1622,7 @@ function TestWizard({
           ) {
             for (let i = 0; i < 5; i++) {
               const r = initialData.segments.visual_editor_rules[i];
-              if (r && typeof r === 'object')
-                veRules[i] = {
-                  selector: String(r.selector || '').trim(),
-                  css: String(r.css || '').trim(),
-                  js: String(r.js || '').trim(),
-                  position: ['after', 'before', 'afterbegin', 'beforeend'].includes(r.position)
-                    ? r.position
-                    : 'after',
-                };
+              if (r && typeof r === 'object') veRules[i] = normalizeVisualEditorRule(r);
             }
           }
           return {
@@ -1421,15 +1635,8 @@ function TestWizard({
         segments: (() => {
           const seg = { ...DEFAULT_FORM_DATA.segments, ...(initialData.segments || {}) };
           if (Array.isArray(initialData.segments?.visual_editor_rules)) {
-            seg.visual_editor_rules = Array.from(
-              { length: 5 },
-              (_, i) =>
-                initialData.segments.visual_editor_rules[i] || {
-                  selector: '',
-                  css: '',
-                  js: '',
-                  position: 'after',
-                }
+            seg.visual_editor_rules = Array.from({ length: 5 }, (_, i) =>
+              normalizeVisualEditorRule(initialData.segments.visual_editor_rules[i])
             );
           }
           return seg;
@@ -1615,18 +1822,7 @@ function TestWizard({
     if (Array.isArray(veRulesSource) && veRulesSource.length > 0) {
       normalizedSegments.visual_editor_rules = veRulesSource
         .slice(0, 5)
-        .map(r =>
-          r && typeof r === 'object'
-            ? {
-                selector: String(r.selector || '').trim(),
-                css: String(r.css || '').trim(),
-                js: String(r.js || '').trim(),
-                position: ['after', 'before', 'afterbegin', 'beforeend'].includes(r.position)
-                  ? r.position
-                  : 'after',
-              }
-            : null
-        )
+        .map(r => (r && typeof r === 'object' ? normalizeVisualEditorRule(r) : null))
         .filter(Boolean);
     }
 
@@ -1843,36 +2039,17 @@ function TestWizard({
           (form.variants?.length || 1) - 1
         );
         const variant = form.variants?.[variantIndex];
-        const rules = Array.from(
-          { length: 5 },
-          (_, i) =>
-            (variant?.config?.visual_editor_rules || [])[i] || {
-              selector: '',
-              css: '',
-              js: '',
-              position: 'after',
-            }
+        const rules = Array.from({ length: 5 }, (_, i) =>
+          normalizeVisualEditorRule((variant?.config?.visual_editor_rules || [])[i])
         );
         const selectedCount = rules.filter(r => (r.selector || '').trim()).length;
         const changeIdx = changingSelectorIndexRef.current;
 
         if (changeIdx !== null && changeIdx >= 0 && changeIdx < 5) {
-          setFormData(prev => {
-            const variants = [...(prev.variants || [])];
-            const v = variants[variantIndex];
-            const config = { ...(v?.config || {}) };
-            const nextRules = Array.from(
-              { length: 5 },
-              (_, i) => rules[i] || { selector: '', css: '', js: '', position: 'after' }
-            );
+          applyVisualRulesChange(variantIndex, nextRules => {
             nextRules[changeIdx] = { ...nextRules[changeIdx], selector: sel };
-            config.visual_editor_rules = nextRules;
-            variants[variantIndex] = { ...v, config };
-            return { ...prev, variants };
           });
           setChangingSelectorIndex(null);
-          setIsDirty(true);
-          setVisualEditorDirty(true);
           setVisualSnippetPanelExpanded(true);
           setVisualSnippetActiveElementIndex(changeIdx);
           setVisualPreviewToast({ message: 'Selector updated', type: 'success' });
@@ -1892,21 +2069,9 @@ function TestWizard({
         const firstEmpty = rules.findIndex(r => !(r.selector || '').trim());
         const idx = firstEmpty >= 0 ? firstEmpty : 0;
 
-        setFormData(prev => {
-          const variants = [...(prev.variants || [])];
-          const v = variants[variantIndex];
-          const config = { ...(v?.config || {}) };
-          const nextRules = Array.from(
-            { length: 5 },
-            (_, i) => rules[i] || { selector: '', css: '', js: '', position: 'after' }
-          );
+        applyVisualRulesChange(variantIndex, nextRules => {
           nextRules[idx] = { ...nextRules[idx], selector: sel };
-          config.visual_editor_rules = nextRules;
-          variants[variantIndex] = { ...v, config };
-          return { ...prev, variants };
         });
-        setIsDirty(true);
-        setVisualEditorDirty(true);
         setVisualSnippetPanelExpanded(true);
         setVisualSnippetActiveElementIndex(idx);
         setVisualPreviewToast({
@@ -1920,7 +2085,7 @@ function TestWizard({
     }
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [allowedPreviewMessageOrigins]);
+  }, [allowedPreviewMessageOrigins, applyVisualRulesChange]);
 
   const validateCSS = css => {
     const errors = [];
@@ -2946,12 +3111,9 @@ function TestWizard({
                   ...newVariant,
                   config: {
                     ...(newVariant.config || {}),
-                    visual_editor_rules: Array.from({ length: 5 }, () => ({
-                      selector: '',
-                      css: '',
-                      js: '',
-                      position: 'after',
-                    })),
+                    visual_editor_rules: Array.from({ length: 5 }, () =>
+                      createEmptyVisualEditorRule()
+                    ),
                   },
                   allocation: equalAlloc + (current.length < remainder ? 1 : 0),
                 });
@@ -9377,37 +9539,22 @@ function TestWizard({
                               );
                             }
                             const showEmbedBlocked = visualPreviewLoadState === 'error';
-                            const rules = Array.from(
-                              { length: 5 },
-                              (_, i) =>
-                                (previewVariant?.config?.visual_editor_rules || [])[i] || {
-                                  selector: '',
-                                  css: '',
-                                  js: '',
-                                  position: 'after',
-                                }
+                            const rules = Array.from({ length: 5 }, (_, i) =>
+                              normalizeVisualEditorRule(
+                                (previewVariant?.config?.visual_editor_rules || [])[i]
+                              )
                             );
                             const selectedCount = rules.filter(r =>
                               (r.selector || '').trim()
                             ).length;
                             const atLimit = selectedCount >= 5;
+                            const historyKey = String(safeVisualIndex);
+                            const visualHistory = visualRuleHistoryByVariant[historyKey] || {
+                              past: [],
+                              future: [],
+                            };
                             const updateCurrentVariantRules = updater => {
-                              setFormData(prev => {
-                                const variants = [...(prev.variants || [])];
-                                const v = variants[safeVisualIndex];
-                                const config = { ...(v?.config || {}) };
-                                const nextRules = Array.from(
-                                  { length: 5 },
-                                  (_, i) =>
-                                    rules[i] || { selector: '', css: '', js: '', position: 'after' }
-                                );
-                                updater(nextRules);
-                                config.visual_editor_rules = nextRules;
-                                variants[safeVisualIndex] = { ...v, config };
-                                return { ...prev, variants };
-                              });
-                              setIsDirty(true);
-                              setVisualEditorDirty(true);
+                              applyVisualRulesChange(safeVisualIndex, updater);
                             };
                             const positionButtons = [
                               { label: 'After', value: 'after', title: 'Insert after element' },
@@ -9425,8 +9572,17 @@ function TestWizard({
                             ];
                             const snippetTabs = [
                               { id: 'selector', label: 'Selector' },
+                              { id: 'generated', label: 'Generated code' },
                               { id: 'css', label: 'CSS' },
                               { id: 'js', label: 'JavaScript' },
+                            ];
+                            const mutationTypeOptions = [
+                              { label: 'No quick action', value: 'none' },
+                              { label: 'Hide element', value: 'hide' },
+                              { label: 'Show element', value: 'show' },
+                              { label: 'Replace text', value: 'set_text' },
+                              { label: 'Set attribute', value: 'set_attr' },
+                              { label: 'Set inline style', value: 'set_style' },
                             ];
                             return (
                               <div className="variant-visual-editor-single-layout">
@@ -9636,17 +9792,62 @@ function TestWizard({
                                               tone="subdued"
                                               className="variant-visual-editor-snippet-overlay-subtitle"
                                             >
-                                              Edit selectors, CSS, and JS for each selected element.
+                                              Edit selectors, quick actions, CSS, and JS for each
+                                              selected element.
                                             </Text>
                                           </div>
-                                          <button
-                                            type="button"
-                                            className="variant-visual-editor-snippet-collapse-btn"
-                                            onClick={() => setVisualSnippetPanelExpanded(false)}
-                                            aria-label="Collapse panel"
-                                          >
-                                            <Icon source={ChevronDownIcon} />
-                                          </button>
+                                          <div className="variant-visual-editor-snippet-overlay-header-actions">
+                                            <button
+                                              type="button"
+                                              className="variant-visual-editor-history-btn"
+                                              disabled={!visualHistory.past?.length}
+                                              onClick={() => {
+                                                if (undoVisualRuleChange(safeVisualIndex)) {
+                                                  setVisualPreviewToast({
+                                                    message: 'Visual edit undone',
+                                                    type: 'success',
+                                                  });
+                                                  setTimeout(
+                                                    () => setVisualPreviewToast(null),
+                                                    2000
+                                                  );
+                                                }
+                                              }}
+                                              aria-label="Undo visual edit"
+                                              title="Undo last visual edit"
+                                            >
+                                              Undo
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="variant-visual-editor-history-btn"
+                                              disabled={!visualHistory.future?.length}
+                                              onClick={() => {
+                                                if (redoVisualRuleChange(safeVisualIndex)) {
+                                                  setVisualPreviewToast({
+                                                    message: 'Visual edit redone',
+                                                    type: 'success',
+                                                  });
+                                                  setTimeout(
+                                                    () => setVisualPreviewToast(null),
+                                                    2000
+                                                  );
+                                                }
+                                              }}
+                                              aria-label="Redo visual edit"
+                                              title="Redo visual edit"
+                                            >
+                                              Redo
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="variant-visual-editor-snippet-collapse-btn"
+                                              onClick={() => setVisualSnippetPanelExpanded(false)}
+                                              aria-label="Collapse panel"
+                                            >
+                                              <Icon source={ChevronDownIcon} />
+                                            </button>
+                                          </div>
                                         </div>
                                         <div className="variant-visual-editor-snippet-overlay-body">
                                           {(() => {
@@ -9660,22 +9861,16 @@ function TestWizard({
                                                 ? visualSnippetActiveElementIndex
                                                 : (ruleIndicesWithSelectors[0] ?? 0);
                                             const idx = effectiveActiveIndex;
-                                            const rule = rules[idx] || {
-                                              selector: '',
-                                              css: '',
-                                              js: '',
-                                              position: 'after',
-                                            };
+                                            const rule = normalizeVisualEditorRule(rules[idx]);
+                                            const generatedCode =
+                                              buildGeneratedVisualRuleCode(rule);
                                             const rawTab = visualRuleActiveTab[idx] || 'selector';
                                             const activeTab =
                                               rawTab === 'position' ? 'selector' : rawTab;
                                             const handleRemoveElement = ruleIndexToRemove => {
                                               updateCurrentVariantRules(nextRules => {
                                                 nextRules[ruleIndexToRemove] = {
-                                                  selector: '',
-                                                  css: '',
-                                                  js: '',
-                                                  position: 'after',
+                                                  ...createEmptyVisualEditorRule(),
                                                 };
                                               });
                                               const remaining = ruleIndicesWithSelectors.filter(
@@ -9941,6 +10136,167 @@ function TestWizard({
                                                               ))}
                                                             </div>
                                                           </div>
+                                                          <div className="variant-visual-editor-mutation-group">
+                                                            <Select
+                                                              label="Quick action"
+                                                              options={mutationTypeOptions}
+                                                              value={rule.mutation_type || 'none'}
+                                                              onChange={value => {
+                                                                updateCurrentVariantRules(
+                                                                  nextRules => {
+                                                                    const normalized =
+                                                                      normalizeVisualEditorRule(
+                                                                        nextRules[idx]
+                                                                      );
+                                                                    nextRules[idx] = {
+                                                                      ...normalized,
+                                                                      mutation_type: value,
+                                                                    };
+                                                                  }
+                                                                );
+                                                              }}
+                                                              helpText="Use simple visual actions without writing custom JS."
+                                                            />
+                                                            {rule.mutation_type === 'set_text' && (
+                                                              <TextField
+                                                                label="Replacement text"
+                                                                value={rule.mutation_text || ''}
+                                                                onChange={value => {
+                                                                  updateCurrentVariantRules(
+                                                                    nextRules => {
+                                                                      const normalized =
+                                                                        normalizeVisualEditorRule(
+                                                                          nextRules[idx]
+                                                                        );
+                                                                      nextRules[idx] = {
+                                                                        ...normalized,
+                                                                        mutation_text: value,
+                                                                      };
+                                                                    }
+                                                                  );
+                                                                }}
+                                                                placeholder="Text to render in the selected element"
+                                                                autoComplete="off"
+                                                              />
+                                                            )}
+                                                            {rule.mutation_type === 'set_attr' && (
+                                                              <div className="variant-visual-editor-mutation-attr-grid">
+                                                                <TextField
+                                                                  label="Attribute name"
+                                                                  value={
+                                                                    rule.mutation_attribute || ''
+                                                                  }
+                                                                  onChange={value => {
+                                                                    updateCurrentVariantRules(
+                                                                      nextRules => {
+                                                                        const normalized =
+                                                                          normalizeVisualEditorRule(
+                                                                            nextRules[idx]
+                                                                          );
+                                                                        nextRules[idx] = {
+                                                                          ...normalized,
+                                                                          mutation_attribute: value,
+                                                                        };
+                                                                      }
+                                                                    );
+                                                                  }}
+                                                                  placeholder="e.g. aria-label"
+                                                                  autoComplete="off"
+                                                                />
+                                                                <TextField
+                                                                  label="Attribute value"
+                                                                  value={
+                                                                    rule.mutation_attribute_value ||
+                                                                    ''
+                                                                  }
+                                                                  onChange={value => {
+                                                                    updateCurrentVariantRules(
+                                                                      nextRules => {
+                                                                        const normalized =
+                                                                          normalizeVisualEditorRule(
+                                                                            nextRules[idx]
+                                                                          );
+                                                                        nextRules[idx] = {
+                                                                          ...normalized,
+                                                                          mutation_attribute_value:
+                                                                            value,
+                                                                        };
+                                                                      }
+                                                                    );
+                                                                  }}
+                                                                  placeholder="e.g. Buy now"
+                                                                  autoComplete="off"
+                                                                />
+                                                              </div>
+                                                            )}
+                                                            {rule.mutation_type === 'set_style' && (
+                                                              <TextField
+                                                                label="Inline style declarations"
+                                                                value={rule.mutation_style || ''}
+                                                                onChange={value => {
+                                                                  updateCurrentVariantRules(
+                                                                    nextRules => {
+                                                                      const normalized =
+                                                                        normalizeVisualEditorRule(
+                                                                          nextRules[idx]
+                                                                        );
+                                                                      nextRules[idx] = {
+                                                                        ...normalized,
+                                                                        mutation_style: value,
+                                                                      };
+                                                                    }
+                                                                  );
+                                                                }}
+                                                                placeholder="e.g. color: #111; font-weight: 700;"
+                                                                multiline={3}
+                                                                autoComplete="off"
+                                                              />
+                                                            )}
+                                                          </div>
+                                                        </div>
+                                                      )}
+                                                      {activeTab === 'generated' && (
+                                                        <div className="variant-visual-editor-generated-tab-content">
+                                                          <div className="variant-visual-editor-generated-tab-header">
+                                                            <Text
+                                                              as="span"
+                                                              variant="bodySm"
+                                                              tone="subdued"
+                                                            >
+                                                              Read-only preview of generated
+                                                              mutation + snippets.
+                                                            </Text>
+                                                            <Button
+                                                              size="slim"
+                                                              onClick={async () => {
+                                                                try {
+                                                                  await navigator.clipboard.writeText(
+                                                                    generatedCode
+                                                                  );
+                                                                  setVisualPreviewToast({
+                                                                    message:
+                                                                      'Generated code copied',
+                                                                    type: 'success',
+                                                                  });
+                                                                } catch (_) {
+                                                                  setVisualPreviewToast({
+                                                                    message:
+                                                                      'Copy failed in this browser',
+                                                                    type: 'critical',
+                                                                  });
+                                                                }
+                                                                setTimeout(
+                                                                  () => setVisualPreviewToast(null),
+                                                                  2200
+                                                                );
+                                                              }}
+                                                            >
+                                                              Copy
+                                                            </Button>
+                                                          </div>
+                                                          <pre className="variant-visual-editor-generated-code">
+                                                            {generatedCode}
+                                                          </pre>
                                                         </div>
                                                       )}
                                                       {activeTab === 'css' && (

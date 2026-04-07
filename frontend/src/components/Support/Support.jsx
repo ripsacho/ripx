@@ -17,6 +17,7 @@ import {
   Select,
   Banner,
   List,
+  Badge,
   Icon,
   Spinner,
 } from '@shopify/polaris';
@@ -44,6 +45,54 @@ const CATEGORIES_FALLBACK = [
   { label: 'Other', value: 'other' },
 ];
 
+const SUPPORT_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const CHAT_ESCALATION_CATEGORY = 'technical';
+const FEATURE_REQUEST_STATUS_OPTIONS = [
+  { label: 'All statuses', value: 'all' },
+  { label: 'Open', value: 'open' },
+  { label: 'Planned', value: 'planned' },
+  { label: 'In progress', value: 'in_progress' },
+  { label: 'Shipped', value: 'shipped' },
+];
+const FEATURE_REQUEST_STATUS_TONE = {
+  open: 'attention',
+  planned: 'info',
+  in_progress: 'success',
+  shipped: 'success',
+  closed: 'new',
+  rejected: 'critical',
+};
+const SUPPORT_STATUS_TONE = {
+  operational: 'success',
+  degraded: 'warning',
+  maintenance: 'info',
+  outage: 'critical',
+};
+const SUPPORT_STATUS_LABEL = {
+  operational: 'Operational',
+  degraded: 'Degraded',
+  maintenance: 'Maintenance',
+  outage: 'Outage',
+};
+
+function buildEscalationTranscript(messages, limit = 12) {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return '';
+  }
+  return messages
+    .slice(-Math.max(1, limit))
+    .map(m => {
+      const role = m?.role === 'assistant' ? 'RipX' : 'User';
+      const content = typeof m?.content === 'string' ? m.content.trim() : '';
+      if (!content) {
+        return null;
+      }
+      return `${role}: ${content}`;
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
 function Support() {
   const [selectedTab, setSelectedTab] = useState(0);
   const [email, setEmail] = useState('');
@@ -63,10 +112,40 @@ function Support() {
   const [chatLoading, setChatLoading] = useState(false);
   const [aiNotConfigured, setAiNotConfigured] = useState(false);
   const [chatConversationId, setChatConversationId] = useState(null);
+  const [chatFeedbackByMessage, setChatFeedbackByMessage] = useState({});
+  const [chatFeedbackSubmitting, setChatFeedbackSubmitting] = useState(false);
+  const [chatEscalating, setChatEscalating] = useState(false);
+  const [chatEscalationResult, setChatEscalationResult] = useState(null);
+  const [featureRequestTitle, setFeatureRequestTitle] = useState('');
+  const [featureRequestDetails, setFeatureRequestDetails] = useState('');
+  const [featureRequests, setFeatureRequests] = useState([]);
+  const [featureRequestsLoading, setFeatureRequestsLoading] = useState(true);
+  const [featureRequestsSubmitting, setFeatureRequestsSubmitting] = useState(false);
+  const [featureRequestsError, setFeatureRequestsError] = useState(null);
+  const [featureRequestStatusFilter, setFeatureRequestStatusFilter] = useState('all');
+  const [featureRequestVoteLoadingById, setFeatureRequestVoteLoadingById] = useState({});
+  const [supportStatus, setSupportStatus] = useState({
+    status: 'operational',
+    message: 'All systems operational',
+    updated_at: null,
+  });
+  const [supportStatusLoading, setSupportStatusLoading] = useState(true);
+  const [supportChangelog, setSupportChangelog] = useState([]);
+  const [supportChangelogLoading, setSupportChangelogLoading] = useState(true);
+  const [supportStatusError, setSupportStatusError] = useState(null);
   const chatScrollRef = useRef(null);
   const mountedRef = useRef(true);
   const chatInputRef = useRef('');
   chatInputRef.current = chatInput;
+
+  const latestAssistantMessage =
+    [...chatMessages].reverse().find(messageItem => messageItem?.role === 'assistant') || null;
+  const latestAssistantKey =
+    latestAssistantMessage?.serverMessageId || latestAssistantMessage?.id || null;
+  const latestAssistantFeedback =
+    latestAssistantKey && chatFeedbackByMessage[latestAssistantKey]
+      ? chatFeedbackByMessage[latestAssistantKey]
+      : null;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -159,6 +238,96 @@ function Support() {
     };
   }, [fetchTickets]);
 
+  const fetchFeatureRequests = useCallback(
+    (getIsCancelled = () => false) => {
+      setFeatureRequestsLoading(true);
+      setFeatureRequestsError(null);
+      const params = {};
+      if (featureRequestStatusFilter && featureRequestStatusFilter !== 'all') {
+        params.status = featureRequestStatusFilter;
+      }
+      apiGet('/support/feature-requests', params)
+        .then(res => {
+          if (getIsCancelled()) return;
+          const data = res?.data ?? {};
+          const list = Array.isArray(data.feature_requests) ? data.feature_requests : [];
+          setFeatureRequests(list);
+        })
+        .catch(err => {
+          if (getIsCancelled()) return;
+          const status = err?.response?.status;
+          if (status === 401) {
+            setFeatureRequestsError('sign_in');
+          } else {
+            setFeatureRequestsError(
+              err?.response?.data?.error || err?.message || 'Could not load feature requests'
+            );
+          }
+          setFeatureRequests([]);
+        })
+        .finally(() => {
+          if (!getIsCancelled()) {
+            setFeatureRequestsLoading(false);
+          }
+        });
+    },
+    [featureRequestStatusFilter]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchFeatureRequests(() => cancelled);
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchFeatureRequests]);
+
+  const fetchStatusAndChangelog = useCallback((getIsCancelled = () => false) => {
+    setSupportStatusLoading(true);
+    setSupportChangelogLoading(true);
+    setSupportStatusError(null);
+    Promise.all([apiGet('/support/status'), apiGet('/support/changelog', { limit: 20 })])
+      .then(([statusRes, changelogRes]) => {
+        if (getIsCancelled()) return;
+        const statusData = statusRes?.data || {};
+        const statusValue = String(statusData.status || 'operational')
+          .trim()
+          .toLowerCase();
+        setSupportStatus({
+          status: statusValue || 'operational',
+          message:
+            typeof statusData.message === 'string' && statusData.message.trim()
+              ? statusData.message.trim()
+              : 'All systems operational',
+          updated_at: statusData.updated_at || null,
+        });
+        const changelogData = changelogRes?.data || {};
+        const list = Array.isArray(changelogData.changelog) ? changelogData.changelog : [];
+        setSupportChangelog(list);
+      })
+      .catch(err => {
+        if (getIsCancelled()) return;
+        setSupportStatusError(
+          err?.response?.data?.error || err?.message || 'Could not load status and changelog'
+        );
+        setSupportChangelog([]);
+      })
+      .finally(() => {
+        if (!getIsCancelled()) {
+          setSupportStatusLoading(false);
+          setSupportChangelogLoading(false);
+        }
+      });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchStatusAndChangelog(() => cancelled);
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchStatusAndChangelog]);
+
   const handleSubmit = async e => {
     e?.preventDefault();
     if (!email.trim() || !subject.trim() || !message.trim()) return;
@@ -202,6 +371,89 @@ function Support() {
     }
   };
 
+  const handleCreateFeatureRequest = useCallback(
+    async e => {
+      e?.preventDefault();
+      if (!featureRequestTitle.trim() || featureRequestsSubmitting) {
+        return;
+      }
+      setFeatureRequestsSubmitting(true);
+      setFeatureRequestsError(null);
+      try {
+        const res = await apiPost('/support/feature-requests', {
+          title: featureRequestTitle.trim(),
+          details: featureRequestDetails.trim(),
+          category: 'feature_request',
+        });
+        if (!mountedRef.current) return;
+        const data = res?.data ?? {};
+        const created = data?.feature_request;
+        if (created) {
+          setFeatureRequestTitle('');
+          setFeatureRequestDetails('');
+          setFeatureRequests(prev => [created, ...prev]);
+        } else {
+          setFeatureRequestsError('Could not create feature request');
+        }
+      } catch (err) {
+        if (!mountedRef.current) return;
+        if (err?.response?.status === 401) {
+          setFeatureRequestsError('sign_in');
+        } else {
+          setFeatureRequestsError(
+            err?.response?.data?.error || err?.message || 'Could not create feature request'
+          );
+        }
+      } finally {
+        if (mountedRef.current) {
+          setFeatureRequestsSubmitting(false);
+        }
+      }
+    },
+    [featureRequestTitle, featureRequestDetails, featureRequestsSubmitting]
+  );
+
+  const handleVoteFeatureRequest = useCallback(
+    async (requestId, value) => {
+      if (!requestId || featureRequestVoteLoadingById[requestId]) {
+        return;
+      }
+      setFeatureRequestVoteLoadingById(prev => ({ ...prev, [requestId]: true }));
+      setFeatureRequestsError(null);
+      try {
+        const res = await apiPost(`/support/feature-requests/${requestId}/vote`, { value });
+        if (!mountedRef.current) return;
+        const updated = res?.data?.feature_request;
+        if (updated?.id) {
+          setFeatureRequests(prev =>
+            prev.map(item =>
+              item.id === updated.id
+                ? {
+                    ...item,
+                    vote_count: updated.vote_count ?? item.vote_count,
+                    my_vote: updated.my_vote ?? item.my_vote ?? 0,
+                    status: updated.status ?? item.status,
+                  }
+                : item
+            )
+          );
+        }
+      } catch (err) {
+        if (!mountedRef.current) return;
+        if (err?.response?.status === 401) {
+          setFeatureRequestsError('sign_in');
+        } else {
+          setFeatureRequestsError(err?.response?.data?.error || err?.message || 'Could not vote');
+        }
+      } finally {
+        if (mountedRef.current) {
+          setFeatureRequestVoteLoadingById(prev => ({ ...prev, [requestId]: false }));
+        }
+      }
+    },
+    [featureRequestVoteLoadingById]
+  );
+
   const sendChatMessage = useCallback(
     async textOverride => {
       const text = (
@@ -211,7 +463,15 @@ function Support() {
       ).trim();
       if (!text || chatLoading) return;
       setChatInput('');
-      setChatMessages(prev => [...prev, { role: 'user', content: text }]);
+      setChatEscalationResult(null);
+      setChatMessages(prev => [
+        ...prev,
+        {
+          id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          role: 'user',
+          content: text,
+        },
+      ]);
       setChatLoading(true);
       setAiNotConfigured(false);
       try {
@@ -228,7 +488,15 @@ function Support() {
           reply =
             "The AI assistant isn't set up for this environment. Use **Contact us** for help.";
         }
-        setChatMessages(prev => [...prev, { role: 'assistant', content: reply }]);
+        setChatMessages(prev => [
+          ...prev,
+          {
+            id: `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            serverMessageId: data?.assistant_message_id || null,
+            role: 'assistant',
+            content: reply,
+          },
+        ]);
       } catch (err) {
         if (!mountedRef.current) return;
         setChatMessages(prev => [
@@ -246,10 +514,166 @@ function Support() {
     [chatLoading, chatMessages, chatConversationId]
   );
 
+  const submitChatFeedback = useCallback(
+    async helpfulValue => {
+      if (!latestAssistantKey || !chatConversationId || chatFeedbackSubmitting) {
+        return;
+      }
+      const helpful = !!helpfulValue;
+      setChatFeedbackSubmitting(true);
+      setChatFeedbackByMessage(prev => ({
+        ...prev,
+        [latestAssistantKey]: {
+          helpful,
+          pending: true,
+          error: '',
+        },
+      }));
+      try {
+        await apiPost('/support/chat-feedback', {
+          conversation_id: chatConversationId,
+          helpful,
+          assistant_message_id: latestAssistantMessage?.serverMessageId || undefined,
+        });
+        if (!mountedRef.current) return;
+        setChatFeedbackByMessage(prev => ({
+          ...prev,
+          [latestAssistantKey]: {
+            helpful,
+            pending: false,
+            error: '',
+            savedAt: new Date().toISOString(),
+          },
+        }));
+      } catch (err) {
+        if (!mountedRef.current) return;
+        const messageFromApi = err?.response?.data?.error || 'Could not save feedback';
+        setChatFeedbackByMessage(prev => ({
+          ...prev,
+          [latestAssistantKey]: {
+            helpful,
+            pending: false,
+            error: messageFromApi,
+          },
+        }));
+      } finally {
+        if (mountedRef.current) {
+          setChatFeedbackSubmitting(false);
+        }
+      }
+    },
+    [
+      chatConversationId,
+      chatFeedbackSubmitting,
+      latestAssistantKey,
+      latestAssistantMessage?.serverMessageId,
+    ]
+  );
+
+  const escalateChatToTicket = useCallback(async () => {
+    if (chatEscalating || chatLoading) {
+      return;
+    }
+
+    const rawEmail = typeof email === 'string' ? email.trim() : '';
+    if (!rawEmail || !SUPPORT_EMAIL_REGEX.test(rawEmail)) {
+      setSelectedTab(0);
+      setSubmitResult({
+        success: false,
+        error: 'Add a valid email in Contact us first, then try escalation again.',
+      });
+      return;
+    }
+
+    const latestUserMessage =
+      [...chatMessages].reverse().find(messageItem => messageItem?.role === 'user')?.content || '';
+    const subjectSeed = String(latestUserMessage || 'Need help from support')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 120);
+    const transcript = buildEscalationTranscript(chatMessages);
+    const helpfulLabel = latestAssistantFeedback
+      ? latestAssistantFeedback.helpful
+        ? 'yes'
+        : 'no'
+      : 'not provided';
+    const escalationMessage = [
+      'Escalated from Support Ask AI chat.',
+      `Conversation ID: ${chatConversationId || 'not_available'}`,
+      `Latest AI answer helpful: ${helpfulLabel}`,
+      '',
+      'Recent transcript:',
+      transcript || '(no transcript captured)',
+    ].join('\n');
+
+    setChatEscalationResult(null);
+    setChatEscalating(true);
+    try {
+      if (latestAssistantMessage && latestAssistantFeedback?.helpful !== false) {
+        void submitChatFeedback(false);
+      }
+      const res = await apiPost('/support/ticket', {
+        email: rawEmail,
+        subject: `AI chat escalation: ${subjectSeed || 'Need support'}`,
+        category: CHAT_ESCALATION_CATEGORY,
+        message: escalationMessage,
+      });
+      if (!mountedRef.current) return;
+      const data = res?.data ?? res;
+      if (data?.success) {
+        setChatEscalationResult({
+          success: true,
+          ticketId: data.ticket_id,
+          message: `Escalated successfully. Ticket #${String(data.ticket_id || '').slice(0, 8)} created.`,
+        });
+        setTickets(prev => [
+          {
+            id: data.ticket_id,
+            subject: `AI chat escalation: ${subjectSeed || 'Need support'}`,
+            category: CHAT_ESCALATION_CATEGORY,
+            status: 'open',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          ...prev,
+        ]);
+      } else {
+        setChatEscalationResult({
+          success: false,
+          message: data?.error || 'Could not escalate this chat right now.',
+        });
+      }
+    } catch (err) {
+      if (!mountedRef.current) return;
+      setChatEscalationResult({
+        success: false,
+        message:
+          err?.response?.data?.error || err?.message || 'Could not escalate this chat right now.',
+      });
+    } finally {
+      if (mountedRef.current) {
+        setChatEscalating(false);
+      }
+    }
+  }, [
+    chatEscalating,
+    chatLoading,
+    email,
+    chatMessages,
+    latestAssistantFeedback,
+    latestAssistantMessage,
+    chatConversationId,
+    submitChatFeedback,
+  ]);
+
   const clearChat = useCallback(() => {
     setChatMessages([]);
     setChatInput('');
     setChatConversationId(null);
+    setChatFeedbackByMessage({});
+    setChatFeedbackSubmitting(false);
+    setChatEscalating(false);
+    setChatEscalationResult(null);
   }, []);
 
   const tabs = [
@@ -270,6 +694,18 @@ function Support() {
       content: 'Ask AI',
       accessibilityLabel: 'Ask AI',
       panelID: 'ask-ai-panel',
+    },
+    {
+      id: 'feature-requests',
+      content: 'Feature requests',
+      accessibilityLabel: 'Feature requests',
+      panelID: 'feature-requests-panel',
+    },
+    {
+      id: 'status-changelog',
+      content: 'Status & changelog',
+      accessibilityLabel: 'Status and changelog',
+      panelID: 'status-changelog-panel',
     },
   ];
 
@@ -742,16 +1178,342 @@ function Support() {
                           </div>
                           {chatMessages.length > 0 && (
                             <div className={styles.stillNeedHelp}>
-                              <Text as="span" variant="bodySm" tone="subdued">
-                                Still need help?
-                              </Text>
-                              <Button size="slim" variant="plain" onClick={() => setSelectedTab(0)}>
-                                Contact us
-                              </Button>
+                              {latestAssistantMessage && (
+                                <div className={styles.chatResolutionRow}>
+                                  <Text as="span" variant="bodySm" tone="subdued">
+                                    Was this answer helpful?
+                                  </Text>
+                                  <div className={styles.chatResolutionButtons}>
+                                    <Button
+                                      size="slim"
+                                      variant={
+                                        latestAssistantFeedback?.helpful === true
+                                          ? 'primary'
+                                          : 'secondary'
+                                      }
+                                      onClick={() => submitChatFeedback(true)}
+                                      disabled={chatFeedbackSubmitting || chatLoading}
+                                      loading={
+                                        chatFeedbackSubmitting &&
+                                        latestAssistantFeedback?.helpful === true
+                                      }
+                                    >
+                                      Yes
+                                    </Button>
+                                    <Button
+                                      size="slim"
+                                      variant={
+                                        latestAssistantFeedback?.helpful === false
+                                          ? 'primary'
+                                          : 'secondary'
+                                      }
+                                      onClick={() => submitChatFeedback(false)}
+                                      disabled={chatFeedbackSubmitting || chatLoading}
+                                      loading={
+                                        chatFeedbackSubmitting &&
+                                        latestAssistantFeedback?.helpful === false
+                                      }
+                                    >
+                                      No
+                                    </Button>
+                                  </div>
+                                  {latestAssistantFeedback && (
+                                    <Text
+                                      as="span"
+                                      variant="bodySm"
+                                      className={
+                                        latestAssistantFeedback.error
+                                          ? styles.chatResolutionMetaError
+                                          : styles.chatResolutionMetaSuccess
+                                      }
+                                    >
+                                      {latestAssistantFeedback.error
+                                        ? latestAssistantFeedback.error
+                                        : latestAssistantFeedback.helpful
+                                          ? 'Thanks for the feedback.'
+                                          : 'Thanks. You can escalate this to a human agent below.'}
+                                    </Text>
+                                  )}
+                                </div>
+                              )}
+                              <div className={styles.chatResolutionButtons}>
+                                <Button
+                                  size="slim"
+                                  variant="primary"
+                                  onClick={escalateChatToTicket}
+                                  loading={chatEscalating}
+                                  disabled={
+                                    chatEscalating || chatLoading || chatMessages.length === 0
+                                  }
+                                >
+                                  Escalate to support
+                                </Button>
+                                <Button
+                                  size="slim"
+                                  variant="plain"
+                                  onClick={() => setSelectedTab(0)}
+                                >
+                                  Contact us
+                                </Button>
+                              </div>
+                              {chatEscalationResult && (
+                                <Text
+                                  as="span"
+                                  variant="bodySm"
+                                  className={
+                                    chatEscalationResult.success
+                                      ? styles.chatResolutionMetaSuccess
+                                      : styles.chatResolutionMetaError
+                                  }
+                                >
+                                  {chatEscalationResult.message}
+                                </Text>
+                              )}
                             </div>
                           )}
                         </BlockStack>
                       </Box>
+                    </BlockStack>
+                  </Card>
+                )}
+
+                {selectedTab === 3 && (
+                  <Card>
+                    <BlockStack gap="400">
+                      <div className={styles.tabCardHeader}>
+                        <InlineStack gap="200" blockAlign="center">
+                          <Icon source={ListBulletedIcon} tone="base" />
+                          <Text as="h2" variant="headingMd">
+                            Feature requests
+                          </Text>
+                        </InlineStack>
+                      </div>
+                      <Text as="p" variant="bodySm" tone="subdued" className={styles.tabCardIntro}>
+                        Share ideas and vote on what should be built next. Sign in to create and
+                        vote.
+                      </Text>
+
+                      {featureRequestsError === 'sign_in' && (
+                        <Banner
+                          tone="info"
+                          title="Sign in required for creating and voting"
+                          onDismiss={() => setFeatureRequestsError(null)}
+                        >
+                          <p>
+                            You can browse requests without signing in. Sign in to post or vote.
+                          </p>
+                        </Banner>
+                      )}
+                      {featureRequestsError && featureRequestsError !== 'sign_in' && (
+                        <Banner tone="critical" onDismiss={() => setFeatureRequestsError(null)}>
+                          {featureRequestsError}
+                        </Banner>
+                      )}
+
+                      <form
+                        className={styles.featureRequestComposer}
+                        onSubmit={handleCreateFeatureRequest}
+                      >
+                        <BlockStack gap="300">
+                          <TextField
+                            label="Request title"
+                            value={featureRequestTitle}
+                            onChange={setFeatureRequestTitle}
+                            placeholder="Example: Add rule-based product prioritization"
+                            maxLength={180}
+                            showCharacterCount
+                            autoComplete="off"
+                          />
+                          <TextField
+                            label="Details (optional)"
+                            value={featureRequestDetails}
+                            onChange={setFeatureRequestDetails}
+                            placeholder="Describe the use case and desired outcome…"
+                            multiline={3}
+                            maxLength={5000}
+                            showCharacterCount
+                          />
+                          <InlineStack align="space-between" blockAlign="center" wrap>
+                            <Select
+                              label="Filter board"
+                              options={FEATURE_REQUEST_STATUS_OPTIONS}
+                              value={featureRequestStatusFilter}
+                              onChange={setFeatureRequestStatusFilter}
+                            />
+                            <Button
+                              variant="primary"
+                              submit
+                              loading={featureRequestsSubmitting}
+                              disabled={!featureRequestTitle.trim() || featureRequestsSubmitting}
+                            >
+                              Submit request
+                            </Button>
+                          </InlineStack>
+                        </BlockStack>
+                      </form>
+
+                      {featureRequestsLoading ? (
+                        <Text as="p" tone="subdued">
+                          Loading feature requests…
+                        </Text>
+                      ) : featureRequests.length === 0 ? (
+                        <Text as="p" tone="subdued">
+                          No feature requests yet. Be the first to submit one.
+                        </Text>
+                      ) : (
+                        <div className={styles.featureRequestList}>
+                          {featureRequests.map(item => (
+                            <div key={item.id} className={styles.featureRequestItem}>
+                              <InlineStack align="space-between" blockAlign="start" wrap>
+                                <BlockStack gap="100">
+                                  <Text as="p" variant="headingSm">
+                                    {item.title || 'Untitled request'}
+                                  </Text>
+                                  <InlineStack gap="200" blockAlign="center" wrap>
+                                    <Badge
+                                      tone={
+                                        FEATURE_REQUEST_STATUS_TONE[
+                                          String(item.status || 'open').toLowerCase()
+                                        ] || 'info'
+                                      }
+                                    >
+                                      {String(item.status || 'open').replace('_', ' ')}
+                                    </Badge>
+                                    <Badge tone="attention">
+                                      {Number(item.vote_count) || 0} votes
+                                    </Badge>
+                                  </InlineStack>
+                                </BlockStack>
+                                <InlineStack gap="200" blockAlign="center" wrap>
+                                  <Button
+                                    size="slim"
+                                    variant={Number(item.my_vote) === 1 ? 'primary' : 'secondary'}
+                                    onClick={() => handleVoteFeatureRequest(item.id, 1)}
+                                    loading={Boolean(featureRequestVoteLoadingById[item.id])}
+                                    disabled={Boolean(featureRequestVoteLoadingById[item.id])}
+                                  >
+                                    {Number(item.my_vote) === 1 ? 'Voted' : 'Vote'}
+                                  </Button>
+                                </InlineStack>
+                              </InlineStack>
+                              {item.details ? (
+                                <Text as="p" variant="bodySm" tone="subdued">
+                                  {item.details}
+                                </Text>
+                              ) : null}
+                              <Text as="p" variant="bodySm" tone="subdued">
+                                #{String(item.id || '').slice(0, 8)} ·{' '}
+                                {item.created_at
+                                  ? new Date(item.created_at).toLocaleDateString()
+                                  : '—'}
+                              </Text>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </BlockStack>
+                  </Card>
+                )}
+
+                {selectedTab === 4 && (
+                  <Card>
+                    <BlockStack gap="400">
+                      <div className={styles.tabCardHeader}>
+                        <InlineStack gap="200" blockAlign="center">
+                          <Icon source={BookIcon} tone="base" />
+                          <Text as="h2" variant="headingMd">
+                            Status and changelog
+                          </Text>
+                        </InlineStack>
+                      </div>
+                      <Text as="p" variant="bodySm" tone="subdued" className={styles.tabCardIntro}>
+                        Track current platform status and recent product updates from the team.
+                      </Text>
+
+                      {supportStatusError && (
+                        <Banner tone="critical" onDismiss={() => setSupportStatusError(null)}>
+                          {supportStatusError}
+                        </Banner>
+                      )}
+
+                      <div className={styles.supportStatusCard}>
+                        <InlineStack align="space-between" blockAlign="center" wrap>
+                          <InlineStack gap="200" blockAlign="center" wrap>
+                            <Text as="p" variant="headingSm">
+                              Current status
+                            </Text>
+                            <Badge
+                              tone={
+                                SUPPORT_STATUS_TONE[
+                                  String(supportStatus.status || 'operational').toLowerCase()
+                                ] || 'success'
+                              }
+                            >
+                              {SUPPORT_STATUS_LABEL[
+                                String(supportStatus.status || 'operational').toLowerCase()
+                              ] || 'Operational'}
+                            </Badge>
+                          </InlineStack>
+                          <Button
+                            size="slim"
+                            variant="plain"
+                            onClick={() => fetchStatusAndChangelog()}
+                            loading={supportStatusLoading || supportChangelogLoading}
+                          >
+                            Refresh
+                          </Button>
+                        </InlineStack>
+                        <Text as="p" variant="bodySm" tone="subdued">
+                          {supportStatus.message || 'All systems operational'}
+                        </Text>
+                        {supportStatus.updated_at ? (
+                          <Text as="p" variant="bodySm" tone="subdued">
+                            Updated: {new Date(supportStatus.updated_at).toLocaleString()}
+                          </Text>
+                        ) : null}
+                      </div>
+
+                      {supportChangelogLoading ? (
+                        <Text as="p" tone="subdued">
+                          Loading changelog…
+                        </Text>
+                      ) : supportChangelog.length === 0 ? (
+                        <Text as="p" tone="subdued">
+                          No changelog entries published yet.
+                        </Text>
+                      ) : (
+                        <div className={styles.supportChangelogList}>
+                          {supportChangelog.map(entry => (
+                            <div key={entry.id} className={styles.supportChangelogItem}>
+                              <InlineStack align="space-between" blockAlign="center" wrap>
+                                <Text as="p" variant="headingSm">
+                                  {entry.title || 'Untitled update'}
+                                </Text>
+                                <Badge tone="info">
+                                  {String(entry.level || 'info').replace('_', ' ')}
+                                </Badge>
+                              </InlineStack>
+                              {entry.summary ? (
+                                <Text as="p" variant="bodySm" tone="subdued">
+                                  {entry.summary}
+                                </Text>
+                              ) : null}
+                              {entry.body ? (
+                                <Text as="p" variant="bodySm">
+                                  {entry.body}
+                                </Text>
+                              ) : null}
+                              <Text as="p" variant="bodySm" tone="subdued">
+                                {entry.published_at
+                                  ? new Date(entry.published_at).toLocaleString()
+                                  : entry.updated_at
+                                    ? new Date(entry.updated_at).toLocaleString()
+                                    : '—'}
+                              </Text>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </BlockStack>
                   </Card>
                 )}
@@ -773,6 +1535,13 @@ function Support() {
             onSendMessage={sendChatMessage}
             onClearChat={clearChat}
             onNavigateToContact={() => setSelectedTab(0)}
+            latestAssistantMessage={latestAssistantMessage}
+            latestAssistantFeedback={latestAssistantFeedback}
+            chatFeedbackSubmitting={chatFeedbackSubmitting}
+            onSubmitChatFeedback={submitChatFeedback}
+            onEscalateToSupport={escalateChatToTicket}
+            chatEscalating={chatEscalating}
+            chatEscalationResult={chatEscalationResult}
           />
         </BlockStack>
       </Page>

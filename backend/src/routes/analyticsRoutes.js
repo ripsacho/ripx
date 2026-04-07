@@ -25,8 +25,10 @@ const {
   getHeatmapPages,
   getClickHeatmapForOverlay,
   getHeatmapScreenshotUrl,
+  setHeatmapScreenshotUrl,
 } = require('../models/heatmap');
 const { getFunnelMetrics, getEventsList, getEventTypesForTest } = require('../models/analytics');
+const { getTestById } = require('../models/test');
 const exportRoutes = require('./exportRoutes');
 const { PAGINATION } = require('../constants');
 
@@ -241,6 +243,46 @@ router.get(
     res.json({
       success: true,
       heatmap,
+    });
+  })
+);
+
+/**
+ * PUT /api/analytics/tests/:id/heatmap/screenshot
+ * Save screenshot URL for a specific heatmap page URL.
+ * Body: { page_url, screenshot_url }
+ */
+router.put(
+  '/tests/:id/heatmap/screenshot',
+  validateTestId,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const shopDomain = req.shopDomain;
+    const pageUrl = String(req.body?.page_url || '').trim();
+    const screenshotUrl = String(req.body?.screenshot_url || '').trim();
+
+    if (!pageUrl) {
+      return res.status(400).json({ success: false, error: 'page_url is required' });
+    }
+    if (screenshotUrl && !/^https?:\/\/[^\s/$.?#].[^\s]*$/i.test(screenshotUrl)) {
+      return res.status(400).json({ success: false, error: 'screenshot_url must be a valid URL' });
+    }
+
+    const test = await getTestById(id, shopDomain);
+    if (!test) {
+      return res.status(404).json({ success: false, error: 'Test not found' });
+    }
+
+    const result = await setHeatmapScreenshotUrl(shopDomain, pageUrl, screenshotUrl);
+    if (!result.ok) {
+      return res.status(400).json({ success: false, error: 'Could not save screenshot URL' });
+    }
+
+    return res.json({
+      success: true,
+      page_url: pageUrl,
+      screenshot_url: screenshotUrl || null,
+      deleted: !!result.deleted,
     });
   })
 );

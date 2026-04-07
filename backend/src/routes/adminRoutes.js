@@ -3169,6 +3169,364 @@ router.get(
 // --- Admin support tickets (list, update status, bulk) ---
 const SUPPORT_TICKET_STATUSES = ['open', 'closed', 'resolved'];
 const SUPPORT_TICKETS_LIST_LIMIT = 200;
+const SUPPORT_ANALYTICS_DEFAULT_DAYS = 30;
+const SUPPORT_ANALYTICS_MAX_DAYS = 365;
+const SUPPORT_ANALYTICS_DEFAULT_TOP = 5;
+const SUPPORT_ANALYTICS_MAX_TOP = 10;
+const SUPPORT_ANALYTICS_DEFAULT_FIRST_RESPONSE_SLA_HOURS = 24;
+const SUPPORT_ANALYTICS_DEFAULT_RESOLUTION_SLA_HOURS = 72;
+const SUPPORT_SUGGEST_REPLY_TOP_K = 4;
+const SUPPORT_SUGGEST_REPLY_MAX_TOKENS = 450;
+const SUPPORT_SUGGEST_REPLY_MAX_INPUT_CHARS = 8000;
+const SUPPORT_TICKET_PRIORITIES = ['low', 'normal', 'high', 'urgent'];
+const SUPPORT_ROUTE_REASON_MAX_LENGTH = 500;
+const SUPPORT_ASSIGNED_TO_MAX_LENGTH = 255;
+const SUPPORT_ESCALATION_DEFAULT_HIGH_HOURS = 24;
+const SUPPORT_ESCALATION_DEFAULT_URGENT_HOURS = 72;
+const SUPPORT_ESCALATION_MAX_HOURS = 720;
+const SUPPORT_ESCALATION_SWEEP_DEFAULT_LIMIT = 30;
+const SUPPORT_ESCALATION_SWEEP_MAX_LIMIT = 200;
+const SUPPORT_ROUTING_KV_PREFIX = 'support.routing.rr.';
+const SUPPORT_MACRO_KV_PREFIX = 'support.macro.';
+const SUPPORT_MACRO_TITLE_MAX_LENGTH = 120;
+const SUPPORT_MACRO_BODY_MAX_LENGTH = 10000;
+const SUPPORT_MACRO_MAX_ITEMS = 100;
+const SUPPORT_STATUS_KV_KEY = 'support.status.current';
+const SUPPORT_STATUS_VALUES = ['operational', 'degraded', 'outage', 'maintenance'];
+const SUPPORT_STATUS_MESSAGE_MAX_LENGTH = 500;
+const SUPPORT_CHANGELOG_LEVELS = [
+  'release',
+  'improvement',
+  'fix',
+  'incident',
+  'maintenance',
+  'info',
+];
+const SUPPORT_CHANGELOG_VISIBILITIES = ['draft', 'published'];
+const SUPPORT_CHANGELOG_TITLE_MAX_LENGTH = 180;
+const SUPPORT_CHANGELOG_SUMMARY_MAX_LENGTH = 500;
+const SUPPORT_CHANGELOG_BODY_MAX_LENGTH = 10000;
+const SUPPORT_CHANGELOG_MAX_ITEMS = 200;
+
+async function getSupportKbContextForAdmin(queryText, apiKey) {
+  if (!queryText || !apiKey) {
+    return { context: '', sources: [] };
+  }
+  try {
+    const OpenAI = require('openai').default;
+    const openai = new OpenAI({ apiKey });
+    const embRes = await openai.embeddings.create({
+      model: 'text-embedding-3-small',
+      input: String(queryText).slice(0, SUPPORT_SUGGEST_REPLY_MAX_INPUT_CHARS),
+    });
+    const embedding = embRes?.data?.[0]?.embedding;
+    if (!Array.isArray(embedding) || embedding.length !== 1536) {
+      return { context: '', sources: [] };
+    }
+    const vecStr = `[${embedding.join(',')}]`;
+    const result = await query(
+      `SELECT content, source FROM support_kb_chunks
+       WHERE embedding IS NOT NULL
+       ORDER BY embedding <=> $1::vector
+       LIMIT $2`,
+      [vecStr, SUPPORT_SUGGEST_REPLY_TOP_K]
+    );
+    if (!result.rows?.length) {
+      return { context: '', sources: [] };
+    }
+    return {
+      context: result.rows
+        .map((row, idx) => `[${idx + 1}] ${String(row.content || '').trim()}`)
+        .filter(Boolean)
+        .join('\n\n'),
+      sources: [...new Set(result.rows.map(row => row.source).filter(Boolean))],
+    };
+  } catch (_err) {
+    return { context: '', sources: [] };
+  }
+}
+
+function buildSupportFallbackReply(ticket) {
+  const subject = String(ticket?.subject || 'your request').trim();
+  const category = String(ticket?.category || 'general').trim();
+  return [
+    'Hi there,',
+    '',
+    `Thanks for reaching out about "${subject}".`,
+    `We reviewed your request under the ${category} category and we are happy to help.`,
+    '',
+    'Could you please share one or two quick details so we can provide the most accurate next step?',
+    '- The exact behavior you are seeing now',
+    '- The expected behavior or outcome you want',
+    '',
+    'As soon as you share that, we will follow up with a concrete resolution plan.',
+    '',
+    'Best,',
+    'RipX Support',
+  ].join('\n');
+}
+
+function parseSupportAgentsCsv(raw) {
+  if (!raw || typeof raw !== 'string') {
+    return [];
+  }
+  return raw
+    .split(',')
+    .map(entry => entry.trim())
+    .filter(Boolean)
+    .slice(0, 200);
+}
+
+function normalizeSupportMacroKey(value) {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 80);
+}
+
+function parseSupportMacroValue(rawValue) {
+  if (typeof rawValue !== 'string' || !rawValue.trim()) {
+    return { title: '', body: '' };
+  }
+  try {
+    const parsed = JSON.parse(rawValue);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { title: '', body: '' };
+    }
+    return {
+      title: typeof parsed.title === 'string' ? parsed.title : '',
+      body: typeof parsed.body === 'string' ? parsed.body : '',
+    };
+  } catch (_err) {
+    return { title: '', body: '' };
+  }
+}
+
+function normalizeSupportStatusValue(rawValue) {
+  const normalized = String(rawValue || '')
+    .trim()
+    .toLowerCase();
+  if (SUPPORT_STATUS_VALUES.includes(normalized)) {
+    return normalized;
+  }
+  return 'operational';
+}
+
+function normalizeSupportChangelogLevel(rawValue) {
+  const normalized = String(rawValue || '')
+    .trim()
+    .toLowerCase();
+  if (SUPPORT_CHANGELOG_LEVELS.includes(normalized)) {
+    return normalized;
+  }
+  return 'info';
+}
+
+function normalizeSupportChangelogVisibility(rawValue) {
+  const normalized = String(rawValue || '')
+    .trim()
+    .toLowerCase();
+  if (SUPPORT_CHANGELOG_VISIBILITIES.includes(normalized)) {
+    return normalized;
+  }
+  return 'draft';
+}
+
+function parseSupportStatusPayload(rawValue) {
+  const fallback = {
+    status: 'operational',
+    message: 'All systems operational',
+    updated_at: null,
+  };
+  if (typeof rawValue !== 'string' || !rawValue.trim()) {
+    return fallback;
+  }
+  try {
+    const parsed = JSON.parse(rawValue);
+    const message = typeof parsed?.message === 'string' ? parsed.message.trim() : '';
+    return {
+      status: normalizeSupportStatusValue(parsed?.status),
+      message: message || fallback.message,
+      updated_at: parsed?.updated_at || null,
+    };
+  } catch (_err) {
+    return fallback;
+  }
+}
+
+function getSupportRoutingPool(category) {
+  const normalized = String(category || '')
+    .trim()
+    .toLowerCase();
+  if (normalized === 'billing') {
+    return 'billing';
+  }
+  if (normalized === 'technical' || normalized === 'script_install') {
+    return 'technical';
+  }
+  return 'general';
+}
+
+function getSupportRoutingAgentsByPool(pool) {
+  if (pool === 'billing') {
+    return parseSupportAgentsCsv(process.env.SUPPORT_ROUTING_BILLING_AGENTS);
+  }
+  if (pool === 'technical') {
+    return parseSupportAgentsCsv(process.env.SUPPORT_ROUTING_TECHNICAL_AGENTS);
+  }
+  return parseSupportAgentsCsv(process.env.SUPPORT_ROUTING_GENERAL_AGENTS);
+}
+
+function normalizeSupportPriority(value, fallback = 'normal') {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (SUPPORT_TICKET_PRIORITIES.includes(normalized)) {
+    return normalized;
+  }
+  return fallback;
+}
+
+function getSupportPriorityRank(priority) {
+  return SUPPORT_TICKET_PRIORITIES.indexOf(normalizeSupportPriority(priority));
+}
+
+function getEscalatedSupportPriority(currentPriority) {
+  const current = normalizeSupportPriority(currentPriority);
+  const rank = getSupportPriorityRank(current);
+  const nextRank = Math.min(rank + 1, SUPPORT_TICKET_PRIORITIES.length - 1);
+  return SUPPORT_TICKET_PRIORITIES[nextRank];
+}
+
+function getSupportEscalationConfig(highHoursRaw, urgentHoursRaw) {
+  const envHigh = parseInt(process.env.SUPPORT_ESCALATION_HIGH_HOURS, 10);
+  const envUrgent = parseInt(process.env.SUPPORT_ESCALATION_URGENT_HOURS, 10);
+  const parsedHigh = Number.isFinite(highHoursRaw) ? highHoursRaw : envHigh;
+  const parsedUrgent = Number.isFinite(urgentHoursRaw) ? urgentHoursRaw : envUrgent;
+  const highHours = Number.isFinite(parsedHigh)
+    ? Math.min(Math.max(parsedHigh, 1), SUPPORT_ESCALATION_MAX_HOURS)
+    : SUPPORT_ESCALATION_DEFAULT_HIGH_HOURS;
+  const urgentHours = Number.isFinite(parsedUrgent)
+    ? Math.min(Math.max(parsedUrgent, highHours), SUPPORT_ESCALATION_MAX_HOURS)
+    : Math.max(SUPPORT_ESCALATION_DEFAULT_URGENT_HOURS, highHours);
+  return { highHours, urgentHours };
+}
+
+function getSupportEscalationState(ticket, escalationConfig) {
+  const createdAtMs = ticket?.created_at ? new Date(ticket.created_at).getTime() : NaN;
+  const isOpen =
+    String(ticket?.status || '')
+      .trim()
+      .toLowerCase() === 'open';
+  if (!isOpen || !Number.isFinite(createdAtMs)) {
+    return {
+      due: false,
+      hoursOpen: 0,
+      targetPriority: null,
+    };
+  }
+  const hoursOpen = Math.max(0, (Date.now() - createdAtMs) / 3600000);
+  if (hoursOpen >= escalationConfig.urgentHours) {
+    return { due: true, hoursOpen, targetPriority: 'urgent' };
+  }
+  if (hoursOpen >= escalationConfig.highHours) {
+    return { due: true, hoursOpen, targetPriority: 'high' };
+  }
+  return { due: false, hoursOpen, targetPriority: null };
+}
+
+async function pickSupportRoundRobinAssignee(pool, agents) {
+  if (!Array.isArray(agents) || agents.length === 0) {
+    return null;
+  }
+  const kvKey = `${SUPPORT_ROUTING_KV_PREFIX}${pool}`;
+  let index = 0;
+  try {
+    const readResult = await query('SELECT value FROM key_value_store WHERE key = $1', [kvKey]);
+    const parsed = parseInt(readResult.rows?.[0]?.value, 10);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      index = parsed;
+    }
+  } catch (_readErr) {
+    index = 0;
+  }
+  const normalizedIndex = index % agents.length;
+  const assignee = agents[normalizedIndex] || null;
+  const nextIndex = (normalizedIndex + 1) % agents.length;
+  try {
+    await query(
+      `INSERT INTO key_value_store (key, value, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+      [kvKey, String(nextIndex)]
+    );
+  } catch (_writeErr) {
+    // Non-fatal for assignment selection.
+  }
+  return assignee;
+}
+
+async function getSupportTicketById(ticketId) {
+  const withDeletedSql = `
+    SELECT id, email, subject, category, message, status, priority, assigned_to, metadata,
+           shop_domain, tenant_id, created_at, updated_at
+    FROM support_tickets
+    WHERE id = $1::uuid
+      AND (deleted_at IS NULL)
+    LIMIT 1
+  `;
+  const noDeletedSql = `
+    SELECT id, email, subject, category, message, status, priority, assigned_to, metadata,
+           shop_domain, tenant_id, created_at, updated_at
+    FROM support_tickets
+    WHERE id = $1::uuid
+    LIMIT 1
+  `;
+  try {
+    return await query(withDeletedSql, [ticketId]);
+  } catch (err) {
+    if (err.message && /deleted_at|column.*does not exist/i.test(err.message)) {
+      return query(noDeletedSql, [ticketId]);
+    }
+    throw err;
+  }
+}
+
+async function persistSupportTicketRoutingUpdate({
+  ticketId,
+  status,
+  priority,
+  assignedTo,
+  metadataJson,
+}) {
+  const withDeletedSql = `
+    UPDATE support_tickets
+    SET status = $1, priority = $2, assigned_to = $3, metadata = $4::jsonb, updated_at = NOW()
+    WHERE id = $5::uuid
+      AND (deleted_at IS NULL)
+    RETURNING id, status, priority, assigned_to, updated_at
+  `;
+  const noDeletedSql = `
+    UPDATE support_tickets
+    SET status = $1, priority = $2, assigned_to = $3, metadata = $4::jsonb, updated_at = NOW()
+    WHERE id = $5::uuid
+    RETURNING id, status, priority, assigned_to, updated_at
+  `;
+  try {
+    return await query(withDeletedSql, [status, priority, assignedTo, metadataJson, ticketId]);
+  } catch (err) {
+    if (err.message && /deleted_at|column.*does not exist/i.test(err.message)) {
+      return query(noDeletedSql, [status, priority, assignedTo, metadataJson, ticketId]);
+    }
+    throw err;
+  }
+}
 
 /**
  * GET /api/admin/support-tickets
@@ -3184,6 +3542,7 @@ router.get(
     const order = (req.query.order || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, SUPPORT_TICKETS_LIST_LIMIT);
     const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+    const escalationConfig = getSupportEscalationConfig();
 
     const validSort = ['created_at', 'updated_at', 'status', 'email'].includes(sort)
       ? sort
@@ -3191,7 +3550,7 @@ router.get(
     const orderBy = `ORDER BY st.${validSort} ${order}`;
     const whereDeleted = ' WHERE (st.deleted_at IS NULL)';
     const sql = `
-      SELECT st.id, st.email, st.subject, st.category, st.status, st.priority,
+      SELECT st.id, st.email, st.subject, st.category, st.status, st.priority, st.assigned_to,
              st.created_at, st.updated_at, st.shop_domain, st.tenant_id
       FROM support_tickets st
       ${whereDeleted}${status ? ' AND st.status = $3' : ''}
@@ -3211,7 +3570,7 @@ router.get(
     } catch (err) {
       if (err.message && /deleted_at|column.*does not exist/i.test(err.message)) {
         const sqlNoDeleted = `
-          SELECT st.id, st.email, st.subject, st.category, st.status, st.priority,
+          SELECT st.id, st.email, st.subject, st.category, st.status, st.priority, st.assigned_to,
                  st.created_at, st.updated_at, st.shop_domain, st.tenant_id
           FROM support_tickets st
           ${status ? ' WHERE st.status = $3' : ''}
@@ -3228,21 +3587,1324 @@ router.get(
 
     const total = countResult?.rows?.[0]?.total ?? 0;
     return sendSuccess(res, HTTP_STATUS.OK, {
-      tickets: result.rows.map(r => ({
-        id: r.id,
-        email: r.email,
-        subject: r.subject,
-        category: r.category,
-        status: r.status,
-        priority: r.priority,
-        created_at: r.created_at,
-        updated_at: r.updated_at,
-        shop_domain: r.shop_domain,
-        tenant_id: r.tenant_id,
-      })),
+      tickets: result.rows.map(r => {
+        const escalationState = getSupportEscalationState(r, escalationConfig);
+        return {
+          id: r.id,
+          email: r.email,
+          subject: r.subject,
+          category: r.category,
+          status: r.status,
+          priority: normalizeSupportPriority(r.priority, 'normal'),
+          assigned_to: r.assigned_to || null,
+          escalation_due: escalationState.due,
+          escalation_target_priority: escalationState.targetPriority,
+          hours_open:
+            escalationState.hoursOpen && Number.isFinite(escalationState.hoursOpen)
+              ? Number(escalationState.hoursOpen.toFixed(1))
+              : 0,
+          created_at: r.created_at,
+          updated_at: r.updated_at,
+          shop_domain: r.shop_domain,
+          tenant_id: r.tenant_id,
+        };
+      }),
       total,
       limit,
       offset,
+      routing_defaults: {
+        escalation_high_hours: escalationConfig.highHours,
+        escalation_urgent_hours: escalationConfig.urgentHours,
+      },
+    });
+  })
+);
+
+/**
+ * GET /api/admin/support-macros
+ * List reusable support response templates/macros.
+ */
+router.get(
+  '/support-macros',
+  asyncHandler(async (req, res) => {
+    const rows = await query(
+      `SELECT key, value, updated_at
+       FROM key_value_store
+       WHERE key LIKE $1
+       ORDER BY updated_at DESC
+       LIMIT $2`,
+      [`${SUPPORT_MACRO_KV_PREFIX}%`, SUPPORT_MACRO_MAX_ITEMS]
+    ).catch(() => ({ rows: [] }));
+    const macros = (rows.rows || [])
+      .map(row => {
+        const key = String(row.key || '');
+        const macroKey = key.startsWith(SUPPORT_MACRO_KV_PREFIX)
+          ? key.slice(SUPPORT_MACRO_KV_PREFIX.length)
+          : '';
+        const parsed = parseSupportMacroValue(row.value);
+        if (!macroKey || !parsed.title || !parsed.body) {
+          return null;
+        }
+        return {
+          key: macroKey,
+          title: parsed.title,
+          body: parsed.body,
+          updated_at: row.updated_at,
+        };
+      })
+      .filter(Boolean);
+    return sendSuccess(res, HTTP_STATUS.OK, { macros });
+  })
+);
+
+/**
+ * PUT /api/admin/support-macros/:key
+ * Create/update one support macro.
+ */
+router.put(
+  '/support-macros/:key',
+  asyncHandler(async (req, res) => {
+    const rawKey = req.params.key;
+    const macroKey = normalizeSupportMacroKey(rawKey);
+    const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
+    const body = typeof req.body?.body === 'string' ? req.body.body.trim() : '';
+
+    if (!macroKey) {
+      return res.status(400).json({ success: false, error: 'Invalid macro key' });
+    }
+    if (!title) {
+      return res.status(400).json({ success: false, error: 'title is required' });
+    }
+    if (!body) {
+      return res.status(400).json({ success: false, error: 'body is required' });
+    }
+    if (title.length > SUPPORT_MACRO_TITLE_MAX_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        error: `title must be ${SUPPORT_MACRO_TITLE_MAX_LENGTH} characters or less`,
+      });
+    }
+    if (body.length > SUPPORT_MACRO_BODY_MAX_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        error: `body must be ${SUPPORT_MACRO_BODY_MAX_LENGTH} characters or less`,
+      });
+    }
+
+    const kvKey = `${SUPPORT_MACRO_KV_PREFIX}${macroKey}`;
+    const storedValue = JSON.stringify({
+      title,
+      body,
+      updated_by: req.adminId || null,
+    });
+    await query(
+      `INSERT INTO key_value_store (key, value, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+      [kvKey, storedValue]
+    );
+    await auditLogService.logAdminAction(req, {
+      entityType: 'support_macro',
+      entityId: macroKey,
+      action: 'upsert',
+      changes: { title_length: title.length, body_length: body.length },
+    });
+    return sendSuccess(res, HTTP_STATUS.OK, { key: macroKey, title, body });
+  })
+);
+
+/**
+ * DELETE /api/admin/support-macros/:key
+ * Remove one support macro.
+ */
+router.delete(
+  '/support-macros/:key',
+  asyncHandler(async (req, res) => {
+    const macroKey = normalizeSupportMacroKey(req.params.key || '');
+    if (!macroKey) {
+      return res.status(400).json({ success: false, error: 'Invalid macro key' });
+    }
+    const kvKey = `${SUPPORT_MACRO_KV_PREFIX}${macroKey}`;
+    const result = await query('DELETE FROM key_value_store WHERE key = $1 RETURNING key', [
+      kvKey,
+    ]).catch(() => ({ rows: [] }));
+    if (!result.rows?.length) {
+      return res.status(404).json({ success: false, error: 'Macro not found' });
+    }
+    await auditLogService.logAdminAction(req, {
+      entityType: 'support_macro',
+      entityId: macroKey,
+      action: 'delete',
+      changes: {},
+    });
+    return sendSuccess(res, HTTP_STATUS.OK, { deleted: true, key: macroKey });
+  })
+);
+
+/**
+ * GET /api/admin/support-status
+ * Read current public support status payload.
+ */
+router.get(
+  '/support-status',
+  asyncHandler(async (_req, res) => {
+    const result = await query('SELECT value, updated_at FROM key_value_store WHERE key = $1', [
+      SUPPORT_STATUS_KV_KEY,
+    ]).catch(() => ({ rows: [] }));
+    const row = result.rows?.[0];
+    const payload = parseSupportStatusPayload(row?.value || '');
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      ...payload,
+      updated_at: payload.updated_at || row?.updated_at || null,
+    });
+  })
+);
+
+/**
+ * PUT /api/admin/support-status
+ * Update public support status payload.
+ */
+router.put(
+  '/support-status',
+  asyncHandler(async (req, res) => {
+    const status = normalizeSupportStatusValue(req.body?.status);
+    const message =
+      typeof req.body?.message === 'string' ? req.body.message.trim() : 'All systems operational';
+    if (message.length > SUPPORT_STATUS_MESSAGE_MAX_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        error: `message must be ${SUPPORT_STATUS_MESSAGE_MAX_LENGTH} characters or less`,
+      });
+    }
+    const payload = {
+      status,
+      message: message || 'All systems operational',
+      updated_at: new Date().toISOString(),
+      updated_by: req.adminId || null,
+    };
+    await query(
+      `INSERT INTO key_value_store (key, value, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+      [SUPPORT_STATUS_KV_KEY, JSON.stringify(payload)]
+    );
+    await auditLogService.logAdminAction(req, {
+      entityType: 'support_status',
+      entityId: SUPPORT_STATUS_KV_KEY,
+      action: 'upsert',
+      changes: { status, has_message: Boolean(payload.message) },
+    });
+    return sendSuccess(res, HTTP_STATUS.OK, payload);
+  })
+);
+
+/**
+ * GET /api/admin/support-changelog
+ * List changelog entries for admin.
+ */
+router.get(
+  '/support-changelog',
+  asyncHandler(async (req, res) => {
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit, 10) || 50, 1),
+      SUPPORT_CHANGELOG_MAX_ITEMS
+    );
+    const withDeletedSql = `
+      SELECT id, title, summary, body, level, visibility, created_by, published_at, created_at, updated_at
+      FROM support_changelog_entries
+      WHERE (deleted_at IS NULL)
+      ORDER BY COALESCE(published_at, created_at) DESC, created_at DESC
+      LIMIT $1
+    `;
+    const noDeletedSql = `
+      SELECT id, title, summary, body, level, visibility, created_by, published_at, created_at, updated_at
+      FROM support_changelog_entries
+      ORDER BY COALESCE(published_at, created_at) DESC, created_at DESC
+      LIMIT $1
+    `;
+    let rows = [];
+    try {
+      const result = await query(withDeletedSql, [limit]);
+      rows = result.rows || [];
+    } catch (err) {
+      if (
+        err.message &&
+        (/deleted_at|column.*does not exist/i.test(err.message) ||
+          /support_changelog_entries|relation .* does not exist/i.test(err.message))
+      ) {
+        const result = await query(noDeletedSql, [limit]).catch(() => ({ rows: [] }));
+        rows = result.rows || [];
+      } else {
+        throw err;
+      }
+    }
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      entries: rows.map(row => ({
+        id: row.id,
+        title: row.title,
+        summary: row.summary || '',
+        body: row.body || '',
+        level: row.level || 'info',
+        visibility: row.visibility || 'draft',
+        created_by: row.created_by || null,
+        published_at: row.published_at || null,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      })),
+    });
+  })
+);
+
+/**
+ * POST /api/admin/support-changelog
+ * Create changelog entry.
+ */
+router.post(
+  '/support-changelog',
+  asyncHandler(async (req, res) => {
+    const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
+    const summary = typeof req.body?.summary === 'string' ? req.body.summary.trim() : '';
+    const body = typeof req.body?.body === 'string' ? req.body.body.trim() : '';
+    const level = normalizeSupportChangelogLevel(req.body?.level);
+    const visibility = normalizeSupportChangelogVisibility(req.body?.visibility);
+
+    if (!title) {
+      return res.status(400).json({ success: false, error: 'title is required' });
+    }
+    if (title.length > SUPPORT_CHANGELOG_TITLE_MAX_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        error: `title must be ${SUPPORT_CHANGELOG_TITLE_MAX_LENGTH} characters or less`,
+      });
+    }
+    if (summary.length > SUPPORT_CHANGELOG_SUMMARY_MAX_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        error: `summary must be ${SUPPORT_CHANGELOG_SUMMARY_MAX_LENGTH} characters or less`,
+      });
+    }
+    if (body.length > SUPPORT_CHANGELOG_BODY_MAX_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        error: `body must be ${SUPPORT_CHANGELOG_BODY_MAX_LENGTH} characters or less`,
+      });
+    }
+
+    const insertSql = `
+      INSERT INTO support_changelog_entries
+        (title, summary, body, level, visibility, created_by, published_at)
+      VALUES
+        ($1, $2, $3, $4, $5, $6, CASE WHEN $5 = 'published' THEN NOW() ELSE NULL END)
+      RETURNING id, title, summary, body, level, visibility, created_by, published_at, created_at, updated_at
+    `;
+    let row = null;
+    try {
+      const result = await query(insertSql, [
+        title,
+        summary || null,
+        body || null,
+        level,
+        visibility,
+        req.adminId || null,
+      ]);
+      row = result.rows?.[0] || null;
+    } catch (err) {
+      if (/support_changelog_entries|relation .* does not exist/i.test(err.message || '')) {
+        return res.status(503).json({
+          success: false,
+          error: 'Support changelog table not initialized yet (missing migration).',
+        });
+      }
+      throw err;
+    }
+
+    await auditLogService.logAdminAction(req, {
+      entityType: 'support_changelog',
+      entityId: String(row?.id || ''),
+      action: 'create',
+      changes: { visibility, level },
+    });
+
+    return sendSuccess(res, HTTP_STATUS.CREATED, {
+      entry: {
+        id: row.id,
+        title: row.title,
+        summary: row.summary || '',
+        body: row.body || '',
+        level: row.level || 'info',
+        visibility: row.visibility || 'draft',
+        created_by: row.created_by || null,
+        published_at: row.published_at || null,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      },
+    });
+  })
+);
+
+/**
+ * PATCH /api/admin/support-changelog/:id
+ * Update changelog entry visibility/content.
+ */
+router.patch(
+  '/support-changelog/:id',
+  asyncHandler(async (req, res) => {
+    const entryId = req.params.id;
+    if (!entryId || !validators.isValidUUID(entryId)) {
+      return res.status(400).json({ success: false, error: 'Invalid changelog id' });
+    }
+
+    const selectWithDeletedSql = `
+      SELECT id, title, summary, body, level, visibility, published_at
+      FROM support_changelog_entries
+      WHERE id = $1::uuid
+        AND (deleted_at IS NULL)
+      LIMIT 1
+    `;
+    const selectNoDeletedSql = `
+      SELECT id, title, summary, body, level, visibility, published_at
+      FROM support_changelog_entries
+      WHERE id = $1::uuid
+      LIMIT 1
+    `;
+    let existingResult;
+    try {
+      existingResult = await query(selectWithDeletedSql, [entryId]);
+    } catch (err) {
+      if (
+        err.message &&
+        (/deleted_at|column.*does not exist/i.test(err.message) ||
+          /support_changelog_entries|relation .* does not exist/i.test(err.message))
+      ) {
+        existingResult = await query(selectNoDeletedSql, [entryId]).catch(() => ({ rows: [] }));
+      } else {
+        throw err;
+      }
+    }
+    const existing = existingResult.rows?.[0];
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Changelog entry not found' });
+    }
+
+    const nextTitle =
+      typeof req.body?.title === 'string' ? req.body.title.trim() : String(existing.title || '');
+    const nextSummary =
+      typeof req.body?.summary === 'string'
+        ? req.body.summary.trim()
+        : String(existing.summary || '');
+    const nextBody =
+      typeof req.body?.body === 'string' ? req.body.body.trim() : String(existing.body || '');
+    const nextLevel =
+      typeof req.body?.level === 'string'
+        ? normalizeSupportChangelogLevel(req.body.level)
+        : normalizeSupportChangelogLevel(existing.level);
+    const nextVisibility =
+      typeof req.body?.visibility === 'string'
+        ? normalizeSupportChangelogVisibility(req.body.visibility)
+        : normalizeSupportChangelogVisibility(existing.visibility);
+
+    if (!nextTitle) {
+      return res.status(400).json({ success: false, error: 'title is required' });
+    }
+    if (nextTitle.length > SUPPORT_CHANGELOG_TITLE_MAX_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        error: `title must be ${SUPPORT_CHANGELOG_TITLE_MAX_LENGTH} characters or less`,
+      });
+    }
+    if (nextSummary.length > SUPPORT_CHANGELOG_SUMMARY_MAX_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        error: `summary must be ${SUPPORT_CHANGELOG_SUMMARY_MAX_LENGTH} characters or less`,
+      });
+    }
+    if (nextBody.length > SUPPORT_CHANGELOG_BODY_MAX_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        error: `body must be ${SUPPORT_CHANGELOG_BODY_MAX_LENGTH} characters or less`,
+      });
+    }
+
+    const publishNow = req.body?.publish_now === true;
+    const nextPublishedAt =
+      publishNow || (nextVisibility === 'published' && !existing.published_at)
+        ? new Date().toISOString()
+        : nextVisibility !== 'published'
+          ? null
+          : existing.published_at;
+
+    const updateWithDeletedSql = `
+      UPDATE support_changelog_entries
+      SET title = $2,
+          summary = $3,
+          body = $4,
+          level = $5,
+          visibility = $6,
+          published_at = $7,
+          updated_at = NOW()
+      WHERE id = $1::uuid
+        AND (deleted_at IS NULL)
+      RETURNING id, title, summary, body, level, visibility, published_at, created_at, updated_at
+    `;
+    const updateNoDeletedSql = `
+      UPDATE support_changelog_entries
+      SET title = $2,
+          summary = $3,
+          body = $4,
+          level = $5,
+          visibility = $6,
+          published_at = $7,
+          updated_at = NOW()
+      WHERE id = $1::uuid
+      RETURNING id, title, summary, body, level, visibility, published_at, created_at, updated_at
+    `;
+    let updatedResult;
+    try {
+      updatedResult = await query(updateWithDeletedSql, [
+        entryId,
+        nextTitle,
+        nextSummary || null,
+        nextBody || null,
+        nextLevel,
+        nextVisibility,
+        nextPublishedAt,
+      ]);
+    } catch (err) {
+      if (
+        err.message &&
+        (/deleted_at|column.*does not exist/i.test(err.message) ||
+          /support_changelog_entries|relation .* does not exist/i.test(err.message))
+      ) {
+        updatedResult = await query(updateNoDeletedSql, [
+          entryId,
+          nextTitle,
+          nextSummary || null,
+          nextBody || null,
+          nextLevel,
+          nextVisibility,
+          nextPublishedAt,
+        ]).catch(() => ({ rows: [] }));
+      } else {
+        throw err;
+      }
+    }
+    const updated = updatedResult.rows?.[0];
+    if (!updated) {
+      return res.status(404).json({ success: false, error: 'Changelog entry not found' });
+    }
+
+    await auditLogService.logAdminAction(req, {
+      entityType: 'support_changelog',
+      entityId: String(updated.id),
+      action: 'update',
+      changes: { visibility: updated.visibility, level: updated.level },
+    });
+
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      entry: {
+        id: updated.id,
+        title: updated.title,
+        summary: updated.summary || '',
+        body: updated.body || '',
+        level: updated.level || 'info',
+        visibility: updated.visibility || 'draft',
+        published_at: updated.published_at || null,
+        created_at: updated.created_at,
+        updated_at: updated.updated_at,
+      },
+    });
+  })
+);
+
+/**
+ * GET /api/admin/support-tickets/analytics
+ * Lightweight support analytics for triage dashboards.
+ * Query: days=1..365 (default 30), top=1..10 (top AI questions, default 5).
+ */
+router.get(
+  '/support-tickets/analytics',
+  asyncHandler(async (req, res) => {
+    const parsedDays = parseInt(req.query.days, 10);
+    const parsedTop = parseInt(req.query.top, 10);
+    const parsedFirstResponseSlaHours = parseInt(req.query.first_response_sla_hours, 10);
+    const parsedResolutionSlaHours = parseInt(req.query.resolution_sla_hours, 10);
+    const windowDays = Number.isFinite(parsedDays)
+      ? Math.min(Math.max(parsedDays, 1), SUPPORT_ANALYTICS_MAX_DAYS)
+      : SUPPORT_ANALYTICS_DEFAULT_DAYS;
+    const topQuestionsLimit = Number.isFinite(parsedTop)
+      ? Math.min(Math.max(parsedTop, 1), SUPPORT_ANALYTICS_MAX_TOP)
+      : SUPPORT_ANALYTICS_DEFAULT_TOP;
+    const firstResponseSlaHours = Number.isFinite(parsedFirstResponseSlaHours)
+      ? Math.min(Math.max(parsedFirstResponseSlaHours, 1), 168)
+      : SUPPORT_ANALYTICS_DEFAULT_FIRST_RESPONSE_SLA_HOURS;
+    const resolutionSlaHours = Number.isFinite(parsedResolutionSlaHours)
+      ? Math.min(Math.max(parsedResolutionSlaHours, 1), 720)
+      : SUPPORT_ANALYTICS_DEFAULT_RESOLUTION_SLA_HOURS;
+
+    const summarySqlWithDeleted = `
+      SELECT
+        COUNT(*)::int AS tickets_total,
+        COUNT(*) FILTER (WHERE LOWER(COALESCE(st.status, '')) = 'open')::int AS tickets_open,
+        COUNT(*) FILTER (WHERE LOWER(COALESCE(st.status, '')) = 'resolved')::int AS tickets_resolved,
+        COUNT(*) FILTER (WHERE LOWER(COALESCE(st.status, '')) = 'closed')::int AS tickets_closed,
+        ROUND(
+          AVG(
+            CASE
+              WHEN LOWER(COALESCE(st.status, '')) <> 'open'
+                THEN GREATEST(EXTRACT(EPOCH FROM (st.updated_at - st.created_at)) / 60.0, 0)
+              ELSE NULL
+            END
+          )::numeric,
+          1
+        ) AS avg_first_response_minutes,
+        ROUND(
+          AVG(
+            CASE
+              WHEN LOWER(COALESCE(st.status, '')) IN ('resolved', 'closed')
+                THEN GREATEST(EXTRACT(EPOCH FROM (st.updated_at - st.created_at)) / 60.0, 0)
+              ELSE NULL
+            END
+          )::numeric,
+          1
+        ) AS avg_resolution_minutes,
+        COUNT(*) FILTER (
+          WHERE LOWER(COALESCE(st.status, '')) <> 'open'
+            AND (st.updated_at - st.created_at) <= ($2::numeric * INTERVAL '1 hour')
+        )::int AS frt_sla_met_count,
+        COUNT(*) FILTER (
+          WHERE LOWER(COALESCE(st.status, '')) <> 'open'
+            AND (st.updated_at - st.created_at) > ($2::numeric * INTERVAL '1 hour')
+        )::int AS frt_sla_breached_count,
+        COUNT(*) FILTER (
+          WHERE LOWER(COALESCE(st.status, '')) IN ('resolved', 'closed')
+            AND (st.updated_at - st.created_at) <= ($3::numeric * INTERVAL '1 hour')
+        )::int AS resolution_sla_met_count,
+        COUNT(*) FILTER (
+          WHERE LOWER(COALESCE(st.status, '')) IN ('resolved', 'closed')
+            AND (st.updated_at - st.created_at) > ($3::numeric * INTERVAL '1 hour')
+        )::int AS resolution_sla_breached_count
+      FROM support_tickets st
+      WHERE (st.deleted_at IS NULL)
+        AND st.created_at >= NOW() - make_interval(days => $1::int)
+    `;
+    const summarySqlNoDeleted = `
+      SELECT
+        COUNT(*)::int AS tickets_total,
+        COUNT(*) FILTER (WHERE LOWER(COALESCE(st.status, '')) = 'open')::int AS tickets_open,
+        COUNT(*) FILTER (WHERE LOWER(COALESCE(st.status, '')) = 'resolved')::int AS tickets_resolved,
+        COUNT(*) FILTER (WHERE LOWER(COALESCE(st.status, '')) = 'closed')::int AS tickets_closed,
+        ROUND(
+          AVG(
+            CASE
+              WHEN LOWER(COALESCE(st.status, '')) <> 'open'
+                THEN GREATEST(EXTRACT(EPOCH FROM (st.updated_at - st.created_at)) / 60.0, 0)
+              ELSE NULL
+            END
+          )::numeric,
+          1
+        ) AS avg_first_response_minutes,
+        ROUND(
+          AVG(
+            CASE
+              WHEN LOWER(COALESCE(st.status, '')) IN ('resolved', 'closed')
+                THEN GREATEST(EXTRACT(EPOCH FROM (st.updated_at - st.created_at)) / 60.0, 0)
+              ELSE NULL
+            END
+          )::numeric,
+          1
+        ) AS avg_resolution_minutes,
+        COUNT(*) FILTER (
+          WHERE LOWER(COALESCE(st.status, '')) <> 'open'
+            AND (st.updated_at - st.created_at) <= ($2::numeric * INTERVAL '1 hour')
+        )::int AS frt_sla_met_count,
+        COUNT(*) FILTER (
+          WHERE LOWER(COALESCE(st.status, '')) <> 'open'
+            AND (st.updated_at - st.created_at) > ($2::numeric * INTERVAL '1 hour')
+        )::int AS frt_sla_breached_count,
+        COUNT(*) FILTER (
+          WHERE LOWER(COALESCE(st.status, '')) IN ('resolved', 'closed')
+            AND (st.updated_at - st.created_at) <= ($3::numeric * INTERVAL '1 hour')
+        )::int AS resolution_sla_met_count,
+        COUNT(*) FILTER (
+          WHERE LOWER(COALESCE(st.status, '')) IN ('resolved', 'closed')
+            AND (st.updated_at - st.created_at) > ($3::numeric * INTERVAL '1 hour')
+        )::int AS resolution_sla_breached_count
+      FROM support_tickets st
+      WHERE st.created_at >= NOW() - make_interval(days => $1::int)
+    `;
+
+    const categoriesSqlWithDeleted = `
+      SELECT COALESCE(NULLIF(TRIM(st.category), ''), 'other') AS category, COUNT(*)::int AS count
+      FROM support_tickets st
+      WHERE (st.deleted_at IS NULL)
+        AND st.created_at >= NOW() - make_interval(days => $1::int)
+      GROUP BY 1
+      ORDER BY count DESC, category ASC
+      LIMIT 8
+    `;
+    const categoriesSqlNoDeleted = `
+      SELECT COALESCE(NULLIF(TRIM(st.category), ''), 'other') AS category, COUNT(*)::int AS count
+      FROM support_tickets st
+      WHERE st.created_at >= NOW() - make_interval(days => $1::int)
+      GROUP BY 1
+      ORDER BY count DESC, category ASC
+      LIMIT 8
+    `;
+    const trendsSqlWithDeleted = `
+      SELECT
+        to_char(date_trunc('day', st.created_at), 'YYYY-MM-DD') AS day,
+        COUNT(*)::int AS tickets_total,
+        COUNT(*) FILTER (WHERE LOWER(COALESCE(st.status, '')) = 'open')::int AS tickets_open,
+        ROUND(
+          AVG(
+            CASE
+              WHEN LOWER(COALESCE(st.status, '')) <> 'open'
+                THEN GREATEST(EXTRACT(EPOCH FROM (st.updated_at - st.created_at)) / 60.0, 0)
+              ELSE NULL
+            END
+          )::numeric,
+          1
+        ) AS avg_first_response_minutes,
+        ROUND(
+          AVG(
+            CASE
+              WHEN LOWER(COALESCE(st.status, '')) IN ('resolved', 'closed')
+                THEN GREATEST(EXTRACT(EPOCH FROM (st.updated_at - st.created_at)) / 60.0, 0)
+              ELSE NULL
+            END
+          )::numeric,
+          1
+        ) AS avg_resolution_minutes
+      FROM support_tickets st
+      WHERE (st.deleted_at IS NULL)
+        AND st.created_at >= NOW() - make_interval(days => $1::int)
+      GROUP BY 1
+      ORDER BY 1 ASC
+    `;
+    const trendsSqlNoDeleted = `
+      SELECT
+        to_char(date_trunc('day', st.created_at), 'YYYY-MM-DD') AS day,
+        COUNT(*)::int AS tickets_total,
+        COUNT(*) FILTER (WHERE LOWER(COALESCE(st.status, '')) = 'open')::int AS tickets_open,
+        ROUND(
+          AVG(
+            CASE
+              WHEN LOWER(COALESCE(st.status, '')) <> 'open'
+                THEN GREATEST(EXTRACT(EPOCH FROM (st.updated_at - st.created_at)) / 60.0, 0)
+              ELSE NULL
+            END
+          )::numeric,
+          1
+        ) AS avg_first_response_minutes,
+        ROUND(
+          AVG(
+            CASE
+              WHEN LOWER(COALESCE(st.status, '')) IN ('resolved', 'closed')
+                THEN GREATEST(EXTRACT(EPOCH FROM (st.updated_at - st.created_at)) / 60.0, 0)
+              ELSE NULL
+            END
+          )::numeric,
+          1
+        ) AS avg_resolution_minutes
+      FROM support_tickets st
+      WHERE st.created_at >= NOW() - make_interval(days => $1::int)
+      GROUP BY 1
+      ORDER BY 1 ASC
+    `;
+
+    let summaryRows = [];
+    let categoryRows = [];
+    let trendRows = [];
+    try {
+      const [summaryResult, categoriesResult, trendsResult] = await Promise.all([
+        query(summarySqlWithDeleted, [windowDays, firstResponseSlaHours, resolutionSlaHours]),
+        query(categoriesSqlWithDeleted, [windowDays]),
+        query(trendsSqlWithDeleted, [windowDays]),
+      ]);
+      summaryRows = summaryResult.rows || [];
+      categoryRows = categoriesResult.rows || [];
+      trendRows = trendsResult.rows || [];
+    } catch (err) {
+      if (err.message && /deleted_at|column.*does not exist/i.test(err.message)) {
+        const [summaryResult, categoriesResult, trendsResult] = await Promise.all([
+          query(summarySqlNoDeleted, [windowDays, firstResponseSlaHours, resolutionSlaHours]),
+          query(categoriesSqlNoDeleted, [windowDays]),
+          query(trendsSqlNoDeleted, [windowDays]),
+        ]);
+        summaryRows = summaryResult.rows || [];
+        categoryRows = categoriesResult.rows || [];
+        trendRows = trendsResult.rows || [];
+      } else {
+        throw err;
+      }
+    }
+
+    let chatSummary = { user_messages_total: 0, conversations_total: 0 };
+    let topAiQuestions = [];
+    try {
+      const chatSummaryResult = await query(
+        `
+          SELECT
+            COUNT(*)::int AS user_messages_total,
+            COUNT(DISTINCT conversation_id)::int AS conversations_total
+          FROM support_chat_messages
+          WHERE role = 'user'
+            AND created_at >= NOW() - make_interval(days => $1::int)
+        `,
+        [windowDays]
+      );
+      chatSummary = chatSummaryResult.rows?.[0] || chatSummary;
+
+      const topQuestionsResult = await query(
+        `
+          SELECT
+            LEFT(REGEXP_REPLACE(TRIM(content), '\\s+', ' ', 'g'), 140) AS question,
+            COUNT(*)::int AS count,
+            MAX(created_at) AS last_seen_at
+          FROM support_chat_messages
+          WHERE role = 'user'
+            AND created_at >= NOW() - make_interval(days => $1::int)
+            AND COALESCE(TRIM(content), '') <> ''
+          GROUP BY 1
+          ORDER BY count DESC, last_seen_at DESC
+          LIMIT $2
+        `,
+        [windowDays, topQuestionsLimit]
+      );
+      topAiQuestions = (topQuestionsResult.rows || []).map(row => ({
+        question: row.question,
+        count: Number(row.count) || 0,
+        last_seen_at: row.last_seen_at,
+      }));
+    } catch (_chatErr) {
+      chatSummary = { user_messages_total: 0, conversations_total: 0 };
+      topAiQuestions = [];
+    }
+
+    let feedbackSummary = {
+      csat_avg: null,
+      nps_avg: null,
+      responses_total: 0,
+      tracked: false,
+    };
+    try {
+      const feedbackResult = await query(
+        `
+          SELECT
+            ROUND(AVG(csat_score)::numeric, 2) AS csat_avg,
+            ROUND(AVG(nps_score)::numeric, 2) AS nps_avg,
+            COUNT(*)::int AS responses_total
+          FROM support_ticket_feedback
+          WHERE created_at >= NOW() - make_interval(days => $1::int)
+        `,
+        [windowDays]
+      );
+      const row = feedbackResult.rows?.[0] || {};
+      feedbackSummary = {
+        csat_avg: row.csat_avg !== null && row.csat_avg !== undefined ? Number(row.csat_avg) : null,
+        nps_avg: row.nps_avg !== null && row.nps_avg !== undefined ? Number(row.nps_avg) : null,
+        responses_total: Number(row.responses_total) || 0,
+        tracked: true,
+      };
+    } catch (_feedbackErr) {
+      feedbackSummary = {
+        csat_avg: null,
+        nps_avg: null,
+        responses_total: 0,
+        tracked: false,
+      };
+    }
+
+    const summary = summaryRows[0] || {};
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      window_days: windowDays,
+      sla_targets_hours: {
+        first_response: firstResponseSlaHours,
+        resolution: resolutionSlaHours,
+      },
+      summary: {
+        tickets_total: Number(summary.tickets_total) || 0,
+        tickets_open: Number(summary.tickets_open) || 0,
+        tickets_resolved: Number(summary.tickets_resolved) || 0,
+        tickets_closed: Number(summary.tickets_closed) || 0,
+        avg_first_response_minutes:
+          summary.avg_first_response_minutes !== null &&
+          summary.avg_first_response_minutes !== undefined
+            ? Number(summary.avg_first_response_minutes)
+            : null,
+        avg_resolution_minutes:
+          summary.avg_resolution_minutes !== null && summary.avg_resolution_minutes !== undefined
+            ? Number(summary.avg_resolution_minutes)
+            : null,
+        frt_sla_met_count: Number(summary.frt_sla_met_count) || 0,
+        frt_sla_breached_count: Number(summary.frt_sla_breached_count) || 0,
+        resolution_sla_met_count: Number(summary.resolution_sla_met_count) || 0,
+        resolution_sla_breached_count: Number(summary.resolution_sla_breached_count) || 0,
+        ai_user_messages_total: Number(chatSummary.user_messages_total) || 0,
+        ai_conversations_total: Number(chatSummary.conversations_total) || 0,
+        csat_avg: feedbackSummary.csat_avg,
+        nps_avg: feedbackSummary.nps_avg,
+        feedback_responses_total: feedbackSummary.responses_total,
+        feedback_tracked: feedbackSummary.tracked,
+      },
+      ticket_categories: categoryRows.map(row => ({
+        category: row.category,
+        count: Number(row.count) || 0,
+      })),
+      top_ai_questions: topAiQuestions,
+      sla_trends: trendRows.map(row => ({
+        day: row.day,
+        tickets_total: Number(row.tickets_total) || 0,
+        tickets_open: Number(row.tickets_open) || 0,
+        avg_first_response_minutes:
+          row.avg_first_response_minutes !== null && row.avg_first_response_minutes !== undefined
+            ? Number(row.avg_first_response_minutes)
+            : null,
+        avg_resolution_minutes:
+          row.avg_resolution_minutes !== null && row.avg_resolution_minutes !== undefined
+            ? Number(row.avg_resolution_minutes)
+            : null,
+      })),
+    });
+  })
+);
+
+/**
+ * POST /api/admin/support-tickets/:id/suggest-reply
+ * Generate an AI draft reply for admin agents from ticket content + optional KB context.
+ */
+router.post(
+  '/support-tickets/:id/suggest-reply',
+  asyncHandler(async (req, res) => {
+    const ticketId = req.params.id;
+    if (!ticketId || !validators.isValidUUID(ticketId)) {
+      return res.status(400).json({ success: false, error: 'Invalid ticket id' });
+    }
+
+    const withDeletedSql = `
+      SELECT id, email, subject, category, message, status, shop_domain, created_at, updated_at
+      FROM support_tickets
+      WHERE id = $1::uuid
+        AND (deleted_at IS NULL)
+      LIMIT 1
+    `;
+    const noDeletedSql = `
+      SELECT id, email, subject, category, message, status, shop_domain, created_at, updated_at
+      FROM support_tickets
+      WHERE id = $1::uuid
+      LIMIT 1
+    `;
+
+    let ticketResult;
+    try {
+      ticketResult = await query(withDeletedSql, [ticketId]);
+    } catch (err) {
+      if (err.message && /deleted_at|column.*does not exist/i.test(err.message)) {
+        ticketResult = await query(noDeletedSql, [ticketId]);
+      } else {
+        throw err;
+      }
+    }
+    const ticket = ticketResult?.rows?.[0];
+    if (!ticket) {
+      return res.status(404).json({ success: false, error: 'Ticket not found' });
+    }
+
+    const apiKey = process.env.OPENAI_API_KEY;
+    const promptInput = [
+      `Subject: ${String(ticket.subject || '').trim()}`,
+      `Category: ${String(ticket.category || 'other').trim()}`,
+      `Status: ${String(ticket.status || 'open').trim()}`,
+      `Shop: ${String(ticket.shop_domain || 'unknown').trim()}`,
+      '',
+      'Customer message:',
+      String(ticket.message || '').trim(),
+    ].join('\n');
+
+    let suggestedReply = '';
+    let provider = 'fallback_template';
+    let kbSources = [];
+
+    if (!apiKey) {
+      suggestedReply = buildSupportFallbackReply(ticket);
+    } else {
+      const { context: kbContext, sources } = await getSupportKbContextForAdmin(
+        promptInput,
+        apiKey
+      );
+      kbSources = sources || [];
+      const systemPrompt = `You are a senior RipX customer support agent.
+Write a support reply email draft in plain text only.
+Rules:
+- Keep it concise and practical (100-220 words).
+- Acknowledge the issue first.
+- Provide concrete next steps.
+- Ask at most 2 clarifying questions when needed.
+- Do not invent unsupported platform features or guarantees.
+- End with "Best, RipX Support".`;
+      const userPrompt = [
+        'Ticket details:',
+        promptInput.slice(0, SUPPORT_SUGGEST_REPLY_MAX_INPUT_CHARS),
+        '',
+        kbContext
+          ? `Knowledge base context (use only if relevant and accurate):\n${kbContext}`
+          : 'Knowledge base context: (none available)',
+      ].join('\n\n');
+
+      try {
+        const OpenAI = require('openai').default;
+        const openai = new OpenAI({ apiKey });
+        const completion = await openai.chat.completions.create({
+          model: process.env.OPENAI_CHAT_MODEL || 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          max_tokens: SUPPORT_SUGGEST_REPLY_MAX_TOKENS,
+          temperature: 0.25,
+        });
+        suggestedReply =
+          completion?.choices?.[0]?.message?.content?.trim() || buildSupportFallbackReply(ticket);
+        provider = 'openai';
+      } catch (err) {
+        suggestedReply = buildSupportFallbackReply(ticket);
+        provider = 'fallback_template';
+        try {
+          const logger = require('../utils/logger');
+          logger.warn('Admin suggest-reply OpenAI failed', {
+            ticketId,
+            error: err?.message || 'unknown',
+          });
+        } catch (_logErr) {
+          // Ignore logger import/emit failures for this non-critical path.
+        }
+      }
+    }
+
+    await auditLogService.logAdminAction(req, {
+      entityType: 'support_ticket',
+      entityId: String(ticket.id),
+      action: 'suggest_reply_generated',
+      changes: {
+        provider,
+        used_kb: kbSources.length > 0,
+        source_count: kbSources.length,
+      },
+    });
+
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      ticket_id: ticket.id,
+      suggested_reply: suggestedReply,
+      provider,
+      sources: kbSources,
+      generated_at: new Date().toISOString(),
+    });
+  })
+);
+
+/**
+ * POST /api/admin/support-tickets/:id/route
+ * Route a ticket to an assignee and/or escalate priority.
+ */
+router.post(
+  '/support-tickets/:id/route',
+  asyncHandler(async (req, res) => {
+    const ticketId = req.params.id;
+    if (!ticketId || !validators.isValidUUID(ticketId)) {
+      return res.status(400).json({ success: false, error: 'Invalid ticket id' });
+    }
+
+    const body = req.body || {};
+    const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+    if (reason.length > SUPPORT_ROUTE_REASON_MAX_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        error: `reason must be ${SUPPORT_ROUTE_REASON_MAX_LENGTH} characters or less`,
+      });
+    }
+    const requestedAssignedTo = typeof body.assigned_to === 'string' ? body.assigned_to.trim() : '';
+    if (requestedAssignedTo.length > SUPPORT_ASSIGNED_TO_MAX_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        error: `assigned_to must be ${SUPPORT_ASSIGNED_TO_MAX_LENGTH} characters or less`,
+      });
+    }
+
+    const requestedPriority =
+      typeof body.priority === 'string' ? normalizeSupportPriority(body.priority, '') : '';
+    if (body.priority && !requestedPriority) {
+      return res.status(400).json({
+        success: false,
+        error: `priority must be one of: ${SUPPORT_TICKET_PRIORITIES.join(', ')}`,
+      });
+    }
+
+    const escalate = Boolean(body.escalate);
+    const autoAssign = body.auto_assign !== false;
+    const manualPool = ['general', 'technical', 'billing'].includes(String(body.pool || '').trim())
+      ? String(body.pool || '').trim()
+      : null;
+
+    const ticketResult = await getSupportTicketById(ticketId);
+    const ticket = ticketResult?.rows?.[0];
+    if (!ticket) {
+      return res.status(404).json({ success: false, error: 'Ticket not found' });
+    }
+
+    const currentPriority = normalizeSupportPriority(ticket.priority, 'normal');
+    let nextPriority = requestedPriority || currentPriority;
+    if (!requestedPriority && escalate) {
+      nextPriority = getEscalatedSupportPriority(currentPriority);
+    }
+
+    const escalationConfig = getSupportEscalationConfig();
+    const escalationState = getSupportEscalationState(ticket, escalationConfig);
+    if (escalate && escalationState.targetPriority) {
+      const targetRank = getSupportPriorityRank(escalationState.targetPriority);
+      const nextRank = getSupportPriorityRank(nextPriority);
+      if (targetRank > nextRank) {
+        nextPriority = escalationState.targetPriority;
+      }
+    }
+
+    const pool = manualPool || getSupportRoutingPool(ticket.category);
+    const poolAgents = getSupportRoutingAgentsByPool(pool);
+    let nextAssignedTo = requestedAssignedTo || ticket.assigned_to || null;
+    let assignedSource = requestedAssignedTo ? 'manual' : ticket.assigned_to ? 'existing' : 'none';
+    if (!requestedAssignedTo && autoAssign && !ticket.assigned_to) {
+      const autoAssignee = await pickSupportRoundRobinAssignee(pool, poolAgents);
+      if (autoAssignee) {
+        nextAssignedTo = autoAssignee;
+        assignedSource = 'auto_round_robin';
+      }
+    }
+
+    const currentMetadata =
+      ticket.metadata && typeof ticket.metadata === 'object' && !Array.isArray(ticket.metadata)
+        ? ticket.metadata
+        : {};
+    const currentRouting =
+      currentMetadata.routing &&
+      typeof currentMetadata.routing === 'object' &&
+      !Array.isArray(currentMetadata.routing)
+        ? currentMetadata.routing
+        : {};
+    const escalationCountBase = Number(currentRouting.escalation_count) || 0;
+    const nowIso = new Date().toISOString();
+    const nextMetadata = {
+      ...currentMetadata,
+      routing: {
+        ...currentRouting,
+        pool,
+        reason: reason || null,
+        assigned_source: assignedSource,
+        auto_assigned: assignedSource === 'auto_round_robin',
+        last_routed_at: nowIso,
+        last_escalated_at: escalate ? nowIso : currentRouting.last_escalated_at || null,
+        escalation_count: escalate ? escalationCountBase + 1 : escalationCountBase,
+      },
+    };
+
+    const statusNow = String(ticket.status || 'open')
+      .trim()
+      .toLowerCase();
+    const nextStatus =
+      escalate && statusNow !== 'open' && SUPPORT_TICKET_STATUSES.includes(statusNow)
+        ? 'open'
+        : statusNow;
+    const updateResult = await persistSupportTicketRoutingUpdate({
+      ticketId,
+      status: nextStatus,
+      priority: nextPriority,
+      assignedTo: nextAssignedTo,
+      metadataJson: JSON.stringify(nextMetadata),
+    });
+    if (!updateResult.rows?.length) {
+      return res.status(404).json({ success: false, error: 'Ticket not found' });
+    }
+
+    await auditLogService.logAdminAction(req, {
+      entityType: 'support_ticket',
+      entityId: String(ticketId),
+      action: escalate ? 'ticket_escalated' : 'ticket_routed',
+      changes: {
+        status: nextStatus,
+        priority: nextPriority,
+        assigned_to: nextAssignedTo,
+        pool,
+        assigned_source: assignedSource,
+      },
+    });
+
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      id: updateResult.rows[0].id,
+      status: updateResult.rows[0].status,
+      priority: updateResult.rows[0].priority,
+      assigned_to: updateResult.rows[0].assigned_to || null,
+      updated_at: updateResult.rows[0].updated_at,
+      pool,
+      assigned_source: assignedSource,
+      escalation_applied: escalate,
+    });
+  })
+);
+
+/**
+ * POST /api/admin/support-tickets/escalate
+ * Apply escalation rules to open tickets and optionally auto-assign by pool.
+ */
+router.post(
+  '/support-tickets/escalate',
+  asyncHandler(async (req, res) => {
+    const body = req.body || {};
+    const highHoursRaw = parseInt(body.high_after_hours, 10);
+    const urgentHoursRaw = parseInt(body.urgent_after_hours, 10);
+    const escalationConfig = getSupportEscalationConfig(highHoursRaw, urgentHoursRaw);
+    const autoAssign = body.auto_assign !== false;
+    const parsedLimit = parseInt(body.limit, 10);
+    const limit = Number.isFinite(parsedLimit)
+      ? Math.min(Math.max(parsedLimit, 1), SUPPORT_ESCALATION_SWEEP_MAX_LIMIT)
+      : SUPPORT_ESCALATION_SWEEP_DEFAULT_LIMIT;
+
+    const withDeletedSql = `
+      SELECT id, created_at, status, priority
+      FROM support_tickets
+      WHERE status = 'open'
+        AND (deleted_at IS NULL)
+        AND created_at <= NOW() - ($1::numeric * INTERVAL '1 hour')
+      ORDER BY created_at ASC
+      LIMIT $2
+    `;
+    const noDeletedSql = `
+      SELECT id, created_at, status, priority
+      FROM support_tickets
+      WHERE status = 'open'
+        AND created_at <= NOW() - ($1::numeric * INTERVAL '1 hour')
+      ORDER BY created_at ASC
+      LIMIT $2
+    `;
+
+    let candidateResult;
+    try {
+      candidateResult = await query(withDeletedSql, [escalationConfig.highHours, limit]);
+    } catch (err) {
+      if (err.message && /deleted_at|column.*does not exist/i.test(err.message)) {
+        candidateResult = await query(noDeletedSql, [escalationConfig.highHours, limit]);
+      } else {
+        throw err;
+      }
+    }
+
+    const candidates = Array.isArray(candidateResult?.rows) ? candidateResult.rows : [];
+    const escalated = [];
+    const skipped = [];
+
+    for (const row of candidates) {
+      const state = getSupportEscalationState(row, escalationConfig);
+      if (!state.due || !state.targetPriority) {
+        skipped.push({ id: row.id, reason: 'not_due' });
+        continue;
+      }
+
+      const ticketResult = await getSupportTicketById(row.id).catch(() => ({ rows: [] }));
+      const ticket = ticketResult?.rows?.[0];
+      if (!ticket) {
+        skipped.push({ id: row.id, reason: 'not_found' });
+        continue;
+      }
+
+      const currentPriority = normalizeSupportPriority(ticket.priority, 'normal');
+      const currentRank = getSupportPriorityRank(currentPriority);
+      const targetRank = getSupportPriorityRank(state.targetPriority);
+      const pool = getSupportRoutingPool(ticket.category);
+      const poolAgents = getSupportRoutingAgentsByPool(pool);
+      let nextAssignedTo = ticket.assigned_to || null;
+      let assignedSource = ticket.assigned_to ? 'existing' : 'none';
+      if (!nextAssignedTo && autoAssign) {
+        const autoAssignee = await pickSupportRoundRobinAssignee(pool, poolAgents);
+        if (autoAssignee) {
+          nextAssignedTo = autoAssignee;
+          assignedSource = 'auto_round_robin';
+        }
+      }
+
+      if (currentRank >= targetRank && assignedSource !== 'auto_round_robin') {
+        skipped.push({ id: row.id, reason: 'already_at_or_above_target' });
+        continue;
+      }
+      const nextPriority = targetRank > currentRank ? state.targetPriority : currentPriority;
+
+      const currentMetadata =
+        ticket.metadata && typeof ticket.metadata === 'object' && !Array.isArray(ticket.metadata)
+          ? ticket.metadata
+          : {};
+      const currentRouting =
+        currentMetadata.routing &&
+        typeof currentMetadata.routing === 'object' &&
+        !Array.isArray(currentMetadata.routing)
+          ? currentMetadata.routing
+          : {};
+      const escalationCountBase = Number(currentRouting.escalation_count) || 0;
+      const nowIso = new Date().toISOString();
+      const nextMetadata = {
+        ...currentMetadata,
+        routing: {
+          ...currentRouting,
+          pool,
+          reason: `escalation_sweep_${escalationConfig.highHours}_${escalationConfig.urgentHours}`,
+          assigned_source: assignedSource,
+          auto_assigned: assignedSource === 'auto_round_robin',
+          last_routed_at: nowIso,
+          last_escalated_at: nowIso,
+          escalation_count: escalationCountBase + 1,
+        },
+      };
+
+      const updateResult = await persistSupportTicketRoutingUpdate({
+        ticketId: row.id,
+        status: 'open',
+        priority: nextPriority,
+        assignedTo: nextAssignedTo,
+        metadataJson: JSON.stringify(nextMetadata),
+      }).catch(() => ({ rows: [] }));
+      if (updateResult.rows?.length) {
+        const routed = updateResult.rows[0];
+        escalated.push({
+          id: routed.id,
+          priority: routed.priority,
+          assigned_to: routed.assigned_to || null,
+        });
+      } else {
+        skipped.push({ id: row.id, reason: 'update_failed' });
+      }
+    }
+
+    await auditLogService.logAdminAction(req, {
+      entityType: 'support_ticket',
+      entityId: '__bulk__',
+      action: 'escalation_sweep_run',
+      changes: {
+        candidates: candidates.length,
+        escalated: escalated.length,
+        skipped: skipped.length,
+        high_hours: escalationConfig.highHours,
+        urgent_hours: escalationConfig.urgentHours,
+      },
+    });
+
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      success: true,
+      summary: {
+        candidates: candidates.length,
+        escalated: escalated.length,
+        skipped: skipped.length,
+      },
+      thresholds: {
+        high_after_hours: escalationConfig.highHours,
+        urgent_after_hours: escalationConfig.urgentHours,
+      },
+      escalated,
+      skipped,
     });
   })
 );

@@ -3771,6 +3771,86 @@
     beforeend: 'beforeend',
   };
 
+  function getVisualRuleMutationType(rule) {
+    var raw = rule && typeof rule.mutation_type === 'string' ? rule.mutation_type : '';
+    var type = String(raw || 'none')
+      .toLowerCase()
+      .trim();
+    return type || 'none';
+  }
+
+  function applyInlineStyleMutations(el, styleText) {
+    if (!el || !el.style || typeof styleText !== 'string') return;
+    var declarations = styleText
+      .split(';')
+      .map(function (part) {
+        return String(part || '').trim();
+      })
+      .filter(Boolean);
+    declarations.forEach(function (decl) {
+      var colonIndex = decl.indexOf(':');
+      if (colonIndex <= 0) return;
+      var key = decl.slice(0, colonIndex).trim();
+      var value = decl.slice(colonIndex + 1).trim();
+      if (!key || !value) return;
+      try {
+        el.style.setProperty(key, value);
+      } catch (e) {}
+    });
+  }
+
+  function applyVisualRuleMutation(el, rule) {
+    if (!el || !rule || typeof rule !== 'object') return;
+    var type = getVisualRuleMutationType(rule);
+    if (type === 'none') return;
+    if (type === 'hide') {
+      try {
+        el.style.setProperty('display', 'none', 'important');
+      } catch (e) {}
+      return;
+    }
+    if (type === 'show') {
+      try {
+        el.style.removeProperty('display');
+        el.style.removeProperty('visibility');
+      } catch (e) {}
+      if (typeof el.removeAttribute === 'function') {
+        try {
+          el.removeAttribute('hidden');
+        } catch (e) {}
+      }
+      return;
+    }
+    if (type === 'set_text') {
+      var nextText =
+        rule.mutation_text === undefined || rule.mutation_text === null
+          ? ''
+          : String(rule.mutation_text);
+      el.textContent = nextText;
+      return;
+    }
+    if (type === 'set_attr') {
+      var attrName =
+        typeof rule.mutation_attribute === 'string' ? rule.mutation_attribute.trim() : '';
+      if (!attrName) return;
+      var attrValue =
+        rule.mutation_attribute_value === undefined || rule.mutation_attribute_value === null
+          ? ''
+          : String(rule.mutation_attribute_value);
+      try {
+        if (attrValue) {
+          el.setAttribute(attrName, attrValue);
+        } else {
+          el.removeAttribute(attrName);
+        }
+      } catch (e) {}
+      return;
+    }
+    if (type === 'set_style') {
+      applyInlineStyleMutations(el, String(rule.mutation_style || ''));
+    }
+  }
+
   /**
    * Apply visual editor rules (selector + css/js + position) in preview/visual editor mode.
    * Injects style/script nodes relative to the first element matching each rule's selector.
@@ -3789,7 +3869,8 @@
       if (!selector) return;
       var css = typeof rule.css === 'string' ? rule.css.trim() : '';
       var js = typeof rule.js === 'string' ? rule.js.trim() : '';
-      if (!css && !js) return;
+      var mutationType = getVisualRuleMutationType(rule);
+      if (!css && !js && mutationType === 'none') return;
       var position = VISUAL_RULE_POSITION_MAP[rule.position] || 'afterend';
       var el;
       try {
@@ -3798,6 +3879,9 @@
         return;
       }
       if (!el || !el.insertAdjacentElement) return;
+      if (mutationType !== 'none') {
+        applyVisualRuleMutation(el, rule);
+      }
       var marker = markerPrefix + index;
       if (js) {
         var scriptEl = document.createElement('script');

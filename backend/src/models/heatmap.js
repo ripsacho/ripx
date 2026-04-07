@@ -299,6 +299,29 @@ async function getHeatmapScreenshotUrl(shopDomain, pageUrl) {
   }
 }
 
+/**
+ * Save screenshot URL for a shop/page pair in key_value_store.
+ * Uses primary normalized key (with leading underscore when path starts with '/').
+ */
+async function setHeatmapScreenshotUrl(shopDomain, pageUrl, screenshotUrl) {
+  const key = heatmapScreenshotKey(shopDomain, pageUrl);
+  if (!key) {
+    return { ok: false, reason: 'invalid_key' };
+  }
+  const value = String(screenshotUrl || '').trim();
+  if (!value) {
+    await query('DELETE FROM key_value_store WHERE key = $1', [key]);
+    return { ok: true, key, deleted: true };
+  }
+  await query(
+    `INSERT INTO key_value_store (key, value, updated_at)
+     VALUES ($1, $2, NOW())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+    [key, value]
+  );
+  return { ok: true, key, deleted: false };
+}
+
 module.exports = {
   insertHeatmapEvent,
   insertHeatmapEventsBatch,
@@ -307,6 +330,7 @@ module.exports = {
   getHeatmapPages,
   getClickHeatmapForOverlay,
   getHeatmapScreenshotUrl,
+  setHeatmapScreenshotUrl,
   heatmapScreenshotKey,
   REFERENCE_VIEWPORT,
 };

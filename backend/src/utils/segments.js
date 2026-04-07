@@ -155,19 +155,47 @@ function normalizeSegments(segments) {
 
   const MAX_VISUAL_EDITOR_RULES = 5;
   const POSITIONS = ['after', 'before', 'afterbegin', 'beforeend'];
+  const MUTATION_TYPES = ['none', 'hide', 'show', 'set_text', 'set_attr', 'set_style'];
   if (Array.isArray(segments.visual_editor_rules) && segments.visual_editor_rules.length > 0) {
     result.visual_editor_rules = segments.visual_editor_rules
       .slice(0, MAX_VISUAL_EDITOR_RULES)
-      .map(r =>
-        r && typeof r === 'object'
-          ? {
-              selector: typeof r.selector === 'string' ? r.selector.trim() : '',
-              css: typeof r.css === 'string' ? r.css.trim() : '',
-              js: typeof r.js === 'string' ? r.js.trim() : '',
-              position: POSITIONS.includes(r.position) ? r.position : 'after',
-            }
-          : { selector: '', css: '', js: '', position: 'after' }
-      );
+      .map(r => {
+        const base = {
+          selector: '',
+          css: '',
+          js: '',
+          position: 'after',
+          mutation_type: 'none',
+          mutation_text: '',
+          mutation_attribute: '',
+          mutation_attribute_value: '',
+          mutation_style: '',
+        };
+        if (!r || typeof r !== 'object') {
+          return base;
+        }
+        const mutationType = String(r.mutation_type || 'none')
+          .toLowerCase()
+          .trim();
+        return {
+          selector: typeof r.selector === 'string' ? r.selector.trim() : '',
+          css: typeof r.css === 'string' ? r.css.trim() : '',
+          js: typeof r.js === 'string' ? r.js.trim() : '',
+          position: POSITIONS.includes(r.position) ? r.position : 'after',
+          mutation_type: MUTATION_TYPES.includes(mutationType) ? mutationType : 'none',
+          mutation_text:
+            r.mutation_text === undefined || r.mutation_text === null
+              ? ''
+              : String(r.mutation_text),
+          mutation_attribute:
+            typeof r.mutation_attribute === 'string' ? r.mutation_attribute.trim() : '',
+          mutation_attribute_value:
+            r.mutation_attribute_value === undefined || r.mutation_attribute_value === null
+              ? ''
+              : String(r.mutation_attribute_value),
+          mutation_style: typeof r.mutation_style === 'string' ? r.mutation_style.trim() : '',
+        };
+      });
   }
 
   // Storefront anti-flicker strategy (per-test): balanced (default) or strict.

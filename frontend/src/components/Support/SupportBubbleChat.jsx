@@ -17,6 +17,13 @@ export default function SupportBubbleChat({
   onSendMessage,
   onClearChat,
   onNavigateToContact,
+  latestAssistantMessage,
+  latestAssistantFeedback,
+  chatFeedbackSubmitting,
+  onSubmitChatFeedback,
+  onEscalateToSupport,
+  chatEscalating,
+  chatEscalationResult,
 }) {
   const [open, setOpen] = useState(false);
   const scrollRef = useRef(null);
@@ -264,6 +271,91 @@ export default function SupportBubbleChat({
                     </div>
                   </div>
                 </div>
+
+                {chatMessages.length > 0 && (
+                  <div className={styles.bubbleResolutionRow}>
+                    {latestAssistantMessage && onSubmitChatFeedback && (
+                      <>
+                        <Text as="p" variant="bodySm" tone="subdued">
+                          Was this answer helpful?
+                        </Text>
+                        <InlineStack gap="200" wrap>
+                          <Button
+                            size="slim"
+                            variant={
+                              latestAssistantFeedback?.helpful === true ? 'primary' : 'secondary'
+                            }
+                            onClick={() => onSubmitChatFeedback(true)}
+                            disabled={chatLoading || chatFeedbackSubmitting}
+                            loading={
+                              chatFeedbackSubmitting && latestAssistantFeedback?.helpful === true
+                            }
+                          >
+                            Yes
+                          </Button>
+                          <Button
+                            size="slim"
+                            variant={
+                              latestAssistantFeedback?.helpful === false ? 'primary' : 'secondary'
+                            }
+                            onClick={() => onSubmitChatFeedback(false)}
+                            disabled={chatLoading || chatFeedbackSubmitting}
+                            loading={
+                              chatFeedbackSubmitting && latestAssistantFeedback?.helpful === false
+                            }
+                          >
+                            No
+                          </Button>
+                        </InlineStack>
+                        {latestAssistantFeedback && (
+                          <Text
+                            as="p"
+                            variant="bodySm"
+                            className={
+                              latestAssistantFeedback.error
+                                ? styles.chatResolutionMetaError
+                                : styles.chatResolutionMetaSuccess
+                            }
+                          >
+                            {latestAssistantFeedback.error
+                              ? latestAssistantFeedback.error
+                              : latestAssistantFeedback.helpful
+                                ? 'Thanks for your feedback.'
+                                : 'Thanks. We can escalate this to a human agent.'}
+                          </Text>
+                        )}
+                      </>
+                    )}
+
+                    {onEscalateToSupport && (
+                      <InlineStack gap="200" wrap>
+                        <Button
+                          size="slim"
+                          variant="primary"
+                          onClick={onEscalateToSupport}
+                          loading={chatEscalating}
+                          disabled={chatLoading || chatEscalating}
+                        >
+                          Escalate to support
+                        </Button>
+                      </InlineStack>
+                    )}
+
+                    {chatEscalationResult && (
+                      <Text
+                        as="p"
+                        variant="bodySm"
+                        className={
+                          chatEscalationResult.success
+                            ? styles.chatResolutionMetaSuccess
+                            : styles.chatResolutionMetaError
+                        }
+                      >
+                        {chatEscalationResult.message}
+                      </Text>
+                    )}
+                  </div>
+                )}
 
                 {onNavigateToContact && (
                   <div className={styles.bubbleFooter}>

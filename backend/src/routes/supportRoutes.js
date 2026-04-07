@@ -59,6 +59,65 @@ const CATEGORY_LABELS = {
 };
 const MAX_MESSAGE_LENGTH = 5000;
 const MAX_SUBJECT_LENGTH = 500;
+const FEATURE_REQUEST_TITLE_MAX_LENGTH = 180;
+const FEATURE_REQUEST_DETAILS_MAX_LENGTH = 5000;
+const FEATURE_REQUESTS_LIST_LIMIT = 100;
+const FEATURE_REQUEST_STATUSES = [
+  'open',
+  'planned',
+  'in_progress',
+  'shipped',
+  'closed',
+  'rejected',
+];
+const SUPPORT_STATUS_KV_KEY = 'support.status.current';
+const SUPPORT_STATUS_VALUES = ['operational', 'degraded', 'outage', 'maintenance'];
+const SUPPORT_CHANGELOG_LIST_LIMIT = 50;
+
+function getFeatureRequestVoterKey(req) {
+  if (req?.userId) {
+    return `user:${String(req.userId).trim().toLowerCase()}`;
+  }
+  if (req?.email) {
+    return `email:${String(req.email).trim().toLowerCase()}`;
+  }
+  if (req?.shopDomain) {
+    return `shop:${String(req.shopDomain).trim().toLowerCase()}`;
+  }
+  return null;
+}
+
+function normalizePublicSupportStatusValue(rawValue) {
+  const normalized = String(rawValue || '')
+    .trim()
+    .toLowerCase();
+  if (SUPPORT_STATUS_VALUES.includes(normalized)) {
+    return normalized;
+  }
+  return 'operational';
+}
+
+function parsePublicSupportStatus(rawValue) {
+  const fallback = {
+    status: 'operational',
+    message: 'All systems operational',
+    updated_at: null,
+  };
+  if (typeof rawValue !== 'string' || !rawValue.trim()) {
+    return fallback;
+  }
+  try {
+    const parsed = JSON.parse(rawValue);
+    const message = typeof parsed?.message === 'string' ? parsed.message.trim() : '';
+    return {
+      status: normalizePublicSupportStatusValue(parsed?.status),
+      message: message || fallback.message,
+      updated_at: parsed?.updated_at || null,
+    };
+  } catch (_err) {
+    return fallback;
+  }
+}
 
 /**
  * GET /api/support/categories
@@ -70,6 +129,351 @@ router.get('/categories', (req, res) => {
     categories: CATEGORIES.map(value => ({ value, label: CATEGORY_LABELS[value] || value })),
   });
 });
+
+/**
+ * GET /api/support/status
+ * Public support status card data.
+ */
+router.get(
+  '/status',
+  asyncHandler(async (_req, res) => {
+    const result = await query('SELECT value, updated_at FROM key_value_store WHERE key = $1', [
+      SUPPORT_STATUS_KV_KEY,
+    ]).catch(() => ({ rows: [] }));
+    const row = result.rows?.[0];
+    const payload = parsePublicSupportStatus(row?.value || '');
+    return res.json({
+      success: true,
+      status: payload.status,
+      message: payload.message,
+      updated_at: payload.updated_at || row?.updated_at || null,
+    });
+  })
+);
+
+/**
+ * GET /api/support/changelog
+ * Public changelog feed (published entries only).
+ */
+router.get(
+  '/changelog',
+  asyncHandler(async (req, res) => {
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit, 10) || 20, 1),
+      SUPPORT_CHANGELOG_LIST_LIMIT
+    );
+    const withDeletedSql = `
+      SELECT id, title, summary, body, level, visibility, published_at, created_at, updated_at
+      FROM support_changelog_entries
+      WHERE visibility = 'published'
+        AND (deleted_at IS NULL)
+      ORDER BY COALESCE(published_at, created_at) DESC, created_at DESC
+      LIMIT $1
+    `;
+    const noDeletedSql = `
+      SELECT id, title, summary, body, level, visibility, published_at, created_at, updated_at
+      FROM support_changelog_entries
+      WHERE visibility = 'published'
+      ORDER BY COALESCE(published_at, created_at) DESC, created_at DESC
+      LIMIT $1
+    `;
+    let rows = [];
+    try {
+      const result = await query(withDeletedSql, [limit]);
+      rows = result.rows || [];
+    } catch (err) {
+      if (
+        err.message &&
+        (/deleted_at|column.*does not exist/i.test(err.message) ||
+          /support_changelog_entries|relation .* does not exist/i.test(err.message))
+      ) {
+        const result = await query(noDeletedSql, [limit]).catch(() => ({ rows: [] }));
+        rows = result.rows || [];
+      } else {
+        throw err;
+      }
+    }
+
+    return res.json({
+      success: true,
+      changelog: rows.map(row => ({
+        id: row.id,
+        title: row.title,
+        summary: row.summary || '',
+        body: row.body || '',
+        level: row.level || 'info',
+        published_at: row.published_at || row.created_at || null,
+        updated_at: row.updated_at || null,
+      })),
+    });
+  })
+);
+
+/**
+ * GET /api/support/feature-requests
+ * Public board list for feature request voting.
+ */
+router.get(
+  '/feature-requests',
+  optionalAuthenticate,
+  asyncHandler(async (req, res) => {
+    const rawStatus =
+      typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : '';
+    const status = FEATURE_REQUEST_STATUSES.includes(rawStatus) ? rawStatus : '';
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit, 10) || 30, 1),
+      FEATURE_REQUESTS_LIST_LIMIT
+    );
+    const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+    const voterKey = getFeatureRequestVoterKey(req);
+
+    const withDeletedBase = `
+      SELECT fr.id, fr.title, fr.details, fr.status, fr.vote_count, fr.created_at, fr.updated_at,
+             COALESCE(v.value, 0)::int AS my_vote
+      FROM support_feature_requests fr
+      LEFT JOIN support_feature_request_votes v
+        ON v.request_id = fr.id
+        AND v.voter_key = $3
+      WHERE (fr.deleted_at IS NULL)
+    `;
+    const noDeletedBase = `
+      SELECT fr.id, fr.title, fr.details, fr.status, fr.vote_count, fr.created_at, fr.updated_at,
+             COALESCE(v.value, 0)::int AS my_vote
+      FROM support_feature_requests fr
+      LEFT JOIN support_feature_request_votes v
+        ON v.request_id = fr.id
+        AND v.voter_key = $3
+      WHERE 1=1
+    `;
+    const orderAndPage = `
+      ORDER BY fr.vote_count DESC, fr.created_at DESC
+      LIMIT $1 OFFSET $2
+    `;
+    const statusFilter = status ? ' AND fr.status = $4' : '';
+    const params = status
+      ? [limit, offset, voterKey || '__anon__', status]
+      : [limit, offset, voterKey || '__anon__'];
+
+    let rows = [];
+    try {
+      const result = await query(withDeletedBase + statusFilter + orderAndPage, params);
+      rows = result.rows || [];
+    } catch (err) {
+      if (
+        err.message &&
+        (/deleted_at|column.*does not exist/i.test(err.message) ||
+          /support_feature_requests|support_feature_request_votes|relation .* does not exist/i.test(
+            err.message
+          ))
+      ) {
+        const result = await query(noDeletedBase + statusFilter + orderAndPage, params).catch(
+          () => ({
+            rows: [],
+          })
+        );
+        rows = result.rows || [];
+      } else {
+        throw err;
+      }
+    }
+
+    return res.json({
+      success: true,
+      feature_requests: rows.map(row => ({
+        id: row.id,
+        title: row.title,
+        details: row.details || '',
+        status: row.status,
+        vote_count: Number(row.vote_count) || 0,
+        my_vote: Number(row.my_vote) || 0,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      })),
+    });
+  })
+);
+
+/**
+ * POST /api/support/feature-requests
+ * Create feature request (authenticated users).
+ */
+router.post(
+  '/feature-requests',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
+    const details = typeof req.body?.details === 'string' ? req.body.details.trim() : '';
+    if (!title) {
+      return res.status(400).json({ success: false, error: 'title is required' });
+    }
+    if (title.length > FEATURE_REQUEST_TITLE_MAX_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        error: `title must be ${FEATURE_REQUEST_TITLE_MAX_LENGTH} characters or less`,
+      });
+    }
+    if (details.length > FEATURE_REQUEST_DETAILS_MAX_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        error: `details must be ${FEATURE_REQUEST_DETAILS_MAX_LENGTH} characters or less`,
+      });
+    }
+    const category =
+      typeof req.body?.category === 'string' &&
+      req.body.category.trim().toLowerCase() === 'feature_request'
+        ? 'feature_request'
+        : 'feature_request';
+    const userId = req.userId || null;
+    const tenantId = req.tenantId || null;
+    const shopDomain = req.shopDomain || null;
+    const email = req.email || null;
+
+    const insertSql = `
+      INSERT INTO support_feature_requests
+        (user_id, tenant_id, shop_domain, email, title, details, status, vote_count, metadata)
+      VALUES
+        ($1, $2, $3, $4, $5, $6, 'open', 0, $7::jsonb)
+      RETURNING id, title, details, status, vote_count, created_at, updated_at
+    `;
+    const metadata = JSON.stringify({ category, source: 'support_page' });
+    let row = null;
+    try {
+      const result = await query(insertSql, [
+        userId,
+        tenantId,
+        shopDomain,
+        email,
+        title,
+        details,
+        metadata,
+      ]);
+      row = result.rows?.[0] || null;
+    } catch (err) {
+      if (/support_feature_requests|relation .* does not exist/i.test(err.message || '')) {
+        return res.status(503).json({
+          success: false,
+          error: 'Feature request board is not initialized yet (missing migration).',
+        });
+      }
+      throw err;
+    }
+
+    return res.status(201).json({
+      success: true,
+      feature_request: {
+        id: row.id,
+        title: row.title,
+        details: row.details || '',
+        status: row.status,
+        vote_count: Number(row.vote_count) || 0,
+        my_vote: 0,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      },
+    });
+  })
+);
+
+/**
+ * POST /api/support/feature-requests/:id/vote
+ * Vote (+1 / -1, toggle if same vote repeated).
+ */
+router.post(
+  '/feature-requests/:id/vote',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const requestId = req.params.id;
+    if (!requestId || !UUID_REGEX.test(String(requestId).trim())) {
+      return res.status(400).json({ success: false, error: 'Invalid feature request id' });
+    }
+    const rawValue = Number(req.body?.value);
+    const value = rawValue === -1 ? -1 : 1;
+    const voterKey = getFeatureRequestVoterKey(req);
+    if (!voterKey) {
+      return res.status(400).json({ success: false, error: 'Could not determine voter identity' });
+    }
+
+    let myVote = value;
+    try {
+      const existing = await query(
+        `SELECT value
+         FROM support_feature_request_votes
+         WHERE request_id = $1::uuid
+           AND voter_key = $2
+         LIMIT 1`,
+        [requestId, voterKey]
+      );
+      const existingValue = Number(existing.rows?.[0]?.value) || 0;
+      if (existingValue === value) {
+        await query(
+          `DELETE FROM support_feature_request_votes
+           WHERE request_id = $1::uuid
+             AND voter_key = $2`,
+          [requestId, voterKey]
+        );
+        myVote = 0;
+      } else if (existingValue === 0) {
+        await query(
+          `INSERT INTO support_feature_request_votes
+            (request_id, user_id, voter_key, value)
+           VALUES
+            ($1::uuid, $2, $3, $4)`,
+          [requestId, req.userId || null, voterKey, value]
+        );
+        myVote = value;
+      } else {
+        await query(
+          `UPDATE support_feature_request_votes
+           SET value = $3, updated_at = NOW()
+           WHERE request_id = $1::uuid
+             AND voter_key = $2`,
+          [requestId, voterKey, value]
+        );
+        myVote = value;
+      }
+
+      const voteResult = await query(
+        `SELECT COALESCE(SUM(value), 0)::int AS vote_count
+         FROM support_feature_request_votes
+         WHERE request_id = $1::uuid`,
+        [requestId]
+      );
+      const voteCount = Number(voteResult.rows?.[0]?.vote_count) || 0;
+
+      const updated = await query(
+        `UPDATE support_feature_requests
+         SET vote_count = $2, updated_at = NOW()
+         WHERE id = $1::uuid
+         RETURNING id, vote_count, status`,
+        [requestId, voteCount]
+      );
+      if (!updated.rows?.length) {
+        return res.status(404).json({ success: false, error: 'Feature request not found' });
+      }
+      return res.json({
+        success: true,
+        feature_request: {
+          id: updated.rows[0].id,
+          vote_count: Number(updated.rows[0].vote_count) || 0,
+          status: updated.rows[0].status,
+          my_vote: myVote,
+        },
+      });
+    } catch (err) {
+      if (
+        /support_feature_request_votes|support_feature_requests|relation .* does not exist/i.test(
+          err.message || ''
+        )
+      ) {
+        return res.status(503).json({
+          success: false,
+          error: 'Feature request board is not initialized yet (missing migration).',
+        });
+      }
+      throw err;
+    }
+  })
+);
 
 /**
  * POST /api/support/upload
@@ -370,8 +774,37 @@ ${context}`;
 
 const CHAT_MAX_HISTORY = 10;
 const RAG_TOP_K = 5;
+const CHAT_FEEDBACK_MAX_REASON_LENGTH = 500;
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function parseHelpfulBoolean(value) {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (
+    normalized === 'true' ||
+    normalized === 'yes' ||
+    normalized === 'helpful' ||
+    normalized === '1'
+  ) {
+    return true;
+  }
+  if (
+    normalized === 'false' ||
+    normalized === 'no' ||
+    normalized === 'not_helpful' ||
+    normalized === 'not-helpful' ||
+    normalized === '0'
+  ) {
+    return false;
+  }
+  return null;
+}
 
 /**
  * RAG: embed query and fetch top-k chunks from support_kb_chunks. Returns { context, sources } or { context: '', sources: [] } on error or empty KB.
@@ -418,9 +851,9 @@ async function getKbContext(queryText, apiKey) {
 
 /**
  * Persist chat turn to support_chat_conversations + support_chat_messages (if migration 048 applied).
- * Returns conversationId for the client to send on next message.
+ * Returns conversation + assistant message identifiers for follow-up feedback.
  * @param {Object} opts - { conversationId, userMessage, assistantReply, userId, tenantId, shopDomain }
- * @returns {Promise<string|null>} conversation_id or null
+ * @returns {Promise<{ conversationId: string|null, assistantMessageId: string|null }>}
  */
 async function persistChatTurn(opts) {
   const {
@@ -432,7 +865,10 @@ async function persistChatTurn(opts) {
     shopDomain,
   } = opts || {};
   if (!userMessage || !assistantReply) {
-    return existingId || null;
+    return {
+      conversationId: existingId || null,
+      assistantMessageId: null,
+    };
   }
   try {
     let convId =
@@ -450,16 +886,30 @@ async function persistChatTurn(opts) {
       convId = insertConv.rows[0]?.id ?? null;
     }
     if (!convId) {
-      return existingId || null;
+      return {
+        conversationId: existingId || null,
+        assistantMessageId: null,
+      };
     }
-    await query(
-      "INSERT INTO support_chat_messages (conversation_id, role, content) VALUES ($1, 'user', $2), ($1, 'assistant', $3)",
+
+    const insertMessages = await query(
+      `INSERT INTO support_chat_messages (conversation_id, role, content)
+       VALUES ($1, 'user', $2), ($1, 'assistant', $3)
+       RETURNING id, role`,
       [convId, userMessage.slice(0, 50000), assistantReply.slice(0, 50000)]
     );
-    return convId;
+    const assistantMessageId =
+      (insertMessages.rows || []).find(row => row?.role === 'assistant')?.id || null;
+    return {
+      conversationId: convId,
+      assistantMessageId,
+    };
   } catch (err) {
     logger.warn('Support chat persist failed (tables may not exist)', { error: err.message });
-    return existingId || null;
+    return {
+      conversationId: existingId || null,
+      assistantMessageId: null,
+    };
   }
 }
 
@@ -525,7 +975,7 @@ router.post(
     if (!apiKey) {
       reply =
         "The AI assistant isn't configured yet. Please use the **Contact us** form to get help. We typically reply within 24 hours.";
-      const convId = await persistChatTurn({
+      const persisted = await persistChatTurn({
         conversationId,
         userMessage: raw,
         assistantReply: reply,
@@ -537,7 +987,8 @@ router.post(
         success: true,
         reply,
         sources: [],
-        conversation_id: convId || undefined,
+        conversation_id: persisted.conversationId || undefined,
+        assistant_message_id: persisted.assistantMessageId || undefined,
       });
     }
 
@@ -567,7 +1018,7 @@ router.post(
         "I'm having trouble right now. Please use the **Contact us** form and we'll help you directly.";
     }
 
-    const convId = await persistChatTurn({
+    const persisted = await persistChatTurn({
       conversationId,
       userMessage: raw,
       assistantReply: reply,
@@ -580,8 +1031,94 @@ router.post(
       success: true,
       reply,
       sources: kbSources || [],
-      conversation_id: convId || undefined,
+      conversation_id: persisted.conversationId || undefined,
+      assistant_message_id: persisted.assistantMessageId || undefined,
     });
+  })
+);
+
+/**
+ * POST /api/support/chat-feedback
+ * Persist thumbs-up / thumbs-down feedback for AI answers.
+ * Body: { conversation_id: UUID, helpful: boolean|string, assistant_message_id?: UUID, reason?: string }
+ */
+router.post(
+  '/chat-feedback',
+  optionalAuthenticate,
+  asyncHandler(async (req, res) => {
+    const body = req.body || {};
+    const conversationId =
+      typeof body.conversation_id === 'string' ? body.conversation_id.trim() : '';
+    const helpful = parseHelpfulBoolean(body.helpful);
+    const assistantMessageId =
+      typeof body.assistant_message_id === 'string' ? body.assistant_message_id.trim() : '';
+    const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+
+    if (!conversationId || !UUID_REGEX.test(conversationId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'conversation_id is required and must be a valid UUID',
+      });
+    }
+    if (helpful === null) {
+      return res.status(400).json({
+        success: false,
+        error: 'helpful must be true/false',
+      });
+    }
+    if (assistantMessageId && !UUID_REGEX.test(assistantMessageId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'assistant_message_id must be a valid UUID when provided',
+      });
+    }
+    if (reason.length > CHAT_FEEDBACK_MAX_REASON_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        error: `reason must be ${CHAT_FEEDBACK_MAX_REASON_LENGTH} characters or less`,
+      });
+    }
+
+    try {
+      const existingConversation = await query(
+        'SELECT id FROM support_chat_conversations WHERE id = $1',
+        [conversationId]
+      );
+      if (!existingConversation.rows?.length) {
+        return res.status(404).json({
+          success: false,
+          error: 'Conversation not found',
+        });
+      }
+
+      const feedbackPayload = {
+        helpful,
+        reason: reason || null,
+        assistant_message_id: assistantMessageId || null,
+        source: 'support_ui',
+        user_id: req.userId || null,
+        tenant_id: req.tenantId || null,
+      };
+      const feedbackContent = helpful ? 'helpful' : 'not_helpful';
+      const insertFeedback = await query(
+        `INSERT INTO support_chat_messages (conversation_id, role, content, metadata)
+         VALUES ($1, 'feedback', $2, $3::jsonb)
+         RETURNING id, created_at`,
+        [conversationId, feedbackContent, JSON.stringify(feedbackPayload)]
+      );
+
+      return res.status(201).json({
+        success: true,
+        message_id: insertFeedback.rows?.[0]?.id || null,
+        created_at: insertFeedback.rows?.[0]?.created_at || null,
+      });
+    } catch (err) {
+      logger.warn('Support chat feedback persist failed', { error: err.message });
+      return res.status(500).json({
+        success: false,
+        error: 'Could not save feedback',
+      });
+    }
   })
 );
 

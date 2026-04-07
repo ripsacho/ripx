@@ -3308,6 +3308,113 @@
   flex-wrap: wrap;
 }
 
+.adminSupportAnalyticsRows {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.9rem;
+}
+
+.adminSupportAnalyticsBlock {
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 0.9rem;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.04) 0%, rgba(139, 92, 246, 0.02) 100%);
+}
+
+[data-theme='dark'] .adminSupportAnalyticsBlock {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.08) 0%, rgba(139, 92, 246, 0.04) 100%);
+}
+
+.adminSupportAnalyticsList {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.adminSupportAnalyticsListItem,
+.adminSupportAnalyticsQuestionItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-bottom: 1px dashed var(--border-secondary);
+  padding-bottom: 0.4rem;
+}
+
+.adminSupportAnalyticsListItem:last-child,
+.adminSupportAnalyticsQuestionItem:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.adminSupportAnalyticsQuestionItem span {
+  display: inline-block;
+  max-width: 88%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adminSupportSlaSection {
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 0.9rem;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.03) 0%, rgba(2, 132, 199, 0.03) 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+[data-theme='dark'] .adminSupportSlaSection {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.08) 0%, rgba(2, 132, 199, 0.06) 100%);
+}
+
+.adminSupportSlaGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.55rem;
+}
+
+.adminSupportSlaCard {
+  border: 1px dashed var(--border-secondary);
+  border-radius: 10px;
+  padding: 0.55rem 0.65rem;
+  background: rgba(255, 255, 255, 0.45);
+}
+
+[data-theme='dark'] .adminSupportSlaCard {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.adminSupportSlaTrendTableWrap {
+  border: 1px solid var(--border-secondary);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.adminSupportSuggestReplyMeta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.adminSupportSuggestReplyTemplates {
+  border: 1px solid var(--border-secondary);
+  border-radius: 10px;
+  padding: 0.7rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  background: rgba(6, 182, 212, 0.03);
+}
+
 /* Legacy aliases */
 .adminUsersToolbar {
   padding: 0 0 1rem;
@@ -3743,4 +3850,29 @@
   line-height: 1.55;
   color: var(--text-primary);
   word-break: break-all;
+}
+
+.adminSupportStatusPanel {
+  border: 1px solid var(--border-secondary);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: rgba(99, 102, 241, 0.04);
+}
+
+.adminSupportChangelogList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.adminSupportChangelogItem {
+  border: 1px solid var(--border-secondary);
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }

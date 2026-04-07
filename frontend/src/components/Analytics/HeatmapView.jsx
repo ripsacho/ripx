@@ -2,8 +2,8 @@
  * Heatmap View - Click and scroll heatmap visualization
  */
 import React, { useState, useEffect } from 'react';
-import { Text, Select } from '@shopify/polaris';
-import { apiGet } from '../../services';
+import { Text, Select, TextField, Button } from '@shopify/polaris';
+import { apiGet, apiPut } from '../../services';
 import { getDefaultAnalyticsDateRange } from '../../utils/preferences';
 import styles from './HeatmapView.module.css';
 
@@ -38,6 +38,8 @@ function HeatmapView({ testId, variants = [] }) {
   const [overlay, setOverlay] = useState(null);
   const [screenshotUrl, setScreenshotUrl] = useState(null);
   const [screenshotError, setScreenshotError] = useState(false);
+  const [screenshotInput, setScreenshotInput] = useState('');
+  const [savingScreenshot, setSavingScreenshot] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -74,6 +76,30 @@ function HeatmapView({ testId, variants = [] }) {
       })
       .finally(() => setLoading(false));
   }, [testId, selectedPage, selectedVariant, dateRange]);
+
+  useEffect(() => {
+    setScreenshotInput(screenshotUrl || '');
+  }, [screenshotUrl, selectedPage]);
+
+  const handleSaveScreenshot = async nextValue => {
+    if (!selectedPage || !testId || savingScreenshot) return;
+    setSavingScreenshot(true);
+    try {
+      const url = String(nextValue !== undefined ? nextValue : screenshotInput || '').trim();
+      const res = await apiPut(`/analytics/tests/${testId}/heatmap/screenshot`, {
+        page_url: selectedPage,
+        screenshot_url: url,
+      });
+      const saved = res.data?.screenshot_url || null;
+      setScreenshotUrl(saved);
+      setScreenshotError(false);
+      setScreenshotInput(saved || '');
+    } catch (_) {
+      // Keep current state; user can retry.
+    } finally {
+      setSavingScreenshot(false);
+    }
+  };
 
   const variantOptions = [
     { label: 'All variants', value: 'all' },
@@ -148,8 +174,39 @@ function HeatmapView({ testId, variants = [] }) {
               <p className={styles.heatmapOverlayHint}>
                 {screenshotUrl
                   ? 'Clicks normalized to reference viewport (1280×720).'
-                  : 'Click heatmap (normalized to 1280×720). To show on your page image, in Admin → Key-value store add key heatmap_screenshot.{your-shop-domain}.{page_path} (e.g. heatmap_screenshot.mystore.com._products_my-product) and set value to the screenshot image URL.'}
+                  : 'Click heatmap (normalized to 1280×720). Add a screenshot URL below for this page to display clicks over the image.'}
               </p>
+              <div className={styles.heatmapOverlayControls}>
+                <div className={styles.heatmapOverlayInput}>
+                  <TextField
+                    label="Page screenshot URL"
+                    value={screenshotInput}
+                    onChange={setScreenshotInput}
+                    autoComplete="off"
+                    placeholder="https://.../page-screenshot.png"
+                    disabled={!selectedPage || savingScreenshot}
+                  />
+                </div>
+                <div className={styles.heatmapOverlayActions}>
+                  <Button
+                    onClick={handleSaveScreenshot}
+                    loading={savingScreenshot}
+                    disabled={!selectedPage}
+                  >
+                    Save image
+                  </Button>
+                  {screenshotUrl ? (
+                    <Button
+                      tone="critical"
+                      variant="plain"
+                      onClick={() => handleSaveScreenshot('')}
+                      disabled={savingScreenshot || !selectedPage}
+                    >
+                      Remove
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
               <div
                 className={styles.heatmapOverlayWrap}
                 style={{

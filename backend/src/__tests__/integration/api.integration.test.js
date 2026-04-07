@@ -177,6 +177,27 @@ describe('API integration', () => {
     });
   });
 
+  describe('POST /api/support/chat-feedback', () => {
+    it('returns 400 when conversation_id is missing', async () => {
+      const res = await request(app).post('/api/support/chat-feedback').send({
+        helpful: true,
+      });
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body.error).toMatch(/conversation_id/i);
+    });
+
+    it('returns 400 when helpful is invalid', async () => {
+      const res = await request(app).post('/api/support/chat-feedback').send({
+        conversation_id: '00000000-0000-4000-8000-000000000001',
+        helpful: 'maybe',
+      });
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body.error).toMatch(/helpful/i);
+    });
+  });
+
   describe('POST /api/track/checkout-assignment', () => {
     it('returns 400 when required fields are missing', async () => {
       const res = await request(app).post('/api/track/checkout-assignment').send({});
@@ -255,6 +276,145 @@ describe('API integration', () => {
       const res = await request(app).put('/api/settings/checkout-price-function-config').send({
         syncFromEnv: true,
       });
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('PUT /api/analytics/tests/:id/heatmap/screenshot returns 401 when no credentials', async () => {
+      const res = await request(app)
+        .put('/api/analytics/tests/00000000-0000-4000-8000-000000000001/heatmap/screenshot')
+        .send({
+          page_url: '/products/example',
+          screenshot_url: 'https://cdn.example.com/shot.png',
+        });
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('GET /api/admin/support-tickets/analytics returns 401 when no credentials', async () => {
+      const res = await request(app).get('/api/admin/support-tickets/analytics');
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('POST /api/admin/support-tickets/:id/suggest-reply returns 401 when no credentials', async () => {
+      const res = await request(app).post(
+        '/api/admin/support-tickets/00000000-0000-4000-8000-000000000001/suggest-reply'
+      );
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('POST /api/admin/support-tickets/:id/route returns 401 when no credentials', async () => {
+      const res = await request(app)
+        .post('/api/admin/support-tickets/00000000-0000-4000-8000-000000000001/route')
+        .send({
+          escalate: true,
+          auto_assign: true,
+        });
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('POST /api/admin/support-tickets/escalate returns 401 when no credentials', async () => {
+      const res = await request(app).post('/api/admin/support-tickets/escalate').send({
+        limit: 10,
+      });
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('GET /api/admin/support-macros returns 401 when no credentials', async () => {
+      const res = await request(app).get('/api/admin/support-macros');
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('PUT /api/admin/support-macros/:key returns 401 when no credentials', async () => {
+      const res = await request(app)
+        .put('/api/admin/support-macros/welcome')
+        .send({ title: 'Welcome', body: 'Hello there' });
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('DELETE /api/admin/support-macros/:key returns 401 when no credentials', async () => {
+      const res = await request(app).delete('/api/admin/support-macros/welcome');
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('GET /api/admin/support-status returns 401 when no credentials', async () => {
+      const res = await request(app).get('/api/admin/support-status');
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('PUT /api/admin/support-status returns 401 when no credentials', async () => {
+      const res = await request(app).put('/api/admin/support-status').send({
+        status: 'maintenance',
+        message: 'Planned deployment window',
+      });
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('GET /api/admin/support-changelog returns 401 when no credentials', async () => {
+      const res = await request(app).get('/api/admin/support-changelog');
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('POST /api/admin/support-changelog returns 401 when no credentials', async () => {
+      const res = await request(app).post('/api/admin/support-changelog').send({
+        title: 'Shipping update',
+        summary: 'Small improvement shipped',
+      });
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('PATCH /api/admin/support-changelog/:id returns 401 when no credentials', async () => {
+      const res = await request(app)
+        .patch('/api/admin/support-changelog/00000000-0000-4000-8000-000000000001')
+        .send({
+          visibility: 'published',
+          publish_now: true,
+        });
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('POST /api/support/feature-requests returns 401 when no credentials', async () => {
+      const res = await request(app).post('/api/support/feature-requests').send({
+        title: 'Example feature',
+        details: 'Please add this',
+      });
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('POST /api/support/feature-requests/:id/vote returns 401 when no credentials', async () => {
+      const res = await request(app)
+        .post('/api/support/feature-requests/00000000-0000-4000-8000-000000000001/vote')
+        .send({
+          value: 1,
+        });
       expect(res.status).toBe(401);
       expect(res.body).toHaveProperty('success', false);
       expect(res.body).toHaveProperty('error');
