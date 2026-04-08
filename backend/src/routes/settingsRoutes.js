@@ -201,6 +201,17 @@ function isWriteCartTransformsScopeError(error) {
   );
 }
 
+function isCartTransformFunctionIdTypeMismatchError(error) {
+  const message = String(error?.message || '')
+    .trim()
+    .toLowerCase();
+  return (
+    message.includes('type mismatch on variable $functionid') &&
+    message.includes('functionid') &&
+    message.includes('id! / string!')
+  );
+}
+
 function escapeHtmlAttr(str) {
   if (typeof str !== 'string') {
     return '';
@@ -1301,12 +1312,55 @@ router.post(
         }
       }
     `;
-    const createResp = await shopifyService.requestAdminGraphql(
-      shopDomain,
-      accessToken,
-      createMutation,
-      { functionId: chosenFunction.id }
-    );
+    let createResp;
+    try {
+      createResp = await shopifyService.requestAdminGraphql(
+        shopDomain,
+        accessToken,
+        createMutation,
+        { functionId: chosenFunction.id }
+      );
+    } catch (createErr) {
+      if (isCartTransformFunctionIdTypeMismatchError(createErr)) {
+        // Compatibility fallback for stale runtime paths that still surface String!/ID! mismatch.
+        const compatMutation = `
+          mutation ripxCreateCartTransformCompat {
+            cartTransformCreate(functionId: ${JSON.stringify(String(chosenFunction.id || '').trim())}) {
+              cartTransform {
+                id
+                functionId
+                blockOnFailure
+              }
+              userErrors {
+                field
+                message
+              }
+            }
+          }
+        `;
+        createResp = await shopifyService.requestAdminGraphql(
+          shopDomain,
+          accessToken,
+          compatMutation,
+          {}
+        );
+      } else if (isWriteCartTransformsScopeError(createErr)) {
+        return sendError(
+          res,
+          403,
+          'Missing write_cart_transforms scope (or required Shopify permissions) for cartTransformCreate. Re-open/re-install app with updated scopes and retry.',
+          {
+            function: {
+              id: chosenFunction.id,
+              title: chosenFunction.title || null,
+              apiType: chosenFunction.apiType || null,
+            },
+          }
+        );
+      } else {
+        throw createErr;
+      }
+    }
     const payload = createResp?.data?.cartTransformCreate;
     const userErrors = Array.isArray(payload?.userErrors) ? payload.userErrors : [];
     if (userErrors.length > 0 || !payload?.cartTransform?.id) {
