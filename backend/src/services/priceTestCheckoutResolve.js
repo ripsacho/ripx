@@ -47,6 +47,15 @@ function pickCartTransformFunction(functionNodes) {
   return ripxMatch || cartTransforms[0] || null;
 }
 
+function isReadCartTransformsScopeError(error) {
+  const message = String(error?.message || '')
+    .trim()
+    .toLowerCase();
+  return (
+    message.includes('read_cart_transforms') || message.includes('access denied for carttransforms')
+  );
+}
+
 async function getCheckoutMethodCapabilitiesForDomain(domain) {
   const normalizedDomain = normalizeCapabilityDomain(domain);
   if (!normalizedDomain) {
@@ -99,6 +108,7 @@ async function getCheckoutMethodCapabilitiesForDomain(domain) {
       const cartTransformFunctionAvailable = hasCartTransformFunction(functionNodes);
       const chosenCartTransform = pickCartTransformFunction(functionNodes);
       let cartTransformInstalled = false;
+      let installCheckStatus = 'verified';
       if (chosenCartTransform?.id) {
         try {
           const transformsQuery = `
@@ -122,14 +132,23 @@ async function getCheckoutMethodCapabilitiesForDomain(domain) {
               String(node?.functionId || '').trim() === String(chosenCartTransform.id || '').trim()
             );
           });
-        } catch (_transformErr) {
-          cartTransformInstalled = false;
+        } catch (transformErr) {
+          if (isReadCartTransformsScopeError(transformErr)) {
+            cartTransformInstalled = null;
+            installCheckStatus = 'scope_missing';
+          } else {
+            cartTransformInstalled = false;
+            installCheckStatus = 'lookup_error';
+          }
         }
       }
+      const directPriceOverrideAvailable =
+        cartTransformFunctionAvailable && cartTransformInstalled !== false;
       return {
-        directPriceOverrideAvailable: cartTransformFunctionAvailable && cartTransformInstalled,
+        directPriceOverrideAvailable,
         cartTransformFunctionAvailable,
         cartTransformInstalled,
+        cartTransformInstallCheckStatus: installCheckStatus,
         source: 'shopify_admin',
       };
     } catch (error) {

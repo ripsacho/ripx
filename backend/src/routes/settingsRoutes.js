@@ -182,6 +182,25 @@ async function fetchCartTransformsViaAdmin(shopDomain, accessToken) {
   return resp?.data?.cartTransforms?.nodes || [];
 }
 
+function isReadCartTransformsScopeError(error) {
+  const message = String(error?.message || '')
+    .trim()
+    .toLowerCase();
+  return (
+    message.includes('read_cart_transforms') || message.includes('access denied for carttransforms')
+  );
+}
+
+function isWriteCartTransformsScopeError(error) {
+  const message = String(error?.message || '')
+    .trim()
+    .toLowerCase();
+  return (
+    message.includes('write_cart_transforms') ||
+    message.includes('access denied for carttransformcreate')
+  );
+}
+
 function escapeHtmlAttr(str) {
   if (typeof str !== 'string') {
     return '';
@@ -659,7 +678,8 @@ router.get(
     const fallbackSession = await getShopSession(shopDomain);
     const accessToken = req.shopifyAccessToken || fallbackSession?.access_token || '';
     let shopifyFunctions = [];
-    let shopifyCartTransforms = [];
+    let shopifyCartTransforms = null;
+    let cartTransformsLookupStatus = accessToken ? 'error' : 'not_checked';
     if (accessToken) {
       try {
         shopifyFunctions = await fetchShopifyFunctions(shopDomain, accessToken);
@@ -668,8 +688,12 @@ router.get(
       }
       try {
         shopifyCartTransforms = await fetchCartTransformsViaAdmin(shopDomain, accessToken);
-      } catch (_error) {
-        shopifyCartTransforms = [];
+        cartTransformsLookupStatus = 'ok';
+      } catch (lookupError) {
+        shopifyCartTransforms = null;
+        cartTransformsLookupStatus = isReadCartTransformsScopeError(lookupError)
+          ? 'scope_missing'
+          : 'error';
       }
     }
 
@@ -680,6 +704,7 @@ router.get(
       extensionConfig,
       shopifyFunctions,
       shopifyCartTransforms,
+      cartTransformsLookupStatus,
     });
 
     res.set('Cache-Control', 'no-store');
@@ -1216,25 +1241,36 @@ router.post(
       );
     }
 
-    const existingTransforms = await fetchCartTransformsViaAdmin(shopDomain, accessToken);
+    let existingTransforms = null;
+    let cartTransformsLookupUnavailableReason = null;
+    try {
+      existingTransforms = await fetchCartTransformsViaAdmin(shopDomain, accessToken);
+    } catch (lookupError) {
+      existingTransforms = null;
+      cartTransformsLookupUnavailableReason = isReadCartTransformsScopeError(lookupError)
+        ? 'missing_read_cart_transforms_scope'
+        : 'lookup_error';
+    }
     const chosenFunctionId = String(chosenFunction.id || '').trim();
-    const alreadyInstalled = existingTransforms.find(
-      node => String(node?.functionId || '').trim() === chosenFunctionId
-    );
-    if (alreadyInstalled) {
-      return res.json({
-        success: true,
-        created: false,
-        cartTransform: alreadyInstalled,
-        function: {
-          id: chosenFunction.id,
-          title: chosenFunction.title || null,
-          apiType: chosenFunction.apiType || null,
-        },
-      });
+    if (Array.isArray(existingTransforms)) {
+      const alreadyInstalled = existingTransforms.find(
+        node => String(node?.functionId || '').trim() === chosenFunctionId
+      );
+      if (alreadyInstalled) {
+        return res.json({
+          success: true,
+          created: false,
+          cartTransform: alreadyInstalled,
+          function: {
+            id: chosenFunction.id,
+            title: chosenFunction.title || null,
+            apiType: chosenFunction.apiType || null,
+          },
+        });
+      }
     }
 
-    if (existingTransforms.length > 0) {
+    if (Array.isArray(existingTransforms) && existingTransforms.length > 0) {
       return sendError(
         res,
         409,
@@ -1274,6 +1310,48 @@ router.post(
     const payload = createResp?.data?.cartTransformCreate;
     const userErrors = Array.isArray(payload?.userErrors) ? payload.userErrors : [];
     if (userErrors.length > 0 || !payload?.cartTransform?.id) {
+      const firstUserErrorMessage = String(userErrors[0]?.message || '').trim();
+      if (
+        !payload?.cartTransform?.id &&
+        firstUserErrorMessage &&
+        cartTransformsLookupUnavailableReason &&
+        /already|one cart transform|max/i.test(firstUserErrorMessage)
+      ) {
+        return res.json({
+          success: true,
+          created: false,
+          assumedInstalled: true,
+          note: 'Cart transform create returned an "already exists" style response, but install verification is unavailable without read_cart_transforms scope.',
+          cartTransform: null,
+          function: {
+            id: chosenFunction.id,
+            title: chosenFunction.title || null,
+            apiType: chosenFunction.apiType || null,
+          },
+          installCheck: {
+            status: 'unknown',
+            reason: cartTransformsLookupUnavailableReason,
+          },
+        });
+      }
+      if (isWriteCartTransformsScopeError({ message: firstUserErrorMessage })) {
+        return sendError(
+          res,
+          403,
+          'Missing write_cart_transforms scope (or required Shopify permissions) for cartTransformCreate. Re-open/re-install app with updated scopes and retry.',
+          {
+            function: {
+              id: chosenFunction.id,
+              title: chosenFunction.title || null,
+              apiType: chosenFunction.apiType || null,
+            },
+            shopifyUserErrors: userErrors.map(err => ({
+              field: Array.isArray(err?.field) ? err.field.join('.') : err?.field || null,
+              message: err?.message || null,
+            })),
+          }
+        );
+      }
       return sendError(res, 400, userErrors[0]?.message || 'Could not install cart transform.', {
         function: {
           id: chosenFunction.id,
@@ -1295,6 +1373,10 @@ router.post(
         id: chosenFunction.id,
         title: chosenFunction.title || null,
         apiType: chosenFunction.apiType || null,
+      },
+      installCheck: {
+        status: Array.isArray(existingTransforms) ? 'verified' : 'unknown',
+        reason: cartTransformsLookupUnavailableReason,
       },
     });
   })
@@ -1324,11 +1406,27 @@ router.get(
 
     const functionNodes = await fetchShopifyFunctions(shopDomain, accessToken);
     const chosenFunction = pickCartTransformFunction(functionNodes);
-    const existingTransforms = await fetchCartTransformsViaAdmin(shopDomain, accessToken);
+    let existingTransforms = null;
+    let installCheckStatus = 'ok';
+    let installCheckReason = null;
+    try {
+      existingTransforms = await fetchCartTransformsViaAdmin(shopDomain, accessToken);
+    } catch (lookupError) {
+      existingTransforms = null;
+      if (isReadCartTransformsScopeError(lookupError)) {
+        installCheckStatus = 'scope_missing';
+        installCheckReason = 'missing_read_cart_transforms_scope';
+      } else {
+        installCheckStatus = 'error';
+        installCheckReason = lookupError?.message || 'lookup_error';
+      }
+    }
     const chosenFunctionId = String(chosenFunction?.id || '').trim();
-    const matchedTransforms = existingTransforms.filter(
-      node => String(node?.functionId || '').trim() === chosenFunctionId
-    );
+    const matchedTransforms = Array.isArray(existingTransforms)
+      ? existingTransforms.filter(
+          node => String(node?.functionId || '').trim() === chosenFunctionId
+        )
+      : [];
 
     return res.json({
       success: true,
@@ -1339,11 +1437,17 @@ router.get(
             apiType: chosenFunction.apiType || null,
           }
         : null,
-      installedCount: existingTransforms.length,
-      installedTransforms: existingTransforms,
+      installedCount: Array.isArray(existingTransforms) ? existingTransforms.length : null,
+      installedTransforms: Array.isArray(existingTransforms) ? existingTransforms : [],
       matchedCount: matchedTransforms.length,
       matchedTransforms,
-      installedForRipxFunction: matchedTransforms.length > 0,
+      installedForRipxFunction: Array.isArray(existingTransforms)
+        ? matchedTransforms.length > 0
+        : null,
+      installCheck: {
+        status: installCheckStatus,
+        reason: installCheckReason,
+      },
     });
   })
 );

@@ -89,6 +89,28 @@ describe('priceCheckoutDiagnostics', () => {
     expect(installed.checklist.find(c => c.id === 'cart_transform_installed')?.ok).toBe(true);
   });
 
+  it('reports install check as unknown when read_cart_transforms scope is missing', () => {
+    process.env.APP_URL = 'https://api.example.com';
+    const { buildCheckoutPriceDiagnostics } = require('../priceCheckoutDiagnostics');
+    const d = buildCheckoutPriceDiagnostics({
+      shopifyFunctions: [
+        {
+          id: 'gid://shopify/ShopifyFunction/2',
+          title: 'RipX cart transform',
+          apiType: 'cart_transform',
+        },
+      ],
+      shopifyCartTransforms: null,
+      cartTransformsLookupStatus: 'scope_missing',
+    });
+    expect(d.infrastructure.cart_transform_installed).toBeNull();
+    expect(d.infrastructure.cart_transform_install_check_status).toBe('scope_missing');
+    expect(d.support?.direct_price_override?.level).toBe('unknown_install_state');
+    const scopeCheck = d.checklist.find(c => c.id === 'cart_transform_install_check_scope');
+    expect(scopeCheck?.ok).toBe(false);
+    expect(scopeCheck?.severity).toBe('warning');
+  });
+
   it('prefers RIPX_PRICE_RESOLVE_BATCH_URL when set', () => {
     process.env.APP_URL = 'https://ignored.example.com';
     process.env.RIPX_PRICE_RESOLVE_BATCH_URL = 'https://batch.custom/batch-endpoint';

@@ -405,6 +405,7 @@ function pickFunctionByApiType(functionsList, matcher) {
  * @param {{ source: 'omit'|'missing'|'present', contents?: string }} [opts.extensionConfig] — R5 drift: compare ripxConfig.js to .env (callers read file)
  * @param {Array<{ id?: string, title?: string, apiType?: string }>} [opts.shopifyFunctions]
  * @param {Array<{ id?: string, functionId?: string, blockOnFailure?: boolean }>} [opts.shopifyCartTransforms]
+ * @param {'ok'|'scope_missing'|'error'|'not_checked'} [opts.cartTransformsLookupStatus]
  */
 function buildCheckoutPriceDiagnostics(opts = {}) {
   const { batchUrl, appUrl, usedExplicitBatchUrl } = getConfiguredBatchResolveUrls();
@@ -561,6 +562,7 @@ function buildCheckoutPriceDiagnostics(opts = {}) {
     extensionConfig,
     shopifyFunctions,
     shopifyCartTransforms,
+    cartTransformsLookupStatus = 'not_checked',
   } = opts;
 
   const functionSnapshot = normalizeShopifyFunctionsSnapshot(shopifyFunctions);
@@ -604,6 +606,26 @@ function buildCheckoutPriceDiagnostics(opts = {}) {
           matchedCartTransforms.length > 0
             ? 'RipX cart transform is installed on the shop.'
             : 'RipX cart transform function exists but is not installed (no cartTransformCreate binding found). Run /api/settings/cart-transform/ensure.',
+      });
+    }
+    if (cartTransformFunction?.id && cartTransformsLookupStatus === 'scope_missing') {
+      checklist.push({
+        id: 'cart_transform_install_check_scope',
+        ok: false,
+        severity: 'warning',
+        message:
+          'Cannot verify cart transform install state because the shop token lacks read_cart_transforms scope. Re-open RipX from Shopify Admin to refresh scopes, then run diagnostics again.',
+      });
+      recommendations.push(
+        'Grant/read_cart_transforms for the app token (re-open/re-install app), then re-run /api/settings/checkout-price-diagnostics.'
+      );
+    } else if (cartTransformFunction?.id && cartTransformsLookupStatus === 'error') {
+      checklist.push({
+        id: 'cart_transform_install_check_error',
+        ok: false,
+        severity: 'warning',
+        message:
+          'Could not verify cart transform install state due to an Admin API lookup error. Retry diagnostics and use /api/settings/cart-transform/status for details.',
       });
     }
   }
@@ -663,6 +685,7 @@ function buildCheckoutPriceDiagnostics(opts = {}) {
         Array.isArray(shopifyCartTransforms) && Boolean(cartTransformFunction?.id)
           ? matchedCartTransforms.length > 0
           : null,
+      cart_transform_install_check_status: cartTransformsLookupStatus,
       cart_transform_instances_count: Array.isArray(shopifyCartTransforms)
         ? normalizedCartTransforms.length
         : null,
@@ -689,18 +712,22 @@ function buildCheckoutPriceDiagnostics(opts = {}) {
       },
       direct_price_override: {
         level: cartTransformFunction?.id
-          ? Array.isArray(shopifyCartTransforms)
-            ? matchedCartTransforms.length > 0
-              ? 'available'
-              : 'needs_install'
-            : 'available'
+          ? cartTransformsLookupStatus === 'scope_missing'
+            ? 'unknown_install_state'
+            : Array.isArray(shopifyCartTransforms)
+              ? matchedCartTransforms.length > 0
+                ? 'available'
+                : 'needs_install'
+              : 'available'
           : 'needs_deploy',
         summary: cartTransformFunction?.id
-          ? Array.isArray(shopifyCartTransforms)
-            ? matchedCartTransforms.length > 0
-              ? 'Cart Transform infrastructure is deployed and installed, so Direct Price Override can run on Plus/dev stores for the supported hardened flow.'
-              : 'RipX cart transform function is deployed but not installed on the shop yet. Run /api/settings/cart-transform/ensure to bind it.'
-            : 'Cart Transform infrastructure is deployed, so Direct Price Override can run on Plus/dev stores for the supported hardened flow.'
+          ? cartTransformsLookupStatus === 'scope_missing'
+            ? 'Cart transform function is deployed, but install state cannot be verified because read_cart_transforms scope is missing on the current token.'
+            : Array.isArray(shopifyCartTransforms)
+              ? matchedCartTransforms.length > 0
+                ? 'Cart Transform infrastructure is deployed and installed, so Direct Price Override can run on Plus/dev stores for the supported hardened flow.'
+                : 'RipX cart transform function is deployed but not installed on the shop yet. Run /api/settings/cart-transform/ensure to bind it.'
+              : 'Cart Transform infrastructure is deployed, so Direct Price Override can run on Plus/dev stores for the supported hardened flow.'
           : 'Direct Price Override needs the RipX cart transform extension to be deployed on the shop before it can run.',
       },
     },
