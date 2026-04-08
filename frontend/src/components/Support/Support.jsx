@@ -20,6 +20,7 @@ import {
   Badge,
   Icon,
   Spinner,
+  Modal,
 } from '@shopify/polaris';
 import {
   BookIcon,
@@ -74,6 +75,22 @@ const SUPPORT_STATUS_LABEL = {
   maintenance: 'Maintenance',
   outage: 'Outage',
 };
+const CHAT_LANGUAGE_OPTIONS = [
+  { label: 'Auto-detect', value: 'auto' },
+  { label: 'English', value: 'en' },
+  { label: 'Spanish', value: 'es' },
+  { label: 'French', value: 'fr' },
+  { label: 'German', value: 'de' },
+  { label: 'Portuguese', value: 'pt' },
+  { label: 'Italian', value: 'it' },
+  { label: 'Dutch', value: 'nl' },
+  { label: 'Bengali', value: 'bn' },
+  { label: 'Hindi', value: 'hi' },
+  { label: 'Japanese', value: 'ja' },
+  { label: 'Korean', value: 'ko' },
+  { label: 'Chinese (Simplified)', value: 'zh' },
+  { label: 'Arabic', value: 'ar' },
+];
 
 function buildEscalationTranscript(messages, limit = 12) {
   if (!Array.isArray(messages) || messages.length === 0) {
@@ -105,12 +122,20 @@ function Support() {
   const [ticketsLoading, setTicketsLoading] = useState(true);
   const [ticketsError, setTicketsError] = useState(null);
   const [ticketStatusFilter, setTicketStatusFilter] = useState('all'); // 'all' | 'open' | 'closed'
+  const [threadTicket, setThreadTicket] = useState(null);
+  const [threadMessages, setThreadMessages] = useState([]);
+  const [threadLoading, setThreadLoading] = useState(false);
+  const [threadError, setThreadError] = useState('');
+  const [threadReply, setThreadReply] = useState('');
+  const [threadSending, setThreadSending] = useState(false);
+  const [threadStreamState, setThreadStreamState] = useState('idle');
   const [categories, setCategories] = useState(CATEGORIES_FALLBACK);
   // Ask AI state
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState([]);
   const [chatLoading, setChatLoading] = useState(false);
   const [aiNotConfigured, setAiNotConfigured] = useState(false);
+  const [chatLanguage, setChatLanguage] = useState('auto');
   const [chatConversationId, setChatConversationId] = useState(null);
   const [chatFeedbackByMessage, setChatFeedbackByMessage] = useState({});
   const [chatFeedbackSubmitting, setChatFeedbackSubmitting] = useState(false);
@@ -136,6 +161,7 @@ function Support() {
   const chatScrollRef = useRef(null);
   const mountedRef = useRef(true);
   const chatInputRef = useRef('');
+  const threadEventSourceRef = useRef(null);
   chatInputRef.current = chatInput;
 
   const latestAssistantMessage =
@@ -328,6 +354,156 @@ function Support() {
     };
   }, [fetchStatusAndChangelog]);
 
+  const upsertThreadMessage = useCallback(messageItem => {
+    if (!messageItem?.id) {
+      return;
+    }
+    setThreadMessages(prev => {
+      if (prev.some(existing => existing?.id === messageItem.id)) {
+        return prev;
+      }
+      const next = [...prev, messageItem];
+      next.sort((a, b) => {
+        const aTime = a?.created_at ? new Date(a.created_at).getTime() : 0;
+        const bTime = b?.created_at ? new Date(b.created_at).getTime() : 0;
+        return aTime - bTime;
+      });
+      return next;
+    });
+  }, []);
+
+  const closeTicketThread = useCallback(() => {
+    if (threadEventSourceRef.current) {
+      threadEventSourceRef.current.close();
+      threadEventSourceRef.current = null;
+    }
+    setThreadTicket(null);
+    setThreadMessages([]);
+    setThreadReply('');
+    setThreadError('');
+    setThreadLoading(false);
+    setThreadSending(false);
+    setThreadStreamState('idle');
+  }, []);
+
+  const openTicketThread = useCallback(async ticket => {
+    const ticketId = String(ticket?.id || '').trim();
+    if (!ticketId) {
+      return;
+    }
+    setThreadTicket({
+      id: ticketId,
+      subject: ticket?.subject || 'Support request',
+      status: ticket?.status || 'open',
+    });
+    setThreadMessages([]);
+    setThreadReply('');
+    setThreadError('');
+    setThreadLoading(true);
+    setThreadStreamState('connecting');
+    try {
+      const res = await apiGet(`/support/tickets/${ticketId}/thread`);
+      if (!mountedRef.current) {
+        return;
+      }
+      const data = res?.data ?? {};
+      if (!data?.success) {
+        setThreadError(data?.error || 'Could not load ticket thread');
+        return;
+      }
+      setThreadTicket(prev => ({
+        ...prev,
+        ...(data.ticket || {}),
+        id: data?.ticket?.id || prev?.id || ticketId,
+      }));
+      setThreadMessages(Array.isArray(data.messages) ? data.messages : []);
+    } catch (err) {
+      if (!mountedRef.current) {
+        return;
+      }
+      setThreadError(err?.response?.data?.error || err?.message || 'Could not load ticket thread');
+      setThreadStreamState('offline');
+    } finally {
+      if (mountedRef.current) {
+        setThreadLoading(false);
+      }
+    }
+  }, []);
+
+  const sendThreadReply = useCallback(async () => {
+    const ticketId = String(threadTicket?.id || '').trim();
+    const messageText = String(threadReply || '').trim();
+    if (!ticketId || !messageText || threadSending) {
+      return;
+    }
+    setThreadSending(true);
+    setThreadError('');
+    try {
+      const res = await apiPost(`/support/tickets/${ticketId}/thread/reply`, {
+        message: messageText,
+      });
+      if (!mountedRef.current) {
+        return;
+      }
+      const payload = res?.data ?? {};
+      if (payload?.message?.id) {
+        upsertThreadMessage(payload.message);
+      }
+      setThreadReply('');
+    } catch (err) {
+      if (!mountedRef.current) {
+        return;
+      }
+      setThreadError(err?.response?.data?.error || err?.message || 'Could not send reply');
+    } finally {
+      if (mountedRef.current) {
+        setThreadSending(false);
+      }
+    }
+  }, [threadTicket?.id, threadReply, threadSending, upsertThreadMessage]);
+
+  useEffect(() => {
+    const ticketId = String(threadTicket?.id || '').trim();
+    if (!ticketId || typeof window === 'undefined' || typeof window.EventSource === 'undefined') {
+      return undefined;
+    }
+    if (threadEventSourceRef.current) {
+      threadEventSourceRef.current.close();
+      threadEventSourceRef.current = null;
+    }
+    const stream = new window.EventSource(`/api/support/tickets/${ticketId}/thread/stream`);
+    threadEventSourceRef.current = stream;
+    setThreadStreamState('connecting');
+
+    stream.onopen = () => {
+      if (mountedRef.current) {
+        setThreadStreamState('live');
+      }
+    };
+    stream.onmessage = event => {
+      try {
+        const payload = JSON.parse(event?.data || '{}');
+        if (payload?.type === 'message' && payload?.message?.id) {
+          upsertThreadMessage(payload.message);
+        }
+      } catch (_err) {
+        // Ignore malformed stream events.
+      }
+    };
+    stream.onerror = () => {
+      if (mountedRef.current) {
+        setThreadStreamState('reconnecting');
+      }
+    };
+
+    return () => {
+      stream.close();
+      if (threadEventSourceRef.current === stream) {
+        threadEventSourceRef.current = null;
+      }
+    };
+  }, [threadTicket?.id, upsertThreadMessage]);
+
   const handleSubmit = async e => {
     e?.preventDefault();
     if (!email.trim() || !subject.trim() || !message.trim()) return;
@@ -348,11 +524,16 @@ function Support() {
         setSubmitResult({ success: true, ticketId: data.ticket_id });
         setSubject('');
         setMessage('');
+        const createdCategory = String(data?.category || submittedCategory || 'other').trim();
+        const createdCategorySource = String(data?.category_source || 'manual')
+          .trim()
+          .toLowerCase();
         setTickets(prev => [
           {
             id: data.ticket_id,
             subject: submittedSubject,
-            category: submittedCategory,
+            category: createdCategory || submittedCategory,
+            category_source: createdCategorySource || 'manual',
             status: 'open',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
@@ -476,7 +657,7 @@ function Support() {
       setAiNotConfigured(false);
       try {
         const messagesForApi = chatMessages.map(m => ({ role: m.role, content: m.content }));
-        const payload = { message: text, messages: messagesForApi };
+        const payload = { message: text, messages: messagesForApi, language: chatLanguage };
         if (chatConversationId) payload.conversation_id = chatConversationId;
         const res = await apiPost('/support/chat', payload);
         if (!mountedRef.current) return;
@@ -511,7 +692,7 @@ function Support() {
         if (mountedRef.current) setChatLoading(false);
       }
     },
-    [chatLoading, chatMessages, chatConversationId]
+    [chatLoading, chatMessages, chatConversationId, chatLanguage]
   );
 
   const submitChatFeedback = useCallback(
@@ -840,6 +1021,7 @@ function Support() {
                             options={categories}
                             value={category}
                             onChange={setCategory}
+                            helpText="If left as Other, we auto-classify based on your subject and message."
                           />
                           <TextField
                             label="Subject"
@@ -1006,11 +1188,22 @@ function Support() {
                                         {categories.find(c => c.value === t.category)?.label ??
                                           t.category ??
                                           '—'}{' '}
-                                        ·{' '}
+                                        {String(t.category_source || '').toLowerCase() === 'auto'
+                                          ? '(auto) · '
+                                          : '· '}
                                         {t.created_at
                                           ? new Date(t.created_at).toLocaleDateString()
                                           : '—'}
                                       </Text>
+                                      <InlineStack gap="200" blockAlign="center">
+                                        <Button
+                                          size="slim"
+                                          variant="plain"
+                                          onClick={() => openTicketThread(t)}
+                                        >
+                                          Open thread
+                                        </Button>
+                                      </InlineStack>
                                     </List.Item>
                                   ))}
                                 </List>
@@ -1135,6 +1328,14 @@ function Support() {
                               </InlineStack>
                             </div>
                           )}
+                          <div className={styles.chatLanguagePicker}>
+                            <Select
+                              label="Reply language"
+                              options={CHAT_LANGUAGE_OPTIONS}
+                              value={chatLanguage}
+                              onChange={setChatLanguage}
+                            />
+                          </div>
                           <div className={styles.chatComposer}>
                             <div className={styles.chatComposerInput}>
                               <textarea
@@ -1526,6 +1727,127 @@ function Support() {
               </Text>
             </div>
           </section>
+
+          {threadTicket && (
+            <Modal
+              open
+              onClose={closeTicketThread}
+              title={`Support thread · #${String(threadTicket.id || '').slice(0, 8)}`}
+              primaryAction={{
+                content: 'Send reply',
+                onAction: sendThreadReply,
+                loading: threadSending,
+                disabled: !String(threadReply || '').trim() || threadLoading,
+              }}
+              secondaryActions={[
+                {
+                  content: 'Close',
+                  onAction: closeTicketThread,
+                },
+              ]}
+              size="large"
+            >
+              <Modal.Section>
+                <BlockStack gap="300">
+                  <InlineStack align="space-between" blockAlign="center" wrap>
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      {threadTicket.subject || 'Support request'}
+                    </Text>
+                    <InlineStack gap="200" blockAlign="center">
+                      <Badge tone="info">{String(threadTicket.status || 'open')}</Badge>
+                      <Badge
+                        tone={
+                          threadStreamState === 'live'
+                            ? 'success'
+                            : threadStreamState === 'connecting'
+                              ? 'attention'
+                              : 'warning'
+                        }
+                      >
+                        {threadStreamState === 'live'
+                          ? 'Live'
+                          : threadStreamState === 'connecting'
+                            ? 'Connecting'
+                            : threadStreamState === 'reconnecting'
+                              ? 'Reconnecting'
+                              : 'Offline'}
+                      </Badge>
+                    </InlineStack>
+                  </InlineStack>
+
+                  {threadLoading ? (
+                    <Text as="p" tone="subdued">
+                      Loading thread…
+                    </Text>
+                  ) : (
+                    <div className={styles.ticketThreadMessages}>
+                      {threadMessages.length === 0 ? (
+                        <Text as="p" variant="bodySm" tone="subdued">
+                          No messages yet.
+                        </Text>
+                      ) : (
+                        threadMessages.map(item => {
+                          const senderType = String(item?.sender_type || 'user').toLowerCase();
+                          const isUser = senderType === 'user';
+                          const senderLabel = isUser
+                            ? 'You'
+                            : senderType === 'admin'
+                              ? item?.sender_label || 'Support'
+                              : senderType === 'ai'
+                                ? 'AI'
+                                : item?.sender_label || 'System';
+                          return (
+                            <div
+                              key={item.id}
+                              className={
+                                isUser ? styles.chatBubbleUser : styles.chatBubbleAssistant
+                              }
+                            >
+                              <Text
+                                as="p"
+                                variant="bodySm"
+                                fontWeight="semibold"
+                                className={styles.chatBubbleLabel}
+                              >
+                                {senderLabel}
+                              </Text>
+                              <div className={styles.chatBubbleContent}>
+                                {isUser
+                                  ? item?.message || ''
+                                  : formatReplyContent(item?.message || '')}
+                              </div>
+                              <Text as="p" variant="bodySm" tone="subdued">
+                                {item?.created_at
+                                  ? new Date(item.created_at).toLocaleString()
+                                  : '—'}
+                              </Text>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+
+                  {threadError ? (
+                    <Banner tone="critical" onDismiss={() => setThreadError('')}>
+                      {threadError}
+                    </Banner>
+                  ) : null}
+
+                  <TextField
+                    label="Reply"
+                    value={threadReply}
+                    onChange={setThreadReply}
+                    multiline={4}
+                    maxLength={5000}
+                    autoComplete="off"
+                    showCharacterCount
+                    placeholder="Type your reply to support…"
+                  />
+                </BlockStack>
+              </Modal.Section>
+            </Modal>
+          )}
 
           <SupportBubbleChat
             chatMessages={chatMessages}

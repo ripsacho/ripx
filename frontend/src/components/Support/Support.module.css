@@ -1196,6 +1196,14 @@
 }
 
 /* ----- Chat composer: Cursor-style, theme-aware ----- */
+.chatLanguagePicker {
+  margin: 0 18px 12px;
+}
+
+.chatLanguagePicker :global(.Polaris-Select) {
+  max-width: 260px;
+}
+
 .supportPage .chatComposer {
   margin: 0 18px 20px;
   border-radius: 22px;
@@ -1312,6 +1320,15 @@
 }
 
 @media (max-width: 480px) {
+  .chatLanguagePicker {
+    margin-left: 12px;
+    margin-right: 12px;
+  }
+
+  .chatLanguagePicker :global(.Polaris-Select) {
+    max-width: 100%;
+  }
+
   .supportPage .chatComposer {
     margin-left: 12px;
     margin-right: 12px;
@@ -1471,6 +1488,18 @@
 
 .chatResolutionMetaError {
   color: #b91c1c;
+}
+
+.ticketThreadMessages {
+  max-height: 380px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 12px;
+  background: var(--bg-secondary);
 }
 
 .ticketStatus {

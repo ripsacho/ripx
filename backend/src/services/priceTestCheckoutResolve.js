@@ -28,12 +28,32 @@ function hasCartTransformFunction(functionNodes) {
   });
 }
 
+function pickCartTransformFunction(functionNodes) {
+  if (!Array.isArray(functionNodes)) {
+    return null;
+  }
+  const cartTransforms = functionNodes.filter(node => {
+    const apiType = String(node?.apiType || '')
+      .trim()
+      .toLowerCase();
+    return apiType.includes('cart_transform') || apiType.includes('cart transform');
+  });
+  const ripxMatch = cartTransforms.find(node =>
+    String(node?.title || '')
+      .trim()
+      .toLowerCase()
+      .includes('ripx')
+  );
+  return ripxMatch || cartTransforms[0] || null;
+}
+
 async function getCheckoutMethodCapabilitiesForDomain(domain) {
   const normalizedDomain = normalizeCapabilityDomain(domain);
   if (!normalizedDomain) {
     return {
       directPriceOverrideAvailable: false,
       cartTransformFunctionAvailable: false,
+      cartTransformInstalled: false,
       source: 'missing_domain',
     };
   }
@@ -53,6 +73,7 @@ async function getCheckoutMethodCapabilitiesForDomain(domain) {
       return {
         directPriceOverrideAvailable: false,
         cartTransformFunctionAvailable: false,
+        cartTransformInstalled: false,
         source: 'missing_shop_session',
       };
     }
@@ -76,15 +97,46 @@ async function getCheckoutMethodCapabilitiesForDomain(domain) {
       );
       const functionNodes = response?.data?.shopifyFunctions?.nodes || [];
       const cartTransformFunctionAvailable = hasCartTransformFunction(functionNodes);
+      const chosenCartTransform = pickCartTransformFunction(functionNodes);
+      let cartTransformInstalled = false;
+      if (chosenCartTransform?.id) {
+        try {
+          const transformsQuery = `
+            query ripxExistingCartTransforms {
+              cartTransforms(first: 20) {
+                nodes {
+                  id
+                  functionId
+                }
+              }
+            }
+          `;
+          const transformsResp = await shopifyService.requestAdminGraphql(
+            normalizedDomain,
+            accessToken,
+            transformsQuery
+          );
+          const existingTransforms = transformsResp?.data?.cartTransforms?.nodes || [];
+          cartTransformInstalled = existingTransforms.some(node => {
+            return (
+              String(node?.functionId || '').trim() === String(chosenCartTransform.id || '').trim()
+            );
+          });
+        } catch (_transformErr) {
+          cartTransformInstalled = false;
+        }
+      }
       return {
-        directPriceOverrideAvailable: cartTransformFunctionAvailable,
+        directPriceOverrideAvailable: cartTransformFunctionAvailable && cartTransformInstalled,
         cartTransformFunctionAvailable,
+        cartTransformInstalled,
         source: 'shopify_admin',
       };
     } catch (error) {
       return {
         directPriceOverrideAvailable: false,
         cartTransformFunctionAvailable: false,
+        cartTransformInstalled: false,
         source: 'lookup_error',
         error: error?.message || 'lookup_failed',
       };

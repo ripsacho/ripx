@@ -404,6 +404,7 @@ function pickFunctionByApiType(functionsList, matcher) {
  * @param {number} [opts.runningPriceTests]
  * @param {{ source: 'omit'|'missing'|'present', contents?: string }} [opts.extensionConfig] — R5 drift: compare ripxConfig.js to .env (callers read file)
  * @param {Array<{ id?: string, title?: string, apiType?: string }>} [opts.shopifyFunctions]
+ * @param {Array<{ id?: string, functionId?: string, blockOnFailure?: boolean }>} [opts.shopifyCartTransforms]
  */
 function buildCheckoutPriceDiagnostics(opts = {}) {
   const { batchUrl, appUrl, usedExplicitBatchUrl } = getConfiguredBatchResolveUrls();
@@ -559,6 +560,7 @@ function buildCheckoutPriceDiagnostics(opts = {}) {
     runningPriceTests = null,
     extensionConfig,
     shopifyFunctions,
+    shopifyCartTransforms,
   } = opts;
 
   const functionSnapshot = normalizeShopifyFunctionsSnapshot(shopifyFunctions);
@@ -569,6 +571,12 @@ function buildCheckoutPriceDiagnostics(opts = {}) {
     functionSnapshot,
     apiType => apiType.includes('cart_transform') || apiType.includes('cart transform')
   );
+  const normalizedCartTransforms = Array.isArray(shopifyCartTransforms)
+    ? shopifyCartTransforms.filter(Boolean)
+    : [];
+  const matchedCartTransforms = normalizedCartTransforms.filter(node => {
+    return String(node?.functionId || '').trim() === String(cartTransformFunction?.id || '').trim();
+  });
 
   if (functionSnapshot.length > 0) {
     checklist.push({
@@ -587,6 +595,17 @@ function buildCheckoutPriceDiagnostics(opts = {}) {
         ? `Shop has a deployed cart transform function available for Direct Price Override (${cartTransformFunction.title || cartTransformFunction.id}).`
         : 'No deployed Shopify cart transform function was found for this app on the shop.',
     });
+    if (cartTransformFunction?.id && Array.isArray(shopifyCartTransforms)) {
+      checklist.push({
+        id: 'cart_transform_installed',
+        ok: matchedCartTransforms.length > 0,
+        severity: matchedCartTransforms.length > 0 ? 'ok' : 'warning',
+        message:
+          matchedCartTransforms.length > 0
+            ? 'RipX cart transform is installed on the shop.'
+            : 'RipX cart transform function exists but is not installed (no cartTransformCreate binding found). Run /api/settings/cart-transform/ensure.',
+      });
+    }
   }
 
   /** @type {Record<string, unknown>} */
@@ -640,6 +659,13 @@ function buildCheckoutPriceDiagnostics(opts = {}) {
       node_env: nodeEnv,
       discount_function_available: Boolean(discountFunction?.id),
       cart_transform_function_available: Boolean(cartTransformFunction?.id),
+      cart_transform_installed:
+        Array.isArray(shopifyCartTransforms) && Boolean(cartTransformFunction?.id)
+          ? matchedCartTransforms.length > 0
+          : null,
+      cart_transform_instances_count: Array.isArray(shopifyCartTransforms)
+        ? normalizedCartTransforms.length
+        : null,
       discount_function_id: discountFunction?.id || null,
       cart_transform_function_id: cartTransformFunction?.id || null,
       ...infrastructureExtension,
@@ -662,9 +688,19 @@ function buildCheckoutPriceDiagnostics(opts = {}) {
         ],
       },
       direct_price_override: {
-        level: cartTransformFunction?.id ? 'available' : 'needs_deploy',
+        level: cartTransformFunction?.id
+          ? Array.isArray(shopifyCartTransforms)
+            ? matchedCartTransforms.length > 0
+              ? 'available'
+              : 'needs_install'
+            : 'available'
+          : 'needs_deploy',
         summary: cartTransformFunction?.id
-          ? 'Cart Transform infrastructure is deployed, so Direct Price Override can run on Plus/dev stores for the supported hardened flow.'
+          ? Array.isArray(shopifyCartTransforms)
+            ? matchedCartTransforms.length > 0
+              ? 'Cart Transform infrastructure is deployed and installed, so Direct Price Override can run on Plus/dev stores for the supported hardened flow.'
+              : 'RipX cart transform function is deployed but not installed on the shop yet. Run /api/settings/cart-transform/ensure to bind it.'
+            : 'Cart Transform infrastructure is deployed, so Direct Price Override can run on Plus/dev stores for the supported hardened flow.'
           : 'Direct Price Override needs the RipX cart transform extension to be deployed on the shop before it can run.',
       },
     },

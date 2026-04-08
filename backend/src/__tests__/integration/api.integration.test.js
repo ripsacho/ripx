@@ -177,6 +177,19 @@ describe('API integration', () => {
     });
   });
 
+  describe('POST /api/support/chat', () => {
+    it('returns 200 and normalizes requested language', async () => {
+      const res = await request(app).post('/api/support/chat').send({
+        message: 'Can you help me with setup?',
+        language: 'ES',
+      });
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('success', true);
+      expect(res.body).toHaveProperty('reply');
+      expect(res.body).toHaveProperty('language', 'es');
+    });
+  });
+
   describe('POST /api/support/chat-feedback', () => {
     it('returns 400 when conversation_id is missing', async () => {
       const res = await request(app).post('/api/support/chat-feedback').send({
@@ -195,6 +208,47 @@ describe('API integration', () => {
       expect(res.status).toBe(400);
       expect(res.body).toHaveProperty('success', false);
       expect(res.body.error).toMatch(/helpful/i);
+    });
+  });
+
+  describe('GET /api/support/contextual-help', () => {
+    it('returns 200 with contextual suggestions', async () => {
+      const res = await request(app).get('/api/support/contextual-help').query({
+        pathname: '/app/test.myshopify.com/setup',
+        app_domain: 'test.myshopify.com',
+      });
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('success', true);
+      expect(res.body).toHaveProperty('context_key', 'setup_wizard');
+      expect(res.body).toHaveProperty('title');
+      expect(Array.isArray(res.body.suggestions)).toBe(true);
+      expect(res.body.suggestions.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('Support ticket thread auth', () => {
+    const ticketId = '00000000-0000-4000-8000-000000000111';
+    it('GET /api/support/tickets/:id/thread returns 401 when no credentials', async () => {
+      const res = await request(app).get(`/api/support/tickets/${ticketId}/thread`);
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('POST /api/support/tickets/:id/thread/reply returns 401 when no credentials', async () => {
+      const res = await request(app).post(`/api/support/tickets/${ticketId}/thread/reply`).send({
+        message: 'Any update?',
+      });
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('GET /api/support/tickets/:id/thread/stream returns 401 when no credentials', async () => {
+      const res = await request(app).get(`/api/support/tickets/${ticketId}/thread/stream`);
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
     });
   });
 
@@ -353,6 +407,47 @@ describe('API integration', () => {
       expect(res.body).toHaveProperty('error');
     });
 
+    it('GET /api/admin/support-unified-inbox returns 401 when no credentials', async () => {
+      const res = await request(app).get('/api/admin/support-unified-inbox');
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('GET /api/admin/support-inbox-integration returns 401 when no credentials', async () => {
+      const res = await request(app).get('/api/admin/support-inbox-integration');
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('PUT /api/admin/support-inbox-integration returns 401 when no credentials', async () => {
+      const res = await request(app).put('/api/admin/support-inbox-integration').send({
+        provider: 'zendesk',
+        enabled: true,
+      });
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('GET /api/admin/support/proactive-signals returns 401 when no credentials', async () => {
+      const res = await request(app).get('/api/admin/support/proactive-signals');
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('POST /api/admin/support/proactive-signals/outreach returns 401 when no credentials', async () => {
+      const res = await request(app).post('/api/admin/support/proactive-signals/outreach').send({
+        shop_domain: 'test.myshopify.com',
+        signal_type: 'usage_drop',
+      });
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
     it('GET /api/admin/support-status returns 401 when no credentials', async () => {
       const res = await request(app).get('/api/admin/support-status');
       expect(res.status).toBe(401);
@@ -415,6 +510,35 @@ describe('API integration', () => {
         .send({
           value: 1,
         });
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('GET /api/admin/support-tickets/:id/thread returns 401 when no credentials', async () => {
+      const res = await request(app).get(
+        '/api/admin/support-tickets/00000000-0000-4000-8000-000000000111/thread'
+      );
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('POST /api/admin/support-tickets/:id/reply returns 401 when no credentials', async () => {
+      const res = await request(app)
+        .post('/api/admin/support-tickets/00000000-0000-4000-8000-000000000111/reply')
+        .send({
+          message: 'Thanks, we are checking this now.',
+        });
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('GET /api/admin/support-tickets/:id/thread/stream returns 401 when no credentials', async () => {
+      const res = await request(app).get(
+        '/api/admin/support-tickets/00000000-0000-4000-8000-000000000111/thread/stream'
+      );
       expect(res.status).toBe(401);
       expect(res.body).toHaveProperty('success', false);
       expect(res.body).toHaveProperty('error');

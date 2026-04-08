@@ -60,6 +60,16 @@ const standaloneUser = require('../models/standaloneUser');
 const emailService = require('../services/emailService');
 const mailProcessService = require('../services/mailProcessService');
 const userDomainAccess = require('../models/userDomainAccess');
+const {
+  getSupportInboxIntegrationConfig,
+  upsertSupportInboxIntegrationConfig,
+} = require('../services/supportInboxIntegrationService');
+const {
+  SUPPORT_TICKET_THREAD_MESSAGE_MAX_LENGTH,
+  listSupportTicketThreadMessages,
+  createSupportTicketThreadMessage,
+  subscribeSupportTicketThread,
+} = require('../services/supportTicketThreadService');
 
 /**
  * GET /api/admin/me - Current user identity (any authenticated shop).
@@ -3207,6 +3217,20 @@ const SUPPORT_CHANGELOG_TITLE_MAX_LENGTH = 180;
 const SUPPORT_CHANGELOG_SUMMARY_MAX_LENGTH = 500;
 const SUPPORT_CHANGELOG_BODY_MAX_LENGTH = 10000;
 const SUPPORT_CHANGELOG_MAX_ITEMS = 200;
+const SUPPORT_UNIFIED_INBOX_SOURCES = ['all', 'ticket', 'feature_request', 'chat_feedback'];
+const SUPPORT_UNIFIED_INBOX_DEFAULT_LIMIT = 50;
+const SUPPORT_UNIFIED_INBOX_MAX_LIMIT = 200;
+const SUPPORT_PROACTIVE_DEFAULT_WINDOW_DAYS = 14;
+const SUPPORT_PROACTIVE_MAX_WINDOW_DAYS = 90;
+const SUPPORT_PROACTIVE_DEFAULT_DROP_PERCENT = 40;
+const SUPPORT_PROACTIVE_MIN_DROP_PERCENT = 5;
+const SUPPORT_PROACTIVE_MAX_DROP_PERCENT = 95;
+const SUPPORT_PROACTIVE_DEFAULT_MIN_PREV_EVENTS = 20;
+const SUPPORT_PROACTIVE_MAX_MIN_PREV_EVENTS = 5000;
+const SUPPORT_PROACTIVE_DEFAULT_OPEN_TICKETS_THRESHOLD = 3;
+const SUPPORT_PROACTIVE_MAX_OPEN_TICKETS_THRESHOLD = 100;
+const SUPPORT_PROACTIVE_OUTREACH_EMAIL = 'proactive@ripx.internal';
+const SUPPORT_PROACTIVE_NOTE_MAX_LENGTH = 2000;
 
 async function getSupportKbContextForAdmin(queryText, apiKey) {
   if (!queryText || !apiKey) {
@@ -3358,6 +3382,57 @@ function parseSupportStatusPayload(rawValue) {
   } catch (_err) {
     return fallback;
   }
+}
+
+function parseJsonObjectSafe(value) {
+  if (value && typeof value === 'object') {
+    return value;
+  }
+  if (typeof value !== 'string' || !value.trim()) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch (_err) {
+    return null;
+  }
+}
+
+function normalizeSupportProactiveSeverity(value) {
+  const severity = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (severity === 'critical' || severity === 'warning' || severity === 'info') {
+    return severity;
+  }
+  return 'info';
+}
+
+function supportProactiveSeverityWeight(value) {
+  const severity = normalizeSupportProactiveSeverity(value);
+  if (severity === 'critical') {
+    return 3;
+  }
+  if (severity === 'warning') {
+    return 2;
+  }
+  return 1;
+}
+
+function normalizeSupportProactiveSignalType(value) {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (
+    normalized === 'usage_drop' ||
+    normalized === 'running_test_inactive' ||
+    normalized === 'open_ticket_backlog' ||
+    normalized === 'billing_event'
+  ) {
+    return normalized;
+  }
+  return 'generic';
 }
 
 function getSupportRoutingPool(category) {
@@ -3551,6 +3626,7 @@ router.get(
     const whereDeleted = ' WHERE (st.deleted_at IS NULL)';
     const sql = `
       SELECT st.id, st.email, st.subject, st.category, st.status, st.priority, st.assigned_to,
+             st.metadata,
              st.created_at, st.updated_at, st.shop_domain, st.tenant_id
       FROM support_tickets st
       ${whereDeleted}${status ? ' AND st.status = $3' : ''}
@@ -3568,7 +3644,7 @@ router.get(
       result = await query(sql, queryParams);
       countResult = await query(countSql, status ? [status] : []);
     } catch (err) {
-      if (err.message && /deleted_at|column.*does not exist/i.test(err.message)) {
+      if (err.message && /deleted_at|metadata|column.*does not exist/i.test(err.message)) {
         const sqlNoDeleted = `
           SELECT st.id, st.email, st.subject, st.category, st.status, st.priority, st.assigned_to,
                  st.created_at, st.updated_at, st.shop_domain, st.tenant_id
@@ -3588,12 +3664,15 @@ router.get(
     const total = countResult?.rows?.[0]?.total ?? 0;
     return sendSuccess(res, HTTP_STATUS.OK, {
       tickets: result.rows.map(r => {
+        const metadata = parseJsonObjectSafe(r.metadata);
         const escalationState = getSupportEscalationState(r, escalationConfig);
         return {
           id: r.id,
           email: r.email,
           subject: r.subject,
           category: r.category,
+          category_source:
+            typeof metadata?.category_source === 'string' ? metadata.category_source : 'manual',
           status: r.status,
           priority: normalizeSupportPriority(r.priority, 'normal'),
           assigned_to: r.assigned_to || null,
@@ -3616,6 +3695,359 @@ router.get(
         escalation_high_hours: escalationConfig.highHours,
         escalation_urgent_hours: escalationConfig.urgentHours,
       },
+    });
+  })
+);
+
+/**
+ * GET /api/admin/support-tickets/:id/thread
+ * Read one support ticket thread as admin.
+ */
+router.get(
+  '/support-tickets/:id/thread',
+  asyncHandler(async (req, res) => {
+    const ticketId = req.params.id;
+    if (!ticketId || !validators.isValidUUID(ticketId)) {
+      return res.status(400).json({ success: false, error: 'Invalid ticket ID' });
+    }
+    const ticketResult = await getSupportTicketById(ticketId);
+    const ticket = ticketResult.rows?.[0];
+    if (!ticket) {
+      return res.status(404).json({ success: false, error: 'Ticket not found' });
+    }
+    const messages = await listSupportTicketThreadMessages(ticket, {
+      limit: parseInt(req.query.limit, 10) || 300,
+    });
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      ticket: {
+        id: ticket.id,
+        email: ticket.email,
+        subject: ticket.subject,
+        status: ticket.status,
+        category: ticket.category,
+        created_at: ticket.created_at,
+        updated_at: ticket.updated_at,
+      },
+      messages,
+    });
+  })
+);
+
+/**
+ * POST /api/admin/support-tickets/:id/reply
+ * Add an admin reply to the support ticket thread.
+ */
+router.post(
+  '/support-tickets/:id/reply',
+  asyncHandler(async (req, res) => {
+    const ticketId = req.params.id;
+    if (!ticketId || !validators.isValidUUID(ticketId)) {
+      return res.status(400).json({ success: false, error: 'Invalid ticket ID' });
+    }
+    const ticketResult = await getSupportTicketById(ticketId);
+    const ticket = ticketResult.rows?.[0];
+    if (!ticket) {
+      return res.status(404).json({ success: false, error: 'Ticket not found' });
+    }
+
+    const message = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+    if (!message) {
+      return res.status(400).json({ success: false, error: 'message is required' });
+    }
+    if (message.length > SUPPORT_TICKET_THREAD_MESSAGE_MAX_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        error: `message must be ${SUPPORT_TICKET_THREAD_MESSAGE_MAX_LENGTH} characters or less`,
+      });
+    }
+    const senderLabel =
+      (typeof req.adminId === 'string' && req.adminId.trim()) ||
+      (typeof req.email === 'string' && req.email.trim()) ||
+      'Support Agent';
+    const created = await createSupportTicketThreadMessage({
+      ticketId: ticket.id,
+      senderType: 'admin',
+      senderLabel,
+      message,
+      metadata: {
+        source: 'admin_dashboard',
+        admin_id: req.adminId || null,
+      },
+    });
+    if (!created.ok) {
+      return res
+        .status(400)
+        .json({ success: false, error: created.error || 'Could not add reply' });
+    }
+
+    await auditLogService.logAdminAction(req, {
+      entityType: 'support_ticket',
+      entityId: String(ticket.id),
+      action: 'reply',
+      changes: {
+        message_length: message.length,
+      },
+    });
+
+    return sendSuccess(res, HTTP_STATUS.CREATED, {
+      ticket_id: ticket.id,
+      message: created.message,
+    });
+  })
+);
+
+/**
+ * GET /api/admin/support-tickets/:id/thread/stream
+ * Server-sent events stream for real-time support ticket thread updates.
+ */
+router.get(
+  '/support-tickets/:id/thread/stream',
+  asyncHandler(async (req, res) => {
+    const ticketId = req.params.id;
+    if (!ticketId || !validators.isValidUUID(ticketId)) {
+      return res.status(400).json({ success: false, error: 'Invalid ticket ID' });
+    }
+    const ticketResult = await getSupportTicketById(ticketId);
+    const ticket = ticketResult.rows?.[0];
+    if (!ticket) {
+      return res.status(404).json({ success: false, error: 'Ticket not found' });
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    if (typeof res.flushHeaders === 'function') {
+      res.flushHeaders();
+    }
+    const writeEvent = payload => {
+      try {
+        res.write(`data: ${JSON.stringify(payload)}\n\n`);
+      } catch (_err) {
+        // Ignore write errors; close handler cleans up.
+      }
+    };
+    writeEvent({
+      type: 'connected',
+      ticket_id: ticket.id,
+      timestamp: new Date().toISOString(),
+    });
+
+    const unsubscribe = subscribeSupportTicketThread(ticket.id, messagePayload => {
+      writeEvent({
+        type: 'message',
+        ticket_id: ticket.id,
+        message: messagePayload,
+      });
+    });
+    const heartbeat = setInterval(() => {
+      writeEvent({ type: 'heartbeat', timestamp: new Date().toISOString() });
+    }, 20000);
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+      try {
+        res.end();
+      } catch (_err) {
+        // Ignore stream close issues.
+      }
+    });
+  })
+);
+
+/**
+ * GET /api/admin/support-unified-inbox
+ * Single stream of support signals across tickets, feature requests, and negative chat feedback.
+ */
+router.get(
+  '/support-unified-inbox',
+  asyncHandler(async (req, res) => {
+    const sourceRaw = String(req.query.source || 'all')
+      .trim()
+      .toLowerCase();
+    const source = SUPPORT_UNIFIED_INBOX_SOURCES.includes(sourceRaw) ? sourceRaw : 'all';
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit, 10) || SUPPORT_UNIFIED_INBOX_DEFAULT_LIMIT, 1),
+      SUPPORT_UNIFIED_INBOX_MAX_LIMIT
+    );
+
+    const includeTickets = source === 'all' || source === 'ticket';
+    const includeFeatureRequests = source === 'all' || source === 'feature_request';
+    const includeChatFeedback = source === 'all' || source === 'chat_feedback';
+
+    let ticketRows = [];
+    let featureRequestRows = [];
+    let chatFeedbackRows = [];
+
+    if (includeTickets) {
+      const ticketsSql = `
+        SELECT id, email, subject, category, status, priority, metadata, shop_domain, created_at, updated_at
+        FROM support_tickets
+        WHERE (deleted_at IS NULL)
+        ORDER BY created_at DESC
+        LIMIT $1
+      `;
+      const ticketsFallbackSql = `
+        SELECT id, email, subject, category, status, priority, shop_domain, created_at, updated_at
+        FROM support_tickets
+        ORDER BY created_at DESC
+        LIMIT $1
+      `;
+      try {
+        const result = await query(ticketsSql, [limit]);
+        ticketRows = result.rows || [];
+      } catch (err) {
+        if (err.message && /deleted_at|metadata|column.*does not exist/i.test(err.message)) {
+          const result = await query(ticketsFallbackSql, [limit]).catch(() => ({ rows: [] }));
+          ticketRows = result.rows || [];
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    if (includeFeatureRequests) {
+      const featureSql = `
+        SELECT id, title, details, status, vote_count, email, shop_domain, created_at, updated_at
+        FROM support_feature_requests
+        WHERE (deleted_at IS NULL)
+        ORDER BY created_at DESC
+        LIMIT $1
+      `;
+      const featureFallbackSql = `
+        SELECT id, title, details, status, vote_count, email, shop_domain, created_at, updated_at
+        FROM support_feature_requests
+        ORDER BY created_at DESC
+        LIMIT $1
+      `;
+      try {
+        const result = await query(featureSql, [limit]);
+        featureRequestRows = result.rows || [];
+      } catch (err) {
+        if (
+          err.message &&
+          (/support_feature_requests|relation .* does not exist/i.test(err.message) ||
+            /deleted_at|column.*does not exist/i.test(err.message))
+        ) {
+          const result = await query(featureFallbackSql, [limit]).catch(() => ({ rows: [] }));
+          featureRequestRows = result.rows || [];
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    if (includeChatFeedback) {
+      const feedbackSql = `
+        SELECT id, conversation_id, content, metadata, created_at
+        FROM support_chat_messages
+        WHERE role = 'feedback'
+        ORDER BY created_at DESC
+        LIMIT $1
+      `;
+      try {
+        const result = await query(feedbackSql, [
+          Math.min(limit * 2, SUPPORT_UNIFIED_INBOX_MAX_LIMIT),
+        ]);
+        chatFeedbackRows = result.rows || [];
+      } catch (err) {
+        if (/support_chat_messages|relation .* does not exist/i.test(err.message || '')) {
+          chatFeedbackRows = [];
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    const ticketItems = ticketRows.map(row => {
+      const metadata = parseJsonObjectSafe(row.metadata);
+      return {
+        source: 'ticket',
+        source_label: 'Ticket',
+        item_id: row.id,
+        title: row.subject || '(No subject)',
+        summary: `${row.email || 'Unknown requester'} · ${row.category || 'other'}`,
+        status: row.status || 'open',
+        priority: normalizeSupportPriority(row.priority, 'normal'),
+        category: row.category || 'other',
+        category_source:
+          typeof metadata?.category_source === 'string' ? metadata.category_source : 'manual',
+        email: row.email || null,
+        shop_domain: row.shop_domain || null,
+        created_at: row.created_at,
+        updated_at: row.updated_at || row.created_at,
+      };
+    });
+
+    const featureRequestItems = featureRequestRows.map(row => ({
+      source: 'feature_request',
+      source_label: 'Feature request',
+      item_id: row.id,
+      title: row.title || '(Untitled request)',
+      summary:
+        (typeof row.details === 'string' && row.details.trim()
+          ? row.details.trim().slice(0, 180)
+          : 'No details provided') + ` · ${Number(row.vote_count) || 0} votes`,
+      status: row.status || 'open',
+      priority: 'normal',
+      vote_count: Number(row.vote_count) || 0,
+      email: row.email || null,
+      shop_domain: row.shop_domain || null,
+      created_at: row.created_at,
+      updated_at: row.updated_at || row.created_at,
+    }));
+
+    const chatFeedbackItems = chatFeedbackRows
+      .map(row => {
+        const metadata = parseJsonObjectSafe(row.metadata);
+        const helpful = metadata?.helpful;
+        const content = String(row.content || '')
+          .trim()
+          .toLowerCase();
+        const negative =
+          content === 'not_helpful' ||
+          helpful === false ||
+          (typeof helpful === 'string' &&
+            ['false', '0', 'no', 'not_helpful'].includes(helpful.trim().toLowerCase()));
+        if (!negative) {
+          return null;
+        }
+        const reason =
+          typeof metadata?.reason === 'string' && metadata.reason.trim()
+            ? metadata.reason.trim().slice(0, 220)
+            : 'User marked an AI answer as not helpful.';
+        return {
+          source: 'chat_feedback',
+          source_label: 'Chat feedback',
+          item_id: row.id,
+          title: 'Negative AI feedback',
+          summary: reason,
+          status: 'needs_review',
+          priority: 'normal',
+          conversation_id: row.conversation_id || null,
+          created_at: row.created_at,
+          updated_at: row.created_at,
+        };
+      })
+      .filter(Boolean);
+
+    const merged = [...ticketItems, ...featureRequestItems, ...chatFeedbackItems]
+      .sort((a, b) => {
+        const aTime = a?.created_at ? new Date(a.created_at).getTime() : 0;
+        const bTime = b?.created_at ? new Date(b.created_at).getTime() : 0;
+        return bTime - aTime;
+      })
+      .slice(0, limit);
+
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      source,
+      limit,
+      total: merged.length,
+      counts: {
+        ticket: ticketItems.length,
+        feature_request: featureRequestItems.length,
+        chat_feedback: chatFeedbackItems.length,
+      },
+      items: merged,
     });
   })
 );
@@ -3738,6 +4170,42 @@ router.delete(
       changes: {},
     });
     return sendSuccess(res, HTTP_STATUS.OK, { deleted: true, key: macroKey });
+  })
+);
+
+/**
+ * GET /api/admin/support-inbox-integration
+ * Read Zendesk/Help Scout sync configuration.
+ */
+router.get(
+  '/support-inbox-integration',
+  asyncHandler(async (_req, res) => {
+    const config = await getSupportInboxIntegrationConfig({ includeSecrets: false });
+    return sendSuccess(res, HTTP_STATUS.OK, { config });
+  })
+);
+
+/**
+ * PUT /api/admin/support-inbox-integration
+ * Update Zendesk/Help Scout sync configuration.
+ */
+router.put(
+  '/support-inbox-integration',
+  asyncHandler(async (req, res) => {
+    const result = await upsertSupportInboxIntegrationConfig(req.body || {}, req.adminId || null);
+    if (!result.ok) {
+      return res.status(400).json({ success: false, error: result.error || 'Invalid config' });
+    }
+    await auditLogService.logAdminAction(req, {
+      entityType: 'support_inbox_integration',
+      entityId: 'support.inbox.integration',
+      action: 'upsert',
+      changes: {
+        provider: result.config?.provider || 'none',
+        enabled: Boolean(result.config?.enabled),
+      },
+    });
+    return sendSuccess(res, HTTP_STATUS.OK, { config: result.config });
   })
 );
 
@@ -4465,6 +4933,394 @@ router.get(
             ? Number(row.avg_resolution_minutes)
             : null,
       })),
+    });
+  })
+);
+
+/**
+ * GET /api/admin/support/proactive-signals
+ * Detect proactive outreach triggers (usage drop, inactivity, support load, billing-like webhook events).
+ */
+router.get(
+  '/support/proactive-signals',
+  asyncHandler(async (req, res) => {
+    const parsedWindowDays = Number.parseInt(req.query.window_days, 10);
+    const parsedDropThreshold = Number.parseFloat(req.query.drop_threshold_percent);
+    const parsedMinPrevEvents = Number.parseInt(req.query.min_previous_events, 10);
+    const parsedOpenTicketsThreshold = Number.parseInt(req.query.open_tickets_threshold, 10);
+
+    const windowDays = Number.isFinite(parsedWindowDays)
+      ? Math.min(Math.max(parsedWindowDays, 1), SUPPORT_PROACTIVE_MAX_WINDOW_DAYS)
+      : SUPPORT_PROACTIVE_DEFAULT_WINDOW_DAYS;
+    const dropThresholdPercent = Number.isFinite(parsedDropThreshold)
+      ? Math.min(
+          Math.max(parsedDropThreshold, SUPPORT_PROACTIVE_MIN_DROP_PERCENT),
+          SUPPORT_PROACTIVE_MAX_DROP_PERCENT
+        )
+      : SUPPORT_PROACTIVE_DEFAULT_DROP_PERCENT;
+    const minPreviousEvents = Number.isFinite(parsedMinPrevEvents)
+      ? Math.min(Math.max(parsedMinPrevEvents, 1), SUPPORT_PROACTIVE_MAX_MIN_PREV_EVENTS)
+      : SUPPORT_PROACTIVE_DEFAULT_MIN_PREV_EVENTS;
+    const openTicketsThreshold = Number.isFinite(parsedOpenTicketsThreshold)
+      ? Math.min(
+          Math.max(parsedOpenTicketsThreshold, 1),
+          SUPPORT_PROACTIVE_MAX_OPEN_TICKETS_THRESHOLD
+        )
+      : SUPPORT_PROACTIVE_DEFAULT_OPEN_TICKETS_THRESHOLD;
+
+    /** @type {Array<Record<string, unknown>>} */
+    const signals = [];
+
+    // 1) Usage drop across rolling windows.
+    try {
+      const usageRows = await query(
+        `
+          SELECT
+            LOWER(TRIM(shop_domain)) AS shop_domain,
+            COUNT(*) FILTER (
+              WHERE created_at >= NOW() - make_interval(days => $1::int)
+            )::int AS current_events,
+            COUNT(*) FILTER (
+              WHERE created_at < NOW() - make_interval(days => $1::int)
+                AND created_at >= NOW() - (($1::int * 2) * INTERVAL '1 day')
+            )::int AS previous_events,
+            MAX(created_at) AS last_event_at
+          FROM events
+          WHERE shop_domain IS NOT NULL
+            AND COALESCE(TRIM(shop_domain), '') <> ''
+            AND created_at >= NOW() - (($1::int * 2) * INTERVAL '1 day')
+          GROUP BY 1
+        `,
+        [windowDays]
+      ).catch(() => ({ rows: [] }));
+      for (const row of usageRows.rows || []) {
+        const shopDomain = String(row.shop_domain || '')
+          .trim()
+          .toLowerCase();
+        const currentEvents = Number(row.current_events) || 0;
+        const previousEvents = Number(row.previous_events) || 0;
+        if (!shopDomain || previousEvents < minPreviousEvents) {
+          continue;
+        }
+        const dropPercent =
+          previousEvents > 0 ? ((previousEvents - currentEvents) / previousEvents) * 100 : 0;
+        if (!(dropPercent >= dropThresholdPercent)) {
+          continue;
+        }
+        signals.push({
+          id: `usage_drop:${shopDomain}`,
+          type: 'usage_drop',
+          severity: currentEvents === 0 ? 'critical' : 'warning',
+          shop_domain: shopDomain,
+          title: 'Usage drop detected',
+          details: `Events dropped from ${previousEvents} to ${currentEvents} in the last ${windowDays} days.`,
+          recommended_action:
+            'Reach out to confirm app health, script installation, and recent store/theme changes.',
+          metric_current: currentEvents,
+          metric_previous: previousEvents,
+          metric_drop_percent: Number(dropPercent.toFixed(1)),
+          detected_at: row.last_event_at || new Date().toISOString(),
+        });
+      }
+    } catch (_usageErr) {
+      // Non-blocking: proactive endpoint should still return other signal groups.
+    }
+
+    // 2) Running tests with no recent events.
+    try {
+      const inactivityRows = await query(
+        `
+          SELECT
+            LOWER(TRIM(t.shop_domain)) AS shop_domain,
+            COUNT(*)::int AS running_tests,
+            COALESCE(ev.events_last_window, 0)::int AS events_last_window,
+            MAX(t.updated_at) AS latest_test_update
+          FROM tests t
+          LEFT JOIN (
+            SELECT LOWER(TRIM(shop_domain)) AS shop_domain, COUNT(*)::int AS events_last_window
+            FROM events
+            WHERE created_at >= NOW() - make_interval(days => $1::int)
+            GROUP BY 1
+          ) ev
+            ON ev.shop_domain = LOWER(TRIM(t.shop_domain))
+          WHERE LOWER(TRIM(COALESCE(t.status, ''))) = 'running'
+            AND COALESCE(TRIM(t.shop_domain), '') <> ''
+          GROUP BY 1, ev.events_last_window
+        `,
+        [windowDays]
+      ).catch(() => ({ rows: [] }));
+      for (const row of inactivityRows.rows || []) {
+        const shopDomain = String(row.shop_domain || '')
+          .trim()
+          .toLowerCase();
+        const runningTests = Number(row.running_tests) || 0;
+        const eventsLastWindow = Number(row.events_last_window) || 0;
+        if (!shopDomain || runningTests <= 0 || eventsLastWindow > 0) {
+          continue;
+        }
+        signals.push({
+          id: `running_test_inactive:${shopDomain}`,
+          type: 'running_test_inactive',
+          severity: 'critical',
+          shop_domain: shopDomain,
+          title: 'Running tests with no traffic events',
+          details: `${runningTests} running test(s), but no events received in the last ${windowDays} days.`,
+          recommended_action:
+            'Contact merchant to verify storefront script loading, domain connection, and traffic source.',
+          metric_current: eventsLastWindow,
+          metric_previous: runningTests,
+          detected_at: row.latest_test_update || new Date().toISOString(),
+        });
+      }
+    } catch (_inactivityErr) {
+      // Non-blocking.
+    }
+
+    // 3) Open support backlog per shop.
+    try {
+      const backlogWithDeletedSql = `
+        SELECT
+          LOWER(TRIM(COALESCE(shop_domain, ''))) AS shop_domain,
+          COUNT(*)::int AS open_tickets,
+          MIN(created_at) AS oldest_open_at,
+          MAX(created_at) AS latest_open_at
+        FROM support_tickets
+        WHERE LOWER(TRIM(COALESCE(status, ''))) = 'open'
+          AND (deleted_at IS NULL)
+        GROUP BY 1
+      `;
+      const backlogNoDeletedSql = `
+        SELECT
+          LOWER(TRIM(COALESCE(shop_domain, ''))) AS shop_domain,
+          COUNT(*)::int AS open_tickets,
+          MIN(created_at) AS oldest_open_at,
+          MAX(created_at) AS latest_open_at
+        FROM support_tickets
+        WHERE LOWER(TRIM(COALESCE(status, ''))) = 'open'
+        GROUP BY 1
+      `;
+      let backlogRows;
+      try {
+        backlogRows = await query(backlogWithDeletedSql).catch(() => ({ rows: [] }));
+      } catch (err) {
+        if (err.message && /deleted_at|column.*does not exist/i.test(err.message)) {
+          backlogRows = await query(backlogNoDeletedSql).catch(() => ({ rows: [] }));
+        } else {
+          throw err;
+        }
+      }
+      for (const row of backlogRows.rows || []) {
+        const shopDomain = String(row.shop_domain || '')
+          .trim()
+          .toLowerCase();
+        const openTickets = Number(row.open_tickets) || 0;
+        if (!shopDomain || openTickets < openTicketsThreshold) {
+          continue;
+        }
+        signals.push({
+          id: `open_ticket_backlog:${shopDomain}`,
+          type: 'open_ticket_backlog',
+          severity: openTickets >= openTicketsThreshold * 2 ? 'critical' : 'warning',
+          shop_domain: shopDomain,
+          title: 'Open support backlog',
+          details: `${openTickets} open support ticket(s) for this shop.`,
+          recommended_action:
+            'Prioritize outreach and route tickets to reduce SLA risk and churn signals.',
+          metric_current: openTickets,
+          metric_previous: null,
+          detected_at: row.latest_open_at || row.oldest_open_at || new Date().toISOString(),
+        });
+      }
+    } catch (_backlogErr) {
+      // Non-blocking.
+    }
+
+    // 4) Payment/renewal-like webhook signals (when available).
+    try {
+      const billingEventRows = await query(
+        `
+          SELECT
+            LOWER(TRIM(COALESCE(shop_domain, ''))) AS shop_domain,
+            topic,
+            received_at
+          FROM webhook_events
+          WHERE received_at >= NOW() - make_interval(days => $1::int)
+            AND (
+              LOWER(COALESCE(topic, '')) LIKE '%billing%'
+              OR LOWER(COALESCE(topic, '')) LIKE '%payment%'
+              OR LOWER(COALESCE(topic, '')) LIKE '%subscription%'
+              OR LOWER(COALESCE(topic, '')) LIKE '%app_subscriptions%'
+            )
+          ORDER BY received_at DESC
+          LIMIT 300
+        `,
+        [windowDays]
+      ).catch(() => ({ rows: [] }));
+      const byShop = new Map();
+      for (const row of billingEventRows.rows || []) {
+        const shopDomain = String(row.shop_domain || '')
+          .trim()
+          .toLowerCase();
+        if (!shopDomain || byShop.has(shopDomain)) {
+          continue;
+        }
+        byShop.set(shopDomain, row);
+      }
+      for (const [shopDomain, row] of byShop.entries()) {
+        const topic = String(row.topic || '').trim();
+        const topicLower = topic.toLowerCase();
+        const isFailureTopic =
+          topicLower.includes('fail') ||
+          topicLower.includes('declin') ||
+          topicLower.includes('cancel') ||
+          topicLower.includes('expired');
+        signals.push({
+          id: `billing_event:${shopDomain}`,
+          type: 'billing_event',
+          severity: isFailureTopic ? 'critical' : 'info',
+          shop_domain: shopDomain,
+          title: isFailureTopic ? 'Billing/payment risk signal' : 'Billing lifecycle signal',
+          details: `Recent webhook topic: ${topic || 'unknown'}.`,
+          recommended_action: isFailureTopic
+            ? 'Initiate outreach to confirm subscription/payment status and prevent interruption.'
+            : 'Review billing lifecycle event and confirm customer health.',
+          metric_current: null,
+          metric_previous: null,
+          detected_at: row.received_at || new Date().toISOString(),
+        });
+      }
+    } catch (_billingErr) {
+      // Non-blocking.
+    }
+
+    const sortedSignals = signals.sort((a, b) => {
+      const severityDelta =
+        supportProactiveSeverityWeight(b.severity) - supportProactiveSeverityWeight(a.severity);
+      if (severityDelta !== 0) {
+        return severityDelta;
+      }
+      const aTime = a?.detected_at ? new Date(a.detected_at).getTime() : 0;
+      const bTime = b?.detected_at ? new Date(b.detected_at).getTime() : 0;
+      return bTime - aTime;
+    });
+    const summary = {
+      total_signals: sortedSignals.length,
+      critical: sortedSignals.filter(
+        item => normalizeSupportProactiveSeverity(item.severity) === 'critical'
+      ).length,
+      warning: sortedSignals.filter(
+        item => normalizeSupportProactiveSeverity(item.severity) === 'warning'
+      ).length,
+      info: sortedSignals.filter(
+        item => normalizeSupportProactiveSeverity(item.severity) === 'info'
+      ).length,
+    };
+
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      window_days: windowDays,
+      drop_threshold_percent: dropThresholdPercent,
+      min_previous_events: minPreviousEvents,
+      open_tickets_threshold: openTicketsThreshold,
+      summary,
+      signals: sortedSignals,
+    });
+  })
+);
+
+/**
+ * POST /api/admin/support/proactive-signals/outreach
+ * Create a proactive outreach support ticket for a detected signal.
+ */
+router.post(
+  '/support/proactive-signals/outreach',
+  asyncHandler(async (req, res) => {
+    const shopDomain = String(req.body?.shop_domain || '')
+      .trim()
+      .toLowerCase();
+    const signalType = normalizeSupportProactiveSignalType(req.body?.signal_type);
+    const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
+    if (!shopDomain) {
+      return res.status(400).json({ success: false, error: 'shop_domain is required' });
+    }
+    if (note.length > SUPPORT_PROACTIVE_NOTE_MAX_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        error: `note must be ${SUPPORT_PROACTIVE_NOTE_MAX_LENGTH} characters or less`,
+      });
+    }
+
+    const tenantLookup = await query(
+      'SELECT id FROM tenants WHERE LOWER(TRIM(domain)) = LOWER(TRIM($1)) LIMIT 1',
+      [shopDomain]
+    ).catch(() => ({ rows: [] }));
+    const tenantId = tenantLookup.rows?.[0]?.id || null;
+    const signalLabel = signalType === 'generic' ? 'proactive_signal' : signalType;
+    const subject = `[Proactive outreach] ${shopDomain} · ${signalLabel}`;
+    const message = [
+      'This ticket was generated from proactive support monitoring.',
+      `Signal type: ${signalLabel}`,
+      `Shop: ${shopDomain}`,
+      note ? `Note: ${note}` : null,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    const metadata = {
+      source: 'proactive_support_monitor',
+      signal_type: signalLabel,
+      created_by_admin: req.adminId || null,
+      note: note || null,
+      created_at: new Date().toISOString(),
+    };
+
+    let insertResult;
+    try {
+      insertResult = await query(
+        `INSERT INTO support_tickets
+           (user_id, email, subject, category, message, tenant_id, shop_domain, metadata)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+         RETURNING id, created_at`,
+        [
+          null,
+          SUPPORT_PROACTIVE_OUTREACH_EMAIL,
+          subject,
+          'other',
+          message,
+          tenantId,
+          shopDomain,
+          JSON.stringify(metadata),
+        ]
+      );
+    } catch (err) {
+      if (err.message && /metadata|column.*does not exist/i.test(err.message)) {
+        insertResult = await query(
+          `INSERT INTO support_tickets
+             (user_id, email, subject, category, message, tenant_id, shop_domain)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           RETURNING id, created_at`,
+          [null, SUPPORT_PROACTIVE_OUTREACH_EMAIL, subject, 'other', message, tenantId, shopDomain]
+        );
+      } else {
+        throw err;
+      }
+    }
+
+    const ticketId = insertResult.rows?.[0]?.id || null;
+    await auditLogService.logAdminAction(req, {
+      entityType: 'support_proactive_outreach',
+      entityId: ticketId ? String(ticketId) : shopDomain,
+      action: 'create',
+      changes: {
+        shop_domain: shopDomain,
+        signal_type: signalLabel,
+      },
+    });
+
+    return sendSuccess(res, HTTP_STATUS.CREATED, {
+      ticket_id: ticketId,
+      shop_domain: shopDomain,
+      signal_type: signalLabel,
+      created_at: insertResult.rows?.[0]?.created_at || null,
     });
   })
 );

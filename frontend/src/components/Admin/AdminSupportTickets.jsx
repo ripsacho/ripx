@@ -5,7 +5,7 @@
  * update status; routing/escalation actions; bulk close/resolve.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Card,
@@ -76,6 +76,27 @@ const CHANGELOG_LEVEL_TONE = {
   maintenance: 'warning',
   info: 'new',
 };
+const UNIFIED_INBOX_SOURCE_OPTIONS = [
+  { label: 'All sources', value: 'all' },
+  { label: 'Tickets', value: 'ticket' },
+  { label: 'Feature requests', value: 'feature_request' },
+  { label: 'Chat feedback', value: 'chat_feedback' },
+];
+const UNIFIED_INBOX_SOURCE_TONE = {
+  ticket: 'success',
+  feature_request: 'attention',
+  chat_feedback: 'warning',
+};
+const PROACTIVE_SEVERITY_TONE = {
+  critical: 'critical',
+  warning: 'attention',
+  info: 'info',
+};
+const SUPPORT_INBOX_PROVIDER_OPTIONS = [
+  { label: 'Disabled', value: 'none' },
+  { label: 'Zendesk', value: 'zendesk' },
+  { label: 'Help Scout', value: 'helpscout' },
+];
 
 function normalizeMacroKey(value) {
   return String(value || '')
@@ -107,6 +128,23 @@ export default function AdminSupportTickets() {
   const [changelogBody, setChangelogBody] = useState('');
   const [changelogLevel, setChangelogLevel] = useState('release');
   const [changelogVisibility, setChangelogVisibility] = useState('published');
+  const [supportInboxProvider, setSupportInboxProvider] = useState('none');
+  const [supportInboxEnabled, setSupportInboxEnabled] = useState(false);
+  const [supportInboxZendeskSubdomain, setSupportInboxZendeskSubdomain] = useState('');
+  const [supportInboxZendeskEmail, setSupportInboxZendeskEmail] = useState('');
+  const [supportInboxZendeskApiToken, setSupportInboxZendeskApiToken] = useState('');
+  const [supportInboxHelpScoutMailboxId, setSupportInboxHelpScoutMailboxId] = useState('');
+  const [supportInboxHelpScoutAccessToken, setSupportInboxHelpScoutAccessToken] = useState('');
+  const [threadTicket, setThreadTicket] = useState(null);
+  const [threadMessages, setThreadMessages] = useState([]);
+  const [threadReply, setThreadReply] = useState('');
+  const [threadLoading, setThreadLoading] = useState(false);
+  const [threadSending, setThreadSending] = useState(false);
+  const [threadStreamState, setThreadStreamState] = useState('idle');
+  const [threadError, setThreadError] = useState('');
+  const [unifiedInboxSource, setUnifiedInboxSource] = useState('all');
+  const [proactiveWindowDays, setProactiveWindowDays] = useState('14');
+  const threadEventSourceRef = useRef(null);
 
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['admin', 'support-tickets', statusFilter],
@@ -148,6 +186,44 @@ export default function AdminSupportTickets() {
     queryKey: ['admin', 'support-changelog'],
     queryFn: async () => {
       const res = await apiGet('/admin/support-changelog', { limit: 20 });
+      return res?.data?.data ?? res?.data ?? {};
+    },
+  });
+  const {
+    data: supportInboxIntegrationData,
+    isLoading: supportInboxIntegrationLoading,
+    refetch: refetchSupportInboxIntegration,
+  } = useQuery({
+    queryKey: ['admin', 'support-inbox-integration'],
+    queryFn: async () => {
+      const res = await apiGet('/admin/support-inbox-integration');
+      return res?.data?.data ?? res?.data ?? {};
+    },
+  });
+  const {
+    data: unifiedInboxData,
+    isLoading: unifiedInboxLoading,
+    refetch: refetchUnifiedInbox,
+  } = useQuery({
+    queryKey: ['admin', 'support-unified-inbox', unifiedInboxSource],
+    queryFn: async () => {
+      const res = await apiGet('/admin/support-unified-inbox', {
+        source: unifiedInboxSource,
+        limit: 60,
+      });
+      return res?.data?.data ?? res?.data ?? {};
+    },
+  });
+  const {
+    data: proactiveSignalsData,
+    isLoading: proactiveSignalsLoading,
+    refetch: refetchProactiveSignals,
+  } = useQuery({
+    queryKey: ['admin', 'support-proactive-signals', proactiveWindowDays],
+    queryFn: async () => {
+      const res = await apiGet('/admin/support/proactive-signals', {
+        window_days: Number(proactiveWindowDays) || 14,
+      });
       return res?.data?.data ?? res?.data ?? {};
     },
   });
@@ -315,6 +391,38 @@ export default function AdminSupportTickets() {
       });
     },
   });
+  const updateSupportInboxIntegrationMutation = useMutation({
+    mutationFn: payload => apiPut('/admin/support-inbox-integration', payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'support-inbox-integration'] });
+      setSupportInboxZendeskApiToken('');
+      setSupportInboxHelpScoutAccessToken('');
+      setToast({ message: 'Support inbox integration updated', type: 'success' });
+    },
+    onError: err => {
+      setToast({
+        message:
+          err?.response?.data?.error ||
+          err?.message ||
+          'Could not update support inbox integration',
+        type: 'error',
+      });
+    },
+  });
+  const createProactiveOutreachMutation = useMutation({
+    mutationFn: payload => apiPost('/admin/support/proactive-signals/outreach', payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'support-proactive-signals'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'support-tickets'] });
+      setToast({ message: 'Proactive outreach ticket created', type: 'success' });
+    },
+    onError: err => {
+      setToast({
+        message: err?.response?.data?.error || err?.message || 'Could not create outreach ticket',
+        type: 'error',
+      });
+    },
+  });
 
   const tickets = data?.tickets ?? [];
   const total = data?.total ?? 0;
@@ -335,6 +443,13 @@ export default function AdminSupportTickets() {
   const supportChangelogEntries = Array.isArray(supportChangelogData?.entries)
     ? supportChangelogData.entries
     : [];
+  const supportInboxConfig = supportInboxIntegrationData?.config || {};
+  const unifiedInboxItems = Array.isArray(unifiedInboxData?.items) ? unifiedInboxData.items : [];
+  const unifiedInboxCounts = unifiedInboxData?.counts || {};
+  const proactiveSignals = Array.isArray(proactiveSignalsData?.signals)
+    ? proactiveSignalsData.signals
+    : [];
+  const proactiveSummary = proactiveSignalsData?.summary || {};
   const topCategories = analyticsData?.ticket_categories || [];
   const topQuestions = analyticsData?.top_ai_questions || [];
   const slaTargets = analyticsData?.sla_targets_hours || {};
@@ -372,6 +487,27 @@ export default function AdminSupportTickets() {
     }
   }, [supportStatusRow?.status, supportStatusRow?.message]);
 
+  useEffect(() => {
+    const nextProvider = String(supportInboxConfig?.provider || 'none')
+      .trim()
+      .toLowerCase();
+    if (nextProvider) {
+      setSupportInboxProvider(nextProvider);
+    }
+    setSupportInboxEnabled(Boolean(supportInboxConfig?.enabled));
+    setSupportInboxZendeskSubdomain(String(supportInboxConfig?.zendesk?.subdomain || '').trim());
+    setSupportInboxZendeskEmail(String(supportInboxConfig?.zendesk?.email || '').trim());
+    setSupportInboxHelpScoutMailboxId(
+      String(supportInboxConfig?.helpscout?.mailboxId || '').trim()
+    );
+  }, [
+    supportInboxConfig?.provider,
+    supportInboxConfig?.enabled,
+    supportInboxConfig?.zendesk?.subdomain,
+    supportInboxConfig?.zendesk?.email,
+    supportInboxConfig?.helpscout?.mailboxId,
+  ]);
+
   const handleBulkApply = () => {
     if (!bulkAction || selectedIds.length === 0) return;
     bulkMutation.mutate({ ticketIds: selectedIds, action: bulkAction });
@@ -394,6 +530,52 @@ export default function AdminSupportTickets() {
       body: changelogBody,
       level: changelogLevel,
       visibility: changelogVisibility,
+    });
+  };
+  const handleSaveSupportInboxIntegration = () => {
+    const provider = String(supportInboxProvider || 'none')
+      .trim()
+      .toLowerCase();
+    const payload = {
+      provider,
+      enabled: Boolean(supportInboxEnabled && provider !== 'none'),
+      zendesk: {
+        subdomain: supportInboxZendeskSubdomain,
+        email: supportInboxZendeskEmail,
+      },
+      helpscout: {
+        mailboxId: supportInboxHelpScoutMailboxId,
+      },
+    };
+    if (supportInboxZendeskApiToken.trim()) {
+      payload.zendesk.apiToken = supportInboxZendeskApiToken.trim();
+    }
+    if (supportInboxHelpScoutAccessToken.trim()) {
+      payload.helpscout.accessToken = supportInboxHelpScoutAccessToken.trim();
+    }
+    updateSupportInboxIntegrationMutation.mutate(payload);
+  };
+  const handleCopyConversationId = async conversationId => {
+    const value = String(conversationId || '').trim();
+    if (!value) {
+      setToast({ message: 'Conversation id is missing', type: 'error' });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(value);
+      setToast({ message: 'Conversation id copied', type: 'success' });
+    } catch (_err) {
+      setToast({ message: 'Could not copy conversation id', type: 'error' });
+    }
+  };
+  const handleCreateProactiveOutreach = signal => {
+    if (!signal || !signal.shop_domain || createProactiveOutreachMutation.isPending) {
+      return;
+    }
+    createProactiveOutreachMutation.mutate({
+      shop_domain: signal.shop_domain,
+      signal_type: signal.type,
+      note: signal.details || '',
     });
   };
 
@@ -477,6 +659,127 @@ export default function AdminSupportTickets() {
     routeTicketMutation.mutate({ id: ticketId, escalate });
   };
 
+  const upsertThreadMessage = messageItem => {
+    if (!messageItem?.id) {
+      return;
+    }
+    setThreadMessages(prev => {
+      if (prev.some(existing => existing?.id === messageItem.id)) {
+        return prev;
+      }
+      const next = [...prev, messageItem];
+      next.sort((a, b) => {
+        const aTime = a?.created_at ? new Date(a.created_at).getTime() : 0;
+        const bTime = b?.created_at ? new Date(b.created_at).getTime() : 0;
+        return aTime - bTime;
+      });
+      return next;
+    });
+  };
+
+  const closeThreadModal = () => {
+    if (threadEventSourceRef.current) {
+      threadEventSourceRef.current.close();
+      threadEventSourceRef.current = null;
+    }
+    setThreadTicket(null);
+    setThreadMessages([]);
+    setThreadReply('');
+    setThreadLoading(false);
+    setThreadSending(false);
+    setThreadError('');
+    setThreadStreamState('idle');
+  };
+
+  const openThreadModal = async ticket => {
+    const ticketId = String(ticket?.id || '').trim();
+    if (!ticketId) {
+      return;
+    }
+    setThreadTicket({
+      id: ticketId,
+      subject: ticket?.subject || 'Support request',
+      email: ticket?.email || '',
+      status: ticket?.status || 'open',
+    });
+    setThreadMessages([]);
+    setThreadReply('');
+    setThreadError('');
+    setThreadLoading(true);
+    setThreadStreamState('connecting');
+    try {
+      const res = await apiGet(`/admin/support-tickets/${ticketId}/thread`);
+      const payload = res?.data?.data ?? res?.data ?? {};
+      const ticketPayload = payload?.ticket;
+      setThreadTicket(prev => ({
+        ...prev,
+        ...(ticketPayload || {}),
+        id: ticketPayload?.id || prev?.id || ticketId,
+      }));
+      setThreadMessages(Array.isArray(payload?.messages) ? payload.messages : []);
+    } catch (err) {
+      setThreadError(err?.response?.data?.error || err?.message || 'Could not load ticket thread');
+      setThreadStreamState('offline');
+    } finally {
+      setThreadLoading(false);
+    }
+  };
+
+  const sendThreadReply = async () => {
+    const ticketId = String(threadTicket?.id || '').trim();
+    const text = String(threadReply || '').trim();
+    if (!ticketId || !text || threadSending) {
+      return;
+    }
+    setThreadSending(true);
+    setThreadError('');
+    try {
+      const res = await apiPost(`/admin/support-tickets/${ticketId}/reply`, { message: text });
+      const payload = res?.data?.data ?? res?.data ?? {};
+      if (payload?.message?.id) {
+        upsertThreadMessage(payload.message);
+      }
+      setThreadReply('');
+      queryClient.invalidateQueries({ queryKey: ['admin', 'support-tickets'] });
+    } catch (err) {
+      setThreadError(err?.response?.data?.error || err?.message || 'Could not send reply');
+    } finally {
+      setThreadSending(false);
+    }
+  };
+
+  useEffect(() => {
+    const ticketId = String(threadTicket?.id || '').trim();
+    if (!ticketId || typeof window === 'undefined' || typeof window.EventSource === 'undefined') {
+      return undefined;
+    }
+    if (threadEventSourceRef.current) {
+      threadEventSourceRef.current.close();
+      threadEventSourceRef.current = null;
+    }
+    const stream = new window.EventSource(`/api/admin/support-tickets/${ticketId}/thread/stream`);
+    threadEventSourceRef.current = stream;
+    setThreadStreamState('connecting');
+    stream.onopen = () => setThreadStreamState('live');
+    stream.onmessage = event => {
+      try {
+        const payload = JSON.parse(event?.data || '{}');
+        if (payload?.type === 'message' && payload?.message?.id) {
+          upsertThreadMessage(payload.message);
+        }
+      } catch (_err) {
+        // Ignore malformed stream payload.
+      }
+    };
+    stream.onerror = () => setThreadStreamState('reconnecting');
+    return () => {
+      stream.close();
+      if (threadEventSourceRef.current === stream) {
+        threadEventSourceRef.current = null;
+      }
+    };
+  }, [threadTicket?.id]);
+
   const toggleSelectAll = checked => {
     setSelectedIds(checked ? tickets.map(t => t.id) : []);
   };
@@ -495,7 +798,14 @@ export default function AdminSupportTickets() {
     String(t.id).slice(0, 8),
     t.email ?? '—',
     (t.subject || '—').slice(0, 50) + ((t.subject || '').length > 50 ? '…' : ''),
-    t.category ?? '—',
+    <InlineStack key={`cat-${t.id}`} gap="100" blockAlign="center" wrap={false}>
+      <Text as="span" variant="bodySm">
+        {t.category ?? '—'}
+      </Text>
+      {String(t.category_source || '').toLowerCase() === 'auto' ? (
+        <Badge tone="info">Auto</Badge>
+      ) : null}
+    </InlineStack>,
     t.status ?? '—',
     <Badge key={`priority-${t.id}`} tone={PRIORITY_TONE[t.priority] || 'new'}>
       {t.priority || 'normal'}
@@ -515,6 +825,9 @@ export default function AdminSupportTickets() {
     t.shop_domain ?? '—',
     t.created_at ? new Date(t.created_at).toLocaleString() : '—',
     <InlineStack key={`act-${t.id}`} gap="100" wrap={false}>
+      <Button size="slim" variant="plain" onClick={() => openThreadModal(t)}>
+        Thread
+      </Button>
       <Button
         size="slim"
         variant="plain"
@@ -571,6 +884,92 @@ export default function AdminSupportTickets() {
       )}
     </InlineStack>,
   ]);
+  const unifiedInboxRows = unifiedInboxItems.map(item => {
+    const source = String(item.source || 'ticket').toLowerCase();
+    const itemId = String(item.item_id || '');
+    const createdAt = item.created_at ? new Date(item.created_at).toLocaleString() : '—';
+    const isTicket = source === 'ticket';
+    const isChatFeedback = source === 'chat_feedback';
+    return [
+      <Badge key={`src-${source}-${itemId}`} tone={UNIFIED_INBOX_SOURCE_TONE[source] || 'new'}>
+        {item.source_label || source.replace('_', ' ')}
+      </Badge>,
+      itemId ? itemId.slice(0, 8) : '—',
+      String(item.title || '—').slice(0, 90),
+      <Text key={`sum-${source}-${itemId}`} as="span" variant="bodySm" tone="subdued">
+        {item.summary || '—'}
+      </Text>,
+      item.status || '—',
+      source === 'feature_request'
+        ? `${Number(item.vote_count) || 0} votes`
+        : item.priority || 'normal',
+      createdAt,
+      isTicket ? (
+        <InlineStack key={`act-ticket-${itemId}`} gap="100" wrap={false}>
+          <Button
+            size="slim"
+            variant="plain"
+            onClick={() => openSuggestReplyModal({ id: item.item_id, subject: item.title })}
+            disabled={suggestReplyMutation.isPending && suggestReplyTicket?.id === item.item_id}
+          >
+            Suggest reply
+          </Button>
+          <Button
+            size="slim"
+            variant="plain"
+            onClick={() => handleRouteTicket(item.item_id, false)}
+            disabled={routeTicketMutation.isPending && routingTicketId === item.item_id}
+          >
+            Route
+          </Button>
+        </InlineStack>
+      ) : isChatFeedback ? (
+        <InlineStack key={`act-chat-${itemId}`} gap="100" wrap={false}>
+          <Button
+            size="slim"
+            variant="plain"
+            onClick={() => handleCopyConversationId(item.conversation_id)}
+            disabled={!item.conversation_id}
+          >
+            Copy conversation id
+          </Button>
+        </InlineStack>
+      ) : (
+        '—'
+      ),
+    ];
+  });
+  const proactiveRows = proactiveSignals.map(signal => [
+    <Badge
+      key={`severity-${signal.id || signal.shop_domain}`}
+      tone={PROACTIVE_SEVERITY_TONE[String(signal.severity || '').toLowerCase()] || 'info'}
+    >
+      {String(signal.severity || 'info')}
+    </Badge>,
+    signal.shop_domain || '—',
+    signal.title || 'Signal',
+    <Text
+      key={`detail-${signal.id || signal.shop_domain}`}
+      as="span"
+      variant="bodySm"
+      tone="subdued"
+    >
+      {signal.details || '—'}
+    </Text>,
+    signal.type || 'generic',
+    signal.detected_at ? new Date(signal.detected_at).toLocaleString() : '—',
+    <InlineStack key={`action-${signal.id || signal.shop_domain}`} gap="100" wrap={false}>
+      <Button
+        size="slim"
+        variant="plain"
+        onClick={() => handleCreateProactiveOutreach(signal)}
+        loading={createProactiveOutreachMutation.isPending}
+        disabled={!signal.shop_domain || createProactiveOutreachMutation.isPending}
+      >
+        Create outreach ticket
+      </Button>
+    </InlineStack>,
+  ]);
 
   return (
     <PageShell className={`${styles.adminPage} ${styles.adminPageWithHero}`}>
@@ -578,7 +977,12 @@ export default function AdminSupportTickets() {
         primaryAction={{
           content: 'Refresh',
           icon: RefreshIcon,
-          onAction: () => refetch(),
+          onAction: () => {
+            refetch();
+            refetchSupportInboxIntegration();
+            refetchUnifiedInbox();
+            refetchProactiveSignals();
+          },
           loading: isFetching,
         }}
       >
@@ -815,6 +1219,191 @@ export default function AdminSupportTickets() {
           <BlockStack gap="300">
             <InlineStack align="space-between" blockAlign="center" wrap>
               <Text as="h2" variant="headingMd">
+                Zendesk / Help Scout sync
+              </Text>
+              {supportInboxIntegrationLoading ? (
+                <Text as="span" variant="bodySm" tone="subdued">
+                  Loading…
+                </Text>
+              ) : null}
+            </InlineStack>
+
+            <div className={styles.adminSupportStatusPanel}>
+              <InlineStack gap="300" wrap>
+                <Select
+                  label="Provider"
+                  options={SUPPORT_INBOX_PROVIDER_OPTIONS}
+                  value={supportInboxProvider}
+                  onChange={setSupportInboxProvider}
+                />
+                <Checkbox
+                  label="Enable sync on new tickets"
+                  checked={Boolean(supportInboxEnabled)}
+                  disabled={supportInboxProvider === 'none'}
+                  onChange={setSupportInboxEnabled}
+                />
+              </InlineStack>
+              <Text as="p" variant="bodySm" tone="subdued">
+                New support tickets will be pushed to the selected provider when enabled.
+              </Text>
+            </div>
+
+            {supportInboxProvider === 'zendesk' && (
+              <div className={styles.adminSupportStatusPanel}>
+                <Text as="h3" variant="headingSm">
+                  Zendesk credentials
+                </Text>
+                <InlineStack gap="300" wrap>
+                  <TextField
+                    label="Subdomain"
+                    value={supportInboxZendeskSubdomain}
+                    onChange={setSupportInboxZendeskSubdomain}
+                    autoComplete="off"
+                    placeholder="your-company"
+                  />
+                  <TextField
+                    label="Agent email"
+                    value={supportInboxZendeskEmail}
+                    onChange={setSupportInboxZendeskEmail}
+                    autoComplete="off"
+                    placeholder="support@company.com"
+                  />
+                  <TextField
+                    label="API token (leave blank to keep current)"
+                    value={supportInboxZendeskApiToken}
+                    onChange={setSupportInboxZendeskApiToken}
+                    autoComplete="off"
+                    type="password"
+                  />
+                </InlineStack>
+                <InlineStack gap="200" wrap>
+                  <Badge tone={supportInboxConfig?.zendesk?.hasApiToken ? 'success' : 'warning'}>
+                    {supportInboxConfig?.zendesk?.hasApiToken
+                      ? `Stored token: ${supportInboxConfig?.zendesk?.apiTokenMasked || 'set'}`
+                      : 'No token stored'}
+                  </Badge>
+                </InlineStack>
+              </div>
+            )}
+
+            {supportInboxProvider === 'helpscout' && (
+              <div className={styles.adminSupportStatusPanel}>
+                <Text as="h3" variant="headingSm">
+                  Help Scout credentials
+                </Text>
+                <InlineStack gap="300" wrap>
+                  <TextField
+                    label="Mailbox ID"
+                    value={supportInboxHelpScoutMailboxId}
+                    onChange={setSupportInboxHelpScoutMailboxId}
+                    autoComplete="off"
+                    placeholder="123456"
+                  />
+                  <TextField
+                    label="Access token (leave blank to keep current)"
+                    value={supportInboxHelpScoutAccessToken}
+                    onChange={setSupportInboxHelpScoutAccessToken}
+                    autoComplete="off"
+                    type="password"
+                  />
+                </InlineStack>
+                <InlineStack gap="200" wrap>
+                  <Badge
+                    tone={supportInboxConfig?.helpscout?.hasAccessToken ? 'success' : 'warning'}
+                  >
+                    {supportInboxConfig?.helpscout?.hasAccessToken
+                      ? `Stored token: ${supportInboxConfig?.helpscout?.accessTokenMasked || 'set'}`
+                      : 'No token stored'}
+                  </Badge>
+                </InlineStack>
+              </div>
+            )}
+
+            <InlineStack gap="200" align="end">
+              <Button
+                variant="secondary"
+                onClick={() => refetchSupportInboxIntegration()}
+                loading={supportInboxIntegrationLoading}
+              >
+                Refresh
+              </Button>
+              <Button
+                variant="primary"
+                onClick={handleSaveSupportInboxIntegration}
+                loading={updateSupportInboxIntegrationMutation.isPending}
+              >
+                Save integration
+              </Button>
+            </InlineStack>
+          </BlockStack>
+        </Card>
+
+        <Card>
+          <BlockStack gap="300">
+            <InlineStack align="space-between" blockAlign="center" wrap>
+              <Text as="h2" variant="headingMd">
+                Proactive support triggers
+              </Text>
+              <InlineStack gap="200" blockAlign="center" wrap>
+                <Select
+                  label="Window"
+                  options={[
+                    { label: 'Last 7 days', value: '7' },
+                    { label: 'Last 14 days', value: '14' },
+                    { label: 'Last 30 days', value: '30' },
+                  ]}
+                  value={proactiveWindowDays}
+                  onChange={setProactiveWindowDays}
+                />
+                <Button
+                  size="slim"
+                  variant="secondary"
+                  onClick={() => refetchProactiveSignals()}
+                  loading={proactiveSignalsLoading}
+                >
+                  Refresh
+                </Button>
+              </InlineStack>
+            </InlineStack>
+
+            <div className={styles.adminUnifiedInboxCounts}>
+              <Badge tone="critical">Critical: {Number(proactiveSummary.critical) || 0}</Badge>
+              <Badge tone="attention">Warning: {Number(proactiveSummary.warning) || 0}</Badge>
+              <Badge tone="info">Info: {Number(proactiveSummary.info) || 0}</Badge>
+            </div>
+
+            {proactiveSignalsLoading ? (
+              <Text as="p" tone="subdued">
+                Loading proactive signals…
+              </Text>
+            ) : proactiveRows.length === 0 ? (
+              <Text as="p" tone="subdued">
+                No proactive signals in this window.
+              </Text>
+            ) : (
+              <div className={styles.adminTableWrap}>
+                <DataTable
+                  columnContentTypes={['text', 'text', 'text', 'text', 'text', 'text', 'text']}
+                  headings={[
+                    'Severity',
+                    'Shop',
+                    'Signal',
+                    'Details',
+                    'Type',
+                    'Detected',
+                    'Actions',
+                  ]}
+                  rows={proactiveRows}
+                />
+              </div>
+            )}
+          </BlockStack>
+        </Card>
+
+        <Card>
+          <BlockStack gap="300">
+            <InlineStack align="space-between" blockAlign="center" wrap>
+              <Text as="h2" variant="headingMd">
                 Status and changelog
               </Text>
               {supportStatusLoading || supportChangelogLoading ? (
@@ -977,6 +1566,78 @@ export default function AdminSupportTickets() {
 
         <Card>
           <BlockStack gap="300">
+            <InlineStack align="space-between" blockAlign="center" wrap>
+              <Text as="h2" variant="headingMd">
+                Unified inbox
+              </Text>
+              <InlineStack gap="200" blockAlign="center" wrap>
+                <Select
+                  label="Source"
+                  options={UNIFIED_INBOX_SOURCE_OPTIONS}
+                  value={unifiedInboxSource}
+                  onChange={setUnifiedInboxSource}
+                />
+                <Button
+                  size="slim"
+                  variant="secondary"
+                  onClick={() => refetchUnifiedInbox()}
+                  loading={unifiedInboxLoading}
+                >
+                  Refresh
+                </Button>
+              </InlineStack>
+            </InlineStack>
+
+            <div className={styles.adminUnifiedInboxCounts}>
+              <Badge tone="success">Tickets: {Number(unifiedInboxCounts.ticket) || 0}</Badge>
+              <Badge tone="attention">
+                Feature requests: {Number(unifiedInboxCounts.feature_request) || 0}
+              </Badge>
+              <Badge tone="warning">
+                Chat feedback: {Number(unifiedInboxCounts.chat_feedback) || 0}
+              </Badge>
+            </div>
+
+            {unifiedInboxLoading ? (
+              <Text as="p" tone="subdued">
+                Loading unified inbox…
+              </Text>
+            ) : unifiedInboxRows.length === 0 ? (
+              <Text as="p" tone="subdued">
+                No inbox items for this source filter.
+              </Text>
+            ) : (
+              <div className={styles.adminTableWrap}>
+                <DataTable
+                  columnContentTypes={[
+                    'text',
+                    'text',
+                    'text',
+                    'text',
+                    'text',
+                    'text',
+                    'text',
+                    'text',
+                  ]}
+                  headings={[
+                    'Source',
+                    'ID',
+                    'Title',
+                    'Summary',
+                    'Status',
+                    'Priority / votes',
+                    'Created',
+                    'Actions',
+                  ]}
+                  rows={unifiedInboxRows}
+                />
+              </div>
+            )}
+          </BlockStack>
+        </Card>
+
+        <Card>
+          <BlockStack gap="300">
             <InlineStack gap="300" blockAlign="center" wrap>
               <Select
                 label="Status"
@@ -1086,6 +1747,121 @@ export default function AdminSupportTickets() {
           </BlockStack>
         </Card>
       </AdminPageLayout>
+
+      {threadTicket && (
+        <Modal
+          open
+          onClose={closeThreadModal}
+          title={`Ticket thread · #${String(threadTicket.id || '').slice(0, 8)}`}
+          size="large"
+          primaryAction={{
+            content: 'Send reply',
+            onAction: sendThreadReply,
+            loading: threadSending,
+            disabled: !String(threadReply || '').trim() || threadLoading,
+          }}
+          secondaryActions={[
+            {
+              content: 'Close',
+              onAction: closeThreadModal,
+            },
+          ]}
+        >
+          <Modal.Section>
+            <BlockStack gap="300">
+              <InlineStack align="space-between" blockAlign="center" wrap>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  {threadTicket.subject || 'Support request'}
+                </Text>
+                <InlineStack gap="200" blockAlign="center">
+                  {threadTicket.email ? <Badge tone="info">{threadTicket.email}</Badge> : null}
+                  <Badge tone="info">{String(threadTicket.status || 'open')}</Badge>
+                  <Badge
+                    tone={
+                      threadStreamState === 'live'
+                        ? 'success'
+                        : threadStreamState === 'connecting'
+                          ? 'attention'
+                          : 'warning'
+                    }
+                  >
+                    {threadStreamState === 'live'
+                      ? 'Live'
+                      : threadStreamState === 'connecting'
+                        ? 'Connecting'
+                        : threadStreamState === 'reconnecting'
+                          ? 'Reconnecting'
+                          : 'Offline'}
+                  </Badge>
+                </InlineStack>
+              </InlineStack>
+
+              {threadLoading ? (
+                <Text as="p" tone="subdued">
+                  Loading thread…
+                </Text>
+              ) : (
+                <div className={styles.adminSupportThreadMessages}>
+                  {threadMessages.length === 0 ? (
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      No thread messages yet.
+                    </Text>
+                  ) : (
+                    threadMessages.map(item => {
+                      const senderType = String(item?.sender_type || 'user').toLowerCase();
+                      const isUser = senderType === 'user';
+                      const label = isUser
+                        ? item?.sender_label || 'Customer'
+                        : senderType === 'admin'
+                          ? item?.sender_label || 'Support Agent'
+                          : senderType === 'ai'
+                            ? 'AI'
+                            : item?.sender_label || 'System';
+                      return (
+                        <div
+                          key={item.id}
+                          className={
+                            isUser
+                              ? styles.adminSupportThreadBubbleUser
+                              : styles.adminSupportThreadBubbleAdmin
+                          }
+                        >
+                          <Text as="p" variant="bodySm" fontWeight="semibold">
+                            {label}
+                          </Text>
+                          <Text as="p" variant="bodySm">
+                            {item?.message || ''}
+                          </Text>
+                          <Text as="p" variant="bodySm" tone="subdued">
+                            {item?.created_at ? new Date(item.created_at).toLocaleString() : '—'}
+                          </Text>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+
+              {threadError ? (
+                <Text as="p" variant="bodySm" tone="critical">
+                  {threadError}
+                </Text>
+              ) : null}
+
+              <TextField
+                label="Reply to customer"
+                value={threadReply}
+                onChange={setThreadReply}
+                multiline={4}
+                maxLength={5000}
+                autoComplete="off"
+                showCharacterCount
+                placeholder="Type your support reply…"
+              />
+            </BlockStack>
+          </Modal.Section>
+        </Modal>
+      )}
 
       {suggestReplyTicket && (
         <Modal

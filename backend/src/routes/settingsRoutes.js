@@ -659,11 +659,17 @@ router.get(
     const fallbackSession = await getShopSession(shopDomain);
     const accessToken = req.shopifyAccessToken || fallbackSession?.access_token || '';
     let shopifyFunctions = [];
+    let shopifyCartTransforms = [];
     if (accessToken) {
       try {
         shopifyFunctions = await fetchShopifyFunctions(shopDomain, accessToken);
       } catch (_error) {
         shopifyFunctions = [];
+      }
+      try {
+        shopifyCartTransforms = await fetchCartTransformsViaAdmin(shopDomain, accessToken);
+      } catch (_error) {
+        shopifyCartTransforms = [];
       }
     }
 
@@ -673,6 +679,7 @@ router.get(
       runningPriceTests,
       extensionConfig,
       shopifyFunctions,
+      shopifyCartTransforms,
     });
 
     res.set('Cache-Control', 'no-store');
@@ -1244,7 +1251,7 @@ router.post(
     }
 
     const createMutation = `
-      mutation ripxCreateCartTransform($functionId: String!) {
+      mutation ripxCreateCartTransform($functionId: ID!) {
         cartTransformCreate(functionId: $functionId) {
           cartTransform {
             id

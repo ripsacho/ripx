@@ -89,6 +89,12 @@ function TopBar({
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [contextHelpLoading, setContextHelpLoading] = useState(false);
+  const [contextHelp, setContextHelp] = useState({
+    context_key: 'general',
+    title: 'Quick help for this page',
+    suggestions: [],
+  });
 
   /* Profile, Docs, Notifications: always root. Settings: in app → app settings; elsewhere → account settings (theme) */
   const profilePath = ROUTES.PROFILE;
@@ -154,9 +160,39 @@ function TopBar({
     }
   }, []);
 
+  const fetchContextHelp = useCallback(async () => {
+    try {
+      setContextHelpLoading(true);
+      const res = await apiGet('/support/contextual-help', {
+        pathname: location.pathname,
+        app_domain: appDomain || undefined,
+      });
+      const data = res?.data || {};
+      const suggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
+      setContextHelp({
+        context_key: data.context_key || 'general',
+        title: data.title || 'Quick help for this page',
+        suggestions,
+      });
+    } catch {
+      setContextHelp({
+        context_key: 'general',
+        title: 'Quick help for this page',
+        suggestions: [],
+      });
+    } finally {
+      setContextHelpLoading(false);
+    }
+  }, [location.pathname, appDomain]);
+
   useEffect(() => {
     if (notificationsActive) fetchNotifications();
   }, [notificationsActive, fetchNotifications]);
+
+  useEffect(() => {
+    if (!helpPopoverActive) return;
+    fetchContextHelp();
+  }, [helpPopoverActive, fetchContextHelp]);
 
   useEffect(() => {
     if (!userMenuActive && !helpPopoverActive && !notificationsActive) return undefined;
@@ -198,6 +234,26 @@ function TopBar({
       navigateWithEmbed(destination, extraParams);
     },
     [closeUserMenu, navigateWithEmbed, trackUiEvent]
+  );
+
+  const handleContextHelpNavigate = useCallback(
+    item => {
+      if (!item || typeof item !== 'object') return;
+      setHelpPopoverActive(false);
+      trackUiEvent('topbar_help_context_navigate', {
+        context: contextHelp?.context_key || 'general',
+        help_id: item.id || null,
+        target: item.path || item.url || null,
+      });
+      if (item.path) {
+        navigateWithEmbed(item.path);
+        return;
+      }
+      if (item.url) {
+        window.open(item.url, '_blank', 'noopener,noreferrer');
+      }
+    },
+    [contextHelp?.context_key, navigateWithEmbed, trackUiEvent]
   );
 
   const handleLogout = useCallback(() => {
@@ -327,6 +383,37 @@ function TopBar({
               <Text variant="headingSm" as="h2">
                 Help
               </Text>
+              <BlockStack gap="150">
+                {contextHelpLoading ? (
+                  <Text variant="bodySm" tone="subdued" as="p">
+                    Loading contextual help...
+                  </Text>
+                ) : (
+                  <>
+                    <Text variant="bodySm" tone="subdued" as="p">
+                      {contextHelp?.title || 'Quick help for this page'}
+                    </Text>
+                    {Array.isArray(contextHelp?.suggestions) &&
+                      contextHelp.suggestions.slice(0, 4).map(item => (
+                        <button
+                          key={item.id || item.path || item.title}
+                          type="button"
+                          className={`${styles.helpPopoverLink} ${styles.helpPopoverContextItem}`}
+                          onClick={() => handleContextHelpNavigate(item)}
+                        >
+                          <span className={styles.helpPopoverContextTitle}>
+                            {item.title || 'Open help'}
+                          </span>
+                          {item.description ? (
+                            <span className={styles.helpPopoverContextDesc}>
+                              {item.description}
+                            </span>
+                          ) : null}
+                        </button>
+                      ))}
+                  </>
+                )}
+              </BlockStack>
               <BlockStack gap="200">
                 <button
                   type="button"

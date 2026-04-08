@@ -59,6 +59,36 @@ describe('priceCheckoutDiagnostics', () => {
     expect(d.support?.direct_price_override?.level).toBe('available');
   });
 
+  it('reports cart transform install state when cartTransforms list is provided', () => {
+    process.env.APP_URL = 'https://api.example.com';
+    const { buildCheckoutPriceDiagnostics } = require('../priceCheckoutDiagnostics');
+    const baseFunctions = [
+      {
+        id: 'gid://shopify/ShopifyFunction/2',
+        title: 'RipX cart transform',
+        apiType: 'cart_transform',
+      },
+    ];
+    const missingInstall = buildCheckoutPriceDiagnostics({
+      shopifyFunctions: baseFunctions,
+      shopifyCartTransforms: [],
+    });
+    expect(missingInstall.infrastructure.cart_transform_function_available).toBe(true);
+    expect(missingInstall.infrastructure.cart_transform_installed).toBe(false);
+    expect(missingInstall.support?.direct_price_override?.level).toBe('needs_install');
+    expect(missingInstall.checklist.find(c => c.id === 'cart_transform_installed')?.ok).toBe(false);
+
+    const installed = buildCheckoutPriceDiagnostics({
+      shopifyFunctions: baseFunctions,
+      shopifyCartTransforms: [
+        { id: 'gid://shopify/CartTransform/1', functionId: baseFunctions[0].id },
+      ],
+    });
+    expect(installed.infrastructure.cart_transform_installed).toBe(true);
+    expect(installed.support?.direct_price_override?.level).toBe('available');
+    expect(installed.checklist.find(c => c.id === 'cart_transform_installed')?.ok).toBe(true);
+  });
+
   it('prefers RIPX_PRICE_RESOLVE_BATCH_URL when set', () => {
     process.env.APP_URL = 'https://ignored.example.com';
     process.env.RIPX_PRICE_RESOLVE_BATCH_URL = 'https://batch.custom/batch-endpoint';
