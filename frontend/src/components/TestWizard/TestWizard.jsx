@@ -942,7 +942,6 @@ function TestWizard({
   const [priceMatrixBulkMode, setPriceMatrixBulkMode] = useState('amount');
   const [priceMatrixBulkValue, setPriceMatrixBulkValue] = useState('');
   const [priceMatrixUndoByScope, setPriceMatrixUndoByScope] = useState({});
-  const [priceGuideCheckoutOpen, setPriceGuideCheckoutOpen] = useState(false);
   const [priceGuideSampleOpen, setPriceGuideSampleOpen] = useState(false);
   const [priceVariantToolsExpanded, setPriceVariantToolsExpanded] = useState(false);
   const [checkoutDiagnostics, setCheckoutDiagnostics] = useState(null);
@@ -6762,71 +6761,6 @@ function TestWizard({
     };
   };
 
-  const getPriceApplicationMethodConstraint = (methodOrCfg, cfgInput) => {
-    const cfg =
-      cfgInput && typeof cfgInput === 'object'
-        ? cfgInput
-        : methodOrCfg && typeof methodOrCfg === 'object'
-          ? methodOrCfg
-          : {};
-    const method =
-      cfgInput && typeof cfgInput === 'object'
-        ? normalizePriceApplicationMethod(methodOrCfg)
-        : normalizePriceApplicationMethod(cfg?.priceApplicationMethod || methodOrCfg);
-    const hasNativeVariantMapping = !!normalizeNativeVariantIdInput(cfg?.nativeVariantId);
-    const impliesIncrease = priceConfigImpliesIncrease(cfg);
-
-    if (method === 'discounted_checkout_price' && impliesIncrease) {
-      return {
-        blocked: true,
-        text: 'Unavailable for price increases. Shopify discounts can only lower totals.',
-      };
-    }
-    if (method === 'native_variant_price' && !hasNativeVariantMapping) {
-      return {
-        blocked: false,
-        text: 'Needs a mapped Shopify variant before launch.',
-      };
-    }
-    if (method === 'auto' && impliesIncrease && !hasNativeVariantMapping) {
-      return {
-        blocked: false,
-        text: 'Auto can switch to Native Variant once you add mapping.',
-      };
-    }
-    if (method === 'direct_price_override') {
-      return {
-        blocked: false,
-        text:
-          directPriceOverrideReadiness === 'ready'
-            ? impliesIncrease
-              ? 'Uses the active RipX Cart Transform on this Plus/dev-eligible shop. Manual selection stays strict (no auto-fallback).'
-              : 'Uses the active RipX Cart Transform on this Plus/dev-eligible shop.'
-            : directPriceOverrideReadiness === 'checking'
-              ? 'Checking Cart Transform status for this shop.'
-              : directPriceOverrideReadiness === 'needs_deploy'
-                ? 'Deploy extensions/ripx-cart-transform. Shopify allows one Cart Transform per store.'
-                : 'Confirm Plus/dev eligibility and Cart Transform activation for this shop.',
-      };
-    }
-    if (method === 'discounted_checkout_price') {
-      return {
-        blocked: false,
-        text: 'Fastest setup for lower-price paths.',
-      };
-    }
-    if (method === 'native_variant_price') {
-      return {
-        blocked: false,
-        text: 'Uses a real Shopify variant price and avoids discount labels.',
-      };
-    }
-    return {
-      blocked: false,
-      text: 'RipX will choose the best supported checkout method.',
-    };
-  };
-
   const getPricePreview = (cfg, _variantName) => {
     const m = (cfg?.priceMode || 'fixed').toLowerCase();
     if (m === 'fixed') {
@@ -6975,8 +6909,6 @@ function TestWizard({
     const priceDecreaseCount = variants.filter(v =>
       priceConfigImpliesDecrease(v?.config || {})
     ).length;
-    const methodUsageLabel =
-      variants.length > 0 ? `Direct Price Override ${variants.length}` : 'Direct Price Override';
     const scopeLabel =
       String(formData.target_type || '').toLowerCase() === 'product'
         ? `${priceTargetProductIds.length || 1} selected product${priceTargetProductIds.length === 1 ? '' : 's'}`
@@ -7001,14 +6933,6 @@ function TestWizard({
     const renderPriceVariantEditor = index => {
       const variant = variants[index] || {};
       const mode = variant.config?.priceMode || 'fixed';
-      const applicationMethod = 'direct_price_override';
-      const hasNativeVariantMapping = !!normalizeNativeVariantIdInput(
-        variant.config?.nativeVariantId
-      );
-      const priceIncreaseConfigured = priceConfigImpliesIncrease(variant.config || {});
-      const mappingRequired =
-        applicationMethod === 'native_variant_price' ||
-        (applicationMethod === 'auto' && priceIncreaseConfigured);
       const isFixed = mode === 'fixed';
       const isAmount = mode === 'amount';
       const isPercent = mode === 'percent';
@@ -7023,30 +6947,8 @@ function TestWizard({
           return { ...value };
         }
       };
-      const selectedMethodConstraint = getPriceApplicationMethodConstraint(applicationMethod, {
-        ...(variant.config || {}),
-        priceApplicationMethod: applicationMethod,
-      });
       const editorPreviewText = getPricePreview(variant.config, variant.name);
       const editorRuleValue = getPriceValueCell(variant);
-      const resolvedMethodSummary = getResolvedPriceApplicationMethodSummary({
-        ...(variant.config || {}),
-        priceApplicationMethod: applicationMethod,
-      });
-      const editorStatusText = selectedMethodConstraint?.blocked
-        ? selectedMethodConstraint.text
-        : applicationMethod === 'native_variant_price' && !hasNativeVariantMapping
-          ? 'Needs a mapped Shopify variant before native checkout pricing can work.'
-          : mappingRequired && !hasNativeVariantMapping
-            ? 'Add a mapped Shopify variant for the most accurate premium checkout path.'
-            : 'Ready with the current setup.';
-      const editorStatusTone = selectedMethodConstraint?.blocked
-        ? 'critical'
-        : applicationMethod === 'native_variant_price' && !hasNativeVariantMapping
-          ? 'warning'
-          : mappingRequired && !hasNativeVariantMapping
-            ? 'attention'
-            : 'success';
       return (
         <div
           className={styles.priceEditorPanel}
@@ -7098,10 +7000,10 @@ function TestWizard({
                 </div>
                 <div className={styles.priceEditorIntroCard}>
                   <span className={styles.priceEditorIntroLabel}>
-                    Checkout path
+                    Checkout method
                     <TooltipWrapper
-                      content={resolvedMethodSummary.detail}
-                      accessibilityLabel="Checkout path help"
+                      content="Price tests in this editor always use Direct Price on cart and checkout."
+                      accessibilityLabel="Checkout method help"
                       preferredPosition="above"
                     >
                       <span className={styles.priceEditorIntroLabelInfo} tabIndex={0}>
@@ -7109,36 +7011,17 @@ function TestWizard({
                       </span>
                     </TooltipWrapper>
                   </span>
-                  <span className={styles.priceEditorIntroValue}>
-                    {resolvedMethodSummary.label}
-                  </span>
-                  <span className={styles.priceEditorIntroHint}>Beyond the product page</span>
+                  <span className={styles.priceEditorIntroValue}>Direct Price</span>
+                  <span className={styles.priceEditorIntroHint}>Locked in this step</span>
                 </div>
                 <div
-                  className={`${styles.priceEditorIntroCard} ${
-                    editorStatusTone === 'critical'
-                      ? styles.priceEditorIntroCardCritical
-                      : editorStatusTone === 'warning'
-                        ? styles.priceEditorIntroCardWarning
-                        : editorStatusTone === 'attention'
-                          ? styles.priceEditorIntroCardAttention
-                          : styles.priceEditorIntroCardSuccess
-                  }`}
+                  className={`${styles.priceEditorIntroCard} ${styles.priceEditorIntroCardSuccess}`}
                 >
-                  <span className={styles.priceEditorIntroLabel}>
-                    Setup status
-                    <TooltipWrapper
-                      content={editorStatusText}
-                      accessibilityLabel="Setup status help"
-                      preferredPosition="above"
-                    >
-                      <span className={styles.priceEditorIntroLabelInfo} tabIndex={0}>
-                        <Icon source={InfoIcon} />
-                      </span>
-                    </TooltipWrapper>
-                  </span>
+                  <span className={styles.priceEditorIntroLabel}>Rule value</span>
                   <span className={styles.priceEditorIntroValue}>{editorRuleValue}</span>
-                  <span className={styles.priceEditorIntroHint}>Rule &amp; mapping</span>
+                  <span className={styles.priceEditorIntroHint}>
+                    The price rule currently configured
+                  </span>
                 </div>
               </div>
               {(isAmount || isPercent) && (
@@ -7992,74 +7875,6 @@ function TestWizard({
                       </FormLayout>
                     </div>
                   </div>
-                  <div className={styles.priceSectionBlock}>
-                    <div className={styles.priceSectionBlockTitle}>
-                      <div className={styles.priceSectionBlockTitleCopy}>
-                        <span className={styles.priceSectionBlockTitleText}>Checkout behavior</span>
-                        <span className={styles.priceSectionBlockTitleHint}>
-                          Simplified mode: Direct Price Override only.
-                        </span>
-                      </div>
-                      <TooltipWrapper
-                        content="All price variants in this editor are saved with Direct Price Override. Use Offer tests for promo/discount campaigns."
-                        accessibilityLabel="Checkout behavior info"
-                        preferredPosition="above"
-                      >
-                        <span
-                          className={styles.priceSectionTitleInfoIcon}
-                          aria-hidden="true"
-                          tabIndex={0}
-                        >
-                          <Icon source={InfoIcon} />
-                        </span>
-                      </TooltipWrapper>
-                    </div>
-                    <div className={styles.priceSectionBlockContent}>
-                      <BlockStack gap="300">
-                        <InlineStack gap="200" wrap blockAlign="center">
-                          <Badge
-                            tone={
-                              directPriceOverrideReadiness === 'ready'
-                                ? 'success'
-                                : directPriceOverrideReadiness === 'needs_deploy'
-                                  ? 'warning'
-                                  : 'info'
-                            }
-                            size="small"
-                          >
-                            {directPriceOverrideReadiness === 'ready'
-                              ? 'Cart Transform ready'
-                              : directPriceOverrideReadiness === 'needs_deploy'
-                                ? 'Cart Transform not detected'
-                                : directPriceOverrideReadiness === 'checking'
-                                  ? 'Checking Cart Transform'
-                                  : 'Cart Transform status unknown'}
-                          </Badge>
-                          <Badge tone="success" size="small">
-                            Direct Price Override locked
-                          </Badge>
-                        </InlineStack>
-                        {directPriceOverrideReadiness === 'needs_deploy' && (
-                          <Banner tone="warning" title="Cart Transform not detected">
-                            <Text as="p" variant="bodySm">
-                              Deploy the RipX Cart Transform extension for Direct Price Override at
-                              cart and checkout. Shopify allows only one Cart Transform per store—
-                              another app may be using that slot.
-                            </Text>
-                          </Banner>
-                        )}
-                        <Text as="p" variant="bodySm" tone="subdued">
-                          This simplified price editor always saves{' '}
-                          <strong>Direct Price Override</strong> for each variant and product
-                          override. If you want promotion-style discount campaigns, use{' '}
-                          <strong>Offer tests</strong>.
-                        </Text>
-                        <Text as="p" variant="bodySm" tone="subdued">
-                          Current variant path: <strong>{resolvedMethodSummary.label}</strong>
-                        </Text>
-                      </BlockStack>
-                    </div>
-                  </div>
                 </>
               )}
             </BlockStack>
@@ -8110,68 +7925,16 @@ function TestWizard({
         <BlockStack gap="400">
           <div className={styles.priceStepRoot}>
             <div className={styles.priceGuidanceCompact}>
-              <div className={styles.priceGuideToggleRow}>
-                <button
-                  type="button"
-                  className={`${styles.priceGuideToggleBtn} ${priceGuideCheckoutOpen ? styles.priceGuideToggleBtnOpen : ''}`}
-                  onClick={() => setPriceGuideCheckoutOpen(o => !o)}
-                  aria-expanded={priceGuideCheckoutOpen}
-                >
-                  <span className={styles.priceGuideToggleLabel}>
-                    <span className={styles.priceGuideToggleTitle}>Checkout pricing method</span>
-                    <span className={styles.priceGuideToggleHint}>
-                      How RipX applies prices beyond the PDP
-                    </span>
-                  </span>
-                  <span className={styles.priceGuideToggleChevron} aria-hidden>
-                    <Icon source={ChevronDownIcon} />
-                  </span>
-                </button>
-                <Collapsible open={priceGuideCheckoutOpen} id="price-guide-checkout">
-                  <div className={styles.priceGuideBody}>
-                    <Text as="p" variant="bodySm" fontWeight="medium">
-                      Price tests in this simplified editor use{' '}
-                      <strong>Direct Price Override</strong> only. This keeps the flow cleaner while
-                      your app is in development.
-                    </Text>
-                    {!['product', 'all-products', 'all_products'].includes(
-                      String(formData.target_type || '').toLowerCase()
-                    ) && (
-                      <Text as="p" variant="bodySm" tone="critical">
-                        Checkout price-alignment automation currently supports{' '}
-                        <strong>Product / all-products scope</strong>. Use one of those for the most
-                        accurate parity across PDP, cart, and checkout.
-                      </Text>
-                    )}
-                    <ul className={styles.priceBannerBullets}>
-                      <li>
-                        <strong>Direct Price Override</strong> is fixed for all price variants and
-                        product-level overrides in this mode.
-                      </li>
-                      <li>
-                        Use <strong>Offer tests</strong> for promotion-style discount campaigns
-                        (percent off, fixed off, free shipping).
-                      </li>
-                    </ul>
-                    <p className={styles.priceBannerDocRow}>
-                      <Link
-                        to={`${ROUTES.DOCS}#price-testing`}
-                        className={styles.priceDocLink}
-                        rel="noopener noreferrer"
-                      >
-                        Open Price testing guide →
-                      </Link>
-                    </p>
-                  </div>
-                </Collapsible>
+              <div className={styles.priceModeCompactNotice}>
+                <InlineStack gap="200" wrap blockAlign="center">
+                  <Badge tone="success" size="small">
+                    Direct Price mode
+                  </Badge>
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    This step is streamlined: all variants use Direct Price on cart and checkout.
+                  </Text>
+                </InlineStack>
               </div>
-
-              <Banner tone="info" title="Direct Price mode enabled">
-                <Text as="p" variant="bodySm">
-                  Advanced checkout method selection is hidden. Every price variant saves as Direct
-                  Price Override to keep setup focused and consistent during development.
-                </Text>
-              </Banner>
 
               <div className={styles.priceGuideToggleRow}>
                 <button
@@ -8602,13 +8365,6 @@ function TestWizard({
                               </span>
                             </div>
                             <div className={styles.priceAtAGlanceCard}>
-                              <span className={styles.priceAtAGlanceLabel}>Methods in play</span>
-                              <span className={styles.priceAtAGlanceValue}>{methodUsageLabel}</span>
-                              <span className={styles.priceAtAGlanceHint}>
-                                Checkout execution mix across variants
-                              </span>
-                            </div>
-                            <div className={styles.priceAtAGlanceCard}>
                               <span className={styles.priceAtAGlanceLabel}>Cart Transform</span>
                               <span className={styles.priceAtAGlanceValue}>
                                 {directPriceOverrideReadiness === 'ready'
@@ -8864,12 +8620,6 @@ function TestWizard({
                                     title={previewText}
                                   >
                                     {previewText}
-                                  </span>
-                                </span>
-                                <span className={styles.priceSummaryInfoBlock}>
-                                  <span className={styles.priceSummaryInfoLabel}>Checkout</span>
-                                  <span className={styles.priceSummaryInfoValue}>
-                                    Direct Price Override
                                   </span>
                                 </span>
                                 <span className={styles.priceSummaryInfoBlock}>

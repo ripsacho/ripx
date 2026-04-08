@@ -60,12 +60,10 @@ const baseNavigationGroups = (domain = null) => {
       ],
     },
     {
-      label: 'Setup & Settings',
+      label: 'Configuration',
       items: [
-        { path: setup, label: 'Setup (guided)', icon: CompassIcon },
-        ...(appSettings
-          ? [{ path: appSettings, label: 'Settings (advanced)', icon: SettingsIcon }]
-          : []),
+        { path: setup, label: 'Setup', icon: CompassIcon },
+        ...(appSettings ? [{ path: appSettings, label: 'Settings', icon: SettingsIcon }] : []),
       ],
     },
   ];

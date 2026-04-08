@@ -311,21 +311,21 @@ function Settings() {
   const [checkoutCartTransformEnsureError, setCheckoutCartTransformEnsureError] = useState(null);
   const [checkoutFullVerifyRunning, setCheckoutFullVerifyRunning] = useState(false);
   const [layoutDensity, setLayoutDensity] = useState(() => {
-    if (typeof window === 'undefined') return 'comfortable';
+    if (typeof window === 'undefined') return 'compact';
     try {
       const saved = window.localStorage.getItem('ripx_settings_density_v1');
-      return saved === 'compact' ? 'compact' : 'comfortable';
+      return saved === 'comfortable' ? 'comfortable' : 'compact';
     } catch {
-      return 'comfortable';
+      return 'compact';
     }
   });
   const [settingsLayoutMode, setSettingsLayoutMode] = useState(() => {
-    if (typeof window === 'undefined') return 'tabbed';
+    if (typeof window === 'undefined') return 'all';
     try {
       const saved = window.localStorage.getItem('ripx_settings_layout_mode_v1');
-      return saved === 'all' ? 'all' : 'tabbed';
+      return saved === 'tabbed' ? 'tabbed' : 'all';
     } catch {
-      return 'tabbed';
+      return 'all';
     }
   });
   const [sectionRailCollapsed, setSectionRailCollapsed] = useState(() => {

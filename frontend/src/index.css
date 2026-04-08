@@ -822,6 +822,7 @@ textarea:focus-visible {
 }
 
 .sidebar-nav-label {
+  display: block;
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
