@@ -1398,14 +1398,18 @@ function TestWizard({
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
-    const bodyClass = 'ripx-price-product-modal-open';
+    const modalClass = 'ripx-price-product-modal-open';
+    const root = document.documentElement;
     if (priceProductModalOpen) {
-      document.body.classList.add(bodyClass);
+      document.body.classList.add(modalClass);
+      root?.classList.add(modalClass);
     } else {
-      document.body.classList.remove(bodyClass);
+      document.body.classList.remove(modalClass);
+      root?.classList.remove(modalClass);
     }
     return () => {
-      document.body.classList.remove(bodyClass);
+      document.body.classList.remove(modalClass);
+      root?.classList.remove(modalClass);
     };
   }, [priceProductModalOpen]);
 
