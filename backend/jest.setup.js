@@ -11,4 +11,5 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-at-least-32-
 process.env.SHOPIFY_API_KEY = process.env.SHOPIFY_API_KEY || 'test_shopify_api_key';
 process.env.SHOPIFY_API_SECRET = process.env.SHOPIFY_API_SECRET || 'test_shopify_api_secret';
 process.env.SHOPIFY_SCOPES =
-  process.env.SHOPIFY_SCOPES || 'read_products,write_products,read_orders';
+  process.env.SHOPIFY_SCOPES ||
+  'read_online_store_pages,read_orders,read_products,write_products,read_collections';
