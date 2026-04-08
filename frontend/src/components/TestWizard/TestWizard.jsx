@@ -1414,6 +1414,39 @@ function TestWizard({
   }, [priceProductModalOpen]);
 
   useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const overlayId = 'ripx-price-product-modal-overlay';
+    if (!priceProductModalOpen) {
+      const existing = document.getElementById(overlayId);
+      if (existing) existing.remove();
+      return undefined;
+    }
+
+    const ensureOverlay = () => {
+      let overlay = document.getElementById(overlayId);
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = overlayId;
+        overlay.className = 'ripx-price-product-modal-overlay';
+        overlay.setAttribute('aria-hidden', 'true');
+        document.body.appendChild(overlay);
+      }
+    };
+
+    ensureOverlay();
+    const observer = new MutationObserver(() => {
+      ensureOverlay();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      observer.disconnect();
+      const existing = document.getElementById(overlayId);
+      if (existing) existing.remove();
+    };
+  }, [priceProductModalOpen]);
+
+  useEffect(() => {
     if (!storeResources?.length) return;
     setPriceProductMetaById(prev => {
       const next = { ...prev };

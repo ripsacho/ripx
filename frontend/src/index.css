@@ -3966,6 +3966,23 @@ body.ripx-price-product-modal-open div[class*='Polaris-Modal'][class*='Backdrop'
   -webkit-backdrop-filter: blur(6px) saturate(1.02) !important;
 }
 
+/* Hard fallback overlay injected from TestWizard while modal is open. */
+.ripx-price-product-modal-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: rgba(15, 23, 42, 0.32) !important;
+  backdrop-filter: blur(6px) saturate(1.02) !important;
+  -webkit-backdrop-filter: blur(6px) saturate(1.02) !important;
+  pointer-events: none !important;
+  z-index: 1099 !important;
+}
+
 /* Modal - Dark theme overrides */
 [data-theme="dark"] .Polaris-Modal__Dialog,
 [data-theme="dark"] .Polaris-Modal-Dialog,
