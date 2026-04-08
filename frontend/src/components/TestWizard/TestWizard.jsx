@@ -406,6 +406,7 @@ function _NativeVariantMappingAssistant({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [expandedProductId, setExpandedProductId] = useState(null);
+  const [visibleProductCount, setVisibleProductCount] = useState(PRICE_PRODUCT_MODAL_REVEAL_BATCH);
   const normalizeProductIdForCompare = useCallback(value => {
     const raw = String(value || '').trim();
     if (!raw) return '';
@@ -425,6 +426,7 @@ function _NativeVariantMappingAssistant({
     if (disabled || !shopDomain) {
       setProducts([]);
       setError(null);
+      setVisibleProductCount(PRICE_PRODUCT_MODAL_REVEAL_BATCH);
       return;
     }
     setLoading(true);
@@ -440,6 +442,7 @@ function _NativeVariantMappingAssistant({
         const list = res.data?.products || [];
         const emptyReason = res.data?.empty_reason || null;
         setProducts(list);
+        setVisibleProductCount(PRICE_PRODUCT_MODAL_REVEAL_BATCH);
         setError(list.length === 0 ? emptyReason : null);
         if (list.length > 0) {
           setExpandedProductId(prev => prev || list[0].id);
@@ -447,6 +450,7 @@ function _NativeVariantMappingAssistant({
       })
       .catch(err => {
         setProducts([]);
+        setVisibleProductCount(PRICE_PRODUCT_MODAL_REVEAL_BATCH);
         setError(
           err?.response?.data?.error ||
             err?.message ||
@@ -481,6 +485,37 @@ function _NativeVariantMappingAssistant({
     }
     return null;
   }, [products, selectedVariantId, normalizeVariantIdForCompare]);
+  const filteredProducts = useMemo(
+    () =>
+      products.filter(product => {
+        if (!preferredProductId) return true;
+        return (
+          normalizeProductIdForCompare(product.id) ===
+          normalizeProductIdForCompare(preferredProductId)
+        );
+      }),
+    [products, preferredProductId, normalizeProductIdForCompare]
+  );
+  const selectedProductId = useMemo(() => {
+    if (!selectedVariantId) return null;
+    for (const product of filteredProducts) {
+      const hasSelectedVariant = (product?.variants || []).some(
+        variant => normalizeVariantIdForCompare(variant.id) === selectedVariantId
+      );
+      if (hasSelectedVariant) return product.id;
+    }
+    return null;
+  }, [filteredProducts, selectedVariantId, normalizeVariantIdForCompare]);
+  const visibleBaseProducts = filteredProducts.slice(0, visibleProductCount);
+  const visibleBaseIds = new Set(visibleBaseProducts.map(product => product.id));
+  const pinnedIds = new Set([selectedProductId, expandedProductId].filter(Boolean));
+  const pinnedVisibleExtras = filteredProducts.filter(
+    product => pinnedIds.has(product.id) && !visibleBaseIds.has(product.id)
+  );
+  const visibleProducts = [...visibleBaseProducts, ...pinnedVisibleExtras];
+  const shownProductsCount = visibleProducts.length;
+  const hasHiddenLoadedProducts = shownProductsCount < filteredProducts.length;
+  const canCollapseProducts = shownProductsCount > PRICE_PRODUCT_MODAL_REVEAL_BATCH;
 
   if (disabled) {
     return (
@@ -542,7 +577,7 @@ function _NativeVariantMappingAssistant({
             />
           </div>
           <span className={styles.storeResourceSelectedBadge}>
-            {products.length} product{products.length === 1 ? '' : 's'}
+            {filteredProducts.length} product{filteredProducts.length === 1 ? '' : 's'}
           </span>
         </div>
 
@@ -564,7 +599,7 @@ function _NativeVariantMappingAssistant({
               {error}
             </Text>
           </div>
-        ) : products.length === 0 ? (
+        ) : filteredProducts.length === 0 ? (
           <div className={styles.storeResourceListEmpty}>
             <div className={styles.storeResourceListEmptyIcon}>
               <Icon source={ProductIcon} />
@@ -574,16 +609,23 @@ function _NativeVariantMappingAssistant({
             </Text>
           </div>
         ) : (
-          <div className={styles.nativeVariantAssistantScroll}>
-            {products
-              .filter(product => {
-                if (!preferredProductId) return true;
-                return (
-                  normalizeProductIdForCompare(product.id) ===
-                  normalizeProductIdForCompare(preferredProductId)
-                );
-              })
-              .map(product => {
+          <>
+            <div className={styles.storeResourceListMeta}>
+              <Text as="span" variant="bodySm" tone="subdued">
+                Showing {shownProductsCount} of {filteredProducts.length} loaded products
+              </Text>
+              {canCollapseProducts && (
+                <Button
+                  size="slim"
+                  variant="plain"
+                  onClick={() => setVisibleProductCount(PRICE_PRODUCT_MODAL_REVEAL_BATCH)}
+                >
+                  Collapse
+                </Button>
+              )}
+            </div>
+            <div className={styles.nativeVariantAssistantScroll}>
+              {visibleProducts.map(product => {
                 const isExpanded = expandedProductId === product.id;
                 return (
                   <div key={product.id} className={styles.nativeVariantProductCard}>
@@ -639,7 +681,25 @@ function _NativeVariantMappingAssistant({
                   </div>
                 );
               })}
-          </div>
+            </div>
+            {hasHiddenLoadedProducts && (
+              <div className={styles.storeResourceListFooter}>
+                <Button
+                  size="slim"
+                  onClick={() =>
+                    setVisibleProductCount(prev =>
+                      Math.min(prev + PRICE_PRODUCT_MODAL_REVEAL_BATCH, filteredProducts.length)
+                    )
+                  }
+                >
+                  {`Show ${Math.min(
+                    PRICE_PRODUCT_MODAL_REVEAL_BATCH,
+                    filteredProducts.length - shownProductsCount
+                  )} more`}
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -923,6 +983,9 @@ function TestWizard({
     hasNextPage: false,
     endCursor: null,
   });
+  const [storeResourcesVisibleCount, setStoreResourcesVisibleCount] = useState(
+    PRICE_PRODUCT_MODAL_REVEAL_BATCH
+  );
   /** When store-resources API fails or returns empty_reason, show this instead of generic message */
   const [storeResourcesError, setStoreResourcesError] = useState(null);
   const [priceProductModalOpen, setPriceProductModalOpen] = useState(false);
@@ -1207,6 +1270,7 @@ function TestWizard({
   useEffect(() => {
     if (isStandalone || !['product', 'collection', 'page'].includes(targetTypeForResources)) {
       setStoreResources([]);
+      setStoreResourcesVisibleCount(PRICE_PRODUCT_MODAL_REVEAL_BATCH);
       setStoreResourcesPageInfo({ hasNextPage: false, endCursor: null });
       return;
     }
@@ -1214,6 +1278,7 @@ function TestWizard({
     const shop = isShopifyFromRoute ? routeDomain : null;
     if (!shop) {
       setStoreResources([]);
+      setStoreResourcesVisibleCount(PRICE_PRODUCT_MODAL_REVEAL_BATCH);
       setStoreResourcesPageInfo({ hasNextPage: false, endCursor: null });
       return;
     }
@@ -1228,6 +1293,7 @@ function TestWizard({
         const list = res.data?.resources || [];
         const emptyReason = res.data?.empty_reason || null;
         setStoreResources(list);
+        setStoreResourcesVisibleCount(PRICE_PRODUCT_MODAL_REVEAL_BATCH);
         setStoreResourcesPageInfo(
           res.data?.page_info || {
             hasNextPage: false,
@@ -1238,6 +1304,7 @@ function TestWizard({
       })
       .catch(err => {
         setStoreResources([]);
+        setStoreResourcesVisibleCount(PRICE_PRODUCT_MODAL_REVEAL_BATCH);
         setStoreResourcesPageInfo({ hasNextPage: false, endCursor: null });
         const msg =
           err?.response?.data?.error ||
@@ -1255,6 +1322,12 @@ function TestWizard({
   ]);
 
   const handleLoadMoreStoreResources = useCallback(async () => {
+    if (storeResourcesVisibleCount < storeResources.length) {
+      setStoreResourcesVisibleCount(prev =>
+        Math.min(prev + PRICE_PRODUCT_MODAL_REVEAL_BATCH, storeResources.length)
+      );
+      return;
+    }
     if (
       isStandalone ||
       !isShopifyFromRoute ||
@@ -1288,6 +1361,7 @@ function TestWizard({
           });
           return merged;
         });
+        setStoreResourcesVisibleCount(prev => prev + PRICE_PRODUCT_MODAL_REVEAL_BATCH);
       }
       setStoreResourcesPageInfo(
         res.data?.page_info || {
@@ -1312,6 +1386,8 @@ function TestWizard({
     storeResourcesPageInfo?.hasNextPage,
     storeResourcesPageInfo?.endCursor,
     storeResourcesLoadingMore,
+    storeResources.length,
+    storeResourcesVisibleCount,
     storeResourceSearchDebounced,
   ]);
 
@@ -1319,6 +1395,19 @@ function TestWizard({
     const t = setTimeout(() => setPriceModalSearchDebounced(priceModalSearch), 400);
     return () => clearTimeout(t);
   }, [priceModalSearch]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const bodyClass = 'ripx-price-product-modal-open';
+    if (priceProductModalOpen) {
+      document.body.classList.add(bodyClass);
+    } else {
+      document.body.classList.remove(bodyClass);
+    }
+    return () => {
+      document.body.classList.remove(bodyClass);
+    };
+  }, [priceProductModalOpen]);
 
   useEffect(() => {
     if (!storeResources?.length) return;
@@ -3865,6 +3954,37 @@ function TestWizard({
                                                     : formData.target_id
                                                       ? [formData.target_id]
                                                       : [];
+                                                const selectedResourceIds = new Set(selectedIds);
+                                                const baseVisibleStoreResources =
+                                                  storeResources.slice(
+                                                    0,
+                                                    storeResourcesVisibleCount
+                                                  );
+                                                const baseVisibleIds = new Set(
+                                                  baseVisibleStoreResources.map(r => r.id)
+                                                );
+                                                const selectedVisibleExtras = storeResources.filter(
+                                                  r =>
+                                                    selectedResourceIds.has(r.id) &&
+                                                    !baseVisibleIds.has(r.id)
+                                                );
+                                                const visibleStoreResources = [
+                                                  ...baseVisibleStoreResources,
+                                                  ...selectedVisibleExtras,
+                                                ];
+                                                const shownStoreResourcesCount =
+                                                  visibleStoreResources.length;
+                                                const storeResourcesHasHiddenLoaded =
+                                                  shownStoreResourcesCount < storeResources.length;
+                                                const storeResourcesCanFetchMore = Boolean(
+                                                  storeResourcesPageInfo?.hasNextPage
+                                                );
+                                                const storeResourcesCanShowMore =
+                                                  storeResourcesHasHiddenLoaded ||
+                                                  storeResourcesCanFetchMore;
+                                                const storeResourcesCanCollapse =
+                                                  shownStoreResourcesCount >
+                                                  PRICE_PRODUCT_MODAL_REVEAL_BATCH;
                                                 const resourceIds = new Set(
                                                   storeResources.map(r => r.id)
                                                 );
@@ -3904,8 +4024,42 @@ function TestWizard({
                                                 };
                                                 return (
                                                   <>
+                                                    <div className={styles.storeResourceListMeta}>
+                                                      <Text
+                                                        as="span"
+                                                        variant="bodySm"
+                                                        tone="subdued"
+                                                      >
+                                                        Showing {shownStoreResourcesCount} of{' '}
+                                                        {storeResources.length} loaded
+                                                      </Text>
+                                                      <InlineStack
+                                                        gap="200"
+                                                        wrap
+                                                        blockAlign="center"
+                                                      >
+                                                        {storeResourcesCanFetchMore && (
+                                                          <Badge tone="info" size="small">
+                                                            More available
+                                                          </Badge>
+                                                        )}
+                                                        {storeResourcesCanCollapse && (
+                                                          <Button
+                                                            size="slim"
+                                                            variant="plain"
+                                                            onClick={() =>
+                                                              setStoreResourcesVisibleCount(
+                                                                PRICE_PRODUCT_MODAL_REVEAL_BATCH
+                                                              )
+                                                            }
+                                                          >
+                                                            Collapse
+                                                          </Button>
+                                                        )}
+                                                      </InlineStack>
+                                                    </div>
                                                     <div className={styles.storeResourceListScroll}>
-                                                      {storeResources.map(r => (
+                                                      {visibleStoreResources.map(r => (
                                                         <button
                                                           key={r.id}
                                                           type="button"
@@ -4006,7 +4160,7 @@ function TestWizard({
                                                         </button>
                                                       ))}
                                                     </div>
-                                                    {storeResourcesPageInfo?.hasNextPage && (
+                                                    {storeResourcesCanShowMore && (
                                                       <div
                                                         className={styles.storeResourceListFooter}
                                                       >
@@ -4014,8 +4168,15 @@ function TestWizard({
                                                           size="slim"
                                                           onClick={handleLoadMoreStoreResources}
                                                           loading={storeResourcesLoadingMore}
+                                                          disabled={storeResourcesLoadingMore}
                                                         >
-                                                          Load more
+                                                          {storeResourcesHasHiddenLoaded
+                                                            ? `Show ${Math.min(
+                                                                PRICE_PRODUCT_MODAL_REVEAL_BATCH,
+                                                                storeResources.length -
+                                                                  shownStoreResourcesCount
+                                                              )} more`
+                                                            : `Show ${PRICE_PRODUCT_MODAL_REVEAL_BATCH} more`}
                                                         </Button>
                                                       </div>
                                                     )}
@@ -6938,6 +7099,7 @@ function TestWizard({
     const priceModalHasHiddenLoaded = priceModalShownCount < priceModalProducts.length;
     const priceModalCanFetchMore = Boolean(priceModalPageInfo?.hasNextPage);
     const priceModalCanShowMore = priceModalHasHiddenLoaded || priceModalCanFetchMore;
+    const priceModalCanCollapse = priceModalShownCount > PRICE_PRODUCT_MODAL_REVEAL_BATCH;
     const priceSimulation =
       parsedExampleCatalog !== null
         ? buildPriceSimulationRows({
@@ -8732,11 +8894,24 @@ function TestWizard({
                           Showing {priceModalShownCount} of {priceModalProducts.length} loaded
                           products
                         </Text>
-                        {priceModalCanFetchMore && (
-                          <Badge tone="info" size="small">
-                            More available
-                          </Badge>
-                        )}
+                        <InlineStack gap="200" wrap blockAlign="center">
+                          {priceModalCanFetchMore && (
+                            <Badge tone="info" size="small">
+                              More available
+                            </Badge>
+                          )}
+                          {priceModalCanCollapse && (
+                            <Button
+                              size="slim"
+                              variant="plain"
+                              onClick={() =>
+                                setPriceModalVisibleCount(PRICE_PRODUCT_MODAL_REVEAL_BATCH)
+                              }
+                            >
+                              Collapse
+                            </Button>
+                          )}
+                        </InlineStack>
                       </div>
                       <div className={styles.priceProductPickerList}>
                         {visiblePriceModalProducts.map(r => {

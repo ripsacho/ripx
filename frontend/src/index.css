@@ -3661,6 +3661,41 @@ body:has([data-price-product-picker-modal]) div[class*='Polaris-Modal'][class*='
   -webkit-backdrop-filter: blur(6px) saturate(1.02) !important;
 }
 
+/* Robust fallback: body class toggled from TestWizard while modal is open. */
+body.ripx-price-product-modal-open .Polaris-Modal-DialogContainer,
+body.ripx-price-product-modal-open div[class*='Polaris-Modal'][class*='Container'] {
+  left: 0 !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  max-width: none !important;
+  padding: 1rem !important;
+  box-sizing: border-box !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+body.admin-page.ripx-price-product-modal-open .Polaris-Modal-DialogContainer,
+body.admin-page.ripx-price-product-modal-open div[class*='Polaris-Modal'][class*='Container'] {
+  left: 0 !important;
+  right: 0 !important;
+}
+
+body.ripx-price-product-modal-open .Polaris-Backdrop,
+body.ripx-price-product-modal-open div[class*='Polaris-Modal'][class*='Backdrop'] {
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  background: rgba(15, 23, 42, 0.34) !important;
+  backdrop-filter: blur(6px) saturate(1.02) !important;
+  -webkit-backdrop-filter: blur(6px) saturate(1.02) !important;
+}
+
 /* Add domain modal (My domains) – container: center and comfortable padding */
 [data-add-domain-modal-open] .Polaris-Modal-DialogContainer,
 [data-add-domain-modal-open] div[class*="Polaris-Modal"][class*="Container"] {

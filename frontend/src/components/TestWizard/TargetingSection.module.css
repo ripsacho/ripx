@@ -4911,6 +4911,15 @@
   scrollbar-color: rgba(6, 182, 212, 0.4) transparent;
 }
 
+.storeResourceListMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 16px 0;
+}
+
 .storeResourceListScroll::-webkit-scrollbar {
   width: 8px;
 }
@@ -5061,6 +5070,13 @@
   padding: 10px 12px 14px;
   border-top: 1px solid rgba(0, 0, 0, 0.06);
   background: rgba(248, 250, 252, 0.72);
+}
+
+.storeResourceListFooter :global(.Polaris-Button) {
+  width: 100%;
+  justify-content: center;
+  border-radius: 10px;
+  font-weight: 600;
 }
 
 .panelSectionPageTargeting .quickSelectChips {
