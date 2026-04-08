@@ -494,14 +494,14 @@ function SetupWizard() {
                 Guided setup — status auto-refreshes every 30s until complete
               </p>
             </div>
-            <ButtonGroup>
-              <Button onClick={checkSetupStatus} loading={checking}>
-                Refresh status
-              </Button>
+            <div className={styles.setupHeroActions}>
+              <Badge tone={allComplete ? 'success' : 'info'}>
+                {completedSteps}/{totalSteps} completed
+              </Badge>
               <Button url={settingsPath} size="slim">
                 Advanced settings
               </Button>
-            </ButtonGroup>
+            </div>
           </div>
 
           <div className={styles.setupBody}>
@@ -530,7 +530,11 @@ function SetupWizard() {
                         progress={progress}
                         tone={progress === 100 ? 'success' : 'primary'}
                       />
-                      <InlineStack align="space-between" blockAlign="center">
+                      <InlineStack
+                        className={styles.setupHeroCardActions}
+                        align="space-between"
+                        blockAlign="center"
+                      >
                         <Text variant="bodySm" tone="subdued">
                           Status auto-refreshes every 30s. Click Refresh to check now.
                         </Text>

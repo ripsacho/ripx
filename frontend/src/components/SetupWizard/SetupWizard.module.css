@@ -175,6 +175,15 @@
   justify-content: flex-end;
 }
 
+.setupHeroActions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .setupPage :global(.Polaris-Button) {
   transition:
     transform var(--setup-wizard-time-200) ease,
@@ -210,6 +219,15 @@
   box-shadow: 0 8px 24px rgba(6, 182, 212, 0.08);
 }
 
+.heroCard,
+.statusCard,
+.stepsCard,
+.railCard,
+.stepCard,
+.standaloneStepCard {
+  border-radius: 16px;
+}
+
 .heroCard::before {
   content: '';
   position: absolute;
@@ -233,6 +251,12 @@
 
 .statusBadges {
   padding: 8px 0;
+}
+
+.setupHeroCardActions {
+  margin-top: 0.2rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid rgba(6, 182, 212, 0.14);
 }
 
 .stepsCard {
@@ -301,6 +325,10 @@
 @media (max-width: 520px) {
   .stepHeader {
     align-items: flex-start;
+  }
+
+  .setupHeroCardActions {
+    gap: 0.5rem;
   }
 }
 
@@ -395,11 +423,21 @@
     margin-left: 0;
     justify-content: flex-start;
   }
+
+  .setupHeroActions {
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-start;
+  }
 }
 
 [data-theme='dark'] .statusCard {
   border-color: rgba(6, 182, 212, 0.22);
   background: linear-gradient(180deg, rgba(20, 20, 20, 0.96) 0%, rgba(14, 20, 28, 0.95) 100%);
+}
+
+[data-theme='dark'] .setupHeroCardActions {
+  border-top-color: rgba(6, 182, 212, 0.22);
 }
 
 [data-theme='dark'] .stepsCard {

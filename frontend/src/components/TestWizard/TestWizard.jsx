@@ -100,6 +100,7 @@ const HOMEPAGE_URL_PATTERN_STANDALONE = '^/$|^/index(\\.html|\\.php)?$|^/default
 const MAX_VISUAL_EDITOR_HISTORY = 40;
 const VISUAL_EDITOR_POSITIONS = ['after', 'before', 'afterbegin', 'beforeend'];
 const VISUAL_EDITOR_MUTATION_TYPES = ['none', 'hide', 'show', 'set_text', 'set_attr', 'set_style'];
+const PRICE_PRODUCT_MODAL_REVEAL_BATCH = 10;
 
 function createEmptyVisualEditorRule() {
   return {
@@ -934,6 +935,9 @@ function TestWizard({
     hasNextPage: false,
     endCursor: null,
   });
+  const [priceModalVisibleCount, setPriceModalVisibleCount] = useState(
+    PRICE_PRODUCT_MODAL_REVEAL_BATCH
+  );
   const [priceModalError, setPriceModalError] = useState(null);
   const [priceProductMetaById, setPriceProductMetaById] = useState({});
   const [priceMatrixProductsById, setPriceMatrixProductsById] = useState({});
@@ -1362,6 +1366,7 @@ function TestWizard({
         if (cancelled) return;
         const list = res.data?.resources || [];
         setPriceModalProducts(list);
+        setPriceModalVisibleCount(PRICE_PRODUCT_MODAL_REVEAL_BATCH);
         setPriceModalPageInfo(res.data?.page_info || { hasNextPage: false, endCursor: null });
         setPriceModalError(
           list.length === 0 && res.data?.empty_reason ? res.data.empty_reason : null
@@ -1370,6 +1375,7 @@ function TestWizard({
       .catch(err => {
         if (cancelled) return;
         setPriceModalProducts([]);
+        setPriceModalVisibleCount(PRICE_PRODUCT_MODAL_REVEAL_BATCH);
         setPriceModalPageInfo({ hasNextPage: false, endCursor: null });
         setPriceModalError(
           err?.response?.data?.error ||
@@ -1392,6 +1398,12 @@ function TestWizard({
   ]);
 
   const handlePriceModalLoadMore = useCallback(() => {
+    if (priceModalVisibleCount < priceModalProducts.length) {
+      setPriceModalVisibleCount(prev =>
+        Math.min(prev + PRICE_PRODUCT_MODAL_REVEAL_BATCH, priceModalProducts.length)
+      );
+      return;
+    }
     if (!routeDomain || !priceModalPageInfo?.endCursor || priceModalLoadingMore) return;
     const query = encodeURIComponent(priceModalSearchDebounced.trim());
     const after = encodeURIComponent(priceModalPageInfo.endCursor);
@@ -1402,11 +1414,19 @@ function TestWizard({
       .then(res => {
         const list = res.data?.resources || [];
         setPriceModalProducts(prev => [...prev, ...list]);
+        setPriceModalVisibleCount(prev => prev + PRICE_PRODUCT_MODAL_REVEAL_BATCH);
         setPriceModalPageInfo(res.data?.page_info || { hasNextPage: false, endCursor: null });
       })
       .catch(() => {})
       .finally(() => setPriceModalLoadingMore(false));
-  }, [routeDomain, priceModalPageInfo, priceModalSearchDebounced, priceModalLoadingMore]);
+  }, [
+    routeDomain,
+    priceModalPageInfo,
+    priceModalSearchDebounced,
+    priceModalLoadingMore,
+    priceModalProducts.length,
+    priceModalVisibleCount,
+  ]);
 
   useEffect(() => {
     const targetProductIds =
@@ -6913,6 +6933,11 @@ function TestWizard({
       String(formData.target_type || '').toLowerCase() === 'product'
         ? `${priceTargetProductIds.length || 1} selected product${priceTargetProductIds.length === 1 ? '' : 's'}`
         : 'All products';
+    const visiblePriceModalProducts = priceModalProducts.slice(0, priceModalVisibleCount);
+    const priceModalShownCount = Math.min(priceModalVisibleCount, priceModalProducts.length);
+    const priceModalHasHiddenLoaded = priceModalShownCount < priceModalProducts.length;
+    const priceModalCanFetchMore = Boolean(priceModalPageInfo?.hasNextPage);
+    const priceModalCanShowMore = priceModalHasHiddenLoaded || priceModalCanFetchMore;
     const priceSimulation =
       parsedExampleCatalog !== null
         ? buildPriceSimulationRows({
@@ -8702,8 +8727,19 @@ function TestWizard({
                     </div>
                   ) : (
                     <>
+                      <div className={styles.priceProductPickerListMeta}>
+                        <Text as="span" variant="bodySm" tone="subdued">
+                          Showing {priceModalShownCount} of {priceModalProducts.length} loaded
+                          products
+                        </Text>
+                        {priceModalCanFetchMore && (
+                          <Badge tone="info" size="small">
+                            More available
+                          </Badge>
+                        )}
+                      </div>
                       <div className={styles.priceProductPickerList}>
-                        {priceModalProducts.map(r => {
+                        {visiblePriceModalProducts.map(r => {
                           const isSelected = priceTargetProductIds.includes(r.id);
                           const thumb = r.imageUrl;
                           return (
@@ -8739,14 +8775,19 @@ function TestWizard({
                           );
                         })}
                       </div>
-                      {priceModalPageInfo?.hasNextPage && (
+                      {priceModalCanShowMore && (
                         <div className={styles.priceProductPickerLoadMore}>
                           <Button
                             onClick={handlePriceModalLoadMore}
                             loading={priceModalLoadingMore}
                             disabled={priceModalLoadingMore}
                           >
-                            Load more
+                            {priceModalHasHiddenLoaded
+                              ? `Show ${Math.min(
+                                  PRICE_PRODUCT_MODAL_REVEAL_BATCH,
+                                  priceModalProducts.length - priceModalShownCount
+                                )} more`
+                              : `Show ${PRICE_PRODUCT_MODAL_REVEAL_BATCH} more`}
                           </Button>
                         </div>
                       )}

@@ -482,8 +482,8 @@
   justify-content: space-between;
   gap: 0.85rem 1rem;
   flex-wrap: wrap;
-  margin: 0 0 0.75rem;
-  padding: 0.8rem 0.95rem;
+  margin: 0 0 0.55rem;
+  padding: 0.65rem 0.85rem;
   border: 1px solid rgba(6, 182, 212, 0.16);
   border-radius: 12px;
   background: linear-gradient(
@@ -499,7 +499,11 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.1rem;
+}
+
+.settingsCommandBarActions {
+  justify-content: flex-end;
 }
 
 [data-theme='dark'] .settingsCommandBar {
@@ -1210,6 +1214,7 @@
 }
 
 .settingsPanelCard {
+  --settings-card-header-border: rgba(6, 182, 212, 0.12);
   min-width: 0;
   height: 100%;
   border-radius: 14px;
@@ -1232,6 +1237,7 @@
 [data-theme='dark'] .settingsPanelCard {
   border-color: rgba(6, 182, 212, 0.22);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
+  --settings-card-header-border: rgba(6, 182, 212, 0.2);
 }
 
 .settingsPanelCard:focus-within {
@@ -2079,7 +2085,7 @@
 .sectionHeader {
   display: flex;
   align-items: flex-start;
-  gap: var(--ripx-space-5, 1.25rem);
+  gap: 0.95rem;
 }
 
 .sectionHeaderIcon {
@@ -2113,7 +2119,7 @@
 .sectionHeaderTitleRow h4,
 .sectionHeaderTitleRow h5,
 .sectionHeaderTitleRow h6 {
-  font-size: var(--ripx-type-title-lg, 1.125rem);
+  font-size: 1.0625rem;
   line-height: 1.25;
 }
 
@@ -2149,7 +2155,10 @@
 }
 
 .panelCardBody {
-  margin-top: var(--ripx-space-2, 0.5rem);
+  margin-top: 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
 }
 
 .sectionHeaderWithAction {
@@ -2157,7 +2166,29 @@
   justify-content: space-between;
   align-items: flex-start;
   flex-wrap: wrap;
-  gap: 1rem;
+  gap: 0.85rem 1rem;
+}
+
+.settingsPanelCard .sectionHeaderWithAction {
+  margin-bottom: 0.45rem;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid var(--settings-card-header-border);
+}
+
+.settingsPanelCard .sectionHeaderContent > p {
+  margin-top: 0.25rem;
+  line-height: 1.5;
+}
+
+.settingsPanelCard :global(.Polaris-Badge) {
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .settingsPanelCard .sectionHeaderWithAction {
+    margin-bottom: 0.35rem;
+    padding-bottom: 0.5rem;
+  }
 }
 
 /* Theme preview cards - premium */

@@ -1689,36 +1689,28 @@ function Settings() {
                 >
                   <div className={styles.settingsCommandBarMeta}>
                     <Text as="p" variant="headingSm">
-                      Workflow
+                      Setup workflow
                     </Text>
                     <Text as="p" variant="bodySm" tone="subdued">
-                      Use guided setup for onboarding, then switch to advanced controls for ongoing
-                      operations.
+                      Use Setup for onboarding and verification. Use this page for day-to-day
+                      advanced configuration.
                     </Text>
                   </div>
-                  <InlineStack gap="200" wrap blockAlign="center">
+                  <InlineStack
+                    className={styles.settingsCommandBarActions}
+                    gap="200"
+                    wrap
+                    blockAlign="center"
+                  >
+                    <Badge tone={setupComplete ? 'success' : 'warning'}>
+                      {setupComplete ? 'Setup ready' : 'Setup pending'}
+                    </Badge>
                     <Button size="slim" variant="primary" url={setupWizardPath}>
                       Open Setup Wizard
                     </Button>
-                    <Button
-                      size="slim"
-                      onClick={() => {
-                        const i = TAB_IDS.indexOf('installation');
-                        if (i >= 0) setSelectedTab(i);
-                      }}
-                    >
-                      Open Installation
+                    <Button size="slim" onClick={() => runCheckoutDiagnostics()}>
+                      Run checkout diagnostics
                     </Button>
-                    {!isGuidedSetupMode && (
-                      <Button
-                        size="slim"
-                        onClick={() =>
-                          setSettingsLayoutMode(prev => (prev === 'all' ? 'tabbed' : 'all'))
-                        }
-                      >
-                        {showAllAppSections ? 'Use Sections view' : 'Show All sections'}
-                      </Button>
-                    )}
                   </InlineStack>
                 </div>
               )}

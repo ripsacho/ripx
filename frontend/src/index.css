@@ -3634,6 +3634,33 @@ body:not(.admin-page) div[class*='Polaris-Modal-Dialog__Container']:has([data-pr
   box-sizing: border-box !important;
 }
 
+/* Price-product picker: always use full-viewport overlay (including admin layout). */
+body.admin-page .Polaris-Modal-DialogContainer:has([data-price-product-picker-modal]),
+body.admin-page div[class*='Polaris-Modal'][class*='Container']:has([data-price-product-picker-modal]) {
+  left: 0 !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  max-width: none !important;
+  padding: 1rem !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+}
+
+/* Stronger full-screen dim layer when product picker modal is open. */
+body:has([data-price-product-picker-modal]) .Polaris-Backdrop,
+body:has([data-price-product-picker-modal]) div[class*='Polaris-Modal'][class*='Backdrop'] {
+  left: 0 !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  background: rgba(15, 23, 42, 0.34) !important;
+  backdrop-filter: blur(6px) saturate(1.02) !important;
+  -webkit-backdrop-filter: blur(6px) saturate(1.02) !important;
+}
+
 /* Add domain modal (My domains) – container: center and comfortable padding */
 [data-add-domain-modal-open] .Polaris-Modal-DialogContainer,
 [data-add-domain-modal-open] div[class*="Polaris-Modal"][class*="Container"] {
