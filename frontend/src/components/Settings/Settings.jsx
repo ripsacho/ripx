@@ -306,6 +306,9 @@ function Settings() {
   const [checkoutDiscountListCheck, setCheckoutDiscountListCheck] = useState(null);
   const [checkoutDiscountListCheckLoading, setCheckoutDiscountListCheckLoading] = useState(false);
   const [checkoutDiscountListCheckError, setCheckoutDiscountListCheckError] = useState(null);
+  const [checkoutCartTransformEnsuring, setCheckoutCartTransformEnsuring] = useState(false);
+  const [checkoutCartTransformEnsureResult, setCheckoutCartTransformEnsureResult] = useState(null);
+  const [checkoutCartTransformEnsureError, setCheckoutCartTransformEnsureError] = useState(null);
   const [checkoutFullVerifyRunning, setCheckoutFullVerifyRunning] = useState(false);
   const [layoutDensity, setLayoutDensity] = useState(() => {
     if (typeof window === 'undefined') return 'comfortable';
@@ -536,6 +539,42 @@ function Settings() {
     }
   }, [installation?.domain, fetchShopifyFnInventory]);
 
+  const ensureCartTransform = useCallback(async () => {
+    if (!installation?.domain) return;
+    setCheckoutCartTransformEnsuring(true);
+    setCheckoutCartTransformEnsureError(null);
+    setCheckoutCartTransformEnsureResult(null);
+    try {
+      const res = await apiPost('/settings/cart-transform/ensure', {});
+      const data = unwrapData(res);
+      if (!data || data.success === false) {
+        throw new Error(data?.error || 'Could not install/verify RipX cart transform');
+      }
+      setCheckoutCartTransformEnsureResult({
+        created: data.created === true,
+        assumedInstalled: data.assumedInstalled === true,
+        installCheckStatus: data?.installCheck?.status || null,
+        installCheckReason: data?.installCheck?.reason || null,
+        functionTitle: data?.function?.title || 'RipX cart transform',
+      });
+      await runCheckoutDiagnostics();
+    } catch (e) {
+      const apiError = e?.response?.data || null;
+      const baseMessage =
+        apiError?.error || e?.message || 'Could not install/verify cart transform';
+      const userErrors = Array.isArray(apiError?.details?.shopifyUserErrors)
+        ? apiError.details.shopifyUserErrors
+            .map(err => String(err?.message || '').trim())
+            .filter(Boolean)
+        : [];
+      setCheckoutCartTransformEnsureError(
+        userErrors.length > 0 ? `${baseMessage}. Shopify: ${userErrors.join(' ; ')}` : baseMessage
+      );
+    } finally {
+      setCheckoutCartTransformEnsuring(false);
+    }
+  }, [installation?.domain, runCheckoutDiagnostics]);
+
   const ensureCheckoutDiscount = useCallback(async () => {
     if (!installation?.domain) return;
     setCheckoutDiscountEnsuring(true);
@@ -642,13 +681,14 @@ function Settings() {
     if (!installation?.domain) return;
     setCheckoutFullVerifyRunning(true);
     try {
+      await ensureCartTransform();
       await ensureCheckoutDiscount();
       await runCheckoutDiagnostics();
       setMessage('Full checkout verification completed');
     } finally {
       setCheckoutFullVerifyRunning(false);
     }
-  }, [installation?.domain, ensureCheckoutDiscount, runCheckoutDiagnostics]);
+  }, [installation?.domain, ensureCartTransform, ensureCheckoutDiscount, runCheckoutDiagnostics]);
 
   const runPreviewProbe = useCallback(async () => {
     const testId = String(previewProbeTestId || '').trim();
@@ -1028,6 +1068,7 @@ function Settings() {
     }
 
     (async () => {
+      await ensureCartTransform();
       await ensureCheckoutDiscount();
       await runCheckoutDiagnostics();
     })();
@@ -1047,6 +1088,7 @@ function Settings() {
     TAB_IDS,
     selectedTab,
     setSelectedTab,
+    ensureCartTransform,
     ensureCheckoutDiscount,
     runCheckoutDiagnostics,
     setSearchParams,
@@ -1230,20 +1272,43 @@ function Settings() {
       checkoutDiag?.infrastructure?.discount_function_available === true;
     const cartTransformAvailable =
       checkoutDiag?.infrastructure?.cart_transform_function_available === true;
+    const cartTransformInstalled = checkoutDiag?.infrastructure?.cart_transform_installed === true;
+    const cartTransformInstallCheckStatus = String(
+      checkoutDiag?.infrastructure?.cart_transform_install_check_status || ''
+    )
+      .trim()
+      .toLowerCase();
     const scriptDetected = installation?.scriptVerified === true;
+    const directPriceReady = cartTransformAvailable && cartTransformInstalled;
+    const directPriceUnknown =
+      cartTransformAvailable && cartTransformInstallCheckStatus === 'scope_missing';
 
     return [
       {
         id: 'price_direct_override',
         title: 'Price tests (Direct Price Override)',
-        tone: cartTransformAvailable ? 'success' : 'warning',
-        status: cartTransformAvailable ? 'Ready' : 'Needs deploy',
-        summary: cartTransformAvailable
-          ? 'Cart Transform is available, so Price tests can apply direct unit prices at cart and checkout.'
-          : 'Cart Transform is not detected yet, so Price tests cannot apply direct checkout price overrides reliably.',
-        nextAction: cartTransformAvailable
+        tone: directPriceReady ? 'success' : 'warning',
+        status: directPriceReady
+          ? 'Ready'
+          : directPriceUnknown
+            ? 'Unknown install state'
+            : cartTransformAvailable
+              ? 'Needs install'
+              : 'Needs deploy',
+        summary: directPriceReady
+          ? 'Cart Transform is deployed and installed, so Price tests can apply direct unit prices at cart and checkout.'
+          : directPriceUnknown
+            ? 'Cart Transform function is deployed, but install state could not be verified with current app scopes.'
+            : cartTransformAvailable
+              ? 'Cart Transform function is deployed but not installed on this shop yet.'
+              : 'Cart Transform function is not detected yet, so Price tests cannot apply direct checkout price overrides reliably.',
+        nextAction: directPriceReady
           ? 'Use Price tests for lower or higher selling prices. Configure per-product and per-variant values in the matrix.'
-          : 'Deploy and activate RipX Cart Transform first, then rerun diagnostics.',
+          : directPriceUnknown
+            ? 'Re-open/re-install the app with read_cart_transforms scope, then run diagnostics again.'
+            : cartTransformAvailable
+              ? 'Click "Install/ensure cart transform" in this section, then rerun diagnostics.'
+              : 'Deploy and activate RipX Cart Transform first, then rerun diagnostics.',
       },
       {
         id: 'offer_discount_path',
@@ -2341,6 +2406,7 @@ function Settings() {
                                           loading={checkoutFullVerifyRunning}
                                           disabled={
                                             checkoutFullVerifyRunning ||
+                                            checkoutCartTransformEnsuring ||
                                             checkoutDiscountEnsuring ||
                                             checkoutDiagLoading
                                           }
@@ -2355,6 +2421,16 @@ function Settings() {
                                           }
                                         >
                                           Run check
+                                        </Button>
+                                        <Button
+                                          onClick={ensureCartTransform}
+                                          loading={checkoutCartTransformEnsuring}
+                                          disabled={
+                                            checkoutCartTransformEnsuring ||
+                                            checkoutFullVerifyRunning
+                                          }
+                                        >
+                                          Install/ensure cart transform
                                         </Button>
                                         <Button
                                           onClick={ensureCheckoutDiscount}
@@ -2575,6 +2651,29 @@ function Settings() {
                                         onDismiss={() => setCheckoutDiscountEnsureError(null)}
                                       >
                                         {checkoutDiscountEnsureError}
+                                      </Banner>
+                                    )}
+                                    {checkoutCartTransformEnsureError && (
+                                      <Banner
+                                        tone="critical"
+                                        onDismiss={() => setCheckoutCartTransformEnsureError(null)}
+                                      >
+                                        {checkoutCartTransformEnsureError}
+                                      </Banner>
+                                    )}
+                                    {checkoutCartTransformEnsureResult && (
+                                      <Banner
+                                        tone="success"
+                                        onDismiss={() => setCheckoutCartTransformEnsureResult(null)}
+                                      >
+                                        {checkoutCartTransformEnsureResult.created
+                                          ? 'RipX cart transform installed successfully.'
+                                          : checkoutCartTransformEnsureResult.assumedInstalled
+                                            ? 'RipX cart transform reported as already installed (install state assumed because verification scope is limited).'
+                                            : 'RipX cart transform already exists for this shop.'}{' '}
+                                        {checkoutCartTransformEnsureResult.installCheckStatus
+                                          ? `Install check: ${checkoutCartTransformEnsureResult.installCheckStatus}.`
+                                          : ''}
                                       </Banner>
                                     )}
                                     {checkoutDiscountEnsureResult && (
