@@ -101,6 +101,41 @@ const MAX_VISUAL_EDITOR_HISTORY = 40;
 const VISUAL_EDITOR_POSITIONS = ['after', 'before', 'afterbegin', 'beforeend'];
 const VISUAL_EDITOR_MUTATION_TYPES = ['none', 'hide', 'show', 'set_text', 'set_attr', 'set_style'];
 const PRICE_PRODUCT_MODAL_REVEAL_BATCH = 10;
+const MATRIX_SEARCH_BADGE_MAX_CHARS = 26;
+const THEME_TEST_MODES = ['template_switch', 'section_variant', 'asset_flag', 'theme_redirect'];
+
+function buildProgressiveListWindow(items, visibleCount, options = {}) {
+  const list = Array.isArray(items) ? items : [];
+  const batchSize = Math.max(1, Number(options.batchSize) || PRICE_PRODUCT_MODAL_REVEAL_BATCH);
+  const getId = typeof options.getId === 'function' ? options.getId : item => item?.id;
+  const pinnedIds = Array.isArray(options.pinnedIds) ? options.pinnedIds : [];
+  const normalizedVisibleCount = Math.max(0, Number(visibleCount) || 0);
+
+  const baseVisible = list.slice(0, normalizedVisibleCount);
+  const baseIds = new Set(baseVisible.map(item => String(getId(item) || '')));
+  const pinnedIdSet = new Set(pinnedIds.filter(Boolean).map(id => String(id)));
+  const pinnedExtras = pinnedIdSet.size
+    ? list.filter(item => {
+        const id = String(getId(item) || '');
+        return id && pinnedIdSet.has(id) && !baseIds.has(id);
+      })
+    : [];
+
+  const visibleItems = [...baseVisible, ...pinnedExtras];
+  const shownCount = visibleItems.length;
+  const hasHiddenLoaded = shownCount < list.length;
+  const canCollapse = shownCount > batchSize;
+  const nextRevealCount = Math.min(batchSize, Math.max(list.length - shownCount, 0));
+
+  return {
+    visibleItems,
+    shownCount,
+    hasHiddenLoaded,
+    canCollapse,
+    nextRevealCount,
+    totalLoaded: list.length,
+  };
+}
 
 function createEmptyVisualEditorRule() {
   return {
@@ -236,6 +271,7 @@ const DEFAULT_FORM_DATA = {
     device: 'all',
     customer: 'all',
     countries: [],
+    excluded_product_ids: [],
     traffic_source: 'all',
     anti_flicker_mode: 'balanced',
     url_pattern: '',
@@ -243,6 +279,8 @@ const DEFAULT_FORM_DATA = {
     page_rules: [],
     device_rules: [],
     audience_rules: [],
+    traffic_ramp_percent: '',
+    traffic_ramp_days: 7,
     js_targeting: { enabled: false, code: '' },
     visual_editor_rules: Array.from({ length: 5 }, () => createEmptyVisualEditorRule()),
   },
@@ -260,6 +298,31 @@ function isPriceLikeTestType(typeValue) {
     .toLowerCase()
     .trim();
   return t === 'price' || t === 'pricing';
+}
+
+function isOfferLikeTestType(typeValue) {
+  const t = String(typeValue || '')
+    .toLowerCase()
+    .trim();
+  return t === 'offer';
+}
+
+function normalizeShopifyIdList(rawValue, resourceType = 'Product') {
+  const values = String(rawValue || '')
+    .split(/[\n,]+/)
+    .map(s => s.trim())
+    .filter(Boolean);
+  const normalized = values.map(value => {
+    if (value.startsWith('gid://')) {
+      return value;
+    }
+    const numeric = value.replace(/\D/g, '');
+    if (!numeric) {
+      return value;
+    }
+    return `gid://shopify/${resourceType}/${numeric}`;
+  });
+  return Array.from(new Set(normalized));
 }
 
 function hasSavedPriceConfigValue(cfg) {
@@ -389,6 +452,77 @@ function enforceDirectPriceOverrideOnConfig(config) {
   return next;
 }
 
+function normalizeThemeMode(rawMode, fallbackMode = 'asset_flag') {
+  const mode = String(rawMode || fallbackMode)
+    .trim()
+    .toLowerCase();
+  return THEME_TEST_MODES.includes(mode) ? mode : fallbackMode;
+}
+
+function normalizeThemeConfig(config, fallbackMode = 'asset_flag') {
+  const source = config && typeof config === 'object' ? { ...config } : {};
+  const themeMode = normalizeThemeMode(source.themeMode || source.theme_mode, fallbackMode);
+  const themeTemplateHandle = String(
+    source.themeTemplateHandle || source.theme_template_handle || source.template || ''
+  ).trim();
+  const themeId = String(source.themeId || source.theme_id || '').trim();
+  const sectionId = String(source.sectionId || source.section_id || '').trim();
+  const bodyClass = String(source.bodyClass || source.body_class || '').trim();
+  const redirectUrl = String(
+    source.url || source.themeRedirectUrl || source.theme_redirect_url || ''
+  ).trim();
+
+  const next = {
+    ...source,
+    themeMode,
+  };
+
+  if (themeTemplateHandle) {
+    next.themeTemplateHandle = themeTemplateHandle;
+    next.template = themeTemplateHandle;
+  } else {
+    delete next.themeTemplateHandle;
+    delete next.theme_template_handle;
+    if (next.template !== undefined) {
+      next.template = '';
+    }
+  }
+
+  if (themeId) {
+    next.themeId = themeId;
+  } else {
+    delete next.themeId;
+    delete next.theme_id;
+  }
+
+  if (sectionId) {
+    next.sectionId = sectionId;
+  } else {
+    delete next.sectionId;
+    delete next.section_id;
+  }
+
+  if (bodyClass) {
+    next.bodyClass = bodyClass;
+  } else {
+    delete next.bodyClass;
+    delete next.body_class;
+  }
+
+  if (redirectUrl) {
+    next.url = redirectUrl;
+  } else if (next.url !== undefined) {
+    next.url = '';
+  }
+
+  delete next.theme_mode;
+  delete next.theme_template_handle;
+  delete next.themeRedirectUrl;
+  delete next.theme_redirect_url;
+
+  return next;
+}
+
 function _NativeVariantMappingAssistant({
   shopDomain,
   disabled,
@@ -506,16 +640,17 @@ function _NativeVariantMappingAssistant({
     }
     return null;
   }, [filteredProducts, selectedVariantId, normalizeVariantIdForCompare]);
-  const visibleBaseProducts = filteredProducts.slice(0, visibleProductCount);
-  const visibleBaseIds = new Set(visibleBaseProducts.map(product => product.id));
-  const pinnedIds = new Set([selectedProductId, expandedProductId].filter(Boolean));
-  const pinnedVisibleExtras = filteredProducts.filter(
-    product => pinnedIds.has(product.id) && !visibleBaseIds.has(product.id)
+  const productsProgressiveWindow = buildProgressiveListWindow(
+    filteredProducts,
+    visibleProductCount,
+    {
+      pinnedIds: [selectedProductId, expandedProductId],
+    }
   );
-  const visibleProducts = [...visibleBaseProducts, ...pinnedVisibleExtras];
-  const shownProductsCount = visibleProducts.length;
-  const hasHiddenLoadedProducts = shownProductsCount < filteredProducts.length;
-  const canCollapseProducts = shownProductsCount > PRICE_PRODUCT_MODAL_REVEAL_BATCH;
+  const visibleProducts = productsProgressiveWindow.visibleItems;
+  const shownProductsCount = productsProgressiveWindow.shownCount;
+  const hasHiddenLoadedProducts = productsProgressiveWindow.hasHiddenLoaded;
+  const canCollapseProducts = productsProgressiveWindow.canCollapse;
 
   if (disabled) {
     return (
@@ -693,7 +828,7 @@ function _NativeVariantMappingAssistant({
                   }
                 >
                   {`Show ${Math.min(
-                    PRICE_PRODUCT_MODAL_REVEAL_BATCH,
+                    productsProgressiveWindow.nextRevealCount || PRICE_PRODUCT_MODAL_REVEAL_BATCH,
                     filteredProducts.length - shownProductsCount
                   )} more`}
                 </Button>
@@ -1003,6 +1138,19 @@ function TestWizard({
   );
   const [priceModalError, setPriceModalError] = useState(null);
   const [priceProductMetaById, setPriceProductMetaById] = useState({});
+  const [allProductsMatrixProducts, setAllProductsMatrixProducts] = useState([]);
+  const [allProductsMatrixLoading, setAllProductsMatrixLoading] = useState(false);
+  const [allProductsMatrixLoadingMore, setAllProductsMatrixLoadingMore] = useState(false);
+  const [allProductsMatrixPageInfo, setAllProductsMatrixPageInfo] = useState({
+    hasNextPage: false,
+    endCursor: null,
+  });
+  const [allProductsMatrixVisibleCount, setAllProductsMatrixVisibleCount] = useState(
+    PRICE_PRODUCT_MODAL_REVEAL_BATCH
+  );
+  const [allProductsMatrixError, setAllProductsMatrixError] = useState(null);
+  const [allProductsMatrixSearch, setAllProductsMatrixSearch] = useState('');
+  const [allProductsMatrixSearchDebounced, setAllProductsMatrixSearchDebounced] = useState('');
   const [priceMatrixProductsById, setPriceMatrixProductsById] = useState({});
   const [priceMatrixLoadingById, setPriceMatrixLoadingById] = useState({});
   const [priceMatrixErrorById, setPriceMatrixErrorById] = useState({});
@@ -1397,6 +1545,11 @@ function TestWizard({
   }, [priceModalSearch]);
 
   useEffect(() => {
+    const t = setTimeout(() => setAllProductsMatrixSearchDebounced(allProductsMatrixSearch), 350);
+    return () => clearTimeout(t);
+  }, [allProductsMatrixSearch]);
+
+  useEffect(() => {
     if (typeof document === 'undefined') return undefined;
     const modalClass = 'ripx-price-product-modal-open';
     const root = document.documentElement;
@@ -1481,6 +1634,23 @@ function TestWizard({
   }, [priceModalProducts]);
 
   useEffect(() => {
+    if (!allProductsMatrixProducts.length) return;
+    setPriceProductMetaById(prev => {
+      const next = { ...prev };
+      allProductsMatrixProducts.forEach(r => {
+        if (r?.id) {
+          next[r.id] = {
+            title: r.title || r.name,
+            handle: r.handle || '',
+            imageUrl: r.imageUrl || r.image_url || null,
+          };
+        }
+      });
+      return next;
+    });
+  }, [allProductsMatrixProducts]);
+
+  useEffect(() => {
     if (!priceProductModalOpen || isStandalone || !isShopifyFromRoute || !routeDomain) return;
     let cancelled = false;
     const shop = routeDomain;
@@ -1554,18 +1724,152 @@ function TestWizard({
     priceModalVisibleCount,
   ]);
 
+  const isProductTargetScope = String(formData.target_type || '').toLowerCase() === 'product';
+  const selectedScopeProductIds = useMemo(() => {
+    if (!isProductTargetScope) return [];
+    if (Array.isArray(formData.target_ids) && formData.target_ids.length > 0) {
+      return formData.target_ids.filter(Boolean);
+    }
+    return formData.target_id ? [formData.target_id] : [];
+  }, [formData.target_id, formData.target_ids, isProductTargetScope]);
+  const shouldUseAllProductsMatrix = formData.pricePerProduct && !isProductTargetScope;
+  const canFetchAllProductsMatrix =
+    shouldUseAllProductsMatrix && !isStandalone && isShopifyFromRoute && Boolean(routeDomain);
+  const allProductsMatrixProgressiveWindow = useMemo(
+    () => buildProgressiveListWindow(allProductsMatrixProducts, allProductsMatrixVisibleCount),
+    [allProductsMatrixProducts, allProductsMatrixVisibleCount]
+  );
+  const allProductsMatrixVisibleIds = useMemo(
+    () => allProductsMatrixProgressiveWindow.visibleItems.map(item => item?.id).filter(Boolean),
+    [allProductsMatrixProgressiveWindow]
+  );
+  const matrixProductIdsForFetching = useMemo(() => {
+    if (!formData.pricePerProduct) return [];
+    return isProductTargetScope ? selectedScopeProductIds : allProductsMatrixVisibleIds;
+  }, [
+    formData.pricePerProduct,
+    isProductTargetScope,
+    selectedScopeProductIds,
+    allProductsMatrixVisibleIds,
+  ]);
+
   useEffect(() => {
-    const targetProductIds =
-      formData.target_type === 'product'
-        ? formData.target_ids?.length
-          ? formData.target_ids
-          : formData.target_id
-            ? [formData.target_id]
-            : []
-        : [];
+    if (!canFetchAllProductsMatrix) {
+      setAllProductsMatrixProducts([]);
+      setAllProductsMatrixVisibleCount(PRICE_PRODUCT_MODAL_REVEAL_BATCH);
+      setAllProductsMatrixPageInfo({ hasNextPage: false, endCursor: null });
+      setAllProductsMatrixError(null);
+      setAllProductsMatrixLoading(false);
+      setAllProductsMatrixLoadingMore(false);
+      return;
+    }
+    let cancelled = false;
+    const shop = routeDomain;
+    const query = encodeURIComponent(allProductsMatrixSearchDebounced.trim());
+    setAllProductsMatrixLoading(true);
+    setAllProductsMatrixLoadingMore(false);
+    setAllProductsMatrixError(null);
+    setAllProductsMatrixVisibleCount(PRICE_PRODUCT_MODAL_REVEAL_BATCH);
+    apiGet(`/shopify/store-resources?type=product&query=${query}&first=30`, { shop })
+      .then(res => {
+        if (cancelled) return;
+        const list = Array.isArray(res.data?.resources) ? res.data.resources : [];
+        setAllProductsMatrixProducts(list);
+        setAllProductsMatrixPageInfo(
+          res.data?.page_info || {
+            hasNextPage: false,
+            endCursor: null,
+          }
+        );
+        setAllProductsMatrixError(
+          list.length === 0 && res.data?.empty_reason ? res.data.empty_reason : null
+        );
+      })
+      .catch(err => {
+        if (cancelled) return;
+        setAllProductsMatrixProducts([]);
+        setAllProductsMatrixVisibleCount(PRICE_PRODUCT_MODAL_REVEAL_BATCH);
+        setAllProductsMatrixPageInfo({ hasNextPage: false, endCursor: null });
+        setAllProductsMatrixError(
+          err?.response?.data?.error || err?.message || 'Could not load products for matrix view.'
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setAllProductsMatrixLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canFetchAllProductsMatrix, routeDomain, allProductsMatrixSearchDebounced]);
+
+  const handleLoadMoreAllProductsMatrix = useCallback(() => {
+    if (allProductsMatrixVisibleCount < allProductsMatrixProducts.length) {
+      setAllProductsMatrixVisibleCount(prev =>
+        Math.min(prev + PRICE_PRODUCT_MODAL_REVEAL_BATCH, allProductsMatrixProducts.length)
+      );
+      return;
+    }
+    if (
+      !canFetchAllProductsMatrix ||
+      !allProductsMatrixPageInfo?.hasNextPage ||
+      !allProductsMatrixPageInfo?.endCursor ||
+      allProductsMatrixLoadingMore
+    ) {
+      return;
+    }
+    const query = encodeURIComponent(allProductsMatrixSearchDebounced.trim());
+    const after = encodeURIComponent(allProductsMatrixPageInfo.endCursor);
+    setAllProductsMatrixLoadingMore(true);
+    apiGet(`/shopify/store-resources?type=product&query=${query}&first=30&after=${after}`, {
+      shop: routeDomain,
+    })
+      .then(res => {
+        const list = Array.isArray(res.data?.resources) ? res.data.resources : [];
+        if (list.length > 0) {
+          setAllProductsMatrixProducts(prev => {
+            const existing = Array.isArray(prev) ? prev : [];
+            const seen = new Set(existing.map(item => String(item?.id || '')));
+            const merged = [...existing];
+            list.forEach(item => {
+              const id = String(item?.id || '');
+              if (id && !seen.has(id)) {
+                seen.add(id);
+                merged.push(item);
+              }
+            });
+            return merged;
+          });
+          setAllProductsMatrixVisibleCount(prev => prev + PRICE_PRODUCT_MODAL_REVEAL_BATCH);
+        }
+        setAllProductsMatrixPageInfo(
+          res.data?.page_info || {
+            hasNextPage: false,
+            endCursor: null,
+          }
+        );
+      })
+      .catch(err => {
+        setAllProductsMatrixError(
+          err?.response?.data?.error ||
+            err?.message ||
+            'Could not load more products for matrix view.'
+        );
+      })
+      .finally(() => setAllProductsMatrixLoadingMore(false));
+  }, [
+    allProductsMatrixVisibleCount,
+    allProductsMatrixProducts.length,
+    canFetchAllProductsMatrix,
+    allProductsMatrixPageInfo,
+    allProductsMatrixLoadingMore,
+    allProductsMatrixSearchDebounced,
+    routeDomain,
+  ]);
+
+  useEffect(() => {
     if (
       !formData.pricePerProduct ||
-      targetProductIds.length === 0 ||
+      matrixProductIdsForFetching.length === 0 ||
       isStandalone ||
       !isShopifyFromRoute ||
       !routeDomain
@@ -1573,7 +1877,7 @@ function TestWizard({
       return;
     }
     let cancelled = false;
-    targetProductIds.forEach(productId => {
+    matrixProductIdsForFetching.forEach(productId => {
       if (!productId) return;
       if (priceMatrixProductsById[productId] || priceMatrixLoadingById[productId]) return;
       setPriceMatrixLoadingById(prev => ({ ...prev, [productId]: true }));
@@ -1628,9 +1932,7 @@ function TestWizard({
     };
   }, [
     formData.pricePerProduct,
-    formData.target_type,
-    formData.target_id,
-    formData.target_ids,
+    matrixProductIdsForFetching,
     isStandalone,
     isShopifyFromRoute,
     routeDomain,
@@ -1919,6 +2221,12 @@ function TestWizard({
       url_pattern: data.segments?.url_pattern ?? '',
       min_sessions: data.segments?.min_sessions ?? '',
     };
+    if (
+      Array.isArray(data.segments?.excluded_product_ids) &&
+      data.segments.excluded_product_ids.length > 0
+    ) {
+      normalizedSegments.excluded_product_ids = data.segments.excluded_product_ids.filter(Boolean);
+    }
     if (Array.isArray(data.segments?.custom_rules) && data.segments.custom_rules.length > 0) {
       normalizedSegments.custom_rules = data.segments.custom_rules;
     }
@@ -1978,6 +2286,10 @@ function TestWizard({
     const isPriceLikeTest =
       ['price', 'pricing'].includes(String(data.type || '').toLowerCase()) ||
       ['price', 'pricing'].includes(String(templateKey || '').toLowerCase());
+    const isThemeFamilyTest =
+      String(data.type || '').toLowerCase() === 'theme' ||
+      templateKey === 'theme' ||
+      templateKey === 'template';
 
     const goal = {
       type: data.goal?.type || 'conversion',
@@ -1993,6 +2305,9 @@ function TestWizard({
       };
       if (isPriceLikeTest) {
         nextVariant.config = enforceDirectPriceOverrideOnConfig(nextVariant.config || {});
+      } else if (isThemeFamilyTest) {
+        const fallbackThemeMode = templateKey === 'template' ? 'template_switch' : 'asset_flag';
+        nextVariant.config = normalizeThemeConfig(nextVariant.config || {}, fallbackThemeMode);
       }
       return nextVariant;
     });
@@ -2515,7 +2830,15 @@ function TestWizard({
         target_type: targetType,
         target_id: '',
         target_ids: null,
-        segments: { ...prev.segments, url_pattern: urlPattern, page_rules: [] },
+        segments: {
+          ...prev.segments,
+          url_pattern: urlPattern,
+          page_rules: [],
+          excluded_product_ids:
+            templateKey === 'price' || templateKey === 'pricing' || templateKey === 'offer'
+              ? prev.segments?.excluded_product_ids || []
+              : [],
+        },
         variants: template.defaultConfig.variants || [
           { name: 'Control', allocation: 50, config: {} },
           { name: 'Variant A', allocation: 50, config: {} },
@@ -2539,7 +2862,15 @@ function TestWizard({
         target_type: targetType,
         target_id: '',
         target_ids: null,
-        segments: { ...prev.segments, url_pattern: urlPattern, page_rules: [] },
+        segments: {
+          ...prev.segments,
+          url_pattern: urlPattern,
+          page_rules: [],
+          excluded_product_ids:
+            templateKey === 'price' || templateKey === 'pricing' || templateKey === 'offer'
+              ? prev.segments?.excluded_product_ids || []
+              : [],
+        },
         variants: [
           { name: 'Control', allocation: 50, config: {} },
           { name: 'Variant A', allocation: 50, config: {} },
@@ -2559,6 +2890,8 @@ function TestWizard({
     selectedTemplate === 'price' ||
     selectedTemplate === 'pricing' ||
     isPriceLikeTestType(formData.type);
+  const isOfferTestType = selectedTemplate === 'offer' || isOfferLikeTestType(formData.type);
+  const isCommerceProductScopeTest = isPriceTestType || isOfferTestType;
 
   const handleNext = () => {
     const stepErrors = getStepErrors(currentStep);
@@ -3307,7 +3640,7 @@ function TestWizard({
   };
 
   const renderTargetingStep = () => {
-    const targetingScopeFixedForPrice = isPriceTestType;
+    const targetingScopeFixedForCommerce = isCommerceProductScopeTest;
     const countriesValue = formData.segments?.countries?.join(', ') || '';
     const holdoutValue =
       formData.holdout_percent === null || formData.holdout_percent === undefined
@@ -3513,35 +3846,168 @@ function TestWizard({
                             className={styles.placementPanel}
                             id="targeting-scope"
                           >
-                            {targetingScopeFixedForPrice ? (
+                            {targetingScopeFixedForCommerce ? (
                               <BlockStack gap="300">
-                                <Banner tone="info" title="Price tests run site-wide">
+                                <Banner
+                                  tone="info"
+                                  title={
+                                    isOfferTestType
+                                      ? 'Offer tests use product-only scope'
+                                      : 'Price tests use product-only scope'
+                                  }
+                                >
                                   <Text as="p" variant="bodySm">
-                                    Targeting is fixed to <strong>site-wide</strong>. Updated prices
-                                    can appear on product pages and, where supported by the theme,
-                                    in sidecart. To choose which products use the test price (all
-                                    products or selected products only), go to{' '}
-                                    <strong>Variant configuration</strong> → Product scope.
+                                    Choose between <strong>all products</strong> and{' '}
+                                    <strong>selected products</strong> here. You can also add
+                                    optional <strong>excluded products</strong> to prevent
+                                    assignment and storefront application for specific SKUs.
                                   </Text>
                                 </Banner>
                                 <div className={styles.panelSection}>
-                                  <span className={styles.panelSectionTitle}>Scope (fixed)</span>
+                                  <span className={styles.panelSectionTitle}>Product scope</span>
                                   <div className={styles.scopeSelectGrid}>
                                     <div
-                                      className={`${styles.scopeCard} ${styles.scopeCardActive}`}
-                                      style={{ cursor: 'default', opacity: 1 }}
-                                      aria-label="Site wide — no options to change"
+                                      className={`${styles.scopeCard} ${(formData.target_type || 'all-products') !== 'product' ? styles.scopeCardActive : ''}`}
+                                      role="button"
+                                      tabIndex={0}
+                                      onClick={() =>
+                                        setFormData(prev => ({
+                                          ...prev,
+                                          target_type: 'all-products',
+                                          target_id: '',
+                                          target_ids: null,
+                                          segments: {
+                                            ...prev.segments,
+                                            url_pattern: '/products/',
+                                            page_rules: prev.segments?.page_rules || [],
+                                          },
+                                        }))
+                                      }
+                                      onKeyDown={event => {
+                                        if (event.key !== 'Enter' && event.key !== ' ') {
+                                          return;
+                                        }
+                                        event.preventDefault();
+                                        setFormData(prev => ({
+                                          ...prev,
+                                          target_type: 'all-products',
+                                          target_id: '',
+                                          target_ids: null,
+                                          segments: {
+                                            ...prev.segments,
+                                            url_pattern: '/products/',
+                                            page_rules: prev.segments?.page_rules || [],
+                                          },
+                                        }));
+                                      }}
+                                      aria-pressed={
+                                        (formData.target_type || 'all-products') !== 'product'
+                                      }
+                                      aria-label="All products"
                                     >
                                       <span className={styles.scopeCardIcon}>
                                         <Icon source={ProductIcon} />
                                       </span>
-                                      <span className={styles.scopeCardLabel}>Site wide</span>
+                                      <span className={styles.scopeCardLabel}>All products</span>
                                       <span className={styles.scopeCardDesc}>
-                                        Product scope (all vs selected) is in Variant configuration
+                                        Assign this test across your full product catalog
+                                      </span>
+                                    </div>
+                                    <div
+                                      className={`${styles.scopeCard} ${formData.target_type === 'product' ? styles.scopeCardActive : ''}`}
+                                      role="button"
+                                      tabIndex={0}
+                                      onClick={() =>
+                                        setFormData(prev => ({
+                                          ...prev,
+                                          target_type: 'product',
+                                          segments: {
+                                            ...prev.segments,
+                                            url_pattern: '/products/',
+                                            page_rules: prev.segments?.page_rules || [],
+                                          },
+                                        }))
+                                      }
+                                      onKeyDown={event => {
+                                        if (event.key !== 'Enter' && event.key !== ' ') {
+                                          return;
+                                        }
+                                        event.preventDefault();
+                                        setFormData(prev => ({
+                                          ...prev,
+                                          target_type: 'product',
+                                          segments: {
+                                            ...prev.segments,
+                                            url_pattern: '/products/',
+                                            page_rules: prev.segments?.page_rules || [],
+                                          },
+                                        }));
+                                      }}
+                                      aria-pressed={formData.target_type === 'product'}
+                                      aria-label="Selected products only"
+                                    >
+                                      <span className={styles.scopeCardIcon}>
+                                        <Icon source={TargetIcon} />
+                                      </span>
+                                      <span className={styles.scopeCardLabel}>
+                                        Selected products
+                                      </span>
+                                      <span className={styles.scopeCardDesc}>
+                                        Assign only for specific products you choose
                                       </span>
                                     </div>
                                   </div>
                                 </div>
+                                {formData.target_type === 'product' && (
+                                  <TextField
+                                    label="Selected product IDs"
+                                    value={
+                                      Array.isArray(formData.target_ids) &&
+                                      formData.target_ids.length > 0
+                                        ? formData.target_ids.join('\n')
+                                        : formData.target_id || ''
+                                    }
+                                    onChange={value => {
+                                      setIsDirty(true);
+                                      const ids = normalizeShopifyIdList(value, 'Product');
+                                      setFormData(prev => ({
+                                        ...prev,
+                                        target_ids: ids.length > 1 ? ids : null,
+                                        target_id: ids.length >= 1 ? ids[0] : '',
+                                      }));
+                                    }}
+                                    multiline={3}
+                                    autoComplete="off"
+                                    placeholder="gid://shopify/Product/123 or 123"
+                                    helpText="One product ID per line. Use GID or numeric ID."
+                                  />
+                                )}
+                                <TextField
+                                  label="Excluded product IDs (optional)"
+                                  value={(() => {
+                                    const ids = Array.isArray(
+                                      formData.segments?.excluded_product_ids
+                                    )
+                                      ? formData.segments.excluded_product_ids
+                                      : [];
+                                    return ids.join('\n');
+                                  })()}
+                                  onChange={value => {
+                                    setIsDirty(true);
+                                    const ids = normalizeShopifyIdList(value, 'Product');
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      segments: {
+                                        ...prev.segments,
+                                        excluded_product_ids: ids,
+                                      },
+                                    }));
+                                  }}
+                                  multiline={3}
+                                  autoComplete="off"
+                                  placeholder="gid://shopify/Product/456"
+                                  helpText="Excluded products are skipped from bucketing/application even when scope is all products."
+                                />
                               </BlockStack>
                             ) : (
                               <>
@@ -3991,28 +4457,18 @@ function TestWizard({
                                                     : formData.target_id
                                                       ? [formData.target_id]
                                                       : [];
-                                                const selectedResourceIds = new Set(selectedIds);
-                                                const baseVisibleStoreResources =
-                                                  storeResources.slice(
-                                                    0,
-                                                    storeResourcesVisibleCount
+                                                const resourcesProgressiveWindow =
+                                                  buildProgressiveListWindow(
+                                                    storeResources,
+                                                    storeResourcesVisibleCount,
+                                                    { pinnedIds: selectedIds }
                                                   );
-                                                const baseVisibleIds = new Set(
-                                                  baseVisibleStoreResources.map(r => r.id)
-                                                );
-                                                const selectedVisibleExtras = storeResources.filter(
-                                                  r =>
-                                                    selectedResourceIds.has(r.id) &&
-                                                    !baseVisibleIds.has(r.id)
-                                                );
-                                                const visibleStoreResources = [
-                                                  ...baseVisibleStoreResources,
-                                                  ...selectedVisibleExtras,
-                                                ];
+                                                const visibleStoreResources =
+                                                  resourcesProgressiveWindow.visibleItems;
                                                 const shownStoreResourcesCount =
-                                                  visibleStoreResources.length;
+                                                  resourcesProgressiveWindow.shownCount;
                                                 const storeResourcesHasHiddenLoaded =
-                                                  shownStoreResourcesCount < storeResources.length;
+                                                  resourcesProgressiveWindow.hasHiddenLoaded;
                                                 const storeResourcesCanFetchMore = Boolean(
                                                   storeResourcesPageInfo?.hasNextPage
                                                 );
@@ -4020,8 +4476,7 @@ function TestWizard({
                                                   storeResourcesHasHiddenLoaded ||
                                                   storeResourcesCanFetchMore;
                                                 const storeResourcesCanCollapse =
-                                                  shownStoreResourcesCount >
-                                                  PRICE_PRODUCT_MODAL_REVEAL_BATCH;
+                                                  resourcesProgressiveWindow.canCollapse;
                                                 const resourceIds = new Set(
                                                   storeResources.map(r => r.id)
                                                 );
@@ -4209,7 +4664,8 @@ function TestWizard({
                                                         >
                                                           {storeResourcesHasHiddenLoaded
                                                             ? `Show ${Math.min(
-                                                                PRICE_PRODUCT_MODAL_REVEAL_BATCH,
+                                                                resourcesProgressiveWindow.nextRevealCount ||
+                                                                  PRICE_PRODUCT_MODAL_REVEAL_BATCH,
                                                                 storeResources.length -
                                                                   shownStoreResourcesCount
                                                               )} more`
@@ -5587,6 +6043,27 @@ function TestWizard({
                                               helpText="Start at this % and ramp to 100%. 0 = no ramp."
                                               autoComplete="off"
                                             />
+                                            <TextField
+                                              label="Ramp duration (days)"
+                                              type="number"
+                                              value={String(
+                                                formData.segments?.traffic_ramp_days ?? 7
+                                              )}
+                                              onChange={value =>
+                                                setFormData(prev => ({
+                                                  ...prev,
+                                                  segments: {
+                                                    ...prev.segments,
+                                                    traffic_ramp_days: value,
+                                                  },
+                                                }))
+                                              }
+                                              min={1}
+                                              max={30}
+                                              suffix="days"
+                                              helpText="How long to move from ramp % to 100% traffic."
+                                              autoComplete="off"
+                                            />
                                             <Select
                                               label="Variation anti-flicker mode"
                                               options={[
@@ -6713,9 +7190,9 @@ function TestWizard({
     if (testType === 'price' || template === 'price' || template === 'pricing') return 'price';
     if (testType === 'shipping' || template === 'shipping') return 'shipping';
     if (testType === 'offer' || template === 'offer') return 'offer';
+    if (testType === 'theme' || template === 'theme' || template === 'template') return 'theme';
     if (template === 'split-url') return 'url';
-    if (template === 'template') return 'template';
-    if (template === 'onsite-edit' || template === 'theme' || template === 'content') return 'code';
+    if (template === 'onsite-edit' || template === 'content') return 'code';
 
     const source =
       mode === 'edit' && initialData?.variants?.[0]?.config
@@ -6731,7 +7208,20 @@ function TestWizard({
     )
       return 'price';
     if ('rate' in source) return 'shipping';
-    if ('template' in source) return 'template';
+    if (
+      'template' in source ||
+      'themeMode' in source ||
+      'theme_mode' in source ||
+      'themeTemplateHandle' in source ||
+      'theme_template_handle' in source ||
+      'themeId' in source ||
+      'theme_id' in source ||
+      'sectionId' in source ||
+      'section_id' in source ||
+      'bodyClass' in source ||
+      'body_class' in source
+    )
+      return 'theme';
     if ('discount' in source || 'discount_type' in source || 'discount_value' in source)
       return 'offer';
     return 'code';
@@ -7104,14 +7594,10 @@ function TestWizard({
 
   const renderVariantPriceModule = () => {
     const variants = formData.variants || [];
-    const priceTargetProductIds =
-      formData.target_type === 'product'
-        ? formData.target_ids?.length
-          ? formData.target_ids
-          : formData.target_id
-            ? [formData.target_id]
-            : []
-        : [];
+    const priceTargetProductIds = selectedScopeProductIds;
+    const matrixTableProductIds = isProductTargetScope
+      ? selectedScopeProductIds
+      : allProductsMatrixVisibleIds;
     const parsedExampleCatalog =
       exampleCatalogPrice !== '' && Number.isFinite(Number.parseFloat(exampleCatalogPrice))
         ? Number.parseFloat(exampleCatalogPrice)
@@ -7127,16 +7613,36 @@ function TestWizard({
     const priceDecreaseCount = variants.filter(v =>
       priceConfigImpliesDecrease(v?.config || {})
     ).length;
-    const scopeLabel =
-      String(formData.target_type || '').toLowerCase() === 'product'
-        ? `${priceTargetProductIds.length || 1} selected product${priceTargetProductIds.length === 1 ? '' : 's'}`
-        : 'All products';
-    const visiblePriceModalProducts = priceModalProducts.slice(0, priceModalVisibleCount);
-    const priceModalShownCount = Math.min(priceModalVisibleCount, priceModalProducts.length);
-    const priceModalHasHiddenLoaded = priceModalShownCount < priceModalProducts.length;
+    const scopeLabel = isProductTargetScope
+      ? `${selectedScopeProductIds.length || 1} selected product${selectedScopeProductIds.length === 1 ? '' : 's'}`
+      : `All products (${matrixTableProductIds.length} loaded)`;
+    const matrixSearchQuery = allProductsMatrixSearchDebounced.trim();
+    const hasMatrixSearchQuery = !isProductTargetScope && matrixSearchQuery.length > 0;
+    const matrixSearchQueryLabel =
+      matrixSearchQuery.length > MATRIX_SEARCH_BADGE_MAX_CHARS
+        ? `${matrixSearchQuery.slice(0, MATRIX_SEARCH_BADGE_MAX_CHARS - 1).trim()}...`
+        : matrixSearchQuery;
+    const matrixSearchQueryTruncated =
+      hasMatrixSearchQuery && matrixSearchQueryLabel !== matrixSearchQuery;
+    const matrixSearchBadgeContent = (
+      <>
+        <span className={styles.priceMatrixSearchBadgePrefix}>Search:</span>
+        <span className={styles.priceMatrixSearchBadgeQuery}>{matrixSearchQueryLabel}</span>
+        <span className={styles.priceMatrixSearchBadgeCount}>
+          ({allProductsMatrixProducts.length})
+        </span>
+      </>
+    );
+    const priceModalProgressiveWindow = buildProgressiveListWindow(
+      priceModalProducts,
+      priceModalVisibleCount
+    );
+    const visiblePriceModalProducts = priceModalProgressiveWindow.visibleItems;
+    const priceModalShownCount = priceModalProgressiveWindow.shownCount;
+    const priceModalHasHiddenLoaded = priceModalProgressiveWindow.hasHiddenLoaded;
     const priceModalCanFetchMore = Boolean(priceModalPageInfo?.hasNextPage);
     const priceModalCanShowMore = priceModalHasHiddenLoaded || priceModalCanFetchMore;
-    const priceModalCanCollapse = priceModalShownCount > PRICE_PRODUCT_MODAL_REVEAL_BATCH;
+    const priceModalCanCollapse = priceModalProgressiveWindow.canCollapse;
     const priceSimulation =
       parsedExampleCatalog !== null
         ? buildPriceSimulationRows({
@@ -7144,7 +7650,7 @@ function TestWizard({
             catalogPrice: parsedExampleCatalog,
             compareAtPrice: parsedExampleCompareAt,
             targetType: formData.target_type,
-            targetProductIds: priceTargetProductIds,
+            targetProductIds: isProductTargetScope ? selectedScopeProductIds : [],
           })
         : {
             rows: [],
@@ -7293,7 +7799,8 @@ function TestWizard({
                     ))}
                 </div>
               )}
-              {formData.pricePerProduct && priceTargetProductIds.length >= 1 ? (
+              {formData.pricePerProduct &&
+              (isProductTargetScope ? priceTargetProductIds.length >= 1 : true) ? (
                 <BlockStack gap="400">
                   <div className={styles.priceScopedIntro}>
                     <Text as="p" variant="bodySm" fontWeight="semibold">
@@ -7305,6 +7812,82 @@ function TestWizard({
                       reference.
                     </Text>
                   </div>
+                  {!isProductTargetScope && (
+                    <div className={styles.priceMatrixScopeMetaStack}>
+                      <div className={styles.priceMatrixScopeSearch}>
+                        <TextField
+                          label="Search products in matrix"
+                          labelHidden
+                          value={allProductsMatrixSearch}
+                          onChange={setAllProductsMatrixSearch}
+                          placeholder="Search products by title or handle..."
+                          autoComplete="off"
+                          clearButton
+                          onClearButtonClick={() => setAllProductsMatrixSearch('')}
+                        />
+                      </div>
+                      <div className={styles.priceMatrixScopeMeta}>
+                        <Text as="span" variant="bodySm" tone="subdued">
+                          Showing {matrixTableProductIds.length} of{' '}
+                          {allProductsMatrixProducts.length} loaded products
+                        </Text>
+                        <InlineStack gap="200" wrap blockAlign="center">
+                          {hasMatrixSearchQuery && (
+                            <>
+                              {matrixSearchQueryTruncated ? (
+                                <TooltipWrapper
+                                  content={`Search: ${matrixSearchQuery}`}
+                                  accessibilityLabel="Full matrix search query"
+                                  preferredPosition="above"
+                                >
+                                  <span
+                                    className={styles.priceMatrixSearchBadgeTrigger}
+                                    tabIndex={0}
+                                  >
+                                    <Badge tone="info" size="small">
+                                      {matrixSearchBadgeContent}
+                                    </Badge>
+                                  </span>
+                                </TooltipWrapper>
+                              ) : (
+                                <Badge tone="info" size="small">
+                                  {matrixSearchBadgeContent}
+                                </Badge>
+                              )}
+                            </>
+                          )}
+                          {hasMatrixSearchQuery && (
+                            <Button
+                              size="slim"
+                              variant="plain"
+                              onClick={() => setAllProductsMatrixSearch('')}
+                            >
+                              Clear search
+                            </Button>
+                          )}
+                          {allProductsMatrixPageInfo?.hasNextPage && (
+                            <Badge tone="info" size="small">
+                              More available
+                            </Badge>
+                          )}
+                          {allProductsMatrixProgressiveWindow.canCollapse && (
+                            <Button
+                              size="slim"
+                              variant="plain"
+                              onClick={() =>
+                                setAllProductsMatrixVisibleCount(PRICE_PRODUCT_MODAL_REVEAL_BATCH)
+                              }
+                            >
+                              Collapse list
+                            </Button>
+                          )}
+                        </InlineStack>
+                      </div>
+                    </div>
+                  )}
+                  {!isProductTargetScope && allProductsMatrixError && (
+                    <div className={styles.priceMatrixScopeError}>{allProductsMatrixError}</div>
+                  )}
                   <div className={styles.priceMatrixBulkBar}>
                     <InlineStack gap="200" blockAlign="center" wrap>
                       <Text as="span" variant="bodySm" fontWeight="semibold">
@@ -7341,7 +7924,7 @@ function TestWizard({
                           if (!matrixBulkValueValid) return;
                           const applicableProductIds = [];
                           let applicableRowCount = 0;
-                          priceTargetProductIds.forEach(productId => {
+                          matrixTableProductIds.forEach(productId => {
                             const matrixProduct = priceMatrixProductsById[productId];
                             const variantsForProduct = Array.isArray(matrixProduct?.variants)
                               ? matrixProduct.variants
@@ -7447,7 +8030,7 @@ function TestWizard({
                         </tr>
                       </thead>
                       <tbody>
-                        {priceTargetProductIds.map(productId => {
+                        {matrixTableProductIds.map(productId => {
                           const matrixProduct = priceMatrixProductsById[productId];
                           const productLabel =
                             matrixProduct?.title || getProductLabelFromId(productId);
@@ -7917,6 +8500,33 @@ function TestWizard({
                       </tbody>
                     </table>
                   </div>
+                  {!isProductTargetScope &&
+                    allProductsMatrixLoading &&
+                    matrixTableProductIds.length === 0 && (
+                      <Text as="p" variant="bodySm" tone="subdued">
+                        Loading products for matrix view...
+                      </Text>
+                    )}
+                  {!isProductTargetScope &&
+                    (allProductsMatrixProgressiveWindow.hasHiddenLoaded ||
+                      allProductsMatrixPageInfo?.hasNextPage) && (
+                      <div className={styles.priceMatrixScopeFooter}>
+                        <Button
+                          size="slim"
+                          onClick={handleLoadMoreAllProductsMatrix}
+                          loading={allProductsMatrixLoadingMore}
+                          disabled={allProductsMatrixLoadingMore}
+                        >
+                          {allProductsMatrixProgressiveWindow.hasHiddenLoaded
+                            ? `Show ${Math.min(
+                                allProductsMatrixProgressiveWindow.nextRevealCount ||
+                                  PRICE_PRODUCT_MODAL_REVEAL_BATCH,
+                                allProductsMatrixProducts.length - matrixTableProductIds.length
+                              )} more`
+                            : `Show ${PRICE_PRODUCT_MODAL_REVEAL_BATCH} more`}
+                        </Button>
+                      </div>
+                    )}
                 </BlockStack>
               ) : (
                 <>
@@ -8210,205 +8820,54 @@ function TestWizard({
 
             <Card className={`${styles.productScopeCard} ${styles.productScopeCardCompact}`}>
               <div className={`${styles.productScopeSection} ${styles.productScopeSectionCompact}`}>
-                <div className={styles.productScopeHeaderCompact}>
-                  <div className={styles.productScopeHeaderCompactTop}>
+                <InlineStack align="space-between" blockAlign="start" wrap>
+                  <BlockStack gap="100">
                     <Text variant="headingSm" as="h3" fontWeight="semibold">
                       Product scope
                     </Text>
-                    <TooltipWrapper content="Controls where the price test applies. All products = every product page (and supported sidecart rows). Selected products = only chosen products.">
-                      <span className={styles.productScopeHeaderInfo} tabIndex={0} role="note">
-                        <Icon source={InfoIcon} />
-                      </span>
-                    </TooltipWrapper>
-                  </div>
-                  <Text as="p" variant="bodySm" tone="subdued">
-                    Control which products receive the test price.
-                  </Text>
-                </div>
-                <div className={styles.productScopeOptionsWrap}>
-                  <span className={styles.productScopeOptionsLabel}>Choose scope</span>
-                  <div
-                    className={styles.productScopeOptionsRow}
-                    role="group"
-                    aria-label="Product scope"
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      Product selection now lives in the Targeting step for both Price and Offer
+                      tests.
+                    </Text>
+                  </BlockStack>
+                  <Button
+                    variant="plain"
+                    size="slim"
+                    onClick={() => setCurrentStep(stepIds.targeting)}
                   >
-                    <div
-                      className={`${styles.scopeCard} ${styles.scopeCardOption} ${(formData.target_type || 'all-products') !== 'product' ? styles.scopeCardActive : ''}`}
-                      style={{ cursor: 'pointer', margin: 0 }}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => {
-                        setFormData(prev => ({
-                          ...prev,
-                          target_type: 'all-products',
-                          target_id: '',
-                          target_ids: null,
-                          segments: {
-                            ...prev.segments,
-                            url_pattern: '/products/',
-                            page_rules: prev.segments?.page_rules || [],
-                          },
-                        }));
-                      }}
-                      onKeyDown={e => {
-                        if (e.key !== 'Enter') return;
-                        if ((formData.target_type || 'all-products') === 'all-products') return;
-                        setFormData(prev => ({
-                          ...prev,
-                          target_type: 'all-products',
-                          target_id: '',
-                          target_ids: null,
-                          segments: {
-                            ...prev.segments,
-                            url_pattern: '/products/',
-                            page_rules: prev.segments?.page_rules || [],
-                          },
-                        }));
-                      }}
-                      aria-pressed={(formData.target_type || 'all-products') !== 'product'}
-                      aria-label="All products (site-wide)"
-                    >
-                      <span className={styles.scopeCardIcon}>
-                        <Icon source={ProductIcon} />
-                      </span>
-                      <span className={styles.scopeCardContent}>
-                        <span className={styles.scopeCardLabel}>All products (site-wide)</span>
-                        <span className={styles.scopeCardDesc}>
-                          Run price test on every product page
-                        </span>
-                      </span>
-                    </div>
-                    <div
-                      className={`${styles.scopeCard} ${styles.scopeCardOption} ${styles.scopeCardSelectedProducts} ${formData.target_type === 'product' ? styles.scopeCardActive : ''}`}
-                      style={{ cursor: 'pointer', margin: 0 }}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => {
-                        setIsDirty(true);
-                        if (formData.target_type === 'product') {
-                          if (!isStandalone) {
-                            setPriceModalSearch(storeResourceSearch || '');
-                            setPriceProductModalOpen(true);
-                          }
-                          return;
-                        }
-                        setFormData(prev => ({
-                          ...prev,
-                          target_type: 'product',
-                          segments: {
-                            ...prev.segments,
-                            url_pattern: '/products/',
-                            page_rules: prev.segments?.page_rules || [],
-                          },
-                        }));
-                        if (!isStandalone) {
-                          setPriceModalSearch(storeResourceSearch || '');
-                          setPriceProductModalOpen(true);
-                        }
-                      }}
-                      onKeyDown={e => {
-                        if (e.key !== 'Enter' && e.key !== ' ') return;
-                        e.preventDefault();
-                        setIsDirty(true);
-                        if (formData.target_type === 'product') {
-                          if (!isStandalone) {
-                            setPriceModalSearch(storeResourceSearch || '');
-                            setPriceProductModalOpen(true);
-                          }
-                          return;
-                        }
-                        setFormData(prev => ({
-                          ...prev,
-                          target_type: 'product',
-                          segments: {
-                            ...prev.segments,
-                            url_pattern: '/products/',
-                            page_rules: prev.segments?.page_rules || [],
-                          },
-                        }));
-                        if (!isStandalone) {
-                          setPriceModalSearch(storeResourceSearch || '');
-                          setPriceProductModalOpen(true);
-                        }
-                      }}
-                      aria-pressed={formData.target_type === 'product'}
-                      aria-label={
-                        isStandalone
-                          ? 'Selected products only'
-                          : 'Selected products only — opens product picker'
-                      }
-                    >
-                      <span className={styles.scopeCardIcon}>
-                        <Icon source={TargetIcon} />
-                      </span>
-                      <span className={styles.scopeCardContent}>
-                        <span className={styles.scopeCardLabelRow}>
-                          <span className={styles.scopeCardLabel}>Selected products only</span>
-                          {!isStandalone && formData.target_type === 'product' && (
-                            <span
-                              className={`${styles.scopeCardCountPill} ${priceTargetProductIds.length > 0 ? styles.scopeCardCountPillHasSelection : ''}`}
-                            >
-                              {priceTargetProductIds.length > 0
-                                ? `${priceTargetProductIds.length} product${priceTargetProductIds.length === 1 ? '' : 's'}`
-                                : 'None selected'}
-                            </span>
-                          )}
-                        </span>
-                        <span className={styles.scopeCardDesc}>
-                          {isStandalone
-                            ? 'Enter product IDs below'
-                            : formData.target_type === 'product'
-                              ? 'Click to search your store and manage which products are in scope'
-                              : 'Limit the test to specific products from your catalog'}
-                        </span>
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                {formData.target_type === 'product' && isStandalone && (
-                  <div className={styles.productScopeStandaloneIds}>
-                    <TextField
-                      label="Product IDs"
-                      value={
-                        formData.target_ids?.length
-                          ? formData.target_ids.join('\n')
-                          : formData.target_id || ''
-                      }
-                      onChange={value => {
-                        const raw = (value || '')
-                          .split(/[\n,]+/)
-                          .map(s => s.trim())
-                          .filter(Boolean);
-                        const normalize = id => {
-                          if (!id) return '';
-                          if (id.startsWith('gid://')) return id;
-                          const num = id.replace(/\D/g, '');
-                          return num ? `gid://shopify/Product/${num}` : id;
-                        };
-                        const ids = raw.map(normalize);
-                        setFormData(prev => ({
-                          ...prev,
-                          target_ids: ids.length > 1 ? ids : null,
-                          target_id: ids.length >= 1 ? ids[0] : '',
-                        }));
-                      }}
-                      multiline={3}
-                      placeholder="gid://shopify/Product/123 or 123"
-                      helpText="One product ID per line (GID or numeric)"
-                      autoComplete="off"
-                    />
-                  </div>
-                )}
+                    Edit in Targeting
+                  </Button>
+                </InlineStack>
+                <InlineStack gap="200" blockAlign="center" wrap>
+                  <Badge tone={formData.target_type === 'product' ? 'info' : 'success'}>
+                    {formData.target_type === 'product' ? 'Selected products' : 'All products'}
+                  </Badge>
+                  {formData.target_type === 'product' && (
+                    <Text as="span" variant="bodySm" tone="subdued">
+                      {priceTargetProductIds.length} selected
+                    </Text>
+                  )}
+                  {Array.isArray(formData.segments?.excluded_product_ids) &&
+                    formData.segments.excluded_product_ids.length > 0 && (
+                      <Text as="span" variant="bodySm" tone="subdued">
+                        {formData.segments.excluded_product_ids.length} excluded
+                      </Text>
+                    )}
+                </InlineStack>
               </div>
             </Card>
 
-            {priceTargetProductIds.length >= 1 && (
+            {(isProductTargetScope ? priceTargetProductIds.length >= 1 : true) && (
               <div className={styles.priceOptionCard}>
                 <Card>
                   <BlockStack gap="200">
                     <Checkbox
                       label="Set different price per product"
-                      helpText="Enable when targeted products need different prices for this variant. Leave off to use one price for all targeted products."
+                      helpText={
+                        isProductTargetScope
+                          ? 'Enable when targeted products need different prices for this variant. Leave off to use one price for all targeted products.'
+                          : 'Enable to define different prices product-by-product in all-products scope. Products load progressively to keep editing fast.'
+                      }
                       checked={!!formData.pricePerProduct}
                       onChange={checked => {
                         setFormData(prev => {
@@ -8419,7 +8878,10 @@ function TestWizard({
                               if (checked) {
                                 if (!config.byProduct || typeof config.byProduct !== 'object')
                                   config.byProduct = {};
-                                priceTargetProductIds.forEach(pid => {
+                                const seedProductIds = isProductTargetScope
+                                  ? priceTargetProductIds
+                                  : [];
+                                seedProductIds.forEach(pid => {
                                   if (!config.byProduct[pid])
                                     config.byProduct[pid] = {
                                       priceMode: config.priceMode || 'fixed',
@@ -8996,7 +9458,8 @@ function TestWizard({
                           >
                             {priceModalHasHiddenLoaded
                               ? `Show ${Math.min(
-                                  PRICE_PRODUCT_MODAL_REVEAL_BATCH,
+                                  priceModalProgressiveWindow.nextRevealCount ||
+                                    PRICE_PRODUCT_MODAL_REVEAL_BATCH,
                                   priceModalProducts.length - priceModalShownCount
                                 )} more`
                               : `Show ${PRICE_PRODUCT_MODAL_REVEAL_BATCH} more`}
@@ -9121,6 +9584,18 @@ function TestWizard({
 
   const renderVariantOfferModule = () => (
     <BlockStack gap="400">
+      <Banner tone="info" title="Product scope follows Targeting step">
+        <Text as="p" variant="bodySm">
+          Offer tests follow the same product scope flow as price tests. Current scope:{' '}
+          <strong>
+            {formData.target_type === 'product' ? 'Selected products' : 'All products'}
+          </strong>
+          {Array.isArray(formData.segments?.excluded_product_ids) &&
+          formData.segments.excluded_product_ids.length > 0
+            ? ` with ${formData.segments.excluded_product_ids.length} excluded product(s).`
+            : '.'}
+        </Text>
+      </Banner>
       <Banner tone="warning" title="Offers are not applied at checkout automatically">
         <Text as="p" variant="bodySm">
           RipX assigns the variant for analytics. To apply the discount at checkout, use a{' '}
@@ -9194,68 +9669,130 @@ function TestWizard({
     </BlockStack>
   );
 
-  const renderVariantTemplateModule = () => (
+  const renderVariantThemeModule = () => (
     <BlockStack gap="400">
-      <Banner tone="info" title="Template + theme metadata for internal implementation">
+      <Banner tone="info" title="Theme test contract">
         <Text as="p" variant="bodySm">
-          Shopify chooses the template at request time. Use these fields to map each variant to your
-          theme implementation (template handle, optional theme id, optional section id), or use a{' '}
-          <strong>Split URL</strong> test and point each variant to a URL that already renders the
-          target template.
+          RipX applies theme variants deterministically by exposing normalized theme metadata on the
+          storefront (`data-ripx-*` attributes + `ripx:theme-variant` event). Configure
+          mode-specific fields below so each variant is explicit and production-safe.
         </Text>
       </Banner>
       <Text variant="bodyMd" color="subdued" as="p">
-        Set template details per variant for internal theme/template tests.
+        Use <strong>Template switch</strong> for template-handle experiments,{' '}
+        <strong>Section variant</strong> for section-targeted rollouts, and{' '}
+        <strong>Asset flag</strong> when your theme code reads a body class/attribute switch. Use{' '}
+        <strong>Theme redirect</strong> for full-page or full-theme reroute experiments.
       </Text>
       {(formData.variants || []).map((variant, index) => (
-        <Card key={`template-${index}`} sectioned>
-          <FormLayout>
-            <TextField
-              label={`${variant.name} template`}
-              value={variant.config?.template ?? ''}
-              onChange={value => {
+        <Card key={`theme-${index}`} sectioned>
+          <BlockStack gap="300">
+            <Text variant="headingSm" as="h4" fontWeight="semibold">
+              {variant.name}
+            </Text>
+            {(() => {
+              const fallbackMode =
+                selectedTemplate === 'template' ? 'template_switch' : 'asset_flag';
+              const cfg =
+                variant?.config && typeof variant.config === 'object' ? variant.config : {};
+              const mode = normalizeThemeMode(cfg.themeMode || cfg.theme_mode, fallbackMode);
+              const templateHandle = String(
+                cfg.themeTemplateHandle || cfg.theme_template_handle || cfg.template || ''
+              );
+              const themeId = String(cfg.themeId || cfg.theme_id || '');
+              const sectionId = String(cfg.sectionId || cfg.section_id || '');
+              const bodyClass = String(cfg.bodyClass || cfg.body_class || '');
+              const redirectUrl = String(
+                cfg.url || cfg.themeRedirectUrl || cfg.theme_redirect_url || ''
+              );
+              const requiresTemplateHandle = mode === 'template_switch';
+              const requiresSectionId = mode === 'section_variant';
+              const requiresRedirectUrl = mode === 'theme_redirect';
+
+              const updateThemeConfig = patch => {
                 const next = [...(formData.variants || [])];
+                const prevConfig =
+                  next[index]?.config && typeof next[index].config === 'object'
+                    ? next[index].config
+                    : {};
+                const mergedConfig = { ...prevConfig, ...patch };
                 next[index] = {
                   ...next[index],
-                  config: { ...next[index].config, template: value },
+                  config: normalizeThemeConfig(mergedConfig, fallbackMode),
                 };
                 setFormData({ ...formData, variants: next });
-              }}
-              placeholder="e.g. alternate or custom"
-              helpText="Template handle or ID used by your theme logic"
-              autoComplete="off"
-            />
-            <TextField
-              label={`${variant.name} theme ID (optional)`}
-              value={variant.config?.themeId ?? ''}
-              onChange={value => {
-                const next = [...(formData.variants || [])];
-                next[index] = {
-                  ...next[index],
-                  config: { ...next[index].config, themeId: value },
-                };
-                setFormData({ ...formData, variants: next });
-              }}
-              placeholder="e.g. 123456789"
-              helpText="Useful when variants map to different themes"
-              autoComplete="off"
-            />
-            <TextField
-              label={`${variant.name} section ID (optional)`}
-              value={variant.config?.sectionId ?? ''}
-              onChange={value => {
-                const next = [...(formData.variants || [])];
-                next[index] = {
-                  ...next[index],
-                  config: { ...next[index].config, sectionId: value },
-                };
-                setFormData({ ...formData, variants: next });
-              }}
-              placeholder="e.g. main-product or hero-banner"
-              helpText="Optional section key for section-level variant injection"
-              autoComplete="off"
-            />
-          </FormLayout>
+              };
+
+              return (
+                <FormLayout>
+                  <Select
+                    label={`${variant.name} mode`}
+                    options={[
+                      { label: 'Template switch', value: 'template_switch' },
+                      { label: 'Section variant', value: 'section_variant' },
+                      { label: 'Asset flag', value: 'asset_flag' },
+                      { label: 'Theme redirect', value: 'theme_redirect' },
+                    ]}
+                    value={mode}
+                    onChange={value => updateThemeConfig({ themeMode: value })}
+                    helpText="Defines how storefront runtime should apply this variant."
+                  />
+                  {(requiresTemplateHandle || requiresSectionId) && (
+                    <TextField
+                      label={`${variant.name} template handle${requiresTemplateHandle ? '' : ' (optional)'}`}
+                      value={templateHandle}
+                      onChange={value =>
+                        updateThemeConfig({ themeTemplateHandle: value, template: value })
+                      }
+                      placeholder="e.g. product.alternate"
+                      helpText={
+                        requiresTemplateHandle
+                          ? 'Required for template-switch mode.'
+                          : 'Optional template context for section-level variants.'
+                      }
+                      autoComplete="off"
+                    />
+                  )}
+                  {requiresSectionId && (
+                    <TextField
+                      label={`${variant.name} section ID`}
+                      value={sectionId}
+                      onChange={value => updateThemeConfig({ sectionId: value })}
+                      placeholder="e.g. main-product or hero-banner"
+                      helpText="Required for section-variant mode."
+                      autoComplete="off"
+                    />
+                  )}
+                  {requiresRedirectUrl && (
+                    <TextField
+                      label={`${variant.name} redirect URL`}
+                      value={redirectUrl}
+                      onChange={value => updateThemeConfig({ url: value })}
+                      placeholder="/pages/redesign-v2 or https://example.com/pages/redesign-v2"
+                      helpText="Required for theme-redirect mode."
+                      autoComplete="off"
+                    />
+                  )}
+                  <TextField
+                    label={`${variant.name} body class (optional)`}
+                    value={bodyClass}
+                    onChange={value => updateThemeConfig({ bodyClass: value })}
+                    placeholder="e.g. ripx-theme-v2"
+                    helpText="Added to body so your theme assets can switch behavior safely."
+                    autoComplete="off"
+                  />
+                  <TextField
+                    label={`${variant.name} theme ID (optional)`}
+                    value={themeId}
+                    onChange={value => updateThemeConfig({ themeId: value })}
+                    placeholder="e.g. 123456789"
+                    helpText="Optional metadata when variants map across multiple themes."
+                    autoComplete="off"
+                  />
+                </FormLayout>
+              );
+            })()}
+          </BlockStack>
         </Card>
       ))}
     </BlockStack>
@@ -9294,7 +9831,7 @@ function TestWizard({
         price: 'Variant Prices',
         shipping: 'Variant Shipping Rates',
         offer: 'Variant Offers',
-        template: 'Variant Templates',
+        theme: 'Theme Variants',
       };
       return (
         <Card>
@@ -9318,7 +9855,7 @@ function TestWizard({
             {variantConfigType === 'price' && renderVariantPriceModule()}
             {variantConfigType === 'shipping' && renderVariantShippingModule()}
             {variantConfigType === 'offer' && renderVariantOfferModule()}
-            {variantConfigType === 'template' && renderVariantTemplateModule()}
+            {variantConfigType === 'theme' && renderVariantThemeModule()}
           </BlockStack>
         </Card>
       );

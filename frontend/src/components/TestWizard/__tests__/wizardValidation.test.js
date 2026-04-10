@@ -153,6 +153,36 @@ describe('wizardValidation', () => {
         });
         expect(errors).toHaveLength(0);
       });
+
+      it('returns error when traffic ramp percent is out of range', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.targeting, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            target_type: 'all',
+            segments: { traffic_ramp_percent: 120, traffic_ramp_days: 7 },
+          },
+          initialData: {},
+          showTemplateStep: true,
+        });
+        expect(errors).toContain('Traffic ramp percent must be between 0 and 100.');
+      });
+
+      it('returns error when traffic ramp days is invalid while ramp is enabled', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.targeting, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            target_type: 'all',
+            segments: { traffic_ramp_percent: 25, traffic_ramp_days: 0 },
+          },
+          initialData: {},
+          showTemplateStep: true,
+        });
+        expect(errors).toContain(
+          'Traffic ramp days must be between 1 and 30 when ramp % is enabled.'
+        );
+      });
     });
 
     describe('traffic step', () => {
@@ -463,6 +493,147 @@ describe('wizardValidation', () => {
         expect(errors.some(e => e.includes('percent discount') && e.includes('0 and 100'))).toBe(
           true
         );
+      });
+
+      it('returns error for offer test when selected-products scope has no selected products', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'offer',
+            target_type: 'product',
+            variants: [
+              { name: 'Control', config: { discount_type: 'percent', discount_value: null } },
+              { name: 'Variant A', config: { discount_type: 'percent', discount_value: 10 } },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'offer',
+        });
+        expect(
+          errors.some(
+            e =>
+              e.includes('Offer test is set to "Selected products only"') &&
+              e.includes('no products are selected')
+          )
+        ).toBe(true);
+      });
+
+      it('returns error for offer test when no non-control variant is actionable', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'offer',
+            variants: [
+              { name: 'Control', config: { discount_type: 'percent', discount_value: null } },
+              { name: 'Variant A', config: { discount_type: 'percent', discount_value: '' } },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'offer',
+        });
+        expect(errors.some(e => e.includes('At least one offer variant'))).toBe(true);
+      });
+
+      it('returns error on targeting step when selected and excluded products overlap', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.targeting, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'price',
+            target_type: 'product',
+            target_ids: ['gid://shopify/Product/100', 'gid://shopify/Product/200'],
+            segments: {
+              page_rules: [],
+              excluded_product_ids: ['gid://shopify/Product/200'],
+            },
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'price',
+        });
+        expect(errors.some(e => e.includes('also in the excluded products list'))).toBe(true);
+      });
+
+      it('returns error for theme template-switch variant when template handle is missing', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'theme',
+            variants: [
+              { name: 'Control', config: { themeMode: 'template_switch', template: '' } },
+              { name: 'Variant A', config: { themeMode: 'template_switch', template: '' } },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'template',
+        });
+        expect(errors.some(e => e.includes('template handle is required'))).toBe(true);
+      });
+
+      it('returns no error for theme asset-flag variant with body class', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'theme',
+            variants: [
+              { name: 'Control', config: { themeMode: 'asset_flag', bodyClass: '' } },
+              {
+                name: 'Variant A',
+                config: { themeMode: 'asset_flag', bodyClass: 'ripx-theme-v2' },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'theme',
+        });
+        expect(errors.some(e => e.includes('Add theme configuration'))).toBe(false);
+      });
+
+      it('returns error for theme-redirect variant when redirect URL is missing', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'theme',
+            variants: [
+              { name: 'Control', config: { themeMode: 'theme_redirect', url: '' } },
+              { name: 'Variant A', config: { themeMode: 'theme_redirect', url: '' } },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'theme',
+        });
+        expect(errors.some(e => e.includes('redirect URL is required'))).toBe(true);
+      });
+
+      it('returns no error for theme-redirect variant with a valid redirect URL', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'theme',
+            variants: [
+              { name: 'Control', config: { themeMode: 'theme_redirect', url: '' } },
+              {
+                name: 'Variant A',
+                config: { themeMode: 'theme_redirect', url: '/pages/theme-redesign-v2' },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'theme',
+        });
+        expect(errors.some(e => e.includes('redirect URL'))).toBe(false);
       });
     });
 

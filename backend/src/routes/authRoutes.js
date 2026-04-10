@@ -18,6 +18,7 @@ const standaloneUser = require('../models/standaloneUser');
 const emailService = require('../services/emailService');
 const auditLogService = require('../services/auditLogService');
 const { isUserStatusBlocked, isUserStatusAllowedForSession } = require('../constants');
+const { authIpLimiter, authEmailLimiter } = require('../middleware/authRouteLimiters');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -41,6 +42,19 @@ function isAdminEmail(email) {
     return false;
   }
   return getAdminEmails().includes(email.trim().toLowerCase());
+}
+
+async function resolveEmailTokenVersion(email) {
+  const normalized = (email || '').trim().toLowerCase();
+  if (!normalized) {
+    return 0;
+  }
+  const user = await standaloneUser.getByEmail(normalized);
+  const tokenVersion = Number(user?.token_version ?? 0);
+  if (!Number.isFinite(tokenVersion) || tokenVersion < 0) {
+    return 0;
+  }
+  return tokenVersion;
 }
 
 function isValidShopDomain(shop) {
@@ -1005,6 +1019,8 @@ router.get(
  */
 router.post(
   '/register',
+  authIpLimiter,
+  authEmailLimiter,
   asyncHandler(async (req, res) => {
     const email = req.body?.email;
     if (!emailVerificationService.isValidEmail(email)) {
@@ -1100,6 +1116,8 @@ router.get(
  */
 router.post(
   '/send-login-link',
+  authIpLimiter,
+  authEmailLimiter,
   asyncHandler(async (req, res) => {
     const email = req.body?.email;
     const rememberMe = req.body?.remember_me === true || req.body?.remember_me === 'true';
@@ -1210,6 +1228,8 @@ router.post(
  */
 router.post(
   '/verify-login-code',
+  authIpLimiter,
+  authEmailLimiter,
   asyncHandler(async (req, res) => {
     const email = req.body?.email;
     const code = req.body?.code;
@@ -1219,6 +1239,11 @@ router.post(
     const normalizedEmail = (email || '').trim().toLowerCase();
     const payload = await loginOtpService.consumeCode(normalizedEmail, code);
     if (!payload) {
+      auditLogService.logAuthAction(req, {
+        action: 'login_rejected',
+        actorId: normalizedEmail,
+        changes: { reason: 'invalid_or_expired_otp_code' },
+      });
       return res
         .status(400)
         .json({ success: false, error: 'Invalid or expired code. Request a new code.' });
@@ -1268,10 +1293,12 @@ router.post(
     const expiresIn = rememberMe
       ? EMAIL_SESSION_EXPIRY_DAYS + 'd'
       : EMAIL_SESSION_EXPIRY_HOURS + 'h';
+    const tokenVersion = await resolveEmailTokenVersion(normalizedEmail);
     const jwtPayload = {
       ripxtype: 'email_session',
       email: payload.email,
       purpose: 'login',
+      token_version: tokenVersion,
     };
     const sessionToken = jwt.sign(jwtPayload, secret, {
       algorithm: 'HS256',
@@ -1365,10 +1392,12 @@ router.get(
     const expiresIn = rememberMe
       ? EMAIL_SESSION_EXPIRY_DAYS + 'd'
       : EMAIL_SESSION_EXPIRY_HOURS + 'h';
+    const tokenVersion = await resolveEmailTokenVersion(normalizedEmail);
     const jwtPayload = {
       ripxtype: 'email_session',
       email: normalizedEmail,
       purpose: payload.purpose,
+      token_version: tokenVersion,
     };
 
     const sessionToken = jwt.sign(jwtPayload, secret, {
@@ -1423,6 +1452,30 @@ router.post(
   asyncHandler((req, res) => {
     clearEmailSessionCookie(res);
     res.status(200).json({ success: true });
+  })
+);
+
+/**
+ * POST /api/auth/logout-all
+ * Revoke all active email sessions for this email identity by incrementing token_version.
+ */
+router.post(
+  '/logout-all',
+  asyncHandler(async (req, res) => {
+    const email = getEmailFromSession(req);
+    if (!email) {
+      return res.status(401).json({ success: false, error: 'Email session required' });
+    }
+    const user = await standaloneUser.getByEmail(email);
+    if (user?.id) {
+      await standaloneUser.incrementTokenVersion(user.id);
+    }
+    clearEmailSessionCookie(res);
+    auditLogService.logAuthAction(req, {
+      action: 'logout_all',
+      actorId: email,
+    });
+    return res.status(200).json({ success: true });
   })
 );
 

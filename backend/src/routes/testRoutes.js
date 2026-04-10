@@ -30,12 +30,18 @@ const { sendSuccess, sendValidationError, sendNotFound } = require('../utils/res
 const { HTTP_STATUS, SUCCESS_MESSAGES } = require('../constants');
 const { normalizeSegments } = require('../utils/segments');
 const { enrichGoalWithTemplateKey } = require('../utils/testType');
+const { getGlobalHoldoutPercent } = require('../services/experimentationPolicyService');
 const notificationService = require('../services/notificationService');
 const outboundWebhookService = require('../services/outboundWebhookService');
 const { scheduleTestJobs } = require('../jobs/scheduledTestsProcessor');
 const auditLogService = require('../services/auditLogService');
 const conflictDetectionService = require('../services/conflictDetectionService');
 const personalizationService = require('../services/personalizationService');
+const {
+  parseActivationStartOptions,
+  applyActivationStartOptionsToTest,
+  runActivationPreflight,
+} = require('../services/testActivationService');
 const { getTestAnalytics, getBatchVariantMetrics } = require('../models/analytics');
 const { normalizeDomain } = require('../models/tenant');
 const logger = require('../utils/logger');
@@ -49,6 +55,116 @@ function normalizeHoldout(value) {
     return { error: 'Holdout percent must be a number' };
   }
   return { value: parsed };
+}
+
+function getExperimentGroupKey(test) {
+  if (!test || typeof test !== 'object') {
+    return '';
+  }
+  const raw = test.segments?.experiment_group ?? test.goal?.experiment_group ?? '';
+  return String(raw || '')
+    .trim()
+    .toLowerCase();
+}
+
+function extractVisualQaMetadata(test) {
+  const goalVisualQa =
+    test?.goal?.visual_qa && typeof test.goal.visual_qa === 'object' ? test.goal.visual_qa : {};
+  const baselineId =
+    String(goalVisualQa.baseline_id || goalVisualQa.baselineId || '').trim() || null;
+  const checkedAt = String(goalVisualQa.checked_at || goalVisualQa.checkedAt || '').trim() || null;
+  const required =
+    goalVisualQa.required === true ||
+    goalVisualQa.enabled === true ||
+    test?.segments?.visual_qa_required === true;
+  return {
+    required: Boolean(required),
+    baseline_id: baselineId,
+    checked_at: checkedAt,
+  };
+}
+
+function applyExperimentGroupToSegments(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return;
+  }
+  if (payload.experiment_group === undefined) {
+    return;
+  }
+  const raw = payload.experiment_group;
+  const normalized = raw === null || raw === undefined ? '' : String(raw).trim().toLowerCase();
+  const nextSegments =
+    payload.segments && typeof payload.segments === 'object' ? payload.segments : {};
+  if (!normalized) {
+    delete nextSegments.experiment_group;
+  } else {
+    nextSegments.experiment_group = normalized;
+  }
+  payload.segments = nextSegments;
+  delete payload.experiment_group;
+}
+
+function buildTestReportMarkdown(report) {
+  const test = report?.test || {};
+  const summary = report?.analytics?.summary || {};
+  const significance = report?.analytics?.significance || {};
+  const quality = report?.quality || {};
+  const decision = report?.decision || {};
+  const riskSignals = quality?.riskSignals || {};
+  const visualQa = report?.policy?.visual_qa || {};
+  const variants = Array.isArray(report?.analytics?.variants) ? report.analytics.variants : [];
+  const lines = [
+    `# ${test.name || 'A/B Test Report'}`,
+    '',
+    `- Test ID: ${test.id || ''}`,
+    `- Type: ${test.type || ''}`,
+    `- Status: ${test.status || ''}`,
+    `- Generated at: ${report.generated_at || ''}`,
+    '',
+    '## Summary',
+    '',
+    `- Visitors: ${summary.totalVisitors ?? 0}`,
+    `- Conversions: ${summary.totalConversions ?? 0}`,
+    `- Revenue: ${summary.totalRevenue ?? 0}`,
+    '',
+    '## Quality',
+    '',
+    `- Score: ${quality.score ?? 0}/100`,
+    `- Level: ${quality.level || 'unknown'}`,
+    '',
+    '## Significance',
+    '',
+    `- Significant: ${significance.significant ? 'Yes' : 'No'}`,
+    `- Confidence: ${significance.confidence ?? 0}`,
+    `- Message: ${significance.message || ''}`,
+    '',
+    '## Risk and rollout',
+    '',
+    `- Risk level: ${riskSignals.level || 'unknown'}`,
+    `- Rollout action: ${decision.action || quality?.rolloutRecommendation?.action || 'n/a'}`,
+    `- Guidance: ${decision.message || quality?.rolloutRecommendation?.message || ''}`,
+    '',
+    '## Visual QA',
+    '',
+    `- Required: ${visualQa.required ? 'Yes' : 'No'}`,
+    `- Baseline ID: ${visualQa.baseline_id || 'n/a'}`,
+    `- Checked at: ${visualQa.checked_at || 'n/a'}`,
+    '',
+    '## Variants',
+    '',
+  ];
+  variants.forEach(variant => {
+    lines.push(
+      `- ${variant.name || variant.id || 'Variant'}: ${variant.conversions || 0} conversions / ${variant.visitors || 0} visitors (${variant.conversionRate || 0}%)`
+    );
+  });
+  if (Array.isArray(quality.recommendations) && quality.recommendations.length > 0) {
+    lines.push('', '## Recommendations', '');
+    quality.recommendations.forEach(item => {
+      lines.push(`- ${item}`);
+    });
+  }
+  return lines.join('\n') + '\n';
 }
 
 function isPriceLikeTestType(type) {
@@ -325,6 +441,8 @@ router.post(
       testData.description = trimmedDescription.length > 0 ? trimmedDescription : null;
     }
 
+    applyExperimentGroupToSegments(testData);
+
     if (testData.segments !== undefined) {
       testData.segments = normalizeSegments(testData.segments);
     }
@@ -551,6 +669,7 @@ router.get(
           ...enriched,
           variants: variantsWithMetrics,
           health,
+          quality_score: health.score,
           variant_count: variantCount,
         };
         if (test.personalization_mode === 'rollout') {
@@ -565,6 +684,114 @@ router.get(
       tests: testsWithAnalytics,
       count: testsWithAnalytics.length,
     });
+  })
+);
+
+/**
+ * GET /api/tests/:id/report?format=json|markdown
+ * Generate a concise performance + quality report for sharing.
+ */
+router.get(
+  '/:id/report',
+  validateTestId,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const shopDomain = req.shopDomain;
+    const format = String(req.query?.format || 'json')
+      .trim()
+      .toLowerCase();
+
+    if (!['json', 'markdown', 'md'].includes(format)) {
+      return res.status(400).json({ success: false, error: 'format must be json or markdown' });
+    }
+
+    const test = await getTestById(id, shopDomain);
+    if (!test) {
+      return sendNotFound(res, 'Test');
+    }
+    if (!Array.isArray(test.variants)) {
+      test.variants = [];
+    }
+    if (!test.goal || typeof test.goal !== 'object') {
+      test.goal = {};
+    }
+    ensureVariantCount(test);
+
+    let analytics = null;
+    try {
+      const analyticsService = require('../services/analytics');
+      analytics = await analyticsService.getTestAnalytics(id, shopDomain);
+    } catch {
+      analytics = null;
+    }
+    const variantsWithMetrics = mergeVariantMetrics(test.variants, analytics);
+    const health = testHealthService.calculateHealthScore({
+      ...test,
+      variants: variantsWithMetrics,
+      significance: analytics?.significance || null,
+    });
+
+    const report = {
+      generated_at: new Date().toISOString(),
+      test: {
+        id: test.id,
+        name: test.name,
+        type: test.type,
+        status: test.status,
+        target_type: test.target_type || null,
+        target_id: test.target_id || null,
+        target_ids: Array.isArray(test.target_ids) ? test.target_ids : [],
+        started_at: test.started_at || null,
+        stopped_at: test.stopped_at || null,
+        created_at: test.created_at || null,
+      },
+      policy: {
+        experiment_group: getExperimentGroupKey(test) || null,
+        global_holdout_percent: await getGlobalHoldoutPercent(shopDomain),
+        test_holdout_percent: Number(test.holdout_percent || 0),
+        visual_qa: extractVisualQaMetadata(test),
+      },
+      quality: {
+        score: health.score,
+        level: health.healthLevel,
+        color: health.healthColor,
+        issues: health.issues || [],
+        recommendations: health.recommendations || [],
+        srm: health.srm || null,
+        riskSignals: health.riskSignals || null,
+        rolloutRecommendation: health.rolloutRecommendation || null,
+      },
+      decision: {
+        action: health?.rolloutRecommendation?.action || null,
+        risk_level: health?.riskSignals?.level || null,
+        message: health?.rolloutRecommendation?.message || null,
+        suggested_initial_percent: health?.rolloutRecommendation?.suggestedInitialPercent ?? null,
+        suggested_duration_days: health?.rolloutRecommendation?.suggestedDurationDays ?? null,
+      },
+      analytics: {
+        summary: analytics?.summary || {
+          totalVisitors: 0,
+          totalConversions: 0,
+          totalRevenue: 0,
+        },
+        significance: analytics?.significance || {
+          significant: false,
+          pValue: 1,
+          confidence: 0,
+          message: 'Insufficient data',
+        },
+        revenueImpact: analytics?.revenueImpact || null,
+        srm: analytics?.srm || null,
+        variants: variantsWithMetrics || [],
+      },
+    };
+
+    if (format === 'markdown' || format === 'md') {
+      const markdown = buildTestReportMarkdown(report);
+      res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+      return res.status(200).send(markdown);
+    }
+    return sendSuccess(res, HTTP_STATUS.OK, { report });
   })
 );
 
@@ -601,9 +828,39 @@ router.get(
 
     ensureVariantCount(test);
 
+    let variantMetrics = null;
+    try {
+      variantMetrics = await getTestAnalytics(id, shopDomain);
+    } catch {
+      variantMetrics = null;
+    }
+    const variantsWithMetrics = mergeVariantMetrics(
+      Array.isArray(test.variants) ? test.variants : [],
+      Array.isArray(variantMetrics) ? variantMetrics : []
+    );
+    test.variants = variantsWithMetrics;
+
+    let analyticsReport = null;
+    try {
+      const analyticsService = require('../services/analytics');
+      analyticsReport = await analyticsService.getTestAnalytics(id, shopDomain);
+    } catch {
+      analyticsReport = null;
+    }
+
     // Calculate health score for the test
-    const health = testHealthService.calculateHealthScore(test);
+    const health = testHealthService.calculateHealthScore({
+      ...test,
+      variants: variantsWithMetrics,
+      significance: analyticsReport?.significance || null,
+    });
     test.health = health;
+    test.quality_score = health.score;
+    test.analytics_meta = {
+      significance: analyticsReport?.significance || null,
+      srm: analyticsReport?.srm || health?.srm || null,
+      summary: analyticsReport?.summary || null,
+    };
 
     // Add effective rollout percent for rollout tests (computed from schedule)
     if (test.personalization_mode === 'rollout') {
@@ -801,6 +1058,8 @@ router.put(
       }
     }
 
+    applyExperimentGroupToSegments(updates);
+
     if (updates.segments !== undefined) {
       updates.segments = normalizeSegments(updates.segments);
     }
@@ -928,6 +1187,28 @@ router.delete(
 );
 
 /**
+ * GET /api/tests/:id/preflight
+ * Run pre-activation checks (compatibility, conflicts, canary, guardrails)
+ */
+router.get(
+  '/:id/preflight',
+  validateTestId,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const shopDomain = req.shopDomain;
+    const test = await getTestById(id, shopDomain);
+    if (!test) {
+      return sendNotFound(res, 'Test');
+    }
+    const preflight = await runActivationPreflight(test, shopDomain);
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      test_id: id,
+      preflight,
+    });
+  })
+);
+
+/**
  * POST /api/tests/:id/start
  * Start a test
  */
@@ -937,6 +1218,36 @@ router.post(
   asyncHandler(async (req, res) => {
     const { id } = req.params;
     const shopDomain = req.shopDomain;
+    const existingTest = await getTestById(id, shopDomain);
+    if (!existingTest) {
+      return sendNotFound(res, 'Test');
+    }
+
+    const startOptions = parseActivationStartOptions(req.body || {});
+    if (startOptions.errors.length > 0) {
+      return sendValidationError(res, startOptions.errors);
+    }
+
+    const candidateTest = applyActivationStartOptionsToTest(existingTest, startOptions);
+    const preflight = await runActivationPreflight(candidateTest, shopDomain);
+    if (!preflight.ok && !startOptions.force) {
+      return res.status(400).json({
+        success: false,
+        error: 'Activation preflight failed. Resolve issues or retry with force=true.',
+        preflight,
+      });
+    }
+
+    const activationUpdatePayload = {};
+    if (startOptions.hasCanaryOverrides && candidateTest?.segments) {
+      activationUpdatePayload.segments = candidateTest.segments;
+    }
+    if (startOptions?.visualQa?.hasOverrides && candidateTest?.goal) {
+      activationUpdatePayload.goal = candidateTest.goal;
+    }
+    if (Object.keys(activationUpdatePayload).length > 0) {
+      await updateTest(id, shopDomain, activationUpdatePayload);
+    }
 
     const test = await abTestEngine.startTest(id, shopDomain);
 
@@ -944,9 +1255,76 @@ router.post(
       return sendNotFound(res, 'Test');
     }
 
+    const forceApplied = Boolean(startOptions.force && !preflight.ok);
+    const canaryPercent =
+      startOptions.rampPercent !== null && startOptions.rampPercent !== undefined
+        ? startOptions.rampPercent
+        : (candidateTest?.segments?.traffic_ramp_percent ?? null);
+    const canaryDays =
+      startOptions.rampDays !== null && startOptions.rampDays !== undefined
+        ? startOptions.rampDays
+        : (candidateTest?.segments?.traffic_ramp_days ?? null);
+    auditLogService.log(shopDomain, {
+      entityType: 'test',
+      entityId: id,
+      action: 'start',
+      changes: {
+        forceApplied,
+        forceReason: startOptions.forceReason || null,
+        preflight: {
+          ok: Boolean(preflight.ok),
+          errors: Array.isArray(preflight.errors) ? preflight.errors.length : 0,
+          warnings: Array.isArray(preflight.warnings) ? preflight.warnings.length : 0,
+        },
+        canary: {
+          percent: canaryPercent,
+          days: canaryDays,
+        },
+        visualQa: startOptions?.visualQa?.hasOverrides
+          ? {
+              baselineId: startOptions.visualQa.baselineId || null,
+              checkedAtIso: startOptions.visualQa.checkedAtIso || null,
+              required:
+                startOptions.visualQa.required !== null &&
+                startOptions.visualQa.required !== undefined
+                  ? Boolean(startOptions.visualQa.required)
+                  : null,
+            }
+          : null,
+      },
+    });
     logger.info('Test started', { testId: id, shopDomain });
 
-    return sendSuccess(res, HTTP_STATUS.OK, { test }, SUCCESS_MESSAGES.TEST_STARTED);
+    return sendSuccess(
+      res,
+      HTTP_STATUS.OK,
+      {
+        test,
+        preflight,
+        activation: {
+          force_applied: forceApplied,
+          force_reason: startOptions.forceReason || null,
+          canary_percent: canaryPercent,
+          canary_days: canaryDays,
+          visual_qa: {
+            baseline_id:
+              startOptions?.visualQa?.baselineId ||
+              candidateTest?.goal?.visual_qa?.baseline_id ||
+              null,
+            checked_at:
+              startOptions?.visualQa?.checkedAtIso ||
+              candidateTest?.goal?.visual_qa?.checked_at ||
+              null,
+            required:
+              startOptions?.visualQa?.required !== null &&
+              startOptions?.visualQa?.required !== undefined
+                ? Boolean(startOptions.visualQa.required)
+                : Boolean(candidateTest?.goal?.visual_qa?.required),
+          },
+        },
+      },
+      SUCCESS_MESSAGES.TEST_STARTED
+    );
   })
 );
 

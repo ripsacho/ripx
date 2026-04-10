@@ -92,13 +92,33 @@ export const TEST_TEMPLATES = {
     description:
       'Compare different theme templates per variant. Configure template handle plus optional theme/section targeting for internal implementation, or use Split URL to route users to URLs that render each template.',
     defaultConfig: {
-      type: 'content',
+      type: 'theme',
       variants: [
-        { name: 'Control', allocation: 50, config: { template: '', themeId: '', sectionId: '' } },
+        {
+          name: 'Control',
+          allocation: 50,
+          config: {
+            themeMode: 'template_switch',
+            template: '',
+            themeTemplateHandle: '',
+            themeId: '',
+            sectionId: '',
+            bodyClass: '',
+            url: '',
+          },
+        },
         {
           name: 'Variant A',
           allocation: 50,
-          config: { template: '', themeId: '', sectionId: '' },
+          config: {
+            themeMode: 'template_switch',
+            template: '',
+            themeTemplateHandle: '',
+            themeId: '',
+            sectionId: '',
+            bodyClass: '',
+            url: '',
+          },
         },
       ],
     },
@@ -108,10 +128,34 @@ export const TEST_TEMPLATES = {
     icon: '🎨',
     description: 'Test theme redesigns, new navigation, or impact of adding an app.',
     defaultConfig: {
-      type: 'content',
+      type: 'theme',
       variants: [
-        { name: 'Control', allocation: 50, config: {} },
-        { name: 'Variant A', allocation: 50, config: {} },
+        {
+          name: 'Control',
+          allocation: 50,
+          config: {
+            themeMode: 'asset_flag',
+            bodyClass: '',
+            themeId: '',
+            sectionId: '',
+            template: '',
+            themeTemplateHandle: '',
+            url: '',
+          },
+        },
+        {
+          name: 'Variant A',
+          allocation: 50,
+          config: {
+            themeMode: 'asset_flag',
+            bodyClass: '',
+            themeId: '',
+            sectionId: '',
+            template: '',
+            themeTemplateHandle: '',
+            url: '',
+          },
+        },
       ],
     },
   },

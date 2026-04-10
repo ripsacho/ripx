@@ -35,6 +35,16 @@ describe('inferTemplateKey', () => {
     expect(inferTemplateKey(variants, 'content')).toBe('theme');
   });
 
+  it('returns theme when type is theme', () => {
+    const variants = [{ config: {} }];
+    expect(inferTemplateKey(variants, 'theme')).toBe('theme');
+  });
+
+  it('returns theme when variant has theme-specific config keys', () => {
+    const variants = [{ config: { themeMode: 'asset_flag', bodyClass: 'new-theme' } }];
+    expect(inferTemplateKey(variants, 'content')).toBe('theme');
+  });
+
   it('returns shipping when type is shipping', () => {
     const variants = [{ config: {} }];
     expect(inferTemplateKey(variants, 'shipping')).toBe('shipping');

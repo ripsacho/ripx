@@ -14,7 +14,8 @@ const {
   getTestAssignmentsBatch,
   saveTestAssignment,
 } = require('../models/testAssignment');
-const { getTestById, getTestsByIds } = require('../models/test');
+const { getTestById, getTestsByIds, getActiveTestsForStorefront } = require('../models/test');
+const { getGlobalHoldoutPercent } = require('./experimentationPolicyService');
 const personalizationService = require('./personalizationService');
 
 /** Derive pathname from URL for path-based url_pattern matching (homepage, etc.) */
@@ -35,7 +36,131 @@ function getPathnameFromUrl(currentUrl) {
   }
 }
 
+function normalizeProductId(input) {
+  if (input === undefined || input === null || input === '') {
+    return '';
+  }
+  const raw = String(input).trim();
+  if (!raw) {
+    return '';
+  }
+  const gidMatch = raw.match(/Product\/(\d+)/i);
+  if (gidMatch && gidMatch[1]) {
+    return gidMatch[1];
+  }
+  return raw.replace(/\D/g, '') || raw;
+}
+
+function normalizeExcludedProductIds(value) {
+  let source = value;
+  if (typeof source === 'string') {
+    source = source
+      .split(/[\n,]+/)
+      .map(item => item.trim())
+      .filter(Boolean);
+  }
+  if (!Array.isArray(source)) {
+    return [];
+  }
+  return Array.from(new Set(source.map(item => normalizeProductId(item)).filter(Boolean)));
+}
+
+function isProductScopeTargetType(targetType) {
+  const tt = String(targetType || '')
+    .trim()
+    .toLowerCase();
+  return tt === 'product' || tt === 'all-products' || tt === 'all_products';
+}
+
 class ABTestEngine {
+  _shouldPersistAssignment(context = {}) {
+    if (!context || typeof context !== 'object') {
+      return true;
+    }
+    const previewSessionRaw = context.preview_session;
+    const previewLegacyRaw = context.preview;
+    const previewSession =
+      previewSessionRaw === true ||
+      String(previewSessionRaw ?? '')
+        .trim()
+        .toLowerCase() === 'true' ||
+      String(previewSessionRaw ?? '')
+        .trim()
+        .toLowerCase() === '1' ||
+      String(previewSessionRaw ?? '')
+        .trim()
+        .toLowerCase() === 'yes';
+    const previewLegacy =
+      previewLegacyRaw === true ||
+      String(previewLegacyRaw ?? '')
+        .trim()
+        .toLowerCase() === 'true' ||
+      String(previewLegacyRaw ?? '')
+        .trim()
+        .toLowerCase() === '1' ||
+      String(previewLegacyRaw ?? '')
+        .trim()
+        .toLowerCase() === 'yes';
+    return !(previewSession || previewLegacy);
+  }
+
+  _getExperimentGroupKey(test) {
+    if (!test || typeof test !== 'object') {
+      return '';
+    }
+    const fromSegments = test.segments?.experiment_group;
+    const fromGoal = test.goal?.experiment_group;
+    const fromRoot = test.experiment_group;
+    const raw = fromSegments ?? fromGoal ?? fromRoot ?? '';
+    return String(raw || '')
+      .trim()
+      .toLowerCase();
+  }
+
+  _isUserInGlobalHoldout(userId, shopDomain, holdoutPercent = 0) {
+    if (!Number.isFinite(holdoutPercent) || holdoutPercent <= 0) {
+      return false;
+    }
+    const hash = crypto
+      .createHash('md5')
+      .update(`${String(shopDomain || '').toLowerCase()}|${String(userId || '')}|global_holdout`)
+      .digest('hex');
+    const bucket = (parseInt(hash.substring(0, 8), 16) % 10000) / 100;
+    return bucket < holdoutPercent;
+  }
+
+  async _resolveGlobalHoldoutPercent(shopDomain) {
+    try {
+      return await getGlobalHoldoutPercent(shopDomain);
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  _isUserInTrafficRamp(test, userId) {
+    const rampPercent = Number(test?.segments?.traffic_ramp_percent);
+    if (!Number.isFinite(rampPercent) || rampPercent <= 0 || rampPercent >= 100) {
+      return true;
+    }
+    const rampDaysRaw = Number(test?.segments?.traffic_ramp_days);
+    const rampDays = Number.isFinite(rampDaysRaw) && rampDaysRaw > 0 ? rampDaysRaw : 7;
+    const startedAt = test?.started_at ? new Date(test.started_at) : null;
+    let effectivePercent = rampPercent;
+    if (startedAt && Number.isFinite(startedAt.getTime())) {
+      const daysSinceStart = (Date.now() - startedAt.getTime()) / (24 * 60 * 60 * 1000);
+      effectivePercent = Math.min(
+        100,
+        rampPercent + (daysSinceStart / rampDays) * (100 - rampPercent)
+      );
+    }
+    const hash = crypto
+      .createHash('md5')
+      .update(String(userId || ''))
+      .digest('hex');
+    const bucket = parseInt(hash.substring(0, 8), 16) % 100;
+    return bucket < effectivePercent;
+  }
+
   /**
    * Check if test should serve variants (running OR personalized/rollout)
    */
@@ -128,33 +253,8 @@ class ABTestEngine {
         return null;
       }
 
-      // Traffic ramp: only assign to X% of users, ramping to 100% over 7 days
-      const rampPercent = test.segments?.traffic_ramp_percent;
-      if (
-        rampPercent !== null &&
-        rampPercent !== undefined &&
-        rampPercent > 0 &&
-        rampPercent < 100
-      ) {
-        // eslint-disable-line eqeqeq
-        const startedAt = test.started_at ? new Date(test.started_at) : null;
-        const rampDays = 7;
-        let effectivePercent = rampPercent;
-        if (startedAt) {
-          const daysSinceStart = (Date.now() - startedAt.getTime()) / (24 * 60 * 60 * 1000);
-          effectivePercent = Math.min(
-            100,
-            rampPercent + (daysSinceStart / rampDays) * (100 - rampPercent)
-          );
-        }
-        const hash = crypto
-          .createHash('md5')
-          .update(String(userId || ''))
-          .digest('hex');
-        const bucket = parseInt(hash.substring(0, 8), 16) % 100;
-        if (bucket >= effectivePercent) {
-          return null;
-        }
+      if (!this._isUserInTrafficRamp(test, userId)) {
+        return null;
       }
 
       // Check if user already has an assignment
@@ -177,6 +277,34 @@ class ABTestEngine {
         };
       }
 
+      const testGroupKey = this._getExperimentGroupKey(test);
+      if (testGroupKey) {
+        const activeTests = await getActiveTestsForStorefront(shopDomain);
+        const siblingIds = (activeTests || [])
+          .filter(candidate => {
+            if (!candidate || String(candidate.id) === String(test.id)) {
+              return false;
+            }
+            if (!this._shouldServeTest(candidate)) {
+              return false;
+            }
+            return this._getExperimentGroupKey(candidate) === testGroupKey;
+          })
+          .map(candidate => String(candidate.id))
+          .filter(Boolean);
+        if (siblingIds.length > 0) {
+          const siblingAssignments = await getTestAssignmentsBatch(userId, shopDomain, siblingIds);
+          if (siblingAssignments.size > 0) {
+            return null;
+          }
+        }
+      }
+
+      const globalHoldoutPercent = await this._resolveGlobalHoldoutPercent(shopDomain);
+      if (this._isUserInGlobalHoldout(userId, shopDomain, globalHoldoutPercent)) {
+        return null;
+      }
+
       // Select variant based on traffic allocation
       const variant = this.selectVariant(test.variants, userId, test.holdout_percent || 0);
       if (!variant) {
@@ -191,16 +319,18 @@ class ABTestEngine {
         logger.warn('Variant has no id or name, skipping assignment', { testId, variant });
         return null;
       }
-      await saveTestAssignment({
-        test_id: testId,
-        user_id: userId,
-        shop_domain: shopDomain,
-        variant_id: String(variantId),
-        variant_name: variant.name || String(variantId),
-        assigned_at: new Date(),
-        device: context.device || null,
-        country: context.country || null,
-      });
+      if (this._shouldPersistAssignment(context)) {
+        await saveTestAssignment({
+          test_id: testId,
+          user_id: userId,
+          shop_domain: shopDomain,
+          variant_id: String(variantId),
+          variant_name: variant.name || String(variantId),
+          assigned_at: new Date(),
+          device: context.device || null,
+          country: context.country || null,
+        });
+      }
 
       return {
         variantId: String(variantId),
@@ -295,13 +425,71 @@ class ABTestEngine {
       return {};
     }
 
-    const [testsMap, assignmentsMap] = await Promise.all([
+    const [testsMap, assignmentsMap, globalHoldoutPercent] = await Promise.all([
       getTestsByIds(ids, shopDomain),
       getTestAssignmentsBatch(userId, shopDomain, ids),
+      this._resolveGlobalHoldoutPercent(shopDomain),
     ]);
 
     const result = {};
     const toSave = [];
+    const blockedGroups = new Set();
+    const groupByTestId = new Map();
+
+    ids.forEach(testId => {
+      const t = testsMap.get(testId);
+      const groupKey = this._getExperimentGroupKey(t);
+      if (groupKey) {
+        groupByTestId.set(String(testId), groupKey);
+      }
+    });
+
+    assignmentsMap.forEach((assignment, testId) => {
+      if (assignment && groupByTestId.get(String(testId))) {
+        blockedGroups.add(groupByTestId.get(String(testId)));
+      }
+    });
+
+    const groupedRequestedTests = [...new Set(groupByTestId.values())];
+    if (groupedRequestedTests.length > 0) {
+      const activeTests = await getActiveTestsForStorefront(shopDomain);
+      const activeById = new Map((activeTests || []).map(t => [String(t.id), t]));
+      const externalGroupTestIds = (activeTests || [])
+        .filter(t => {
+          if (!t || !this._shouldServeTest(t)) {
+            return false;
+          }
+          const groupKey = this._getExperimentGroupKey(t);
+          if (!groupKey || !groupedRequestedTests.includes(groupKey)) {
+            return false;
+          }
+          return !groupByTestId.has(String(t.id));
+        })
+        .map(t => String(t.id));
+      if (externalGroupTestIds.length > 0) {
+        const externalAssignments = await getTestAssignmentsBatch(
+          userId,
+          shopDomain,
+          externalGroupTestIds
+        );
+        externalAssignments.forEach((assignment, testId) => {
+          if (!assignment) {
+            return;
+          }
+          const test = activeById.get(String(testId));
+          const groupKey = this._getExperimentGroupKey(test);
+          if (groupKey) {
+            blockedGroups.add(groupKey);
+          }
+        });
+      }
+    }
+
+    const userInGlobalHoldout = this._isUserInGlobalHoldout(
+      userId,
+      shopDomain,
+      globalHoldoutPercent
+    );
 
     for (const testId of ids) {
       const test = testsMap.get(testId);
@@ -313,31 +501,8 @@ class ABTestEngine {
         continue;
       }
 
-      const rampPercent = test.segments?.traffic_ramp_percent;
-      if (
-        rampPercent !== null &&
-        rampPercent !== undefined &&
-        rampPercent > 0 &&
-        rampPercent < 100
-      ) {
-        const startedAt = test.started_at ? new Date(test.started_at) : null;
-        const rampDays = 7;
-        let effectivePercent = rampPercent;
-        if (startedAt) {
-          const daysSinceStart = (Date.now() - startedAt.getTime()) / (24 * 60 * 60 * 1000);
-          effectivePercent = Math.min(
-            100,
-            rampPercent + (daysSinceStart / rampDays) * (100 - rampPercent)
-          );
-        }
-        const hash = crypto
-          .createHash('md5')
-          .update(String(userId || ''))
-          .digest('hex');
-        const bucket = parseInt(hash.substring(0, 8), 16) % 100;
-        if (bucket >= effectivePercent) {
-          continue;
-        }
+      if (!this._isUserInTrafficRamp(test, userId)) {
+        continue;
       }
 
       const existingAssignment = assignmentsMap.get(testId);
@@ -359,6 +524,14 @@ class ABTestEngine {
         continue;
       }
 
+      const testGroupKey = groupByTestId.get(String(testId)) || '';
+      if (testGroupKey && blockedGroups.has(testGroupKey)) {
+        continue;
+      }
+      if (userInGlobalHoldout) {
+        continue;
+      }
+
       const variant = this.selectVariant(test.variants, userId, test.holdout_percent || 0);
       if (!variant) {
         continue;
@@ -370,16 +543,21 @@ class ABTestEngine {
         isNewAssignment: true,
         config: variant.config || {},
       };
-      toSave.push({
-        test_id: testId,
-        user_id: userId,
-        shop_domain: shopDomain,
-        variant_id: variant.id,
-        variant_name: variant.name,
-        assigned_at: new Date(),
-        device: context.device || null,
-        country: context.country || null,
-      });
+      if (this._shouldPersistAssignment(testContext)) {
+        toSave.push({
+          test_id: testId,
+          user_id: userId,
+          shop_domain: shopDomain,
+          variant_id: variant.id,
+          variant_name: variant.name,
+          assigned_at: new Date(),
+          device: context.device || null,
+          country: context.country || null,
+        });
+      }
+      if (testGroupKey) {
+        blockedGroups.add(testGroupKey);
+      }
     }
 
     await Promise.all(toSave.map(a => saveTestAssignment(a)));
@@ -457,9 +635,20 @@ class ABTestEngine {
     const segments = test.segments || {};
     const testType = String(test?.type || '').toLowerCase();
     const targetType = String(test?.target_type || '').toLowerCase();
-    const isSiteWidePriceScope =
-      (testType === 'price' || testType === 'pricing') &&
-      (targetType === 'product' || targetType === 'all-products' || targetType === 'all_products');
+    const isSiteWideProductScope =
+      (testType === 'price' || testType === 'pricing' || testType === 'offer') &&
+      isProductScopeTargetType(targetType);
+    const excludedProductIds = normalizeExcludedProductIds(segments.excluded_product_ids);
+    const currentProductId = normalizeProductId(context.current_product_id);
+
+    if (
+      excludedProductIds.length > 0 &&
+      isProductScopeTargetType(targetType) &&
+      currentProductId &&
+      excludedProductIds.includes(currentProductId)
+    ) {
+      return false;
+    }
 
     // Exclude bots by user-agent
     if (segments.exclude_bots === true && context.user_agent) {
@@ -552,7 +741,7 @@ class ABTestEngine {
           normalizedPattern === '/products' ||
           normalizedPattern === '^/products/' ||
           normalizedPattern === '^/products';
-        if (!(isSiteWidePriceScope && isLegacyProductPathPattern)) {
+        if (!(isSiteWideProductScope && isLegacyProductPathPattern)) {
           const urlToTest = urlForPathMatch || urlForFullMatch;
           if (!urlToTest) {
             return false;
@@ -722,6 +911,17 @@ class ABTestEngine {
    */
   validateTest(testConfig) {
     const errors = [];
+    const testType = String(testConfig.type || '')
+      .trim()
+      .toLowerCase();
+    const normalizeThemeMode = (rawMode, fallbackMode = 'asset_flag') => {
+      const mode = String(rawMode || fallbackMode)
+        .trim()
+        .toLowerCase();
+      return ['template_switch', 'section_variant', 'asset_flag', 'theme_redirect'].includes(mode)
+        ? mode
+        : fallbackMode;
+    };
 
     // Check test name
     if (!testConfig.name || testConfig.name.trim().length === 0) {
@@ -769,6 +969,182 @@ class ABTestEngine {
           variant.config = {};
         }
       });
+
+      const isLikelyControlVariant = (variant, index) => {
+        const name = String(variant?.name || '')
+          .trim()
+          .toLowerCase();
+        if (index === 0) {
+          return true;
+        }
+        return name === 'control' || name.startsWith('control ');
+      };
+
+      if ((testType === 'price' || testType === 'pricing') && testConfig.variants.length > 1) {
+        let hasNonControlWithPrice = false;
+        testConfig.variants.forEach((variant, index) => {
+          const cfg = variant?.config && typeof variant.config === 'object' ? variant.config : {};
+          const mode = String(cfg.priceMode || 'fixed')
+            .trim()
+            .toLowerCase();
+          const isControl = isLikelyControlVariant(variant, index);
+          if (
+            mode === 'fixed' &&
+            cfg.price !== null &&
+            cfg.price !== undefined &&
+            cfg.price !== ''
+          ) {
+            const n = Number(cfg.price);
+            if (!Number.isFinite(n) || n < 0) {
+              errors.push(`Variant ${index + 1}: fixed price must be 0 or greater`);
+            } else if (!isControl) {
+              hasNonControlWithPrice = true;
+            }
+          } else if (
+            mode === 'amount' &&
+            cfg.priceDelta !== null &&
+            cfg.priceDelta !== undefined &&
+            cfg.priceDelta !== ''
+          ) {
+            const n = Number(cfg.priceDelta);
+            if (!Number.isFinite(n)) {
+              errors.push(`Variant ${index + 1}: amount delta must be a valid number`);
+            } else if (!isControl) {
+              hasNonControlWithPrice = true;
+            }
+          } else if (
+            mode === 'percent' &&
+            cfg.pricePercent !== null &&
+            cfg.pricePercent !== undefined &&
+            cfg.pricePercent !== ''
+          ) {
+            const n = Number(cfg.pricePercent);
+            if (!Number.isFinite(n) || n < -100 || n > 100) {
+              errors.push(`Variant ${index + 1}: percent must be between -100 and 100`);
+            } else if (!isControl) {
+              hasNonControlWithPrice = true;
+            }
+          }
+        });
+        if (!hasNonControlWithPrice) {
+          errors.push(
+            'Price tests require at least one non-control variant with a valid price config'
+          );
+        }
+      }
+
+      if (testType === 'offer' && testConfig.variants.length > 1) {
+        let hasNonControlWithOffer = false;
+        testConfig.variants.forEach((variant, index) => {
+          const cfg = variant?.config && typeof variant.config === 'object' ? variant.config : {};
+          const discountType = String(cfg.discount_type || 'percent')
+            .trim()
+            .toLowerCase();
+          const discountValue = cfg.discount_value;
+          const isControl = isLikelyControlVariant(variant, index);
+          if (!['percent', 'fixed', 'free_shipping'].includes(discountType)) {
+            errors.push(
+              `Variant ${index + 1}: discount_type must be one of percent, fixed, free_shipping`
+            );
+            return;
+          }
+          if (discountType === 'free_shipping') {
+            if (!isControl) {
+              hasNonControlWithOffer = true;
+            }
+            return;
+          }
+          if (discountValue !== null && discountValue !== undefined && discountValue !== '') {
+            const n = Number(discountValue);
+            if (!Number.isFinite(n) || n < 0) {
+              errors.push(`Variant ${index + 1}: discount value must be 0 or greater`);
+              return;
+            }
+            if (discountType === 'percent' && n > 100) {
+              errors.push(`Variant ${index + 1}: percent discount must be between 0 and 100`);
+              return;
+            }
+            if (!isControl) {
+              hasNonControlWithOffer = true;
+            }
+          }
+        });
+        if (!hasNonControlWithOffer) {
+          errors.push(
+            'Offer tests require at least one non-control variant with a discount or free-shipping config'
+          );
+        }
+      }
+    }
+
+    const templateKey = String(testConfig.goal?.template_key || '')
+      .trim()
+      .toLowerCase();
+    const isThemeFamilyTest =
+      String(testConfig.type || '').toLowerCase() === 'theme' ||
+      templateKey === 'theme' ||
+      templateKey === 'template';
+    if (isThemeFamilyTest && Array.isArray(testConfig.variants)) {
+      const fallbackMode = templateKey === 'template' ? 'template_switch' : 'asset_flag';
+      let hasActionableThemeVariant = false;
+      testConfig.variants.forEach((variant, index) => {
+        const cfg = variant?.config && typeof variant.config === 'object' ? variant.config : {};
+        const mode = normalizeThemeMode(cfg.themeMode || cfg.theme_mode, fallbackMode);
+        const templateHandle = String(
+          cfg.themeTemplateHandle || cfg.theme_template_handle || cfg.template || ''
+        ).trim();
+        const sectionId = String(cfg.sectionId || cfg.section_id || '').trim();
+        const bodyClass = String(cfg.bodyClass || cfg.body_class || '').trim();
+        const themeId = String(cfg.themeId || cfg.theme_id || '').trim();
+        const redirectUrl = String(
+          cfg.url || cfg.themeRedirectUrl || cfg.theme_redirect_url || ''
+        ).trim();
+        const code = String(cfg.code || '').trim();
+        const customCss = String(cfg.customCss || '').trim();
+        const customJs = String(cfg.customJs || '').trim();
+        const isLikelyControl =
+          index === 0 || /^control(\s|$)/i.test(String(variant?.name || '').trim());
+
+        if (mode === 'template_switch' && !templateHandle && !isLikelyControl) {
+          errors.push(`Variant ${index + 1}: template handle is required for template_switch mode`);
+        }
+        if (mode === 'section_variant' && !sectionId && !isLikelyControl) {
+          errors.push(`Variant ${index + 1}: sectionId is required for section_variant mode`);
+        }
+        if (mode === 'theme_redirect' && !redirectUrl && !isLikelyControl) {
+          errors.push(`Variant ${index + 1}: redirect URL is required for theme_redirect mode`);
+        }
+        if (mode === 'theme_redirect' && redirectUrl) {
+          try {
+            // Accept both absolute and relative paths.
+            new URL(redirectUrl, 'https://example.com');
+          } catch (_err) {
+            errors.push(`Variant ${index + 1}: redirect URL is invalid for theme_redirect mode`);
+          }
+        }
+        if (!bodyClass && cfg.body_class) {
+          errors.push(`Variant ${index + 1}: body_class must be a non-empty string when provided`);
+        }
+        const hasSignal = Boolean(
+          templateHandle ||
+          sectionId ||
+          bodyClass ||
+          themeId ||
+          redirectUrl ||
+          code ||
+          customCss ||
+          customJs ||
+          (Array.isArray(cfg.visual_editor_rules) && cfg.visual_editor_rules.length > 0)
+        );
+        if (!isLikelyControl && hasSignal) {
+          hasActionableThemeVariant = true;
+        }
+      });
+      if (testConfig.variants.length > 1 && !hasActionableThemeVariant) {
+        errors.push(
+          'Theme tests require at least one non-control variant with template/section/body-class/theme config'
+        );
+      }
     }
 
     const holdoutPercent = testConfig.holdout_percent;
@@ -823,6 +1199,25 @@ class ABTestEngine {
         const n = Number(min_sessions);
         if (Number.isNaN(n) || n < 0) {
           errors.push('Segment min_sessions must be a non-negative number');
+        }
+      }
+
+      if (
+        testConfig.segments.excluded_product_ids !== undefined &&
+        testConfig.segments.excluded_product_ids !== null
+      ) {
+        if (!Array.isArray(testConfig.segments.excluded_product_ids)) {
+          errors.push('Segment excluded_product_ids must be an array of product IDs');
+        } else {
+          const normalizedExcludedIds = normalizeExcludedProductIds(
+            testConfig.segments.excluded_product_ids
+          );
+          if (
+            testConfig.segments.excluded_product_ids.length > 0 &&
+            normalizedExcludedIds.length === 0
+          ) {
+            errors.push('Segment excluded_product_ids contains no valid product IDs');
+          }
         }
       }
     }

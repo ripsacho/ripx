@@ -10,6 +10,33 @@
  * @param {Object} segments - Raw segments from request
  * @returns {Object|null} Normalized segments or null if invalid
  */
+function normalizeProductIds(input) {
+  let source = input;
+  if (typeof source === 'string') {
+    source = source
+      .split(/[\n,]+/)
+      .map(value => value.trim())
+      .filter(Boolean);
+  }
+  if (!Array.isArray(source)) {
+    return [];
+  }
+  return Array.from(
+    new Set(
+      source
+        .map(value => String(value || '').trim())
+        .filter(Boolean)
+        .map(value => {
+          if (value.startsWith('gid://')) {
+            return value;
+          }
+          const numeric = value.replace(/\D/g, '');
+          return numeric ? `gid://shopify/Product/${numeric}` : value;
+        })
+    )
+  );
+}
+
 function normalizeSegments(segments) {
   if (!segments || typeof segments !== 'object') {
     return null;
@@ -31,6 +58,10 @@ function normalizeSegments(segments) {
   }
 
   const result = { device, customer, countries };
+  const excludedProductIds = normalizeProductIds(segments.excluded_product_ids);
+  if (excludedProductIds.length > 0) {
+    result.excluded_product_ids = excludedProductIds;
+  }
 
   if (segments.traffic_source && typeof segments.traffic_source === 'string') {
     result.traffic_source = segments.traffic_source.toLowerCase();
@@ -137,6 +168,14 @@ function normalizeSegments(segments) {
   ) {
     const n = Number(segments.traffic_ramp_percent);
     result.traffic_ramp_percent = !Number.isNaN(n) && n >= 0 && n <= 100 ? n : null;
+  }
+  if (
+    segments.traffic_ramp_days !== undefined &&
+    segments.traffic_ramp_days !== null &&
+    segments.traffic_ramp_days !== ''
+  ) {
+    const n = Number(segments.traffic_ramp_days);
+    result.traffic_ramp_days = !Number.isNaN(n) && n >= 1 && n <= 30 ? Math.round(n) : null;
   }
 
   // Visual editor: preview URL and element selector (persisted for Config step)

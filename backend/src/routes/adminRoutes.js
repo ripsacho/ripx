@@ -70,6 +70,11 @@ const {
   createSupportTicketThreadMessage,
   subscribeSupportTicketThread,
 } = require('../services/supportTicketThreadService');
+const {
+  getGlobalHoldoutPercent,
+  setGlobalHoldoutPercent,
+  normalizeGlobalHoldoutPercent,
+} = require('../services/experimentationPolicyService');
 
 /**
  * GET /api/admin/me - Current user identity (any authenticated shop).
@@ -254,6 +259,52 @@ router.post(
       changes: { email: userBefore?.email ? `${userBefore.email.substring(0, 3)}***` : null },
     });
     return sendSuccess(res, HTTP_STATUS.OK, { message: 'User rejected' });
+  })
+);
+
+/**
+ * POST /api/admin/revoke-email-sessions
+ * Revoke all active email-session JWTs for a user by incrementing token_version.
+ * Body: { user_id? , email? }. Audited.
+ */
+router.post(
+  '/revoke-email-sessions',
+  asyncHandler(async (req, res) => {
+    const rawEmail = req.body?.email;
+    const userId = req.body?.user_id;
+    let user = null;
+    if (userId) {
+      user = await standaloneUser.getById(userId);
+      if (!user) {
+        return res.status(404).json({ success: false, error: 'User not found' });
+      }
+    } else {
+      const normalizedEmail =
+        rawEmail !== null && rawEmail !== undefined ? String(rawEmail).trim().toLowerCase() : '';
+      if (!normalizedEmail || !validators.isValidEmail(normalizedEmail)) {
+        return res
+          .status(400)
+          .json({ success: false, error: 'Valid email or user_id is required' });
+      }
+      user = await standaloneUser.getByEmail(normalizedEmail);
+      if (!user) {
+        return res.status(404).json({ success: false, error: 'User not found' });
+      }
+    }
+    const revoked = await standaloneUser.incrementTokenVersion(user.id);
+    await auditLogService.logAdminAction(req, {
+      entityType: 'auth',
+      entityId: user.id,
+      action: 'revoke_sessions',
+      changes: {
+        email: user.email ? `${user.email.substring(0, 3)}***` : null,
+      },
+    });
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      revoked: Boolean(revoked),
+      user_id: user.id,
+      email: user.email || null,
+    });
   })
 );
 
@@ -2837,6 +2888,72 @@ router.put(
       changes: { valueLength: value.length },
     });
     return sendSuccess(res, HTTP_STATUS.OK, { value });
+  })
+);
+
+/**
+ * GET /api/admin/experimentation-settings
+ * Read experimentation policy knobs.
+ * Query: shop_domain (optional) for per-domain override lookup.
+ */
+router.get(
+  '/experimentation-settings',
+  asyncHandler(async (req, res) => {
+    const rawDomain =
+      req.query?.shop_domain !== null && req.query?.shop_domain !== undefined
+        ? String(req.query.shop_domain)
+        : '';
+    const normalizedDomain = normalizeDomain(rawDomain);
+    const globalHoldoutPercent = await getGlobalHoldoutPercent(normalizedDomain || null);
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      shop_domain: normalizedDomain || null,
+      global_holdout_percent: globalHoldoutPercent,
+    });
+  })
+);
+
+/**
+ * PUT /api/admin/experimentation-settings
+ * Update experimentation policy knobs.
+ * Body: { global_holdout_percent, shop_domain? }
+ */
+router.put(
+  '/experimentation-settings',
+  asyncHandler(async (req, res) => {
+    const rawPercent = req.body?.global_holdout_percent;
+    if (rawPercent === undefined) {
+      return res.status(400).json({
+        success: false,
+        error: 'global_holdout_percent is required',
+      });
+    }
+    let normalizedPercent = 0;
+    try {
+      normalizedPercent = normalizeGlobalHoldoutPercent(rawPercent);
+    } catch (err) {
+      return res.status(400).json({
+        success: false,
+        error: err?.message || 'Invalid global_holdout_percent',
+      });
+    }
+    const rawDomain =
+      req.body?.shop_domain !== null && req.body?.shop_domain !== undefined
+        ? String(req.body.shop_domain)
+        : '';
+    const normalizedDomain = normalizeDomain(rawDomain);
+    const savedPercent = await setGlobalHoldoutPercent(normalizedPercent, normalizedDomain || null);
+    await auditLogService.logAdminAction(req, {
+      entityType: 'experimentation_settings',
+      entityId: normalizedDomain || 'global',
+      action: 'update',
+      changes: {
+        global_holdout_percent: savedPercent,
+      },
+    });
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      shop_domain: normalizedDomain || null,
+      global_holdout_percent: savedPercent,
+    });
   })
 );
 

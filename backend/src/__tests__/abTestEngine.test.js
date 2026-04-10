@@ -43,6 +43,43 @@ describe('ABTestEngine.selectVariant', () => {
   });
 });
 
+describe('ABTestEngine traffic ramp helpers', () => {
+  it('allows user when no ramp configured', () => {
+    const test = { segments: {} };
+    expect(ABTestEngine._isUserInTrafficRamp(test, 'user-1')).toBe(true);
+  });
+
+  it('allows all users once ramp reaches 100%', () => {
+    const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+    const test = {
+      segments: { traffic_ramp_percent: 10, traffic_ramp_days: 5 },
+      started_at: tenDaysAgo,
+    };
+    expect(ABTestEngine._isUserInTrafficRamp(test, 'user-any')).toBe(true);
+  });
+});
+
+describe('ABTestEngine._shouldPersistAssignment', () => {
+  it('returns false for preview_session truthy variants', () => {
+    expect(ABTestEngine._shouldPersistAssignment({ preview_session: true })).toBe(false);
+    expect(ABTestEngine._shouldPersistAssignment({ preview_session: 'true' })).toBe(false);
+    expect(ABTestEngine._shouldPersistAssignment({ preview_session: '1' })).toBe(false);
+    expect(ABTestEngine._shouldPersistAssignment({ preview_session: 'yes' })).toBe(false);
+  });
+
+  it('returns false for legacy preview truthy variants', () => {
+    expect(ABTestEngine._shouldPersistAssignment({ preview: true })).toBe(false);
+    expect(ABTestEngine._shouldPersistAssignment({ preview: 'true' })).toBe(false);
+    expect(ABTestEngine._shouldPersistAssignment({ preview: '1' })).toBe(false);
+  });
+
+  it('returns true when preview flags are not enabled', () => {
+    expect(ABTestEngine._shouldPersistAssignment({})).toBe(true);
+    expect(ABTestEngine._shouldPersistAssignment({ preview_session: '0' })).toBe(true);
+    expect(ABTestEngine._shouldPersistAssignment({ preview: 'no' })).toBe(true);
+  });
+});
+
 describe('ABTestEngine.isUserEligible', () => {
   it('returns true when segments are all or empty', () => {
     const test = { segments: {} };
@@ -112,5 +149,116 @@ describe('ABTestEngine.isUserEligible', () => {
         current_pathname: '/collections/snowboards',
       })
     ).toBe(false);
+  });
+
+  it('ignores legacy url_pattern for offer tests in all-products scope', () => {
+    const test = {
+      type: 'offer',
+      target_type: 'all-products',
+      segments: { url_pattern: '/products/' },
+    };
+    expect(
+      ABTestEngine.isUserEligible(test, {
+        current_url: 'https://shop.example.com/collections/snowboards',
+        current_pathname: '/collections/snowboards',
+      })
+    ).toBe(true);
+  });
+
+  it('blocks excluded product IDs for product-scope tests', () => {
+    const test = {
+      type: 'price',
+      target_type: 'all-products',
+      segments: { excluded_product_ids: ['gid://shopify/Product/100'] },
+    };
+    expect(
+      ABTestEngine.isUserEligible(test, {
+        current_url: 'https://shop.example.com/products/board',
+        current_pathname: '/products/board',
+        current_product_id: 'gid://shopify/Product/100',
+      })
+    ).toBe(false);
+  });
+});
+
+describe('ABTestEngine.validateTest theme contract', () => {
+  it('returns invalid when template_switch variant is missing template handle', () => {
+    const result = ABTestEngine.validateTest({
+      name: 'Theme test',
+      type: 'theme',
+      goal: { type: 'conversion', template_key: 'template' },
+      variants: [
+        { name: 'Control', allocation: 50, config: { themeMode: 'template_switch', template: '' } },
+        {
+          name: 'Variant A',
+          allocation: 50,
+          config: { themeMode: 'template_switch', template: '' },
+        },
+      ],
+    });
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some(err => err.includes('template handle is required'))).toBe(true);
+  });
+
+  it('accepts theme test when non-control variant has body class signal', () => {
+    const result = ABTestEngine.validateTest({
+      name: 'Theme test',
+      type: 'theme',
+      goal: { type: 'conversion', template_key: 'theme' },
+      variants: [
+        { name: 'Control', allocation: 50, config: { themeMode: 'asset_flag', bodyClass: '' } },
+        {
+          name: 'Variant A',
+          allocation: 50,
+          config: { themeMode: 'asset_flag', bodyClass: 'ripx-theme-v2' },
+        },
+      ],
+    });
+    expect(result.isValid).toBe(true);
+  });
+
+  it('validates offer variants require actionable non-control configuration', () => {
+    const result = ABTestEngine.validateTest({
+      name: 'Offer test',
+      type: 'offer',
+      goal: { type: 'conversion' },
+      variants: [
+        {
+          name: 'Control',
+          allocation: 50,
+          config: { discount_type: 'percent', discount_value: null },
+        },
+        {
+          name: 'Variant A',
+          allocation: 50,
+          config: { discount_type: 'percent', discount_value: '' },
+        },
+      ],
+    });
+    expect(result.isValid).toBe(false);
+    expect(
+      result.errors.some(err => err.includes('Offer tests require at least one non-control'))
+    ).toBe(true);
+  });
+
+  it('accepts offer variants when non-control has valid discount', () => {
+    const result = ABTestEngine.validateTest({
+      name: 'Offer test valid',
+      type: 'offer',
+      goal: { type: 'conversion' },
+      variants: [
+        {
+          name: 'Control',
+          allocation: 50,
+          config: { discount_type: 'percent', discount_value: null },
+        },
+        {
+          name: 'Variant A',
+          allocation: 50,
+          config: { discount_type: 'fixed', discount_value: 10 },
+        },
+      ],
+    });
+    expect(result.isValid).toBe(true);
   });
 });

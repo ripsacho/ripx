@@ -16,6 +16,19 @@ function hashApiKey(apiKey) {
   return crypto.createHash('sha256').update(apiKey).digest('hex');
 }
 
+function timingSafeHashEquals(expectedHash, candidateHash) {
+  const a = String(expectedHash || '');
+  const b = String(candidateHash || '');
+  if (!a || !b || a.length !== b.length) {
+    return false;
+  }
+  try {
+    return crypto.timingSafeEqual(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
+  } catch {
+    return false;
+  }
+}
+
 function generateApiKey() {
   const randomPart = crypto.randomBytes(API_KEY_LENGTH).toString('hex');
   return `${API_KEY_PREFIX}${randomPart}`;
@@ -78,10 +91,18 @@ async function getAccountByApiKey(apiKey) {
 
   const sql = `
     SELECT * FROM accounts
-    WHERE api_key_prefix = $1 AND api_key_hash = $2
+    WHERE api_key_prefix = $1
   `;
-  const result = await query(sql, [prefix, hash]);
-  return result.rows[0] || null;
+  const result = await query(sql, [prefix]);
+  if (!Array.isArray(result.rows) || result.rows.length === 0) {
+    return null;
+  }
+  for (const row of result.rows) {
+    if (timingSafeHashEquals(hash, row.api_key_hash)) {
+      return row;
+    }
+  }
+  return null;
 }
 
 /**

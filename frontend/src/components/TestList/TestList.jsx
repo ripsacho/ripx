@@ -5,12 +5,14 @@
  * UI matches Settings/Profile for consistency.
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   Page,
   Card,
   Button,
   Badge,
+  Banner,
+  Checkbox,
   EmptyState,
   Layout,
   BlockStack,
@@ -34,7 +36,7 @@ import {
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Toast from '../Toast/Toast';
 import PartyPop from '../PartyPop/PartyPop';
-import { apiPost } from '../../services';
+import { apiGet, apiPost, unwrapData } from '../../services';
 import LoadingSkeleton from '../LoadingSkeleton/LoadingSkeleton';
 import { PageShell } from '../Shared';
 import {
@@ -55,7 +57,47 @@ import {
 } from '../../utils/preferences';
 import styles from './TestList.module.css';
 
+const PREFLIGHT_FILTERS_STORAGE_KEY = 'ripx.launchPreflightFilters.v1';
+const DEFAULT_PREFLIGHT_FILTERS = {
+  showErrors: true,
+  showWarnings: true,
+  showPassed: false,
+};
+
+function readStoredPreflightFilters() {
+  if (typeof window === 'undefined') {
+    return DEFAULT_PREFLIGHT_FILTERS;
+  }
+  try {
+    const raw = window.localStorage.getItem(PREFLIGHT_FILTERS_STORAGE_KEY);
+    if (!raw) {
+      return DEFAULT_PREFLIGHT_FILTERS;
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') {
+      return DEFAULT_PREFLIGHT_FILTERS;
+    }
+    return {
+      showErrors:
+        typeof parsed.showErrors === 'boolean'
+          ? parsed.showErrors
+          : DEFAULT_PREFLIGHT_FILTERS.showErrors,
+      showWarnings:
+        typeof parsed.showWarnings === 'boolean'
+          ? parsed.showWarnings
+          : DEFAULT_PREFLIGHT_FILTERS.showWarnings,
+      showPassed:
+        typeof parsed.showPassed === 'boolean'
+          ? parsed.showPassed
+          : DEFAULT_PREFLIGHT_FILTERS.showPassed,
+    };
+  } catch {
+    return DEFAULT_PREFLIGHT_FILTERS;
+  }
+}
+
 function TestList() {
+  const PREFLIGHT_BADGE_FETCH_LIMIT = 20;
   const [selectedTests, setSelectedTests] = useState([]);
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
   const [deleteModal, setDeleteModal] = useState(false);
@@ -67,6 +109,29 @@ function TestList() {
   const [errorMessage, setErrorMessage] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
   const [startCelebrationMode, setStartCelebrationMode] = useState(null);
+  const [launchModalOpen, setLaunchModalOpen] = useState(false);
+  const [launchTest, setLaunchTest] = useState(null);
+  const [launchPreflightLoading, setLaunchPreflightLoading] = useState(false);
+  const [launchPreflightResult, setLaunchPreflightResult] = useState(null);
+  const [launchForceStart, setLaunchForceStart] = useState(false);
+  const [launchForceReason, setLaunchForceReason] = useState('');
+  const [launchCanaryPercent, setLaunchCanaryPercent] = useState('');
+  const [launchCanaryDays, setLaunchCanaryDays] = useState('');
+  const [launchVisualQaRequired, setLaunchVisualQaRequired] = useState(false);
+  const [launchVisualQaBaselineId, setLaunchVisualQaBaselineId] = useState('');
+  const [launchVisualQaCheckedAt, setLaunchVisualQaCheckedAt] = useState('');
+  const [launchShowErrorPreflightChecks, setLaunchShowErrorPreflightChecks] = useState(
+    () => readStoredPreflightFilters().showErrors
+  );
+  const [launchShowWarningPreflightChecks, setLaunchShowWarningPreflightChecks] = useState(
+    () => readStoredPreflightFilters().showWarnings
+  );
+  const [launchShowPassedPreflightChecks, setLaunchShowPassedPreflightChecks] = useState(
+    () => readStoredPreflightFilters().showPassed
+  );
+  const [launchActionLoading, setLaunchActionLoading] = useState(false);
+  const [preflightStatusById, setPreflightStatusById] = useState({});
+  const preflightRequestedRef = useRef(new Set());
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const viewFilter = searchParams.get('view') || 'all';
@@ -90,6 +155,224 @@ function TestList() {
   const startMutation = useStartTest();
   const stopMutation = useStopTest();
   const deleteMutation = useDeleteTest();
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    try {
+      window.localStorage.setItem(
+        PREFLIGHT_FILTERS_STORAGE_KEY,
+        JSON.stringify({
+          showErrors: launchShowErrorPreflightChecks,
+          showWarnings: launchShowWarningPreflightChecks,
+          showPassed: launchShowPassedPreflightChecks,
+        })
+      );
+    } catch {
+      // Ignore storage errors in private mode or restricted contexts.
+    }
+  }, [
+    launchShowErrorPreflightChecks,
+    launchShowWarningPreflightChecks,
+    launchShowPassedPreflightChecks,
+  ]);
+
+  const summarizePreflight = useCallback(preflight => {
+    if (!preflight || typeof preflight !== 'object') {
+      return { checks: 0, errors: 0, warnings: 0 };
+    }
+    return {
+      checks: Array.isArray(preflight.checks) ? preflight.checks.length : 0,
+      errors: Array.isArray(preflight.errors) ? preflight.errors.length : 0,
+      warnings: Array.isArray(preflight.warnings) ? preflight.warnings.length : 0,
+    };
+  }, []);
+  const toDateInputValue = useCallback(value => {
+    if (!value) return '';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return parsed.toISOString().slice(0, 10);
+  }, []);
+
+  const derivePreflightCardStatus = useCallback(
+    preflight => {
+      const summary = summarizePreflight(preflight);
+      if (summary.errors > 0) {
+        return { state: 'blocked', summary };
+      }
+      if (summary.warnings > 0) {
+        return { state: 'warning', summary };
+      }
+      return { state: 'ready', summary };
+    },
+    [summarizePreflight]
+  );
+
+  const runLaunchPreflight = useCallback(
+    async testId => {
+      if (!testId) return null;
+      setLaunchPreflightLoading(true);
+      setErrorMessage(null);
+      try {
+        const response = await apiGet(`/tests/${testId}/preflight`);
+        const data = unwrapData(response);
+        const preflight = data?.preflight || null;
+        setLaunchPreflightResult(preflight);
+        const cardStatus = derivePreflightCardStatus(preflight);
+        setPreflightStatusById(prev => ({
+          ...prev,
+          [testId]: {
+            ...cardStatus,
+            checkedAt: Date.now(),
+          },
+        }));
+        const summary = summarizePreflight(preflight);
+        if (summary.errors > 0) {
+          setErrorMessage(`Preflight found ${summary.errors} blocking issue(s).`);
+        } else {
+          setSuccessMessage(
+            summary.warnings > 0
+              ? `Preflight passed with ${summary.warnings} warning(s).`
+              : 'Preflight passed with no blocking issues.'
+          );
+        }
+        return preflight;
+      } catch (err) {
+        setPreflightStatusById(prev => ({
+          ...prev,
+          [testId]: {
+            state: 'error',
+            summary: null,
+            checkedAt: Date.now(),
+          },
+        }));
+        setErrorMessage(err?.response?.data?.error || err?.message || 'Failed to run preflight');
+        return null;
+      } finally {
+        setLaunchPreflightLoading(false);
+      }
+    },
+    [derivePreflightCardStatus, summarizePreflight]
+  );
+
+  const openLaunchModal = useCallback(
+    test => {
+      if (!test?.id) return;
+      const existingVisualQa =
+        test?.goal?.visual_qa && typeof test.goal.visual_qa === 'object' ? test.goal.visual_qa : {};
+      setLaunchTest(test);
+      setLaunchModalOpen(true);
+      setLaunchPreflightResult(null);
+      setLaunchForceStart(false);
+      setLaunchForceReason('');
+      setLaunchCanaryPercent('');
+      setLaunchCanaryDays('');
+      setLaunchVisualQaRequired(
+        Boolean(
+          existingVisualQa.required ||
+          existingVisualQa.enabled ||
+          test?.segments?.visual_qa_required
+        )
+      );
+      setLaunchVisualQaBaselineId(
+        String(existingVisualQa.baseline_id || existingVisualQa.baselineId || '').trim()
+      );
+      setLaunchVisualQaCheckedAt(
+        toDateInputValue(existingVisualQa.checked_at || existingVisualQa.checkedAt || '')
+      );
+      runLaunchPreflight(test.id);
+    },
+    [runLaunchPreflight, toDateInputValue]
+  );
+
+  const handleLaunchStart = useCallback(async () => {
+    if (!launchTest?.id) return;
+    const requiresForceReason =
+      launchForceStart && String(launchForceReason || '').trim().length < 8;
+    if (requiresForceReason) {
+      setErrorMessage('Add a force-start reason (minimum 8 characters) before launching.');
+      return;
+    }
+    if (launchVisualQaRequired && String(launchVisualQaBaselineId || '').trim().length < 2) {
+      setErrorMessage(
+        'Add a visual QA baseline ID before launch when visual QA requirement is enabled.'
+      );
+      return;
+    }
+    setLaunchActionLoading(true);
+    setErrorMessage(null);
+    try {
+      const payload = {};
+      if (launchForceStart) payload.force = true;
+      if (launchForceStart) payload.force_reason = String(launchForceReason || '').trim();
+      if (String(launchCanaryPercent || '').trim() !== '') {
+        payload.canary_percent = Number(launchCanaryPercent);
+      }
+      if (String(launchCanaryDays || '').trim() !== '') {
+        payload.canary_days = Number(launchCanaryDays);
+      }
+      if (launchVisualQaRequired) {
+        payload.visual_qa_required = true;
+      }
+      if (String(launchVisualQaBaselineId || '').trim() !== '') {
+        payload.visual_qa_baseline_id = String(launchVisualQaBaselineId).trim();
+      }
+      if (String(launchVisualQaCheckedAt || '').trim() !== '') {
+        payload.visual_qa_checked_at = launchVisualQaCheckedAt;
+      }
+
+      const response = await startMutation.mutateAsync({
+        testId: launchTest.id,
+        payload,
+      });
+      const data = unwrapData(response);
+      if (data?.preflight) {
+        setLaunchPreflightResult(data.preflight);
+        const cardStatus = derivePreflightCardStatus(data.preflight);
+        setPreflightStatusById(prev => ({
+          ...prev,
+          [launchTest.id]: {
+            ...cardStatus,
+            checkedAt: Date.now(),
+          },
+        }));
+      }
+      setLaunchModalOpen(false);
+      setSuccessMessage('Test started successfully.');
+      setStartCelebrationMode(withUltraMilestone(resolveCelebrationVariant('full')));
+    } catch (err) {
+      const preflight = err?.response?.data?.preflight;
+      if (preflight) {
+        setLaunchPreflightResult(preflight);
+        const cardStatus = derivePreflightCardStatus(preflight);
+        setPreflightStatusById(prev => ({
+          ...prev,
+          [launchTest.id]: {
+            ...cardStatus,
+            checkedAt: Date.now(),
+          },
+        }));
+      }
+      setErrorMessage(
+        err?.response?.data?.error || err?.response?.data?.details?.[0] || 'Failed to start test'
+      );
+    } finally {
+      setLaunchActionLoading(false);
+    }
+  }, [
+    launchTest,
+    launchForceStart,
+    launchForceReason,
+    launchCanaryPercent,
+    launchCanaryDays,
+    launchVisualQaRequired,
+    launchVisualQaBaselineId,
+    launchVisualQaCheckedAt,
+    derivePreflightCardStatus,
+    startMutation,
+    resolveCelebrationVariant,
+    withUltraMilestone,
+  ]);
 
   const getStatusBadge = status => {
     const statusMap = {
@@ -111,9 +394,15 @@ function TestList() {
       fair: 'warning',
       poor: 'critical',
     };
+    const hasSrm = Boolean(health?.srm?.detected);
+    const riskLevel = String(health?.riskSignals?.level || '').toLowerCase();
+    const rolloutAction = String(health?.rolloutRecommendation?.action || '').toLowerCase();
     return (
       <InlineStack gap="100" align="start">
         <Badge tone={colorMap[health.healthLevel] || 'info'}>{health.score}/100</Badge>
+        {hasSrm && <Badge tone="critical">SRM</Badge>}
+        {riskLevel === 'high' && <Badge tone="critical">High risk</Badge>}
+        {rolloutAction === 'canary_rollout' && <Badge tone="attention">Rollout ready</Badge>}
       </InlineStack>
     );
   };
@@ -187,21 +476,11 @@ function TestList() {
 
   // Individual test action handlers
   const handleTestStart = useCallback(
-    async (testId, e) => {
+    (test, e) => {
       e.stopPropagation();
-      setActionLoading(prev => ({ ...prev, [testId]: true }));
-      setErrorMessage(null);
-      try {
-        await startMutation.mutateAsync(testId);
-        setSuccessMessage('Test started successfully.');
-        setStartCelebrationMode(withUltraMilestone(resolveCelebrationVariant('full')));
-      } catch (err) {
-        setErrorMessage(err.response?.data?.error || 'Failed to start test');
-      } finally {
-        setActionLoading(prev => ({ ...prev, [testId]: false }));
-      }
+      openLaunchModal(test);
     },
-    [startMutation, resolveCelebrationVariant, withUltraMilestone]
+    [openLaunchModal]
   );
 
   const handleTestStop = useCallback(
@@ -290,6 +569,64 @@ function TestList() {
     return sorted;
   }, [tests, statusFilter, searchQuery, sortBy, viewFilter]);
 
+  useEffect(() => {
+    const candidates = filteredAndSortedTests
+      .filter(test => test?.id && test.status !== 'running')
+      .slice(0, PREFLIGHT_BADGE_FETCH_LIMIT)
+      .map(test => test.id)
+      .filter(id => !preflightRequestedRef.current.has(id));
+
+    if (candidates.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    candidates.forEach(id => {
+      preflightRequestedRef.current.add(id);
+      setPreflightStatusById(prev => ({
+        ...prev,
+        [id]: {
+          state: prev[id]?.state || 'loading',
+          summary: prev[id]?.summary || null,
+          checkedAt: prev[id]?.checkedAt || null,
+        },
+      }));
+    });
+
+    Promise.all(
+      candidates.map(async id => {
+        try {
+          const response = await apiGet(`/tests/${id}/preflight`);
+          const data = unwrapData(response);
+          const preflight = data?.preflight || null;
+          const cardStatus = derivePreflightCardStatus(preflight);
+          return { id, ...cardStatus, checkedAt: Date.now() };
+        } catch {
+          return { id, state: 'error', summary: null, checkedAt: Date.now() };
+        }
+      })
+    ).then(results => {
+      if (cancelled) {
+        return;
+      }
+      setPreflightStatusById(prev => {
+        const next = { ...prev };
+        results.forEach(item => {
+          next[item.id] = {
+            state: item.state,
+            summary: item.summary,
+            checkedAt: item.checkedAt,
+          };
+        });
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [derivePreflightCardStatus, filteredAndSortedTests]);
+
   // Test Card Component
   const TestCard = ({ test, isSelected, onSelect, viewMode }) => {
     const handleCardClick = e => {
@@ -312,6 +649,10 @@ function TestList() {
     const totalRevenue = test.variants?.reduce((sum, v) => sum + (v.revenue || 0), 0) || 0;
     const conversionRate = totalVisitors > 0 ? (totalConversions / totalVisitors) * 100 : 0;
     const variantCount = getVariantCount(test);
+    const preflightStatus =
+      test.status === 'running'
+        ? { state: 'running', summary: null }
+        : preflightStatusById[test.id] || { state: 'idle', summary: null };
 
     const createdDate = test.created_at
       ? (() => {
@@ -360,6 +701,26 @@ function TestList() {
             </div>
             <div className={styles.testListCardBadges}>
               {getStatusBadge(test.status)}
+              {preflightStatus.state === 'running' && <Badge tone="success">Live</Badge>}
+              {preflightStatus.state === 'loading' && <Badge tone="info">Preflight…</Badge>}
+              {preflightStatus.state === 'ready' && <Badge tone="success">Start ready</Badge>}
+              {preflightStatus.state === 'warning' && (
+                <Badge tone="warning">
+                  Start warn
+                  {preflightStatus.summary?.warnings > 0
+                    ? ` (${preflightStatus.summary.warnings})`
+                    : ''}
+                </Badge>
+              )}
+              {preflightStatus.state === 'blocked' && (
+                <Badge tone="critical">
+                  Start blocked
+                  {preflightStatus.summary?.errors > 0
+                    ? ` (${preflightStatus.summary.errors})`
+                    : ''}
+                </Badge>
+              )}
+              {preflightStatus.state === 'error' && <Badge tone="attention">Preflight n/a</Badge>}
               {test.personalization_mode === PERSONALIZATION_MODES.PERSONALIZED && (
                 <Badge tone="success">Winner 100%</Badge>
               )}
@@ -383,7 +744,7 @@ function TestList() {
                   <button
                     type="button"
                     className="test-control-button test-control-play"
-                    onClick={e => handleTestStart(test.id, e)}
+                    onClick={e => handleTestStart(test, e)}
                     disabled={isLoading}
                     title="Start Test"
                     aria-label="Start Test"
@@ -472,7 +833,7 @@ function TestList() {
                   <button
                     type="button"
                     className="test-control-button test-control-play"
-                    onClick={e => handleTestStart(test.id, e)}
+                    onClick={e => handleTestStart(test, e)}
                     disabled={isLoading}
                     title="Restart Test"
                     aria-label="Restart Test"
@@ -630,6 +991,25 @@ function TestList() {
     searchQuery ||
     (statusFilter.length > 0 && !statusFilter.includes('all')) ||
     viewFilter !== 'all';
+  const launchPreflightSummary = summarizePreflight(launchPreflightResult);
+  const forceReasonRequired = launchForceStart && String(launchForceReason || '').trim().length < 8;
+  const visualQaRequiredButMissing =
+    launchVisualQaRequired && String(launchVisualQaBaselineId || '').trim().length < 2;
+  const launchGroupedPreflightChecks = useMemo(() => {
+    const checks = Array.isArray(launchPreflightResult?.checks) ? launchPreflightResult.checks : [];
+    const grouped = { errors: [], warnings: [], ok: [] };
+    checks.forEach(check => {
+      const severity = String(check?.severity || 'ok').toLowerCase();
+      if (severity === 'error') grouped.errors.push(check);
+      else if (severity === 'warning') grouped.warnings.push(check);
+      else grouped.ok.push(check);
+    });
+    return grouped;
+  }, [launchPreflightResult]);
+  const launchVisiblePreflightCheckCount =
+    (launchShowErrorPreflightChecks ? launchGroupedPreflightChecks.errors.length : 0) +
+    (launchShowWarningPreflightChecks ? launchGroupedPreflightChecks.warnings.length : 0) +
+    (launchShowPassedPreflightChecks ? launchGroupedPreflightChecks.ok.length : 0);
 
   const sortOptions = [
     { label: 'Newest First', value: 'created_desc' },
@@ -1057,6 +1437,206 @@ function TestList() {
             </Layout>
           </div>
         </div>
+
+        <Modal
+          open={launchModalOpen}
+          onClose={() => setLaunchModalOpen(false)}
+          title={`Launch safety check${launchTest?.name ? `: ${launchTest.name}` : ''}`}
+          primaryAction={{
+            content: launchForceStart ? 'Force start test' : 'Start test',
+            onAction: handleLaunchStart,
+            loading: launchActionLoading,
+            destructive: launchForceStart,
+            disabled: forceReasonRequired || visualQaRequiredButMissing,
+          }}
+          secondaryActions={[
+            {
+              content: 'Run preflight',
+              onAction: () => runLaunchPreflight(launchTest?.id),
+              loading: launchPreflightLoading,
+            },
+            {
+              content: 'Cancel',
+              onAction: () => setLaunchModalOpen(false),
+            },
+          ]}
+        >
+          <Modal.Section>
+            <BlockStack gap="300">
+              <Text variant="bodyMd" color="subdued" as="p">
+                Run preflight before launching. You can optionally set launch-only canary overrides.
+              </Text>
+              {launchPreflightResult && (
+                <Banner
+                  tone={
+                    launchPreflightSummary.errors > 0
+                      ? 'critical'
+                      : launchPreflightSummary.warnings > 0
+                        ? 'warning'
+                        : 'success'
+                  }
+                  title={
+                    launchPreflightSummary.errors > 0
+                      ? `Preflight blocked (${launchPreflightSummary.errors} error${launchPreflightSummary.errors > 1 ? 's' : ''})`
+                      : launchPreflightSummary.warnings > 0
+                        ? `Preflight passed with ${launchPreflightSummary.warnings} warning${launchPreflightSummary.warnings > 1 ? 's' : ''}`
+                        : 'Preflight passed'
+                  }
+                >
+                  <Text as="p" variant="bodySm">
+                    {launchPreflightSummary.checks} checks evaluated.
+                  </Text>
+                </Banner>
+              )}
+              {launchPreflightResult &&
+                Array.isArray(launchPreflightResult.checks) &&
+                launchPreflightResult.checks.length > 0 && (
+                  <div
+                    style={{
+                      maxHeight: 180,
+                      overflowY: 'auto',
+                      border: '1px solid var(--p-color-border-subdued)',
+                      borderRadius: 8,
+                      padding: 10,
+                    }}
+                  >
+                    <BlockStack gap="200">
+                      <BlockStack gap="100">
+                        <Checkbox
+                          label={`Show blocking errors (${launchGroupedPreflightChecks.errors.length})`}
+                          checked={launchShowErrorPreflightChecks}
+                          onChange={setLaunchShowErrorPreflightChecks}
+                        />
+                        <Checkbox
+                          label={`Show warnings (${launchGroupedPreflightChecks.warnings.length})`}
+                          checked={launchShowWarningPreflightChecks}
+                          onChange={setLaunchShowWarningPreflightChecks}
+                        />
+                        <Checkbox
+                          label={`Show passed checks (${launchGroupedPreflightChecks.ok.length})`}
+                          checked={launchShowPassedPreflightChecks}
+                          onChange={setLaunchShowPassedPreflightChecks}
+                        />
+                      </BlockStack>
+                      {launchShowErrorPreflightChecks &&
+                        launchGroupedPreflightChecks.errors.length > 0 && (
+                          <BlockStack gap="100">
+                            <Text as="p" variant="bodySm" fontWeight="semibold" tone="critical">
+                              Blocking errors ({launchGroupedPreflightChecks.errors.length})
+                            </Text>
+                            {launchGroupedPreflightChecks.errors.map(check => (
+                              <Text key={check.id || check.message} as="p" variant="bodySm">
+                                <strong>Error:</strong> {check.message}
+                              </Text>
+                            ))}
+                          </BlockStack>
+                        )}
+                      {launchShowWarningPreflightChecks &&
+                        launchGroupedPreflightChecks.warnings.length > 0 && (
+                          <BlockStack gap="100">
+                            <Text as="p" variant="bodySm" fontWeight="semibold" tone="warning">
+                              Warnings ({launchGroupedPreflightChecks.warnings.length})
+                            </Text>
+                            {launchGroupedPreflightChecks.warnings.map(check => (
+                              <Text key={check.id || check.message} as="p" variant="bodySm">
+                                <strong>Warn:</strong> {check.message}
+                              </Text>
+                            ))}
+                          </BlockStack>
+                        )}
+                      {launchShowPassedPreflightChecks &&
+                        launchGroupedPreflightChecks.ok.length > 0 && (
+                          <BlockStack gap="100">
+                            {launchGroupedPreflightChecks.ok.map(check => (
+                              <Text key={check.id || check.message} as="p" variant="bodySm">
+                                <strong>OK:</strong> {check.message}
+                              </Text>
+                            ))}
+                          </BlockStack>
+                        )}
+                      {launchVisiblePreflightCheckCount === 0 && (
+                        <Text as="p" variant="bodySm" tone="subdued">
+                          No checks match the current filters.
+                        </Text>
+                      )}
+                    </BlockStack>
+                  </div>
+                )}
+              <BlockStack gap="200">
+                <TextField
+                  label="Canary percent override (optional)"
+                  type="number"
+                  value={launchCanaryPercent}
+                  onChange={setLaunchCanaryPercent}
+                  placeholder="e.g. 10"
+                  min={0}
+                  max={100}
+                  suffix="%"
+                  autoComplete="off"
+                />
+                <TextField
+                  label="Canary days override (optional)"
+                  type="number"
+                  value={launchCanaryDays}
+                  onChange={setLaunchCanaryDays}
+                  placeholder="e.g. 7"
+                  min={1}
+                  max={30}
+                  suffix="days"
+                  autoComplete="off"
+                />
+                <Checkbox
+                  label="Visual QA baseline required for this launch"
+                  checked={launchVisualQaRequired}
+                  onChange={setLaunchVisualQaRequired}
+                  helpText="When enabled, launch requires baseline metadata and preflight enforces it."
+                />
+                <TextField
+                  label="Visual QA baseline ID (optional)"
+                  value={launchVisualQaBaselineId}
+                  onChange={setLaunchVisualQaBaselineId}
+                  placeholder="e.g. home-v2-desktop"
+                  autoComplete="off"
+                  error={
+                    visualQaRequiredButMissing
+                      ? 'Baseline ID is required when visual QA requirement is enabled.'
+                      : undefined
+                  }
+                />
+                <TextField
+                  label="Visual QA checked at (optional)"
+                  type="date"
+                  value={launchVisualQaCheckedAt}
+                  onChange={setLaunchVisualQaCheckedAt}
+                  autoComplete="off"
+                  helpText="Date of latest visual QA verification for this launch."
+                />
+                <Checkbox
+                  label="Force start even if preflight has blocking errors"
+                  checked={launchForceStart}
+                  onChange={setLaunchForceStart}
+                  helpText="Use only for emergency or controlled launches."
+                />
+                {launchForceStart && (
+                  <TextField
+                    label="Force-start reason (required)"
+                    value={launchForceReason}
+                    onChange={setLaunchForceReason}
+                    placeholder="Why are you bypassing preflight blockers?"
+                    autoComplete="off"
+                    multiline={2}
+                    maxLength={500}
+                    error={
+                      forceReasonRequired
+                        ? 'Provide at least 8 characters so this action is auditable.'
+                        : undefined
+                    }
+                  />
+                )}
+              </BlockStack>
+            </BlockStack>
+          </Modal.Section>
+        </Modal>
 
         <Modal
           open={deleteModal}

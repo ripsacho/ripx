@@ -34,6 +34,9 @@ function inferTemplateKey(variants = [], testType = '') {
   if (type === 'checkout') {
     return 'checkout';
   }
+  if (type === 'theme') {
+    return 'theme';
+  }
 
   const config = getEffectiveConfig(variants);
 
@@ -43,6 +46,20 @@ function inferTemplateKey(variants = [], testType = '') {
     }
     if ('template' in config) {
       return 'template';
+    }
+    if (
+      'themeMode' in config ||
+      'theme_mode' in config ||
+      'themeTemplateHandle' in config ||
+      'theme_template_handle' in config ||
+      'themeId' in config ||
+      'theme_id' in config ||
+      'sectionId' in config ||
+      'section_id' in config ||
+      'bodyClass' in config ||
+      'body_class' in config
+    ) {
+      return 'theme';
     }
     if ('rate' in config) {
       return 'shipping';

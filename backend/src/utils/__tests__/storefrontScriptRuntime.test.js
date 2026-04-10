@@ -21,11 +21,12 @@ describe('storefrontScriptRuntime', () => {
       target_type: 'product',
       target_id: 'gid://shopify/Product/1',
       target_ids: null,
-      segments: {},
+      segments: { excluded_product_ids: ['2', 'gid://shopify/Product/2'] },
     };
     const m = mapTestToStorefrontPayload(row);
     expect(m.type).toBe('price');
     expect(m.targetIds).toEqual(['gid://shopify/Product/1']);
+    expect(m.excludedProductIds).toEqual(['gid://shopify/Product/2']);
     expect(m.antiFlickerMode).toBe('balanced');
   });
 

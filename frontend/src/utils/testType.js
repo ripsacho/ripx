@@ -66,12 +66,27 @@ export function inferTemplateKeyFromVariants(variants = [], testType = '') {
   if (type === 'offer') return 'offer';
   if (type === 'checkout') return 'checkout';
   if (type === 'combination') return 'combination';
+  if (type === 'theme') return 'theme';
 
   for (const v of variants) {
     const c = v?.config;
     if (!c || typeof c !== 'object') continue;
     if ('url' in c) return 'split-url';
     if ('template' in c) return 'template';
+    if (
+      'themeMode' in c ||
+      'theme_mode' in c ||
+      'themeTemplateHandle' in c ||
+      'theme_template_handle' in c ||
+      'themeId' in c ||
+      'theme_id' in c ||
+      'sectionId' in c ||
+      'section_id' in c ||
+      'bodyClass' in c ||
+      'body_class' in c
+    ) {
+      return 'theme';
+    }
     if ('rate' in c) return 'shipping';
     if ('discount_type' in c || 'discount_value' in c) return 'offer';
     if ('price' in c) return type === 'pricing' ? 'pricing' : 'price';

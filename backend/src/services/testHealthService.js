@@ -50,10 +50,13 @@ class TestHealthService {
       issues.push('Low sample size (< 500 visitors)');
       recommendations.push('Consider waiting for more data');
     }
+    const daysRunning =
+      test.status === 'running' && test.started_at
+        ? (Date.now() - new Date(test.started_at)) / (1000 * 60 * 60 * 24)
+        : 0;
 
     // Duration check
     if (test.status === 'running' && test.started_at) {
-      const daysRunning = (Date.now() - new Date(test.started_at)) / (1000 * 60 * 60 * 24);
       if (daysRunning < 7) {
         score -= 20;
         issues.push('Test running for less than 7 days');
@@ -107,13 +110,15 @@ class TestHealthService {
       }
     }
 
+    let srm = { detected: false, pValue: 1, chiSquare: 0, message: null };
+
     // Sample Ratio Mismatch (SRM) - data quality check
     if (variants && variants.length >= 2 && totalVisitors >= 100) {
       const variantsWithAllocation = variants.map(v => ({
         ...v,
         allocation: v.allocation ?? 100 / variants.length,
       }));
-      const srm = analyticsService.detectSampleRatioMismatch(variantsWithAllocation, totalVisitors);
+      srm = analyticsService.detectSampleRatioMismatch(variantsWithAllocation, totalVisitors);
       if (srm.detected) {
         score -= 20;
         issues.push('Sample ratio mismatch detected');
@@ -128,6 +133,33 @@ class TestHealthService {
     if (test.status === 'draft') {
       score = Math.min(score, 70);
       recommendations.push('Test is in draft - start it to begin collecting data');
+    }
+    const normalizedScore = Math.max(0, Math.min(100, score));
+    const significanceKnown = typeof test?.significance?.significant === 'boolean';
+    const significanceReached = significanceKnown ? Boolean(test.significance.significant) : false;
+    const riskSignals = this._deriveRiskSignals({
+      normalizedScore,
+      status: test.status,
+      totalVisitors,
+      daysRunning,
+      srm,
+      significanceKnown,
+      significanceReached,
+    });
+    const rolloutRecommendation = this._buildRolloutRecommendation({
+      normalizedScore,
+      status: test.status,
+      totalVisitors,
+      daysRunning,
+      srm,
+      significanceKnown,
+      significanceReached,
+    });
+    if (
+      rolloutRecommendation?.message &&
+      !recommendations.some(item => item === rolloutRecommendation.message)
+    ) {
+      recommendations.push(rolloutRecommendation.message);
     }
 
     // Determine health level
@@ -146,15 +178,127 @@ class TestHealthService {
     }
 
     return {
-      score: Math.max(0, Math.min(100, score)),
+      score: normalizedScore,
       healthLevel,
       healthColor,
       issues,
       recommendations,
       totalVisitors,
-      daysRunning: test.started_at
-        ? Math.floor((Date.now() - new Date(test.started_at)) / (1000 * 60 * 60 * 24))
-        : 0,
+      daysRunning: test.started_at ? Math.floor(daysRunning) : 0,
+      srm,
+      riskSignals,
+      rolloutRecommendation,
+    };
+  }
+
+  _deriveRiskSignals({
+    normalizedScore,
+    status,
+    totalVisitors,
+    daysRunning,
+    srm,
+    significanceKnown,
+    significanceReached,
+  }) {
+    const blockers = [];
+    const cautions = [];
+    if (srm?.detected) {
+      blockers.push('SRM detected');
+    }
+    if (status === 'running' && totalVisitors < 500) {
+      cautions.push('low_sample');
+    }
+    if (status === 'running' && daysRunning > 0 && daysRunning < 7) {
+      cautions.push('short_runtime');
+    }
+    if (significanceKnown && !significanceReached) {
+      cautions.push('not_significant');
+    }
+    let level = 'low';
+    if (blockers.length > 0 || normalizedScore < 60) {
+      level = 'high';
+    } else if (normalizedScore < 80 || cautions.length > 0) {
+      level = 'medium';
+    }
+    return {
+      level,
+      blockers,
+      cautions,
+      factors: {
+        totalVisitors: Number(totalVisitors) || 0,
+        daysRunning: Math.max(0, Math.floor(Number(daysRunning) || 0)),
+        significanceKnown: Boolean(significanceKnown),
+        significanceReached: Boolean(significanceReached),
+      },
+    };
+  }
+
+  _buildRolloutRecommendation({
+    normalizedScore,
+    status,
+    totalVisitors,
+    daysRunning,
+    srm,
+    significanceKnown,
+    significanceReached,
+  }) {
+    if (status === 'draft') {
+      return {
+        action: 'start_test',
+        riskLevel: 'medium',
+        message: 'Start test first before evaluating rollout readiness.',
+      };
+    }
+    if (srm?.detected) {
+      return {
+        action: 'hold_investigate',
+        riskLevel: 'high',
+        message: 'Hold rollout until SRM is resolved (traffic split quality issue detected).',
+      };
+    }
+    if (status === 'running' && totalVisitors < 500) {
+      return {
+        action: 'collect_more_data',
+        riskLevel: 'medium',
+        message: 'Collect more traffic before rollout decisions (recommended >= 500 visitors).',
+      };
+    }
+    if (status === 'running' && daysRunning > 0 && daysRunning < 7) {
+      return {
+        action: 'collect_more_data',
+        riskLevel: 'medium',
+        message: 'Run the test longer (recommended >= 7 days) before rollout.',
+      };
+    }
+    if (significanceKnown && !significanceReached) {
+      return {
+        action: 'monitor',
+        riskLevel: 'medium',
+        message: 'Monitor further until statistical significance is reached.',
+      };
+    }
+    if (normalizedScore >= 85) {
+      return {
+        action: 'canary_rollout',
+        riskLevel: 'low',
+        suggestedInitialPercent: 25,
+        suggestedDurationDays: 7,
+        message: 'Ready for controlled rollout: start at 25% and ramp over 7 days.',
+      };
+    }
+    if (normalizedScore >= 75) {
+      return {
+        action: 'canary_rollout',
+        riskLevel: 'medium',
+        suggestedInitialPercent: 10,
+        suggestedDurationDays: 7,
+        message: 'Proceed with caution: start rollout at 10% and monitor guardrails.',
+      };
+    }
+    return {
+      action: 'hold',
+      riskLevel: normalizedScore < 60 ? 'high' : 'medium',
+      message: 'Hold rollout for now and improve test quality signals first.',
     };
   }
 

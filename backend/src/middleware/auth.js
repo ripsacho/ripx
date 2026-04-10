@@ -16,6 +16,7 @@ const {
   getTenantByAccountAndDomain,
   getFirstTenantForAccount,
 } = require('../models/account');
+const standaloneUser = require('../models/standaloneUser');
 const { getRoleAndStatus } = require('../models/user');
 const { isUserStatusBlocked } = require('../constants');
 
@@ -306,7 +307,7 @@ function tryImpersonationToken(req) {
  * Check for email session JWT (passwordless login). Sets req.email + req.authType = 'email'.
  * Returns true if valid; false otherwise. Does not call next() — caller must.
  */
-function tryEmailSessionToken(req) {
+async function tryEmailSessionToken(req) {
   const authHeader = req.headers.authorization;
   const token = authHeader && authHeader.replace(/^Bearer\s+/i, '').trim();
   if (!token || !process.env.JWT_SECRET) {
@@ -315,8 +316,23 @@ function tryEmailSessionToken(req) {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     if (decoded.ripxtype === 'email_session' && decoded.email) {
+      const normalizedEmail = String(decoded.email || '')
+        .trim()
+        .toLowerCase();
+      const tokenVersion = Number(decoded.token_version ?? 0);
+      let currentTokenVersion = 0;
+      try {
+        const user = await standaloneUser.getByEmail(normalizedEmail);
+        currentTokenVersion = Number(user?.token_version ?? 0);
+      } catch (_) {
+        return false;
+      }
+      if (!Number.isFinite(tokenVersion) || tokenVersion !== currentTokenVersion) {
+        return false;
+      }
       req.authType = 'email';
-      req.email = decoded.email;
+      req.email = normalizedEmail;
+      req.emailSessionTokenVersion = tokenVersion;
       return true;
     }
   } catch (_) {
@@ -333,7 +349,7 @@ async function authenticate(req, res, next) {
   if (tryImpersonationToken(req)) {
     return next();
   }
-  if (tryEmailSessionToken(req)) {
+  if (await tryEmailSessionToken(req)) {
     return next();
   }
 
@@ -377,7 +393,7 @@ async function optionalAuthenticate(req, res, next) {
   if (tryImpersonationToken(req)) {
     return next();
   }
-  if (tryEmailSessionToken(req)) {
+  if (await tryEmailSessionToken(req)) {
     return next();
   }
 

@@ -106,12 +106,68 @@
     var ty = String(test.type).toLowerCase();
     return ty === 'price' || ty === 'pricing';
   }
+  function getTemplateKeyForTest(test) {
+    if (!test || typeof test !== 'object') return '';
+    return String(test.templateKey || test.template_key || '')
+      .toLowerCase()
+      .trim();
+  }
+  function testTypeIsThemeFamily(test) {
+    if (!test || typeof test !== 'object') return false;
+    var ty = String(test.type || '')
+      .toLowerCase()
+      .trim();
+    if (ty === 'theme') return true;
+    var tk = getTemplateKeyForTest(test);
+    return tk === 'theme' || tk === 'template';
+  }
   function getNormalizedTargetType(test) {
     var tt = String((test && (test.targetType || test.target_type)) || '')
       .toLowerCase()
       .trim();
     if ((!tt || tt === 'all') && testTypeIsPrice(test)) return 'all-products';
     return tt;
+  }
+  function normalizeThemeMode(rawMode, fallbackMode) {
+    var fallback = String(fallbackMode || 'asset_flag')
+      .toLowerCase()
+      .trim();
+    if (
+      fallback !== 'template_switch' &&
+      fallback !== 'section_variant' &&
+      fallback !== 'asset_flag' &&
+      fallback !== 'theme_redirect'
+    ) {
+      fallback = 'asset_flag';
+    }
+    var mode = String(rawMode || fallback)
+      .toLowerCase()
+      .trim();
+    if (
+      mode !== 'template_switch' &&
+      mode !== 'section_variant' &&
+      mode !== 'asset_flag' &&
+      mode !== 'theme_redirect'
+    ) {
+      return fallback;
+    }
+    return mode;
+  }
+  function variantConfigLooksTheme(config) {
+    if (!config || typeof config !== 'object') return false;
+    return (
+      config.themeMode !== undefined ||
+      config.theme_mode !== undefined ||
+      config.themeTemplateHandle !== undefined ||
+      config.theme_template_handle !== undefined ||
+      config.themeId !== undefined ||
+      config.theme_id !== undefined ||
+      config.sectionId !== undefined ||
+      config.section_id !== undefined ||
+      config.bodyClass !== undefined ||
+      config.body_class !== undefined ||
+      config.template !== undefined
+    );
   }
   function getAntiFlickerModeForTest(test) {
     if (!test || typeof test !== 'object') return 'balanced';
@@ -394,17 +450,31 @@
   const URL_PARAMS = new URLSearchParams(window.location.search);
   // Shopify navigation drops query params; keep preview context sticky across clicks (PDP/collections/cart).
   const PREVIEW_STORAGE_KEY = '__ripx_preview_ctx_v1__';
+  const PREVIEW_STORAGE_MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
   function readPersistedPreviewCtx() {
     try {
       const raw = window.sessionStorage && window.sessionStorage.getItem(PREVIEW_STORAGE_KEY);
       if (!raw) return null;
       const obj = JSON.parse(raw);
       if (!obj || typeof obj !== 'object') return null;
+      const persistedAtMs = Number(obj.persistedAtMs || 0);
+      if (
+        Number.isFinite(persistedAtMs) &&
+        persistedAtMs > 0 &&
+        Date.now() - persistedAtMs > PREVIEW_STORAGE_MAX_AGE_MS
+      ) {
+        try {
+          window.sessionStorage.removeItem(PREVIEW_STORAGE_KEY);
+        } catch (eRemove) {}
+        return null;
+      }
       return {
         preview: obj.preview === true || obj.preview === '1',
         testId: obj.testId ? String(obj.testId) : null,
         variantId: obj.variantId ? String(obj.variantId) : null,
         variantName: obj.variantName ? String(obj.variantName) : null,
+        persistedAtMs:
+          Number.isFinite(persistedAtMs) && persistedAtMs > 0 ? Math.round(persistedAtMs) : null,
       };
     } catch (e) {
       return null;
@@ -413,7 +483,11 @@
   function writePersistedPreviewCtx(ctx) {
     try {
       if (!window.sessionStorage) return;
-      window.sessionStorage.setItem(PREVIEW_STORAGE_KEY, JSON.stringify(ctx || {}));
+      const payload = {
+        ...(ctx || {}),
+        persistedAtMs: Date.now(),
+      };
+      window.sessionStorage.setItem(PREVIEW_STORAGE_KEY, JSON.stringify(payload));
     } catch (e) {}
   }
   const persistedPreview = readPersistedPreviewCtx();
@@ -444,6 +518,7 @@
   const PREVIEW_TEST_CONTEXT = !!PREVIEW_TEST_ID || !!(CONFIG.previewMode === true);
   const PREVIEW_MODE =
     _urlPreview || PREVIEW_TEST_CONTEXT || !!(persistedPreview && persistedPreview.preview);
+  const STRICT_PREVIEW_TEST_MODE = PREVIEW_MODE && !!PREVIEW_TEST_ID;
 
   // Persist preview so Shopify password redirects / in-theme navigation keep test+variant.
   // ab_preview_test alone (without ab_preview=1) still enables preview; session must survive losing query params.
@@ -658,6 +733,8 @@
   var _ripxCartNativeStateInFlight = null;
   var _ripxCartNativeStateTimer = null;
   var _ripxGlobalPaintScheduleAtByKey = {};
+  var THEME_APPLY_RETRY_MS = 50;
+  var THEME_APPLY_TIMEOUT_MS = 1200;
   function createRipxPaintStats() {
     return {
       since: Date.now(),
@@ -668,12 +745,87 @@
     };
   }
   var _ripxPaintStats = createRipxPaintStats();
+  function createRipxThemeStats() {
+    return {
+      since: Date.now(),
+      lastEventAt: null,
+      counters: {
+        attempts: 0,
+        applied: 0,
+        retried: 0,
+        timedOut: 0,
+        fallbacks: 0,
+      },
+      fallbackReasons: {},
+      lastDetail: null,
+    };
+  }
+  var _ripxThemeStats = createRipxThemeStats();
+  function recordThemeFallback(reason) {
+    var key = reason && String(reason).trim() ? String(reason).trim() : 'unknown';
+    _ripxThemeStats.counters.fallbacks += 1;
+    if (!_ripxThemeStats.fallbackReasons[key]) _ripxThemeStats.fallbackReasons[key] = 0;
+    _ripxThemeStats.fallbackReasons[key] += 1;
+    _ripxThemeStats.lastEventAt = Date.now();
+  }
+  function getRipxThemeStatsSnapshot() {
+    var now = Date.now();
+    var counters = _ripxThemeStats.counters || {};
+    var reasons = {};
+    var keys = Object.keys(_ripxThemeStats.fallbackReasons || {});
+    for (var i = 0; i < keys.length; i++) {
+      var key = keys[i];
+      reasons[key] = Number(_ripxThemeStats.fallbackReasons[key]) || 0;
+    }
+    return {
+      sinceMs: Number(_ripxThemeStats.since) || now,
+      sinceIso: new Date(Number(_ripxThemeStats.since) || now).toISOString(),
+      elapsedMs: Math.max(0, now - (Number(_ripxThemeStats.since) || now)),
+      lastEventAtMs:
+        _ripxThemeStats.lastEventAt != null ? Number(_ripxThemeStats.lastEventAt) || null : null,
+      lastEventAtIso:
+        _ripxThemeStats.lastEventAt != null
+          ? new Date(Number(_ripxThemeStats.lastEventAt)).toISOString()
+          : null,
+      counters: {
+        attempts: Number(counters.attempts) || 0,
+        applied: Number(counters.applied) || 0,
+        retried: Number(counters.retried) || 0,
+        timedOut: Number(counters.timedOut) || 0,
+        fallbacks: Number(counters.fallbacks) || 0,
+      },
+      fallbackReasons: reasons,
+      lastDetail:
+        _ripxThemeStats.lastDetail && typeof _ripxThemeStats.lastDetail === 'object'
+          ? Object.assign({}, _ripxThemeStats.lastDetail)
+          : null,
+    };
+  }
+  function resetRipxThemeStats() {
+    _ripxThemeStats = createRipxThemeStats();
+  }
+  function debugThemeStats(options) {
+    var opts = options && typeof options === 'object' ? options : {};
+    if (opts.reset === true) {
+      resetRipxThemeStats();
+    }
+    var snapshot = getRipxThemeStatsSnapshot();
+    if (opts.log !== false && typeof console !== 'undefined') {
+      if (console.groupCollapsed) console.groupCollapsed('[RipX] theme runtime stats');
+      if (console.table) console.table([Object.assign({ scope: 'theme' }, snapshot.counters)]);
+      if (console.log) {
+        console.log('fallbackReasons', snapshot.fallbackReasons);
+        console.log('lastDetail', snapshot.lastDetail);
+      }
+      if (console.groupEnd) console.groupEnd();
+    }
+    return { ok: true, stats: snapshot };
+  }
 
   function getVariantCachePromise() {
     if (_variantCachePromise) return _variantCachePromise;
-    // Preview without a target test should still use normal batch assignments.
-    // Only bypass /track/variants when a specific preview test is active.
-    if (PREVIEW_MODE && PREVIEW_TEST_ID) {
+    // Never bucket users from preview sessions.
+    if (PREVIEW_MODE) {
       _variantCachePromise = Promise.resolve({});
       return _variantCachePromise;
     }
@@ -757,11 +909,10 @@
     if (!hasValidConfig) {
       return null;
     }
-    if (
-      PREVIEW_MODE &&
-      PREVIEW_TEST_ID === String(testId) &&
-      (PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME)
-    ) {
+    if (PREVIEW_MODE && !PREVIEW_TEST_ID) {
+      return null;
+    }
+    if (STRICT_PREVIEW_TEST_MODE && PREVIEW_TEST_ID === String(testId)) {
       const previewVariant = await getPreviewVariantSingleFlight(testId);
       if (previewVariant) {
         return normalizeVariantForStorefront({
@@ -777,9 +928,12 @@
       }
       return {
         variantId: PREVIEW_VARIANT_ID || null,
-        variantName: PREVIEW_VARIANT_NAME || 'Preview',
+        variantName: PREVIEW_VARIANT_NAME || 'Control',
         isPreview: true,
       };
+    }
+    if (STRICT_PREVIEW_TEST_MODE) {
+      return null;
     }
 
     const id = String(testId);
@@ -829,6 +983,17 @@
         utm_source: urlParams.get('utm_source') || '',
         utm_medium: urlParams.get('utm_medium') || '',
       });
+      if (PREVIEW_MODE) {
+        params.set('preview_session', '1');
+      }
+      var currentProductId = getCurrentProductId();
+      var currentCollectionId = getCurrentCollectionId();
+      if (currentProductId) {
+        params.set('current_product_id', currentProductId);
+      }
+      if (currentCollectionId) {
+        params.set('current_collection_id', currentCollectionId);
+      }
       const testConfig = CONFIG.activeTests.find(function (t) {
         return String(t.id) === id;
       });
@@ -962,7 +1127,7 @@
    * Track conversion event (purchase/order)
    */
   async function trackConversion(testId, variantId, value = 0, metadata = {}) {
-    if (PREVIEW_TEST_CONTEXT || !hasValidConfig) {
+    if (PREVIEW_MODE || !hasValidConfig) {
       return;
     }
     const userId = getUserId();
@@ -1007,7 +1172,7 @@
    * @param {string} [variantId] - Variant ID if known (avoids extra fetch)
    */
   async function trackEvent(testId, eventName, value = 0, metadata = {}, variantId) {
-    if (PREVIEW_TEST_CONTEXT || !hasValidConfig || !eventName || !String(eventName).trim()) {
+    if (PREVIEW_MODE || !hasValidConfig || !eventName || !String(eventName).trim()) {
       return;
     }
     const userId = getUserId();
@@ -2444,10 +2609,27 @@
     return out;
   }
 
+  function normalizeThemeConfigKeys(cfg) {
+    if (!cfg || typeof cfg !== 'object') return cfg;
+    var out = Object.assign({}, cfg);
+    if (!out.themeMode && out.theme_mode) out.themeMode = out.theme_mode;
+    if (!out.themeTemplateHandle && out.theme_template_handle)
+      out.themeTemplateHandle = out.theme_template_handle;
+    if (!out.themeTemplateHandle && out.template) out.themeTemplateHandle = out.template;
+    if (out.themeId === undefined && out.theme_id !== undefined) out.themeId = out.theme_id;
+    if (out.sectionId === undefined && out.section_id !== undefined) out.sectionId = out.section_id;
+    if (out.bodyClass === undefined && out.body_class !== undefined) out.bodyClass = out.body_class;
+    var modeFallback = out.template || out.themeTemplateHandle ? 'template_switch' : 'asset_flag';
+    out.themeMode = normalizeThemeMode(out.themeMode || out.theme_mode, modeFallback);
+    return out;
+  }
+
   function normalizeVariantForStorefront(variant) {
     if (!variant || typeof variant !== 'object') return variant;
     if (!variant.config) return variant;
-    return Object.assign({}, variant, { config: normalizePriceConfigKeys(variant.config) });
+    var normalizedConfig = normalizePriceConfigKeys(variant.config);
+    normalizedConfig = normalizeThemeConfigKeys(normalizedConfig);
+    return Object.assign({}, variant, { config: normalizedConfig });
   }
 
   function hasModeValue(cfg, mode) {
@@ -3310,23 +3492,32 @@
       return;
     }
     var variantIdForCart = variant.variantId != null ? variant.variantId : variant.id;
+    var cartUi =
+      '.cart-drawer,.cart-notification,#CartDrawer,#mini-cart,.mini-cart,[data-cart-drawer],.drawer--cart,aside.mini-cart,cart-drawer,.header__cart,.site-header__cart,predictive-search';
+    function inCartUi(el) {
+      return el.closest && el.closest(cartUi);
+    }
+    var activeTest = getActiveTestById(testId);
+    var excludedTargetIds = getExcludedProductIdsForTest(activeTest);
+    var filteredTargetIds = targetIds.filter(function (targetId) {
+      if (!targetId) return false;
+      var normalized = toNumericProductId(targetId);
+      if (!normalized) return false;
+      return excludedTargetIds.indexOf(normalized) === -1;
+    });
+    if (!filteredTargetIds.length) return;
     if (variantIdForCart != null && String(variantIdForCart).trim() !== '') {
       window.__RIPX_PRICE_TEST_CTX__ = { testId: testId, variantId: variantIdForCart };
       injectPriceTestCartAttributes(
         testId,
         variantIdForCart,
         getAssignmentProofFromVariant(variant),
-        targetIds,
+        filteredTargetIds,
         null,
         getConfiguredCheckoutMethodProof(variant.config)
       );
     }
-    var cartUi =
-      '.cart-drawer,.cart-notification,#CartDrawer,#mini-cart,.mini-cart,[data-cart-drawer],.drawer--cart,aside.mini-cart,cart-drawer,.header__cart,.site-header__cart,predictive-search';
-    function inCartUi(el) {
-      return el.closest && el.closest(cartUi);
-    }
-    targetIds.forEach(function (targetId) {
+    filteredTargetIds.forEach(function (targetId) {
       if (!targetId) return;
       var pid = toNumericProductId(targetId);
       if (!pid) return;
@@ -3396,21 +3587,21 @@
         });
       });
     });
-    if (targetIds.length === 1) {
-      var singleCfg = getEffectivePriceConfig(variant.config, targetIds[0], null);
+    if (filteredTargetIds.length === 1) {
+      var singleCfg = getEffectivePriceConfig(variant.config, filteredTargetIds[0], null);
       var singleProof = getConfiguredCheckoutMethodProof(singleCfg);
       if (singleProof) {
         injectPriceTestCartAttributes(
           testId,
           variantIdForCart,
           getAssignmentProofFromVariant(variant),
-          targetIds,
+          filteredTargetIds,
           null,
           singleProof
         );
       }
     }
-    applyRipxStateToCartForms(targetIds);
+    applyRipxStateToCartForms(filteredTargetIds);
   }
 
   /**
@@ -3443,6 +3634,8 @@
     var allWithProductId = document.querySelectorAll(
       '[data-product-id], .product-card, .grid-product__content, [data-product], .card--product, product-card, .product-card-wrapper, .product-item, .grid__item .card, .collection-list__product'
     );
+    var activeTest = getActiveTestById(testId);
+    var excludedProductIds = getExcludedProductIdsForTest(activeTest);
     allWithProductId.forEach(function (card) {
       if (!card || inCartUi(card)) return;
       var attr =
@@ -3453,6 +3646,7 @@
       if (!attr) return;
       var pid = toNumericProductId(attr);
       if (!pid) return;
+      if (excludedProductIds.indexOf(pid) !== -1) return;
       var targetId = toProductGid(attr) || attr;
       var cfg = getEffectivePriceConfig(variant.config, targetId, null);
       var checkoutMethodProof = getConfiguredCheckoutMethodProof(cfg);
@@ -3512,7 +3706,10 @@
 
     // If the theme lacks data-product-id entirely, try a safe all-products fallback for amount/percent.
     // (fixed mode cannot be inferred without knowing which product it belongs to).
-    schedulePaintAllProductsGlobalPrices(testId, variant, 'listing');
+    // Skip global fallback when excluded products are configured, because fallback cannot filter rows safely.
+    if (!excludedProductIds.length) {
+      schedulePaintAllProductsGlobalPrices(testId, variant, 'listing');
+    }
   }
 
   /**
@@ -3526,9 +3723,18 @@
       return;
     }
     var variantIdForCart = variant.variantId != null ? variant.variantId : variant.id;
+    var activeTest = getActiveTestById(testId);
+    var excludedProductIds = getExcludedProductIdsForTest(activeTest);
+    var filteredTargetIds = targetIds.filter(function (targetId) {
+      if (!targetId) return false;
+      var normalized = toNumericProductId(targetId);
+      if (!normalized) return false;
+      return excludedProductIds.indexOf(normalized) === -1;
+    });
+    if (!filteredTargetIds.length) return;
     if (variantIdForCart != null && String(variantIdForCart).trim() !== '') {
       window.__RIPX_PRICE_TEST_CTX__ = { testId: testId, variantId: variantIdForCart };
-      var proofTargetId = targetIds[0] || null;
+      var proofTargetId = filteredTargetIds[0] || null;
       var proofCfg = proofTargetId
         ? getEffectivePriceConfig(variant.config, proofTargetId, null)
         : variant.config;
@@ -3536,7 +3742,7 @@
         testId,
         variantIdForCart,
         getAssignmentProofFromVariant(variant),
-        targetIds,
+        filteredTargetIds,
         null,
         getConfiguredCheckoutMethodProof(proofCfg)
       );
@@ -3562,7 +3768,7 @@
         el.setAttribute('data-ripx-price', '1');
       });
     }
-    targetIds.forEach(function (targetId) {
+    filteredTargetIds.forEach(function (targetId) {
       if (!targetId) return;
       var pid = toNumericProductId(targetId);
       if (!pid) return;
@@ -3621,7 +3827,7 @@
       });
     });
     if (variantIdForCart != null && String(variantIdForCart).trim() !== '') {
-      var firstTargetId = targetIds[0];
+      var firstTargetId = filteredTargetIds[0];
       if (firstTargetId) {
         var cfg = getEffectivePriceConfig(variant.config, firstTargetId, null);
         var priceMode = cfg && cfg.priceMode ? String(cfg.priceMode).toLowerCase() : 'fixed';
@@ -3652,9 +3858,10 @@
                 var linePidNum = linePid ? toNumericProductId(linePid) : '';
                 if (
                   linePidNum &&
-                  !targetIds.some(function (id) {
-                    return id && toNumericProductId(id) === linePidNum;
-                  })
+                  (excludedProductIds.indexOf(linePidNum) !== -1 ||
+                    !filteredTargetIds.some(function (id) {
+                      return id && toNumericProductId(id) === linePidNum;
+                    }))
                 )
                   return;
                 var rowDisplay = displayByVariant;
@@ -3704,9 +3911,165 @@
         fallbackProof
       );
     }
+    var activeTest = getActiveTestById(testId);
+    var excludedProductIds = getExcludedProductIdsForTest(activeTest);
+    if (excludedProductIds.length) {
+      return;
+    }
     if (shouldDisableCartUiPricePaint()) return;
     if (shouldPreferNativeCartRendering() || shouldBlockCartFallbackPaint()) return;
     schedulePaintAllProductsGlobalPrices(testId, variant, 'cart');
+  }
+
+  var _ripxThemeClassByTest = {};
+  function sanitizeThemeToken(value, fallback) {
+    var base =
+      value === undefined || value === null
+        ? String(fallback || '')
+        : String(value || '').trim() || String(fallback || '');
+    var token = base
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+    return token || String(fallback || 'variant');
+  }
+
+  function applyThemeVariant(test, variant, options) {
+    _ripxThemeStats.counters.attempts += 1;
+    _ripxThemeStats.lastEventAt = Date.now();
+    if (!test || !variant) {
+      recordThemeFallback('missing_payload');
+      return { ok: false, reason: 'missing_payload' };
+    }
+    if (!variant.config) {
+      recordThemeFallback('missing_config');
+      return { ok: false, reason: 'missing_config' };
+    }
+    var opts = options && typeof options === 'object' ? options : {};
+    if (opts.retried) {
+      _ripxThemeStats.counters.retried += 1;
+    }
+    var cfg = variant.config && typeof variant.config === 'object' ? variant.config : {};
+    var templateKey = getTemplateKeyForTest(test);
+    var fallbackMode = templateKey === 'template' ? 'template_switch' : 'asset_flag';
+    var mode = normalizeThemeMode(cfg.themeMode || cfg.theme_mode, fallbackMode);
+    var templateHandle = String(
+      cfg.themeTemplateHandle || cfg.theme_template_handle || cfg.template || ''
+    ).trim();
+    var sectionId = String(cfg.sectionId || cfg.section_id || '').trim();
+    var themeId = String(cfg.themeId || cfg.theme_id || '').trim();
+    var bodyClass = String(cfg.bodyClass || cfg.body_class || '').trim();
+    var testId = String(test.id || '').trim();
+    var variantId = String(variant.variantId != null ? variant.variantId : variant.id || '').trim();
+    var variantName = String(variant.variantName || variant.name || variantId || 'variant').trim();
+    var variantToken = sanitizeThemeToken(variantName || variantId, 'variant');
+    var classToken = 'ripx-theme-variant-' + variantToken;
+    var root = document.documentElement;
+    var body = document.body;
+
+    if (root) {
+      if (testId) root.setAttribute('data-ripx-theme-test', testId);
+      if (variantId) root.setAttribute('data-ripx-theme-variant', variantId);
+      root.setAttribute('data-ripx-theme-mode', mode);
+      if (templateHandle) root.setAttribute('data-ripx-theme-template', templateHandle);
+      else root.removeAttribute('data-ripx-theme-template');
+      if (sectionId) root.setAttribute('data-ripx-theme-section', sectionId);
+      else root.removeAttribute('data-ripx-theme-section');
+      if (themeId) root.setAttribute('data-ripx-theme-id', themeId);
+      else root.removeAttribute('data-ripx-theme-id');
+      if (testId) {
+        var perTestAttr = 'data-ripx-theme-test-' + sanitizeThemeToken(testId, 'test');
+        root.setAttribute(perTestAttr, variantToken);
+      }
+    }
+
+    if (body) {
+      var prevClass = _ripxThemeClassByTest[testId];
+      if (prevClass && prevClass !== classToken) {
+        try {
+          body.classList.remove(prevClass);
+        } catch (ePrev) {}
+      }
+      try {
+        body.classList.add(classToken);
+      } catch (eClass) {}
+      _ripxThemeClassByTest[testId] = classToken;
+
+      if (bodyClass) {
+        var prevBodyClassKey = testId + ':custom';
+        var prevBodyClass = _ripxThemeClassByTest[prevBodyClassKey];
+        if (prevBodyClass && prevBodyClass !== bodyClass) {
+          try {
+            body.classList.remove(prevBodyClass);
+          } catch (ePrevBody) {}
+        }
+        try {
+          body.classList.add(bodyClass);
+        } catch (eBodyClass) {}
+        _ripxThemeClassByTest[prevBodyClassKey] = bodyClass;
+      }
+    } else {
+      recordThemeFallback('missing_body');
+      return { ok: false, reason: 'missing_body' };
+    }
+
+    var detail = {
+      testId: testId || null,
+      variantId: variantId || null,
+      variantName: variantName || null,
+      mode: mode,
+      template: templateHandle || null,
+      sectionId: sectionId || null,
+      themeId: themeId || null,
+      bodyClass: bodyClass || null,
+      waitedMs: Number(opts.waitedMs) || 0,
+      retried: Boolean(opts.retried),
+    };
+    try {
+      window.__RIPX_THEME_VARIANTS__ = window.__RIPX_THEME_VARIANTS__ || {};
+      if (testId) window.__RIPX_THEME_VARIANTS__[testId] = detail;
+    } catch (eStore) {}
+    try {
+      window.dispatchEvent(new CustomEvent('ripx:theme-variant', { detail: detail }));
+      document.dispatchEvent(new CustomEvent('ripx:theme-variant', { detail: detail }));
+    } catch (eDispatch) {}
+    _ripxThemeStats.counters.applied += 1;
+    _ripxThemeStats.lastDetail = detail;
+    _ripxThemeStats.lastEventAt = Date.now();
+    if (DEBUG) debugLog('Theme variant applied', detail);
+    return { ok: true, detail: detail };
+  }
+
+  function applyThemeVariantWithRetry(test, variant) {
+    if (document.body) {
+      applyThemeVariant(test, variant);
+      return;
+    }
+    var startedAt = Date.now();
+    function tick() {
+      if (document.body) {
+        applyThemeVariant(test, variant, {
+          retried: true,
+          waitedMs: Date.now() - startedAt,
+        });
+        return;
+      }
+      var elapsed = Date.now() - startedAt;
+      if (elapsed >= THEME_APPLY_TIMEOUT_MS) {
+        _ripxThemeStats.counters.timedOut += 1;
+        recordThemeFallback('body_wait_timeout');
+        if (DEBUG) {
+          debugLog('Theme apply timed out waiting for body', {
+            testId: test && test.id ? test.id : null,
+            waitedMs: elapsed,
+          });
+        }
+        return;
+      }
+      setTimeout(tick, THEME_APPLY_RETRY_MS);
+    }
+    setTimeout(tick, THEME_APPLY_RETRY_MS);
   }
 
   function parseCombinedCode(code) {
@@ -4601,6 +4964,52 @@
     return tt === 'product' || tt === 'all-products' || tt === 'all_products';
   }
 
+  function getExcludedProductIdsForTest(test) {
+    if (!test || typeof test !== 'object') return [];
+    var raw =
+      test.excludedProductIds ||
+      (test.segments && test.segments.excluded_product_ids) ||
+      (test.segments && test.segments.excludedProductIds) ||
+      [];
+    if (typeof raw === 'string') {
+      raw = raw
+        .split(/[\n,]+/)
+        .map(function (value) {
+          return String(value || '').trim();
+        })
+        .filter(Boolean);
+    }
+    if (!Array.isArray(raw)) return [];
+    var seen = {};
+    var out = [];
+    raw.forEach(function (id) {
+      var normalized = toNumericProductId(id);
+      if (!normalized || seen[normalized]) return;
+      seen[normalized] = true;
+      out.push(normalized);
+    });
+    return out;
+  }
+
+  function isExcludedProductForTest(test, productId) {
+    var pid = toNumericProductId(productId);
+    if (!pid) return false;
+    var excluded = getExcludedProductIdsForTest(test);
+    if (!excluded.length) return false;
+    return excluded.indexOf(pid) !== -1;
+  }
+
+  function getActiveTestById(testId) {
+    var tests = (CONFIG && Array.isArray(CONFIG.activeTests) ? CONFIG.activeTests : []) || [];
+    for (var i = 0; i < tests.length; i++) {
+      var test = tests[i];
+      if (test && String(test.id || '') === String(testId || '')) {
+        return test;
+      }
+    }
+    return null;
+  }
+
   /**
    * Check if current page matches test target (single or multiple); supports product and collection.
    */
@@ -4613,6 +5022,7 @@
     var current = null;
     if (isProductScopeTargetType(targetType)) {
       current = getCurrentProductId();
+      if (current && isExcludedProductForTest(test, current)) return false;
     } else if (targetType === 'collection') {
       current = getCurrentCollectionId();
     } else {
@@ -4721,7 +5131,7 @@
   const HEATMAP_FLUSH_INTERVAL = 10000;
 
   function captureHeatmapEvent(testId, variantId, eventType, data) {
-    if (!hasValidConfig || PREVIEW_TEST_CONTEXT) return;
+    if (!hasValidConfig || PREVIEW_MODE) return;
     heatmapBuffer.push({
       test_id: testId,
       variant_id: variantId,
@@ -4848,6 +5258,14 @@
 
       (async function runWithPreviewTestMerge() {
         var testsToRun = activeTests.slice();
+        if (PREVIEW_MODE && !PREVIEW_TEST_ID) {
+          if (DEBUG) {
+            debugLog(
+              'Preview mode is enabled without ab_preview_test. Skipping bucketing to avoid analytics pollution.'
+            );
+          }
+          testsToRun = [];
+        }
         if (PREVIEW_MODE && PREVIEW_TEST_ID) {
           var mergeMeta = {
             previewTestId: String(PREVIEW_TEST_ID),
@@ -4886,6 +5304,10 @@
             });
             mergeMeta.usedSyntheticFallback = true;
           }
+          testsToRun = testsToRun.filter(function (t) {
+            return String(t && t.id) === String(PREVIEW_TEST_ID);
+          });
+          mergeMeta.previewOnlyMode = true;
           CONFIG.activeTests = testsToRun;
           try {
             window.__RIPX_PREVIEW_MERGE__ = mergeMeta;
@@ -4946,6 +5368,13 @@
                   injectPreviewCartAttributesWhenConfigMissing(test.id, variant);
                 }
                 if (matched) {
+                  if (
+                    variant &&
+                    variant.config &&
+                    (testTypeIsThemeFamily(test) || variantConfigLooksTheme(variant.config))
+                  ) {
+                    applyThemeVariantWithRetry(test, variant);
+                  }
                   if (
                     variant.config &&
                     typeof variant.config.url === 'string' &&
@@ -5370,6 +5799,7 @@
       ripXApi: {
         reapplyPriceTestsType: window.RipX ? typeof window.RipX.reapplyPriceTests : 'n/a',
         debugPaintStatsType: window.RipX ? typeof window.RipX.debugPaintStats : 'n/a',
+        debugThemeStatsType: window.RipX ? typeof window.RipX.debugThemeStats : 'n/a',
       },
       requestedTestId: tid,
       variant: variant,
@@ -5449,6 +5879,7 @@
           preferNativeRendering: shouldPreferNativeCartRendering(),
         },
         paintStats: getRipxPaintStatsSnapshot(),
+        themeStats: getRipxThemeStatsSnapshot(),
       },
       checkout: {
         storefrontScriptRunsOnHostedCheckout: false,
@@ -5495,6 +5926,7 @@
     debugCart: debugCartSnapshot,
     debugStatus,
     debugPaintStats: debugPaintStats,
+    debugThemeStats: debugThemeStats,
     version: SCRIPT_VERSION,
   };
   window.ABTestTracker = api;

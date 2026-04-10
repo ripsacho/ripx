@@ -95,6 +95,65 @@ export function getWizardStepErrors(stepId, options) {
     }
   }
 
+  function isLikelyControlVariant(variant, index) {
+    const name = String(variant?.name || '')
+      .trim()
+      .toLowerCase();
+    if (index === 0) return true;
+    return name === 'control' || name.startsWith('control ');
+  }
+
+  function normalizeProductIdValue(raw) {
+    const value = String(raw ?? '').trim();
+    if (!value) return '';
+    const gidMatch = value.match(/Product\/(\d+)/i);
+    if (gidMatch && gidMatch[1]) return gidMatch[1];
+    return value.replace(/\D/g, '') || value;
+  }
+
+  function normalizeProductIdList(raw) {
+    let source = raw;
+    if (typeof source === 'string') {
+      source = source
+        .split(/[\n,]+/)
+        .map(value => value.trim())
+        .filter(Boolean);
+    }
+    if (!Array.isArray(source)) return [];
+    return Array.from(new Set(source.map(item => normalizeProductIdValue(item)).filter(Boolean)));
+  }
+
+  function normalizeThemeMode(rawMode, fallbackMode = 'asset_flag') {
+    const mode = String(rawMode || fallbackMode)
+      .trim()
+      .toLowerCase();
+    return ['template_switch', 'section_variant', 'asset_flag', 'theme_redirect'].includes(mode)
+      ? mode
+      : fallbackMode;
+  }
+
+  function getThemeConfigParts(cfg = {}, fallbackMode = 'asset_flag') {
+    const config = cfg && typeof cfg === 'object' ? cfg : {};
+    const mode = normalizeThemeMode(config.themeMode || config.theme_mode, fallbackMode);
+    const templateHandle = String(
+      config.themeTemplateHandle || config.theme_template_handle || config.template || ''
+    ).trim();
+    const sectionId = String(config.sectionId || config.section_id || '').trim();
+    const bodyClass = String(config.bodyClass || config.body_class || '').trim();
+    const themeId = String(config.themeId || config.theme_id || '').trim();
+    const redirectUrl = String(
+      config.url || config.themeRedirectUrl || config.theme_redirect_url || ''
+    ).trim();
+    return {
+      mode,
+      templateHandle,
+      sectionId,
+      bodyClass,
+      themeId,
+      redirectUrl,
+    };
+  }
+
   // Step 1 (template step) – only when showTemplateStep
   if (showTemplateStep && stepId === 1) {
     const nameToCheck = formData.name?.trim() || initialData?.name?.trim();
@@ -123,6 +182,12 @@ export function getWizardStepErrors(stepId, options) {
 
   // Targeting step
   if (stepId === stepIds.targeting) {
+    const templateKeyTargeting = String(
+      selectedTemplate || formData.goal?.template_key || formData.type || ''
+    )
+      .trim()
+      .toLowerCase();
+    const isCommerceTargetingTest = ['price', 'pricing', 'offer'].includes(templateKeyTargeting);
     const targetType = formData.target_type || initialData?.target_type;
     const pageRules = formData.segments?.page_rules || initialData?.segments?.page_rules || [];
     const hasCustomScope = pageRules.length > 0;
@@ -143,9 +208,45 @@ export function getWizardStepErrors(stepId, options) {
     if (!hasCustomScope && needsTargetId && !hasTargetId) {
       errors.push('Target ID is required for the selected target type.');
     }
+    if (isCommerceTargetingTest) {
+      const excludedProductIds = normalizeProductIdList(
+        formData.segments?.excluded_product_ids ?? initialData?.segments?.excluded_product_ids
+      );
+      if (targetType === 'product') {
+        const selectedProductIds = normalizeProductIdList([
+          ...(Array.isArray(formData.target_ids) ? formData.target_ids : []),
+          formData.target_id,
+          ...(Array.isArray(initialData?.target_ids) ? initialData.target_ids : []),
+          initialData?.target_id,
+        ]);
+        const overlap = selectedProductIds.filter(id => excludedProductIds.includes(id));
+        if (overlap.length > 0) {
+          errors.push(
+            'Some selected products are also in the excluded products list. Remove overlaps before continuing.'
+          );
+        }
+      }
+    }
     const holdoutValue = Number(formData.holdout_percent);
     if (!Number.isNaN(holdoutValue) && (holdoutValue < 0 || holdoutValue > 50)) {
       errors.push('Holdout percent must be between 0 and 50.');
+    }
+    const rampPercentRaw = formData.segments?.traffic_ramp_percent;
+    if (
+      rampPercentRaw !== undefined &&
+      rampPercentRaw !== null &&
+      String(rampPercentRaw).trim() !== ''
+    ) {
+      const rampPercent = Number(rampPercentRaw);
+      if (Number.isNaN(rampPercent) || rampPercent < 0 || rampPercent > 100) {
+        errors.push('Traffic ramp percent must be between 0 and 100.');
+      } else if (rampPercent > 0 && rampPercent < 100) {
+        const rampDaysRaw = formData.segments?.traffic_ramp_days;
+        const rampDays = Number(rampDaysRaw);
+        if (!Number.isFinite(rampDays) || rampDays < 1 || rampDays > 30) {
+          errors.push('Traffic ramp days must be between 1 and 30 when ramp % is enabled.');
+        }
+      }
     }
   }
 
@@ -209,13 +310,15 @@ export function getWizardStepErrors(stepId, options) {
       templateKeyCode === 'price' ||
       templateKeyCode === 'pricing' ||
       (typeof templateKeyCode === 'string' && templateKeyCode.toLowerCase() === 'price');
-    if (isPriceTest && formData.target_type === 'product') {
+    const isOfferTest = selectedTemplate === 'offer' || formData.type === 'offer';
+    const isCommerceScopeTest = isPriceTest || isOfferTest;
+    if (isCommerceScopeTest && formData.target_type === 'product') {
       const hasTargetId =
         (formData.target_id && String(formData.target_id).trim()) ||
         (Array.isArray(formData.target_ids) && formData.target_ids.length > 0);
       if (!hasTargetId) {
         errors.push(
-          'Price test is set to "Selected products only" but no products are selected. Select at least one product in Product scope.'
+          `${isOfferTest ? 'Offer' : 'Price'} test is set to "Selected products only" but no products are selected. Select at least one product in Product scope.`
         );
       }
     }
@@ -276,13 +379,25 @@ export function getWizardStepErrors(stepId, options) {
       });
     }
     // Offer: discount value validation
-    const isOfferTest = selectedTemplate === 'offer' || formData.type === 'offer';
     if (isOfferTest && Array.isArray(formData.variants)) {
+      let hasNonControlWithOfferCode = false;
       formData.variants.forEach((v, i) => {
         const cfg = v?.config || {};
         const dtype = (cfg.discount_type || 'percent').toLowerCase();
         const val = cfg.discount_value;
-        if (dtype === 'free_shipping') return;
+        const isControl = isLikelyControlVariant(v, i);
+        if (!['percent', 'fixed', 'free_shipping'].includes(dtype)) {
+          errors.push(
+            `${v?.name || `Variant ${i + 1}`}: discount type must be percent, fixed, or free_shipping.`
+          );
+          return;
+        }
+        if (dtype === 'free_shipping') {
+          if (!isControl) {
+            hasNonControlWithOfferCode = true;
+          }
+          return;
+        }
         if (val !== null && val !== undefined && val !== '') {
           const n = Number(val);
           if (Number.isNaN(n) || n < 0) {
@@ -291,9 +406,67 @@ export function getWizardStepErrors(stepId, options) {
             errors.push(
               `${v?.name || `Variant ${i + 1}`}: percent discount must be between 0 and 100.`
             );
+          } else if (!isControl) {
+            hasNonControlWithOfferCode = true;
           }
         }
       });
+      if (formData.variants.length > 1 && !hasNonControlWithOfferCode) {
+        errors.push(
+          'At least one offer variant (non-control) must include a valid discount or free-shipping config.'
+        );
+      }
+    }
+
+    const templateKeyTheme = String(
+      selectedTemplate || formData.goal?.template_key || formData.type || ''
+    )
+      .trim()
+      .toLowerCase();
+    const isThemeTest =
+      templateKeyTheme === 'theme' || templateKeyTheme === 'template' || formData.type === 'theme';
+    if (isThemeTest && Array.isArray(formData.variants)) {
+      const fallbackMode = templateKeyTheme === 'template' ? 'template_switch' : 'asset_flag';
+      let hasActionableThemeVariant = false;
+      formData.variants.forEach((v, i) => {
+        const cfg = v?.config || {};
+        const { mode, templateHandle, sectionId, bodyClass, themeId, redirectUrl } =
+          getThemeConfigParts(cfg, fallbackMode);
+        const isControl = isLikelyControlVariant(v, i);
+        if (mode === 'template_switch' && !templateHandle && !isControl) {
+          errors.push(
+            `${v?.name || `Variant ${i + 1}`}: template handle is required for template switch mode.`
+          );
+        }
+        if (mode === 'section_variant' && !sectionId && !isControl) {
+          errors.push(
+            `${v?.name || `Variant ${i + 1}`}: section ID is required for section variant mode.`
+          );
+        }
+        if (mode === 'theme_redirect' && !redirectUrl && !isControl) {
+          errors.push(
+            `${v?.name || `Variant ${i + 1}`}: redirect URL is required for theme redirect mode.`
+          );
+        }
+        if (mode === 'theme_redirect' && redirectUrl) {
+          try {
+            new URL(redirectUrl, 'https://example.com');
+          } catch (_) {
+            errors.push(`${v?.name || `Variant ${i + 1}`}: enter a valid redirect URL.`);
+          }
+        }
+        const hasSignal = Boolean(
+          templateHandle || sectionId || bodyClass || themeId || redirectUrl
+        );
+        if (!isControl && hasSignal) {
+          hasActionableThemeVariant = true;
+        }
+      });
+      if (formData.variants.length > 1 && !hasActionableThemeVariant) {
+        errors.push(
+          'Add theme configuration to at least one test variant (template handle, section ID, body class, or theme ID).'
+        );
+      }
     }
   }
 
@@ -382,10 +555,39 @@ export function getWizardStepErrors(stepId, options) {
     if (!hasCustomScope && needsTargetIdReview && !hasTargetId) {
       errors.push('Target ID is required for the selected scope in the Targeting step.');
     }
+    const isCommerceReview =
+      ['price', 'pricing', 'offer'].includes(
+        String(selectedTemplate || formData.goal?.template_key || formData.type || '')
+          .trim()
+          .toLowerCase()
+      ) && String(targetType || '').toLowerCase() === 'product';
+    if (isCommerceReview) {
+      const selectedProductIds = normalizeProductIdList([
+        ...(Array.isArray(formData.target_ids) ? formData.target_ids : []),
+        formData.target_id,
+        ...(Array.isArray(initialData?.target_ids) ? initialData.target_ids : []),
+        initialData?.target_id,
+      ]);
+      const excludedProductIds = normalizeProductIdList(
+        formData.segments?.excluded_product_ids ?? initialData?.segments?.excluded_product_ids
+      );
+      const overlap = selectedProductIds.filter(id => excludedProductIds.includes(id));
+      if (overlap.length > 0) {
+        errors.push(
+          'Targeting has selected products that are also excluded. Remove overlaps before starting.'
+        );
+      }
+    }
     // Split-URL URL format
-    const isSplitUrlReview = (formData.variants || []).some(v =>
-      (v?.config?.url ?? '').toString().trim()
-    );
+    const reviewTemplateKey = String(
+      selectedTemplate || formData.goal?.template_key || formData.type || ''
+    )
+      .trim()
+      .toLowerCase();
+    const isThemeLikeReview = reviewTemplateKey === 'theme' || reviewTemplateKey === 'template';
+    const isSplitUrlReview =
+      !isThemeLikeReview &&
+      (formData.variants || []).some(v => (v?.config?.url ?? '').toString().trim());
     if (isSplitUrlReview && Array.isArray(formData.variants)) {
       formData.variants.forEach((v, i) => {
         const url = (v?.config?.url ?? '').toString().trim();
@@ -400,19 +602,91 @@ export function getWizardStepErrors(stepId, options) {
     // Offer discount value
     const isOfferReview = (formData.type || '').toLowerCase() === 'offer';
     if (isOfferReview && Array.isArray(formData.variants)) {
+      let hasNonControlWithOfferReview = false;
       formData.variants.forEach((v, i) => {
         const cfg = v?.config || {};
         const dtype = (cfg.discount_type || 'percent').toLowerCase();
         const val = cfg.discount_value;
-        if (dtype === 'free_shipping') return;
+        const isControl = isLikelyControlVariant(v, i);
+        if (!['percent', 'fixed', 'free_shipping'].includes(dtype)) {
+          errors.push(
+            `${v?.name || `Variant ${i + 1}`}: discount type must be percent, fixed, or free_shipping.`
+          );
+          return;
+        }
+        if (dtype === 'free_shipping') {
+          if (!isControl) {
+            hasNonControlWithOfferReview = true;
+          }
+          return;
+        }
         if (val !== null && val !== undefined && val !== '') {
           const n = Number(val);
           if (Number.isNaN(n) || n < 0)
             errors.push(`${v?.name || `Variant ${i + 1}`}: discount value must be ≥ 0.`);
           else if (dtype === 'percent' && n > 100)
             errors.push(`${v?.name || `Variant ${i + 1}`}: percent discount must be 0–100.`);
+          else if (!isControl) hasNonControlWithOfferReview = true;
         }
       });
+      if (formData.variants.length > 1 && !hasNonControlWithOfferReview) {
+        errors.push(
+          'At least one offer variant (non-control) must include a valid discount or free-shipping config.'
+        );
+      }
+    }
+
+    const templateKeyThemeReview = String(
+      selectedTemplate || formData.goal?.template_key || formData.type || ''
+    )
+      .trim()
+      .toLowerCase();
+    const isThemeReview =
+      templateKeyThemeReview === 'theme' ||
+      templateKeyThemeReview === 'template' ||
+      formData.type === 'theme';
+    if (isThemeReview && Array.isArray(formData.variants)) {
+      const fallbackMode = templateKeyThemeReview === 'template' ? 'template_switch' : 'asset_flag';
+      let hasActionableThemeVariant = false;
+      formData.variants.forEach((v, i) => {
+        const cfg = v?.config || {};
+        const { mode, templateHandle, sectionId, bodyClass, themeId, redirectUrl } =
+          getThemeConfigParts(cfg, fallbackMode);
+        const isControl = isLikelyControlVariant(v, i);
+        if (mode === 'template_switch' && !templateHandle && !isControl) {
+          errors.push(
+            `${v?.name || `Variant ${i + 1}`}: template handle is required for template switch mode.`
+          );
+        }
+        if (mode === 'section_variant' && !sectionId && !isControl) {
+          errors.push(
+            `${v?.name || `Variant ${i + 1}`}: section ID is required for section variant mode.`
+          );
+        }
+        if (mode === 'theme_redirect' && !redirectUrl && !isControl) {
+          errors.push(
+            `${v?.name || `Variant ${i + 1}`}: redirect URL is required for theme redirect mode.`
+          );
+        }
+        if (mode === 'theme_redirect' && redirectUrl) {
+          try {
+            new URL(redirectUrl, 'https://example.com');
+          } catch (_) {
+            errors.push(`${v?.name || `Variant ${i + 1}`}: enter a valid redirect URL.`);
+          }
+        }
+        const hasSignal = Boolean(
+          templateHandle || sectionId || bodyClass || themeId || redirectUrl
+        );
+        if (!isControl && hasSignal) {
+          hasActionableThemeVariant = true;
+        }
+      });
+      if (formData.variants.length > 1 && !hasActionableThemeVariant) {
+        errors.push(
+          'Add theme configuration to at least one test variant (template handle, section ID, body class, or theme ID).'
+        );
+      }
     }
   }
 

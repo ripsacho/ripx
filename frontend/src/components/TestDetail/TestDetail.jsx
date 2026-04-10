@@ -1,8 +1,18 @@
 /**
  * Test Detail (shared wizard edit view)
  */
-import React, { useState, useCallback, useEffect } from 'react';
-import { Page, Layout, Modal, Text, Icon, BlockStack, Checkbox } from '@shopify/polaris';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import {
+  Page,
+  Layout,
+  Modal,
+  Text,
+  Icon,
+  BlockStack,
+  Checkbox,
+  TextField,
+  Banner,
+} from '@shopify/polaris';
 import {
   ChartLineIcon,
   ClipboardIcon,
@@ -20,7 +30,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import Toast from '../Toast/Toast';
 import PartyPop from '../PartyPop/PartyPop';
 import LoadingSkeleton from '../LoadingSkeleton/LoadingSkeleton';
-import { apiPost, apiPut, apiRequest, unwrapData, getShopDomain } from '../../services';
+import { apiGet, apiPost, apiPut, apiRequest, unwrapData, getShopDomain } from '../../services';
 import TestWizard from '../TestWizard/TestWizard';
 import { PageShell } from '../Shared';
 import {
@@ -46,6 +56,45 @@ import {
 } from '../../utils/preferences';
 import styles from './TestDetail.module.css';
 
+const PREFLIGHT_FILTERS_STORAGE_KEY = 'ripx.launchPreflightFilters.v1';
+const DEFAULT_PREFLIGHT_FILTERS = {
+  showErrors: true,
+  showWarnings: true,
+  showPassed: false,
+};
+
+function readStoredPreflightFilters() {
+  if (typeof window === 'undefined') {
+    return DEFAULT_PREFLIGHT_FILTERS;
+  }
+  try {
+    const raw = window.localStorage.getItem(PREFLIGHT_FILTERS_STORAGE_KEY);
+    if (!raw) {
+      return DEFAULT_PREFLIGHT_FILTERS;
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') {
+      return DEFAULT_PREFLIGHT_FILTERS;
+    }
+    return {
+      showErrors:
+        typeof parsed.showErrors === 'boolean'
+          ? parsed.showErrors
+          : DEFAULT_PREFLIGHT_FILTERS.showErrors,
+      showWarnings:
+        typeof parsed.showWarnings === 'boolean'
+          ? parsed.showWarnings
+          : DEFAULT_PREFLIGHT_FILTERS.showWarnings,
+      showPassed:
+        typeof parsed.showPassed === 'boolean'
+          ? parsed.showPassed
+          : DEFAULT_PREFLIGHT_FILTERS.showPassed,
+    };
+  } catch {
+    return DEFAULT_PREFLIGHT_FILTERS;
+  }
+}
+
 function TestDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -65,7 +114,26 @@ function TestDetail() {
   const [idsModalOpen, setIdsModalOpen] = useState(false);
   const [copyToast, setCopyToast] = useState(null);
   const [rolloutCsvLoading, setRolloutCsvLoading] = useState(false);
+  const [reportDownloadLoading, setReportDownloadLoading] = useState(false);
   const [preLaunchOpen, setPreLaunchOpen] = useState(false);
+  const [preflightLoading, setPreflightLoading] = useState(false);
+  const [preflightResult, setPreflightResult] = useState(null);
+  const [forceStart, setForceStart] = useState(false);
+  const [forceStartReason, setForceStartReason] = useState('');
+  const [launchCanaryPercent, setLaunchCanaryPercent] = useState('');
+  const [launchCanaryDays, setLaunchCanaryDays] = useState('');
+  const [launchVisualQaRequired, setLaunchVisualQaRequired] = useState(false);
+  const [launchVisualQaBaselineId, setLaunchVisualQaBaselineId] = useState('');
+  const [launchVisualQaCheckedAt, setLaunchVisualQaCheckedAt] = useState('');
+  const [showErrorPreflightChecks, setShowErrorPreflightChecks] = useState(
+    () => readStoredPreflightFilters().showErrors
+  );
+  const [showWarningPreflightChecks, setShowWarningPreflightChecks] = useState(
+    () => readStoredPreflightFilters().showWarnings
+  );
+  const [showPassedPreflightChecks, setShowPassedPreflightChecks] = useState(
+    () => readStoredPreflightFilters().showPassed
+  );
   const [preLaunchChecked, setPreLaunchChecked] = useState({
     hypothesis: false,
     goal: false,
@@ -115,6 +183,23 @@ function TestDetail() {
       return next;
     });
   }, [test, queryClient]);
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    try {
+      window.localStorage.setItem(
+        PREFLIGHT_FILTERS_STORAGE_KEY,
+        JSON.stringify({
+          showErrors: showErrorPreflightChecks,
+          showWarnings: showWarningPreflightChecks,
+          showPassed: showPassedPreflightChecks,
+        })
+      );
+    } catch {
+      // Ignore storage errors in private mode or restricted contexts.
+    }
+  }, [showErrorPreflightChecks, showWarningPreflightChecks, showPassedPreflightChecks]);
   const startMutation = useStartTest();
   const stopMutation = useStopTest();
   const deleteMutation = useDeleteTest();
@@ -142,23 +227,146 @@ function TestDetail() {
   const isRollout = test?.personalization_mode === 'rollout';
   const hasPersonalization = isPersonalized || isRollout;
 
+  const summarizePreflight = useCallback(preflight => {
+    if (!preflight || typeof preflight !== 'object') {
+      return { errors: 0, warnings: 0, checks: 0 };
+    }
+    const checks = Array.isArray(preflight.checks) ? preflight.checks.length : 0;
+    const errors = Array.isArray(preflight.errors) ? preflight.errors.length : 0;
+    const warnings = Array.isArray(preflight.warnings) ? preflight.warnings.length : 0;
+    return { errors, warnings, checks };
+  }, []);
+
+  const toDateInputValue = useCallback(value => {
+    if (!value) return '';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return parsed.toISOString().slice(0, 10);
+  }, []);
+  const groupedPreflightChecks = useMemo(() => {
+    const checks = Array.isArray(preflightResult?.checks) ? preflightResult.checks : [];
+    const grouped = { errors: [], warnings: [], ok: [] };
+    checks.forEach(check => {
+      const severity = String(check?.severity || 'ok').toLowerCase();
+      if (severity === 'error') grouped.errors.push(check);
+      else if (severity === 'warning') grouped.warnings.push(check);
+      else grouped.ok.push(check);
+    });
+    return grouped;
+  }, [preflightResult]);
+  const visiblePreflightCheckCount =
+    (showErrorPreflightChecks ? groupedPreflightChecks.errors.length : 0) +
+    (showWarningPreflightChecks ? groupedPreflightChecks.warnings.length : 0) +
+    (showPassedPreflightChecks ? groupedPreflightChecks.ok.length : 0);
+
+  const handleRunPreflight = useCallback(async () => {
+    setPreflightLoading(true);
+    setErrorMessage(null);
+    try {
+      const response = await apiGet(`/tests/${id}/preflight`);
+      const payload = unwrapData(response);
+      const preflight = payload?.preflight || null;
+      setPreflightResult(preflight);
+      const summary = summarizePreflight(preflight);
+      if (summary.errors > 0) {
+        setErrorMessage(`Preflight found ${summary.errors} blocking issue(s).`);
+      } else {
+        setSuccessMessage(
+          summary.warnings > 0
+            ? `Preflight passed with ${summary.warnings} warning(s).`
+            : 'Preflight passed with no blocking issues.'
+        );
+      }
+    } catch (err) {
+      setErrorMessage(err?.response?.data?.error || err?.message || 'Failed to run preflight');
+    } finally {
+      setPreflightLoading(false);
+    }
+  }, [id, summarizePreflight]);
+
   const handleStart = async () => {
+    const requiresForceReason = forceStart && String(forceStartReason || '').trim().length < 8;
+    if (requiresForceReason) {
+      setErrorMessage('Add a force-start reason (minimum 8 characters) before launching.');
+      return;
+    }
+    if (launchVisualQaRequired && String(launchVisualQaBaselineId || '').trim().length < 2) {
+      setErrorMessage(
+        'Add a visual QA baseline ID before launch when visual QA requirement is enabled.'
+      );
+      return;
+    }
     setPreLaunchOpen(false);
     setActionLoading(true);
     setErrorMessage(null);
     try {
-      await startMutation.mutateAsync(id);
+      const payload = {};
+      if (forceStart) {
+        payload.force = true;
+        payload.force_reason = String(forceStartReason || '').trim();
+      }
+      if (String(launchCanaryPercent || '').trim() !== '') {
+        payload.canary_percent = Number(launchCanaryPercent);
+      }
+      if (String(launchCanaryDays || '').trim() !== '') {
+        payload.canary_days = Number(launchCanaryDays);
+      }
+      if (launchVisualQaRequired) {
+        payload.visual_qa_required = true;
+      }
+      if (String(launchVisualQaBaselineId || '').trim() !== '') {
+        payload.visual_qa_baseline_id = String(launchVisualQaBaselineId).trim();
+      }
+      if (String(launchVisualQaCheckedAt || '').trim() !== '') {
+        payload.visual_qa_checked_at = launchVisualQaCheckedAt;
+      }
+      const response = await startMutation.mutateAsync({
+        testId: id,
+        payload,
+      });
+      const result = unwrapData(response);
+      if (result?.preflight) {
+        setPreflightResult(result.preflight);
+      }
       setSuccessMessage('Test started successfully.');
       setStartCelebrationMode(withUltraMilestone(resolveCelebrationVariant('full')));
     } catch (err) {
-      setErrorMessage('Failed to start test');
+      const preflight = err?.response?.data?.preflight;
+      if (preflight) {
+        setPreflightResult(preflight);
+      }
+      setErrorMessage(
+        err?.response?.data?.error ||
+          err?.response?.data?.details?.[0] ||
+          err?.message ||
+          'Failed to start test'
+      );
     } finally {
       setActionLoading(false);
     }
   };
 
   const handleStartClick = () => {
+    const existingVisualQa =
+      test?.goal?.visual_qa && typeof test.goal.visual_qa === 'object' ? test.goal.visual_qa : {};
+    setPreflightResult(null);
+    setForceStart(false);
+    setForceStartReason('');
+    setLaunchCanaryPercent('');
+    setLaunchCanaryDays('');
+    setLaunchVisualQaRequired(
+      Boolean(
+        existingVisualQa.required || existingVisualQa.enabled || test?.segments?.visual_qa_required
+      )
+    );
+    setLaunchVisualQaBaselineId(
+      String(existingVisualQa.baseline_id || existingVisualQa.baselineId || '').trim()
+    );
+    setLaunchVisualQaCheckedAt(
+      toDateInputValue(existingVisualQa.checked_at || existingVisualQa.checkedAt || '')
+    );
     setPreLaunchOpen(true);
+    handleRunPreflight();
   };
 
   const handleStop = async action => {
@@ -331,6 +539,41 @@ function TestDetail() {
     }
   }, [id]);
 
+  const handleDownloadReport = useCallback(async () => {
+    setReportDownloadLoading(true);
+    setErrorMessage(null);
+    try {
+      const response = await apiRequest('GET', `/tests/${id}/report?format=markdown`, null, {
+        responseType: 'text',
+        headers: { Accept: 'text/markdown' },
+        transformResponse: [data => data],
+      });
+      const markdown = response?.data || '';
+      const disposition = response?.headers?.['content-disposition'] || '';
+      const match = disposition.match(/filename="([^"]+)"/i);
+      const fileName = match?.[1] || `test-report-${id}.md`;
+      const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      setSuccessMessage('Report downloaded');
+    } catch (err) {
+      setErrorMessage(
+        err?.response?.data?.details?.[0] ||
+          err?.response?.data?.error ||
+          err?.message ||
+          'Failed to download report'
+      );
+    } finally {
+      setReportDownloadLoading(false);
+    }
+  }, [id]);
+
   const handleSaveCode = async codePayload => {
     const response = await apiPut(`/tests/${id}/variants/codes`, codePayload);
     const updatedTest = unwrapData(response)?.test ?? unwrapData(response);
@@ -426,6 +669,14 @@ function TestDetail() {
 
   const displayTitle = pageTitle ?? test.name ?? 'Unnamed Test';
   const testTypeLabel = getTestTypeDisplay(test).label;
+  const preflightSummary = summarizePreflight(preflightResult);
+  const forceReasonRequired = forceStart && String(forceStartReason || '').trim().length < 8;
+  const visualQaRequiredButMissing =
+    launchVisualQaRequired && String(launchVisualQaBaselineId || '').trim().length < 2;
+  const health = test?.health || null;
+  const srmDetected = Boolean(health?.srm?.detected || test?.analytics_meta?.srm?.detected);
+  const riskLevel = String(health?.riskSignals?.level || '').toLowerCase();
+  const rolloutRecommendation = health?.rolloutRecommendation || null;
 
   return (
     <PageShell className={`${styles.detailPage} wizard-page`}>
@@ -567,12 +818,20 @@ function TestDetail() {
       <Modal
         open={preLaunchOpen}
         onClose={() => setPreLaunchOpen(false)}
-        title="Pre-launch checklist"
+        title="Launch safety check"
         primaryAction={{
-          content: 'Continue to start',
+          content: forceStart ? 'Force start test' : 'Start test',
           onAction: handleStart,
+          loading: actionLoading,
+          destructive: forceStart,
+          disabled: forceReasonRequired || visualQaRequiredButMissing,
         }}
         secondaryActions={[
+          {
+            content: 'Run preflight',
+            onAction: handleRunPreflight,
+            loading: preflightLoading,
+          },
           {
             content: 'Cancel',
             onAction: () => setPreLaunchOpen(false),
@@ -582,8 +841,176 @@ function TestDetail() {
         <Modal.Section>
           <BlockStack gap="300">
             <Text variant="bodyMd" as="p" tone="subdued">
-              Before going live, confirm the following (optional but recommended).
+              Run preflight before launch. You can optionally apply canary ramp overrides at start
+              time.
             </Text>
+            {preflightResult && (
+              <Banner
+                tone={
+                  preflightSummary.errors > 0
+                    ? 'critical'
+                    : preflightSummary.warnings > 0
+                      ? 'warning'
+                      : 'success'
+                }
+                title={
+                  preflightSummary.errors > 0
+                    ? `Preflight blocked (${preflightSummary.errors} error${preflightSummary.errors > 1 ? 's' : ''})`
+                    : preflightSummary.warnings > 0
+                      ? `Preflight passed with ${preflightSummary.warnings} warning${preflightSummary.warnings > 1 ? 's' : ''}`
+                      : 'Preflight passed'
+                }
+              >
+                <Text as="p" variant="bodySm">
+                  {preflightSummary.checks} checks evaluated.
+                </Text>
+              </Banner>
+            )}
+            {preflightResult &&
+              Array.isArray(preflightResult.checks) &&
+              preflightResult.checks.length > 0 && (
+                <div
+                  style={{
+                    maxHeight: 180,
+                    overflowY: 'auto',
+                    border: '1px solid var(--p-color-border-subdued)',
+                    borderRadius: 8,
+                    padding: 10,
+                  }}
+                >
+                  <BlockStack gap="200">
+                    <BlockStack gap="100">
+                      <Checkbox
+                        label={`Show blocking errors (${groupedPreflightChecks.errors.length})`}
+                        checked={showErrorPreflightChecks}
+                        onChange={setShowErrorPreflightChecks}
+                      />
+                      <Checkbox
+                        label={`Show warnings (${groupedPreflightChecks.warnings.length})`}
+                        checked={showWarningPreflightChecks}
+                        onChange={setShowWarningPreflightChecks}
+                      />
+                      <Checkbox
+                        label={`Show passed checks (${groupedPreflightChecks.ok.length})`}
+                        checked={showPassedPreflightChecks}
+                        onChange={setShowPassedPreflightChecks}
+                      />
+                    </BlockStack>
+                    {showErrorPreflightChecks && groupedPreflightChecks.errors.length > 0 && (
+                      <BlockStack gap="100">
+                        <Text as="p" variant="bodySm" fontWeight="semibold" tone="critical">
+                          Blocking errors ({groupedPreflightChecks.errors.length})
+                        </Text>
+                        {groupedPreflightChecks.errors.map(check => (
+                          <Text key={check.id || check.message} as="p" variant="bodySm">
+                            <strong>Error:</strong> {check.message}
+                          </Text>
+                        ))}
+                      </BlockStack>
+                    )}
+                    {showWarningPreflightChecks && groupedPreflightChecks.warnings.length > 0 && (
+                      <BlockStack gap="100">
+                        <Text as="p" variant="bodySm" fontWeight="semibold" tone="warning">
+                          Warnings ({groupedPreflightChecks.warnings.length})
+                        </Text>
+                        {groupedPreflightChecks.warnings.map(check => (
+                          <Text key={check.id || check.message} as="p" variant="bodySm">
+                            <strong>Warn:</strong> {check.message}
+                          </Text>
+                        ))}
+                      </BlockStack>
+                    )}
+                    {showPassedPreflightChecks && groupedPreflightChecks.ok.length > 0 && (
+                      <BlockStack gap="100">
+                        {groupedPreflightChecks.ok.map(check => (
+                          <Text key={check.id || check.message} as="p" variant="bodySm">
+                            <strong>OK:</strong> {check.message}
+                          </Text>
+                        ))}
+                      </BlockStack>
+                    )}
+                    {visiblePreflightCheckCount === 0 && (
+                      <Text as="p" variant="bodySm" tone="subdued">
+                        No checks match the current filters.
+                      </Text>
+                    )}
+                  </BlockStack>
+                </div>
+              )}
+            <BlockStack gap="200">
+              <TextField
+                label="Canary percent override (optional)"
+                type="number"
+                value={launchCanaryPercent}
+                onChange={setLaunchCanaryPercent}
+                placeholder="e.g. 10"
+                min={0}
+                max={100}
+                suffix="%"
+                autoComplete="off"
+                helpText="If set, overrides this launch with a start ramp percent."
+              />
+              <TextField
+                label="Canary days override (optional)"
+                type="number"
+                value={launchCanaryDays}
+                onChange={setLaunchCanaryDays}
+                placeholder="e.g. 7"
+                min={1}
+                max={30}
+                suffix="days"
+                autoComplete="off"
+                helpText="Used with canary percent to ramp to 100% over N days."
+              />
+              <Checkbox
+                label="Visual QA baseline required for this launch"
+                checked={launchVisualQaRequired}
+                onChange={setLaunchVisualQaRequired}
+                helpText="When enabled, launch requires baseline metadata and preflight enforces it."
+              />
+              <TextField
+                label="Visual QA baseline ID (optional)"
+                value={launchVisualQaBaselineId}
+                onChange={setLaunchVisualQaBaselineId}
+                placeholder="e.g. home-v2-desktop"
+                autoComplete="off"
+                error={
+                  visualQaRequiredButMissing
+                    ? 'Baseline ID is required when visual QA requirement is enabled.'
+                    : undefined
+                }
+              />
+              <TextField
+                label="Visual QA checked at (optional)"
+                type="date"
+                value={launchVisualQaCheckedAt}
+                onChange={setLaunchVisualQaCheckedAt}
+                autoComplete="off"
+                helpText="Date of latest visual QA verification for this launch."
+              />
+              <Checkbox
+                label="Force start even if preflight has blocking errors"
+                checked={forceStart}
+                onChange={setForceStart}
+                helpText="Use only for emergency/controlled launches."
+              />
+              {forceStart && (
+                <TextField
+                  label="Force-start reason (required)"
+                  value={forceStartReason}
+                  onChange={setForceStartReason}
+                  placeholder="Why is a forced launch needed?"
+                  autoComplete="off"
+                  multiline={2}
+                  maxLength={500}
+                  error={
+                    forceReasonRequired
+                      ? 'Provide at least 8 characters so this action is auditable.'
+                      : undefined
+                  }
+                />
+              )}
+            </BlockStack>
             <BlockStack gap="200">
               <Checkbox
                 label="Hypothesis or goal is documented"
@@ -653,6 +1080,33 @@ function TestDetail() {
                     </span>
                   )}
                 </div>
+                {(srmDetected || riskLevel === 'high' || rolloutRecommendation?.action) && (
+                  <div style={{ marginTop: 12, maxWidth: 760 }}>
+                    {srmDetected && (
+                      <Banner tone="critical" title="Sample ratio mismatch detected">
+                        <Text as="p" variant="bodySm">
+                          Traffic split deviates from expected allocation. Verify instrumentation
+                          and bot filtering before rollout actions.
+                        </Text>
+                      </Banner>
+                    )}
+                    {!srmDetected && riskLevel === 'high' && (
+                      <Banner tone="warning" title="High rollout risk">
+                        <Text as="p" variant="bodySm">
+                          {rolloutRecommendation?.message ||
+                            'Current quality signals suggest delaying rollout decisions.'}
+                        </Text>
+                      </Banner>
+                    )}
+                    {!srmDetected && rolloutRecommendation?.action === 'canary_rollout' && (
+                      <Banner tone="success" title="Controlled rollout recommended">
+                        <Text as="p" variant="bodySm">
+                          {rolloutRecommendation?.message}
+                        </Text>
+                      </Banner>
+                    )}
+                  </div>
+                )}
               </div>
               {!stopExpanded && !rolloutConfigExpanded && (
                 <div className={styles.detailHeroActions}>
@@ -757,6 +1211,16 @@ function TestDetail() {
                       >
                         <Icon source={ExportIcon} />
                         Export
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.detailSecondaryBtn}
+                        onClick={handleDownloadReport}
+                        disabled={reportDownloadLoading}
+                        title="Download concise test report (Markdown)"
+                      >
+                        <Icon source={ExportIcon} />
+                        {reportDownloadLoading ? 'Preparing report…' : 'Report (MD)'}
                       </button>
                       {(String(test?.type || '').toLowerCase() === 'price' ||
                         String(test?.type || '').toLowerCase() === 'pricing') &&

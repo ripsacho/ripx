@@ -542,6 +542,29 @@ function productInTargetList(test, productGidOrNumeric) {
   return ids.some(id => id && toNumericProductId(id) === pid);
 }
 
+function productExcludedByTest(test, productGidOrNumeric) {
+  let rawExcluded = test?.segments?.excluded_product_ids;
+  if (typeof rawExcluded === 'string') {
+    try {
+      rawExcluded = JSON.parse(rawExcluded);
+    } catch {
+      rawExcluded = rawExcluded
+        .split(/[\n,]+/)
+        .map(value => value.trim())
+        .filter(Boolean);
+    }
+  }
+  const excludedIds = Array.isArray(rawExcluded) ? rawExcluded.filter(Boolean) : [];
+  if (!excludedIds.length) {
+    return false;
+  }
+  const pid = toNumericProductId(productGidOrNumeric);
+  if (!pid) {
+    return false;
+  }
+  return excludedIds.some(id => id && toNumericProductId(id) === pid);
+}
+
 /**
  * Collection-targeted price tests store collection GIDs in target_ids, not product ids.
  * The cart line only has a product id; verifying collection membership would require a Shopify API round-trip.
@@ -549,6 +572,9 @@ function productInTargetList(test, productGidOrNumeric) {
  * assignment + signature on the line as sufficient for checkout alignment (same trust model as manual line props).
  */
 function lineProductMatchesPriceTestTarget(test, productGidOrNumeric) {
+  if (productExcludedByTest(test, productGidOrNumeric)) {
+    return false;
+  }
   const tt = String(test?.target_type || '')
     .toLowerCase()
     .trim();

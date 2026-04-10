@@ -3,6 +3,7 @@ api_version = "2026-01"
 [[extensions]]
 name = "RipX checkout UI experiment"
 handle = "ripx-checkout-ui"
+uid = "8ef21dd8-3ddc-c388-993e-5c0761f9618b77616921"
 type = "ui_extension"
 description = "Render checkout experiment content by fetching RipX assignment and tracking conversion events."
 

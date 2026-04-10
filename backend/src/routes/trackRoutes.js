@@ -170,6 +170,17 @@ function getPathnameFromUrl(currentUrl) {
   }
 }
 
+function parsePreviewSessionFlag(value) {
+  if (value === true || value === 1) {
+    return true;
+  }
+  if (value === false || value === 0 || value === null || value === undefined) {
+    return false;
+  }
+  const normalized = String(value).trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes';
+}
+
 function withAssignmentSignature(variant, testId, userId, shopDomain) {
   if (!variant || typeof variant !== 'object') {
     return variant;
@@ -793,7 +804,13 @@ router.post(
     }
 
     // Get user's variant assignment
-    const variant = await abTestEngine.getVariant(test_id, user_id, domain);
+    const previewSession =
+      parsePreviewSessionFlag(req.body?.preview_session) ||
+      parsePreviewSessionFlag(req.body?.is_preview) ||
+      parsePreviewSessionFlag(req.body?.metadata?.preview) ||
+      parsePreviewSessionFlag(req.body?.metadata?.preview_session);
+    const trackingContext = previewSession ? { preview_session: true } : {};
+    const variant = await abTestEngine.getVariant(test_id, user_id, domain, trackingContext);
 
     if (!variant) {
       return res.status(404).json({
@@ -922,6 +939,9 @@ router.get(
       utm_source,
       utm_medium,
       js_targeting_results,
+      current_product_id,
+      current_collection_id,
+      preview_session,
     } = req.query;
 
     if (!user_id || !shop_domain || !test_ids) {
@@ -977,6 +997,15 @@ router.get(
     if (req.query.current_pathname && typeof req.query.current_pathname === 'string') {
       context.current_pathname =
         (req.query.current_pathname || '').trim() || context.current_pathname;
+    }
+    if (current_product_id && String(current_product_id).trim()) {
+      context.current_product_id = String(current_product_id).trim();
+    }
+    if (current_collection_id && String(current_collection_id).trim()) {
+      context.current_collection_id = String(current_collection_id).trim();
+    }
+    if (parsePreviewSessionFlag(preview_session)) {
+      context.preview_session = true;
     }
     if (session_count !== undefined && session_count !== null && session_count !== '') {
       context.session_count = Number(session_count);
@@ -1059,6 +1088,9 @@ router.get(
       utm_medium,
       js_targeting_passed,
       force_variant,
+      current_product_id,
+      current_collection_id,
+      preview_session,
     } = req.query;
 
     if (!test_id || !user_id || !shop_domain) {
@@ -1099,6 +1131,16 @@ router.get(
       context.current_pathname =
         (req.query.current_pathname || '').trim() || context.current_pathname;
     }
+    if (current_product_id && String(current_product_id).trim()) {
+      context.current_product_id = String(current_product_id).trim();
+    }
+    if (current_collection_id && String(current_collection_id).trim()) {
+      context.current_collection_id = String(current_collection_id).trim();
+    }
+    const previewSessionEnabled = parsePreviewSessionFlag(preview_session);
+    if (previewSessionEnabled) {
+      context.preview_session = true;
+    }
     if (session_count !== undefined && session_count !== null && session_count !== '') {
       context.session_count = Number(session_count);
     }
@@ -1134,17 +1176,19 @@ router.get(
       if (forced) {
         const variantId = forced.id ?? forced.name;
         const variantName = forced.name || String(variantId);
-        const { saveTestAssignment } = require('../models/testAssignment');
-        await saveTestAssignment({
-          test_id,
-          user_id,
-          shop_domain: domain,
-          variant_id: String(variantId),
-          variant_name: variantName,
-          assigned_at: new Date(),
-          device: context.device || null,
-          country: context.country || null,
-        }).catch(() => {});
+        if (!previewSessionEnabled) {
+          const { saveTestAssignment } = require('../models/testAssignment');
+          await saveTestAssignment({
+            test_id,
+            user_id,
+            shop_domain: domain,
+            variant_id: String(variantId),
+            variant_name: variantName,
+            assigned_at: new Date(),
+            device: context.device || null,
+            country: context.country || null,
+          }).catch(() => {});
+        }
         variant = {
           variantId: String(variantId),
           variantName,
@@ -1234,6 +1278,12 @@ router.post(
     if (currentPathname && String(currentPathname).trim()) {
       context.current_pathname = String(currentPathname).trim();
     }
+    const previewSession =
+      parsePreviewSessionFlag(body.preview_session ?? req.query.preview_session) ||
+      parsePreviewSessionFlag(body.is_preview ?? req.query.is_preview);
+    if (previewSession) {
+      context.preview_session = true;
+    }
 
     const variant = await abTestEngine.getVariant(testId, userId, domain, context);
     if (!variant) {
@@ -1304,6 +1354,12 @@ router.post(
     if (currentUrl && String(currentUrl).trim()) {
       context.current_url = String(currentUrl).trim();
       context.current_pathname = getPathnameFromUrl(context.current_url);
+    }
+    const previewSession =
+      parsePreviewSessionFlag(body.preview_session ?? req.query.preview_session) ||
+      parsePreviewSessionFlag(body.is_preview ?? req.query.is_preview);
+    if (previewSession) {
+      context.preview_session = true;
     }
     const variant = await abTestEngine.getVariant(testId, userId, domain, context);
     if (!variant) {
@@ -1382,7 +1438,22 @@ router.get(
     }
 
     const variants = Array.isArray(test.variants) ? test.variants : [];
-    const variant = findVariantForPreviewQuery(variants, { variant_id, variant_name });
+    const variantFromQuery = findVariantForPreviewQuery(variants, { variant_id, variant_name });
+    const variant =
+      variantFromQuery ||
+      variants.find((item, index) => {
+        if (!item) {
+          return false;
+        }
+        if (index === 0) {
+          return true;
+        }
+        const label = String(item.name || '')
+          .trim()
+          .toLowerCase();
+        return label === 'control' || label.startsWith('control ');
+      }) ||
+      variants[0];
 
     if (!variant) {
       return res.status(404).json({ success: false, error: 'Variant not found' });

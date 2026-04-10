@@ -4,7 +4,7 @@
  */
 
 /** Bump when embedded runtime config or script contract changes. Keep ?v= in sync: extensions/ripx-theme/blocks/ripx-app-embed.liquid + frontend RIPX_STOREFRONT_SCRIPT_VERSION. */
-const SCRIPT_VERSION = '2';
+const SCRIPT_VERSION = '4';
 
 /**
  * DB/API may use "pricing"; storefront logic expects "price".
@@ -30,6 +30,21 @@ function normalizeTargetTypeForStorefront(test) {
   return '';
 }
 
+function normalizeProductIdList(rawList) {
+  const list = Array.isArray(rawList) ? rawList : [];
+  const normalized = list
+    .map(id => String(id || '').trim())
+    .filter(Boolean)
+    .map(id => {
+      if (id.startsWith('gid://')) {
+        return id;
+      }
+      const numeric = id.replace(/\D/g, '');
+      return numeric ? `gid://shopify/Product/${numeric}` : id;
+    });
+  return Array.from(new Set(normalized));
+}
+
 function mapTestToStorefrontPayload(test) {
   let ids =
     test.target_ids && Array.isArray(test.target_ids) ? test.target_ids.filter(Boolean) : [];
@@ -41,12 +56,18 @@ function mapTestToStorefrontPayload(test) {
     .toLowerCase()
     .trim();
   const antiFlickerMode = antiFlickerModeRaw === 'strict' ? 'strict' : 'balanced';
+  const templateKey = String(test.goal?.template_key || '')
+    .toLowerCase()
+    .trim();
+  const excludedProductIds = normalizeProductIdList(test.segments?.excluded_product_ids);
   return {
     id: test.id,
     type: normalizeTestTypeForStorefront(test.type),
+    templateKey: templateKey || null,
     targetType: normalizeTargetTypeForStorefront(test),
     targetId: test.target_id || null,
     targetIds: ids.length > 0 ? ids : null,
+    excludedProductIds: excludedProductIds.length > 0 ? excludedProductIds : null,
     antiFlickerMode,
     jsTargeting:
       jsTargeting?.enabled && jsTargeting?.code ? { enabled: true, code: jsTargeting.code } : null,

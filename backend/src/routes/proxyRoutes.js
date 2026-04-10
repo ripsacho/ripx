@@ -17,6 +17,13 @@ const {
   buildStorefrontRuntimeConfig,
   getStorefrontScriptCacheControl,
 } = require('../utils/storefrontScriptRuntime');
+const {
+  getMaintenanceMode,
+  isMaintenanceActiveForDomain,
+  getBlockListMessage,
+} = require('../utils/maintenanceMode');
+const { getTenantByDomain, normalizeDomain } = require('../models/tenant');
+const { ERROR_MESSAGES } = require('../constants');
 
 const router = express.Router();
 
@@ -26,6 +33,11 @@ function isValidShopDomain(shop) {
 
 function getStorefrontScriptPath() {
   return path.join(__dirname, '../../..', 'shopify', 'storefront-script.js');
+}
+
+function isTenantSuspendedOrBlocked(tenant) {
+  const status = tenant?.status;
+  return status === 'suspended' || status === 'blocked';
 }
 
 /**
@@ -95,6 +107,32 @@ async function serveScript(req, res) {
   if (!isValidShopDomain(shop)) {
     return res.status(400).json({ success: false, error: 'Invalid shop domain', shop });
   }
+  const normalizedShop = normalizeDomain(shop) || String(shop).trim().toLowerCase();
+
+  const blockListMessage = await getBlockListMessage(normalizedShop);
+  if (blockListMessage !== null) {
+    return res.status(403).json({
+      success: false,
+      error: blockListMessage || 'Access blocked.',
+    });
+  }
+
+  const maintenanceValue = await getMaintenanceMode();
+  if (isMaintenanceActiveForDomain(normalizedShop, maintenanceValue)) {
+    return res.status(503).json({
+      success: false,
+      error: ERROR_MESSAGES.MAINTENANCE,
+      maintenance: true,
+    });
+  }
+
+  const tenant = await getTenantByDomain(normalizedShop);
+  if (tenant && isTenantSuspendedOrBlocked(tenant)) {
+    return res.status(403).json({
+      success: false,
+      error: 'Access suspended. Contact support.',
+    });
+  }
 
   const hasSignature = Boolean(req.query.signature);
   const isProduction = process.env.NODE_ENV === 'production';
@@ -102,7 +140,7 @@ async function serveScript(req, res) {
 
   if (skipVerify) {
     logger.warn('App proxy signature verification skipped (RIPX_APP_PROXY_SKIP_VERIFY=true)', {
-      shop,
+      shop: normalizedShop,
     });
   }
 
@@ -114,7 +152,7 @@ async function serveScript(req, res) {
         hint: 'App proxy requests must include signature. Check Partner Dashboard App Proxy URL.',
       });
     }
-    logger.warn('App proxy signature missing (dev only)', { shop });
+    logger.warn('App proxy signature missing (dev only)', { shop: normalizedShop });
   } else if (!skipVerify) {
     const queryFromRaw = getQueryFromRequest(req);
     let verified = verifyAppProxySignature(queryFromRaw);
@@ -126,7 +164,7 @@ async function serveScript(req, res) {
         .filter(k => k !== 'signature')
         .sort();
       logger.warn('App proxy signature verification failed', {
-        shop,
+        shop: normalizedShop,
         paramKeys,
         hint: 'Use Client secret from the same app that has the App Proxy. See docs/APP_PROXY_SIGNATURE_RESEARCH.md.',
       });
@@ -138,8 +176,8 @@ async function serveScript(req, res) {
     }
   }
 
-  const tests = await getActiveTestsForStorefront(shop);
-  const runtimeConfig = buildStorefrontRuntimeConfig(shop, tests, req);
+  const tests = await getActiveTestsForStorefront(normalizedShop);
+  const runtimeConfig = buildStorefrontRuntimeConfig(normalizedShop, tests, req);
   const scriptPath = getStorefrontScriptPath();
 
   let scriptContents;
@@ -148,7 +186,7 @@ async function serveScript(req, res) {
   } catch (err) {
     logger.error('Storefront script file missing or unreadable', {
       path: scriptPath,
-      shop,
+      shop: normalizedShop,
       error: err.message,
     });
     res.status(503).set('Content-Type', 'text/plain').send('Script temporarily unavailable.');

@@ -80,8 +80,16 @@ export function useInvalidateTests() {
 export function useStartTest() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: testId => apiPost(`/tests/${testId}/start`, {}),
-    onMutate: async testId => {
+    mutationFn: input => {
+      if (typeof input === 'string') {
+        return apiPost(`/tests/${input}/start`, {});
+      }
+      const testId = input?.testId;
+      const payload = input?.payload && typeof input.payload === 'object' ? input.payload : {};
+      return apiPost(`/tests/${testId}/start`, payload);
+    },
+    onMutate: async input => {
+      const testId = typeof input === 'string' ? input : input?.testId;
       const listKey = testsListQueryKey();
       await queryClient.cancelQueries({ queryKey: listKey });
       const prev = queryClient.getQueryData(listKey);
@@ -90,10 +98,11 @@ export function useStartTest() {
       );
       return { prev, listKey };
     },
-    onError: (_err, _testId, ctx) => {
+    onError: (_err, _input, ctx) => {
       if (ctx?.prev && ctx?.listKey) queryClient.setQueryData(ctx.listKey, ctx.prev);
     },
-    onSettled: (_data, _error, testId) => {
+    onSettled: (_data, _error, input) => {
+      const testId = typeof input === 'string' ? input : input?.testId;
       const shop = getShopDomain();
       queryClient.invalidateQueries({ queryKey: testsListQueryKey(shop) });
       if (testId) queryClient.invalidateQueries({ queryKey: testDetailQueryKey(shop, testId) });
