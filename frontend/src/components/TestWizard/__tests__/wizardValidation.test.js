@@ -538,6 +538,31 @@ describe('wizardValidation', () => {
         expect(errors.some(e => e.includes('At least one offer variant'))).toBe(true);
       });
 
+      it('returns error for offer variant with invalid discount code name', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'offer',
+            variants: [
+              { name: 'Control', config: {} },
+              {
+                name: 'Variant A',
+                config: {
+                  discount_type: 'percent',
+                  discount_value: 10,
+                  discount_code_name: 'BAD CODE!*',
+                },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'offer',
+        });
+        expect(errors.some(e => e.includes('discount code name'))).toBe(true);
+      });
+
       it('returns error on targeting step when selected and excluded products overlap', () => {
         const errors = getWizardStepErrors(stepIdsWithTemplate.targeting, {
           stepIds: stepIdsWithTemplate,

@@ -147,6 +147,7 @@ import {
   redirectToAppUrl,
   getConnectUrl,
   getUrlWithEmbedParams,
+  openCenteredPopup,
 } from '../../services';
 import { isShopifyStoreDomain, normalizeShopifyDomain } from '../../utils/shopifyAdmin';
 
@@ -461,7 +462,10 @@ function DomainList() {
   useEffect(() => {
     if (!pendingOAuthUrl || !oauthAutoRedirecting) return;
     const handoffTimer = window.setTimeout(() => {
-      redirectToAppUrl(pendingOAuthUrl);
+      const popup = openCenteredPopup(pendingOAuthUrl);
+      if (!popup) {
+        redirectToAppUrl(pendingOAuthUrl);
+      }
     }, 550);
     const fallbackTimer = window.setTimeout(() => {
       // If browser blocks/ignores automatic navigation, keep manual actions visible.
@@ -632,8 +636,11 @@ function DomainList() {
         const url = startRes?.data?.redirectUrl ?? unwrapData(startRes)?.redirectUrl;
         if (url && typeof url === 'string') {
           if (returnOAuthUrl) return { redirectUrl: url };
-          if (isEmbeddedInIframe()) window.open(url, '_blank', 'noopener,noreferrer');
-          else window.top.location.href = url;
+          const popup = openCenteredPopup(url);
+          if (!popup) {
+            if (isEmbeddedInIframe()) window.open(url, '_blank', 'noopener,noreferrer');
+            else window.top.location.href = url;
+          }
           return;
         }
         // No OAuth URL from API (e.g. 401 or error). Don't redirect — let caller show "Sign in required" and open Connect in new tab.
@@ -641,8 +648,11 @@ function DomainList() {
           return { signInRequired: true, shop: normalizedDomain };
         }
         const fallbackUrl = `${origin}/api/auth?shop=${encodeURIComponent(normalizedDomain)}${origin ? `&callback_base=${encodeURIComponent(origin)}` : ''}`;
-        if (isEmbeddedInIframe()) window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
-        else window.top.location.href = fallbackUrl;
+        const popup = openCenteredPopup(fallbackUrl);
+        if (!popup) {
+          if (isEmbeddedInIframe()) window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
+          else window.top.location.href = fallbackUrl;
+        }
         return;
       }
 
@@ -667,8 +677,11 @@ function DomainList() {
           const url = startRes?.data?.redirectUrl ?? unwrapData(startRes)?.redirectUrl;
           if (url && typeof url === 'string') {
             if (returnOAuthUrl) return { redirectUrl: url };
-            if (isEmbeddedInIframe()) window.open(url, '_blank', 'noopener,noreferrer');
-            else window.top.location.href = url;
+            const popup = openCenteredPopup(url);
+            if (!popup) {
+              if (isEmbeddedInIframe()) window.open(url, '_blank', 'noopener,noreferrer');
+              else window.top.location.href = url;
+            }
             return;
           }
         } catch (_) {
@@ -678,8 +691,11 @@ function DomainList() {
           return { signInRequired: true, shop: normalizedDomain };
         }
         const fallbackUrl = `${origin}/api/auth?shop=${encodeURIComponent(normalizedDomain)}${origin ? `&callback_base=${encodeURIComponent(origin)}` : ''}`;
-        if (isEmbeddedInIframe()) window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
-        else window.top.location.href = fallbackUrl;
+        const popup = openCenteredPopup(fallbackUrl);
+        if (!popup) {
+          if (isEmbeddedInIframe()) window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
+          else window.top.location.href = fallbackUrl;
+        }
       }
     } catch (err) {
       if (err?.response?.status === 401 && returnOAuthUrl) {
@@ -2081,7 +2097,10 @@ function DomainList() {
                               className={styles.continueToShopifyButton}
                               onClick={() => {
                                 setOauthAutoRedirecting(false);
-                                redirectToAppUrl(pendingOAuthUrl);
+                                const popup = openCenteredPopup(pendingOAuthUrl);
+                                if (!popup) {
+                                  redirectToAppUrl(pendingOAuthUrl);
+                                }
                               }}
                             >
                               {oauthAutoRedirecting ? 'Opening Shopify…' : 'Continue to Shopify'}
@@ -2130,7 +2149,10 @@ function DomainList() {
                             className={styles.continueToShopifyButton}
                             onClick={() => {
                               setOauthAutoRedirecting(false);
-                              redirectToAppUrl(pendingOAuthUrl);
+                              const popup = openCenteredPopup(pendingOAuthUrl);
+                              if (!popup) {
+                                redirectToAppUrl(pendingOAuthUrl);
+                              }
                             }}
                           >
                             {oauthAutoRedirecting ? 'Opening Shopify…' : 'Continue to Shopify'}

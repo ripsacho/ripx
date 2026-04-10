@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Page, Card, BlockStack, Text, Button, InlineStack } from '@shopify/polaris';
+import { Page, Card, BlockStack, Text, Button, InlineStack, Banner } from '@shopify/polaris';
 import { ROUTES } from '../../constants';
 import { normalizeShopifyDomain } from '../../utils/shopifyAdmin';
 import { isEmbeddedInIframe } from '../../services';
@@ -17,9 +17,23 @@ function getShopifyConnectUrl(shopDomain) {
   return `${typeof window !== 'undefined' ? window.location.origin : ''}/api/auth?shop=${encodeURIComponent(normalized)}`;
 }
 
-export default function ConnectStoreGate({ domain }) {
+export default function ConnectStoreGate({
+  domain,
+  onConnect,
+  connecting = false,
+  popupBlocked = false,
+  statusMessage = '',
+}) {
   const normalized = normalizeShopifyDomain(domain || '');
   const connectUrl = getShopifyConnectUrl(domain);
+  const handleConnect = () => {
+    if (typeof onConnect === 'function') {
+      onConnect();
+      return;
+    }
+    if (isEmbeddedInIframe()) window.open(connectUrl, '_blank', 'noopener,noreferrer');
+    else window.location.href = connectUrl;
+  };
 
   return (
     <div className={styles.gateWrapper}>
@@ -35,24 +49,37 @@ export default function ConnectStoreGate({ domain }) {
                 Shopify to run A/B tests for this store.
               </Text>
               <InlineStack gap="300" blockAlign="start">
+                <Button variant="primary" size="large" onClick={handleConnect} loading={connecting}>
+                  {connecting ? 'Connecting…' : 'Connect with Shopify'}
+                </Button>
                 <Button
-                  variant="primary"
-                  size="large"
+                  variant="plain"
                   onClick={() => {
-                    if (isEmbeddedInIframe())
-                      window.open(connectUrl, '_blank', 'noopener,noreferrer');
-                    else window.location.href = connectUrl;
+                    window.location.href = connectUrl;
                   }}
                 >
-                  Connect with Shopify
+                  Open full page
                 </Button>
                 <Link to={ROUTES.CONNECT}>
                   <Button variant="plain">Other sign-in options</Button>
                 </Link>
               </InlineStack>
+              {popupBlocked && (
+                <Banner tone="warning">
+                  Popup was blocked by the browser. Allow popups for this site or use{' '}
+                  <strong>Open full page</strong>.
+                </Banner>
+              )}
+              {statusMessage && (
+                <Banner tone="info">
+                  <Text as="p" variant="bodySm">
+                    {statusMessage}
+                  </Text>
+                </Banner>
+              )}
               <Text as="p" variant="bodySm" tone="subdued">
-                You’ll be taken to Shopify to approve access. After connecting, you can open this
-                app from My domains or Home.
+                OAuth opens in a popup so you can keep this page open. After approval, we sync this
+                store automatically.
               </Text>
             </BlockStack>
           </Card>

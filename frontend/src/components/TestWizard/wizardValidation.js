@@ -103,6 +103,13 @@ export function getWizardStepErrors(stepId, options) {
     return name === 'control' || name.startsWith('control ');
   }
 
+  function isValidOfferCodeName(raw) {
+    const value = String(raw ?? '').trim();
+    if (!value) return true;
+    if (value.length > 48) return false;
+    return /^[A-Za-z0-9_-]+$/.test(value);
+  }
+
   function normalizeProductIdValue(raw) {
     const value = String(raw ?? '').trim();
     if (!value) return '';
@@ -386,6 +393,11 @@ export function getWizardStepErrors(stepId, options) {
         const dtype = (cfg.discount_type || 'percent').toLowerCase();
         const val = cfg.discount_value;
         const isControl = isLikelyControlVariant(v, i);
+        if (!isValidOfferCodeName(cfg.discount_code_name ?? cfg.discountCodeName)) {
+          errors.push(
+            `${v?.name || `Variant ${i + 1}`}: discount code name must be <= 48 characters and use letters, numbers, "-" or "_".`
+          );
+        }
         if (!['percent', 'fixed', 'free_shipping'].includes(dtype)) {
           errors.push(
             `${v?.name || `Variant ${i + 1}`}: discount type must be percent, fixed, or free_shipping.`
@@ -608,6 +620,11 @@ export function getWizardStepErrors(stepId, options) {
         const dtype = (cfg.discount_type || 'percent').toLowerCase();
         const val = cfg.discount_value;
         const isControl = isLikelyControlVariant(v, i);
+        if (!isValidOfferCodeName(cfg.discount_code_name ?? cfg.discountCodeName)) {
+          errors.push(
+            `${v?.name || `Variant ${i + 1}`}: discount code name must be <= 48 characters and use letters, numbers, "-" or "_".`
+          );
+        }
         if (!['percent', 'fixed', 'free_shipping'].includes(dtype)) {
           errors.push(
             `${v?.name || `Variant ${i + 1}`}: discount type must be percent, fixed, or free_shipping.`

@@ -307,22 +307,42 @@ function isOfferLikeTestType(typeValue) {
   return t === 'offer';
 }
 
-function normalizeShopifyIdList(rawValue, resourceType = 'Product') {
-  const values = String(rawValue || '')
-    .split(/[\n,]+/)
-    .map(s => s.trim())
-    .filter(Boolean);
-  const normalized = values.map(value => {
-    if (value.startsWith('gid://')) {
-      return value;
-    }
-    const numeric = value.replace(/\D/g, '');
-    if (!numeric) {
-      return value;
-    }
-    return `gid://shopify/${resourceType}/${numeric}`;
-  });
-  return Array.from(new Set(normalized));
+function normalizeOfferCodeToken(rawValue, fallback = 'VARIANT') {
+  const token = String(rawValue || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 20);
+  return token || String(fallback || 'VARIANT');
+}
+
+function buildOfferValueToken(config = {}) {
+  const discountType = String(config.discount_type || '')
+    .trim()
+    .toLowerCase();
+  if (discountType === 'free_shipping') {
+    return 'SHIP';
+  }
+  const rawValue = config.discount_value;
+  const numericValue =
+    rawValue !== null && rawValue !== undefined && rawValue !== '' ? Number(rawValue) : NaN;
+  const valueToken = Number.isFinite(numericValue)
+    ? String(numericValue).replace('.', '_')
+    : discountType === 'fixed'
+      ? 'FIXED'
+      : 'PCT';
+  if (discountType === 'fixed') {
+    return `${valueToken}OFF`;
+  }
+  return `${valueToken}PCT`;
+}
+
+function buildAutoOfferCodeName(testName, variantName, config = {}, index = 0) {
+  const testToken = normalizeOfferCodeToken(testName, 'TEST').slice(0, 14);
+  const variantToken = normalizeOfferCodeToken(variantName, `VAR${index + 1}`).slice(0, 14);
+  const offerToken = normalizeOfferCodeToken(buildOfferValueToken(config), 'OFFER').slice(0, 14);
+  return `RIPX-${testToken}-${variantToken}-${offerToken}`.slice(0, 48);
 }
 
 function hasSavedPriceConfigValue(cfg) {
@@ -919,9 +939,12 @@ function TestWizard({
   const [visualRuleHistoryByVariant, setVisualRuleHistoryByVariant] = useState({});
   const [_priceCardExpanded, _setPriceCardExpanded] = useState({}); // { variantIndex: boolean } — missing key = expanded (reserved for future use)
   const [priceAccordionExpandedIndices, setPriceAccordionExpandedIndices] = useState([]); // which variant accordions are open (array of indices; allows expand all)
+  const [offerAccordionExpandedIndices, setOfferAccordionExpandedIndices] = useState([]);
   const [quickFillRule, setQuickFillRule] = useState('percent_off'); // 'percent_off' | 'percent_on' | 'amount_off' | 'amount_on'
   const [quickFillValue, setQuickFillValue] = useState('');
   const [quickFillRoundTo, setQuickFillRoundTo] = useState(''); // '' | '0.01' | '0.25' | '0.50' | '1' — stored in variant config when applying
+  const [offerQuickType, setOfferQuickType] = useState('percent');
+  const [offerQuickValue, setOfferQuickValue] = useState('');
   const [exampleCatalogPrice, setExampleCatalogPrice] = useState(''); // optional $ for live preview
   const [exampleCompareAtPrice, setExampleCompareAtPrice] = useState(''); // optional compare-at basis for compare_at simulation
   const [catalogConfirmedForPriceTest, setCatalogConfirmedForPriceTest] = useState(false); // optional confirmation on Review (does not block submit)
@@ -936,6 +959,14 @@ function TestWizard({
       return;
     }
     setPriceAccordionExpandedIndices(prev => prev.filter(i => i >= 0 && i < n));
+  }, [formData.variants?.length]);
+  useEffect(() => {
+    const n = formData.variants?.length ?? 0;
+    if (n === 0) {
+      setOfferAccordionExpandedIndices([]);
+      return;
+    }
+    setOfferAccordionExpandedIndices(prev => prev.filter(i => i >= 0 && i < n));
   }, [formData.variants?.length]);
   const [changingSelectorIndex, setChangingSelectorIndex] = useState(null); // when set, next click in preview replaces this slot
   const visualSnippetPanelRef = useRef(null);
@@ -1093,6 +1124,7 @@ function TestWizard({
   const { domain: routeDomain } = useParams();
   const isShopifyFromRoute = routeDomain && isShopifyStoreDomain(routeDomain);
   const isStandalone = !isShopifyFromRoute && isStandaloneMode();
+  const canUseStoreProductPicker = !isStandalone && isShopifyFromRoute && Boolean(routeDomain);
   const contentTypesForStep = isStandalone
     ? TEST_TYPE_CATEGORIES.content.types.filter(t => STANDALONE_TEST_TYPE_IDS.includes(t.key))
     : TEST_TYPE_CATEGORIES.content.types;
@@ -1741,12 +1773,18 @@ function TestWizard({
     priceProductModalSelectionMode === 'exclude'
       ? excludedScopeProductIds
       : selectedScopeProductIds;
-  const openPriceProductModal = useCallback(mode => {
-    setPriceProductModalSelectionMode(mode === 'exclude' ? 'exclude' : 'include');
-    setPriceModalSearch('');
-    setPriceModalSearchDebounced('');
-    setPriceProductModalOpen(true);
-  }, []);
+  const openPriceProductModal = useCallback(
+    mode => {
+      if (!canUseStoreProductPicker) {
+        return;
+      }
+      setPriceProductModalSelectionMode(mode === 'exclude' ? 'exclude' : 'include');
+      setPriceModalSearch('');
+      setPriceModalSearchDebounced('');
+      setPriceProductModalOpen(true);
+    },
+    [canUseStoreProductPicker]
+  );
   const togglePriceModalProduct = useCallback(
     (productId, isSelected) => {
       setIsDirty(true);
@@ -4028,76 +4066,48 @@ function TestWizard({
                                 </div>
                                 {formData.target_type === 'product' && (
                                   <BlockStack gap="200">
-                                    <TextField
-                                      label="Selected product IDs"
-                                      value={
-                                        Array.isArray(formData.target_ids) &&
-                                        formData.target_ids.length > 0
-                                          ? formData.target_ids.join('\n')
-                                          : formData.target_id || ''
-                                      }
-                                      onChange={value => {
-                                        setIsDirty(true);
-                                        const ids = normalizeShopifyIdList(value, 'Product');
-                                        setFormData(prev => ({
-                                          ...prev,
-                                          target_ids: ids.length > 1 ? ids : null,
-                                          target_id: ids.length >= 1 ? ids[0] : '',
-                                        }));
-                                      }}
-                                      multiline={3}
-                                      autoComplete="off"
-                                      placeholder="gid://shopify/Product/123 or 123"
-                                      helpText="One product ID per line. Use GID or numeric ID."
-                                    />
-                                    {!isStandalone && isShopifyFromRoute && routeDomain && (
-                                      <InlineStack align="end">
-                                        <Button
-                                          size="slim"
-                                          onClick={() => openPriceProductModal('include')}
-                                        >
-                                          Choose product(s)
-                                        </Button>
-                                      </InlineStack>
+                                    <InlineStack align="space-between" blockAlign="center" wrap>
+                                      <Text as="span" variant="bodySm" tone="subdued">
+                                        Choose products from your store catalog for this test scope.
+                                      </Text>
+                                      <Button
+                                        size="slim"
+                                        variant="primary"
+                                        icon={ProductIcon}
+                                        onClick={() => openPriceProductModal('include')}
+                                        disabled={!canUseStoreProductPicker}
+                                      >
+                                        {`Choose products (${selectedScopeProductIds.length})`}
+                                      </Button>
+                                    </InlineStack>
+                                    {!canUseStoreProductPicker && (
+                                      <Text as="p" variant="bodySm" tone="subdued">
+                                        Product picker is available when connected to a Shopify
+                                        store.
+                                      </Text>
                                     )}
                                   </BlockStack>
                                 )}
                                 <BlockStack gap="200">
-                                  <TextField
-                                    label="Excluded product IDs (optional)"
-                                    value={(() => {
-                                      const ids = Array.isArray(
-                                        formData.segments?.excluded_product_ids
-                                      )
-                                        ? formData.segments.excluded_product_ids
-                                        : [];
-                                      return ids.join('\n');
-                                    })()}
-                                    onChange={value => {
-                                      setIsDirty(true);
-                                      const ids = normalizeShopifyIdList(value, 'Product');
-                                      setFormData(prev => ({
-                                        ...prev,
-                                        segments: {
-                                          ...prev.segments,
-                                          excluded_product_ids: ids,
-                                        },
-                                      }));
-                                    }}
-                                    multiline={3}
-                                    autoComplete="off"
-                                    placeholder="gid://shopify/Product/456"
-                                    helpText="Excluded products are skipped from bucketing/application even when scope is all products."
-                                  />
-                                  {!isStandalone && isShopifyFromRoute && routeDomain && (
-                                    <InlineStack align="end">
-                                      <Button
-                                        size="slim"
-                                        onClick={() => openPriceProductModal('exclude')}
-                                      >
-                                        Choose excluded product(s)
-                                      </Button>
-                                    </InlineStack>
+                                  <InlineStack align="space-between" blockAlign="center" wrap>
+                                    <Text as="span" variant="bodySm" tone="subdued">
+                                      Optional exclusions are always skipped from bucketing and
+                                      storefront application.
+                                    </Text>
+                                    <Button
+                                      size="slim"
+                                      icon={FilterIcon}
+                                      onClick={() => openPriceProductModal('exclude')}
+                                      disabled={!canUseStoreProductPicker}
+                                    >
+                                      {`Choose excluded (${excludedScopeProductIds.length})`}
+                                    </Button>
+                                  </InlineStack>
+                                  {!canUseStoreProductPicker && (
+                                    <Text as="p" variant="bodySm" tone="subdued">
+                                      Excluded-products picker is available when connected to a
+                                      Shopify store.
+                                    </Text>
                                   )}
                                 </BlockStack>
                               </BlockStack>
@@ -9441,92 +9451,462 @@ function TestWizard({
     </BlockStack>
   );
 
-  const renderVariantOfferModule = () => (
-    <BlockStack gap="400">
-      <Banner tone="info" title="Product scope follows Targeting step">
-        <Text as="p" variant="bodySm">
-          Offer tests follow the same product scope flow as price tests. Current scope:{' '}
-          <strong>
-            {formData.target_type === 'product' ? 'Selected products' : 'All products'}
-          </strong>
-          {Array.isArray(formData.segments?.excluded_product_ids) &&
-          formData.segments.excluded_product_ids.length > 0
-            ? ` with ${formData.segments.excluded_product_ids.length} excluded product(s).`
-            : '.'}
-        </Text>
-      </Banner>
-      <Banner tone="warning" title="Offers are not applied at checkout automatically">
-        <Text as="p" variant="bodySm">
-          RipX assigns the variant for analytics. To apply the discount at checkout, use a{' '}
-          <strong>Discount Function</strong> that reads cart attributes, or create discount codes
-          per variant and share them.{' '}
-          <Link to={`${ROUTES.DOCS}#tests`} rel="noopener noreferrer">
-            Test types &amp; docs →
-          </Link>
-        </Text>
-      </Banner>
-      <Text variant="bodyMd" color="subdued" as="p">
-        Configure the discount or offer for each variant.
-      </Text>
-      {(formData.variants || []).map((variant, index) => (
-        <Card key={`offer-${index}`} sectioned>
+  const renderVariantOfferModule = () => {
+    const offerVariants = formData.variants || [];
+    const nonControlIndices = offerVariants
+      .map((variant, index) => ({ variant, index }))
+      .filter(
+        ({ variant, index }) => !(index === 0 || /control/i.test(String(variant?.name || '')))
+      )
+      .map(({ index }) => index);
+    const requiredOfferVariantCount = nonControlIndices.length;
+    const offerConfiguredCount = offerVariants.reduce((count, variant, index) => {
+      const config = variant?.config || {};
+      const dtype = String(config.discount_type || 'percent')
+        .trim()
+        .toLowerCase();
+      const isControlLike = index === 0 || /control/i.test(String(variant?.name || ''));
+      const hasNumericValue =
+        config.discount_value !== null &&
+        config.discount_value !== undefined &&
+        String(config.discount_value).trim() !== '' &&
+        Number.isFinite(Number(config.discount_value));
+      const actionable = dtype === 'free_shipping' || hasNumericValue;
+      return count + (!isControlLike && actionable ? 1 : 0);
+    }, 0);
+    const offerConfiguredPercent =
+      requiredOfferVariantCount > 0
+        ? Math.max(
+            0,
+            Math.min(100, Math.round((offerConfiguredCount / requiredOfferVariantCount) * 100))
+          )
+        : 100;
+    const canApplyQuickOffer =
+      offerQuickType === 'free_shipping' ||
+      (offerQuickValue !== '' && Number.isFinite(Number(offerQuickValue)));
+
+    return (
+      <BlockStack gap="400">
+        <Banner tone="info" title="Product scope follows Targeting step">
+          <Text as="p" variant="bodySm">
+            Offer tests follow the same product scope flow as price tests. Current scope:{' '}
+            <strong>
+              {formData.target_type === 'product' ? 'Selected products' : 'All products'}
+            </strong>
+            {Array.isArray(formData.segments?.excluded_product_ids) &&
+            formData.segments.excluded_product_ids.length > 0
+              ? ` with ${formData.segments.excluded_product_ids.length} excluded product(s).`
+              : '.'}
+          </Text>
+        </Banner>
+        <Banner tone="warning" title="Offers are not applied at checkout automatically">
+          <Text as="p" variant="bodySm">
+            RipX assigns the variant for analytics. To apply the discount at checkout, use a{' '}
+            <strong>Discount Function</strong> that reads cart attributes, or create discount codes
+            per variant and share them.{' '}
+            <Link to={`${ROUTES.DOCS}#tests`} rel="noopener noreferrer">
+              Test types &amp; docs →
+            </Link>
+          </Text>
+        </Banner>
+
+        <Card>
           <BlockStack gap="300">
-            <Text variant="headingSm" as="h4" fontWeight="semibold">
-              {variant.name}
+            <InlineStack align="space-between" blockAlign="center" wrap>
+              <Text variant="headingSm" as="h3" fontWeight="semibold">
+                Offer setup tools
+              </Text>
+              <InlineStack gap="200" blockAlign="center" wrap>
+                <Badge tone="info">{`${offerVariants.length} variants`}</Badge>
+                <Badge tone={offerConfiguredCount > 0 ? 'success' : 'attention'}>
+                  {`${offerConfiguredCount} configured`}
+                </Badge>
+              </InlineStack>
+            </InlineStack>
+            <BlockStack gap="100">
+              <InlineStack align="space-between" blockAlign="center" wrap>
+                <Text as="span" variant="bodySm" tone="subdued">
+                  Readiness: {offerConfiguredCount}/{requiredOfferVariantCount} non-control variants
+                  configured
+                </Text>
+                <Badge tone={offerConfiguredPercent >= 100 ? 'success' : 'attention'} size="small">
+                  {offerConfiguredPercent}%
+                </Badge>
+              </InlineStack>
+              <div
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={offerConfiguredPercent}
+                aria-label="Offer variant configuration readiness"
+                style={{
+                  width: '100%',
+                  height: 8,
+                  borderRadius: 999,
+                  overflow: 'hidden',
+                  background: 'rgba(15, 23, 42, 0.12)',
+                }}
+              >
+                <div
+                  style={{
+                    width: `${offerConfiguredPercent}%`,
+                    height: '100%',
+                    borderRadius: 999,
+                    transition: 'width 180ms ease',
+                    background:
+                      offerConfiguredPercent >= 100
+                        ? 'linear-gradient(90deg, #10b981 0%, #34d399 100%)'
+                        : 'linear-gradient(90deg, #06b6d4 0%, #3b82f6 100%)',
+                  }}
+                />
+              </div>
+            </BlockStack>
+            <Text as="p" variant="bodySm" tone="subdued">
+              Apply a default offer to all non-control variants, then fine-tune each variant below.
             </Text>
-            <FormLayout>
-              <Select
-                label="Discount type"
-                options={[
-                  { label: 'Percentage off', value: 'percent' },
-                  { label: 'Fixed amount off', value: 'fixed' },
-                  { label: 'Free shipping', value: 'free_shipping' },
-                ]}
-                value={variant.config?.discount_type || 'percent'}
-                onChange={value => {
-                  const next = [...(formData.variants || [])];
-                  next[index] = {
-                    ...next[index],
-                    config: { ...next[index].config, discount_type: value },
-                  };
+            <InlineStack gap="200" blockAlign="end" wrap>
+              <div style={{ minWidth: 210 }}>
+                <Select
+                  label="Quick type"
+                  options={[
+                    { label: 'Percentage off', value: 'percent' },
+                    { label: 'Fixed amount off', value: 'fixed' },
+                    { label: 'Free shipping', value: 'free_shipping' },
+                  ]}
+                  value={offerQuickType}
+                  onChange={value => setOfferQuickType(value)}
+                />
+              </div>
+              <div style={{ minWidth: 170 }}>
+                <TextField
+                  label="Quick value"
+                  type="number"
+                  value={offerQuickType === 'free_shipping' ? '' : offerQuickValue}
+                  onChange={setOfferQuickValue}
+                  disabled={offerQuickType === 'free_shipping'}
+                  placeholder={offerQuickType === 'fixed' ? '5.00' : '10'}
+                  suffix={offerQuickType === 'percent' ? '%' : ''}
+                  prefix={offerQuickType === 'fixed' ? '$' : ''}
+                  helpText={
+                    offerQuickType === 'free_shipping' ? 'Not needed for free shipping' : ''
+                  }
+                  autoComplete="off"
+                />
+              </div>
+              <Button
+                size="slim"
+                variant="primary"
+                disabled={!nonControlIndices.length || !canApplyQuickOffer}
+                onClick={() => {
+                  if (!nonControlIndices.length) {
+                    return;
+                  }
+                  const quickNumeric =
+                    offerQuickType === 'free_shipping'
+                      ? null
+                      : offerQuickValue === ''
+                        ? null
+                        : parseFloat(offerQuickValue);
+                  if (offerQuickType !== 'free_shipping' && !Number.isFinite(quickNumeric)) {
+                    return;
+                  }
+                  setIsDirty(true);
+                  const next = [...offerVariants];
+                  nonControlIndices.forEach(idx => {
+                    const prevCfg =
+                      next[idx]?.config && typeof next[idx].config === 'object'
+                        ? next[idx].config
+                        : {};
+                    next[idx] = {
+                      ...next[idx],
+                      config: {
+                        ...prevCfg,
+                        discount_type: offerQuickType,
+                        discount_value: offerQuickType === 'free_shipping' ? null : quickNumeric,
+                      },
+                    };
+                  });
                   setFormData({ ...formData, variants: next });
                 }}
-              />
-              <TextField
-                label="Discount value"
-                type="number"
-                value={
-                  variant.config?.discount_value !== null &&
-                  variant.config?.discount_value !== undefined
-                    ? String(variant.config.discount_value)
-                    : ''
-                }
-                onChange={value => {
-                  const parsed = value === '' ? null : parseFloat(value);
-                  const next = [...(formData.variants || [])];
-                  next[index] = {
-                    ...next[index],
-                    config: { ...next[index].config, discount_value: parsed },
-                  };
-                  setFormData({ ...formData, variants: next });
-                }}
-                placeholder="10"
-                suffix={variant.config?.discount_type === 'percent' ? '%' : ''}
-                prefix={variant.config?.discount_type === 'fixed' ? '$' : ''}
-                helpText={
-                  variant.config?.discount_type === 'percent'
-                    ? 'e.g. 10 for 10%'
-                    : variant.config?.discount_type === 'fixed'
-                      ? 'Amount (e.g. 5.00)'
-                      : 'Leave empty for free shipping'
-                }
-              />
-            </FormLayout>
+              >
+                Apply to non-control variants
+              </Button>
+            </InlineStack>
           </BlockStack>
         </Card>
-      ))}
-    </BlockStack>
-  );
+
+        <Text variant="bodyMd" color="subdued" as="p">
+          Configure the offer logic for each variant below.
+        </Text>
+        {offerVariants.length > 0 && (
+          <div className={styles.priceAccordionActions}>
+            <InlineStack gap="200" blockAlign="center" wrap>
+              <Button
+                size="slim"
+                variant="plain"
+                onClick={() => setOfferAccordionExpandedIndices(offerVariants.map((_, idx) => idx))}
+              >
+                Expand all
+              </Button>
+              <Button
+                size="slim"
+                variant="plain"
+                onClick={() => setOfferAccordionExpandedIndices([])}
+              >
+                Collapse all
+              </Button>
+            </InlineStack>
+          </div>
+        )}
+        <div className={styles.priceVariantAccordionShell}>
+          <div className={styles.priceSummaryList}>
+            {offerVariants.map((variant, index) => {
+              const config = variant?.config || {};
+              const dtype = String(config.discount_type || 'percent')
+                .trim()
+                .toLowerCase();
+              const configuredCodeName = String(
+                config.discount_code_name || config.discountCodeName || ''
+              ).trim();
+              const autoCodeName = buildAutoOfferCodeName(
+                formData.name || 'Offer Test',
+                variant?.name || `Variant ${index + 1}`,
+                config,
+                index
+              );
+              const effectiveCodeName = configuredCodeName || autoCodeName;
+              const isControlLike = index === 0 || /control/i.test(String(variant?.name || ''));
+              const hasNumericValue =
+                config.discount_value !== null &&
+                config.discount_value !== undefined &&
+                String(config.discount_value).trim() !== '' &&
+                Number.isFinite(Number(config.discount_value));
+              const actionable = dtype === 'free_shipping' || hasNumericValue;
+              const numericOfferValue = hasNumericValue ? Number(config.discount_value) : null;
+              const offerRuleSummary =
+                dtype === 'free_shipping'
+                  ? 'Free shipping'
+                  : hasNumericValue
+                    ? dtype === 'fixed'
+                      ? `$${numericOfferValue.toFixed(2)} off`
+                      : `${numericOfferValue}% off`
+                    : 'No discount set';
+              const isExpanded = offerAccordionExpandedIndices.includes(index);
+
+              return (
+                <div
+                  key={`offer-${index}`}
+                  className={styles.priceSummaryAccordionItem}
+                  style={{ ['--variant-accent']: getVariantColor(index) }}
+                >
+                  <button
+                    type="button"
+                    className={`${styles.priceSummaryRow} ${styles.priceSummaryRowClickable} ${
+                      isExpanded ? styles.priceSummaryRowExpanded : ''
+                    }`}
+                    onClick={() =>
+                      setOfferAccordionExpandedIndices(prev =>
+                        prev.includes(index) ? prev.filter(idx => idx !== index) : [...prev, index]
+                      )
+                    }
+                    aria-expanded={isExpanded}
+                    aria-controls={`offer-accordion-body-${index}`}
+                    id={`offer-accordion-head-${index}`}
+                  >
+                    <span className={styles.priceSummaryRowMain}>
+                      <span className={styles.priceSummaryRowEyebrow}>
+                        Variant {index + 1} of {offerVariants.length}
+                      </span>
+                      <span className={styles.priceSummaryRowVariant}>{variant.name}</span>
+                      <span className={styles.priceSummaryRowMetaChips}>
+                        <Badge tone="info" size="small">
+                          {`${variant.allocation ?? 0}% traffic`}
+                        </Badge>
+                        <Badge
+                          tone={isControlLike ? 'info' : actionable ? 'success' : 'attention'}
+                          size="small"
+                        >
+                          {isControlLike ? 'Control' : actionable ? 'Configured' : 'Needs config'}
+                        </Badge>
+                        {dtype === 'free_shipping' && !isControlLike && (
+                          <Badge tone="success" size="small">
+                            Free shipping
+                          </Badge>
+                        )}
+                      </span>
+                      <span
+                        className={`${styles.priceSummaryStatusPill} ${
+                          isExpanded
+                            ? styles.priceSummaryStatusPillActive
+                            : styles.priceSummaryStatusPillMuted
+                        }`}
+                      >
+                        {isExpanded ? 'Editing now' : 'Open configuration'}
+                      </span>
+                    </span>
+                    <span className={styles.priceSummaryRowDetails}>
+                      <span className={styles.priceSummaryInfoBlock}>
+                        <span className={styles.priceSummaryInfoLabel}>Offer rule</span>
+                        <span className={styles.priceSummaryInfoValue} title={offerRuleSummary}>
+                          {offerRuleSummary}
+                        </span>
+                      </span>
+                      <span className={styles.priceSummaryInfoBlock}>
+                        <span className={styles.priceSummaryInfoLabel}>Code name</span>
+                        <span className={styles.priceSummaryInfoValue} title={effectiveCodeName}>
+                          {effectiveCodeName}
+                        </span>
+                      </span>
+                    </span>
+                    <span className={styles.priceSummaryAccordionChevron} aria-hidden>
+                      <Icon source={ChevronDownIcon} />
+                    </span>
+                  </button>
+                  <Collapsible id={`offer-accordion-body-${index}`} open={isExpanded}>
+                    <div className={styles.priceAccordionBody}>
+                      <Card sectioned>
+                        <BlockStack gap="300">
+                          {isControlLike && (
+                            <InlineStack align="space-between" blockAlign="center" wrap>
+                              <Text as="p" variant="bodySm" tone="subdued">
+                                Keep control clean (no offer) for a reliable baseline.
+                              </Text>
+                              <Button
+                                size="slim"
+                                variant="plain"
+                                tone="critical"
+                                onClick={() => {
+                                  setIsDirty(true);
+                                  const next = [...offerVariants];
+                                  next[index] = {
+                                    ...next[index],
+                                    config: {
+                                      ...next[index]?.config,
+                                      discount_type: 'percent',
+                                      discount_value: null,
+                                    },
+                                  };
+                                  setFormData({ ...formData, variants: next });
+                                }}
+                              >
+                                Clear control offer
+                              </Button>
+                            </InlineStack>
+                          )}
+
+                          <FormLayout>
+                            <Select
+                              label={`${variant.name} discount type`}
+                              options={[
+                                { label: 'Percentage off', value: 'percent' },
+                                { label: 'Fixed amount off', value: 'fixed' },
+                                { label: 'Free shipping', value: 'free_shipping' },
+                              ]}
+                              value={dtype}
+                              onChange={value => {
+                                setIsDirty(true);
+                                const next = [...offerVariants];
+                                const prevCfg =
+                                  next[index]?.config && typeof next[index].config === 'object'
+                                    ? next[index].config
+                                    : {};
+                                next[index] = {
+                                  ...next[index],
+                                  config: {
+                                    ...prevCfg,
+                                    discount_type: value,
+                                    discount_value:
+                                      value === 'free_shipping'
+                                        ? null
+                                        : (prevCfg.discount_value ?? null),
+                                  },
+                                };
+                                setFormData({ ...formData, variants: next });
+                              }}
+                            />
+                            <TextField
+                              label={`${variant.name} discount value`}
+                              type="number"
+                              value={
+                                dtype === 'free_shipping'
+                                  ? ''
+                                  : config.discount_value !== null &&
+                                      config.discount_value !== undefined
+                                    ? String(config.discount_value)
+                                    : ''
+                              }
+                              disabled={dtype === 'free_shipping'}
+                              onChange={value => {
+                                setIsDirty(true);
+                                const parsed = value === '' ? null : parseFloat(value);
+                                const next = [...offerVariants];
+                                const prevCfg =
+                                  next[index]?.config && typeof next[index].config === 'object'
+                                    ? next[index].config
+                                    : {};
+                                next[index] = {
+                                  ...next[index],
+                                  config: {
+                                    ...prevCfg,
+                                    discount_value: parsed,
+                                  },
+                                };
+                                setFormData({ ...formData, variants: next });
+                              }}
+                              placeholder={dtype === 'fixed' ? '5.00' : '10'}
+                              suffix={dtype === 'percent' ? '%' : ''}
+                              prefix={dtype === 'fixed' ? '$' : ''}
+                              helpText={
+                                dtype === 'percent'
+                                  ? 'e.g. 10 for 10% off'
+                                  : dtype === 'fixed'
+                                    ? 'Amount in store currency, e.g. 5.00'
+                                    : 'Free shipping selected; value is not required.'
+                              }
+                              autoComplete="off"
+                            />
+                            <TextField
+                              label={`${variant.name} discount code name`}
+                              value={configuredCodeName}
+                              placeholder={autoCodeName}
+                              onChange={value => {
+                                setIsDirty(true);
+                                const normalized = String(value || '')
+                                  .toUpperCase()
+                                  .replace(/[^A-Z0-9_-]+/g, '-')
+                                  .replace(/-+/g, '-')
+                                  .replace(/^-|-$/g, '')
+                                  .slice(0, 48);
+                                const next = [...offerVariants];
+                                const prevCfg =
+                                  next[index]?.config && typeof next[index].config === 'object'
+                                    ? next[index].config
+                                    : {};
+                                next[index] = {
+                                  ...next[index],
+                                  config: {
+                                    ...prevCfg,
+                                    discount_code_name: normalized,
+                                  },
+                                };
+                                setFormData({ ...formData, variants: next });
+                              }}
+                              autoComplete="off"
+                              helpText={`Shown on cart and checkout for this variant. Leave empty to use auto name: ${autoCodeName}`}
+                            />
+                          </FormLayout>
+                        </BlockStack>
+                      </Card>
+                    </div>
+                  </Collapsible>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </BlockStack>
+    );
+  };
 
   const renderVariantThemeModule = () => (
     <BlockStack gap="400">

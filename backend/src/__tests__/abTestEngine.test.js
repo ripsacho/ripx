@@ -261,4 +261,26 @@ describe('ABTestEngine.validateTest theme contract', () => {
     });
     expect(result.isValid).toBe(true);
   });
+
+  it('rejects invalid offer discount code name format', () => {
+    const result = ABTestEngine.validateTest({
+      name: 'Offer code format',
+      type: 'offer',
+      goal: { type: 'conversion' },
+      variants: [
+        { name: 'Control', allocation: 50, config: {} },
+        {
+          name: 'Variant A',
+          allocation: 50,
+          config: {
+            discount_type: 'percent',
+            discount_value: 10,
+            discount_code_name: 'BAD CODE!*',
+          },
+        },
+      ],
+    });
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some(err => err.includes('discount code name'))).toBe(true);
+  });
 });

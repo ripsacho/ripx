@@ -103,6 +103,35 @@ export function isEmbeddedInIframe() {
   return typeof window !== 'undefined' && window.self !== window.top;
 }
 
+/**
+ * Open a centered popup window and return the window handle.
+ * Returns null when the popup was blocked or inputs are invalid.
+ */
+export function openCenteredPopup(url, options = {}) {
+  if (typeof window === 'undefined') return null;
+  if (typeof url !== 'string' || !url.trim()) return null;
+  const width = Number(options?.width) > 0 ? Number(options.width) : 980;
+  const height = Number(options?.height) > 0 ? Number(options.height) : 820;
+  const name =
+    typeof options?.name === 'string' && options.name.trim()
+      ? options.name.trim()
+      : 'ripx-shopify-connect';
+  const screenWidth = window.screen?.width || window.innerWidth || width;
+  const screenHeight = window.screen?.height || window.innerHeight || height;
+  const left = Math.max(0, Math.floor((screenWidth - width) / 2));
+  const top = Math.max(0, Math.floor((screenHeight - height) / 2));
+  const features = [
+    'popup=yes',
+    'resizable=yes',
+    'scrollbars=yes',
+    `width=${width}`,
+    `height=${height}`,
+    `left=${left}`,
+    `top=${top}`,
+  ].join(',');
+  return window.open(url, name, features);
+}
+
 /** Base path when app is opened via Shopify Admin (e.g. /store/{shop}/apps/{handle}). */
 export function getEmbeddedAppBasePath(pathname) {
   const sourcePath =

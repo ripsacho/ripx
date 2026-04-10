@@ -72,6 +72,9 @@ const INTEGRATIONS_CONFIG = [
 ];
 
 const OFFER_CHECKOUT_FUNCTION_TITLE = 'RipX Offer Checkout Function';
+const CHECKOUT_DIAG_CACHE_PREFIX = 'ripx_checkout_diag_cache_v1:';
+const CHECKOUT_DIAG_STALE_AFTER_MS = 15 * 60 * 1000;
+const CHECKOUT_DIAG_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** One-click presets for autonomous configuration */
 const SETTINGS_PRESETS = {
@@ -156,6 +159,55 @@ function formatRelativeTime(iso) {
   if (hours < 24) return `${hours} hr ago`;
   if (days < 7) return `${days} day${days > 1 ? 's' : ''} ago`;
   return d.toLocaleDateString();
+}
+
+function getCheckoutDiagCacheKey(domain) {
+  const normalized = String(domain || '')
+    .trim()
+    .toLowerCase();
+  return normalized ? `${CHECKOUT_DIAG_CACHE_PREFIX}${normalized}` : null;
+}
+
+function readCheckoutDiagCache(domain) {
+  if (typeof window === 'undefined') return null;
+  const key = getCheckoutDiagCacheKey(domain);
+  if (!key) return null;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    const checkedAt = String(parsed.checkedAt || '').trim();
+    const data = parsed.data && typeof parsed.data === 'object' ? parsed.data : null;
+    if (!checkedAt || !data) return null;
+    const checkedMs = new Date(checkedAt).getTime();
+    if (!Number.isFinite(checkedMs)) return null;
+    const ageMs = Date.now() - checkedMs;
+    if (ageMs > CHECKOUT_DIAG_CACHE_MAX_AGE_MS) {
+      window.localStorage.removeItem(key);
+      return null;
+    }
+    return { checkedAt, data, ageMs };
+  } catch {
+    return null;
+  }
+}
+
+function writeCheckoutDiagCache(domain, checkedAt, data) {
+  if (typeof window === 'undefined') return;
+  const key = getCheckoutDiagCacheKey(domain);
+  if (!key || !checkedAt || !data) return;
+  try {
+    window.localStorage.setItem(
+      key,
+      JSON.stringify({
+        checkedAt,
+        data,
+      })
+    );
+  } catch {
+    // Ignore localStorage failures.
+  }
 }
 
 /** Full app settings (inside /app/:domain) – installation, test config, webhooks, integrations, presets */
@@ -299,6 +351,7 @@ function Settings() {
   const [checkoutDiagLoading, setCheckoutDiagLoading] = useState(false);
   const [checkoutDiag, setCheckoutDiag] = useState(null);
   const [checkoutDiagError, setCheckoutDiagError] = useState(null);
+  const [checkoutDiagLastCheckedAt, setCheckoutDiagLastCheckedAt] = useState(null);
   const [checkoutDiscountEnsuring, setCheckoutDiscountEnsuring] = useState(false);
   const [checkoutDiscountEnsureResult, setCheckoutDiscountEnsureResult] = useState(null);
   const [checkoutDiscountEnsureError, setCheckoutDiscountEnsureError] = useState(null);
@@ -337,6 +390,7 @@ function Settings() {
     }
   });
   const autoDiscountSetupHandledRef = useRef(false);
+  const checkoutDiagAutoRefreshRef = useRef({});
   const settingsBodyRef = useRef(null);
   const appSectionNodesRef = useRef({});
   const [previewProbeTestId, setPreviewProbeTestId] = useState('');
@@ -354,6 +408,11 @@ function Settings() {
   const [activeAppSectionId, setActiveAppSectionId] = useState(APP_SETTINGS_SECTION_IDS[0]);
   const [activeRailTooltipId, setActiveRailTooltipId] = useState(null);
   const railTooltipTimerRef = useRef(null);
+  const checkoutDiagRef = useRef(null);
+
+  useEffect(() => {
+    checkoutDiagRef.current = checkoutDiag;
+  }, [checkoutDiag]);
 
   useEffect(() => {
     if (!isGuidedSetupMode) return;
@@ -519,25 +578,37 @@ function Settings() {
     }
   }, [installation?.domain]);
 
-  const runCheckoutDiagnostics = useCallback(async () => {
-    if (!installation?.domain) return;
-    setCheckoutDiagLoading(true);
-    setCheckoutDiagError(null);
-    setCheckoutDiag(null);
-    try {
-      const res = await apiGet('/settings/checkout-price-diagnostics');
-      const data = unwrapData(res);
-      if (!data || data.success === false) {
-        throw new Error(data?.error || 'Invalid diagnostics response');
+  const runCheckoutDiagnostics = useCallback(
+    async (options = {}) => {
+      const { silentError = false } = options || {};
+      if (!installation?.domain) return;
+      setCheckoutDiagLoading(true);
+      setCheckoutDiagError(null);
+      try {
+        const res = await apiGet('/settings/checkout-price-diagnostics');
+        const data = unwrapData(res);
+        if (!data || data.success === false) {
+          throw new Error(data?.error || 'Invalid diagnostics response');
+        }
+        const checkedAt =
+          typeof data?.timestamp === 'string' && data.timestamp.trim()
+            ? data.timestamp.trim()
+            : new Date().toISOString();
+        setCheckoutDiag(data);
+        setCheckoutDiagLastCheckedAt(checkedAt);
+        writeCheckoutDiagCache(installation.domain, checkedAt, data);
+        checkoutDiagAutoRefreshRef.current[String(installation.domain).toLowerCase()] = Date.now();
+        await fetchShopifyFnInventory();
+      } catch (e) {
+        if (!(silentError && checkoutDiagRef.current)) {
+          setCheckoutDiagError(e?.message || 'Could not load diagnostics');
+        }
+      } finally {
+        setCheckoutDiagLoading(false);
       }
-      setCheckoutDiag(data);
-      await fetchShopifyFnInventory();
-    } catch (e) {
-      setCheckoutDiagError(e?.message || 'Could not load diagnostics');
-    } finally {
-      setCheckoutDiagLoading(false);
-    }
-  }, [installation?.domain, fetchShopifyFnInventory]);
+    },
+    [installation?.domain, fetchShopifyFnInventory]
+  );
 
   const ensureCartTransform = useCallback(async () => {
     if (!installation?.domain) return;
@@ -823,6 +894,54 @@ function Settings() {
   useEffect(() => {
     if (isAppSettings) fetchInstallation();
   }, [isAppSettings, fetchInstallation]);
+
+  useEffect(() => {
+    if (!isAppSettings) return;
+    const domain = String(installation?.domain || '')
+      .trim()
+      .toLowerCase();
+    if (!domain) {
+      setCheckoutDiag(null);
+      setCheckoutDiagLastCheckedAt(null);
+      return;
+    }
+    const cached = readCheckoutDiagCache(domain);
+    if (cached?.data) {
+      setCheckoutDiag(cached.data);
+      setCheckoutDiagLastCheckedAt(cached.checkedAt);
+      setCheckoutDiagError(null);
+      return;
+    }
+    setCheckoutDiag(null);
+    setCheckoutDiagLastCheckedAt(null);
+  }, [isAppSettings, installation?.domain]);
+
+  useEffect(() => {
+    if (!isAppSettings) return;
+    const domain = String(installation?.domain || '')
+      .trim()
+      .toLowerCase();
+    if (!domain || checkoutDiagLoading) return;
+
+    const lastCheckedMs = checkoutDiagLastCheckedAt
+      ? new Date(checkoutDiagLastCheckedAt).getTime()
+      : NaN;
+    const hasFreshTimestamp = Number.isFinite(lastCheckedMs);
+    const ageMs = hasFreshTimestamp ? Date.now() - lastCheckedMs : Number.POSITIVE_INFINITY;
+    const shouldAutoRefresh = ageMs > CHECKOUT_DIAG_STALE_AFTER_MS;
+    if (!shouldAutoRefresh) return;
+
+    const lastAutoAttempt = Number(checkoutDiagAutoRefreshRef.current[domain] || 0);
+    if (Date.now() - lastAutoAttempt < 30000) return;
+    checkoutDiagAutoRefreshRef.current[domain] = Date.now();
+    runCheckoutDiagnostics({ silentError: true });
+  }, [
+    isAppSettings,
+    installation?.domain,
+    checkoutDiagLastCheckedAt,
+    checkoutDiagLoading,
+    runCheckoutDiagnostics,
+  ]);
 
   const handleCopy = useCallback(async (text, successMsg = 'Copied') => {
     if (!text) return;
@@ -1267,6 +1386,16 @@ function Settings() {
     }
     return 'Setup incomplete: required checks are not passing yet (script, diagnostics, tenant, or running price test).';
   }, [storeHealth.supportLevel]);
+  const checkoutDiagCheckedLabel = useMemo(
+    () => formatRelativeTime(checkoutDiagLastCheckedAt),
+    [checkoutDiagLastCheckedAt]
+  );
+  const checkoutDiagIsStale = useMemo(() => {
+    if (!checkoutDiagLastCheckedAt) return true;
+    const checkedMs = new Date(checkoutDiagLastCheckedAt).getTime();
+    if (!Number.isFinite(checkedMs)) return true;
+    return Date.now() - checkedMs > CHECKOUT_DIAG_STALE_AFTER_MS;
+  }, [checkoutDiagLastCheckedAt]);
   const priceMethodReadiness = useMemo(() => {
     const discountFunctionAvailable =
       checkoutDiag?.infrastructure?.discount_function_available === true;
@@ -2412,7 +2541,7 @@ function Settings() {
                                             checkoutDiagLoading || checkoutFullVerifyRunning
                                           }
                                         >
-                                          Run check
+                                          Run check now
                                         </Button>
                                         <Button
                                           onClick={ensureCartTransform}
@@ -2446,6 +2575,20 @@ function Settings() {
                                         </Button>
                                       </InlineStack>
                                       <InlineStack gap="200" blockAlign="center" wrap>
+                                        {checkoutDiagCheckedLabel && (
+                                          <>
+                                            <Badge
+                                              tone={checkoutDiagIsStale ? 'attention' : 'success'}
+                                            >
+                                              {checkoutDiagIsStale
+                                                ? 'Status may be stale'
+                                                : 'Status fresh'}
+                                            </Badge>
+                                            <Text as="span" variant="bodySm" tone="subdued">
+                                              Last checked {checkoutDiagCheckedLabel}
+                                            </Text>
+                                          </>
+                                        )}
                                         {(checkoutDiag || installation) && (
                                           <Badge tone={storeHealth.ready ? 'success' : 'warning'}>
                                             {storeHealth.ready

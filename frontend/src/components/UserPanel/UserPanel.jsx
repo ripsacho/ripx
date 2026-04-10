@@ -32,6 +32,7 @@ import {
   getConnectUrl,
   getUrlWithEmbedParams,
   getNavigateToWithEmbed,
+  openCenteredPopup,
 } from '../../services';
 import { isShopifyStoreDomain, normalizeShopifyDomain } from '../../utils/shopifyAdmin';
 import { useAdminMe } from '../../hooks';
@@ -147,16 +148,22 @@ function UserPanel() {
               });
               const url = unwrapData(startRes)?.redirectUrl;
               if (url) {
-                if (isEmbeddedInIframe()) window.open(url, '_blank', 'noopener,noreferrer');
-                else window.top.location.href = url;
+                const popup = openCenteredPopup(url);
+                if (!popup) {
+                  if (isEmbeddedInIframe()) window.open(url, '_blank', 'noopener,noreferrer');
+                  else window.top.location.href = url;
+                }
                 return;
               }
             } catch {
               /* fallback to same-origin OAuth (cookie may be set) */
             }
             const fallbackUrl = `${origin}/api/auth?shop=${encodeURIComponent(normalized)}${origin ? `&callback_base=${encodeURIComponent(origin)}` : ''}`;
-            if (isEmbeddedInIframe()) window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
-            else window.top.location.href = fallbackUrl;
+            const popup = openCenteredPopup(fallbackUrl);
+            if (!popup) {
+              if (isEmbeddedInIframe()) window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
+              else window.top.location.href = fallbackUrl;
+            }
           }
         } catch (err) {
           if (err?.response?.status === 401) {

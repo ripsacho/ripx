@@ -1041,7 +1041,18 @@ class ABTestEngine {
             .trim()
             .toLowerCase();
           const discountValue = cfg.discount_value;
+          const discountCodeName = String(
+            cfg.discount_code_name ?? cfg.discountCodeName ?? ''
+          ).trim();
           const isControl = isLikelyControlVariant(variant, index);
+          if (
+            discountCodeName &&
+            (discountCodeName.length > 48 || !/^[A-Za-z0-9_-]+$/.test(discountCodeName))
+          ) {
+            errors.push(
+              `Variant ${index + 1}: discount code name must be <= 48 chars and use letters, numbers, "-" or "_"`
+            );
+          }
           if (!['percent', 'fixed', 'free_shipping'].includes(discountType)) {
             errors.push(
               `Variant ${index + 1}: discount_type must be one of percent, fixed, free_shipping`

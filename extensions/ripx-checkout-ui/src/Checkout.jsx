@@ -38,6 +38,44 @@ function getAttribute(attributes, key) {
   return String(hit?.value || '').trim();
 }
 
+function normalizeOfferCodeToken(rawValue, fallback = 'VARIANT') {
+  const token = String(rawValue || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 20);
+  return token || String(fallback || 'VARIANT');
+}
+
+function buildOfferValueToken(config = {}) {
+  const discountType = String(config.discount_type || '')
+    .trim()
+    .toLowerCase();
+  if (discountType === 'free_shipping') {
+    return 'SHIP';
+  }
+  const rawValue = config.discount_value;
+  const numericValue =
+    rawValue !== null && rawValue !== undefined && rawValue !== '' ? Number(rawValue) : NaN;
+  const valueToken = Number.isFinite(numericValue)
+    ? String(numericValue).replace('.', '_')
+    : discountType === 'fixed'
+      ? 'FIXED'
+      : 'PCT';
+  if (discountType === 'fixed') {
+    return `${valueToken}OFF`;
+  }
+  return `${valueToken}PCT`;
+}
+
+function buildAutoOfferCodeName(testId, variantName, config = {}) {
+  const testToken = normalizeOfferCodeToken(testId, 'TEST').slice(0, 14);
+  const variantToken = normalizeOfferCodeToken(variantName, 'VARIANT').slice(0, 14);
+  const offerToken = normalizeOfferCodeToken(buildOfferValueToken(config), 'OFFER').slice(0, 14);
+  return `RIPX-${testToken}-${variantToken}-${offerToken}`.slice(0, 48);
+}
+
 function CheckoutExperiment() {
   const attributes = useAttributes() || [];
   const checkoutToken = useCheckoutToken();
@@ -189,8 +227,19 @@ function CheckoutExperiment() {
   const variantName = String(
     assignment?.variant_name || assignment?.variant_id || 'Assigned'
   ).trim();
+  const discountType = String(cfg.discount_type || '')
+    .trim()
+    .toLowerCase();
+  const hasOfferConfig =
+    ['percent', 'fixed', 'free_shipping'].includes(discountType) ||
+    cfg.discount_code_name !== undefined ||
+    cfg.discountCodeName !== undefined;
+  const discountCodeName =
+    String(cfg.discount_code_name || cfg.discountCodeName || '').trim() ||
+    buildAutoOfferCodeName(testId || assignment?.test_id || 'test', variantName, cfg);
   const title =
-    String(cfg.checkout_title || cfg.title || '').trim() || `RipX Variant: ${variantName}`;
+    String(cfg.checkout_title || cfg.title || '').trim() ||
+    (hasOfferConfig ? `Offer variant: ${variantName}` : `RipX Variant: ${variantName}`);
   const message = String(cfg.checkout_message || cfg.message || '').trim();
   const cta = String(cfg.checkout_cta_label || cfg.cta_label || 'Track conversion').trim();
 
@@ -226,6 +275,7 @@ function CheckoutExperiment() {
       's-banner',
       { heading: title, tone: 'success' },
       message ? h('s-text', null, message) : null,
+      hasOfferConfig ? h('s-text', null, `Discount code: ${discountCodeName}`) : null,
       h('s-text', null, `Test ID: ${testId}`),
       h(
         's-button',

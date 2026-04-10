@@ -106,6 +106,11 @@
     var ty = String(test.type).toLowerCase();
     return ty === 'price' || ty === 'pricing';
   }
+  function testTypeIsOffer(test) {
+    if (!test || test.type === undefined || test.type === null) return false;
+    var ty = String(test.type).toLowerCase();
+    return ty === 'offer';
+  }
   function getTemplateKeyForTest(test) {
     if (!test || typeof test !== 'object') return '';
     return String(test.templateKey || test.template_key || '')
@@ -5010,6 +5015,161 @@
     return null;
   }
 
+  function normalizeOfferCodeToken(rawValue, fallback) {
+    var token = String(rawValue || '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 20);
+    return token || String(fallback || 'VARIANT');
+  }
+
+  function buildOfferValueToken(config) {
+    var cfg = config && typeof config === 'object' ? config : {};
+    var discountType = String(cfg.discount_type || '')
+      .trim()
+      .toLowerCase();
+    if (discountType === 'free_shipping') {
+      return 'SHIP';
+    }
+    var rawValue = cfg.discount_value;
+    var numericValue =
+      rawValue !== null && rawValue !== undefined && rawValue !== '' ? Number(rawValue) : NaN;
+    var valueToken = isFinite(numericValue)
+      ? String(numericValue).replace('.', '_')
+      : discountType === 'fixed'
+        ? 'FIXED'
+        : 'PCT';
+    if (discountType === 'fixed') {
+      return valueToken + 'OFF';
+    }
+    return valueToken + 'PCT';
+  }
+
+  function buildAutoOfferCodeName(test, variant) {
+    var cfg = variant && variant.config && typeof variant.config === 'object' ? variant.config : {};
+    var testToken = normalizeOfferCodeToken(test && (test.name || test.id), 'TEST').slice(0, 14);
+    var variantToken = normalizeOfferCodeToken(
+      variant && (variant.variantName || variant.name || variant.variantId || variant.id),
+      'VARIANT'
+    ).slice(0, 14);
+    var offerToken = normalizeOfferCodeToken(buildOfferValueToken(cfg), 'OFFER').slice(0, 14);
+    return ('RIPX-' + testToken + '-' + variantToken + '-' + offerToken).slice(0, 48);
+  }
+
+  function getOfferCodeNameForVariant(test, variant) {
+    var cfg = variant && variant.config && typeof variant.config === 'object' ? variant.config : {};
+    var explicit = String(cfg.discount_code_name || cfg.discountCodeName || '').trim();
+    if (explicit) return explicit;
+    return buildAutoOfferCodeName(test, variant);
+  }
+
+  function shouldShowOfferCodeOnCart(test) {
+    if (!testTypeIsOffer(test)) return false;
+    if (!(isCartSurface() || hasCartUiInDom())) return false;
+
+    var tt = getNormalizedTargetType(test);
+    if (!isProductScopeTargetType(tt)) return false;
+    var cartIds = getCartVisibleProductTargetIds();
+    if (!cartIds.length) return false;
+
+    if (tt === 'all-products' || tt === 'all_products') {
+      return cartIds.some(function (pid) {
+        return !isExcludedProductForTest(test, pid);
+      });
+    }
+
+    var ids =
+      test.targetIds || (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
+    if (!ids.length) return false;
+    return cartIds.some(function (pid) {
+      if (isExcludedProductForTest(test, pid)) return false;
+      return ids.some(function (id) {
+        return id && gidMatches(id, pid);
+      });
+    });
+  }
+
+  function clearOfferCodeNotices() {
+    try {
+      var existing = document.querySelector('[data-ripx-offer-code-container]');
+      if (existing && existing.parentNode) {
+        existing.parentNode.removeChild(existing);
+      }
+    } catch (e) {}
+  }
+
+  function getOfferCodeNoticeContainer() {
+    try {
+      var existing = document.querySelector('[data-ripx-offer-code-container]');
+      if (existing) return existing;
+      var mount =
+        document.querySelector(
+          '[data-ripx-native-cart-block], .cart__footer, .cart-footer, form[action*="/cart"], .cart__contents, .cart-drawer__footer, .drawer--cart, aside.mini-cart'
+        ) || null;
+      if (!mount) return null;
+      var container = document.createElement('div');
+      container.setAttribute('data-ripx-offer-code-container', '1');
+      container.style.margin = '12px 0';
+      container.style.padding = '10px 12px';
+      container.style.borderRadius = '10px';
+      container.style.border = '1px solid rgba(6,182,212,0.32)';
+      container.style.background = 'rgba(6,182,212,0.08)';
+      if (mount.firstChild) mount.insertBefore(container, mount.firstChild);
+      else mount.appendChild(container);
+      return container;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function upsertOfferCodeNotice(test, variant) {
+    if (!shouldShowOfferCodeOnCart(test) || !variant) return;
+    var codeName = getOfferCodeNameForVariant(test, variant);
+    if (!codeName) return;
+
+    var container = getOfferCodeNoticeContainer();
+    if (!container) return;
+    var testId = String((test && test.id) || '');
+    if (!testId) return;
+
+    var row = null;
+    var rows = container.querySelectorAll('[data-ripx-offer-code-test]');
+    Array.prototype.forEach.call(rows, function (node) {
+      if (row) return;
+      if (String(node.getAttribute('data-ripx-offer-code-test') || '') === testId) {
+        row = node;
+      }
+    });
+
+    if (!row) {
+      row = document.createElement('div');
+      row.setAttribute('data-ripx-offer-code-test', testId);
+      row.style.display = 'flex';
+      row.style.alignItems = 'center';
+      row.style.justifyContent = 'space-between';
+      row.style.gap = '8px';
+      row.style.flexWrap = 'wrap';
+      row.style.margin = '4px 0';
+      container.appendChild(row);
+    }
+
+    var label =
+      'Offer code (' + String(variant.variantName || variant.name || 'Variant').trim() + '):';
+    row.textContent = '';
+    var left = document.createElement('span');
+    left.style.fontSize = '12px';
+    left.style.color = '#0f172a';
+    left.textContent = label;
+    var right = document.createElement('strong');
+    right.style.fontSize = '12px';
+    right.style.letterSpacing = '0.04em';
+    right.textContent = codeName;
+    row.appendChild(left);
+    row.appendChild(right);
+  }
+
   /**
    * Check if current page matches test target (single or multiple); supports product and collection.
    */
@@ -5094,6 +5254,7 @@
   function shouldRunPriceTestOnCurrentPage(test) {
     if (!test) return false;
     if (matchesTarget(test)) return true;
+    if (testTypeIsOffer(test) && shouldShowOfferCodeOnCart(test)) return true;
     if (shouldRunPriceTestOnListingSurface(test)) return true;
     if (testTypeIsPrice(test)) {
       var tt = getNormalizedTargetType(test);
@@ -5315,6 +5476,7 @@
         }
         var guardEnabled = hasAntiFlickerEligibleTests(testsToRun);
         if (guardEnabled) installAntiFlickerGuard();
+        clearOfferCodeNotices();
 
         testsToRun.forEach(function (test) {
           const shouldTrackAntiFlicker = guardEnabled && shouldUseAntiFlickerForTest(test);
@@ -5366,6 +5528,9 @@
                 }
                 if (matched && testTypeIsPrice(test) && variant && !variant.config) {
                   injectPreviewCartAttributesWhenConfigMissing(test.id, variant);
+                }
+                if (testTypeIsOffer(test) && shouldShowOfferCodeOnCart(test)) {
+                  upsertOfferCodeNotice(test, variant);
                 }
                 if (matched) {
                   if (

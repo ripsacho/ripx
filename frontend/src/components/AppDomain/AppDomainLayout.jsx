@@ -2,10 +2,10 @@
  * Layout for domain-scoped AB test app (/app/:domain/*).
  * Syncs :domain from URL to current store. For Shopify stores without an API key,
  * verifies the store is connected (session exists) before showing the app.
- * If not connected, redirects to the Shopify OAuth flow to connect that store first.
+ * If not connected, shows an in-place connect gate that can launch OAuth in a popup.
  */
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, Navigate, Outlet } from 'react-router-dom';
 import { BlockStack } from '@shopify/polaris';
 import { useQuery } from '@tanstack/react-query';
@@ -17,11 +17,14 @@ import {
   getDomainKeys,
   hasEmailSession,
   apiGet,
+  openCenteredPopup,
 } from '../../services';
 import { isShopifyStoreDomain, normalizeShopifyDomain } from '../../utils/shopifyAdmin';
 import { RouteLoading } from '../LoadingSkeleton/RouteLoading';
 import ShopifyConnectionBanner from './ShopifyConnectionBanner';
+import ConnectStoreGate from './ConnectStoreGate';
 import Toast from '../Toast/Toast';
+import { OAUTH_SUCCESS_MESSAGE_TYPE } from '../Connect/OAuthSuccess';
 
 /** OAuth start URL to connect a Shopify store */
 function getShopifyConnectUrl(shopDomain) {
@@ -42,7 +45,11 @@ function AppDomainLayout() {
   const { domain } = useParams();
   const [storeSynced, setStoreSynced] = useState(false);
   const [storeSwitchToast, setStoreSwitchToast] = useState(null);
-  const redirectAttempted = useRef(false);
+  const connectPopupRef = useRef(null);
+  const [connectPopupOpen, setConnectPopupOpen] = useState(false);
+  const [connectPopupBlocked, setConnectPopupBlocked] = useState(false);
+  const [connectStatusMessage, setConnectStatusMessage] = useState('');
+  const [connectRequested, setConnectRequested] = useState(false);
 
   const validDomain = domain && isValidDomainParam(domain);
   const apiKey = getApiKey();
@@ -68,6 +75,8 @@ function AppDomainLayout() {
     error,
     isLoading,
     isFetched,
+    isFetching,
+    refetch,
   } = useQuery({
     queryKey: ['account', 'stores', 'layout', domain],
     queryFn: () => apiGet('/account/stores'),
@@ -84,16 +93,72 @@ function AppDomainLayout() {
   );
   const notConnected = needsShopifySessionCheck && isFetched && (is401 || isError || !connected);
 
-  useEffect(() => {
-    // A failed connect redirect for one domain must not block later switches.
-    redirectAttempted.current = false;
+  const openConnectPopup = useCallback(() => {
+    if (!domain) return;
+    const connectUrl = getShopifyConnectUrl(domain);
+    const popup = openCenteredPopup(connectUrl);
+    setConnectRequested(true);
+    if (!popup) {
+      setConnectPopupBlocked(true);
+      setConnectPopupOpen(false);
+      setConnectStatusMessage('Popup blocked. Allow popups or use Open full page.');
+      return;
+    }
+    connectPopupRef.current = popup;
+    setConnectPopupBlocked(false);
+    setConnectPopupOpen(true);
+    setConnectStatusMessage('Waiting for Shopify approval…');
   }, [domain]);
 
   useEffect(() => {
-    if (!notConnected || redirectAttempted.current || !domain) return;
-    redirectAttempted.current = true;
-    window.location.href = getShopifyConnectUrl(domain);
-  }, [notConnected, domain]);
+    if (!domain) return undefined;
+    const normalizedDomain = normalizeShopifyDomain(domain);
+    const onMessage = event => {
+      const data = event?.data;
+      if (!data || data.type !== OAUTH_SUCCESS_MESSAGE_TYPE) return;
+      const connectedShop = normalizeShopifyDomain(data.shop || '');
+      if (!connectedShop || connectedShop !== normalizedDomain) return;
+      setConnectPopupOpen(false);
+      setConnectPopupBlocked(false);
+      setConnectStatusMessage('Store connected. Syncing now…');
+      refetch();
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [domain, refetch]);
+
+  useEffect(() => {
+    if (!connectPopupOpen) return undefined;
+    const timer = window.setInterval(() => {
+      const popup = connectPopupRef.current;
+      if (!popup || popup.closed) {
+        setConnectPopupOpen(false);
+        refetch();
+      }
+    }, 700);
+    return () => window.clearInterval(timer);
+  }, [connectPopupOpen, refetch]);
+
+  useEffect(
+    () => () => {
+      try {
+        if (connectPopupRef.current && !connectPopupRef.current.closed) {
+          connectPopupRef.current.close();
+        }
+      } catch (_) {
+        /* ignore */
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (connected) {
+      setConnectStatusMessage('');
+      setConnectPopupBlocked(false);
+      setConnectPopupOpen(false);
+    }
+  }, [connected]);
 
   useEffect(() => {
     if (!validDomain || !domain) return;
@@ -169,7 +234,13 @@ function AppDomainLayout() {
       return (
         <>
           {storeSwitchToastEl}
-          <RouteLoading message="Redirecting to connect store…" fullScreen />
+          <ConnectStoreGate
+            domain={domain}
+            onConnect={openConnectPopup}
+            connecting={connectPopupOpen || (connectRequested && isFetching)}
+            popupBlocked={connectPopupBlocked}
+            statusMessage={connectStatusMessage}
+          />
         </>
       );
     }
