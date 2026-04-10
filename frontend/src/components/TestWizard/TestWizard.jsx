@@ -1137,6 +1137,7 @@ function TestWizard({
     PRICE_PRODUCT_MODAL_REVEAL_BATCH
   );
   const [priceModalError, setPriceModalError] = useState(null);
+  const [priceProductModalSelectionMode, setPriceProductModalSelectionMode] = useState('include');
   const [priceProductMetaById, setPriceProductMetaById] = useState({});
   const [allProductsMatrixProducts, setAllProductsMatrixProducts] = useState([]);
   const [allProductsMatrixLoading, setAllProductsMatrixLoading] = useState(false);
@@ -1732,6 +1733,73 @@ function TestWizard({
     }
     return formData.target_id ? [formData.target_id] : [];
   }, [formData.target_id, formData.target_ids, isProductTargetScope]);
+  const excludedScopeProductIds = useMemo(() => {
+    if (!Array.isArray(formData.segments?.excluded_product_ids)) return [];
+    return formData.segments.excluded_product_ids.filter(Boolean);
+  }, [formData.segments?.excluded_product_ids]);
+  const activePriceModalProductIds =
+    priceProductModalSelectionMode === 'exclude'
+      ? excludedScopeProductIds
+      : selectedScopeProductIds;
+  const openPriceProductModal = useCallback(mode => {
+    setPriceProductModalSelectionMode(mode === 'exclude' ? 'exclude' : 'include');
+    setPriceModalSearch('');
+    setPriceModalSearchDebounced('');
+    setPriceProductModalOpen(true);
+  }, []);
+  const togglePriceModalProduct = useCallback(
+    (productId, isSelected) => {
+      setIsDirty(true);
+      setFormData(prev => {
+        if (priceProductModalSelectionMode === 'exclude') {
+          const excluded = Array.isArray(prev.segments?.excluded_product_ids)
+            ? [...prev.segments.excluded_product_ids]
+            : [];
+          const nextExcluded = isSelected
+            ? excluded.filter(id => id !== productId)
+            : [...excluded, productId];
+          return {
+            ...prev,
+            segments: {
+              ...prev.segments,
+              excluded_product_ids: nextExcluded,
+            },
+          };
+        }
+        const selectedIds =
+          prev.target_type === 'product'
+            ? prev.target_ids?.length
+              ? [...prev.target_ids]
+              : prev.target_id
+                ? [prev.target_id]
+                : []
+            : [];
+        const next = isSelected
+          ? selectedIds.filter(id => id !== productId)
+          : [...selectedIds, productId];
+        return {
+          ...prev,
+          target_ids: next.length > 1 ? next : null,
+          target_id: next.length === 1 ? next[0] : next.length ? next[0] : '',
+        };
+      });
+    },
+    [priceProductModalSelectionMode]
+  );
+  const modalProgressiveWindow = useMemo(
+    () => buildProgressiveListWindow(priceModalProducts, priceModalVisibleCount),
+    [priceModalProducts, priceModalVisibleCount]
+  );
+  const modalVisibleProducts = modalProgressiveWindow.visibleItems;
+  const modalShownCount = modalProgressiveWindow.shownCount;
+  const modalHasHiddenLoaded = modalProgressiveWindow.hasHiddenLoaded;
+  const modalCanFetchMore = Boolean(priceModalPageInfo?.hasNextPage);
+  const modalCanShowMore = modalHasHiddenLoaded || modalCanFetchMore;
+  const modalCanCollapse = modalProgressiveWindow.canCollapse;
+  const isExcludeModalActive = priceProductModalSelectionMode === 'exclude';
+  const modalSelectionTitle = isExcludeModalActive
+    ? 'Select excluded products'
+    : 'Select products for this test';
   const shouldUseAllProductsMatrix = formData.pricePerProduct && !isProductTargetScope;
   const canFetchAllProductsMatrix =
     shouldUseAllProductsMatrix && !isStandalone && isShopifyFromRoute && Boolean(routeDomain);
@@ -3959,55 +4027,79 @@ function TestWizard({
                                   </div>
                                 </div>
                                 {formData.target_type === 'product' && (
+                                  <BlockStack gap="200">
+                                    <TextField
+                                      label="Selected product IDs"
+                                      value={
+                                        Array.isArray(formData.target_ids) &&
+                                        formData.target_ids.length > 0
+                                          ? formData.target_ids.join('\n')
+                                          : formData.target_id || ''
+                                      }
+                                      onChange={value => {
+                                        setIsDirty(true);
+                                        const ids = normalizeShopifyIdList(value, 'Product');
+                                        setFormData(prev => ({
+                                          ...prev,
+                                          target_ids: ids.length > 1 ? ids : null,
+                                          target_id: ids.length >= 1 ? ids[0] : '',
+                                        }));
+                                      }}
+                                      multiline={3}
+                                      autoComplete="off"
+                                      placeholder="gid://shopify/Product/123 or 123"
+                                      helpText="One product ID per line. Use GID or numeric ID."
+                                    />
+                                    {!isStandalone && isShopifyFromRoute && routeDomain && (
+                                      <InlineStack align="end">
+                                        <Button
+                                          size="slim"
+                                          onClick={() => openPriceProductModal('include')}
+                                        >
+                                          Choose product(s)
+                                        </Button>
+                                      </InlineStack>
+                                    )}
+                                  </BlockStack>
+                                )}
+                                <BlockStack gap="200">
                                   <TextField
-                                    label="Selected product IDs"
-                                    value={
-                                      Array.isArray(formData.target_ids) &&
-                                      formData.target_ids.length > 0
-                                        ? formData.target_ids.join('\n')
-                                        : formData.target_id || ''
-                                    }
+                                    label="Excluded product IDs (optional)"
+                                    value={(() => {
+                                      const ids = Array.isArray(
+                                        formData.segments?.excluded_product_ids
+                                      )
+                                        ? formData.segments.excluded_product_ids
+                                        : [];
+                                      return ids.join('\n');
+                                    })()}
                                     onChange={value => {
                                       setIsDirty(true);
                                       const ids = normalizeShopifyIdList(value, 'Product');
                                       setFormData(prev => ({
                                         ...prev,
-                                        target_ids: ids.length > 1 ? ids : null,
-                                        target_id: ids.length >= 1 ? ids[0] : '',
+                                        segments: {
+                                          ...prev.segments,
+                                          excluded_product_ids: ids,
+                                        },
                                       }));
                                     }}
                                     multiline={3}
                                     autoComplete="off"
-                                    placeholder="gid://shopify/Product/123 or 123"
-                                    helpText="One product ID per line. Use GID or numeric ID."
+                                    placeholder="gid://shopify/Product/456"
+                                    helpText="Excluded products are skipped from bucketing/application even when scope is all products."
                                   />
-                                )}
-                                <TextField
-                                  label="Excluded product IDs (optional)"
-                                  value={(() => {
-                                    const ids = Array.isArray(
-                                      formData.segments?.excluded_product_ids
-                                    )
-                                      ? formData.segments.excluded_product_ids
-                                      : [];
-                                    return ids.join('\n');
-                                  })()}
-                                  onChange={value => {
-                                    setIsDirty(true);
-                                    const ids = normalizeShopifyIdList(value, 'Product');
-                                    setFormData(prev => ({
-                                      ...prev,
-                                      segments: {
-                                        ...prev.segments,
-                                        excluded_product_ids: ids,
-                                      },
-                                    }));
-                                  }}
-                                  multiline={3}
-                                  autoComplete="off"
-                                  placeholder="gid://shopify/Product/456"
-                                  helpText="Excluded products are skipped from bucketing/application even when scope is all products."
-                                />
+                                  {!isStandalone && isShopifyFromRoute && routeDomain && (
+                                    <InlineStack align="end">
+                                      <Button
+                                        size="slim"
+                                        onClick={() => openPriceProductModal('exclude')}
+                                      >
+                                        Choose excluded product(s)
+                                      </Button>
+                                    </InlineStack>
+                                  )}
+                                </BlockStack>
                               </BlockStack>
                             ) : (
                               <>
@@ -7633,16 +7725,6 @@ function TestWizard({
         </span>
       </>
     );
-    const priceModalProgressiveWindow = buildProgressiveListWindow(
-      priceModalProducts,
-      priceModalVisibleCount
-    );
-    const visiblePriceModalProducts = priceModalProgressiveWindow.visibleItems;
-    const priceModalShownCount = priceModalProgressiveWindow.shownCount;
-    const priceModalHasHiddenLoaded = priceModalProgressiveWindow.hasHiddenLoaded;
-    const priceModalCanFetchMore = Boolean(priceModalPageInfo?.hasNextPage);
-    const priceModalCanShowMore = priceModalHasHiddenLoaded || priceModalCanFetchMore;
-    const priceModalCanCollapse = priceModalProgressiveWindow.canCollapse;
     const priceSimulation =
       parsedExampleCatalog !== null
         ? buildPriceSimulationRows({
@@ -8732,28 +8814,6 @@ function TestWizard({
       ];
     });
 
-    const togglePriceTargetProduct = (productId, isSelected) => {
-      setIsDirty(true);
-      setFormData(prev => {
-        const selectedIds =
-          prev.target_type === 'product'
-            ? prev.target_ids?.length
-              ? [...prev.target_ids]
-              : prev.target_id
-                ? [prev.target_id]
-                : []
-            : [];
-        const next = isSelected
-          ? selectedIds.filter(id => id !== productId)
-          : [...selectedIds, productId];
-        return {
-          ...prev,
-          target_ids: next.length > 1 ? next : null,
-          target_id: next.length === 1 ? next[0] : next.length ? next[0] : '',
-        };
-      });
-    };
-
     return (
       <>
         <BlockStack gap="400">
@@ -9334,207 +9394,6 @@ function TestWizard({
             </div>
           </div>
         </BlockStack>
-
-        <Modal
-          open={priceProductModalOpen}
-          onClose={() => setPriceProductModalOpen(false)}
-          title="Select products for this price test"
-          size="large"
-          primaryAction={{
-            content: 'Done',
-            onAction: () => setPriceProductModalOpen(false),
-          }}
-          secondaryActions={[
-            {
-              content: 'Cancel',
-              onAction: () => setPriceProductModalOpen(false),
-            },
-          ]}
-        >
-          <Modal.Section>
-            <div data-price-product-picker-modal="">
-              <div className={styles.priceProductPickerGrid}>
-                <div className={styles.priceProductPickerPane}>
-                  <Text as="p" variant="bodySm" fontWeight="semibold">
-                    Store catalog
-                  </Text>
-                  <div className={styles.priceProductPickerSearch}>
-                    <TextField
-                      label="Search products"
-                      labelHidden
-                      value={priceModalSearch}
-                      onChange={setPriceModalSearch}
-                      placeholder="Search by title or handle…"
-                      autoComplete="off"
-                      clearButton
-                      onClearButtonClick={() => setPriceModalSearch('')}
-                    />
-                  </div>
-                  {priceModalLoading ? (
-                    <div className={styles.priceProductPickerLoading}>
-                      <Spinner size="small" />
-                      <Text as="span" variant="bodySm" tone="subdued">
-                        Loading products…
-                      </Text>
-                    </div>
-                  ) : priceModalProducts.length === 0 ? (
-                    <div className={styles.priceProductPickerEmpty}>
-                      <Text as="p" variant="bodySm" tone="subdued">
-                        {priceModalError ||
-                          (priceModalSearch
-                            ? 'No matches. Try a different search.'
-                            : 'Type to search your store catalog.')}
-                      </Text>
-                    </div>
-                  ) : (
-                    <>
-                      <div className={styles.priceProductPickerListMeta}>
-                        <Text as="span" variant="bodySm" tone="subdued">
-                          Showing {priceModalShownCount} of {priceModalProducts.length} loaded
-                          products
-                        </Text>
-                        <InlineStack gap="200" wrap blockAlign="center">
-                          {priceModalCanFetchMore && (
-                            <Badge tone="info" size="small">
-                              More available
-                            </Badge>
-                          )}
-                          {priceModalCanCollapse && (
-                            <Button
-                              size="slim"
-                              variant="plain"
-                              onClick={() =>
-                                setPriceModalVisibleCount(PRICE_PRODUCT_MODAL_REVEAL_BATCH)
-                              }
-                            >
-                              Collapse
-                            </Button>
-                          )}
-                        </InlineStack>
-                      </div>
-                      <div className={styles.priceProductPickerList}>
-                        {visiblePriceModalProducts.map(r => {
-                          const isSelected = priceTargetProductIds.includes(r.id);
-                          const thumb = r.imageUrl;
-                          return (
-                            <button
-                              key={r.id}
-                              type="button"
-                              className={`${styles.priceProductPickerRow} ${isSelected ? styles.priceProductPickerRowSelected : ''}`}
-                              onClick={() => togglePriceTargetProduct(r.id, isSelected)}
-                            >
-                              <span className={styles.priceProductPickerThumb} aria-hidden>
-                                {thumb ? (
-                                  <img src={thumb} alt="" loading="lazy" />
-                                ) : (
-                                  <Icon source={ProductIcon} />
-                                )}
-                              </span>
-                              <span className={styles.priceProductPickerRowText}>
-                                <span className={styles.priceProductPickerRowTitle}>
-                                  {r.title || r.name || r.handle || r.id}
-                                </span>
-                                {r.handle && (
-                                  <span className={styles.priceProductPickerRowHandle}>
-                                    {r.handle}
-                                  </span>
-                                )}
-                              </span>
-                              {isSelected && (
-                                <span className={styles.priceProductPickerRowCheck}>
-                                  <Icon source={CheckCircleIcon} />
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      {priceModalCanShowMore && (
-                        <div className={styles.priceProductPickerLoadMore}>
-                          <Button
-                            onClick={handlePriceModalLoadMore}
-                            loading={priceModalLoadingMore}
-                            disabled={priceModalLoadingMore}
-                          >
-                            {priceModalHasHiddenLoaded
-                              ? `Show ${Math.min(
-                                  priceModalProgressiveWindow.nextRevealCount ||
-                                    PRICE_PRODUCT_MODAL_REVEAL_BATCH,
-                                  priceModalProducts.length - priceModalShownCount
-                                )} more`
-                              : `Show ${PRICE_PRODUCT_MODAL_REVEAL_BATCH} more`}
-                          </Button>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-                <div className={styles.priceProductPickerPane}>
-                  <div className={styles.priceProductPickerSelectedHead}>
-                    <Text as="p" variant="bodySm" fontWeight="semibold">
-                      Selected ({priceTargetProductIds.length})
-                    </Text>
-                    {priceTargetProductIds.length > 0 && (
-                      <Button
-                        variant="plain"
-                        tone="critical"
-                        onClick={() => {
-                          setIsDirty(true);
-                          setFormData(prev => ({
-                            ...prev,
-                            target_ids: null,
-                            target_id: '',
-                          }));
-                        }}
-                      >
-                        Clear all
-                      </Button>
-                    )}
-                  </div>
-                  <div className={styles.priceProductPickerSelectedList}>
-                    {priceTargetProductIds.length === 0 ? (
-                      <Text as="p" variant="bodySm" tone="subdued">
-                        No products selected yet. Choose from the list on the left.
-                      </Text>
-                    ) : (
-                      priceTargetProductIds.map(pid => {
-                        const meta = priceProductMetaById[pid] || {};
-                        const thumb = meta.imageUrl;
-                        return (
-                          <div key={pid} className={styles.priceProductPickerSelectedRow}>
-                            <span className={styles.priceProductPickerThumb} aria-hidden>
-                              {thumb ? (
-                                <img src={thumb} alt="" loading="lazy" />
-                              ) : (
-                                <Icon source={ProductIcon} />
-                              )}
-                            </span>
-                            <span className={styles.priceProductPickerRowText}>
-                              <span className={styles.priceProductPickerRowTitle}>
-                                {meta.title || pid}
-                              </span>
-                              {meta.handle && (
-                                <span className={styles.priceProductPickerRowHandle}>
-                                  {meta.handle}
-                                </span>
-                              )}
-                            </span>
-                            <Button
-                              icon={XIcon}
-                              variant="plain"
-                              accessibilityLabel="Remove product"
-                              onClick={() => togglePriceTargetProduct(pid, true)}
-                            />
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </Modal.Section>
-        </Modal>
       </>
     );
   };
@@ -12095,6 +11954,217 @@ function TestWizard({
           </div>
         </Layout.Section>
       </Layout>
+
+      <Modal
+        open={priceProductModalOpen && currentStep === stepIds.targeting}
+        onClose={() => setPriceProductModalOpen(false)}
+        title={modalSelectionTitle}
+        size="large"
+        primaryAction={{
+          content: 'Done',
+          onAction: () => setPriceProductModalOpen(false),
+        }}
+        secondaryActions={[
+          {
+            content: 'Cancel',
+            onAction: () => setPriceProductModalOpen(false),
+          },
+        ]}
+      >
+        <Modal.Section>
+          <div data-price-product-picker-modal="">
+            <div className={styles.priceProductPickerGrid}>
+              <div className={styles.priceProductPickerPane}>
+                <Text as="p" variant="bodySm" fontWeight="semibold">
+                  Store catalog
+                </Text>
+                <div className={styles.priceProductPickerSearch}>
+                  <TextField
+                    label="Search products"
+                    labelHidden
+                    value={priceModalSearch}
+                    onChange={setPriceModalSearch}
+                    placeholder="Search by title or handle…"
+                    autoComplete="off"
+                    clearButton
+                    onClearButtonClick={() => setPriceModalSearch('')}
+                  />
+                </div>
+                {priceModalLoading ? (
+                  <div className={styles.priceProductPickerLoading}>
+                    <Spinner size="small" />
+                    <Text as="span" variant="bodySm" tone="subdued">
+                      Loading products…
+                    </Text>
+                  </div>
+                ) : priceModalProducts.length === 0 ? (
+                  <div className={styles.priceProductPickerEmpty}>
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      {priceModalError ||
+                        (priceModalSearch
+                          ? 'No matches. Try a different search.'
+                          : 'Type to search your store catalog.')}
+                    </Text>
+                  </div>
+                ) : (
+                  <>
+                    <div className={styles.priceProductPickerListMeta}>
+                      <Text as="span" variant="bodySm" tone="subdued">
+                        Showing {modalShownCount} of {priceModalProducts.length} loaded products
+                      </Text>
+                      <InlineStack gap="200" wrap blockAlign="center">
+                        {modalCanFetchMore && (
+                          <Badge tone="info" size="small">
+                            More available
+                          </Badge>
+                        )}
+                        {modalCanCollapse && (
+                          <Button
+                            size="slim"
+                            variant="plain"
+                            onClick={() =>
+                              setPriceModalVisibleCount(PRICE_PRODUCT_MODAL_REVEAL_BATCH)
+                            }
+                          >
+                            Collapse
+                          </Button>
+                        )}
+                      </InlineStack>
+                    </div>
+                    <div className={styles.priceProductPickerList}>
+                      {modalVisibleProducts.map(r => {
+                        const isSelected = activePriceModalProductIds.includes(r.id);
+                        const thumb = r.imageUrl;
+                        return (
+                          <button
+                            key={r.id}
+                            type="button"
+                            className={`${styles.priceProductPickerRow} ${isSelected ? styles.priceProductPickerRowSelected : ''}`}
+                            onClick={() => togglePriceModalProduct(r.id, isSelected)}
+                          >
+                            <span className={styles.priceProductPickerThumb} aria-hidden>
+                              {thumb ? (
+                                <img src={thumb} alt="" loading="lazy" />
+                              ) : (
+                                <Icon source={ProductIcon} />
+                              )}
+                            </span>
+                            <span className={styles.priceProductPickerRowText}>
+                              <span className={styles.priceProductPickerRowTitle}>
+                                {r.title || r.name || r.handle || r.id}
+                              </span>
+                              {r.handle && (
+                                <span className={styles.priceProductPickerRowHandle}>
+                                  {r.handle}
+                                </span>
+                              )}
+                            </span>
+                            {isSelected && (
+                              <span className={styles.priceProductPickerRowCheck}>
+                                <Icon source={CheckCircleIcon} />
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {modalCanShowMore && (
+                      <div className={styles.priceProductPickerLoadMore}>
+                        <Button
+                          onClick={handlePriceModalLoadMore}
+                          loading={priceModalLoadingMore}
+                          disabled={priceModalLoadingMore}
+                        >
+                          {modalHasHiddenLoaded
+                            ? `Show ${Math.min(
+                                modalProgressiveWindow.nextRevealCount ||
+                                  PRICE_PRODUCT_MODAL_REVEAL_BATCH,
+                                priceModalProducts.length - modalShownCount
+                              )} more`
+                            : `Show ${PRICE_PRODUCT_MODAL_REVEAL_BATCH} more`}
+                        </Button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+              <div className={styles.priceProductPickerPane}>
+                <div className={styles.priceProductPickerSelectedHead}>
+                  <Text as="p" variant="bodySm" fontWeight="semibold">
+                    Selected ({activePriceModalProductIds.length})
+                  </Text>
+                  {activePriceModalProductIds.length > 0 && (
+                    <Button
+                      variant="plain"
+                      tone="critical"
+                      onClick={() => {
+                        setIsDirty(true);
+                        setFormData(prev =>
+                          isExcludeModalActive
+                            ? {
+                                ...prev,
+                                segments: {
+                                  ...prev.segments,
+                                  excluded_product_ids: [],
+                                },
+                              }
+                            : {
+                                ...prev,
+                                target_ids: null,
+                                target_id: '',
+                              }
+                        );
+                      }}
+                    >
+                      Clear all
+                    </Button>
+                  )}
+                </div>
+                <div className={styles.priceProductPickerSelectedList}>
+                  {activePriceModalProductIds.length === 0 ? (
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      No products selected yet. Choose from the list on the left.
+                    </Text>
+                  ) : (
+                    activePriceModalProductIds.map(pid => {
+                      const meta = priceProductMetaById[pid];
+                      return (
+                        <button
+                          key={pid}
+                          type="button"
+                          className={`${styles.priceProductPickerRow} ${styles.priceProductPickerRowSelected}`}
+                          onClick={() => togglePriceModalProduct(pid, true)}
+                        >
+                          <span className={styles.priceProductPickerThumb} aria-hidden>
+                            {meta?.imageUrl ? (
+                              <img src={meta.imageUrl} alt="" loading="lazy" />
+                            ) : (
+                              <Icon source={ProductIcon} />
+                            )}
+                          </span>
+                          <span className={styles.priceProductPickerRowText}>
+                            <span className={styles.priceProductPickerRowTitle}>
+                              {meta?.title || pid}
+                            </span>
+                            {meta?.handle && (
+                              <span className={styles.priceProductPickerRowHandle}>
+                                {meta.handle}
+                              </span>
+                            )}
+                          </span>
+                          <span className={styles.priceProductPickerRowCheck}>
+                            <Icon source={XIcon} />
+                          </span>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </Modal.Section>
+      </Modal>
 
       <Modal
         open={titleEditOpen}

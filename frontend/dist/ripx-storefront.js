@@ -3860,8 +3860,8 @@
                   linePidNum &&
                   (excludedProductIds.indexOf(linePidNum) !== -1 ||
                     !filteredTargetIds.some(function (id) {
-                    return id && toNumericProductId(id) === linePidNum;
-                  }))
+                      return id && toNumericProductId(id) === linePidNum;
+                    }))
                 )
                   return;
                 var rowDisplay = displayByVariant;
@@ -3954,8 +3954,9 @@
     var templateKey = getTemplateKeyForTest(test);
     var fallbackMode = templateKey === 'template' ? 'template_switch' : 'asset_flag';
     var mode = normalizeThemeMode(cfg.themeMode || cfg.theme_mode, fallbackMode);
-    var templateHandle = String(cfg.themeTemplateHandle || cfg.theme_template_handle || cfg.template || '')
-      .trim();
+    var templateHandle = String(
+      cfg.themeTemplateHandle || cfg.theme_template_handle || cfg.template || ''
+    ).trim();
     var sectionId = String(cfg.sectionId || cfg.section_id || '').trim();
     var themeId = String(cfg.themeId || cfg.theme_id || '').trim();
     var bodyClass = String(cfg.bodyClass || cfg.body_class || '').trim();
