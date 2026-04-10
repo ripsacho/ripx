@@ -79,7 +79,7 @@ describe('app constants', () => {
     it('is a non-empty string (sync with backend storefrontScriptRuntime SCRIPT_VERSION)', () => {
       expect(typeof RIPX_STOREFRONT_SCRIPT_VERSION).toBe('string');
       expect(RIPX_STOREFRONT_SCRIPT_VERSION.length).toBeGreaterThan(0);
-      expect(RIPX_STOREFRONT_SCRIPT_VERSION).toMatch(/^\d+$/);
+      expect(RIPX_STOREFRONT_SCRIPT_VERSION).toMatch(/^\d+(?:\.\d+){0,2}$/);
     });
   });
 

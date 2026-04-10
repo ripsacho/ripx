@@ -9,9 +9,10 @@ const router = express.Router();
 const { asyncHandler } = require('../middleware/asyncHandler');
 const shopifyService = require('../services/shopifyService');
 const logger = require('../utils/logger');
+const { SCRIPT_VERSION } = require('../utils/storefrontScriptRuntime');
 
 async function checkAppProxyStatus(shopDomain) {
-  const url = `https://${shopDomain}/apps/ripx/script.js?v=1`;
+  const url = `https://${shopDomain}/apps/ripx/script.js?v=${SCRIPT_VERSION}`;
   const status = {
     url,
     ok: false,
