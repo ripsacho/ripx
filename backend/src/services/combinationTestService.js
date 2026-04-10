@@ -20,10 +20,11 @@ class CombinationTestService {
     } = testConfig;
 
     // Generate all possible combinations if not provided
-    if (!combinations || combinations.length === 0) {
-      const combinations = this.generateCombinations(variables);
-      testConfig.combinations = combinations;
-    }
+    const resolvedCombinations =
+      !combinations || combinations.length === 0
+        ? this.generateCombinations(variables)
+        : combinations;
+    testConfig.combinations = resolvedCombinations;
 
     // Validate combinations
     const validation = this.validateCombinations(testConfig);
