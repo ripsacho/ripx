@@ -51,7 +51,7 @@ export const INTERVALS = {
  * Cache-bust query for storefront script.js — keep in sync with
  * `backend/src/utils/storefrontScriptRuntime.js` SCRIPT_VERSION when the runtime embed contract changes.
  */
-export const RIPX_STOREFRONT_SCRIPT_VERSION = '1.0.3';
+export const RIPX_STOREFRONT_SCRIPT_VERSION = '1.0.5';
 
 /** CustomEvent: fired when the app navigates to a new store from the store switcher (TopBar can highlight). */
 export const RIPX_STORE_SWITCHED_EVENT = 'ripx:store-switched';

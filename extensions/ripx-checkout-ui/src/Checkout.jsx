@@ -55,15 +55,11 @@ function normalizeOfferCodeToken(rawValue, fallback = 'VARIANT') {
 }
 
 function buildOfferValueToken(config = {}) {
-  const discountType = String(config.discount_type || '')
-    .trim()
-    .toLowerCase();
+  const discountType = normalizeOfferDiscountType(config);
   if (discountType === 'free_shipping') {
     return 'SHIP';
   }
-  const rawValue = config.discount_value;
-  const numericValue =
-    rawValue !== null && rawValue !== undefined && rawValue !== '' ? Number(rawValue) : NaN;
+  const numericValue = parseOfferDiscountValue(config);
   const valueToken = Number.isFinite(numericValue)
     ? String(numericValue).replace('.', '_')
     : discountType === 'fixed'
@@ -82,16 +78,100 @@ function buildAutoOfferCodeName(testId, variantName, config = {}) {
   return `RIPX-${testToken}-${variantToken}-${offerToken}`.slice(0, 48);
 }
 
+function resolveOfferCodeFromConfig(config = {}, testId = 'test', variantName = 'Assigned') {
+  const sourceKeys = [
+    'discount_code_name',
+    'discountCodeName',
+    'discount_code',
+    'discountCode',
+    'code_name',
+    'codeName',
+    'code',
+    'coupon_code',
+    'couponCode',
+    'coupon',
+  ];
+  for (const key of sourceKeys) {
+    const rawValue = config[key];
+    const code = String(rawValue === null || rawValue === undefined ? '' : rawValue).trim();
+    if (code) {
+      return {
+        codeName: code,
+        sourceKey: key,
+        sourceLabel: `config.${key}`,
+      };
+    }
+  }
+  return {
+    codeName: buildAutoOfferCodeName(testId, variantName, config),
+    sourceKey: 'auto',
+    sourceLabel: 'auto-generated',
+  };
+}
+
 function normalizeOfferDiscountType(config = {}) {
-  return String(config.discount_type || config.discountType || '')
+  const raw = String(
+    config.discount_type ||
+      config.discountType ||
+      config.offer_type ||
+      config.offerType ||
+      config.type ||
+      ''
+  )
     .trim()
     .toLowerCase();
+  if (
+    raw === 'percent' ||
+    raw === 'percentage' ||
+    raw === 'pct' ||
+    raw === 'percent_off' ||
+    raw === 'percentage_off'
+  ) {
+    return 'percent';
+  }
+  if (
+    raw === 'fixed' ||
+    raw === 'fixed_amount' ||
+    raw === 'amount' ||
+    raw === 'flat' ||
+    raw === 'flat_amount' ||
+    raw === 'money'
+  ) {
+    return 'fixed';
+  }
+  if (
+    raw === 'free_shipping' ||
+    raw === 'free-shipping' ||
+    raw === 'freeshipping' ||
+    raw === 'free shipping'
+  ) {
+    return 'free_shipping';
+  }
+  return raw;
 }
 
 function parseOfferDiscountValue(config = {}) {
-  const raw = config.discount_value !== undefined ? config.discount_value : config.discountValue;
-  const n = raw !== null && raw !== undefined && String(raw).trim() !== '' ? Number(raw) : NaN;
-  return Number.isFinite(n) ? n : NaN;
+  const candidates = [
+    config.discount_value,
+    config.discountValue,
+    config.discount_amount,
+    config.discountAmount,
+    config.value,
+    config.amount,
+    config.percent,
+    config.percentage,
+    config.pct,
+  ];
+  for (const raw of candidates) {
+    if (raw === null || raw === undefined || String(raw).trim() === '') {
+      continue;
+    }
+    const n = Number(raw);
+    if (Number.isFinite(n)) {
+      return n;
+    }
+  }
+  return NaN;
 }
 
 function isActionableOfferConfig(config = {}) {
@@ -263,9 +343,13 @@ function CheckoutExperiment() {
     assignment?.variant_name || assignment?.variant_id || 'Assigned'
   ).trim();
   const hasOfferConfig = isActionableOfferConfig(cfg);
-  const discountCodeName =
-    String(cfg.discount_code_name || cfg.discountCodeName || '').trim() ||
-    buildAutoOfferCodeName(testId || assignment?.test_id || 'test', variantName, cfg);
+  const resolvedOfferCode = resolveOfferCodeFromConfig(
+    cfg,
+    testId || assignment?.test_id || 'test',
+    variantName
+  );
+  const discountCodeName = resolvedOfferCode.codeName;
+  const offerCodeSourceLabel = resolvedOfferCode.sourceLabel;
   const title =
     String(cfg.checkout_title || cfg.title || '').trim() ||
     (hasOfferConfig ? `Offer variant: ${variantName}` : `RipX Variant: ${variantName}`);
@@ -433,6 +517,7 @@ function CheckoutExperiment() {
           )
         : null,
       hasOfferConfig ? h('s-text', null, offerCodeStatusLabel) : null,
+      hasOfferConfig ? h('s-text', null, `Code source: ${offerCodeSourceLabel}`) : null,
       hasOfferConfig ? h('s-text', null, offerCodeStatusLegend) : null,
       hasOfferConfig && !hasDiscountCodeApplied
         ? h(

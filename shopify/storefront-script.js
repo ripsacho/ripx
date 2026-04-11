@@ -5105,15 +5105,11 @@
 
   function buildOfferValueToken(config) {
     var cfg = config && typeof config === 'object' ? config : {};
-    var discountType = String(cfg.discount_type || '')
-      .trim()
-      .toLowerCase();
+    var discountType = normalizeOfferDiscountType(cfg);
     if (discountType === 'free_shipping') {
       return 'SHIP';
     }
-    var rawValue = cfg.discount_value;
-    var numericValue =
-      rawValue !== null && rawValue !== undefined && rawValue !== '' ? Number(rawValue) : NaN;
+    var numericValue = parseOfferDiscountValue(cfg);
     var valueToken = isFinite(numericValue)
       ? String(numericValue).replace('.', '_')
       : discountType === 'fixed'
@@ -5136,26 +5132,98 @@
     return ('RIPX-' + testToken + '-' + variantToken + '-' + offerToken).slice(0, 48);
   }
 
-  function getOfferCodeNameForVariant(test, variant) {
+  function resolveOfferCodeForVariant(test, variant) {
     var cfg = variant && variant.config && typeof variant.config === 'object' ? variant.config : {};
-    var explicit = String(cfg.discount_code_name || cfg.discountCodeName || '').trim();
-    if (explicit) return explicit;
-    return buildAutoOfferCodeName(test, variant);
+    var sourceKeys = [
+      'discount_code_name',
+      'discountCodeName',
+      'discount_code',
+      'discountCode',
+      'code_name',
+      'codeName',
+      'code',
+      'coupon_code',
+      'couponCode',
+      'coupon',
+    ];
+    for (var i = 0; i < sourceKeys.length; i += 1) {
+      var key = sourceKeys[i];
+      var value = cfg[key];
+      var code = String(value === null || value === undefined ? '' : value).trim();
+      if (code) {
+        return {
+          codeName: code,
+          sourceKey: key,
+          sourceLabel: 'config.' + key,
+        };
+      }
+    }
+    return {
+      codeName: buildAutoOfferCodeName(test, variant),
+      sourceKey: 'auto',
+      sourceLabel: 'auto-generated',
+    };
+  }
+
+  function getOfferCodeNameForVariant(test, variant) {
+    return resolveOfferCodeForVariant(test, variant).codeName;
   }
   function normalizeOfferDiscountType(config) {
     var cfg = config && typeof config === 'object' ? config : {};
-    return String(cfg.discount_type || cfg.discountType || '')
+    var raw = String(
+      cfg.discount_type || cfg.discountType || cfg.offer_type || cfg.offerType || cfg.type || ''
+    )
       .trim()
       .toLowerCase();
+    if (
+      raw === 'percent' ||
+      raw === 'percentage' ||
+      raw === 'pct' ||
+      raw === 'percent_off' ||
+      raw === 'percentage_off'
+    ) {
+      return 'percent';
+    }
+    if (
+      raw === 'fixed' ||
+      raw === 'fixed_amount' ||
+      raw === 'amount' ||
+      raw === 'flat' ||
+      raw === 'flat_amount' ||
+      raw === 'money'
+    ) {
+      return 'fixed';
+    }
+    if (
+      raw === 'free_shipping' ||
+      raw === 'free-shipping' ||
+      raw === 'freeshipping' ||
+      raw === 'free shipping'
+    ) {
+      return 'free_shipping';
+    }
+    return raw;
   }
   function parseOfferDiscountValue(config) {
     var cfg = config && typeof config === 'object' ? config : {};
-    var rawValue = cfg.discount_value !== undefined ? cfg.discount_value : cfg.discountValue;
-    var n =
-      rawValue !== null && rawValue !== undefined && String(rawValue).trim() !== ''
-        ? Number(rawValue)
-        : NaN;
-    return isFinite(n) ? n : NaN;
+    var candidates = [
+      cfg.discount_value,
+      cfg.discountValue,
+      cfg.discount_amount,
+      cfg.discountAmount,
+      cfg.value,
+      cfg.amount,
+      cfg.percent,
+      cfg.percentage,
+      cfg.pct,
+    ];
+    for (var i = 0; i < candidates.length; i += 1) {
+      var raw = candidates[i];
+      if (raw === null || raw === undefined || String(raw).trim() === '') continue;
+      var n = Number(raw);
+      if (isFinite(n)) return n;
+    }
+    return NaN;
   }
   function isActionableOfferConfig(config) {
     var discountType = normalizeOfferDiscountType(config);
@@ -5467,7 +5535,8 @@
     var opts = options && typeof options === 'object' ? options : {};
     if (!shouldShowOfferCodeOnCart(test) || !variant) return;
     if (!isActionableOfferConfig(variant.config)) return;
-    var codeName = getOfferCodeNameForVariant(test, variant);
+    var codeInfo = resolveOfferCodeForVariant(test, variant);
+    var codeName = codeInfo.codeName;
     if (!codeName) return;
 
     var container = getOfferCodeNoticeContainer();
@@ -5514,6 +5583,17 @@
     right.style.letterSpacing = '0.04em';
     right.textContent = codeName;
     rightWrap.appendChild(right);
+    var sourceBadge = document.createElement('span');
+    sourceBadge.style.fontSize = '10px';
+    sourceBadge.style.padding = '2px 6px';
+    sourceBadge.style.borderRadius = '999px';
+    sourceBadge.style.border = '1px solid rgba(100,116,139,0.22)';
+    sourceBadge.style.background = 'rgba(100,116,139,0.08)';
+    sourceBadge.style.color = '#334155';
+    sourceBadge.textContent =
+      'src: ' + String(codeInfo.sourceKey === 'auto' ? 'auto' : codeInfo.sourceKey);
+    sourceBadge.title = 'Code source: ' + String(codeInfo.sourceLabel || 'auto-generated');
+    rightWrap.appendChild(sourceBadge);
     var diag = getOfferCodeDiagnostics(codeName);
     var diagStyle = getOfferCodeStatusStyles(diag.status);
     var statusBadge = document.createElement('span');
@@ -5528,6 +5608,7 @@
       getOfferCodeStatusHelpText(diag.status) + ' ' + getOfferCodeStatusLegendText();
     rightWrap.appendChild(statusBadge);
     row.setAttribute('data-ripx-offer-code-status', String(diag.status || 'generated'));
+    row.setAttribute('data-ripx-offer-code-source', String(codeInfo.sourceKey || 'auto'));
     if (isCartSurface()) {
       var applyBtn = document.createElement('button');
       applyBtn.type = 'button';

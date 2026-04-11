@@ -185,6 +185,71 @@ function isOfferTestRowType(type) {
   return t === 'offer';
 }
 
+function normalizeOfferDiscountType(config = {}) {
+  const raw = String(
+    config.discount_type ||
+      config.discountType ||
+      config.offer_type ||
+      config.offerType ||
+      config.type ||
+      ''
+  )
+    .trim()
+    .toLowerCase();
+  if (
+    raw === 'percent' ||
+    raw === 'percentage' ||
+    raw === 'pct' ||
+    raw === 'percent_off' ||
+    raw === 'percentage_off'
+  ) {
+    return 'percent';
+  }
+  if (
+    raw === 'fixed' ||
+    raw === 'fixed_amount' ||
+    raw === 'amount' ||
+    raw === 'flat' ||
+    raw === 'flat_amount' ||
+    raw === 'money'
+  ) {
+    return 'fixed';
+  }
+  if (
+    raw === 'free_shipping' ||
+    raw === 'free-shipping' ||
+    raw === 'freeshipping' ||
+    raw === 'free shipping'
+  ) {
+    return 'free_shipping';
+  }
+  return raw;
+}
+
+function parseOfferDiscountValue(config = {}) {
+  const candidates = [
+    config.discount_value,
+    config.discountValue,
+    config.discount_amount,
+    config.discountAmount,
+    config.value,
+    config.amount,
+    config.percent,
+    config.percentage,
+    config.pct,
+  ];
+  for (const raw of candidates) {
+    if (raw === null || raw === undefined || String(raw).trim() === '') {
+      continue;
+    }
+    const n = Number(raw);
+    if (Number.isFinite(n)) {
+      return n;
+    }
+  }
+  return NaN;
+}
+
 /** Align with getActiveTestsForStorefront: running, or stopped/completed with personalization rollout. */
 function isPriceTestActiveForCheckout(test) {
   if (!test) {
@@ -697,9 +762,7 @@ function resolvePriceTestLineDiscount({
   const cfg = getEffectivePriceConfig(vRow.config, productId, variantId || null);
   const isOfferTest = isOfferTestRowType(test?.type);
   if (isOfferTest) {
-    const discountType = String(cfg.discount_type ?? cfg.discountType ?? '')
-      .trim()
-      .toLowerCase();
+    const discountType = normalizeOfferDiscountType(cfg);
     debugMeta.offerDiscountType = discountType || null;
     if (!['percent', 'fixed', 'free_shipping'].includes(discountType)) {
       return finish({ applies: false, reason: 'no_offer_config' });
@@ -707,8 +770,7 @@ function resolvePriceTestLineDiscount({
     if (discountType === 'free_shipping') {
       return finish({ applies: false, reason: 'free_shipping_not_supported' });
     }
-    const rawOfferValue = cfg.discount_value !== undefined ? cfg.discount_value : cfg.discountValue;
-    const offerValue = Number.parseFloat(String(rawOfferValue ?? '').trim());
+    const offerValue = parseOfferDiscountValue(cfg);
     debugMeta.offerDiscountValue = Number.isFinite(offerValue) ? offerValue : null;
     if (!Number.isFinite(offerValue) || offerValue <= 0) {
       return finish({ applies: false, reason: 'invalid_offer_value' });

@@ -1,9 +1,4 @@
-import { DeliveryDiscountSelectionStrategy, DiscountClass } from '../generated/api';
-
-function hasShippingDiscountClass(discount) {
-  const classes = Array.isArray(discount?.discountClasses) ? discount.discountClasses : [];
-  return classes.includes(DiscountClass.Shipping);
-}
+import { DeliveryDiscountSelectionStrategy } from '../generated/api';
 
 function hasFreeShippingOfferMarker(line) {
   const testId = String(line?.ripxTest?.value || '').trim();
@@ -46,10 +41,6 @@ function buildFreeShippingCandidates(deliveryGroups) {
  * @returns {import("../generated/api").CartDeliveryOptionsDiscountsGenerateRunResult}
  */
 export function cartDeliveryOptionsDiscountsGenerateRun(input) {
-  if (!hasShippingDiscountClass(input?.discount)) {
-    return { operations: [] };
-  }
-
   const candidates = buildFreeShippingCandidates(input?.cart?.deliveryGroups);
   if (candidates.length === 0) {
     return { operations: [] };

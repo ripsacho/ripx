@@ -10,8 +10,8 @@ function loadDeliveryRunFunction() {
   const source = fs.readFileSync(sourcePath, 'utf8');
   const transformed = source
     .replace(
-      "import { DeliveryDiscountSelectionStrategy, DiscountClass } from '../generated/api';",
-      "const DeliveryDiscountSelectionStrategy = { All: 'ALL' }; const DiscountClass = { Shipping: 'SHIPPING' };"
+      "import { DeliveryDiscountSelectionStrategy } from '../generated/api';",
+      "const DeliveryDiscountSelectionStrategy = { All: 'ALL' };"
     )
     .replace(
       'export function cartDeliveryOptionsDiscountsGenerateRun(',
@@ -59,7 +59,7 @@ function buildGroup({
 }
 
 describe('cartDeliveryOptionsDiscountsGenerateRun', () => {
-  it('returns no operations when shipping class is missing', () => {
+  it('still applies free-shipping candidates when discount classes are stale', () => {
     const run = loadDeliveryRunFunction();
     const result = run(
       buildInput({
@@ -68,7 +68,8 @@ describe('cartDeliveryOptionsDiscountsGenerateRun', () => {
       })
     );
 
-    expect(result).toEqual({ operations: [] });
+    expect(result.operations).toHaveLength(1);
+    expect(result.operations[0].deliveryDiscountsAdd.candidates).toHaveLength(1);
   });
 
   it('returns no operations when no free shipping marker exists', () => {
