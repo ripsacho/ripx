@@ -177,7 +177,12 @@ async function getCheckoutMethodCapabilitiesForDomain(domain) {
 
 function isPriceTestRowType(type) {
   const t = String(type || '').toLowerCase();
-  return t === 'price' || t === 'pricing';
+  return t === 'price' || t === 'pricing' || t === 'offer';
+}
+
+function isOfferTestRowType(type) {
+  const t = String(type || '').toLowerCase();
+  return t === 'offer';
 }
 
 /** Align with getActiveTestsForStorefront: running, or stopped/completed with personalization rollout. */
@@ -690,6 +695,48 @@ function resolvePriceTestLineDiscount({
   debugMeta.compareAtUnit = hasValidCompareAt ? Math.round(compareAtParsed * 100) / 100 : null;
 
   const cfg = getEffectivePriceConfig(vRow.config, productId, variantId || null);
+  const isOfferTest = isOfferTestRowType(test?.type);
+  if (isOfferTest) {
+    const discountType = String(cfg.discount_type ?? cfg.discountType ?? '')
+      .trim()
+      .toLowerCase();
+    debugMeta.offerDiscountType = discountType || null;
+    if (!['percent', 'fixed', 'free_shipping'].includes(discountType)) {
+      return finish({ applies: false, reason: 'no_offer_config' });
+    }
+    if (discountType === 'free_shipping') {
+      return finish({ applies: false, reason: 'free_shipping_not_supported' });
+    }
+    const rawOfferValue = cfg.discount_value !== undefined ? cfg.discount_value : cfg.discountValue;
+    const offerValue = Number.parseFloat(String(rawOfferValue ?? '').trim());
+    debugMeta.offerDiscountValue = Number.isFinite(offerValue) ? offerValue : null;
+    if (!Number.isFinite(offerValue) || offerValue <= 0) {
+      return finish({ applies: false, reason: 'invalid_offer_value' });
+    }
+    const roundedLineTotal = Math.round(lineTotal * 100) / 100;
+    let discount = 0;
+    if (discountType === 'percent') {
+      const pct = Math.max(0, Math.min(100, offerValue));
+      debugMeta.offerPercent = pct;
+      discount = Math.round(roundedLineTotal * (pct / 100) * 100) / 100;
+    } else {
+      const perUnitOff = Math.max(0, offerValue);
+      debugMeta.offerFixedPerUnit = perUnitOff;
+      discount = Math.round(Math.min(roundedLineTotal, perUnitOff * qty) * 100) / 100;
+    }
+    if (!Number.isFinite(discount) || discount <= 0.0001) {
+      return finish({ applies: false, reason: 'no_discount_needed' });
+    }
+    const targetLine = Math.max(0, Math.round((roundedLineTotal - discount) * 100) / 100);
+    debugMeta.targetLine = targetLine;
+    debugMeta.roundedLineTotal = roundedLineTotal;
+    return finish({
+      applies: true,
+      discountDecimal: discount.toFixed(2),
+      targetLineDecimal: targetLine.toFixed(2),
+    });
+  }
+
   const priceMode = String(cfg.priceMode || 'fixed').toLowerCase();
   const priceBase = String(cfg.priceBase || 'price').toLowerCase();
   const useCompareAtBase =

@@ -19,6 +19,19 @@ describe('priceTestCheckoutResolve', () => {
       },
     ],
   };
+  const baseOfferTest = {
+    type: 'offer',
+    status: 'running',
+    target_type: 'product',
+    target_ids: ['gid://shopify/Product/111'],
+    variants: [
+      {
+        id: 'offer-a',
+        name: 'Offer A',
+        config: { discount_type: 'percent', discount_value: 10 },
+      },
+    ],
+  };
 
   beforeEach(() => {
     process.env = { ...originalEnv };
@@ -566,6 +579,62 @@ describe('priceTestCheckoutResolve', () => {
       quantity: 1,
     });
     expect(r.applies).toBe(true);
+  });
+
+  it('applies percent offer discount for offer tests', () => {
+    const r = resolvePriceTestLineDiscount({
+      test: baseOfferTest,
+      assignmentVariantId: 'offer-a',
+      productId: '111',
+      linePresentmentTotal: 40,
+      quantity: 1,
+    });
+    expect(r.applies).toBe(true);
+    expect(parseFloat(r.discountDecimal, 10)).toBeCloseTo(4, 2);
+  });
+
+  it('applies fixed offer discount per unit and clamps to line total', () => {
+    const test = {
+      ...baseOfferTest,
+      variants: [
+        {
+          id: 'offer-a',
+          name: 'Offer A',
+          config: { discount_type: 'fixed', discount_value: 3 },
+        },
+      ],
+    };
+    const r = resolvePriceTestLineDiscount({
+      test,
+      assignmentVariantId: 'offer-a',
+      productId: '111',
+      linePresentmentTotal: 10,
+      quantity: 2,
+    });
+    expect(r.applies).toBe(true);
+    expect(parseFloat(r.discountDecimal, 10)).toBeCloseTo(6, 2);
+  });
+
+  it('does not apply free-shipping offer in line discount resolver', () => {
+    const test = {
+      ...baseOfferTest,
+      variants: [
+        {
+          id: 'offer-a',
+          name: 'Offer A',
+          config: { discount_type: 'free_shipping', discount_value: null },
+        },
+      ],
+    };
+    const r = resolvePriceTestLineDiscount({
+      test,
+      assignmentVariantId: 'offer-a',
+      productId: '111',
+      linePresentmentTotal: 40,
+      quantity: 1,
+    });
+    expect(r.applies).toBe(false);
+    expect(r.reason).toBe('free_shipping_not_supported');
   });
 
   it('supports all-products target_type for checkout price alignment', () => {

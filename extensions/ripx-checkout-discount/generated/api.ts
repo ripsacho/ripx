@@ -3241,7 +3241,7 @@ export type RipxDeliveryFetch = { __typename?: 'Input', cart: { __typename?: 'Ca
 export type RipxDeliveryRunVariables = Exact<{ [key: string]: never; }>;
 
 
-export type RipxDeliveryRun = { __typename?: 'Input', fetchResult?: { __typename?: 'HttpResponse', jsonBody?: any | null, status: number } | null, discount: { __typename?: 'Discount', discountClasses: Array<DiscountClass> } };
+export type RipxDeliveryRun = { __typename?: 'Input', discount: { __typename?: 'Discount', discountClasses: Array<DiscountClass> }, cart: { __typename?: 'Cart', deliveryGroups: Array<{ __typename?: 'CartDeliveryGroup', id: string, cartLines: Array<{ __typename?: 'CartLine', ripxTest?: { __typename?: 'Attribute', value?: string | null } | null, ripxVariant?: { __typename?: 'Attribute', value?: string | null } | null, ripxOfferDiscountType?: { __typename?: 'Attribute', value?: string | null } | null }>, deliveryOptions: Array<{ __typename?: 'CartDeliveryOption', handle: any }> }> } };
 
 export type RipxCartLinesFetchVariables = Exact<{ [key: string]: never; }>;
 

@@ -737,7 +737,7 @@ function DomainList() {
         }
       }
       try {
-        await openAppAfterVerify(normalizedDomain, !!key);
+        await openAppAfterVerify(normalizedDomain, false);
       } finally {
         setOpeningDomain(null);
       }
@@ -775,6 +775,13 @@ function DomainList() {
     if (isShopify) {
       setOpeningDomain(normalized);
       try {
+        if (key) {
+          try {
+            window.localStorage.setItem(STORAGE_KEYS.API_KEY, key);
+          } catch {
+            // ignore localStorage errors
+          }
+        }
         await openAppAfterVerify(normalized, false);
       } finally {
         setOpeningDomain(null);

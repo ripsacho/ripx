@@ -208,6 +208,19 @@ function UserPanel() {
     return () => window.clearInterval(timer);
   }, [pendingShopifyConnect, verifyConnectedAndOpen]);
 
+  useEffect(
+    () => () => {
+      try {
+        if (connectPopupRef.current && !connectPopupRef.current.closed) {
+          connectPopupRef.current.close();
+        }
+      } catch {
+        // ignore popup close errors
+      }
+    },
+    []
+  );
+
   const handleOpenApp = async domainRow => {
     const domain = typeof domainRow === 'string' ? domainRow : domainRow?.domain;
     if (!domain || openingDomain) return;
@@ -223,50 +236,30 @@ function UserPanel() {
           } catch {
             // ignore localStorage errors
           }
-          setCurrentStore(normalized);
-          if (isEmbeddedInIframe()) {
-            window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalized), {
-              shop: normalized,
-            });
-          } else {
-            navigate(ROUTES.appDashboard(normalized));
-          }
+        }
+        setCurrentStore(normalized);
+        const alreadyConnected = await verifyConnectedAndOpen(normalized);
+        if (alreadyConnected) {
           return;
         }
         setCurrentStore(normalized);
         try {
-          const res = await apiGet('/account/stores');
-          const raw = res?.data?.data ?? res?.data;
-          const stores = raw?.stores ?? [];
-          const connected = stores.some(
-            s => (s.domain || '').toLowerCase() === (normalized || '').toLowerCase()
-          );
-          if (connected) {
-            if (isEmbeddedInIframe()) {
-              window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalized), {
-                shop: normalized,
-              });
-            } else {
-              navigate(ROUTES.appDashboard(normalized));
+          const origin = typeof window !== 'undefined' ? window.location.origin : '';
+          try {
+            const startRes = await apiGet('/auth/start', {
+              shop: normalized,
+              callback_base: origin || undefined,
+            });
+            const url = unwrapData(startRes)?.redirectUrl;
+            if (url) {
+              openShopifyConnectPopup(url, normalized);
+              return;
             }
-          } else {
-            const origin = typeof window !== 'undefined' ? window.location.origin : '';
-            try {
-              const startRes = await apiGet('/auth/start', {
-                shop: normalized,
-                callback_base: origin || undefined,
-              });
-              const url = unwrapData(startRes)?.redirectUrl;
-              if (url) {
-                openShopifyConnectPopup(url, normalized);
-                return;
-              }
-            } catch {
-              /* fallback to same-origin OAuth (cookie may be set) */
-            }
-            const fallbackUrl = `${origin}/api/auth?shop=${encodeURIComponent(normalized)}${origin ? `&callback_base=${encodeURIComponent(origin)}` : ''}`;
-            openShopifyConnectPopup(fallbackUrl, normalized);
+          } catch {
+            /* fallback to same-origin OAuth (cookie may be set) */
           }
+          const fallbackUrl = `${origin}/api/auth?shop=${encodeURIComponent(normalized)}${origin ? `&callback_base=${encodeURIComponent(origin)}` : ''}`;
+          openShopifyConnectPopup(fallbackUrl, normalized);
         } catch (err) {
           if (err?.response?.status === 401) {
             const connectUrl = getConnectUrl({

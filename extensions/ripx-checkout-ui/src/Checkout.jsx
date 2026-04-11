@@ -82,6 +82,30 @@ function buildAutoOfferCodeName(testId, variantName, config = {}) {
   return `RIPX-${testToken}-${variantToken}-${offerToken}`.slice(0, 48);
 }
 
+function normalizeOfferDiscountType(config = {}) {
+  return String(config.discount_type || config.discountType || '')
+    .trim()
+    .toLowerCase();
+}
+
+function parseOfferDiscountValue(config = {}) {
+  const raw = config.discount_value !== undefined ? config.discount_value : config.discountValue;
+  const n = raw !== null && raw !== undefined && String(raw).trim() !== '' ? Number(raw) : NaN;
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function isActionableOfferConfig(config = {}) {
+  const discountType = normalizeOfferDiscountType(config);
+  if (discountType === 'free_shipping') {
+    return true;
+  }
+  if (discountType !== 'percent' && discountType !== 'fixed') {
+    return false;
+  }
+  const value = parseOfferDiscountValue(config);
+  return Number.isFinite(value) && value > 0;
+}
+
 function CheckoutExperiment() {
   const attributes = useAttributes() || [];
   const checkoutToken = useCheckoutToken();
@@ -238,13 +262,7 @@ function CheckoutExperiment() {
   const variantName = String(
     assignment?.variant_name || assignment?.variant_id || 'Assigned'
   ).trim();
-  const discountType = String(cfg.discount_type || '')
-    .trim()
-    .toLowerCase();
-  const hasOfferConfig =
-    ['percent', 'fixed', 'free_shipping'].includes(discountType) ||
-    cfg.discount_code_name !== undefined ||
-    cfg.discountCodeName !== undefined;
+  const hasOfferConfig = isActionableOfferConfig(cfg);
   const discountCodeName =
     String(cfg.discount_code_name || cfg.discountCodeName || '').trim() ||
     buildAutoOfferCodeName(testId || assignment?.test_id || 'test', variantName, cfg);

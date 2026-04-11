@@ -59,7 +59,74 @@ function resolveDiscountClasses(rawClasses) {
         .toUpperCase()
     )
     .filter(v => ALLOWED_DISCOUNT_CLASSES.has(v));
-  return normalized.length > 0 ? Array.from(new Set(normalized)) : ['PRODUCT'];
+  return normalized.length > 0 ? Array.from(new Set(normalized)) : ['PRODUCT', 'SHIPPING'];
+}
+
+function normalizeDiscountClassList(rawClasses) {
+  return (Array.isArray(rawClasses) ? rawClasses : [])
+    .map(v =>
+      String(v || '')
+        .trim()
+        .toUpperCase()
+    )
+    .filter(v => ALLOWED_DISCOUNT_CLASSES.has(v));
+}
+
+function hasAllRequestedDiscountClasses(existingClasses, requestedClasses) {
+  const existing = new Set(normalizeDiscountClassList(existingClasses));
+  const requested = normalizeDiscountClassList(requestedClasses);
+  return requested.every(cls => existing.has(cls));
+}
+
+async function updateAutomaticAppDiscountClasses({
+  shopDomain,
+  accessToken,
+  discountId,
+  title,
+  functionId,
+  discountClasses,
+}) {
+  const mutation = `
+    mutation ripxUpdateAutomaticAppDiscount($id: ID!, $automaticAppDiscount: DiscountAutomaticAppInput!) {
+      discountAutomaticAppUpdate(id: $id, automaticAppDiscount: $automaticAppDiscount) {
+        automaticAppDiscount {
+          discountId
+          title
+          status
+        }
+        userErrors {
+          field
+          message
+          code
+        }
+      }
+    }
+  `;
+  const variables = {
+    id: discountId,
+    automaticAppDiscount: {
+      title,
+      functionId,
+      discountClasses: resolveDiscountClasses(discountClasses),
+    },
+  };
+  const updateResp = await shopifyService.requestAdminGraphql(
+    shopDomain,
+    accessToken,
+    mutation,
+    variables
+  );
+  const payload = updateResp?.data?.discountAutomaticAppUpdate;
+  const errors = Array.isArray(payload?.userErrors) ? payload.userErrors : [];
+  return {
+    updated: errors.length === 0 && !!payload?.automaticAppDiscount?.discountId,
+    discount: payload?.automaticAppDiscount || null,
+    userErrors: errors.map(err => ({
+      field: Array.isArray(err?.field) ? err.field.join('.') : err?.field || null,
+      message: err?.message || null,
+      code: err?.code || null,
+    })),
+  };
 }
 
 async function fetchAutomaticAppDiscountsViaAdmin(shopDomain, accessToken) {
@@ -1067,10 +1134,33 @@ router.post(
       d => d && String(d.title || '').toLowerCase() === discountTitle.toLowerCase()
     );
     if (existing?.discountId) {
+      let upgradedDiscount = null;
+      let upgradeErrors = [];
+      const needsDiscountClassUpgrade = !hasAllRequestedDiscountClasses(
+        existing.discountClasses,
+        discountClasses
+      );
+      if (needsDiscountClassUpgrade) {
+        const upgradeResult = await updateAutomaticAppDiscountClasses({
+          shopDomain,
+          accessToken,
+          discountId: existing.discountId,
+          title: existing.title || discountTitle,
+          functionId: chosenFunction.id,
+          discountClasses,
+        });
+        if (upgradeResult.updated && upgradeResult.discount) {
+          upgradedDiscount = upgradeResult.discount;
+        } else if (upgradeResult.userErrors.length > 0) {
+          upgradeErrors = upgradeResult.userErrors;
+        }
+      }
       return res.json({
         success: true,
         created: false,
-        discount: existing,
+        discount: upgradedDiscount || existing,
+        updated: !!upgradedDiscount,
+        updateErrors: upgradeErrors,
         function: {
           id: chosenFunction.id,
           title: chosenFunction.title || null,
