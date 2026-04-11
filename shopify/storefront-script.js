@@ -4920,7 +4920,11 @@
           : sb.indexOf('/Collection/') !== -1
             ? 'Collection'
             : '';
+      // Accept numeric <-> GID matching when one side has no explicit type.
+      // This keeps legacy numeric target IDs compatible with modern GID current IDs.
       if (typeA === typeB && typeA !== '') return true;
+      if (typeA !== '' && typeB === '') return true;
+      if (typeA === '' && typeB !== '') return true;
     }
     return false;
   }
