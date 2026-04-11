@@ -46,6 +46,12 @@ query RipxCartLinesRun {
       ripxPriceApplicationMethodLegacy: attribute(key: "__ripx_price_application_method") {
         value
       }
+      ripxOfferDiscountType: attribute(key: "_ripx_offer_discount_type") {
+        value
+      }
+      ripxOfferDiscountValue: attribute(key: "_ripx_offer_discount_value") {
+        value
+      }
     }
   }
 }

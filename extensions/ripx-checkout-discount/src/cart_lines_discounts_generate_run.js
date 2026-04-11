@@ -82,6 +82,10 @@ function buildLocalFallbackCandidates(cartLines) {
   for (const line of cartLines || []) {
     const discountUnitRaw = line?.ripxDiscountUnit?.value;
     const targetUnitRaw = line?.ripxTargetUnit?.value;
+    const offerTypeRaw = String(line?.ripxOfferDiscountType?.value || '')
+      .trim()
+      .toLowerCase();
+    const offerValueRaw = line?.ripxOfferDiscountValue?.value;
     if (!canApplyCheckoutDiscountForLineMethod(line)) {
       continue;
     }
@@ -101,6 +105,31 @@ function buildLocalFallbackCandidates(cartLines) {
         candidates.push(candidate);
       }
       continue;
+    }
+    if (offerTypeRaw === 'percent' || offerTypeRaw === 'fixed') {
+      const offerValue = Number.parseFloat(String(offerValueRaw || '').trim());
+      if (
+        Number.isFinite(offerValue) &&
+        offerValue > 0 &&
+        Number.isFinite(subtotal) &&
+        subtotal > 0
+      ) {
+        const roundedSubtotal = Math.round(subtotal * 100) / 100;
+        let discount = 0;
+        if (offerTypeRaw === 'percent') {
+          const pct = Math.max(0, Math.min(100, offerValue));
+          discount = Math.round(roundedSubtotal * (pct / 100) * 100) / 100;
+        } else {
+          const perUnitOff = Math.max(0, offerValue);
+          discount = Math.round(Math.min(roundedSubtotal, perUnitOff * qty) * 100) / 100;
+        }
+        const candidate = buildCandidateForLine(line, discount);
+        if (candidate) {
+          candidate.message = 'RipX offer test';
+          candidates.push(candidate);
+          continue;
+        }
+      }
     }
     if (!targetUnitRaw || !Number.isFinite(subtotal) || subtotal <= 0) {
       continue;

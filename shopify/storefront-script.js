@@ -1432,6 +1432,17 @@
         out._ripx_offer_discount_type = offerType;
       }
     }
+    if (
+      offerProof &&
+      offerProof.discountValue !== undefined &&
+      offerProof.discountValue !== null &&
+      String(offerProof.discountValue).trim() !== ''
+    ) {
+      var offerValueNum = Number(offerProof.discountValue);
+      if (isFinite(offerValueNum) && offerValueNum > 0) {
+        out._ripx_offer_discount_value = offerValueNum.toFixed(2);
+      }
+    }
     return out;
   }
 
@@ -1511,6 +1522,12 @@
       payload._ripx_offer_discount_type,
       preserveExisting
     );
+    setRipxAttrValueOnFormData(
+      formData,
+      'properties[_ripx_offer_discount_value]',
+      payload._ripx_offer_discount_value,
+      preserveExisting
+    );
     return true;
   }
 
@@ -1583,6 +1600,12 @@
       params,
       'properties[_ripx_offer_discount_type]',
       payload._ripx_offer_discount_type,
+      preserveExisting
+    );
+    setRipxAttrValueOnSearchParams(
+      params,
+      'properties[_ripx_offer_discount_value]',
+      payload._ripx_offer_discount_value,
       preserveExisting
     );
     return true;
@@ -2447,6 +2470,9 @@
       if (state._ripx_offer_discount_type) {
         setProperty('_ripx_offer_discount_type', state._ripx_offer_discount_type);
       }
+      if (state._ripx_offer_discount_value) {
+        setProperty('_ripx_offer_discount_value', state._ripx_offer_discount_value);
+      }
       var swapState = getRipxNativeVariantSwapState(state);
       if (swapState) {
         var variantIdInput =
@@ -2559,6 +2585,12 @@
         _ripxCartAttributeState._ripx_offer_discount_type
       ) {
         nextState._ripx_offer_discount_type = _ripxCartAttributeState._ripx_offer_discount_type;
+      }
+      if (
+        !nextState._ripx_offer_discount_value &&
+        _ripxCartAttributeState._ripx_offer_discount_value
+      ) {
+        nextState._ripx_offer_discount_value = _ripxCartAttributeState._ripx_offer_discount_value;
       }
     }
     _ripxCartAttributeState = nextState;
@@ -5156,7 +5188,10 @@
       getOfferTargetProductIdsForCartAttrs(test),
       null,
       { applicationMethod: 'discounted_checkout_price' },
-      { discountType: normalizeOfferDiscountType(cfg) }
+      {
+        discountType: normalizeOfferDiscountType(cfg),
+        discountValue: parseOfferDiscountValue(cfg),
+      }
     );
   }
 
