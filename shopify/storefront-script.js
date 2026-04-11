@@ -1844,6 +1844,10 @@
                 '_ripx_offer_discount_type',
                 effectivePayload._ripx_offer_discount_type
               );
+              setPropIfMissing(
+                '_ripx_offer_discount_value',
+                effectivePayload._ripx_offer_discount_value
+              );
               return nextProps;
             }
             function mapCartLinesWithRipx(arr) {
@@ -5605,7 +5609,11 @@
     statusBadge.style.color = String(diagStyle.color || '#334155');
     statusBadge.textContent = String(diag.label || 'Generated');
     statusBadge.title =
-      getOfferCodeStatusHelpText(diag.status) + ' ' + getOfferCodeStatusLegendText();
+      getOfferCodeStatusHelpText(diag.status) +
+      ' Source: ' +
+      String(codeInfo.sourceLabel || 'auto-generated') +
+      '. ' +
+      getOfferCodeStatusLegendText();
     rightWrap.appendChild(statusBadge);
     row.setAttribute('data-ripx-offer-code-status', String(diag.status || 'generated'));
     row.setAttribute('data-ripx-offer-code-source', String(codeInfo.sourceKey || 'auto'));

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import {
   useApplyDiscountCodeChange,
   useAttributes,
+  useCartLines,
   useCheckoutToken,
   useDiscountCodes,
   useShop,
@@ -42,6 +43,28 @@ function getAttribute(attributes, key) {
   const rows = Array.isArray(attributes) ? attributes : [];
   const hit = rows.find(row => String(row?.key || '').trim() === key);
   return String(hit?.value || '').trim();
+}
+
+function getLineAttribute(line, key) {
+  const attrs = Array.isArray(line?.attributes) ? line.attributes : [];
+  const hit = attrs.find(row => String(row?.key || '').trim() === key);
+  return String(hit?.value || '').trim();
+}
+
+function getAssignmentVariantFromCartLines(lines, testId) {
+  const rows = Array.isArray(lines) ? lines : [];
+  const targetTestId = String(testId || '').trim();
+  for (const line of rows) {
+    const lineTestId = getLineAttribute(line, '_ripx_price_test');
+    if (targetTestId && lineTestId && lineTestId !== targetTestId) {
+      continue;
+    }
+    const variant = getLineAttribute(line, '_ripx_variant');
+    if (variant) {
+      return variant;
+    }
+  }
+  return '';
 }
 
 function normalizeOfferCodeToken(rawValue, fallback = 'VARIANT') {
@@ -188,6 +211,7 @@ function isActionableOfferConfig(config = {}) {
 
 function CheckoutExperiment() {
   const attributes = useAttributes() || [];
+  const cartLines = useCartLines() || [];
   const checkoutToken = useCheckoutToken();
   const applyDiscountCodeChange = useApplyDiscountCodeChange();
   const discountCodes = useDiscountCodes();
@@ -225,6 +249,10 @@ function CheckoutExperiment() {
     }
     return getAttribute(attributes, '_ripx_checkout_test');
   }, [attributes]);
+  const assignmentVariantFromLines = useMemo(
+    () => getAssignmentVariantFromCartLines(cartLines, testId),
+    [cartLines, testId]
+  );
 
   const trackConversion = useCallback(
     async (eventName, metadata = {}) => {
@@ -298,6 +326,7 @@ function CheckoutExperiment() {
             shop: shopDomain,
             test_id: testId,
             checkout_id: checkoutId,
+            assignment_variant: assignmentVariantFromLines || undefined,
           }),
         });
         const payload = await response.json().catch(() => null);
@@ -323,7 +352,7 @@ function CheckoutExperiment() {
     return () => {
       cancelled = true;
     };
-  }, [shopDomain, checkoutId, testId]);
+  }, [shopDomain, checkoutId, testId, assignmentVariantFromLines]);
 
   useEffect(() => {
     if (!assignment || impressionTracked) {
@@ -381,25 +410,24 @@ function CheckoutExperiment() {
     if (!hasOfferConfig) {
       return '';
     }
+    let base = 'Code status: generated';
     if (hasDiscountCodeApplied) {
-      return 'Code status: applied';
+      base = 'Code status: applied';
+    } else if (applyingDiscountCode) {
+      base = 'Code status: applying';
+    } else if (discountCodeApplyError) {
+      base = 'Code status: apply failed';
+    } else if (autoApplyAttempted) {
+      base = 'Code status: pending confirmation';
     }
-    if (applyingDiscountCode) {
-      return 'Code status: applying';
-    }
-    if (discountCodeApplyError) {
-      return 'Code status: apply failed';
-    }
-    if (autoApplyAttempted) {
-      return 'Code status: pending confirmation';
-    }
-    return 'Code status: generated';
+    return `${base} | Source: ${offerCodeSourceLabel}`;
   }, [
     applyingDiscountCode,
     autoApplyAttempted,
     discountCodeApplyError,
     hasDiscountCodeApplied,
     hasOfferConfig,
+    offerCodeSourceLabel,
   ]);
   const offerCodeStatusLegend =
     'Applied=active, Applying=in progress, Pending=waiting, Failed=rejected, Generated=ready.';
@@ -517,7 +545,6 @@ function CheckoutExperiment() {
           )
         : null,
       hasOfferConfig ? h('s-text', null, offerCodeStatusLabel) : null,
-      hasOfferConfig ? h('s-text', null, `Code source: ${offerCodeSourceLabel}`) : null,
       hasOfferConfig ? h('s-text', null, offerCodeStatusLegend) : null,
       hasOfferConfig && !hasDiscountCodeApplied
         ? h(

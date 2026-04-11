@@ -1243,9 +1243,15 @@ router.post(
     const shopRaw = body.shop ?? body.shop_domain ?? req.query.shop ?? req.query.shop_domain;
     const siteRaw = body.site ?? req.query.site;
     const checkoutIdRaw = body.checkout_id ?? req.query.checkout_id;
+    const assignmentVariantRaw =
+      body.assignment_variant ??
+      body.variant_id ??
+      req.query.assignment_variant ??
+      req.query.variant_id;
 
     const testId = String(testIdRaw || '').trim();
     const checkoutId = String(checkoutIdRaw || '').trim();
+    const assignmentVariant = String(assignmentVariantRaw || '').trim();
     if (!validators.isValidUUID(testId)) {
       return res.status(400).json({ success: false, error: 'Invalid or missing test_id' });
     }
@@ -1285,7 +1291,33 @@ router.post(
       context.preview_session = true;
     }
 
-    const variant = await abTestEngine.getVariant(testId, userId, domain, context);
+    let variant = null;
+    let assignmentSource = 'bucket';
+    if (assignmentVariant) {
+      const test = await getTestById(testId, domain);
+      const variants = Array.isArray(test?.variants) ? test.variants : [];
+      const forced = findVariantForPreviewQuery(variants, {
+        variant_id: assignmentVariant,
+        variant_name: assignmentVariant,
+      });
+      if (forced) {
+        const forcedVariantId =
+          forced.id !== undefined && forced.id !== null ? String(forced.id).trim() : '';
+        const forcedVariantName =
+          forced.name !== undefined && forced.name !== null ? String(forced.name).trim() : '';
+        const resolvedVariantId = forcedVariantId || forcedVariantName || assignmentVariant;
+        variant = {
+          variantId: resolvedVariantId,
+          variantName: forcedVariantName || resolvedVariantId,
+          isNewAssignment: false,
+          config: forced.config && typeof forced.config === 'object' ? forced.config : {},
+        };
+        assignmentSource = 'cart_line';
+      }
+    }
+    if (!variant) {
+      variant = await abTestEngine.getVariant(testId, userId, domain, context);
+    }
     if (!variant) {
       return res.json({ success: true, assignment: null });
     }
@@ -1297,6 +1329,7 @@ router.post(
         user_id: userId,
         variant_id: signedVariant.variantId,
         variant_name: signedVariant.variantName || null,
+        assignment_source: assignmentSource,
         config: signedVariant.config || {},
         assignment_sig: signedVariant.assignment_sig || null,
         assignment_ts: signedVariant.assignment_ts || null,

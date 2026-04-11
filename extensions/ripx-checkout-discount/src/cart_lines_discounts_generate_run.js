@@ -40,8 +40,42 @@ function canApplyCheckoutDiscountForLineMethod(line) {
   return method !== 'direct_price_override' && method !== 'native_variant_price';
 }
 
+function normalizeOfferDiscountType(value) {
+  const raw = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (
+    raw === 'percent' ||
+    raw === 'percentage' ||
+    raw === 'pct' ||
+    raw === 'percent_off' ||
+    raw === 'percentage_off'
+  ) {
+    return 'percent';
+  }
+  if (
+    raw === 'fixed' ||
+    raw === 'fixed_amount' ||
+    raw === 'amount' ||
+    raw === 'flat' ||
+    raw === 'flat_amount' ||
+    raw === 'money'
+  ) {
+    return 'fixed';
+  }
+  if (
+    raw === 'free_shipping' ||
+    raw === 'free-shipping' ||
+    raw === 'freeshipping' ||
+    raw === 'free shipping'
+  ) {
+    return 'free_shipping';
+  }
+  return raw;
+}
+
 function normalizeFetchBody(jsonBody) {
-  if (jsonBody == null) {
+  if (jsonBody === null || jsonBody === undefined) {
     return null;
   }
   if (typeof jsonBody === 'string') {
@@ -82,9 +116,7 @@ function buildLocalFallbackCandidates(cartLines) {
   for (const line of cartLines || []) {
     const discountUnitRaw = line?.ripxDiscountUnit?.value;
     const targetUnitRaw = line?.ripxTargetUnit?.value;
-    const offerTypeRaw = String(line?.ripxOfferDiscountType?.value || '')
-      .trim()
-      .toLowerCase();
+    const offerTypeRaw = normalizeOfferDiscountType(line?.ripxOfferDiscountType?.value);
     const offerValueRaw = line?.ripxOfferDiscountValue?.value;
     if (!canApplyCheckoutDiscountForLineMethod(line)) {
       continue;

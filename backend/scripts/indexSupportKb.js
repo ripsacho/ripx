@@ -199,7 +199,7 @@ async function run() {
   let totalInserted = 0;
 
   for (const filePath of files) {
-    const sourceLabel = path.relative(path.dirname(absDir), filePath).replace(/\\/g, '/');
+    const sourceLabel = path.relative(absDir, filePath).replace(/\\/g, '/');
     const content = extractText(filePath);
     if (!content) {
       console.log('Skip (empty):', sourceLabel);
