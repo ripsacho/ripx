@@ -5065,6 +5065,207 @@
     return buildAutoOfferCodeName(test, variant);
   }
 
+  var OFFER_CODE_APPLY_STATE_KEY = '__ripx_offer_code_apply_v1__';
+  function normalizeOfferCodeStateKey(codeName) {
+    return String(codeName || '')
+      .trim()
+      .toUpperCase();
+  }
+  function readOfferCodeApplyState() {
+    try {
+      if (!window.sessionStorage) return {};
+      var raw = window.sessionStorage.getItem(OFFER_CODE_APPLY_STATE_KEY);
+      if (!raw) return {};
+      var parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (e) {
+      return {};
+    }
+  }
+  function writeOfferCodeApplyState(state) {
+    try {
+      if (!window.sessionStorage) return;
+      window.sessionStorage.setItem(OFFER_CODE_APPLY_STATE_KEY, JSON.stringify(state || {}));
+    } catch (e) {}
+  }
+  function hasOfferCodeApplyAttempted(codeName) {
+    var key = normalizeOfferCodeStateKey(codeName);
+    if (!key) return false;
+    var state = readOfferCodeApplyState();
+    return !!state[key];
+  }
+  function markOfferCodeApplyAttempt(codeName) {
+    var key = normalizeOfferCodeStateKey(codeName);
+    if (!key) return;
+    var state = readOfferCodeApplyState();
+    state[key] = 1;
+    writeOfferCodeApplyState(state);
+  }
+  function hasMatchingDiscountParam(codeName) {
+    var key = normalizeOfferCodeStateKey(codeName);
+    if (!key) return false;
+    try {
+      var params = new URLSearchParams(window.location.search || '');
+      var candidates = ['discount', 'discount_code', 'code'];
+      for (var i = 0; i < candidates.length; i += 1) {
+        var raw = params.get(candidates[i]);
+        if (normalizeOfferCodeStateKey(raw) === key) return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+  function buildOfferCodeApplyUrl(codeName) {
+    var code = String(codeName || '').trim();
+    if (!code) return null;
+    var redirectPath = (window.location.pathname || '/') + (window.location.search || '');
+    return (
+      '/discount/' + encodeURIComponent(code) + '?redirect=' + encodeURIComponent(redirectPath)
+    );
+  }
+  function applyOfferCodeOnStorefront(codeName, options) {
+    var opts = options && typeof options === 'object' ? options : {};
+    var code = String(codeName || '').trim();
+    if (!code || PREVIEW_MODE) return false;
+    if (!opts.force && hasOfferCodeApplyAttempted(code)) return false;
+    if (!opts.force && hasMatchingDiscountParam(code)) return false;
+    var url = buildOfferCodeApplyUrl(code);
+    if (!url) return false;
+    markOfferCodeApplyAttempt(code);
+    try {
+      window.location.assign(url);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  function copyOfferCodeNameToClipboard(codeName) {
+    var code = String(codeName || '').trim();
+    if (!code) return false;
+    try {
+      if (
+        !navigator ||
+        !navigator.clipboard ||
+        typeof navigator.clipboard.writeText !== 'function'
+      ) {
+        return false;
+      }
+      navigator.clipboard.writeText(code).catch(function () {});
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  function getCartStateAppliedDiscountCodes(cartState) {
+    var seen = {};
+    var out = [];
+    function pushCode(raw) {
+      var token = normalizeOfferCodeStateKey(raw);
+      if (!token || seen[token]) return;
+      seen[token] = 1;
+      out.push(token);
+    }
+    if (!cartState || typeof cartState !== 'object') return out;
+    var topLevelCodes = Array.isArray(cartState.discount_codes) ? cartState.discount_codes : [];
+    topLevelCodes.forEach(function (row) {
+      if (row && typeof row === 'object') {
+        pushCode(row.code || row.title || '');
+      } else {
+        pushCode(row);
+      }
+    });
+    var levelApps = Array.isArray(cartState.cart_level_discount_applications)
+      ? cartState.cart_level_discount_applications
+      : [];
+    levelApps.forEach(function (row) {
+      if (!row || typeof row !== 'object') return;
+      pushCode(row.code || row.title || '');
+    });
+    var items = Array.isArray(cartState.items) ? cartState.items : [];
+    items.forEach(function (item) {
+      var discounts = Array.isArray(item && item.discounts) ? item.discounts : [];
+      discounts.forEach(function (row) {
+        if (!row || typeof row !== 'object') return;
+        pushCode(row.code || row.title || '');
+      });
+    });
+    return out;
+  }
+  function cartStateHasOfferCodeApplied(cartState, codeName) {
+    var key = normalizeOfferCodeStateKey(codeName);
+    if (!key) return false;
+    var codes = getCartStateAppliedDiscountCodes(cartState);
+    return codes.indexOf(key) !== -1;
+  }
+  function getOfferCodeDiagnostics(codeName) {
+    if (PREVIEW_MODE) {
+      return { status: 'preview', label: 'Preview only' };
+    }
+    var cartState =
+      _ripxCartNativeState && _ripxCartNativeState.cart ? _ripxCartNativeState.cart : null;
+    if (cartStateHasOfferCodeApplied(cartState, codeName)) {
+      return { status: 'applied', label: 'Applied' };
+    }
+    if (hasOfferCodeApplyAttempted(codeName)) {
+      if (hasMatchingDiscountParam(codeName)) {
+        return { status: 'failed', label: 'Not applied' };
+      }
+      return { status: 'pending', label: 'Pending check' };
+    }
+    return { status: 'generated', label: 'Generated' };
+  }
+  function getOfferCodeStatusStyles(status) {
+    var s = String(status || '')
+      .trim()
+      .toLowerCase();
+    if (s === 'applied') {
+      return {
+        background: 'rgba(22,163,74,0.16)',
+        border: 'rgba(22,163,74,0.35)',
+        color: '#166534',
+      };
+    }
+    if (s === 'failed') {
+      return {
+        background: 'rgba(239,68,68,0.12)',
+        border: 'rgba(239,68,68,0.35)',
+        color: '#991b1b',
+      };
+    }
+    if (s === 'pending') {
+      return {
+        background: 'rgba(234,179,8,0.14)',
+        border: 'rgba(234,179,8,0.35)',
+        color: '#854d0e',
+      };
+    }
+    if (s === 'preview') {
+      return {
+        background: 'rgba(100,116,139,0.12)',
+        border: 'rgba(100,116,139,0.3)',
+        color: '#334155',
+      };
+    }
+    return {
+      background: 'rgba(100,116,139,0.08)',
+      border: 'rgba(100,116,139,0.22)',
+      color: '#334155',
+    };
+  }
+  function getOfferCodeStatusHelpText(status) {
+    var s = String(status || '')
+      .trim()
+      .toLowerCase();
+    if (s === 'applied') return 'Applied: code is active in this cart.';
+    if (s === 'pending')
+      return 'Pending check: apply attempt made; waiting for cart state refresh.';
+    if (s === 'failed') return 'Not applied: discount link loaded but cart has no matching code.';
+    if (s === 'preview') return 'Preview only: no discount apply is attempted in preview mode.';
+    return 'Generated: code exists and is ready to apply.';
+  }
+  function getOfferCodeStatusLegendText() {
+    return 'Applied=green, Pending=amber, Not applied=red, Generated=gray, Preview=slate.';
+  }
+
   function shouldShowOfferCodeOnCart(test) {
     if (!testTypeIsOffer(test)) return false;
     if (!(isCartSurface() || hasCartUiInDom())) return false;
@@ -5116,6 +5317,14 @@
       container.style.borderRadius = '10px';
       container.style.border = '1px solid rgba(6,182,212,0.32)';
       container.style.background = 'rgba(6,182,212,0.08)';
+      var legend = document.createElement('div');
+      legend.setAttribute('data-ripx-offer-code-legend', '1');
+      legend.style.fontSize = '10px';
+      legend.style.color = '#334155';
+      legend.style.opacity = '0.9';
+      legend.style.marginBottom = '6px';
+      legend.textContent = getOfferCodeStatusLegendText();
+      container.appendChild(legend);
       if (mount.firstChild) mount.insertBefore(container, mount.firstChild);
       else mount.appendChild(container);
       return container;
@@ -5124,7 +5333,8 @@
     }
   }
 
-  function upsertOfferCodeNotice(test, variant) {
+  function upsertOfferCodeNotice(test, variant, options) {
+    var opts = options && typeof options === 'object' ? options : {};
     if (!shouldShowOfferCodeOnCart(test) || !variant) return;
     var codeName = getOfferCodeNameForVariant(test, variant);
     if (!codeName) return;
@@ -5158,16 +5368,74 @@
     var label =
       'Offer code (' + String(variant.variantName || variant.name || 'Variant').trim() + '):';
     row.textContent = '';
+    row.style.alignItems = 'flex-start';
     var left = document.createElement('span');
     left.style.fontSize = '12px';
     left.style.color = '#0f172a';
     left.textContent = label;
+    var rightWrap = document.createElement('div');
+    rightWrap.style.display = 'flex';
+    rightWrap.style.alignItems = 'center';
+    rightWrap.style.gap = '8px';
+    rightWrap.style.flexWrap = 'wrap';
     var right = document.createElement('strong');
     right.style.fontSize = '12px';
     right.style.letterSpacing = '0.04em';
     right.textContent = codeName;
+    rightWrap.appendChild(right);
+    var diag = getOfferCodeDiagnostics(codeName);
+    var diagStyle = getOfferCodeStatusStyles(diag.status);
+    var statusBadge = document.createElement('span');
+    statusBadge.style.fontSize = '10px';
+    statusBadge.style.padding = '2px 6px';
+    statusBadge.style.borderRadius = '999px';
+    statusBadge.style.border = '1px solid ' + String(diagStyle.border || 'rgba(100,116,139,0.22)');
+    statusBadge.style.background = String(diagStyle.background || 'rgba(100,116,139,0.08)');
+    statusBadge.style.color = String(diagStyle.color || '#334155');
+    statusBadge.textContent = String(diag.label || 'Generated');
+    statusBadge.title =
+      getOfferCodeStatusHelpText(diag.status) + ' ' + getOfferCodeStatusLegendText();
+    rightWrap.appendChild(statusBadge);
+    row.setAttribute('data-ripx-offer-code-status', String(diag.status || 'generated'));
+    if (isCartSurface()) {
+      var applyBtn = document.createElement('button');
+      applyBtn.type = 'button';
+      applyBtn.style.fontSize = '11px';
+      applyBtn.style.padding = '4px 8px';
+      applyBtn.style.borderRadius = '8px';
+      applyBtn.style.border = '1px solid rgba(15,23,42,0.2)';
+      applyBtn.style.background = '#fff';
+      applyBtn.style.cursor = 'pointer';
+      applyBtn.textContent = 'Apply';
+      applyBtn.addEventListener('click', function () {
+        applyOfferCodeOnStorefront(codeName, { force: true });
+      });
+      rightWrap.appendChild(applyBtn);
+    }
+    var copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.style.fontSize = '11px';
+    copyBtn.style.padding = '4px 8px';
+    copyBtn.style.borderRadius = '8px';
+    copyBtn.style.border = '1px solid rgba(15,23,42,0.2)';
+    copyBtn.style.background = '#fff';
+    copyBtn.style.cursor = 'pointer';
+    copyBtn.textContent = 'Copy';
+    copyBtn.addEventListener('click', function () {
+      copyOfferCodeNameToClipboard(codeName);
+    });
+    rightWrap.appendChild(copyBtn);
     row.appendChild(left);
-    row.appendChild(right);
+    row.appendChild(rightWrap);
+
+    if (isCartSurface() && !opts.skipStatusRefresh) {
+      fetchRipxCartNativeState().then(function () {
+        upsertOfferCodeNotice(test, variant, { skipStatusRefresh: true, skipAutoApply: true });
+      });
+    }
+    if (isCartSurface() && !opts.skipAutoApply) {
+      applyOfferCodeOnStorefront(codeName, { force: false });
+    }
   }
 
   /**

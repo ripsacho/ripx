@@ -41,6 +41,7 @@ import {
   useInvalidateTests,
   usePersonalizeTest,
   useRolloutTest,
+  usePublishWinnerPricesToShopify,
   useDisablePersonalization,
   useAppRoutes,
   testsListQueryKey,
@@ -116,6 +117,11 @@ function TestDetail() {
   const [rolloutCsvLoading, setRolloutCsvLoading] = useState(false);
   const [reportDownloadLoading, setReportDownloadLoading] = useState(false);
   const [preLaunchOpen, setPreLaunchOpen] = useState(false);
+  const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
+  const [publishConfirmMode, setPublishConfirmMode] = useState('publish_only');
+  const [publishPreviewLoading, setPublishPreviewLoading] = useState(false);
+  const [publishPreview, setPublishPreview] = useState(null);
+  const [publishPreviewError, setPublishPreviewError] = useState(null);
   const [preflightLoading, setPreflightLoading] = useState(false);
   const [preflightResult, setPreflightResult] = useState(null);
   const [forceStart, setForceStart] = useState(false);
@@ -205,6 +211,7 @@ function TestDetail() {
   const deleteMutation = useDeleteTest();
   const personalizeMutation = usePersonalizeTest();
   const rolloutMutation = useRolloutTest();
+  const publishWinnerPricesMutation = usePublishWinnerPricesToShopify();
   const disablePersonalizationMutation = useDisablePersonalization();
 
   const handleTitleRender = useCallback(el => setPageTitle(el), []);
@@ -226,6 +233,9 @@ function TestDetail() {
   const isPersonalized = test?.personalization_mode === 'personalized';
   const isRollout = test?.personalization_mode === 'rollout';
   const hasPersonalization = isPersonalized || isRollout;
+  const isPriceLikeTest =
+    String(test?.type || '').toLowerCase() === 'price' ||
+    String(test?.type || '').toLowerCase() === 'pricing';
 
   const summarizePreflight = useCallback(preflight => {
     if (!preflight || typeof preflight !== 'object') {
@@ -369,7 +379,66 @@ function TestDetail() {
     handleRunPreflight();
   };
 
+  const openPublishConfirm = async mode => {
+    setPublishConfirmMode(mode);
+    setPublishPreview(null);
+    setPublishPreviewError(null);
+    setPublishConfirmOpen(true);
+    setPublishPreviewLoading(true);
+    try {
+      const response = await publishWinnerPricesMutation.mutateAsync({
+        testId: id,
+        dryRun: true,
+      });
+      const preview = unwrapData(response)?.publish || null;
+      setPublishPreview(preview);
+    } catch (err) {
+      setPublishPreviewError(
+        err.response?.data?.details?.[0] ||
+          err.response?.data?.error ||
+          'Could not estimate Shopify updates'
+      );
+    } finally {
+      setPublishPreviewLoading(false);
+    }
+  };
+
+  const handleConfirmPublishToShopify = async () => {
+    const stopFirst = publishConfirmMode === 'stop_and_publish';
+    setActionLoading(true);
+    setErrorMessage(null);
+    try {
+      if (stopFirst) {
+        await stopMutation.mutateAsync(id);
+      }
+      const response = await publishWinnerPricesMutation.mutateAsync({ testId: id });
+      const publish = unwrapData(response)?.publish;
+      const updatedCount = Number(publish?.summary?.updated_count || 0);
+      setSuccessMessage(
+        updatedCount > 0
+          ? `${stopFirst ? 'Test stopped. ' : ''}Winner personalized and ${updatedCount} Shopify variant price${updatedCount === 1 ? '' : 's'} updated.`
+          : `${stopFirst ? 'Test stopped. ' : ''}Winner personalized. Shopify prices were already in sync.`
+      );
+      setPublishConfirmOpen(false);
+      setPublishPreview(null);
+      setPublishPreviewError(null);
+    } catch (err) {
+      setErrorMessage(
+        err.response?.data?.details?.[0] ||
+          err.response?.data?.error ||
+          'Failed to personalize and publish Shopify prices'
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleStop = async action => {
+    if (action === 'personalize_publish_shopify') {
+      setStopExpanded(false);
+      await openPublishConfirm('stop_and_publish');
+      return;
+    }
     setActionLoading(true);
     setErrorMessage(null);
     setStopExpanded(false);
@@ -430,6 +499,10 @@ function TestDetail() {
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const handlePersonalizeAndPublish = async () => {
+    await openPublishConfirm('publish_only');
   };
 
   const handleDisablePersonalization = async () => {
@@ -677,6 +750,13 @@ function TestDetail() {
   const srmDetected = Boolean(health?.srm?.detected || test?.analytics_meta?.srm?.detected);
   const riskLevel = String(health?.riskSignals?.level || '').toLowerCase();
   const rolloutRecommendation = health?.rolloutRecommendation || null;
+  const publishSummary = publishPreview?.summary || {};
+  const previewWouldUpdate = Number(
+    publishSummary.would_update_count ?? publishSummary.updated_count ?? 0
+  );
+  const previewScannedVariants = Number(publishSummary.variants_scanned || 0);
+  const previewScannedProducts = Number(publishSummary.products_scanned || 0);
+  const previewExcludedProducts = Number(publishSummary.products_skipped_excluded || 0);
 
   return (
     <PageShell className={`${styles.detailPage} wizard-page`}>
@@ -812,6 +892,77 @@ function TestDetail() {
           <Text variant="bodyMd" as="p">
             This will permanently delete the test and its configuration.
           </Text>
+        </Modal.Section>
+      </Modal>
+
+      <Modal
+        open={publishConfirmOpen}
+        onClose={() => {
+          if (actionLoading) return;
+          setPublishConfirmOpen(false);
+        }}
+        title={
+          publishConfirmMode === 'stop_and_publish'
+            ? 'Stop test and publish winner prices?'
+            : 'Publish winner prices to Shopify?'
+        }
+        primaryAction={{
+          content:
+            publishConfirmMode === 'stop_and_publish' ? 'Stop + publish' : 'Publish to Shopify',
+          onAction: handleConfirmPublishToShopify,
+          loading: actionLoading,
+          disabled: publishPreviewLoading || !!publishPreviewError,
+          destructive: false,
+        }}
+        secondaryActions={[
+          {
+            content: 'Cancel',
+            onAction: () => setPublishConfirmOpen(false),
+            disabled: actionLoading,
+          },
+        ]}
+      >
+        <Modal.Section>
+          <BlockStack gap="300">
+            <Text variant="bodyMd" as="p" tone="subdued">
+              This action applies the winner for traffic personalization and writes matching prices
+              into your Shopify catalog variants.
+            </Text>
+            {publishPreviewLoading && (
+              <Banner tone="info">
+                <Text as="p" variant="bodySm">
+                  Estimating impacted products and variants…
+                </Text>
+              </Banner>
+            )}
+            {publishPreviewError && (
+              <Banner tone="critical">
+                <Text as="p" variant="bodySm">
+                  {publishPreviewError}
+                </Text>
+              </Banner>
+            )}
+            {!publishPreviewLoading && !publishPreviewError && publishPreview && (
+              <Banner tone="warning">
+                <BlockStack gap="100">
+                  <Text as="p" variant="bodySm">
+                    Products scanned: <strong>{previewScannedProducts}</strong>
+                  </Text>
+                  <Text as="p" variant="bodySm">
+                    Variants scanned: <strong>{previewScannedVariants}</strong>
+                  </Text>
+                  <Text as="p" variant="bodySm">
+                    Variants to update: <strong>{previewWouldUpdate}</strong>
+                  </Text>
+                  {previewExcludedProducts > 0 && (
+                    <Text as="p" variant="bodySm">
+                      Excluded products skipped: <strong>{previewExcludedProducts}</strong>
+                    </Text>
+                  )}
+                </BlockStack>
+              </Banner>
+            )}
+          </BlockStack>
         </Modal.Section>
       </Modal>
 
@@ -1187,6 +1338,18 @@ function TestDetail() {
                             <Icon source={ChartVerticalFilledIcon} />
                             Rollout
                           </button>
+                          {isPriceLikeTest && (
+                            <button
+                              type="button"
+                              className={styles.detailSecondaryBtn}
+                              onClick={handlePersonalizeAndPublish}
+                              disabled={actionLoading}
+                              title="Apply winner to traffic and write prices to Shopify catalog"
+                            >
+                              <Icon source={LinkIcon} />
+                              Personalize + Shopify
+                            </button>
+                          )}
                         </>
                       )}
                     </div>
@@ -1225,16 +1388,28 @@ function TestDetail() {
                       {(String(test?.type || '').toLowerCase() === 'price' ||
                         String(test?.type || '').toLowerCase() === 'pricing') &&
                         isStopped && (
-                          <button
-                            type="button"
-                            className={styles.detailSecondaryBtn}
-                            onClick={handleDownloadRolloutCsv}
-                            disabled={rolloutCsvLoading}
-                            title="Download winner price mapping CSV"
-                          >
-                            <Icon source={ExportIcon} />
-                            {rolloutCsvLoading ? 'Preparing CSV…' : 'Rollout CSV'}
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              className={styles.detailSecondaryBtn}
+                              onClick={handlePersonalizeAndPublish}
+                              disabled={actionLoading}
+                              title="Apply winner to traffic and write prices to Shopify catalog"
+                            >
+                              <Icon source={LinkIcon} />
+                              Publish to Shopify
+                            </button>
+                            <button
+                              type="button"
+                              className={styles.detailSecondaryBtn}
+                              onClick={handleDownloadRolloutCsv}
+                              disabled={rolloutCsvLoading}
+                              title="Download winner price mapping CSV"
+                            >
+                              <Icon source={ExportIcon} />
+                              {rolloutCsvLoading ? 'Preparing CSV…' : 'Rollout CSV'}
+                            </button>
+                          </>
                         )}
                       <button
                         type="button"
@@ -1302,6 +1477,19 @@ function TestDetail() {
                       <span className={styles.stopInlineCardLabel}>Apply winner</span>
                       <span className={styles.stopInlineCardBadge}>Recommended</span>
                     </button>
+                    {isPriceLikeTest && (
+                      <button
+                        type="button"
+                        className={`${styles.stopInlineCard} ${styles.stopInlineCardPersonalize}`}
+                        onClick={() => handleStop('personalize_publish_shopify')}
+                        disabled={actionLoading}
+                        title="Stop test, apply winner to traffic, and write prices to Shopify catalog"
+                      >
+                        <Icon source={LinkIcon} />
+                        <span className={styles.stopInlineCardLabel}>Apply winner + Shopify</span>
+                        <span className={styles.stopInlineCardBadge}>Catalog update</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       className={`${styles.stopInlineCard} ${styles.stopInlineCardRollout}`}

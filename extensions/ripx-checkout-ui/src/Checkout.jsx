@@ -1,7 +1,13 @@
 import '@shopify/ui-extensions/preact';
 import { h, render } from 'preact';
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
-import { useAttributes, useCheckoutToken, useShop } from '@shopify/ui-extensions/checkout/preact';
+import {
+  useApplyDiscountCodeChange,
+  useAttributes,
+  useCheckoutToken,
+  useDiscountCodes,
+  useShop,
+} from '@shopify/ui-extensions/checkout/preact';
 import {
   RIPX_CHECKOUT_ASSIGNMENT_URL,
   RIPX_CHECKOUT_CONVERSION_URL,
@@ -79,6 +85,8 @@ function buildAutoOfferCodeName(testId, variantName, config = {}) {
 function CheckoutExperiment() {
   const attributes = useAttributes() || [];
   const checkoutToken = useCheckoutToken();
+  const applyDiscountCodeChange = useApplyDiscountCodeChange();
+  const discountCodes = useDiscountCodes();
   const shop = useShop();
 
   const [loading, setLoading] = useState(true);
@@ -86,6 +94,9 @@ function CheckoutExperiment() {
   const [assignment, setAssignment] = useState(null);
   const [sendingConversion, setSendingConversion] = useState(false);
   const [impressionTracked, setImpressionTracked] = useState(false);
+  const [applyingDiscountCode, setApplyingDiscountCode] = useState(false);
+  const [discountCodeApplyError, setDiscountCodeApplyError] = useState('');
+  const [autoApplyAttempted, setAutoApplyAttempted] = useState(false);
 
   const shopDomain = useMemo(() => {
     const configured = normalizeShopDomain(RIPX_CHECKOUT_UI_SHOP_DOMAIN);
@@ -242,6 +253,125 @@ function CheckoutExperiment() {
     (hasOfferConfig ? `Offer variant: ${variantName}` : `RipX Variant: ${variantName}`);
   const message = String(cfg.checkout_message || cfg.message || '').trim();
   const cta = String(cfg.checkout_cta_label || cfg.cta_label || 'Track conversion').trim();
+  const activeDiscountCodes = useMemo(() => {
+    const rows = Array.isArray(discountCodes)
+      ? discountCodes
+      : Array.isArray(discountCodes?.value)
+        ? discountCodes.value
+        : [];
+    return rows.map(row => String(row?.code || '').trim()).filter(Boolean);
+  }, [discountCodes]);
+  const hasDiscountCodeApplied = useMemo(() => {
+    const target = String(discountCodeName || '')
+      .trim()
+      .toLowerCase();
+    if (!target) {
+      return false;
+    }
+    return activeDiscountCodes.some(
+      code =>
+        String(code || '')
+          .trim()
+          .toLowerCase() === target
+    );
+  }, [activeDiscountCodes, discountCodeName]);
+  const offerCodeStatusLabel = useMemo(() => {
+    if (!hasOfferConfig) {
+      return '';
+    }
+    if (hasDiscountCodeApplied) {
+      return 'Code status: applied';
+    }
+    if (applyingDiscountCode) {
+      return 'Code status: applying';
+    }
+    if (discountCodeApplyError) {
+      return 'Code status: apply failed';
+    }
+    if (autoApplyAttempted) {
+      return 'Code status: pending confirmation';
+    }
+    return 'Code status: generated';
+  }, [
+    applyingDiscountCode,
+    autoApplyAttempted,
+    discountCodeApplyError,
+    hasDiscountCodeApplied,
+    hasOfferConfig,
+  ]);
+  const offerCodeStatusLegend =
+    'Applied=active, Applying=in progress, Pending=waiting, Failed=rejected, Generated=ready.';
+  const applyOfferDiscountCode = useCallback(
+    async (force = false) => {
+      if (!hasOfferConfig || !discountCodeName) {
+        return;
+      }
+      if (!force && hasDiscountCodeApplied) {
+        return;
+      }
+      if (typeof applyDiscountCodeChange !== 'function') {
+        setDiscountCodeApplyError(
+          'Checkout API does not allow discount code updates in this context.'
+        );
+        return;
+      }
+      setApplyingDiscountCode(true);
+      setDiscountCodeApplyError('');
+      try {
+        const result = await applyDiscountCodeChange({
+          type: 'addDiscountCode',
+          code: discountCodeName,
+        });
+        if (result?.type === 'error') {
+          setDiscountCodeApplyError(
+            String(result?.message || 'Could not apply discount code at checkout.')
+          );
+          return;
+        }
+        void trackConversion('checkout_extension_discount_code_applied', {
+          variant_id: assignment?.variant_id || null,
+          discount_code: discountCodeName,
+        });
+      } catch (e) {
+        setDiscountCodeApplyError(
+          String(e?.message || 'Could not apply discount code at checkout.')
+        );
+      } finally {
+        setApplyingDiscountCode(false);
+      }
+    },
+    [
+      applyDiscountCodeChange,
+      assignment?.variant_id,
+      discountCodeName,
+      hasDiscountCodeApplied,
+      hasOfferConfig,
+      trackConversion,
+    ]
+  );
+
+  useEffect(() => {
+    setDiscountCodeApplyError('');
+    setAutoApplyAttempted(false);
+  }, [assignment?.variant_id, discountCodeName, testId]);
+
+  useEffect(() => {
+    if (!assignment || !hasOfferConfig || !discountCodeName || hasDiscountCodeApplied) {
+      return;
+    }
+    if (autoApplyAttempted) {
+      return;
+    }
+    setAutoApplyAttempted(true);
+    void applyOfferDiscountCode(false);
+  }, [
+    applyOfferDiscountCode,
+    assignment,
+    autoApplyAttempted,
+    discountCodeName,
+    hasDiscountCodeApplied,
+    hasOfferConfig,
+  ]);
 
   if (loading) {
     return h(
@@ -275,7 +405,29 @@ function CheckoutExperiment() {
       's-banner',
       { heading: title, tone: 'success' },
       message ? h('s-text', null, message) : null,
-      hasOfferConfig ? h('s-text', null, `Discount code: ${discountCodeName}`) : null,
+      hasOfferConfig
+        ? h(
+            's-text',
+            null,
+            hasDiscountCodeApplied
+              ? `Discount code applied: ${discountCodeName}`
+              : `Discount code: ${discountCodeName}`
+          )
+        : null,
+      hasOfferConfig ? h('s-text', null, offerCodeStatusLabel) : null,
+      hasOfferConfig ? h('s-text', null, offerCodeStatusLegend) : null,
+      hasOfferConfig && !hasDiscountCodeApplied
+        ? h(
+            's-button',
+            {
+              variant: 'secondary',
+              loading: applyingDiscountCode,
+              onClick: () => void applyOfferDiscountCode(true),
+            },
+            'Apply discount code'
+          )
+        : null,
+      discountCodeApplyError ? h('s-text', null, discountCodeApplyError) : null,
       h('s-text', null, `Test ID: ${testId}`),
       h(
         's-button',

@@ -3,7 +3,7 @@
  * Drastic layout: full hero with orbs, stats strip, account tiles, staggered domain cards.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Card, Button, Icon, Spinner, Banner } from '@shopify/polaris';
@@ -28,7 +28,6 @@ import {
   unwrapData,
   getEmailToken,
   isEmbeddedInIframe,
-  redirectToAppUrl,
   getConnectUrl,
   getUrlWithEmbedParams,
   getNavigateToWithEmbed,
@@ -36,6 +35,7 @@ import {
 } from '../../services';
 import { isShopifyStoreDomain, normalizeShopifyDomain } from '../../utils/shopifyAdmin';
 import { useAdminMe } from '../../hooks';
+import { OAUTH_SUCCESS_MESSAGE_TYPE } from '../Connect/OAuthSuccess';
 import styles from './UserPanel.module.css';
 
 function getTimeGreeting() {
@@ -97,6 +97,116 @@ function UserPanel() {
   const accountKey = getAccountApiKey();
   const domainKeys = getDomainKeys();
   const [openingDomain, setOpeningDomain] = useState(null);
+  const connectPopupRef = useRef(null);
+  const connectVerifyLockRef = useRef(false);
+  const [pendingShopifyConnect, setPendingShopifyConnect] = useState(null);
+
+  const openDomainApp = useCallback(
+    normalizedShop => {
+      if (!normalizedShop) {
+        return;
+      }
+      setCurrentStore(normalizedShop);
+      if (isEmbeddedInIframe()) {
+        window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalizedShop), {
+          shop: normalizedShop,
+        });
+      } else {
+        navigate(ROUTES.appDashboard(normalizedShop));
+      }
+    },
+    [navigate]
+  );
+
+  const verifyConnectedAndOpen = useCallback(
+    async targetShop => {
+      const normalized = normalizeShopifyDomain(targetShop || '');
+      if (!normalized || connectVerifyLockRef.current) {
+        return false;
+      }
+      connectVerifyLockRef.current = true;
+      try {
+        const res = await apiGet('/account/stores');
+        const raw = res?.data?.data ?? res?.data;
+        const stores = raw?.stores ?? [];
+        const connected = stores.some(
+          s => (s.domain || '').toLowerCase() === (normalized || '').toLowerCase()
+        );
+        if (connected) {
+          try {
+            if (connectPopupRef.current && !connectPopupRef.current.closed) {
+              connectPopupRef.current.close();
+            }
+          } catch {
+            // ignore popup close errors
+          }
+          setPendingShopifyConnect(null);
+          openDomainApp(normalized);
+          return true;
+        }
+        return false;
+      } catch {
+        return false;
+      } finally {
+        connectVerifyLockRef.current = false;
+      }
+    },
+    [openDomainApp]
+  );
+
+  const openShopifyConnectPopup = useCallback((url, shop) => {
+    const normalized = normalizeShopifyDomain(shop || '');
+    const popup = openCenteredPopup(url);
+    if (popup) {
+      connectPopupRef.current = popup;
+      if (normalized) {
+        setPendingShopifyConnect(normalized);
+      }
+      return true;
+    }
+    // Keep user on Home page; fallback to opening a new tab.
+    const newTab = window.open(url, '_blank', 'noopener,noreferrer');
+    if (newTab && normalized) {
+      setPendingShopifyConnect(normalized);
+    }
+    return Boolean(newTab);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const handler = event => {
+      try {
+        if (event?.data?.type !== OAUTH_SUCCESS_MESSAGE_TYPE) return;
+        const shop = normalizeShopifyDomain(event?.data?.shop || '');
+        if (!shop) return;
+        if (pendingShopifyConnect && shop !== normalizeShopifyDomain(pendingShopifyConnect)) {
+          return;
+        }
+        verifyConnectedAndOpen(shop);
+      } catch {
+        // ignore malformed messages
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [pendingShopifyConnect, verifyConnectedAndOpen]);
+
+  useEffect(() => {
+    if (!pendingShopifyConnect) return undefined;
+    const tick = async () => {
+      const done = await verifyConnectedAndOpen(pendingShopifyConnect);
+      if (done) return;
+      if (connectPopupRef.current && connectPopupRef.current.closed) {
+        const retried = await verifyConnectedAndOpen(pendingShopifyConnect);
+        if (!retried) {
+          setPendingShopifyConnect(null);
+        }
+      }
+    };
+    tick();
+    const timer = window.setInterval(tick, 1800);
+    return () => window.clearInterval(timer);
+  }, [pendingShopifyConnect, verifyConnectedAndOpen]);
 
   const handleOpenApp = async domainRow => {
     const domain = typeof domainRow === 'string' ? domainRow : domainRow?.domain;
@@ -148,31 +258,22 @@ function UserPanel() {
               });
               const url = unwrapData(startRes)?.redirectUrl;
               if (url) {
-                const popup = openCenteredPopup(url);
-                if (!popup) {
-                  if (isEmbeddedInIframe()) window.open(url, '_blank', 'noopener,noreferrer');
-                  else window.top.location.href = url;
-                }
+                openShopifyConnectPopup(url, normalized);
                 return;
               }
             } catch {
               /* fallback to same-origin OAuth (cookie may be set) */
             }
             const fallbackUrl = `${origin}/api/auth?shop=${encodeURIComponent(normalized)}${origin ? `&callback_base=${encodeURIComponent(origin)}` : ''}`;
-            const popup = openCenteredPopup(fallbackUrl);
-            if (!popup) {
-              if (isEmbeddedInIframe()) window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
-              else window.top.location.href = fallbackUrl;
-            }
+            openShopifyConnectPopup(fallbackUrl, normalized);
           }
         } catch (err) {
           if (err?.response?.status === 401) {
-            redirectToAppUrl(
-              getConnectUrl({
-                shop: normalized,
-                reason: ROUTES.CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect',
-              })
-            );
+            const connectUrl = getConnectUrl({
+              shop: normalized,
+              reason: ROUTES.CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect',
+            });
+            openShopifyConnectPopup(connectUrl, normalized);
           } else {
             if (isEmbeddedInIframe()) {
               window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalized), {

@@ -7375,8 +7375,8 @@ function TestWizard({
 
   const PRICE_MODES = [
     { value: 'fixed', label: 'Fixed price' },
-    { value: 'amount', label: '$ off/on (amount)' },
-    { value: 'percent', label: '% off/on (percent change)' },
+    { value: 'amount', label: '$ decrease/increase (amount)' },
+    { value: 'percent', label: '% decrease/increase (percent change)' },
   ];
   const PRICE_BASE_OPTIONS = [
     { value: 'price', label: 'Selling price' },
@@ -7599,8 +7599,8 @@ function TestWizard({
       const p = Number(cfg.pricePercent);
       if (!Number.isNaN(p)) {
         const base = cfg.priceBase === 'compare_at' ? ' compare-at' : '';
-        if (p > 0) return `${p}% off${base}`;
-        if (p < 0) return `${Math.abs(p)}% on${base}`;
+        if (p > 0) return `${p}% lower${base}`;
+        if (p < 0) return `${Math.abs(p)}% higher${base}`;
         return `0%${base}`;
       }
     }
@@ -7612,8 +7612,8 @@ function TestWizard({
     if (m === 'fixed' && (cfg?.price === null || cfg?.price === undefined || cfg?.price === ''))
       return 'Control';
     if (m === 'fixed') return 'Fixed';
-    if (m === 'amount') return '$ off/on';
-    if (m === 'percent') return '% off/on';
+    if (m === 'amount') return '$ change';
+    if (m === 'percent') return '% change';
     return '—';
   };
 
@@ -7886,7 +7886,7 @@ function TestWizard({
                           });
                         }}
                       >
-                        {p >= 0 ? `${p}% off` : `${Math.abs(p)}% on`}
+                        {p >= 0 ? `${p}% lower` : `${Math.abs(p)}% higher`}
                       </Button>
                     ))}
                 </div>
@@ -8634,7 +8634,7 @@ function TestWizard({
                         </span>
                       </div>
                       <TooltipWrapper
-                        content="Price mode: Control (catalog), Fixed, $ off/on, or % off. Price base (for $ or %): selling price or compare-at. Compare-at may be missing in some themes."
+                        content="Price mode: Control (catalog), Fixed, $ decrease/increase, or % decrease/increase. Price base (for $ or %): selling price or compare-at. Compare-at may be missing in some themes."
                         accessibilityLabel="Price type info"
                         preferredPosition="above"
                       >
@@ -8699,7 +8699,7 @@ function TestWizard({
                         </span>
                       </div>
                       <TooltipWrapper
-                        content="Fixed: exact price on PDP. Amount: catalog price + value (negative = off). Percent: positive = discount, negative = increase (e.g. 10 = 10% off, −10 = 10% on)."
+                        content="Fixed: exact price on PDP. Amount: catalog price + value (negative = lower, positive = higher). Percent: positive = lower, negative = higher (e.g. 10 = 10% lower, −10 = 10% higher)."
                         accessibilityLabel="Price value info"
                         preferredPosition="above"
                       >
@@ -8765,13 +8765,13 @@ function TestWizard({
                                 return { ...prev, variants: next };
                               });
                             }}
-                            placeholder="e.g. -5 for $5 off, 2 for $2 on"
+                            placeholder="e.g. -5 for $5 lower, 2 for $2 higher"
                             autoComplete="off"
                           />
                         )}
                         {isPercent && (
                           <TextField
-                            label="Percent off"
+                            label="Percent change"
                             type="number"
                             value={
                               variant.config?.pricePercent !== null &&
@@ -8790,7 +8790,7 @@ function TestWizard({
                                 return { ...prev, variants: next };
                               });
                             }}
-                            placeholder="e.g. 10 for 10% off, −10 for 10% on"
+                            placeholder="e.g. 10 for 10% lower, −10 for 10% higher"
                             suffix="%"
                             autoComplete="off"
                             min={-100}
@@ -9038,10 +9038,10 @@ function TestWizard({
                                 label="Rule"
                                 labelHidden
                                 options={[
-                                  { label: '% off control', value: 'percent_off' },
-                                  { label: '% on control', value: 'percent_on' },
-                                  { label: '$ off control', value: 'amount_off' },
-                                  { label: '$ on control', value: 'amount_on' },
+                                  { label: '% lower than control', value: 'percent_off' },
+                                  { label: '% higher than control', value: 'percent_on' },
+                                  { label: '$ lower than control', value: 'amount_off' },
+                                  { label: '$ higher than control', value: 'amount_on' },
                                 ]}
                                 value={quickFillRule}
                                 onChange={setQuickFillRule}

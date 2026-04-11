@@ -166,6 +166,25 @@ export function useRolloutTest() {
   });
 }
 
+export function usePublishWinnerPricesToShopify() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ testId, variantIndex, dryRun }) =>
+      apiPost(`/tests/${testId}/personalize/publish-shopify-prices`, {
+        ...(variantIndex !== null && variantIndex !== undefined && { variantIndex }),
+        ...(dryRun ? { dry_run: true } : {}),
+      }),
+    onSuccess: (_data, { testId, dryRun }) => {
+      if (dryRun) {
+        return;
+      }
+      const shop = getShopDomain();
+      queryClient.invalidateQueries({ queryKey: testDetailQueryKey(shop, testId) });
+      queryClient.invalidateQueries({ queryKey: testsListQueryKey(shop) });
+    },
+  });
+}
+
 export function useDisablePersonalization() {
   const queryClient = useQueryClient();
   return useMutation({
