@@ -190,8 +190,8 @@ function parseOfferDiscountValue(config = {}) {
       continue;
     }
     const n = Number(raw);
-    if (Number.isFinite(n)) {
-      return n;
+    if (Number.isFinite(n) && n !== 0) {
+      return Math.abs(n);
     }
   }
   return NaN;

@@ -5225,7 +5225,7 @@
       var raw = candidates[i];
       if (raw === null || raw === undefined || String(raw).trim() === '') continue;
       var n = Number(raw);
-      if (isFinite(n)) return n;
+      if (isFinite(n) && n !== 0) return Math.abs(n);
     }
     return NaN;
   }
@@ -5467,6 +5467,16 @@
   function getOfferCodeStatusLegendText() {
     return 'Applied=green, Pending=amber, Not applied=red, Generated=gray, Preview=slate.';
   }
+  function getOfferRuntimeParseMeta(config) {
+    var cfg = config && typeof config === 'object' ? config : {};
+    var discountType = normalizeOfferDiscountType(cfg);
+    var numericValue = parseOfferDiscountValue(cfg);
+    return {
+      discountType: discountType || 'unknown',
+      discountValue:
+        isFinite(numericValue) && numericValue > 0 ? String(Math.abs(numericValue)) : 'n/a',
+    };
+  }
 
   function shouldShowOfferCodeOnCart(test) {
     if (!testTypeIsOffer(test)) return false;
@@ -5599,6 +5609,7 @@
     sourceBadge.title = 'Code source: ' + String(codeInfo.sourceLabel || 'auto-generated');
     rightWrap.appendChild(sourceBadge);
     var diag = getOfferCodeDiagnostics(codeName);
+    var parseMeta = getOfferRuntimeParseMeta(variant.config);
     var diagStyle = getOfferCodeStatusStyles(diag.status);
     var statusBadge = document.createElement('span');
     statusBadge.style.fontSize = '10px';
@@ -5612,9 +5623,30 @@
       getOfferCodeStatusHelpText(diag.status) +
       ' Source: ' +
       String(codeInfo.sourceLabel || 'auto-generated') +
+      '. Parsed: ' +
+      String(parseMeta.discountType) +
+      '/' +
+      String(parseMeta.discountValue) +
       '. ' +
       getOfferCodeStatusLegendText();
     rightWrap.appendChild(statusBadge);
+    if (DEBUG) {
+      var parseBadge = document.createElement('span');
+      parseBadge.style.fontSize = '10px';
+      parseBadge.style.padding = '2px 6px';
+      parseBadge.style.borderRadius = '999px';
+      parseBadge.style.border = '1px dashed rgba(15,23,42,0.25)';
+      parseBadge.style.background = 'rgba(255,255,255,0.65)';
+      parseBadge.style.color = '#1e293b';
+      parseBadge.textContent =
+        'cfg: ' + String(parseMeta.discountType) + '/' + String(parseMeta.discountValue);
+      parseBadge.title =
+        'Runtime offer parse (debug): type=' +
+        String(parseMeta.discountType) +
+        ', value=' +
+        String(parseMeta.discountValue);
+      rightWrap.appendChild(parseBadge);
+    }
     row.setAttribute('data-ripx-offer-code-status', String(diag.status || 'generated'));
     row.setAttribute('data-ripx-offer-code-source', String(codeInfo.sourceKey || 'auto'));
     if (isCartSurface()) {

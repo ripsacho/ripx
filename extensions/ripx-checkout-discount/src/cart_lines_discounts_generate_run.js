@@ -139,7 +139,8 @@ function buildLocalFallbackCandidates(cartLines) {
       continue;
     }
     if (offerTypeRaw === 'percent' || offerTypeRaw === 'fixed') {
-      const offerValue = Number.parseFloat(String(offerValueRaw || '').trim());
+      const parsedOfferValue = Number.parseFloat(String(offerValueRaw || '').trim());
+      const offerValue = Number.isFinite(parsedOfferValue) ? Math.abs(parsedOfferValue) : NaN;
       if (
         Number.isFinite(offerValue) &&
         offerValue > 0 &&
