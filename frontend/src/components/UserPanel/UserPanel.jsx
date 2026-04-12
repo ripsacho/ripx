@@ -126,22 +126,9 @@ function UserPanel() {
       }
       connectVerifyLockRef.current = true;
       try {
-        let connected = false;
-        if (useEmailDomains) {
-          const res = await apiMeGet('/me/domains');
-          const payload = unwrapData(res) || {};
-          const domainsList = payload?.domains ?? [];
-          connected = domainsList.some(
-            d => normalizeShopifyDomain(d?.domain || '') === normalizeShopifyDomain(normalized)
-          );
-        } else {
-          const res = await apiGet('/account/stores');
-          const raw = res?.data?.data ?? res?.data;
-          const stores = raw?.stores ?? [];
-          connected = stores.some(
-            s => (s.domain || '').toLowerCase() === (normalized || '').toLowerCase()
-          );
-        }
+        setCurrentStore(normalized);
+        const res = await apiGet('/shopify/connection-status');
+        const connected = !!res?.data?.connected;
         if (connected) {
           try {
             if (connectPopupRef.current && !connectPopupRef.current.closed) {
@@ -161,11 +148,24 @@ function UserPanel() {
         connectVerifyLockRef.current = false;
       }
     },
-    [openDomainApp, useEmailDomains]
+    [openDomainApp]
   );
 
   const openShopifyConnectPopup = useCallback((url, shop) => {
     const normalized = normalizeShopifyDomain(shop || '');
+    const existingPopup = connectPopupRef.current;
+    if (existingPopup && !existingPopup.closed) {
+      try {
+        existingPopup.location.href = url;
+        existingPopup.focus();
+        if (normalized) {
+          setPendingShopifyConnect(normalized);
+        }
+        return true;
+      } catch {
+        // If navigation fails (cross-origin restriction or browser policy), fallback to opening a new popup.
+      }
+    }
     const popup = openCenteredPopup(url);
     if (popup) {
       connectPopupRef.current = popup;
