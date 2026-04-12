@@ -38,6 +38,8 @@ import { useAdminMe } from '../../hooks';
 import { OAUTH_SUCCESS_MESSAGE_TYPE } from '../Connect/OAuthSuccess';
 import styles from './UserPanel.module.css';
 
+const SHOPIFY_CONNECT_POPUP_CLOSE_SIGNAL_KEY_PREFIX = 'ripx-shopify-connect-close';
+
 function getTimeGreeting() {
   const h = new Date().getHours();
   if (h < 12) return 'Good morning';
@@ -130,14 +132,17 @@ function UserPanel() {
         const res = await apiGet('/shopify/connection-status');
         const connected = !!res?.data?.connected;
         if (connected) {
+          setPendingShopifyConnect(null);
           try {
-            if (connectPopupRef.current && !connectPopupRef.current.closed) {
-              connectPopupRef.current.close();
+            if (typeof window !== 'undefined') {
+              window.localStorage.setItem(
+                `${SHOPIFY_CONNECT_POPUP_CLOSE_SIGNAL_KEY_PREFIX}:${normalized}`,
+                String(Date.now())
+              );
             }
           } catch {
-            // ignore popup close errors
+            // ignore storage errors
           }
-          setPendingShopifyConnect(null);
           openDomainApp(normalized);
           return true;
         }

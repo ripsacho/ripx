@@ -14,6 +14,7 @@ import styles from '../Auth/AuthConfirmResult.module.css';
 
 export const OAUTH_SUCCESS_MESSAGE_TYPE = 'ripx-store-connected';
 const CONNECT_POPUP_WINDOW_NAME = 'ripx-shopify-connect';
+const SHOPIFY_CONNECT_POPUP_CLOSE_SIGNAL_KEY_PREFIX = 'ripx-shopify-connect-close';
 
 export default function OAuthSuccess() {
   const [searchParams] = useSearchParams();
@@ -60,10 +61,6 @@ export default function OAuthSuccess() {
         }
       }
       setNotified(true);
-      const closeTimer = window.setTimeout(() => {
-        window.close();
-      }, 1200);
-      return () => window.clearTimeout(closeTimer);
     } else if (!isPopupFlowWindow) {
       const timer = window.setTimeout(() => {
         const targetPath = isDiscountLaunch ? ROUTES.appSettings(shop) : ROUTES.appDashboard(shop);
@@ -81,6 +78,53 @@ export default function OAuthSuccess() {
       return () => window.clearTimeout(timer);
     }
   }, [shop, isPopupFlowWindow, notified, navigate, isDiscountLaunch]);
+
+  useEffect(() => {
+    if (!shop || !isPopupFlowWindow) return undefined;
+    const closeSignalKey = `${SHOPIFY_CONNECT_POPUP_CLOSE_SIGNAL_KEY_PREFIX}:${shop}`;
+    const shouldCloseFromSignal = () => {
+      try {
+        const raw = window.localStorage.getItem(closeSignalKey);
+        if (!raw) return false;
+        const ts = Number(raw);
+        if (!Number.isFinite(ts)) return false;
+        // Accept recent close signals only.
+        return Date.now() - ts <= 2 * 60 * 1000;
+      } catch {
+        return false;
+      }
+    };
+    const closeFromSignal = () => {
+      if (!shouldCloseFromSignal()) return false;
+      try {
+        window.localStorage.removeItem(closeSignalKey);
+      } catch {
+        // ignore storage errors
+      }
+      window.close();
+      return true;
+    };
+    if (closeFromSignal()) {
+      return undefined;
+    }
+    const onStorage = event => {
+      if (event?.key !== closeSignalKey) return;
+      closeFromSignal();
+    };
+    const signalPoll = window.setInterval(() => {
+      closeFromSignal();
+    }, 250);
+    // Safety fallback so popup does not remain open forever if signal is missed.
+    const fallbackTimer = window.setTimeout(() => {
+      window.close();
+    }, 15000);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.clearInterval(signalPoll);
+      window.clearTimeout(fallbackTimer);
+    };
+  }, [shop, isPopupFlowWindow]);
 
   if (!shop) {
     return null;
