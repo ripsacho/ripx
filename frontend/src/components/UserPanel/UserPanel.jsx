@@ -126,12 +126,22 @@ function UserPanel() {
       }
       connectVerifyLockRef.current = true;
       try {
-        const res = await apiGet('/account/stores');
-        const raw = res?.data?.data ?? res?.data;
-        const stores = raw?.stores ?? [];
-        const connected = stores.some(
-          s => (s.domain || '').toLowerCase() === (normalized || '').toLowerCase()
-        );
+        let connected = false;
+        if (useEmailDomains) {
+          const res = await apiMeGet('/me/domains');
+          const payload = unwrapData(res) || {};
+          const domainsList = payload?.domains ?? [];
+          connected = domainsList.some(
+            d => normalizeShopifyDomain(d?.domain || '') === normalizeShopifyDomain(normalized)
+          );
+        } else {
+          const res = await apiGet('/account/stores');
+          const raw = res?.data?.data ?? res?.data;
+          const stores = raw?.stores ?? [];
+          connected = stores.some(
+            s => (s.domain || '').toLowerCase() === (normalized || '').toLowerCase()
+          );
+        }
         if (connected) {
           try {
             if (connectPopupRef.current && !connectPopupRef.current.closed) {
@@ -151,7 +161,7 @@ function UserPanel() {
         connectVerifyLockRef.current = false;
       }
     },
-    [openDomainApp]
+    [openDomainApp, useEmailDomains]
   );
 
   const openShopifyConnectPopup = useCallback((url, shop) => {
@@ -230,6 +240,11 @@ function UserPanel() {
     const key = accountKey || (domainKeys && (domainKeys[domain] || domainKeys[normalized]));
     try {
       if (isShopify) {
+        // Pre-open popup in direct click gesture so browsers don't block later OAuth navigation.
+        const preOpenedPopup = openCenteredPopup('about:blank');
+        if (preOpenedPopup) {
+          connectPopupRef.current = preOpenedPopup;
+        }
         if (key) {
           try {
             window.localStorage.setItem(STORAGE_KEYS.API_KEY, key);
