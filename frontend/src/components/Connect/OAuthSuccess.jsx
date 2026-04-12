@@ -13,6 +13,7 @@ import { getUrlWithEmbedParams } from '../../services';
 import styles from '../Auth/AuthConfirmResult.module.css';
 
 export const OAUTH_SUCCESS_MESSAGE_TYPE = 'ripx-store-connected';
+const CONNECT_POPUP_WINDOW_NAME = 'ripx-shopify-connect';
 
 export default function OAuthSuccess() {
   const [searchParams] = useSearchParams();
@@ -24,31 +25,46 @@ export default function OAuthSuccess() {
   const [notified, setNotified] = useState(false);
 
   const isOpenedInNewTab = typeof window !== 'undefined' && !!window.opener;
+  const isConnectPopupWindow =
+    typeof window !== 'undefined' &&
+    typeof window.name === 'string' &&
+    window.name.trim() === CONNECT_POPUP_WINDOW_NAME;
+  const isPopupFlowWindow = isOpenedInNewTab || isConnectPopupWindow;
 
   useEffect(() => {
     if (!shop) {
       navigate(ROUTES.DOMAINS || '/domains', { replace: true });
       return;
     }
-    if (isOpenedInNewTab && window.opener && !notified) {
+    if (isPopupFlowWindow && !notified) {
       const payload = {
         type: OAUTH_SUCCESS_MESSAGE_TYPE,
         shop: shop.trim().toLowerCase(),
         launch: isDiscountLaunch ? 'discount_setup' : '',
       };
+      // When opened from a popup, notify opener (if available), then close this window.
+      // window.opener can be null in some browser/privacy cases even for popup flows, so we
+      // also rely on polling in the main window.
       const ourOrigin = window.location.origin;
-      // When embedded in Shopify Admin, opener is often admin.shopify.com. Try that first to avoid console SecurityError; then try our origin for same-tab opener.
       try {
-        window.opener.postMessage(payload, 'https://admin.shopify.com');
+        if (window.opener) {
+          window.opener.postMessage(payload, 'https://admin.shopify.com');
+        }
       } catch {
         try {
-          window.opener.postMessage(payload, ourOrigin);
+          if (window.opener) {
+            window.opener.postMessage(payload, ourOrigin);
+          }
         } catch {
           // Opener is other origin; ignore.
         }
       }
       setNotified(true);
-    } else if (!isOpenedInNewTab) {
+      const closeTimer = window.setTimeout(() => {
+        window.close();
+      }, 1200);
+      return () => window.clearTimeout(closeTimer);
+    } else if (!isPopupFlowWindow) {
       const timer = window.setTimeout(() => {
         const targetPath = isDiscountLaunch ? ROUTES.appSettings(shop) : ROUTES.appDashboard(shop);
         const nextParams = new URLSearchParams();
@@ -64,7 +80,7 @@ export default function OAuthSuccess() {
       }, 2000);
       return () => window.clearTimeout(timer);
     }
-  }, [shop, isOpenedInNewTab, notified, navigate, isDiscountLaunch]);
+  }, [shop, isPopupFlowWindow, notified, navigate, isDiscountLaunch]);
 
   if (!shop) {
     return null;
@@ -101,11 +117,11 @@ export default function OAuthSuccess() {
                       </Text>
                     </BlockStack>
                   ) : null}
-                  {isOpenedInNewTab ? (
+                  {isPopupFlowWindow ? (
                     <>
                       <Text as="p" variant="bodyMd" tone="subdued">
-                        You can close this tab and return to the app in Shopify Admin. Your new
-                        store has been added to your account.
+                        Connection complete. This window closes automatically; if it stays open, you
+                        can close it and return to the app.
                       </Text>
                       <Box paddingBlockStart="300">
                         <Button variant="primary" size="large" onClick={() => window.close()}>
