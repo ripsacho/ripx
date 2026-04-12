@@ -1443,6 +1443,12 @@
         out._ripx_offer_discount_value = offerValueNum.toFixed(2);
       }
     }
+    if (offerProof && offerProof.codeName) {
+      var offerCodeName = normalizeExplicitOfferCode(offerProof.codeName);
+      if (offerCodeName) {
+        out._ripx_offer_code_name = offerCodeName;
+      }
+    }
     return out;
   }
 
@@ -1528,6 +1534,12 @@
       payload._ripx_offer_discount_value,
       preserveExisting
     );
+    setRipxAttrValueOnFormData(
+      formData,
+      'properties[_ripx_offer_code_name]',
+      payload._ripx_offer_code_name,
+      preserveExisting
+    );
     return true;
   }
 
@@ -1606,6 +1618,12 @@
       params,
       'properties[_ripx_offer_discount_value]',
       payload._ripx_offer_discount_value,
+      preserveExisting
+    );
+    setRipxAttrValueOnSearchParams(
+      params,
+      'properties[_ripx_offer_code_name]',
+      payload._ripx_offer_code_name,
       preserveExisting
     );
     return true;
@@ -1848,6 +1866,7 @@
                 '_ripx_offer_discount_value',
                 effectivePayload._ripx_offer_discount_value
               );
+              setPropIfMissing('_ripx_offer_code_name', effectivePayload._ripx_offer_code_name);
               return nextProps;
             }
             function mapCartLinesWithRipx(arr) {
@@ -2477,6 +2496,9 @@
       if (state._ripx_offer_discount_value) {
         setProperty('_ripx_offer_discount_value', state._ripx_offer_discount_value);
       }
+      if (state._ripx_offer_code_name) {
+        setProperty('_ripx_offer_code_name', state._ripx_offer_code_name);
+      }
       var swapState = getRipxNativeVariantSwapState(state);
       if (swapState) {
         var variantIdInput =
@@ -2595,6 +2617,9 @@
         _ripxCartAttributeState._ripx_offer_discount_value
       ) {
         nextState._ripx_offer_discount_value = _ripxCartAttributeState._ripx_offer_discount_value;
+      }
+      if (!nextState._ripx_offer_code_name && _ripxCartAttributeState._ripx_offer_code_name) {
+        nextState._ripx_offer_code_name = _ripxCartAttributeState._ripx_offer_code_name;
       }
     }
     _ripxCartAttributeState = nextState;
@@ -5316,6 +5341,7 @@
       {
         discountType: normalizeOfferDiscountType(cfg),
         discountValue: parseOfferDiscountValue(cfg),
+        codeName: resolveOfferCodeForVariant(test, variant).codeName,
       }
     );
   }
@@ -6576,6 +6602,7 @@
               discountUnit: _ripxCartAttributeState._ripx_discount_unit || null,
               priceMethod: _ripxCartAttributeState._ripx_price_method || null,
               offerDiscountType: _ripxCartAttributeState._ripx_offer_discount_type || null,
+              offerCodeName: _ripxCartAttributeState._ripx_offer_code_name || null,
               hasAssignmentSig: !!_ripxCartAttributeState._ripx_assignment_sig,
               hasAssignmentTs: !!_ripxCartAttributeState._ripx_assignment_ts,
               hasAssignmentUser: !!_ripxCartAttributeState._ripx_assignment_user,

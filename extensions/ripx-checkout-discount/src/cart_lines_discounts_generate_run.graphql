@@ -52,6 +52,9 @@ query RipxCartLinesRun {
       ripxOfferDiscountValue: attribute(key: "_ripx_offer_discount_value") {
         value
       }
+      ripxOfferCodeName: attribute(key: "_ripx_offer_code_name") {
+        value
+      }
     }
   }
 }

@@ -88,13 +88,32 @@ function normalizeFetchBody(jsonBody) {
   return jsonBody;
 }
 
-function buildCandidateForLine(line, discountDecimal) {
+function normalizeOfferCodeName(value) {
+  const code = String(value || '').trim();
+  if (!code) {
+    return '';
+  }
+  if (code.length > 64) {
+    return '';
+  }
+  if (!/^[A-Za-z0-9_-]+$/.test(code)) {
+    return '';
+  }
+  return code;
+}
+
+function resolveLineDiscountMessage(line, fallback = 'RipX price test') {
+  const codeName = normalizeOfferCodeName(line?.ripxOfferCodeName?.value);
+  return codeName || String(fallback || 'RipX price test');
+}
+
+function buildCandidateForLine(line, discountDecimal, message = 'RipX price test') {
   const amt = parseFloat(String(discountDecimal), 10);
   if (!Number.isFinite(amt) || amt <= 0) {
     return null;
   }
   return {
-    message: 'RipX price test',
+    message: resolveLineDiscountMessage(line, message),
     targets: [
       {
         cartLine: {
@@ -156,9 +175,8 @@ function buildLocalFallbackCandidates(cartLines) {
           const perUnitOff = Math.max(0, offerValue);
           discount = Math.round(Math.min(roundedSubtotal, perUnitOff * qty) * 100) / 100;
         }
-        const candidate = buildCandidateForLine(line, discount);
+        const candidate = buildCandidateForLine(line, discount, 'RipX offer test');
         if (candidate) {
-          candidate.message = 'RipX offer test';
           candidates.push(candidate);
           continue;
         }
@@ -176,9 +194,8 @@ function buildLocalFallbackCandidates(cartLines) {
         const roundedSubtotal = Math.round(subtotal * 100) / 100;
         const pct = Math.max(0, Math.min(100, offerValue));
         const discount = Math.round(roundedSubtotal * (pct / 100) * 100) / 100;
-        const candidate = buildCandidateForLine(line, discount);
+        const candidate = buildCandidateForLine(line, discount, 'RipX offer test');
         if (candidate) {
-          candidate.message = 'RipX offer test';
           candidates.push(candidate);
           continue;
         }
@@ -379,7 +396,7 @@ export function cartLinesDiscountsGenerateRun(input) {
           orderDiscountsAdd: {
             candidates: [
               {
-                message: 'RipX price test',
+                message: candidates[0]?.message || 'RipX price test',
                 targets: [{ orderSubtotal: { excludedCartLineIds: [] } }],
                 value: {
                   fixedAmount: {
