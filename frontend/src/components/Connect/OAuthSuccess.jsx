@@ -75,8 +75,23 @@ export default function OAuthSuccess() {
         }
       }
       setNotified(true);
+      // Close quickly once the success view appears in popup/new-tab flow.
+      const closeTimer = window.setTimeout(() => {
+        window.close();
+      }, 700);
+      return () => window.clearTimeout(closeTimer);
     } else if (!isPopupFlowWindow) {
       const timer = window.setTimeout(() => {
+        // Some browsers strip opener/window name during OAuth hops; if this tab is still closable,
+        // prefer closing over in-popup dashboard navigation.
+        try {
+          window.close();
+        } catch {
+          // ignore close errors
+        }
+        if (window.closed) {
+          return;
+        }
         const targetPath = isDiscountLaunch ? ROUTES.appSettings(shop) : ROUTES.appDashboard(shop);
         const nextParams = new URLSearchParams();
         if (isDiscountLaunch) {
