@@ -15,6 +15,7 @@ import styles from '../Auth/AuthConfirmResult.module.css';
 export const OAUTH_SUCCESS_MESSAGE_TYPE = 'ripx-store-connected';
 const CONNECT_POPUP_WINDOW_NAME = 'ripx-shopify-connect';
 const SHOPIFY_CONNECT_POPUP_CLOSE_SIGNAL_KEY_PREFIX = 'ripx-shopify-connect-close';
+const SHOPIFY_CONNECT_POPUP_ACTIVE_KEY_PREFIX = 'ripx-shopify-connect-popup-active';
 
 export default function OAuthSuccess() {
   const [searchParams] = useSearchParams();
@@ -30,7 +31,20 @@ export default function OAuthSuccess() {
     typeof window !== 'undefined' &&
     typeof window.name === 'string' &&
     window.name.trim() === CONNECT_POPUP_WINDOW_NAME;
-  const isPopupFlowWindow = isOpenedInNewTab || isConnectPopupWindow;
+  const hasPopupFlowMarker = (() => {
+    if (typeof window === 'undefined' || !shop) return false;
+    try {
+      const raw = window.localStorage.getItem(`${SHOPIFY_CONNECT_POPUP_ACTIVE_KEY_PREFIX}:${shop}`);
+      if (!raw) return false;
+      const ts = Number(raw);
+      if (!Number.isFinite(ts)) return false;
+      // Treat recent markers as popup flow (handles browsers that strip opener/window.name).
+      return Date.now() - ts <= 30 * 60 * 1000;
+    } catch {
+      return false;
+    }
+  })();
+  const isPopupFlowWindow = isOpenedInNewTab || isConnectPopupWindow || hasPopupFlowMarker;
 
   useEffect(() => {
     if (!shop) {
@@ -82,6 +96,7 @@ export default function OAuthSuccess() {
   useEffect(() => {
     if (!shop || !isPopupFlowWindow) return undefined;
     const closeSignalKey = `${SHOPIFY_CONNECT_POPUP_CLOSE_SIGNAL_KEY_PREFIX}:${shop}`;
+    const popupActiveKey = `${SHOPIFY_CONNECT_POPUP_ACTIVE_KEY_PREFIX}:${shop}`;
     const shouldCloseFromSignal = () => {
       try {
         const raw = window.localStorage.getItem(closeSignalKey);
@@ -98,6 +113,7 @@ export default function OAuthSuccess() {
       if (!shouldCloseFromSignal()) return false;
       try {
         window.localStorage.removeItem(closeSignalKey);
+        window.localStorage.removeItem(popupActiveKey);
       } catch {
         // ignore storage errors
       }
@@ -116,6 +132,11 @@ export default function OAuthSuccess() {
     }, 250);
     // Safety fallback so popup does not remain open forever if signal is missed.
     const fallbackTimer = window.setTimeout(() => {
+      try {
+        window.localStorage.removeItem(popupActiveKey);
+      } catch {
+        // ignore storage errors
+      }
       window.close();
     }, 15000);
     window.addEventListener('storage', onStorage);

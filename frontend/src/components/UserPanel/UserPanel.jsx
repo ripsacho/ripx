@@ -39,6 +39,7 @@ import { OAUTH_SUCCESS_MESSAGE_TYPE } from '../Connect/OAuthSuccess';
 import styles from './UserPanel.module.css';
 
 const SHOPIFY_CONNECT_POPUP_CLOSE_SIGNAL_KEY_PREFIX = 'ripx-shopify-connect-close';
+const SHOPIFY_CONNECT_POPUP_ACTIVE_KEY_PREFIX = 'ripx-shopify-connect-popup-active';
 
 function getTimeGreeting() {
   const h = new Date().getHours();
@@ -135,6 +136,9 @@ function UserPanel() {
           setPendingShopifyConnect(null);
           try {
             if (typeof window !== 'undefined') {
+              window.localStorage.removeItem(
+                `${SHOPIFY_CONNECT_POPUP_ACTIVE_KEY_PREFIX}:${normalized}`
+              );
               window.localStorage.setItem(
                 `${SHOPIFY_CONNECT_POPUP_CLOSE_SIGNAL_KEY_PREFIX}:${normalized}`,
                 String(Date.now())
@@ -158,6 +162,16 @@ function UserPanel() {
 
   const openShopifyConnectPopup = useCallback((url, shop) => {
     const normalized = normalizeShopifyDomain(shop || '');
+    try {
+      if (normalized && typeof window !== 'undefined') {
+        window.localStorage.setItem(
+          `${SHOPIFY_CONNECT_POPUP_ACTIVE_KEY_PREFIX}:${normalized}`,
+          String(Date.now())
+        );
+      }
+    } catch {
+      // ignore storage errors
+    }
     const existingPopup = connectPopupRef.current;
     if (existingPopup && !existingPopup.closed) {
       try {
@@ -214,6 +228,15 @@ function UserPanel() {
       if (connectPopupRef.current && connectPopupRef.current.closed) {
         const retried = await verifyConnectedAndOpen(pendingShopifyConnect);
         if (!retried) {
+          try {
+            if (typeof window !== 'undefined') {
+              window.localStorage.removeItem(
+                `${SHOPIFY_CONNECT_POPUP_ACTIVE_KEY_PREFIX}:${pendingShopifyConnect}`
+              );
+            }
+          } catch {
+            // ignore storage errors
+          }
           setPendingShopifyConnect(null);
         }
       }
