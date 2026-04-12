@@ -5136,8 +5136,29 @@
     return ('RIPX-' + testToken + '-' + variantToken + '-' + offerToken).slice(0, 48);
   }
 
-  function resolveOfferCodeForVariant(test, variant) {
-    var cfg = variant && variant.config && typeof variant.config === 'object' ? variant.config : {};
+  function getOfferConfigCandidates(config) {
+    var base = config && typeof config === 'object' ? config : {};
+    var out = [base];
+    var nestedKeys = ['offer', 'discount', 'offer_config', 'offerConfig'];
+    for (var i = 0; i < nestedKeys.length; i += 1) {
+      var key = nestedKeys[i];
+      var nested = base[key];
+      if (nested && typeof nested === 'object') {
+        out.push(nested);
+      }
+    }
+    return out;
+  }
+
+  function normalizeExplicitOfferCode(rawValue) {
+    var code = String(rawValue === null || rawValue === undefined ? '' : rawValue).trim();
+    if (!code) return '';
+    if (code.length > 64) return '';
+    if (!/^[A-Za-z0-9_-]+$/.test(code)) return '';
+    return code;
+  }
+
+  function resolveExplicitOfferCodeFromConfig(config, labelPrefix) {
     var sourceKeys = [
       'discount_code_name',
       'discountCodeName',
@@ -5145,22 +5166,41 @@
       'discountCode',
       'code_name',
       'codeName',
-      'code',
       'coupon_code',
       'couponCode',
       'coupon',
+      'code',
     ];
-    for (var i = 0; i < sourceKeys.length; i += 1) {
-      var key = sourceKeys[i];
-      var value = cfg[key];
-      var code = String(value === null || value === undefined ? '' : value).trim();
-      if (code) {
-        return {
-          codeName: code,
-          sourceKey: key,
-          sourceLabel: 'config.' + key,
-        };
+    var nestedLabels = ['', 'offer', 'discount', 'offer_config', 'offerConfig'];
+    var candidates = getOfferConfigCandidates(config);
+    for (var i = 0; i < candidates.length; i += 1) {
+      var cfg = candidates[i];
+      for (var j = 0; j < sourceKeys.length; j += 1) {
+        var key = sourceKeys[j];
+        var code = normalizeExplicitOfferCode(cfg[key]);
+        if (code) {
+          var nestedLabel = nestedLabels[i];
+          var sourcePath = nestedLabel ? nestedLabel + '.' + key : key;
+          return {
+            codeName: code,
+            sourceKey: key,
+            sourceLabel: String(labelPrefix || 'config') + '.' + sourcePath,
+          };
+        }
       }
+    }
+    return null;
+  }
+
+  function resolveOfferCodeForVariant(test, variant) {
+    var cfg = variant && variant.config && typeof variant.config === 'object' ? variant.config : {};
+    var explicit = resolveExplicitOfferCodeFromConfig(cfg, 'config');
+    if (explicit) {
+      return explicit;
+    }
+    var variantLevel = resolveExplicitOfferCodeFromConfig(variant, 'variant');
+    if (variantLevel) {
+      return variantLevel;
     }
     return {
       codeName: buildAutoOfferCodeName(test, variant),
@@ -5173,12 +5213,17 @@
     return resolveOfferCodeForVariant(test, variant).codeName;
   }
   function normalizeOfferDiscountType(config) {
-    var cfg = config && typeof config === 'object' ? config : {};
-    var raw = String(
-      cfg.discount_type || cfg.discountType || cfg.offer_type || cfg.offerType || cfg.type || ''
-    )
-      .trim()
-      .toLowerCase();
+    var cfgCandidates = getOfferConfigCandidates(config);
+    var raw = '';
+    for (var i = 0; i < cfgCandidates.length; i += 1) {
+      var cfg = cfgCandidates[i];
+      raw = String(
+        cfg.discount_type || cfg.discountType || cfg.offer_type || cfg.offerType || cfg.type || ''
+      )
+        .trim()
+        .toLowerCase();
+      if (raw) break;
+    }
     if (
       raw === 'percent' ||
       raw === 'percentage' ||
@@ -5209,29 +5254,33 @@
     return raw;
   }
   function parseOfferDiscountValue(config) {
-    var cfg = config && typeof config === 'object' ? config : {};
-    var candidates = [
-      cfg.discount_value,
-      cfg.discountValue,
-      cfg.discount_amount,
-      cfg.discountAmount,
-      cfg.value,
-      cfg.amount,
-      cfg.percent,
-      cfg.percentage,
-      cfg.pct,
-    ];
-    for (var i = 0; i < candidates.length; i += 1) {
-      var raw = candidates[i];
-      if (raw === null || raw === undefined || String(raw).trim() === '') continue;
-      var n = Number(raw);
-      if (isFinite(n) && n !== 0) return Math.abs(n);
+    var cfgCandidates = getOfferConfigCandidates(config);
+    for (var i = 0; i < cfgCandidates.length; i += 1) {
+      var cfg = cfgCandidates[i];
+      var valueCandidates = [
+        cfg.discount_value,
+        cfg.discountValue,
+        cfg.discount_amount,
+        cfg.discountAmount,
+        cfg.value,
+        cfg.amount,
+        cfg.percent,
+        cfg.percentage,
+        cfg.pct,
+      ];
+      for (var j = 0; j < valueCandidates.length; j += 1) {
+        var raw = valueCandidates[j];
+        if (raw === null || raw === undefined || String(raw).trim() === '') continue;
+        var n = Number(raw);
+        if (isFinite(n) && n !== 0) return Math.abs(n);
+      }
     }
     return NaN;
   }
   function isActionableOfferConfig(config) {
     var discountType = normalizeOfferDiscountType(config);
     if (discountType === 'free_shipping') return true;
+    if (resolveExplicitOfferCodeFromConfig(config, 'config')) return true;
     if (discountType !== 'percent' && discountType !== 'fixed') return false;
     var numericValue = parseOfferDiscountValue(config);
     return isFinite(numericValue) && numericValue > 0;

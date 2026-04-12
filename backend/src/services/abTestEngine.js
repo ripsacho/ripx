@@ -17,6 +17,7 @@ const {
 const { getTestById, getTestsByIds, getActiveTestsForStorefront } = require('../models/test');
 const { getGlobalHoldoutPercent } = require('./experimentationPolicyService');
 const personalizationService = require('./personalizationService');
+const { findVariantForPreviewQuery } = require('../utils/previewVariantMatch');
 
 /** Derive pathname from URL for path-based url_pattern matching (homepage, etc.) */
 function getPathnameFromUrl(currentUrl) {
@@ -268,10 +269,26 @@ class ABTestEngine {
           (test.variants || []).find(
             v =>
               v?.id === existingAssignment.variant_id || v?.name === existingAssignment.variant_name
-          );
+          ) ??
+          findVariantForPreviewQuery(test.variants || [], {
+            variant_id: existingAssignment.variant_id,
+            variant_name: existingAssignment.variant_name,
+          });
+        const isOfferTest =
+          String(test?.type || '')
+            .trim()
+            .toLowerCase() === 'offer';
+        const resolvedVariantId =
+          isOfferTest && matchedVariant?.id !== undefined && matchedVariant?.id !== null
+            ? String(matchedVariant.id)
+            : existingAssignment.variant_id;
+        const resolvedVariantName =
+          isOfferTest && matchedVariant?.name
+            ? String(matchedVariant.name)
+            : existingAssignment.variant_name;
         return {
-          variantId: existingAssignment.variant_id,
-          variantName: existingAssignment.variant_name,
+          variantId: resolvedVariantId,
+          variantName: resolvedVariantName,
           isNewAssignment: false,
           config: matchedVariant?.config || {},
         };
@@ -514,10 +531,26 @@ class ABTestEngine {
           (test.variants || []).find(
             v =>
               v?.id === existingAssignment.variant_id || v?.name === existingAssignment.variant_name
-          );
+          ) ??
+          findVariantForPreviewQuery(test.variants || [], {
+            variant_id: existingAssignment.variant_id,
+            variant_name: existingAssignment.variant_name,
+          });
+        const isOfferTest =
+          String(test?.type || '')
+            .trim()
+            .toLowerCase() === 'offer';
+        const resolvedVariantId =
+          isOfferTest && matchedVariant?.id !== undefined && matchedVariant?.id !== null
+            ? String(matchedVariant.id)
+            : existingAssignment.variant_id;
+        const resolvedVariantName =
+          isOfferTest && matchedVariant?.name
+            ? String(matchedVariant.name)
+            : existingAssignment.variant_name;
         result[testId] = {
-          variantId: existingAssignment.variant_id,
-          variantName: existingAssignment.variant_name,
+          variantId: resolvedVariantId,
+          variantName: resolvedVariantName,
           isNewAssignment: false,
           config: matchedVariant?.config || {},
         };

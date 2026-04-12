@@ -185,17 +185,31 @@ function isOfferTestRowType(type) {
   return t === 'offer';
 }
 
+function getOfferConfigCandidates(config = {}) {
+  const base = config && typeof config === 'object' ? config : {};
+  const out = [base];
+  const nestedKeys = ['offer', 'discount', 'offer_config', 'offerConfig'];
+  for (const key of nestedKeys) {
+    const nested = base[key];
+    if (nested && typeof nested === 'object') {
+      out.push(nested);
+    }
+  }
+  return out;
+}
+
 function normalizeOfferDiscountType(config = {}) {
-  const raw = String(
-    config.discount_type ||
-      config.discountType ||
-      config.offer_type ||
-      config.offerType ||
-      config.type ||
-      ''
-  )
-    .trim()
-    .toLowerCase();
+  let raw = '';
+  for (const cfg of getOfferConfigCandidates(config)) {
+    raw = String(
+      cfg.discount_type || cfg.discountType || cfg.offer_type || cfg.offerType || cfg.type || ''
+    )
+      .trim()
+      .toLowerCase();
+    if (raw) {
+      break;
+    }
+  }
   if (
     raw === 'percent' ||
     raw === 'percentage' ||
@@ -227,24 +241,26 @@ function normalizeOfferDiscountType(config = {}) {
 }
 
 function parseOfferDiscountValue(config = {}) {
-  const candidates = [
-    config.discount_value,
-    config.discountValue,
-    config.discount_amount,
-    config.discountAmount,
-    config.value,
-    config.amount,
-    config.percent,
-    config.percentage,
-    config.pct,
-  ];
-  for (const raw of candidates) {
-    if (raw === null || raw === undefined || String(raw).trim() === '') {
-      continue;
-    }
-    const n = Number(raw);
-    if (Number.isFinite(n) && n !== 0) {
-      return Math.abs(n);
+  for (const cfg of getOfferConfigCandidates(config)) {
+    const candidates = [
+      cfg.discount_value,
+      cfg.discountValue,
+      cfg.discount_amount,
+      cfg.discountAmount,
+      cfg.value,
+      cfg.amount,
+      cfg.percent,
+      cfg.percentage,
+      cfg.pct,
+    ];
+    for (const raw of candidates) {
+      if (raw === null || raw === undefined || String(raw).trim() === '') {
+        continue;
+      }
+      const n = Number(raw);
+      if (Number.isFinite(n) && n !== 0) {
+        return Math.abs(n);
+      }
     }
   }
   return NaN;

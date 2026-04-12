@@ -101,7 +101,34 @@ function buildAutoOfferCodeName(testId, variantName, config = {}) {
   return `RIPX-${testToken}-${variantToken}-${offerToken}`.slice(0, 48);
 }
 
-function resolveOfferCodeFromConfig(config = {}, testId = 'test', variantName = 'Assigned') {
+function getOfferConfigCandidates(config = {}) {
+  const base = config && typeof config === 'object' ? config : {};
+  const out = [base];
+  const nestedKeys = ['offer', 'discount', 'offer_config', 'offerConfig'];
+  for (const key of nestedKeys) {
+    const nested = base[key];
+    if (nested && typeof nested === 'object') {
+      out.push(nested);
+    }
+  }
+  return out;
+}
+
+function normalizeExplicitOfferCode(rawValue) {
+  const code = String(rawValue === null || rawValue === undefined ? '' : rawValue).trim();
+  if (!code) {
+    return '';
+  }
+  if (code.length > 64) {
+    return '';
+  }
+  if (!/^[A-Za-z0-9_-]+$/.test(code)) {
+    return '';
+  }
+  return code;
+}
+
+function resolveExplicitOfferCodeFromConfig(config = {}, labelPrefix = 'config') {
   const sourceKeys = [
     'discount_code_name',
     'discountCodeName',
@@ -109,20 +136,45 @@ function resolveOfferCodeFromConfig(config = {}, testId = 'test', variantName = 
     'discountCode',
     'code_name',
     'codeName',
-    'code',
     'coupon_code',
     'couponCode',
     'coupon',
+    'code',
   ];
-  for (const key of sourceKeys) {
-    const rawValue = config[key];
-    const code = String(rawValue === null || rawValue === undefined ? '' : rawValue).trim();
-    if (code) {
-      return {
-        codeName: code,
-        sourceKey: key,
-        sourceLabel: `config.${key}`,
-      };
+  const nestedLabels = ['', 'offer', 'discount', 'offer_config', 'offerConfig'];
+  const candidates = getOfferConfigCandidates(config);
+  for (let i = 0; i < candidates.length; i += 1) {
+    const cfg = candidates[i];
+    for (const key of sourceKeys) {
+      const code = normalizeExplicitOfferCode(cfg[key]);
+      if (code) {
+        const nestedLabel = nestedLabels[i];
+        const sourcePath = nestedLabel ? `${nestedLabel}.${key}` : key;
+        return {
+          codeName: code,
+          sourceKey: key,
+          sourceLabel: `${labelPrefix}.${sourcePath}`,
+        };
+      }
+    }
+  }
+  return null;
+}
+
+function resolveOfferCodeFromConfig(
+  config = {},
+  testId = 'test',
+  variantName = 'Assigned',
+  variantPayload = null
+) {
+  const explicit = resolveExplicitOfferCodeFromConfig(config, 'config');
+  if (explicit) {
+    return explicit;
+  }
+  if (variantPayload && typeof variantPayload === 'object') {
+    const variantLevel = resolveExplicitOfferCodeFromConfig(variantPayload, 'variant');
+    if (variantLevel) {
+      return variantLevel;
     }
   }
   return {
@@ -133,16 +185,18 @@ function resolveOfferCodeFromConfig(config = {}, testId = 'test', variantName = 
 }
 
 function normalizeOfferDiscountType(config = {}) {
-  const raw = String(
-    config.discount_type ||
-      config.discountType ||
-      config.offer_type ||
-      config.offerType ||
-      config.type ||
-      ''
-  )
-    .trim()
-    .toLowerCase();
+  let raw = '';
+  const candidates = getOfferConfigCandidates(config);
+  for (const cfg of candidates) {
+    raw = String(
+      cfg.discount_type || cfg.discountType || cfg.offer_type || cfg.offerType || cfg.type || ''
+    )
+      .trim()
+      .toLowerCase();
+    if (raw) {
+      break;
+    }
+  }
   if (
     raw === 'percent' ||
     raw === 'percentage' ||
@@ -174,24 +228,27 @@ function normalizeOfferDiscountType(config = {}) {
 }
 
 function parseOfferDiscountValue(config = {}) {
-  const candidates = [
-    config.discount_value,
-    config.discountValue,
-    config.discount_amount,
-    config.discountAmount,
-    config.value,
-    config.amount,
-    config.percent,
-    config.percentage,
-    config.pct,
-  ];
-  for (const raw of candidates) {
-    if (raw === null || raw === undefined || String(raw).trim() === '') {
-      continue;
-    }
-    const n = Number(raw);
-    if (Number.isFinite(n) && n !== 0) {
-      return Math.abs(n);
+  const cfgCandidates = getOfferConfigCandidates(config);
+  for (const cfg of cfgCandidates) {
+    const candidates = [
+      cfg.discount_value,
+      cfg.discountValue,
+      cfg.discount_amount,
+      cfg.discountAmount,
+      cfg.value,
+      cfg.amount,
+      cfg.percent,
+      cfg.percentage,
+      cfg.pct,
+    ];
+    for (const raw of candidates) {
+      if (raw === null || raw === undefined || String(raw).trim() === '') {
+        continue;
+      }
+      const n = Number(raw);
+      if (Number.isFinite(n) && n !== 0) {
+        return Math.abs(n);
+      }
     }
   }
   return NaN;
@@ -200,6 +257,9 @@ function parseOfferDiscountValue(config = {}) {
 function isActionableOfferConfig(config = {}) {
   const discountType = normalizeOfferDiscountType(config);
   if (discountType === 'free_shipping') {
+    return true;
+  }
+  if (resolveExplicitOfferCodeFromConfig(config, 'config')) {
     return true;
   }
   if (discountType !== 'percent' && discountType !== 'fixed') {
@@ -375,7 +435,8 @@ function CheckoutExperiment() {
   const resolvedOfferCode = resolveOfferCodeFromConfig(
     cfg,
     testId || assignment?.test_id || 'test',
-    variantName
+    variantName,
+    assignment
   );
   const discountCodeName = resolvedOfferCode.codeName;
   const offerCodeSourceLabel = resolvedOfferCode.sourceLabel;
