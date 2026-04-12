@@ -164,6 +164,26 @@ function buildLocalFallbackCandidates(cartLines) {
         }
       }
     }
+    if (!offerTypeRaw) {
+      const parsedOfferValue = Number.parseFloat(String(offerValueRaw || '').trim());
+      const offerValue = Number.isFinite(parsedOfferValue) ? Math.abs(parsedOfferValue) : NaN;
+      if (
+        Number.isFinite(offerValue) &&
+        offerValue > 0 &&
+        Number.isFinite(subtotal) &&
+        subtotal > 0
+      ) {
+        const roundedSubtotal = Math.round(subtotal * 100) / 100;
+        const pct = Math.max(0, Math.min(100, offerValue));
+        const discount = Math.round(roundedSubtotal * (pct / 100) * 100) / 100;
+        const candidate = buildCandidateForLine(line, discount);
+        if (candidate) {
+          candidate.message = 'RipX offer test';
+          candidates.push(candidate);
+          continue;
+        }
+      }
+    }
     if (!targetUnitRaw || !Number.isFinite(subtotal) || subtotal <= 0) {
       continue;
     }

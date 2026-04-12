@@ -5251,6 +5251,10 @@
     ) {
       return 'free_shipping';
     }
+    if (!raw) {
+      var inferredValue = parseOfferDiscountValue(config);
+      if (isFinite(inferredValue) && inferredValue > 0) return 'percent';
+    }
     return raw;
   }
   function parseOfferDiscountValue(config) {

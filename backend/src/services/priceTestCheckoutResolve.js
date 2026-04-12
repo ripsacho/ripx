@@ -237,6 +237,12 @@ function normalizeOfferDiscountType(config = {}) {
   ) {
     return 'free_shipping';
   }
+  if (!raw) {
+    const inferredValue = parseOfferDiscountValue(config);
+    if (Number.isFinite(inferredValue) && inferredValue > 0) {
+      return 'percent';
+    }
+  }
   return raw;
 }
 

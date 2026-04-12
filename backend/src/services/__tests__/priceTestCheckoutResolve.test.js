@@ -681,6 +681,28 @@ describe('priceTestCheckoutResolve', () => {
     expect(parseFloat(r.discountDecimal, 10)).toBeCloseTo(6, 2);
   });
 
+  it('defaults missing offer type to percent when value exists', () => {
+    const test = {
+      ...baseOfferTest,
+      variants: [
+        {
+          id: 'offer-a',
+          name: 'Offer A',
+          config: { discount_value: 10, discount_code_name: 'CODE-10' },
+        },
+      ],
+    };
+    const r = resolvePriceTestLineDiscount({
+      test,
+      assignmentVariantId: 'offer-a',
+      productId: '111',
+      linePresentmentTotal: 50,
+      quantity: 1,
+    });
+    expect(r.applies).toBe(true);
+    expect(parseFloat(r.discountDecimal, 10)).toBeCloseTo(5, 2);
+  });
+
   it('does not apply free-shipping offer in line discount resolver', () => {
     const test = {
       ...baseOfferTest,

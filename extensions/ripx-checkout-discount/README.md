@@ -40,7 +40,7 @@ npm run shopify:checkout-discount:sync-config
 npm run shopify:checkout-ui:sync-config
 npm run shopify:checkout-discount:build
 shopify app deploy
-npm run verify:price-go-no-go -- --shop=your-store.myshopify.com
+RIPX_VERIFY_SHOP=ripperx-3.myshopify.com npm run verify:price-go-no-go -- --shop=ripperx-3.myshopify.com
 ```
 
 This ensures extension config matches server `.env` and re-checks readiness with live shop context.
