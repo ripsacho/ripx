@@ -4822,6 +4822,40 @@
   background: rgba(100, 116, 139, 0.12);
 }
 
+.productScopePickerSelectionList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.productScopePickerSelectionEmpty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px dashed rgba(148, 163, 184, 0.4);
+  background: rgba(248, 250, 252, 0.7);
+  color: var(--p-color-text-subdued, #6d7175);
+  font-size: 0.78rem;
+}
+
+.productScopePickerSelectionEmpty svg {
+  width: 16px;
+  height: 16px;
+}
+
+.productScopePickerMoreBadge {
+  align-self: flex-start;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(6, 182, 212, 0.08);
+  color: #0891b2;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
 @media (max-width: 640px) {
   .productScopePickerGrid {
     grid-template-columns: 1fr;
@@ -8023,6 +8057,10 @@
   min-width: 180px;
 }
 
+.priceMatrixBulkSummary {
+  margin-top: 8px;
+}
+
 .priceMatrixWrap {
   border: 1px solid var(--p-color-border-secondary, #e1e3e5);
   border-radius: 14px;
@@ -8034,7 +8072,7 @@
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  min-width: 860px;
+  min-width: 1120px;
 }
 
 .priceMatrixTable thead th {
@@ -8084,6 +8122,43 @@
   box-shadow: 1px 0 0 rgba(0, 0, 0, 0.06);
 }
 
+.priceMatrixProductIdentity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.priceMatrixProductThumbWrap {
+  flex: 0 0 auto;
+}
+
+.priceMatrixProductThumb {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: #fff;
+}
+
+.priceMatrixProductThumbPlaceholder {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--p-color-text-subdued, #6d7175);
+  background: rgba(148, 163, 184, 0.18);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.priceMatrixProductMain {
+  min-width: 0;
+}
+
 .priceMatrixProductTitle {
   font-weight: 600;
   color: var(--p-color-text, #202223);
@@ -8112,6 +8187,31 @@
   font-size: 0.75rem;
   color: var(--p-color-text-critical, #d72c0d);
   line-height: 1.35;
+}
+
+.priceMatrixVariantId {
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    'Liberation Mono',
+    'Courier New',
+    monospace;
+  font-size: 0.8rem;
+}
+
+.priceMatrixVariantCell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.priceMatrixVariantTitle {
+  font-size: 0.75rem;
+  color: var(--p-color-text-subdued, #6d7175);
+  line-height: 1.25;
 }
 
 .priceMatrixChangedCell {

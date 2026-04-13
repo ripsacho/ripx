@@ -37,12 +37,16 @@ function getSuperAdminEmail() {
   const fromSuper = process.env.RIPX_SUPERADMIN_EMAIL;
   if (fromSuper && typeof fromSuper === 'string') {
     const e = fromSuper.split(',')[0].trim().toLowerCase();
-    if (e) {return e;}
+    if (e) {
+      return e;
+    }
   }
   const fromAdmin = process.env.RIPX_ADMIN_EMAIL;
   if (fromAdmin && typeof fromAdmin === 'string') {
     const e = fromAdmin.split(',')[0].trim().toLowerCase();
-    if (e) {return e;}
+    if (e) {
+      return e;
+    }
   }
   return null;
 }
@@ -85,7 +89,8 @@ async function ensureSuperAdmin() {
         if (byEmail) {
           await query(
             `UPDATE users SET status = 'accepted', email_verified_at = COALESCE(email_verified_at, NOW()),
-             accepted_at = COALESCE(accepted_at, NOW()), accepted_by = 'system', role = 'superadmin', updated_at = NOW() WHERE id = $1`,
+             accepted_at = COALESCE(accepted_at, NOW()), accepted_by = COALESCE(accepted_by, 'system'),
+             role = 'superadmin', updated_at = NOW() WHERE id = $1`,
             [byEmail.id]
           );
           console.log(`Updated user ${email} to accepted and superadmin (after conflict).`);

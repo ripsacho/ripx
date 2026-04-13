@@ -1306,6 +1306,7 @@ function TestWizard({
   const [priceMatrixErrorById, setPriceMatrixErrorById] = useState({});
   const [priceMatrixBulkMode, setPriceMatrixBulkMode] = useState('amount');
   const [priceMatrixBulkValue, setPriceMatrixBulkValue] = useState('');
+  const [priceMatrixBulkSummary, setPriceMatrixBulkSummary] = useState(null);
   const [priceMatrixUndoByScope, setPriceMatrixUndoByScope] = useState({});
   const [priceGuideSampleOpen, setPriceGuideSampleOpen] = useState(false);
   const [priceVariantToolsExpanded, setPriceVariantToolsExpanded] = useState(false);
@@ -1886,6 +1887,39 @@ function TestWizard({
     if (!Array.isArray(formData.segments?.excluded_product_ids)) return [];
     return formData.segments.excluded_product_ids.filter(Boolean);
   }, [formData.segments?.excluded_product_ids]);
+  const getScopeProductMeta = useCallback(
+    productId => {
+      if (!productId) {
+        return { id: '', title: 'Product', handle: '', imageUrl: null };
+      }
+      const meta = priceProductMetaById[productId];
+      if (meta?.title) {
+        return {
+          id: productId,
+          title: meta.title,
+          handle: meta.handle || '',
+          imageUrl: meta.imageUrl || null,
+        };
+      }
+      const raw = String(productId);
+      const match = raw.match(/Product\/(\d+)/);
+      return {
+        id: productId,
+        title: match ? `Product ${match[1]}` : raw,
+        handle: '',
+        imageUrl: null,
+      };
+    },
+    [priceProductMetaById]
+  );
+  const selectedScopeProductsPreview = useMemo(
+    () => selectedScopeProductIds.map(getScopeProductMeta),
+    [getScopeProductMeta, selectedScopeProductIds]
+  );
+  const excludedScopeProductsPreview = useMemo(
+    () => excludedScopeProductIds.map(getScopeProductMeta),
+    [excludedScopeProductIds, getScopeProductMeta]
+  );
   const activePriceModalProductIds =
     priceProductModalSelectionMode === 'exclude'
       ? excludedScopeProductIds
@@ -2119,6 +2153,7 @@ function TestWizard({
                 id: product.id || productId,
                 title: product.title || priceProductMetaById[productId]?.title || String(productId),
                 handle: product.handle || '',
+                imageUrl: priceProductMetaById[productId]?.imageUrl || null,
                 variants: Array.isArray(product.variants) ? product.variants : [],
               }
             : null;
@@ -2128,6 +2163,7 @@ function TestWizard({
               id: productId,
               title: priceProductMetaById[productId]?.title || String(productId),
               handle: priceProductMetaById[productId]?.handle || '',
+              imageUrl: priceProductMetaById[productId]?.imageUrl || null,
               variants: [],
             },
           }));
@@ -2164,6 +2200,30 @@ function TestWizard({
     priceProductMetaById,
   ]);
 
+  useEffect(() => {
+    if (!isShippingTargetingMode || formData.target_type === 'product') {
+      return;
+    }
+    setFormData(prev => {
+      if (
+        (prev.type !== 'shipping' && selectedTemplate !== 'shipping') ||
+        prev.target_type === 'product'
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        target_type: 'product',
+        target_id: '',
+        target_ids: null,
+        segments: {
+          ...prev.segments,
+          url_pattern: '',
+          page_rules: prev.segments?.page_rules || [],
+        },
+      };
+    });
+  }, [formData.target_type, isShippingTargetingMode, selectedTemplate]);
   useEffect(() => {
     if (isStandalone && (placementSection === 'device' || placementSection === 'audience')) {
       setPlacementSection('page');
@@ -3051,7 +3111,7 @@ function TestWizard({
       targetType = 'checkout';
       urlPattern = '/checkout';
     } else if (templateKey === 'shipping') {
-      targetType = 'all-products';
+      targetType = 'product';
       urlPattern = '';
     } else if (templateKey === 'combination') {
       targetType = 'cart';
@@ -4171,10 +4231,7 @@ function TestWizard({
                         <span className={styles.placementConfigPill}>
                           {(() => {
                             if (isShippingTestType) {
-                              const scopeLabel =
-                                formData.target_type === 'product'
-                                  ? `${selectedScopeProductIds.length || 0} included product${selectedScopeProductIds.length === 1 ? '' : 's'}`
-                                  : 'All carts';
+                              const scopeLabel = `${selectedScopeProductIds.length || 0} included product${selectedScopeProductIds.length === 1 ? '' : 's'}`;
                               const excludedLabel =
                                 excludedScopeProductIds.length > 0
                                   ? ` · ${excludedScopeProductIds.length} excluded`
@@ -4239,7 +4296,7 @@ function TestWizard({
                                   tone="info"
                                   title={
                                     isShippingTestType
-                                      ? 'Shipping tests use cart-qualified product scope'
+                                      ? 'Shipping tests use selected-product cart qualification'
                                       : isOfferTestType
                                         ? 'Offer tests use product-only scope'
                                         : 'Price tests use product-only scope'
@@ -4248,11 +4305,12 @@ function TestWizard({
                                   <Text as="p" variant="bodySm">
                                     {isShippingTestType ? (
                                       <>
-                                        Choose between <strong>all carts</strong> and{' '}
-                                        <strong>carts containing selected products</strong>. You can
-                                        also add optional <strong>excluded products</strong> to
-                                        block shipping assignment and checkout application for carts
-                                        that contain those SKUs.
+                                        Choose the{' '}
+                                        <strong>products that must appear in the cart</strong>{' '}
+                                        before this shipping test can apply. You can also add
+                                        optional <strong>excluded products</strong> to block
+                                        shipping assignment and checkout application for carts that
+                                        contain those SKUs.
                                       </>
                                     ) : (
                                       <>
@@ -4269,112 +4327,123 @@ function TestWizard({
                                     {isShippingTestType ? 'Cart qualification' : 'Product scope'}
                                   </span>
                                   <div className={styles.scopeSelectGrid}>
-                                    <div
-                                      className={`${styles.scopeCard} ${(formData.target_type || 'all-products') !== 'product' ? styles.scopeCardActive : ''}`}
-                                      role="button"
-                                      tabIndex={0}
-                                      onClick={() =>
-                                        setFormData(prev => ({
-                                          ...prev,
-                                          target_type: 'all-products',
-                                          target_id: '',
-                                          target_ids: null,
-                                          segments: {
-                                            ...prev.segments,
-                                            url_pattern: isShippingTestType ? '' : '/products/',
-                                            page_rules: prev.segments?.page_rules || [],
-                                          },
-                                        }))
-                                      }
-                                      onKeyDown={event => {
-                                        if (event.key !== 'Enter' && event.key !== ' ') {
-                                          return;
-                                        }
-                                        event.preventDefault();
-                                        setFormData(prev => ({
-                                          ...prev,
-                                          target_type: 'all-products',
-                                          target_id: '',
-                                          target_ids: null,
-                                          segments: {
-                                            ...prev.segments,
-                                            url_pattern: isShippingTestType ? '' : '/products/',
-                                            page_rules: prev.segments?.page_rules || [],
-                                          },
-                                        }));
-                                      }}
-                                      aria-pressed={
-                                        (formData.target_type || 'all-products') !== 'product'
-                                      }
-                                      aria-label={isShippingTestType ? 'All carts' : 'All products'}
-                                    >
-                                      <span className={styles.scopeCardIcon}>
-                                        <Icon source={ProductIcon} />
-                                      </span>
-                                      <span className={styles.scopeCardLabel}>
-                                        {isShippingTestType ? 'All carts' : 'All products'}
-                                      </span>
-                                      <span className={styles.scopeCardDesc}>
-                                        {isShippingTestType
-                                          ? 'Apply this shipping test to any eligible cart unless excluded'
-                                          : 'Assign this test across your full product catalog'}
-                                      </span>
-                                    </div>
-                                    <div
-                                      className={`${styles.scopeCard} ${formData.target_type === 'product' ? styles.scopeCardActive : ''}`}
-                                      role="button"
-                                      tabIndex={0}
-                                      onClick={() =>
-                                        setFormData(prev => ({
-                                          ...prev,
-                                          target_type: 'product',
-                                          segments: {
-                                            ...prev.segments,
-                                            url_pattern: isShippingTestType ? '' : '/products/',
-                                            page_rules: prev.segments?.page_rules || [],
-                                          },
-                                        }))
-                                      }
-                                      onKeyDown={event => {
-                                        if (event.key !== 'Enter' && event.key !== ' ') {
-                                          return;
-                                        }
-                                        event.preventDefault();
-                                        setFormData(prev => ({
-                                          ...prev,
-                                          target_type: 'product',
-                                          segments: {
-                                            ...prev.segments,
-                                            url_pattern: isShippingTestType ? '' : '/products/',
-                                            page_rules: prev.segments?.page_rules || [],
-                                          },
-                                        }));
-                                      }}
-                                      aria-pressed={formData.target_type === 'product'}
-                                      aria-label={
-                                        isShippingTestType
-                                          ? 'Carts with selected products'
-                                          : 'Selected products only'
-                                      }
-                                    >
-                                      <span className={styles.scopeCardIcon}>
-                                        <Icon source={TargetIcon} />
-                                      </span>
-                                      <span className={styles.scopeCardLabel}>
-                                        {isShippingTestType
-                                          ? 'Carts with selected products'
-                                          : 'Selected products'}
-                                      </span>
-                                      <span className={styles.scopeCardDesc}>
-                                        {isShippingTestType
-                                          ? 'Only apply when the delivery group contains one of the products you choose'
-                                          : 'Assign only for specific products you choose'}
-                                      </span>
-                                    </div>
+                                    {isShippingTestType ? (
+                                      <div
+                                        className={`${styles.scopeCard} ${styles.scopeCardActive}`}
+                                        aria-pressed="true"
+                                        aria-label="Carts with selected products"
+                                      >
+                                        <span className={styles.scopeCardIcon}>
+                                          <Icon source={TargetIcon} />
+                                        </span>
+                                        <span className={styles.scopeCardLabel}>
+                                          Carts with selected products
+                                        </span>
+                                        <span className={styles.scopeCardDesc}>
+                                          Shipping tests only apply when the cart contains one of
+                                          the products you choose below
+                                        </span>
+                                      </div>
+                                    ) : (
+                                      <>
+                                        <div
+                                          className={`${styles.scopeCard} ${(formData.target_type || 'all-products') !== 'product' ? styles.scopeCardActive : ''}`}
+                                          role="button"
+                                          tabIndex={0}
+                                          onClick={() =>
+                                            setFormData(prev => ({
+                                              ...prev,
+                                              target_type: 'all-products',
+                                              target_id: '',
+                                              target_ids: null,
+                                              segments: {
+                                                ...prev.segments,
+                                                url_pattern: '/products/',
+                                                page_rules: prev.segments?.page_rules || [],
+                                              },
+                                            }))
+                                          }
+                                          onKeyDown={event => {
+                                            if (event.key !== 'Enter' && event.key !== ' ') {
+                                              return;
+                                            }
+                                            event.preventDefault();
+                                            setFormData(prev => ({
+                                              ...prev,
+                                              target_type: 'all-products',
+                                              target_id: '',
+                                              target_ids: null,
+                                              segments: {
+                                                ...prev.segments,
+                                                url_pattern: '/products/',
+                                                page_rules: prev.segments?.page_rules || [],
+                                              },
+                                            }));
+                                          }}
+                                          aria-pressed={
+                                            (formData.target_type || 'all-products') !== 'product'
+                                          }
+                                          aria-label="All products"
+                                        >
+                                          <span className={styles.scopeCardIcon}>
+                                            <Icon source={ProductIcon} />
+                                          </span>
+                                          <span className={styles.scopeCardLabel}>
+                                            All products
+                                          </span>
+                                          <span className={styles.scopeCardDesc}>
+                                            Assign this test across your full product catalog
+                                          </span>
+                                        </div>
+                                        <div
+                                          className={`${styles.scopeCard} ${formData.target_type === 'product' ? styles.scopeCardActive : ''}`}
+                                          role="button"
+                                          tabIndex={0}
+                                          onClick={() =>
+                                            setFormData(prev => ({
+                                              ...prev,
+                                              target_type: 'product',
+                                              segments: {
+                                                ...prev.segments,
+                                                url_pattern: '/products/',
+                                                page_rules: prev.segments?.page_rules || [],
+                                              },
+                                            }))
+                                          }
+                                          onKeyDown={event => {
+                                            if (event.key !== 'Enter' && event.key !== ' ') {
+                                              return;
+                                            }
+                                            event.preventDefault();
+                                            setFormData(prev => ({
+                                              ...prev,
+                                              target_type: 'product',
+                                              segments: {
+                                                ...prev.segments,
+                                                url_pattern: '/products/',
+                                                page_rules: prev.segments?.page_rules || [],
+                                              },
+                                            }));
+                                          }}
+                                          aria-pressed={formData.target_type === 'product'}
+                                          aria-label="Selected products only"
+                                        >
+                                          <span className={styles.scopeCardIcon}>
+                                            <Icon source={TargetIcon} />
+                                          </span>
+                                          <span className={styles.scopeCardLabel}>
+                                            Selected products
+                                          </span>
+                                          <span className={styles.scopeCardDesc}>
+                                            Assign only for specific products you choose
+                                          </span>
+                                        </div>
+                                      </>
+                                    )}
                                   </div>
                                 </div>
                                 <div className={styles.productScopePickerGrid}>
-                                  {formData.target_type === 'product' && (
+                                  {(isShippingTestType || formData.target_type === 'product') && (
                                     <div
                                       className={`${styles.productScopePickerCard} ${styles.productScopePickerCardPrimary}`}
                                     >
@@ -4412,6 +4481,67 @@ function TestWizard({
                                               : 'Choose products'}
                                           </Button>
                                         </InlineStack>
+                                        <div className={styles.productScopePickerSelectionList}>
+                                          {selectedScopeProductsPreview.length === 0 ? (
+                                            <div
+                                              className={styles.productScopePickerSelectionEmpty}
+                                            >
+                                              <Icon source={ProductIcon} />
+                                              <span>
+                                                {isShippingTestType
+                                                  ? 'No included products selected yet.'
+                                                  : 'No products selected yet.'}
+                                              </span>
+                                            </div>
+                                          ) : (
+                                            selectedScopeProductsPreview
+                                              .slice(0, 4)
+                                              .map(product => (
+                                                <div
+                                                  key={product.id}
+                                                  className={`${styles.priceProductPickerRow} ${styles.priceProductPickerRowSelected}`}
+                                                >
+                                                  <span
+                                                    className={styles.priceProductPickerThumb}
+                                                    aria-hidden
+                                                  >
+                                                    {product.imageUrl ? (
+                                                      <img
+                                                        src={product.imageUrl}
+                                                        alt=""
+                                                        loading="lazy"
+                                                      />
+                                                    ) : (
+                                                      <Icon source={ProductIcon} />
+                                                    )}
+                                                  </span>
+                                                  <span
+                                                    className={styles.priceProductPickerRowText}
+                                                  >
+                                                    <span
+                                                      className={styles.priceProductPickerRowTitle}
+                                                    >
+                                                      {product.title}
+                                                    </span>
+                                                    {product.handle ? (
+                                                      <span
+                                                        className={
+                                                          styles.priceProductPickerRowHandle
+                                                        }
+                                                      >
+                                                        {product.handle}
+                                                      </span>
+                                                    ) : null}
+                                                  </span>
+                                                </div>
+                                              ))
+                                          )}
+                                          {selectedScopeProductsPreview.length > 4 && (
+                                            <span className={styles.productScopePickerMoreBadge}>
+                                              +{selectedScopeProductsPreview.length - 4} more
+                                            </span>
+                                          )}
+                                        </div>
                                       </BlockStack>
                                     </div>
                                   )}
@@ -4447,6 +4577,57 @@ function TestWizard({
                                             : 'Choose excluded'}
                                         </Button>
                                       </InlineStack>
+                                      <div className={styles.productScopePickerSelectionList}>
+                                        {excludedScopeProductsPreview.length === 0 ? (
+                                          <div className={styles.productScopePickerSelectionEmpty}>
+                                            <Icon source={FilterIcon} />
+                                            <span>
+                                              {isShippingTestType
+                                                ? 'No excluded products selected.'
+                                                : 'No exclusions selected.'}
+                                            </span>
+                                          </div>
+                                        ) : (
+                                          excludedScopeProductsPreview.slice(0, 4).map(product => (
+                                            <div
+                                              key={product.id}
+                                              className={`${styles.priceProductPickerRow} ${styles.priceProductPickerRowSelected}`}
+                                            >
+                                              <span
+                                                className={styles.priceProductPickerThumb}
+                                                aria-hidden
+                                              >
+                                                {product.imageUrl ? (
+                                                  <img
+                                                    src={product.imageUrl}
+                                                    alt=""
+                                                    loading="lazy"
+                                                  />
+                                                ) : (
+                                                  <Icon source={ProductIcon} />
+                                                )}
+                                              </span>
+                                              <span className={styles.priceProductPickerRowText}>
+                                                <span className={styles.priceProductPickerRowTitle}>
+                                                  {product.title}
+                                                </span>
+                                                {product.handle ? (
+                                                  <span
+                                                    className={styles.priceProductPickerRowHandle}
+                                                  >
+                                                    {product.handle}
+                                                  </span>
+                                                ) : null}
+                                              </span>
+                                            </div>
+                                          ))
+                                        )}
+                                        {excludedScopeProductsPreview.length > 4 && (
+                                          <span className={styles.productScopePickerMoreBadge}>
+                                            +{excludedScopeProductsPreview.length - 4} more
+                                          </span>
+                                        )}
+                                      </div>
                                     </BlockStack>
                                   </div>
                                 </div>
@@ -6236,7 +6417,7 @@ function TestWizard({
                               <div className={styles.holdoutRecommendedBanner}>
                                 <span className={styles.holdoutRecommendedText}>
                                   {isShippingTestType
-                                    ? 'Quick apply: All carts + 10% holdout'
+                                    ? 'Quick apply: Selected products + 10% holdout'
                                     : 'Quick apply: Product pages + 10% holdout'}
                                 </span>
                                 <button
@@ -6246,7 +6427,7 @@ function TestWizard({
                                     setCustomUrlModeActive(false);
                                     setFormData(prev => ({
                                       ...prev,
-                                      target_type: 'all-products',
+                                      target_type: isShippingTestType ? 'product' : 'all-products',
                                       target_id: '',
                                       target_ids: null,
                                       segments: {
@@ -7770,6 +7951,37 @@ function TestWizard({
     return raw;
   };
 
+  const parseMatrixPriceNumber = value => {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : null;
+    }
+    const raw = String(value).trim();
+    if (!raw) return null;
+    const direct = Number(raw);
+    if (Number.isFinite(direct)) return direct;
+    const normalized = raw.replace(/,/g, '');
+    const matched = normalized.match(/-?\d+(\.\d+)?/);
+    if (!matched) return null;
+    const parsed = Number(matched[0]);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const formatMatrixInputNumber = value => {
+    if (!Number.isFinite(value)) return '';
+    const rounded = Math.round(value * 100) / 100;
+    return String(rounded);
+  };
+
+  const getMatrixCurrentSellingPrice = productVariant =>
+    parseMatrixPriceNumber(productVariant?.price);
+
+  const getMatrixCurrentActualPrice = productVariant => {
+    const compareAt = parseMatrixPriceNumber(productVariant?.compareAtPrice);
+    if (compareAt !== null) return compareAt;
+    return getMatrixCurrentSellingPrice(productVariant);
+  };
+
   const priceConfigImpliesIncrease = cfg => {
     if (!cfg || typeof cfg !== 'object') return false;
     const mode = String(cfg.priceMode || 'fixed').toLowerCase();
@@ -8381,8 +8593,8 @@ function TestWizard({
                               : [];
                             const countForProduct = variantsForProduct.filter(productVariant => {
                               const variantKey = normalizeNativeVariantIdInput(productVariant?.id);
-                              const currentSelling = Number(productVariant?.price);
-                              return Boolean(variantKey) && Number.isFinite(currentSelling);
+                              const currentSelling = getMatrixCurrentSellingPrice(productVariant);
+                              return Boolean(variantKey) && currentSelling !== null;
                             }).length;
                             if (countForProduct > 0) {
                               applicableProductIds.push(productId);
@@ -8390,6 +8602,7 @@ function TestWizard({
                             }
                           });
                           if (applicableProductIds.length === 0) {
+                            setPriceMatrixBulkSummary(null);
                             setPriceMatrixActionToast({
                               message:
                                 'No rows available for bulk update yet. Wait for products to load.',
@@ -8397,10 +8610,53 @@ function TestWizard({
                             });
                             return;
                           }
+                          const bulkRowsByProduct = {};
+                          let totalSellingDelta = 0;
+                          let appliedRowCount = 0;
+                          applicableProductIds.forEach(productId => {
+                            const matrixProduct = priceMatrixProductsById[productId];
+                            const variantsForProduct = Array.isArray(matrixProduct?.variants)
+                              ? matrixProduct.variants
+                              : [];
+                            const computedRows = [];
+                            variantsForProduct.forEach(productVariant => {
+                              const variantKey = normalizeNativeVariantIdInput(productVariant?.id);
+                              if (!variantKey) return;
+                              const currentSelling = getMatrixCurrentSellingPrice(productVariant);
+                              if (currentSelling === null) return;
+                              const nextSelling =
+                                priceMatrixBulkMode === 'percent'
+                                  ? currentSelling * (1 + matrixBulkParsedValue / 100)
+                                  : currentSelling + matrixBulkParsedValue;
+                              const roundedSelling = Math.max(
+                                0,
+                                Math.round(nextSelling * 100) / 100
+                              );
+                              computedRows.push({
+                                variantKey,
+                                roundedSelling,
+                              });
+                              totalSellingDelta += roundedSelling - currentSelling;
+                              appliedRowCount += 1;
+                            });
+                            if (computedRows.length > 0) {
+                              bulkRowsByProduct[productId] = computedRows;
+                            }
+                          });
+                          const bulkTargetProductIds = Object.keys(bulkRowsByProduct);
+                          if (bulkTargetProductIds.length === 0 || appliedRowCount === 0) {
+                            setPriceMatrixBulkSummary(null);
+                            setPriceMatrixActionToast({
+                              message:
+                                'No valid product prices found for bulk update. Check loaded rows.',
+                              type: 'info',
+                            });
+                            return;
+                          }
                           setPriceMatrixUndoByScope(prevUndo => {
                             const nextUndo = { ...prevUndo };
                             const currentByProduct = variant.config?.byProduct || {};
-                            applicableProductIds.forEach(productId => {
+                            bulkTargetProductIds.forEach(productId => {
                               const undoKey = `${index}::${productId}`;
                               const hasProductOverride = Object.prototype.hasOwnProperty.call(
                                 currentByProduct,
@@ -8419,31 +8675,14 @@ function TestWizard({
                             const next = [...(prev.variants || [])];
                             const c = next[index]?.config || {};
                             const byProduct = { ...(c.byProduct || {}) };
-                            applicableProductIds.forEach(productId => {
-                              const matrixProduct = priceMatrixProductsById[productId];
-                              const variantsForProduct = Array.isArray(matrixProduct?.variants)
-                                ? matrixProduct.variants
-                                : [];
-                              if (!variantsForProduct.length) return;
+                            bulkTargetProductIds.forEach(productId => {
+                              const computedRows = bulkRowsByProduct[productId];
+                              if (!Array.isArray(computedRows) || computedRows.length === 0) return;
                               const productOver = {
                                 ...(byProduct[productId] || {}),
                                 byVariant: { ...(byProduct[productId]?.byVariant || {}) },
                               };
-                              variantsForProduct.forEach(productVariant => {
-                                const variantKey = normalizeNativeVariantIdInput(
-                                  productVariant?.id
-                                );
-                                if (!variantKey) return;
-                                const currentSelling = Number(productVariant?.price);
-                                if (!Number.isFinite(currentSelling)) return;
-                                const nextSelling =
-                                  priceMatrixBulkMode === 'percent'
-                                    ? currentSelling * (1 + matrixBulkParsedValue / 100)
-                                    : currentSelling + matrixBulkParsedValue;
-                                const roundedSelling = Math.max(
-                                  0,
-                                  Math.round(nextSelling * 100) / 100
-                                );
+                              computedRows.forEach(({ variantKey, roundedSelling }) => {
                                 const rowOver = {
                                   ...(productOver.byVariant?.[variantKey] || {}),
                                   priceMode: 'fixed',
@@ -8457,8 +8696,18 @@ function TestWizard({
                             next[index] = { ...next[index], config: { ...c, byProduct } };
                             return { ...prev, variants: next };
                           });
+                          const avgSellingDelta =
+                            Math.round((totalSellingDelta / appliedRowCount) * 100) / 100;
+                          setPriceMatrixBulkSummary({
+                            rows: appliedRowCount,
+                            products: bulkTargetProductIds.length,
+                            avgSellingDelta,
+                            mode: priceMatrixBulkMode,
+                            value: matrixBulkParsedValue,
+                            updatedAt: Date.now(),
+                          });
                           setPriceMatrixActionToast({
-                            message: `Applied bulk ${priceMatrixBulkMode === 'percent' ? `${matrixBulkParsedValue}%` : `$${matrixBulkParsedValue.toFixed(2)}`} to ${applicableRowCount} row${applicableRowCount === 1 ? '' : 's'} across ${applicableProductIds.length} product${applicableProductIds.length === 1 ? '' : 's'}.`,
+                            message: `Applied bulk ${priceMatrixBulkMode === 'percent' ? `${matrixBulkParsedValue}%` : `$${matrixBulkParsedValue.toFixed(2)}`} to ${appliedRowCount} row${appliedRowCount === 1 ? '' : 's'} across ${bulkTargetProductIds.length} product${bulkTargetProductIds.length === 1 ? '' : 's'}.`,
                             type: 'success',
                           });
                         }}
@@ -8466,6 +8715,18 @@ function TestWizard({
                         Apply to all rows
                       </Button>
                     </InlineStack>
+                    {priceMatrixBulkSummary && (
+                      <div className={styles.priceMatrixBulkSummary}>
+                        <Text as="span" variant="bodySm" tone="subdued">
+                          Last bulk update: {priceMatrixBulkSummary.rows} row
+                          {priceMatrixBulkSummary.rows === 1 ? '' : 's'} across{' '}
+                          {priceMatrixBulkSummary.products} product
+                          {priceMatrixBulkSummary.products === 1 ? '' : 's'} · Avg selling change{' '}
+                          {priceMatrixBulkSummary.avgSellingDelta >= 0 ? '+' : '-'}$
+                          {Math.abs(priceMatrixBulkSummary.avgSellingDelta).toFixed(2)} per row
+                        </Text>
+                      </div>
+                    )}
                   </div>
                   <div className={styles.priceMatrixWrap}>
                     <table className={styles.priceMatrixTable}>
@@ -8475,7 +8736,9 @@ function TestWizard({
                           <th>Variant</th>
                           <th>Current actual</th>
                           <th>Current selling</th>
+                          <th>Actual change</th>
                           <th>New actual</th>
+                          <th>Selling change</th>
                           <th>New selling</th>
                         </tr>
                       </thead>
@@ -8562,8 +8825,8 @@ function TestWizard({
                                   productVariant?.id
                                 );
                                 if (!variantKey) return;
-                                const currentSelling = Number(productVariant?.price);
-                                if (!Number.isFinite(currentSelling)) return;
+                                const currentSelling = getMatrixCurrentSellingPrice(productVariant);
+                                if (currentSelling === null) return;
                                 const nextSelling =
                                   priceMatrixBulkMode === 'percent'
                                     ? currentSelling * (1 + matrixBulkParsedValue / 100)
@@ -8695,21 +8958,39 @@ function TestWizard({
                               typeof productOver.byVariant === 'object'
                                 ? productOver.byVariant[variantKey] || {}
                                 : {};
-                            const newActualValue =
+                            const explicitNewActualValue =
                               variantOver?.compareAtPrice ??
                               (!variantKey ? productOver?.compareAtPrice : null) ??
-                              '';
-                            const newSellingValue =
+                              null;
+                            const explicitNewSellingValue =
                               variantOver?.price ?? (!variantKey ? productOver?.price : null) ?? '';
-                            const currentActual = Number(productVariant?.compareAtPrice);
-                            const currentSelling = Number(productVariant?.price);
+                            const currentSelling = getMatrixCurrentSellingPrice(productVariant);
+                            const currentActual = getMatrixCurrentActualPrice(productVariant);
+                            const newActualValue =
+                              explicitNewActualValue !== null &&
+                              Number.isFinite(Number(explicitNewActualValue))
+                                ? String(explicitNewActualValue)
+                                : Number.isFinite(currentActual)
+                                  ? String(currentActual)
+                                  : '';
+                            const newSellingValue =
+                              explicitNewSellingValue !== null &&
+                              explicitNewSellingValue !== '' &&
+                              Number.isFinite(Number(explicitNewSellingValue))
+                                ? String(explicitNewSellingValue)
+                                : Number.isFinite(currentSelling)
+                                  ? String(currentSelling)
+                                  : '';
                             const parsedNewActual =
-                              newActualValue !== '' && Number.isFinite(Number(newActualValue))
-                                ? Number(newActualValue)
+                              explicitNewActualValue !== null &&
+                              Number.isFinite(Number(explicitNewActualValue))
+                                ? Number(explicitNewActualValue)
                                 : null;
                             const parsedNewSelling =
-                              newSellingValue !== '' && Number.isFinite(Number(newSellingValue))
-                                ? Number(newSellingValue)
+                              explicitNewSellingValue !== null &&
+                              explicitNewSellingValue !== '' &&
+                              Number.isFinite(Number(explicitNewSellingValue))
+                                ? Number(explicitNewSellingValue)
                                 : null;
                             const hasActualChange =
                               parsedNewActual !== null &&
@@ -8753,6 +9034,22 @@ function TestWizard({
                               hasSellingChange,
                               rowHasChanges,
                             } = rowState;
+                            const resolvedVariantId =
+                              variantKey ||
+                              normalizeNativeVariantIdInput(productVariant?.id) ||
+                              '-';
+                            const variantLabel =
+                              productVariant?.displayName || productVariant?.title || '';
+                            const newActualNumeric = parseMatrixPriceNumber(newActualValue);
+                            const newSellingNumeric = parseMatrixPriceNumber(newSellingValue);
+                            const actualDelta =
+                              Number.isFinite(currentActual) && Number.isFinite(newActualNumeric)
+                                ? Math.round((newActualNumeric - currentActual) * 100) / 100
+                                : null;
+                            const sellingDelta =
+                              Number.isFinite(currentSelling) && Number.isFinite(newSellingNumeric)
+                                ? Math.round((newSellingNumeric - currentSelling) * 100) / 100
+                                : null;
 
                             const updateRowOverride = (field, value) => {
                               setFormData(prev => {
@@ -8818,78 +9115,60 @@ function TestWizard({
                               >
                                 {rowIndex === 0 && (
                                   <td rowSpan={rowCount} className={styles.priceMatrixProductCell}>
-                                    <div className={styles.priceMatrixProductTitle}>
-                                      {matrixProduct?.title || getProductLabelFromId(productId)}
-                                    </div>
-                                    <div className={styles.priceMatrixProductMetaRow}>
-                                      <Badge
-                                        tone={productEditedRows > 0 ? 'success' : 'info'}
-                                        size="small"
-                                      >
-                                        Edited rows {productEditedRows}/{rowCount}
-                                      </Badge>
-                                    </div>
-                                    <div className={styles.priceMatrixProductActions}>
-                                      <Button
-                                        size="slim"
-                                        variant="plain"
-                                        disabled={!matrixBulkValueValid}
-                                        onClick={applyBulkToSingleProduct}
-                                      >
-                                        Apply bulk to product
-                                      </Button>
-                                      <Button
-                                        size="slim"
-                                        variant="plain"
-                                        disabled={productEditedActualRows === 0}
-                                        onClick={() =>
-                                          clearSingleProductFieldOverrides('compareAtPrice')
-                                        }
-                                      >
-                                        Revert New actual
-                                      </Button>
-                                      <Button
-                                        size="slim"
-                                        variant="plain"
-                                        disabled={productEditedSellingRows === 0}
-                                        onClick={() => clearSingleProductFieldOverrides('price')}
-                                      >
-                                        Revert New selling
-                                      </Button>
-                                      <Button
-                                        size="slim"
-                                        variant="plain"
-                                        disabled={!undoSnapshot}
-                                        onClick={undoLastProductAction}
-                                      >
-                                        Undo last product action
-                                      </Button>
-                                      <Button
-                                        size="slim"
-                                        variant="plain"
-                                        tone="critical"
-                                        disabled={!productHasOverrides}
-                                        onClick={clearSingleProductOverrides}
-                                      >
-                                        Reset product edits
-                                      </Button>
-                                    </div>
-                                    {priceMatrixLoadingById[productId] && (
-                                      <div className={styles.priceMatrixProductSubtle}>
-                                        Loading variants...
+                                    <div className={styles.priceMatrixProductIdentity}>
+                                      <div className={styles.priceMatrixProductThumbWrap}>
+                                        {matrixProduct?.imageUrl ||
+                                        priceProductMetaById[productId]?.imageUrl ? (
+                                          <img
+                                            src={
+                                              matrixProduct?.imageUrl ||
+                                              priceProductMetaById[productId]?.imageUrl
+                                            }
+                                            alt={
+                                              matrixProduct?.title ||
+                                              getProductLabelFromId(productId)
+                                            }
+                                            className={styles.priceMatrixProductThumb}
+                                          />
+                                        ) : (
+                                          <div
+                                            className={styles.priceMatrixProductThumbPlaceholder}
+                                            aria-hidden="true"
+                                          >
+                                            {(
+                                              matrixProduct?.title ||
+                                              getProductLabelFromId(productId)
+                                            )
+                                              .trim()
+                                              .charAt(0)
+                                              .toUpperCase() || 'P'}
+                                          </div>
+                                        )}
                                       </div>
-                                    )}
-                                    {priceMatrixErrorById[productId] && (
-                                      <div className={styles.priceMatrixProductError}>
-                                        {priceMatrixErrorById[productId]}
+                                      <div className={styles.priceMatrixProductMain}>
+                                        <div className={styles.priceMatrixProductTitle}>
+                                          {matrixProduct?.title || getProductLabelFromId(productId)}
+                                        </div>
+                                        <div className={styles.priceMatrixProductMetaRow}>
+                                          <Badge tone="info" size="small">
+                                            {rowCount} variant{rowCount === 1 ? '' : 's'}
+                                          </Badge>
+                                        </div>
                                       </div>
-                                    )}
+                                    </div>
                                   </td>
                                 )}
                                 <td>
-                                  {productVariant?.displayName ||
-                                    productVariant?.title ||
-                                    'Default'}
+                                  <div className={styles.priceMatrixVariantCell}>
+                                    <span className={styles.priceMatrixVariantId}>
+                                      {resolvedVariantId}
+                                    </span>
+                                    {variantLabel ? (
+                                      <span className={styles.priceMatrixVariantTitle}>
+                                        {variantLabel}
+                                      </span>
+                                    ) : null}
+                                  </div>
                                 </td>
                                 <td>
                                   {Number.isFinite(currentActual)
@@ -8900,6 +9179,38 @@ function TestWizard({
                                   {Number.isFinite(currentSelling)
                                     ? `$${currentSelling.toFixed(2)}`
                                     : '-'}
+                                </td>
+                                <td
+                                  className={hasActualChange ? styles.priceMatrixChangedCell : ''}
+                                >
+                                  <TextField
+                                    label="Actual change"
+                                    labelHidden
+                                    type="number"
+                                    value={formatMatrixInputNumber(actualDelta)}
+                                    onChange={val => {
+                                      const parsedDelta =
+                                        val === '' ? null : Number.parseFloat(val);
+                                      if (parsedDelta === null) {
+                                        updateRowOverride('compareAtPrice', null);
+                                        return;
+                                      }
+                                      if (
+                                        !Number.isFinite(parsedDelta) ||
+                                        !Number.isFinite(currentActual)
+                                      ) {
+                                        return;
+                                      }
+                                      const nextValue = Math.max(
+                                        0,
+                                        Math.round((currentActual + parsedDelta) * 100) / 100
+                                      );
+                                      updateRowOverride('compareAtPrice', nextValue);
+                                    }}
+                                    placeholder="+/-"
+                                    prefix="$"
+                                    autoComplete="off"
+                                  />
                                 </td>
                                 <td
                                   className={hasActualChange ? styles.priceMatrixChangedCell : ''}
@@ -8917,6 +9228,40 @@ function TestWizard({
                                       );
                                     }}
                                     placeholder="Optional"
+                                    prefix="$"
+                                    autoComplete="off"
+                                  />
+                                </td>
+                                <td
+                                  className={
+                                    hasSellingChange ? styles.priceMatrixChangedCellStrong : ''
+                                  }
+                                >
+                                  <TextField
+                                    label="Selling change"
+                                    labelHidden
+                                    type="number"
+                                    value={formatMatrixInputNumber(sellingDelta)}
+                                    onChange={val => {
+                                      const parsedDelta =
+                                        val === '' ? null : Number.parseFloat(val);
+                                      if (parsedDelta === null) {
+                                        updateRowOverride('price', null);
+                                        return;
+                                      }
+                                      if (
+                                        !Number.isFinite(parsedDelta) ||
+                                        !Number.isFinite(currentSelling)
+                                      ) {
+                                        return;
+                                      }
+                                      const nextValue = Math.max(
+                                        0,
+                                        Math.round((currentSelling + parsedDelta) * 100) / 100
+                                      );
+                                      updateRowOverride('price', nextValue);
+                                    }}
+                                    placeholder="+/-"
                                     prefix="$"
                                     autoComplete="off"
                                   />
