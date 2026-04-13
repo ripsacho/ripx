@@ -2,18 +2,24 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-function createDocumentStub() {
+function createDocumentStub(opts = {}) {
   return {
     readyState: 'loading',
     cookie: '',
     body: {
       addEventListener: jest.fn(),
-      querySelectorAll: jest.fn(() => []),
+      querySelectorAll: jest.fn(() =>
+        typeof opts.bodyQuerySelectorAll === 'function' ? opts.bodyQuerySelectorAll() : []
+      ),
     },
     addEventListener: jest.fn(),
     removeEventListener: jest.fn(),
-    querySelector: jest.fn(() => null),
-    querySelectorAll: jest.fn(() => []),
+    querySelector: jest.fn(selector =>
+      typeof opts.querySelector === 'function' ? opts.querySelector(selector) : null
+    ),
+    querySelectorAll: jest.fn(selector =>
+      typeof opts.querySelectorAll === 'function' ? opts.querySelectorAll(selector) : []
+    ),
     createElement: jest.fn(() => ({
       setAttribute: jest.fn(),
       appendChild: jest.fn(),
@@ -29,15 +35,21 @@ function bootStorefrontScriptHarness(opts = {}) {
   const source = fs.readFileSync(storefrontPath, 'utf8');
   const fetchCalls = [];
   const search = typeof opts.search === 'string' ? opts.search : '';
+  const pathname = typeof opts.pathname === 'string' ? opts.pathname : '/products/demo';
+  const href = `https://example.com${pathname}${search}`;
 
   const location = {
-    href: `https://example.com/products/demo${search}`,
+    href,
     origin: 'https://example.com',
-    pathname: '/products/demo',
+    pathname,
     search,
     hostname: 'example.com',
   };
-  const document = createDocumentStub();
+  const document = createDocumentStub({
+    querySelector: opts.documentQuerySelector,
+    querySelectorAll: opts.documentQuerySelectorAll,
+    bodyQuerySelectorAll: opts.bodyQuerySelectorAll,
+  });
 
   class FakeXMLHttpRequest {
     constructor() {
@@ -124,6 +136,21 @@ function bootStorefrontScriptHarness(opts = {}) {
   };
 }
 
+function createCartProductEl(productId) {
+  return {
+    getAttribute: jest.fn(name => (name === 'data-product-id' ? String(productId) : '')),
+    shadowRoot: null,
+  };
+}
+
+function createCartRoot(productIds) {
+  const nodes = (productIds || []).map(createCartProductEl);
+  return {
+    shadowRoot: null,
+    querySelectorAll: jest.fn(() => nodes),
+  };
+}
+
 describe('storefront script cart/add interceptors', () => {
   it('exposes cart debug helpers on test hooks', () => {
     const { hooks } = bootStorefrontScriptHarness();
@@ -150,6 +177,63 @@ describe('storefront script cart/add interceptors', () => {
     expect(hooks.previewMode).toBe(true);
     expect(hooks.previewTestContext).toBe(false);
     expect(hooks.previewTestId).toBe(null);
+  });
+
+  it('runs selected-product shipping tests on cart surfaces and injects signed cart state', async () => {
+    const cartRoot = createCartRoot(['gid://shopify/Product/200']);
+    const { hooks } = bootStorefrontScriptHarness({
+      pathname: '/cart',
+      documentQuerySelector: selector =>
+        selector && selector.includes('.cart-drawer') ? { nodeType: 1 } : null,
+      documentQuerySelectorAll: selector =>
+        selector && selector.includes('.cart-drawer') ? [cartRoot] : [],
+    });
+
+    const test = {
+      id: 'shipping-test-1',
+      type: 'shipping',
+      targetType: 'product',
+      targetIds: ['gid://shopify/Product/200'],
+    };
+
+    expect(hooks.shouldShowShippingTestOnCart(test)).toBe(true);
+    expect(hooks.shouldRunPriceTestOnCurrentPage(test)).toBe(true);
+
+    hooks.injectShippingTestCartAttributes(test, {
+      id: 'shipping-variant-a',
+      assignment_sig: 'sig-123',
+      assignment_ts: '1712600000000',
+      assignment_user: 'user-1',
+    });
+
+    expect(hooks.getRipxCartAttributeState()).toMatchObject({
+      _ripx_price_test: 'shipping-test-1',
+      _ripx_variant: 'shipping-variant-a',
+      _ripx_assignment_sig: 'sig-123',
+      _ripx_assignment_ts: '1712600000000',
+      _ripx_assignment_user: 'user-1',
+    });
+    expect(hooks.getRipxCartFormTargetProductIds()).toEqual(['gid://shopify/Product/200']);
+  });
+
+  it('does not qualify excluded-only carts for all-products shipping tests', () => {
+    const cartRoot = createCartRoot(['gid://shopify/Product/999']);
+    const { hooks } = bootStorefrontScriptHarness({
+      pathname: '/cart',
+      documentQuerySelector: selector =>
+        selector && selector.includes('.cart-drawer') ? { nodeType: 1 } : null,
+      documentQuerySelectorAll: selector =>
+        selector && selector.includes('.cart-drawer') ? [cartRoot] : [],
+    });
+
+    const test = {
+      id: 'shipping-test-2',
+      type: 'shipping',
+      targetType: 'all-products',
+      excludedProductIds: ['gid://shopify/Product/999'],
+    };
+
+    expect(hooks.shouldShowShippingTestOnCart(test)).toBe(false);
   });
 
   it('patches JSON fetch body for /cart/add.js with RipX properties', async () => {

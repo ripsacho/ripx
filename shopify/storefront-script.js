@@ -111,6 +111,11 @@
     var ty = String(test.type).toLowerCase();
     return ty === 'offer';
   }
+  function testTypeIsShipping(test) {
+    if (!test || test.type === undefined || test.type === null) return false;
+    var ty = String(test.type).toLowerCase();
+    return ty === 'shipping';
+  }
   function getTemplateKeyForTest(test) {
     if (!test || typeof test !== 'object') return '';
     return String(test.templateKey || test.template_key || '')
@@ -130,7 +135,9 @@
     var tt = String((test && (test.targetType || test.target_type)) || '')
       .toLowerCase()
       .trim();
-    if ((!tt || tt === 'all') && testTypeIsPrice(test)) return 'all-products';
+    if ((!tt || tt === 'all') && (testTypeIsPrice(test) || testTypeIsShipping(test))) {
+      return 'all-products';
+    }
     return tt;
   }
   function normalizeThemeMode(rawMode, fallbackMode) {
@@ -5071,6 +5078,13 @@
     return isProductListingSurface();
   }
 
+  function shouldRunShippingTestOnListingSurface(test) {
+    if (!testTypeIsShipping(test)) return false;
+    var tt = getNormalizedTargetType(test);
+    if (!isProductScopeTargetType(tt)) return false;
+    return isProductListingSurface();
+  }
+
   function isProductScopeTargetType(targetType) {
     var tt = String(targetType || '').toLowerCase();
     return tt === 'product' || tt === 'all-products' || tt === 'all_products';
@@ -5345,6 +5359,28 @@
       }
     );
   }
+  function getShippingTargetProductIdsForCartAttrs(test) {
+    var tt = getNormalizedTargetType(test);
+    if (tt !== 'product') return null;
+    var ids =
+      test &&
+      (test.targetIds ||
+        (test.targetId || test.target_id ? [test.targetId || test.target_id] : []));
+    return Array.isArray(ids) && ids.length > 0 ? ids : null;
+  }
+  function injectShippingTestCartAttributes(test, variant) {
+    if (!test || !variant || !testTypeIsShipping(test)) return;
+    var tt = getNormalizedTargetType(test);
+    if (!isProductScopeTargetType(tt)) return;
+    var variantIdForCart = variant.variantId != null ? variant.variantId : variant.id;
+    if (variantIdForCart == null || String(variantIdForCart).trim() === '') return;
+    injectPriceTestCartAttributes(
+      test.id,
+      variantIdForCart,
+      getAssignmentProofFromVariant(variant),
+      getShippingTargetProductIdsForCartAttrs(test)
+    );
+  }
 
   var OFFER_CODE_APPLY_STATE_KEY = '__ripx_offer_code_apply_v1__';
   function normalizeOfferCodeStateKey(codeName) {
@@ -5559,6 +5595,32 @@
 
   function shouldShowOfferCodeOnCart(test) {
     if (!testTypeIsOffer(test)) return false;
+    if (!(isCartSurface() || hasCartUiInDom())) return false;
+
+    var tt = getNormalizedTargetType(test);
+    if (!isProductScopeTargetType(tt)) return false;
+    var cartIds = getCartVisibleProductTargetIds();
+    if (!cartIds.length) return false;
+
+    if (tt === 'all-products' || tt === 'all_products') {
+      return cartIds.some(function (pid) {
+        return !isExcludedProductForTest(test, pid);
+      });
+    }
+
+    var ids =
+      test.targetIds || (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
+    if (!ids.length) return false;
+    return cartIds.some(function (pid) {
+      if (isExcludedProductForTest(test, pid)) return false;
+      return ids.some(function (id) {
+        return id && gidMatches(id, pid);
+      });
+    });
+  }
+
+  function shouldShowShippingTestOnCart(test) {
+    if (!testTypeIsShipping(test)) return false;
     if (!(isCartSurface() || hasCartUiInDom())) return false;
 
     var tt = getNormalizedTargetType(test);
@@ -5854,13 +5916,15 @@
     if (!test) return false;
     if (matchesTarget(test)) return true;
     if (testTypeIsOffer(test) && shouldShowOfferCodeOnCart(test)) return true;
+    if (testTypeIsShipping(test) && shouldShowShippingTestOnCart(test)) return true;
     if (shouldRunPriceTestOnListingSurface(test)) return true;
-    if (testTypeIsPrice(test)) {
+    if (shouldRunShippingTestOnListingSurface(test)) return true;
+    if (testTypeIsPrice(test) || testTypeIsShipping(test)) {
       var tt = getNormalizedTargetType(test);
       if (isProductScopeTargetType(tt) && isCartSurface()) {
         return true;
       }
-      if (tt === 'collection' && getCurrentProductId()) {
+      if (testTypeIsPrice(test) && tt === 'collection' && getCurrentProductId()) {
         var cids =
           test.targetIds ||
           (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
@@ -5871,7 +5935,7 @@
     // (preview links with ?ab_preview=1 were previously PDP-only, so cart/collection looked broken).
     if (
       PREVIEW_TEST_CONTEXT &&
-      testTypeIsPrice(test) &&
+      (testTypeIsPrice(test) || testTypeIsShipping(test)) &&
       isProductScopeTargetType(getNormalizedTargetType(test))
     ) {
       var pathPv = (window.location.pathname || '').toLowerCase();
@@ -6138,6 +6202,28 @@
                     shouldRunAllProductsCartFallback();
                   if (shouldInjectOfferAttrs) {
                     injectOfferTestCartAttributes(test, variant);
+                  }
+                }
+                if (testTypeIsShipping(test)) {
+                  var shippingTargetType = getNormalizedTargetType(test);
+                  var shouldInjectShippingAttrs = false;
+                  if (isCartSurface() || hasCartUiInDom()) {
+                    shouldInjectShippingAttrs = shouldShowShippingTestOnCart(test);
+                  } else if (shouldRunShippingTestOnListingSurface(test)) {
+                    shouldInjectShippingAttrs = true;
+                  } else if (
+                    shippingTargetType === 'all-products' ||
+                    shippingTargetType === 'all_products'
+                  ) {
+                    var shippingCurrentProductId = getCurrentProductId();
+                    shouldInjectShippingAttrs = shippingCurrentProductId
+                      ? !isExcludedProductForTest(test, shippingCurrentProductId)
+                      : matched;
+                  } else {
+                    shouldInjectShippingAttrs = matched;
+                  }
+                  if (shouldInjectShippingAttrs) {
+                    injectShippingTestCartAttributes(test, variant);
                   }
                 }
                 if (testTypeIsOffer(test) && shouldShowOfferCodeOnCart(test)) {
@@ -6721,11 +6807,19 @@
     window.__RIPX_TEST_HOOKS__.previewMode = PREVIEW_MODE;
     window.__RIPX_TEST_HOOKS__.previewTestContext = PREVIEW_TEST_CONTEXT;
     window.__RIPX_TEST_HOOKS__.previewTestId = PREVIEW_TEST_ID;
+    window.__RIPX_TEST_HOOKS__.shouldRunPriceTestOnCurrentPage = shouldRunPriceTestOnCurrentPage;
+    window.__RIPX_TEST_HOOKS__.shouldShowShippingTestOnCart = shouldShowShippingTestOnCart;
+    window.__RIPX_TEST_HOOKS__.injectShippingTestCartAttributes = injectShippingTestCartAttributes;
     window.__RIPX_TEST_HOOKS__.setRipxCartAttributeState = function (payload) {
       _ripxCartAttributeState = payload || null;
     };
     window.__RIPX_TEST_HOOKS__.getRipxCartAttributeState = function () {
       return _ripxCartAttributeState;
+    };
+    window.__RIPX_TEST_HOOKS__.getRipxCartFormTargetProductIds = function () {
+      return Array.isArray(_ripxCartFormTargetProductIds)
+        ? _ripxCartFormTargetProductIds.slice()
+        : _ripxCartFormTargetProductIds || null;
     };
   }
   debugLog('init', 'v' + SCRIPT_VERSION);

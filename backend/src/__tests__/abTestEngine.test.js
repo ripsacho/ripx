@@ -179,6 +179,59 @@ describe('ABTestEngine.isUserEligible', () => {
       })
     ).toBe(false);
   });
+
+  it('requires included products for shipping selected-product scope when current product is known', () => {
+    const test = {
+      type: 'shipping',
+      target_type: 'product',
+      target_ids: ['gid://shopify/Product/200'],
+      segments: {},
+    };
+    expect(
+      ABTestEngine.isUserEligible(test, {
+        current_url: 'https://shop.example.com/products/boots',
+        current_pathname: '/products/boots',
+        current_product_id: 'gid://shopify/Product/999',
+      })
+    ).toBe(false);
+    expect(
+      ABTestEngine.isUserEligible(test, {
+        current_url: 'https://shop.example.com/products/boots',
+        current_pathname: '/products/boots',
+        current_product_id: 'gid://shopify/Product/200',
+      })
+    ).toBe(true);
+  });
+
+  it('keeps shipping selected-product scope eligible on cart surfaces without a current product id', () => {
+    const test = {
+      type: 'shipping',
+      target_type: 'product',
+      target_ids: ['gid://shopify/Product/200'],
+      segments: {},
+    };
+    expect(
+      ABTestEngine.isUserEligible(test, {
+        current_url: 'https://shop.example.com/cart',
+        current_pathname: '/cart',
+      })
+    ).toBe(true);
+  });
+
+  it('blocks excluded current products for shipping all-products scope', () => {
+    const test = {
+      type: 'shipping',
+      target_type: 'all-products',
+      segments: { excluded_product_ids: ['gid://shopify/Product/300'] },
+    };
+    expect(
+      ABTestEngine.isUserEligible(test, {
+        current_url: 'https://shop.example.com/products/bag',
+        current_pathname: '/products/bag',
+        current_product_id: 'gid://shopify/Product/300',
+      })
+    ).toBe(false);
+  });
 });
 
 describe('ABTestEngine.validateTest theme contract', () => {
@@ -282,5 +335,36 @@ describe('ABTestEngine.validateTest theme contract', () => {
     });
     expect(result.isValid).toBe(false);
     expect(result.errors.some(err => err.includes('discount code name'))).toBe(true);
+  });
+
+  it('rejects shipping tests without actionable non-control strategy', () => {
+    const result = ABTestEngine.validateTest({
+      name: 'Shipping test',
+      type: 'shipping',
+      goal: { type: 'conversion', template_key: 'shipping' },
+      variants: [
+        { name: 'Control', allocation: 50, config: { strategy: 'control' } },
+        { name: 'Variant A', allocation: 50, config: { strategy: 'control' } },
+      ],
+    });
+    expect(result.isValid).toBe(false);
+    expect(
+      result.errors.some(err =>
+        err.includes('Shipping tests require at least one non-control variant')
+      )
+    ).toBe(true);
+  });
+
+  it('accepts shipping tests with actionable strategy', () => {
+    const result = ABTestEngine.validateTest({
+      name: 'Shipping test',
+      type: 'shipping',
+      goal: { type: 'conversion', template_key: 'shipping' },
+      variants: [
+        { name: 'Control', allocation: 50, config: { strategy: 'control' } },
+        { name: 'Variant A', allocation: 50, config: { strategy: 'flat_rate', amount: 4.99 } },
+      ],
+    });
+    expect(result.isValid).toBe(true);
   });
 });

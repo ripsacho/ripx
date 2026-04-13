@@ -44,11 +44,16 @@ const {
   resolveCheckoutPriceBatchForDomain,
   getCheckoutMethodCapabilitiesForDomain,
 } = require('../services/priceTestCheckoutResolve');
+const { resolveCheckoutShippingBatchForDomain } = require('../services/shippingCheckoutResolve');
 const {
   buildCheckoutPriceDiagnostics,
   readRipxCheckoutExtensionConfigFile,
   extensionConfigInputFromReadResult,
 } = require('../services/priceCheckoutDiagnostics');
+const {
+  resolveVariantProviderConfig,
+  resolveCarrierQuoteRates,
+} = require('../services/shippingQuoteProviderService');
 const { query } = require('../utils/database');
 const {
   batchResolveJsonUtf8Bytes,
@@ -58,6 +63,7 @@ const {
 const { checkoutPriceSecretsMatch } = require('../utils/checkoutPriceSecret');
 const { signPriceAssignment } = require('../utils/priceAssignmentSignature');
 const { findVariantForPreviewQuery } = require('../utils/previewVariantMatch');
+const { normalizeShippingVariantConfig } = require('../services/shippingTestConfigService');
 const PRICE_RESOLVE_LINE_ID_MAX = Math.max(
   32,
   Number.parseInt(process.env.RIPX_PRICE_RESOLVE_LINE_ID_MAX || '256', 10) || 256
@@ -179,6 +185,30 @@ function parsePreviewSessionFlag(value) {
   }
   const normalized = String(value).trim().toLowerCase();
   return normalized === '1' || normalized === 'true' || normalized === 'yes';
+}
+
+function findShippingVariantByCallbackQuery(test, queryInput = {}) {
+  const variants = Array.isArray(test?.variants) ? test.variants : [];
+  const rawIndex = queryInput?.variant_index ?? queryInput?.variantIndex;
+  if (rawIndex !== undefined && rawIndex !== null && String(rawIndex).trim() !== '') {
+    const parsedIndex = Number.parseInt(String(rawIndex).trim(), 10);
+    if (Number.isInteger(parsedIndex) && parsedIndex >= 0 && parsedIndex < variants.length) {
+      return { variant: variants[parsedIndex], index: parsedIndex };
+    }
+  }
+  const rawVariantId = String(queryInput?.variant_id || queryInput?.variantId || '').trim();
+  if (!rawVariantId) {
+    return { variant: null, index: -1 };
+  }
+  const index = variants.findIndex(variant => {
+    const id = String(variant?.id || '').trim();
+    const name = String(variant?.name || '').trim();
+    return (id && id === rawVariantId) || (name && name === rawVariantId);
+  });
+  return {
+    variant: index >= 0 ? variants[index] : null,
+    index,
+  };
 }
 
 function withAssignmentSignature(variant, testId, userId, shopDomain) {
@@ -1869,6 +1899,176 @@ router.post(
     res.set('Cache-Control', 'no-store');
     res.set('Content-Type', 'application/json; charset=utf-8');
     return res.json(payload);
+  })
+);
+
+/**
+ * POST /api/track/shipping-resolve-batch
+ * Batch resolver for Shopify Discount Function `cart.delivery-options.discounts.generate.fetch`.
+ *
+ * Body JSON: {
+ *   shop|shop_domain|site,
+ *   groups: [{ delivery_group_id, test_id, assignment_variant, assignment_sig?, assignment_ts?, assignment_user?, cart_total, handles?[] }]
+ * }
+ */
+router.post(
+  '/shipping-resolve-batch',
+  asyncHandler(async (req, res) => {
+    if (!requireCheckoutPriceAuth(req, res)) {
+      return;
+    }
+
+    const body = req.body || {};
+    const shop = body.shop || body.shop_domain;
+    const site = body.site;
+    const domain = await resolveTenantDomain(shop, site);
+    if (!domain) {
+      return res.status(400).json({ success: false, error: 'Invalid shop or site' });
+    }
+    const tenantPr = await getTenantByDomain(domain);
+    if (tenantPr && isTenantSuspendedOrBlocked(tenantPr)) {
+      return res.status(403).json({ success: false, error: 'Access suspended' });
+    }
+
+    const groups = body.groups;
+    const debugRequested =
+      isTruthyDebugFlag(body.debug) || isTruthyDebugFlag(req.get('x-ripx-debug'));
+    if (!Array.isArray(groups) || groups.length === 0) {
+      return res.status(400).json({ success: false, error: 'groups must be a non-empty array' });
+    }
+    if (groups.length > PRICE_RESOLVE_BATCH_MAX) {
+      return res.status(400).json({
+        success: false,
+        error: `Too many groups. Maximum ${PRICE_RESOLVE_BATCH_MAX} per request.`,
+      });
+    }
+
+    for (let i = 0; i < groups.length; i++) {
+      const row = groups[i];
+      if (!row || typeof row !== 'object') {
+        return res.status(400).json({ success: false, error: `Invalid group at index ${i}` });
+      }
+      const tid = row.test_id;
+      if (!tid || !validators.isValidUUID(String(tid).trim())) {
+        return res.status(400).json({ success: false, error: `Invalid test_id at index ${i}` });
+      }
+      if (!row.delivery_group_id || !String(row.delivery_group_id).trim()) {
+        return res
+          .status(400)
+          .json({ success: false, error: `Missing delivery_group_id at index ${i}` });
+      }
+      if (!row.assignment_variant || !String(row.assignment_variant).trim()) {
+        return res
+          .status(400)
+          .json({ success: false, error: `Missing assignment_variant at index ${i}` });
+      }
+      const cartTotal = Number.parseFloat(String(row.cart_total || '').trim());
+      if (!Number.isFinite(cartTotal) || cartTotal < 0) {
+        return res.status(400).json({ success: false, error: `Invalid cart_total at index ${i}` });
+      }
+    }
+
+    const resolved = await resolveCheckoutShippingBatchForDomain(
+      domain,
+      groups,
+      getTestById,
+      getTestsByIds,
+      { debug: debugRequested }
+    );
+    res.set('Cache-Control', 'no-store');
+    return res.json({
+      success: true,
+      groups: resolved,
+    });
+  })
+);
+
+/**
+ * POST /api/track/shipping-carrier-rates
+ * Minimal callback endpoint for Shopify CarrierService app rates.
+ */
+router.post(
+  '/shipping-carrier-rates',
+  asyncHandler(async (req, res) => {
+    const strategy = String(req.query?.strategy || 'flat_rate')
+      .trim()
+      .toLowerCase();
+    const amountRaw = String(req.query?.amount || '').trim();
+    const amount = amountRaw ? Number.parseFloat(amountRaw) : null;
+    const currency =
+      String(
+        req.body?.rate?.currency || req.body?.currency || req.query?.currency || 'USD'
+      ).trim() || 'USD';
+    const serviceName =
+      String(req.query?.service_name || req.query?.serviceName || 'RipX Shipping').trim() ||
+      'RipX Shipping';
+    const serviceCodeBase =
+      String(req.query?.variant_id || req.query?.variant_index || req.query?.test_id || 'shipping')
+        .trim()
+        .replace(/[^a-zA-Z0-9_-]/g, '')
+        .slice(0, 48) || 'shipping';
+
+    const rates = [];
+    if (strategy === 'flat_rate' && Number.isFinite(amount) && amount >= 0) {
+      rates.push({
+        service_name: serviceName,
+        service_code: `ripx_flat_${serviceCodeBase}`,
+        total_price: String(Math.max(0, Math.round(amount * 100))),
+        currency,
+      });
+    }
+
+    if (strategy === 'carrier_quote') {
+      const shopDomain = normalizeDomain(req.query?.shop_domain || req.query?.shop || '') || null;
+      const testId = String(req.query?.test_id || '').trim();
+      let providerConfig = {
+        provider: String(req.query?.quote_provider || '').trim(),
+        amount,
+        service_name: serviceName,
+        country_rates: String(req.query?.country_rates || '').trim(),
+      };
+      if (shopDomain && validators.isValidUUID(testId)) {
+        const test = await getTestById(testId, shopDomain);
+        const resolved = findShippingVariantByCallbackQuery(test, req.query);
+        if (resolved.variant) {
+          const normalizedConfig = normalizeShippingVariantConfig(resolved.variant.config || {});
+          providerConfig = resolveVariantProviderConfig({
+            ...resolved.variant,
+            config: normalizedConfig,
+          });
+        }
+      }
+      const destinationCountry =
+        String(
+          req.body?.rate?.destination?.country || req.body?.destination?.country || ''
+        ).trim() || '';
+      const quoteResult = resolveCarrierQuoteRates({
+        providerConfig,
+        currency,
+        serviceName:
+          providerConfig.service_name ||
+          String(
+            req.query?.service_name || req.query?.serviceName || 'RipX Shipping Quote'
+          ).trim() ||
+          'RipX Shipping Quote',
+        serviceCodeBase,
+        destinationCountry,
+      });
+      for (const rate of quoteResult.rates || []) {
+        rates.push(rate);
+      }
+      logger.info('shipping_carrier_quote_callback_received', {
+        testId: req.query?.test_id || null,
+        variantIndex: req.query?.variant_index || null,
+        profileId: req.query?.profile_id || null,
+        methodHandles: req.query?.method_handles || null,
+        provider: providerConfig.provider || null,
+        resolvedRates: rates.length,
+      });
+    }
+
+    res.set('Cache-Control', 'no-store');
+    return res.json({ rates });
   })
 );
 

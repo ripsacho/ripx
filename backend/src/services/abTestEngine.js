@@ -18,6 +18,10 @@ const { getTestById, getTestsByIds, getActiveTestsForStorefront } = require('../
 const { getGlobalHoldoutPercent } = require('./experimentationPolicyService');
 const personalizationService = require('./personalizationService');
 const { findVariantForPreviewQuery } = require('../utils/previewVariantMatch');
+const {
+  normalizeShippingTestPayload,
+  validateShippingVariants,
+} = require('./shippingTestConfigService');
 
 /** Derive pathname from URL for path-based url_pattern matching (homepage, etc.) */
 function getPathnameFromUrl(currentUrl) {
@@ -669,10 +673,32 @@ class ABTestEngine {
     const testType = String(test?.type || '').toLowerCase();
     const targetType = String(test?.target_type || '').toLowerCase();
     const isSiteWideProductScope =
-      (testType === 'price' || testType === 'pricing' || testType === 'offer') &&
+      (testType === 'price' ||
+        testType === 'pricing' ||
+        testType === 'offer' ||
+        testType === 'shipping') &&
       isProductScopeTargetType(targetType);
+    const includedProductIds =
+      targetType === 'product'
+        ? normalizeExcludedProductIds(
+            Array.isArray(test?.target_ids)
+              ? test.target_ids
+              : test?.target_id
+                ? [test.target_id]
+                : []
+          )
+        : [];
     const excludedProductIds = normalizeExcludedProductIds(segments.excluded_product_ids);
     const currentProductId = normalizeProductId(context.current_product_id);
+    const currentUrl = context.current_url ? String(context.current_url) : '';
+    const currentPathname =
+      context.current_pathname !== null &&
+      context.current_pathname !== undefined &&
+      String(context.current_pathname).trim() !== ''
+        ? String(context.current_pathname).trim()
+        : currentUrl
+          ? getPathnameFromUrl(currentUrl)
+          : '';
 
     if (
       excludedProductIds.length > 0 &&
@@ -681,6 +707,15 @@ class ABTestEngine {
       excludedProductIds.includes(currentProductId)
     ) {
       return false;
+    }
+
+    if (targetType === 'product' && currentProductId) {
+      if (includedProductIds.length === 0) {
+        return false;
+      }
+      if (!includedProductIds.includes(currentProductId)) {
+        return false;
+      }
     }
 
     // Exclude bots by user-agent
@@ -707,15 +742,6 @@ class ABTestEngine {
     }
 
     // Resolve URL string for matching: use pathname when pattern is path-based (^/ or /...) for reliable homepage/path targeting
-    const currentUrl = context.current_url ? String(context.current_url) : '';
-    const currentPathname =
-      context.current_pathname !== null &&
-      context.current_pathname !== undefined &&
-      String(context.current_pathname).trim() !== ''
-        ? String(context.current_pathname).trim()
-        : currentUrl
-          ? getPathnameFromUrl(currentUrl)
-          : '';
     const urlForPathMatch = currentPathname || currentUrl;
     const urlForFullMatch = currentUrl;
 
@@ -944,6 +970,10 @@ class ABTestEngine {
    */
   validateTest(testConfig) {
     const errors = [];
+    const normalizedConfig = normalizeShippingTestPayload(testConfig);
+    if (normalizedConfig !== testConfig) {
+      testConfig = normalizedConfig;
+    }
     const testType = String(testConfig.type || '')
       .trim()
       .toLowerCase();
@@ -1117,6 +1147,13 @@ class ABTestEngine {
           errors.push(
             'Offer tests require at least one non-control variant with a discount or free-shipping config'
           );
+        }
+      }
+
+      if (testType === 'shipping' && testConfig.variants.length > 1) {
+        const shippingErrors = validateShippingVariants(testConfig.variants);
+        if (shippingErrors.length > 0) {
+          errors.push(...shippingErrors);
         }
       }
     }

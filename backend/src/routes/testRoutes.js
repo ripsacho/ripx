@@ -42,11 +42,103 @@ const {
   applyActivationStartOptionsToTest,
   runActivationPreflight,
 } = require('../services/testActivationService');
+const {
+  normalizeShippingTestPayload,
+  isShippingTestPayload,
+} = require('../services/shippingTestConfigService');
+const { buildShippingCapabilityReport } = require('../services/shippingCapabilityPlanner');
+const { buildShippingExecutionPlan } = require('../services/shippingExecutionPlanner');
+const {
+  executeShippingTestPlan,
+  cleanupManagedShippingResources,
+} = require('../services/shippingAutoExecutionService');
 const { getTestAnalytics, getBatchVariantMetrics } = require('../models/analytics');
 const { normalizeDomain } = require('../models/tenant');
 const { getShopSession } = require('../models/shopSession');
 const shopifyService = require('../services/shopifyService');
+const { shouldRequireSignedAssignment } = require('../utils/priceAssignmentSignature');
 const logger = require('../utils/logger');
+const { query } = require('../utils/database');
+
+const TEST_TYPE_ENABLED_PREFIX = 'test_type.enabled.';
+const TEST_TYPE_DEFAULTS = Object.freeze({
+  'onsite-edit': true,
+  'split-url': true,
+  template: true,
+  theme: true,
+  pricing: true,
+  shipping: true,
+  offer: true,
+  checkout: true,
+  combination: true,
+});
+
+function normalizeTemplateKey(value) {
+  const key = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (!key) {
+    return '';
+  }
+  if (key === 'price') {
+    return 'pricing';
+  }
+  return key;
+}
+
+function resolveTemplateKeyFromPayload(payload = {}) {
+  const goalTemplateKey =
+    payload?.goal && typeof payload.goal === 'object' ? payload.goal.template_key : null;
+  const raw =
+    payload?.template_key ??
+    payload?.templateKey ??
+    payload?.test_type_id ??
+    payload?.testTypeId ??
+    goalTemplateKey ??
+    payload?.type;
+  return normalizeTemplateKey(raw);
+}
+
+async function getEnabledTestTypeMap() {
+  const enabledMap = { ...TEST_TYPE_DEFAULTS };
+  try {
+    const result = await query(
+      `SELECT key, value FROM key_value_store WHERE key LIKE '${TEST_TYPE_ENABLED_PREFIX}%'`
+    );
+    for (const row of result.rows) {
+      const key = String(row?.key || '');
+      const typeKey = normalizeTemplateKey(key.slice(TEST_TYPE_ENABLED_PREFIX.length));
+      if (!typeKey || !(typeKey in enabledMap)) {
+        continue;
+      }
+      const normalizedValue = String(row?.value || '')
+        .trim()
+        .toLowerCase();
+      enabledMap[typeKey] = !(normalizedValue === 'false' || normalizedValue === '0');
+    }
+  } catch (error) {
+    if (!String(error?.message || '').includes('does not exist')) {
+      throw error;
+    }
+  }
+  return enabledMap;
+}
+
+async function ensureTemplateTypeEnabledOrThrow(payload) {
+  const templateKey = resolveTemplateKeyFromPayload(payload);
+  if (!templateKey || !(templateKey in TEST_TYPE_DEFAULTS)) {
+    return null;
+  }
+  const enabledMap = await getEnabledTestTypeMap();
+  if (enabledMap[templateKey] !== false) {
+    return templateKey;
+  }
+  const label = templateKey === 'pricing' ? 'Pricing' : templateKey;
+  const err = new Error(`${label} test type is currently unavailable.`);
+  err.statusCode = HTTP_STATUS.BAD_REQUEST;
+  err.isValidation = true;
+  throw err;
+}
 
 function normalizeHoldout(value) {
   if (value === undefined || value === null || value === '') {
@@ -83,6 +175,33 @@ function extractVisualQaMetadata(test) {
     required: Boolean(required),
     baseline_id: baselineId,
     checked_at: checkedAt,
+  };
+}
+
+function hasManagedShippingResources(test) {
+  const variants = Array.isArray(test?.variants) ? test.variants : [];
+  return variants.some(variant => {
+    const metadata =
+      variant?.config?.metadata && typeof variant.config.metadata === 'object'
+        ? variant.config.metadata
+        : {};
+    return Array.isArray(metadata.shipping_resources) && metadata.shipping_resources.length > 0;
+  });
+}
+
+function resolveShippingDiagnosticsUrls() {
+  const appUrl = String(process.env.APP_URL || '')
+    .trim()
+    .replace(/\/+$/, '');
+  const checkoutResolveUrl =
+    String(process.env.RIPX_SHIPPING_RESOLVE_BATCH_URL || '').trim() ||
+    (appUrl ? `${appUrl}/api/track/shipping-resolve-batch` : '');
+  const carrierCallbackUrl =
+    String(process.env.RIPX_SHIPPING_CARRIER_CALLBACK_URL || '').trim() ||
+    (appUrl ? `${appUrl}/api/track/shipping-carrier-rates` : '');
+  return {
+    shipping_resolve_batch_url: checkoutResolveUrl || null,
+    carrier_callback_url: carrierCallbackUrl || null,
   };
 }
 
@@ -952,7 +1071,7 @@ router.post(
   '/',
   asyncHandler(async (req, res) => {
     const shopDomain = req.shopDomain;
-    const testData = {
+    let testData = {
       ...req.body,
       shop_domain: shopDomain,
     };
@@ -984,6 +1103,16 @@ router.post(
         return sendValidationError(res, [holdoutResult.error]);
       }
       testData.holdout_percent = holdoutResult.value;
+    }
+
+    testData = normalizeShippingTestPayload(testData);
+    try {
+      await ensureTemplateTypeEnabledOrThrow(testData);
+    } catch (error) {
+      if (error?.isValidation) {
+        return sendValidationError(res, [error.message]);
+      }
+      throw error;
     }
 
     logger.info('Creating test', {
@@ -1392,6 +1521,37 @@ router.get(
       srm: analyticsReport?.srm || health?.srm || null,
       summary: analyticsReport?.summary || null,
     };
+    if (isShippingTestPayload(test)) {
+      const variants = Array.isArray(test.variants) ? test.variants : [];
+      const strategy_counts = variants.reduce((acc, variant) => {
+        const strategy =
+          String(variant?.config?.strategy || 'control')
+            .trim()
+            .toLowerCase() || 'control';
+        acc[strategy] = (acc[strategy] || 0) + 1;
+        return acc;
+      }, {});
+      const profile_scoped_variants = variants.filter(variant =>
+        String(variant?.config?.profile_id || '').trim()
+      ).length;
+      const zone_scoped_variants = variants.filter(
+        variant =>
+          Array.isArray(variant?.config?.zone_countries) && variant.config.zone_countries.length > 0
+      ).length;
+      const provider_backed_variants = variants.filter(variant => {
+        const metadata =
+          variant?.config?.metadata && typeof variant.config.metadata === 'object'
+            ? variant.config.metadata
+            : {};
+        return Boolean(String(metadata.quote_provider || '').trim());
+      }).length;
+      test.shipping_meta = {
+        strategy_counts,
+        profile_scoped_variants,
+        zone_scoped_variants,
+        provider_backed_variants,
+      };
+    }
 
     // Add effective rollout percent for rollout tests (computed from schedule)
     if (test.personalization_mode === 'rollout') {
@@ -1401,6 +1561,242 @@ router.get(
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.set('Pragma', 'no-cache');
     return sendSuccess(res, HTTP_STATUS.OK, { test });
+  })
+);
+
+/**
+ * GET /api/tests/:id/shipping/capabilities
+ * Resolve Shopify plan-based shipping execution capabilities for this shop.
+ */
+router.get(
+  '/:id/shipping/capabilities',
+  validateTestId,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const shopDomain = req.shopDomain;
+    const test = await getTestById(id, shopDomain);
+    if (!test) {
+      return sendNotFound(res, 'Test');
+    }
+    if (!isShippingTestPayload(test)) {
+      return sendValidationError(res, [
+        'Shipping capabilities are available only for shipping tests.',
+      ]);
+    }
+
+    const fallbackSession = await getShopSession(shopDomain);
+    const accessToken = req.shopifyAccessToken || fallbackSession?.access_token || '';
+    if (!accessToken) {
+      return sendValidationError(res, [
+        'Missing Shopify access token for this store. Open RipX from Shopify Admin and try again.',
+      ]);
+    }
+
+    const capabilityReport = await buildShippingCapabilityReport(shopDomain, accessToken);
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      test_id: id,
+      capability_report: capabilityReport,
+    });
+  })
+);
+
+/**
+ * GET /api/tests/:id/shipping/execution-plan
+ * Build per-variant execution readiness based on strategy + shop capabilities.
+ */
+router.get(
+  '/:id/shipping/execution-plan',
+  validateTestId,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const shopDomain = req.shopDomain;
+    const test = await getTestById(id, shopDomain);
+    if (!test) {
+      return sendNotFound(res, 'Test');
+    }
+    if (!isShippingTestPayload(test)) {
+      return sendValidationError(res, [
+        'Shipping execution plan is available only for shipping tests.',
+      ]);
+    }
+
+    const fallbackSession = await getShopSession(shopDomain);
+    const accessToken = req.shopifyAccessToken || fallbackSession?.access_token || '';
+    if (!accessToken) {
+      return sendValidationError(res, [
+        'Missing Shopify access token for this store. Open RipX from Shopify Admin and try again.',
+      ]);
+    }
+
+    const capabilityReport = await buildShippingCapabilityReport(shopDomain, accessToken);
+    const executionPlan = buildShippingExecutionPlan(test, capabilityReport);
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      test_id: id,
+      capability_report: capabilityReport,
+      execution_plan: executionPlan,
+    });
+  })
+);
+
+/**
+ * GET /api/tests/:id/shipping/diagnostics
+ * Shipping rollout readiness, conflicts, and operator diagnostics.
+ */
+router.get(
+  '/:id/shipping/diagnostics',
+  validateTestId,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const shopDomain = req.shopDomain;
+    const test = await getTestById(id, shopDomain);
+    if (!test) {
+      return sendNotFound(res, 'Test');
+    }
+    if (!isShippingTestPayload(test)) {
+      return sendValidationError(res, [
+        'Shipping diagnostics are available only for shipping tests.',
+      ]);
+    }
+
+    const fallbackSession = await getShopSession(shopDomain);
+    const accessToken = req.shopifyAccessToken || fallbackSession?.access_token || '';
+    if (!accessToken) {
+      return sendValidationError(res, [
+        'Missing Shopify access token for this store. Open RipX from Shopify Admin and try again.',
+      ]);
+    }
+
+    const capabilityReport = await buildShippingCapabilityReport(shopDomain, accessToken);
+    const executionPlan = buildShippingExecutionPlan(test, capabilityReport);
+    const urls = resolveShippingDiagnosticsUrls();
+    const runningTests = await getTestsByShop(shopDomain, 'running');
+    const conflicts = (Array.isArray(runningTests) ? runningTests : [])
+      .filter(item => String(item?.id || '').trim() && String(item.id) !== String(id))
+      .filter(
+        item =>
+          String(item?.type || '')
+            .trim()
+            .toLowerCase() === 'shipping'
+      )
+      .filter(hasManagedShippingResources)
+      .map(item => ({
+        test_id: item.id,
+        test_name: item.name || null,
+      }));
+    const actionableVariants = Array.isArray(executionPlan?.variants)
+      ? executionPlan.variants.filter(entry => entry?.actionable)
+      : [];
+
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      test_id: id,
+      capability_report: capabilityReport,
+      execution_plan: executionPlan,
+      diagnostics: {
+        generated_at: new Date().toISOString(),
+        readiness: {
+          carrier_callback_configured: Boolean(urls.carrier_callback_url),
+          shipping_checkout_resolve_configured: Boolean(urls.shipping_resolve_batch_url),
+          assignment_signature_required: shouldRequireSignedAssignment(),
+          running_shipping_conflicts: conflicts.length,
+        },
+        urls,
+        assignment_visibility: {
+          required_line_attributes: [
+            '_ripx_price_test',
+            '_ripx_variant',
+            '_ripx_shop',
+            '_ripx_assignment_sig',
+            '_ripx_assignment_ts',
+            '_ripx_assignment_user',
+          ],
+          note: 'Shipping checkout discount resolution reads the same signed cart-line assignment markers used by price checkout.',
+        },
+        actionable_variant_count: actionableVariants.length,
+        conflicts,
+      },
+    });
+  })
+);
+
+/**
+ * POST /api/tests/:id/shipping/execute
+ * Execute shipping adapter actions in dry-run or apply mode.
+ */
+router.post(
+  '/:id/shipping/execute',
+  validateTestId,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const shopDomain = req.shopDomain;
+    const test = await getTestById(id, shopDomain);
+    if (!test) {
+      return sendNotFound(res, 'Test');
+    }
+    if (!isShippingTestPayload(test)) {
+      return sendValidationError(res, ['Shipping execution is available only for shipping tests.']);
+    }
+
+    const fallbackSession = await getShopSession(shopDomain);
+    const accessToken = req.shopifyAccessToken || fallbackSession?.access_token || '';
+    if (!accessToken) {
+      return sendValidationError(res, [
+        'Missing Shopify access token for this store. Open RipX from Shopify Admin and try again.',
+      ]);
+    }
+
+    const explicitDryRun = req.body?.dry_run ?? req.body?.dryRun;
+    const explicitApply = req.body?.apply;
+    let applyMode = parseBooleanFlag(explicitApply);
+    if (explicitDryRun !== undefined && explicitDryRun !== null && explicitDryRun !== '') {
+      const dryRun = parseBooleanFlag(explicitDryRun);
+      applyMode = !dryRun;
+    }
+
+    const rawVariantIndex = req.body?.variantIndex ?? req.body?.variant_index;
+    let variantIndex = null;
+    if (
+      rawVariantIndex !== undefined &&
+      rawVariantIndex !== null &&
+      String(rawVariantIndex).trim()
+    ) {
+      const parsedIndex = Number(rawVariantIndex);
+      if (!Number.isInteger(parsedIndex) || parsedIndex < 0) {
+        return sendValidationError(res, [
+          'variantIndex must be a non-negative integer when provided.',
+        ]);
+      }
+      variantIndex = parsedIndex;
+    }
+
+    const result = await executeShippingTestPlan({
+      test,
+      shopDomain,
+      accessToken,
+      apply: applyMode,
+      variantIndex,
+    });
+    if (applyMode && Array.isArray(result?.persisted_variants)) {
+      await updateTest(id, shopDomain, { variants: result.persisted_variants });
+    }
+
+    const failedCount = Number(result?.execution_result?.summary?.failed_count || 0);
+    const responseMessage =
+      failedCount > 0
+        ? 'Shipping execution completed with some failures. Review action details.'
+        : applyMode
+          ? 'Shipping execution applied successfully.'
+          : 'Shipping dry-run completed successfully.';
+    return sendSuccess(
+      res,
+      HTTP_STATUS.OK,
+      {
+        test_id: id,
+        apply_mode: applyMode ? 'apply' : 'dry_run',
+        has_failures: failedCount > 0,
+        ...result,
+      },
+      responseMessage
+    );
   })
 );
 
@@ -1604,7 +2000,7 @@ router.put(
     }
 
     // If updating test config, validate it and preserve existing code
-    if (updates.variants || updates.goal) {
+    if (updates.variants || updates.goal || updates.type) {
       const existingTest = await getTestById(id, shopDomain);
       if (!existingTest) {
         return sendNotFound(res, 'Test');
@@ -1657,7 +2053,21 @@ router.put(
         }));
       }
 
-      const testData = { ...existingTest, ...updates };
+      const testData = normalizeShippingTestPayload({ ...existingTest, ...updates });
+      if (Array.isArray(testData.variants)) {
+        updates.variants = testData.variants;
+      }
+      if (testData.type && updates.type !== undefined) {
+        updates.type = testData.type;
+      }
+      try {
+        await ensureTemplateTypeEnabledOrThrow(testData);
+      } catch (error) {
+        if (error?.isValidation) {
+          return sendValidationError(res, [error.message]);
+        }
+        throw error;
+      }
       const validation = abTestEngine.validateTest(testData);
 
       if (!validation.isValid) {
@@ -1869,6 +2279,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const { id } = req.params;
     const shopDomain = req.shopDomain;
+    const currentTest = await getTestById(id, shopDomain);
 
     const test = await abTestEngine.stopTest(id, shopDomain);
 
@@ -1904,6 +2315,49 @@ router.post(
       });
     } catch (whErr) {
       logger.warn('Outbound webhook failed', { testId: id, error: whErr.message });
+    }
+
+    if (currentTest && isShippingTestPayload(currentTest)) {
+      try {
+        const fallbackSession = await getShopSession(shopDomain);
+        const accessToken = req.shopifyAccessToken || fallbackSession?.access_token || '';
+        if (accessToken) {
+          const cleanupResult = await cleanupManagedShippingResources({
+            test: currentTest,
+            shopDomain,
+            accessToken,
+            keepVariantIndexes: [],
+          });
+          if (cleanupResult.length > 0 && Array.isArray(currentTest.variants)) {
+            const clearedVariants = currentTest.variants.map(variant => {
+              const nextVariant = { ...(variant || {}) };
+              const config =
+                nextVariant.config && typeof nextVariant.config === 'object'
+                  ? { ...nextVariant.config }
+                  : {};
+              const metadata =
+                config.metadata && typeof config.metadata === 'object'
+                  ? { ...config.metadata }
+                  : {};
+              metadata.shipping_resources = [];
+              metadata.shipping_last_cleanup = {
+                cleaned_at: new Date().toISOString(),
+                source: 'stop_test',
+              };
+              config.metadata = metadata;
+              nextVariant.config = config;
+              return nextVariant;
+            });
+            await updateTest(id, shopDomain, { variants: clearedVariants });
+          }
+        }
+      } catch (cleanupError) {
+        logger.warn('Failed to clean up shipping resources on stop', {
+          testId: id,
+          shopDomain,
+          error: cleanupError.message,
+        });
+      }
     }
 
     auditLogService.log(shopDomain, { entityType: 'test', entityId: id, action: 'stop' });
@@ -2197,7 +2651,7 @@ router.post(
     const enrichedOriginal = enrichGoalWithTemplateKey(originalTest);
 
     // Create cloned test (include segments, holdout, guardrail, scheduling)
-    const clonedTestData = {
+    let clonedTestData = {
       shop_domain: shopDomain,
       name: `${originalTest.name} (Copy)`,
       description: originalTest.description || null,
@@ -2217,6 +2671,7 @@ router.post(
       auto_stop: false,
       timezone: originalTest.timezone || 'UTC',
     };
+    clonedTestData = normalizeShippingTestPayload(clonedTestData);
 
     // Validate cloned test
     const validation = abTestEngine.validateTest(clonedTestData);

@@ -79,6 +79,60 @@ class ShopifyService {
   }
 
   /**
+   * Direct Admin REST helper.
+   * Useful for resources that are not available through the GraphQL paths we use.
+   */
+  async requestAdminRest(shopDomain, accessToken, opts = {}) {
+    const apiVersion = String(opts.apiVersion || '2025-04').trim();
+    const method = String(opts.method || 'GET')
+      .trim()
+      .toUpperCase();
+    const rawPath = String(opts.path || '')
+      .trim()
+      .replace(/^\/+/, '');
+    if (!rawPath) {
+      throw new Error('requestAdminRest requires a non-empty path');
+    }
+    const endpoint = `https://${shopDomain}/admin/api/${apiVersion}/${rawPath}`;
+    const hasBody = opts.body !== undefined && opts.body !== null;
+    const response = await fetch(endpoint, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Shopify-Access-Token': accessToken,
+        ...(opts.headers || {}),
+      },
+      body: hasBody ? JSON.stringify(opts.body) : undefined,
+    });
+
+    const rawText = await response.text();
+    let payload = null;
+    if (rawText) {
+      try {
+        payload = JSON.parse(rawText);
+      } catch {
+        payload = { raw: rawText };
+      }
+    }
+    if (!response.ok) {
+      logger.error('Admin REST request failed', {
+        shopDomain,
+        apiVersion,
+        method,
+        path: rawPath,
+        status: response.status,
+        body: payload,
+      });
+      throw new Error(
+        payload?.errors ||
+          payload?.error ||
+          `Shopify Admin REST failed (${response.status}) for ${shopDomain}`
+      );
+    }
+    return payload;
+  }
+
+  /**
    * Update product price
    *
    * @param {string} shopDomain - Shop domain

@@ -5,7 +5,8 @@
  *
  * Uses (in order):
  *   - RIPX_PRICE_RESOLVE_BATCH_URL — full URL to POST /api/track/price-resolve-batch
- *   - else APP_URL + /api/track/price-resolve-batch
+ *   - RIPX_SHIPPING_RESOLVE_BATCH_URL — full URL to POST /api/track/shipping-resolve-batch
+ *   - else APP_URL + /api/track/{price|shipping}-resolve-batch
  *
  * Secret: RIPX_CHECKOUT_PRICE_SECRET (optional; must match RipX server .env)
  * Checkout UI helpers:
@@ -29,6 +30,10 @@ let batchUrl = (process.env.RIPX_PRICE_RESOLVE_BATCH_URL || '').trim();
 if (!batchUrl && appUrl) {
   batchUrl = `${appUrl}/api/track/price-resolve-batch`;
 }
+let shippingBatchUrl = (process.env.RIPX_SHIPPING_RESOLVE_BATCH_URL || '').trim();
+if (!shippingBatchUrl && appUrl) {
+  shippingBatchUrl = `${appUrl}/api/track/shipping-resolve-batch`;
+}
 const secret = (process.env.RIPX_CHECKOUT_PRICE_SECRET || '').trim();
 let checkoutAssignmentUrl = (process.env.RIPX_CHECKOUT_ASSIGNMENT_URL || '').trim();
 let checkoutConversionUrl = (process.env.RIPX_CHECKOUT_CONVERSION_URL || '').trim();
@@ -43,9 +48,9 @@ const probeAttributeMatrix =
     .trim()
     .toLowerCase() === 'true';
 
-if (!batchUrl) {
+if (!batchUrl || !shippingBatchUrl) {
   console.error(
-    '[write-ripx-checkout-config] Set APP_URL or RIPX_PRICE_RESOLVE_BATCH_URL in .env (repo root), then re-run.'
+    '[write-ripx-checkout-config] Set APP_URL or RIPX_{PRICE,SHIPPING}_RESOLVE_BATCH_URL in .env (repo root), then re-run.'
   );
   process.exit(1);
 }
@@ -63,6 +68,7 @@ const content = `/**
  * Do not commit real secrets if this file is public; use CI env + sync before build.
  */
 export const RIPX_PRICE_RESOLVE_BATCH_URL = ${JSON.stringify(batchUrl)};
+export const RIPX_SHIPPING_RESOLVE_BATCH_URL = ${JSON.stringify(shippingBatchUrl)};
 
 export const RIPX_CHECKOUT_PRICE_SECRET = ${JSON.stringify(secret)};
 
@@ -89,6 +95,7 @@ fs.writeFileSync(uiDest, uiContent, 'utf8');
 console.log('[write-ripx-checkout-config] Wrote', uiDest);
 
 console.log('[write-ripx-checkout-config] BATCH_URL =', batchUrl);
+console.log('[write-ripx-checkout-config] SHIPPING  =', shippingBatchUrl);
 console.log('[write-ripx-checkout-config] ASSIGNMENT =', checkoutAssignmentUrl || '(empty)');
 console.log('[write-ripx-checkout-config] CONVERSION =', checkoutConversionUrl || '(empty)');
 console.log('[write-ripx-checkout-config] SECRET    =', secret ? '(set)' : '(empty)');

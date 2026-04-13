@@ -92,6 +92,10 @@ import {
 } from './testWizardConfig';
 import { getWizardStepErrors } from './wizardValidation';
 import { shouldHydrateInitialData } from './initialDataHydration';
+import {
+  canShowShippingExecution,
+  shouldDisableShippingExecution,
+} from './reviewShippingExecution';
 
 /** URL pattern for homepage on Shopify: root and /index */
 const HOMEPAGE_URL_PATTERN_SHOPIFY = '^/$|^/index';
@@ -103,6 +107,19 @@ const VISUAL_EDITOR_MUTATION_TYPES = ['none', 'hide', 'show', 'set_text', 'set_a
 const PRICE_PRODUCT_MODAL_REVEAL_BATCH = 10;
 const MATRIX_SEARCH_BADGE_MAX_CHARS = 26;
 const THEME_TEST_MODES = ['template_switch', 'section_variant', 'asset_flag', 'theme_redirect'];
+const TEST_TYPE_TOGGLE_PREFIX = 'test_type.enabled.';
+const TEST_TYPE_MESSAGE_PREFIX = 'test_type.message.';
+const DEFAULT_TEST_TYPE_AVAILABILITY = Object.freeze({
+  'onsite-edit': true,
+  'split-url': true,
+  template: true,
+  theme: true,
+  pricing: true,
+  shipping: true,
+  offer: true,
+  checkout: true,
+  combination: true,
+});
 
 function buildProgressiveListWindow(items, visibleCount, options = {}) {
   const list = Array.isArray(items) ? items : [];
@@ -861,6 +878,15 @@ function _NativeVariantMappingAssistant({
   );
 }
 
+function normalizeTemplateAvailabilityKey(value) {
+  const key = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (!key) return '';
+  if (key === 'price') return 'pricing';
+  return key;
+}
+
 function TestWizard({
   mode = 'create',
   showTemplateStep = true,
@@ -874,6 +900,7 @@ function TestWizard({
   onCancel,
   onSaveCode,
   onTitleRender,
+  onRefreshTest,
 }) {
   const [currentStep, setCurrentStep] = useState(initialStep);
   const [loading, setLoading] = useState(false);
@@ -952,6 +979,12 @@ function TestWizard({
   const [simulationExportToast, setSimulationExportToast] = useState(null);
   const [priceMatrixActionToast, setPriceMatrixActionToast] = useState(null);
   const [antiFlickerToast, setAntiFlickerToast] = useState(null);
+  const [shippingExecutionLoading, setShippingExecutionLoading] = useState(false);
+  const [shippingExecutionAction, setShippingExecutionAction] = useState(null);
+  const [shippingExecutionReport, setShippingExecutionReport] = useState(null);
+  const [shippingDiagnosticsLoading, setShippingDiagnosticsLoading] = useState(false);
+  const [shippingDiagnosticsReport, setShippingDiagnosticsReport] = useState(null);
+  const [shippingExecutionToast, setShippingExecutionToast] = useState(null);
   useEffect(() => {
     const n = formData.variants?.length ?? 0;
     if (n === 0) {
@@ -1125,9 +1158,35 @@ function TestWizard({
   const isShopifyFromRoute = routeDomain && isShopifyStoreDomain(routeDomain);
   const isStandalone = !isShopifyFromRoute && isStandaloneMode();
   const canUseStoreProductPicker = !isStandalone && isShopifyFromRoute && Boolean(routeDomain);
+  const [testTypeAvailability, setTestTypeAvailability] = useState(DEFAULT_TEST_TYPE_AVAILABILITY);
+  const [testTypeUnavailableMessages, setTestTypeUnavailableMessages] = useState({});
   const contentTypesForStep = isStandalone
     ? TEST_TYPE_CATEGORIES.content.types.filter(t => STANDALONE_TEST_TYPE_IDS.includes(t.key))
     : TEST_TYPE_CATEGORIES.content.types;
+  const isTemplateTypeEnabled = useCallback(
+    templateKey => {
+      const normalized = normalizeTemplateAvailabilityKey(templateKey);
+      if (!normalized) return true;
+      return testTypeAvailability[normalized] !== false;
+    },
+    [testTypeAvailability]
+  );
+  const getTemplateUnavailableReason = useCallback(
+    templateKey => {
+      if (isTemplateTypeEnabled(templateKey)) {
+        return '';
+      }
+      const normalized = normalizeTemplateAvailabilityKey(templateKey);
+      if (!normalized) {
+        return 'This test type is currently unavailable (under construction).';
+      }
+      return (
+        testTypeUnavailableMessages[normalized] ||
+        'This test type is currently unavailable (under construction).'
+      );
+    },
+    [isTemplateTypeEnabled, testTypeUnavailableMessages]
+  );
   const [customUrlModeActive, setCustomUrlModeActive] = useState(false);
   const [deviceAdvancedOpen, setDeviceAdvancedOpen] = useState(false);
   const [audienceAdvancedOpen, setAudienceAdvancedOpen] = useState(false);
@@ -1165,6 +1224,63 @@ function TestWizard({
     hasNextPage: false,
     endCursor: null,
   });
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiGet('/admin/kv', { prefix: 'test_type.' });
+        const payload = res?.data?.data ?? res?.data;
+        const keys = Array.isArray(payload?.keys) ? payload.keys : [];
+        const next = { ...DEFAULT_TEST_TYPE_AVAILABILITY };
+        const nextMessages = {};
+        keys.forEach(item => {
+          const key = String(item?.key || '').trim();
+          const valueRaw = String(item?.valuePreview ?? '')
+            .replace(/…$/, '')
+            .trim();
+          if (key.startsWith(TEST_TYPE_TOGGLE_PREFIX)) {
+            const typeKey = normalizeTemplateAvailabilityKey(
+              key.slice(TEST_TYPE_TOGGLE_PREFIX.length)
+            );
+            if (!typeKey || !(typeKey in next)) return;
+            const normalized = valueRaw.toLowerCase();
+            if (normalized === 'false' || normalized === '0') {
+              next[typeKey] = false;
+            } else if (normalized === 'true' || normalized === '1') {
+              next[typeKey] = true;
+            }
+          } else if (key.startsWith(TEST_TYPE_MESSAGE_PREFIX)) {
+            const typeKey = normalizeTemplateAvailabilityKey(
+              key.slice(TEST_TYPE_MESSAGE_PREFIX.length)
+            );
+            if (!typeKey) return;
+            if (valueRaw) {
+              nextMessages[typeKey] = valueRaw;
+            }
+          }
+        });
+        if (!cancelled) {
+          setTestTypeAvailability(next);
+          setTestTypeUnavailableMessages(nextMessages);
+        }
+      } catch (_err) {
+        if (!cancelled) {
+          setTestTypeAvailability({ ...DEFAULT_TEST_TYPE_AVAILABILITY });
+          setTestTypeUnavailableMessages({});
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedTemplate) return;
+    if (isTemplateTypeEnabled(selectedTemplate)) return;
+    setSelectedTemplate(null);
+  }, [selectedTemplate, isTemplateTypeEnabled]);
   const [priceModalVisibleCount, setPriceModalVisibleCount] = useState(
     PRICE_PRODUCT_MODAL_REVEAL_BATCH
   );
@@ -2910,6 +3026,11 @@ function TestWizard({
   }, [selectedVariantIndex, variantCodesData]);
 
   const handleTemplateSelect = templateKey => {
+    if (!isTemplateTypeEnabled(templateKey)) {
+      const templateLabel = TEST_TEMPLATES[templateKey]?.name || templateKey;
+      setError(`${templateLabel} is currently unavailable.`);
+      return;
+    }
     setSelectedTemplate(templateKey);
 
     let targetType = '';
@@ -2920,7 +3041,10 @@ function TestWizard({
     } else if (templateKey === 'checkout') {
       targetType = 'checkout';
       urlPattern = '/checkout';
-    } else if (templateKey === 'shipping' || templateKey === 'combination') {
+    } else if (templateKey === 'shipping') {
+      targetType = 'all-products';
+      urlPattern = '';
+    } else if (templateKey === 'combination') {
       targetType = 'cart';
       urlPattern = '/cart';
     } else if (templateKey === 'price' || templateKey === 'pricing' || templateKey === 'offer') {
@@ -2941,7 +3065,10 @@ function TestWizard({
           url_pattern: urlPattern,
           page_rules: [],
           excluded_product_ids:
-            templateKey === 'price' || templateKey === 'pricing' || templateKey === 'offer'
+            templateKey === 'price' ||
+            templateKey === 'pricing' ||
+            templateKey === 'offer' ||
+            templateKey === 'shipping'
               ? prev.segments?.excluded_product_ids || []
               : [],
         },
@@ -2973,7 +3100,10 @@ function TestWizard({
           url_pattern: urlPattern,
           page_rules: [],
           excluded_product_ids:
-            templateKey === 'price' || templateKey === 'pricing' || templateKey === 'offer'
+            templateKey === 'price' ||
+            templateKey === 'pricing' ||
+            templateKey === 'offer' ||
+            templateKey === 'shipping'
               ? prev.segments?.excluded_product_ids || []
               : [],
         },
@@ -2997,7 +3127,8 @@ function TestWizard({
     selectedTemplate === 'pricing' ||
     isPriceLikeTestType(formData.type);
   const isOfferTestType = selectedTemplate === 'offer' || isOfferLikeTestType(formData.type);
-  const isCommerceProductScopeTest = isPriceTestType || isOfferTestType;
+  const isShippingTestType = selectedTemplate === 'shipping' || formData.type === 'shipping';
+  const isCommerceProductScopeTest = isPriceTestType || isOfferTestType || isShippingTestType;
 
   const handleNext = () => {
     const stepErrors = getStepErrors(currentStep);
@@ -3321,6 +3452,87 @@ function TestWizard({
     window.open(url, '_blank', 'noopener');
   };
 
+  const handleExecuteShippingFromReview = useCallback(
+    async (apply, variantIndex = null) => {
+      const testId = initialData?.id;
+      if (!testId) return;
+      setShippingExecutionLoading(true);
+      setShippingExecutionAction(apply ? 'apply' : 'dry_run');
+      setError(null);
+      setShippingExecutionToast(null);
+      try {
+        const response = await apiPost(`/tests/${testId}/shipping/execute`, {
+          apply: Boolean(apply),
+          dry_run: !apply,
+          ...(variantIndex !== null && variantIndex !== undefined ? { variantIndex } : {}),
+        });
+        const payload = response?.data?.data ?? response?.data ?? {};
+        setShippingExecutionReport(payload);
+        const summary = payload?.execution_result?.summary || {};
+        const successCount = Number(summary.success_count || 0);
+        const manualCount = Number(summary.manual_required_count || 0);
+        const failedCount = Number(summary.failed_count || 0);
+        const refreshed =
+          apply && typeof onRefreshTest === 'function' ? await onRefreshTest() : true;
+        const actionLabel = apply ? 'Apply' : 'Dry run';
+        if (failedCount > 0) {
+          setError(
+            `Shipping execution finished with ${failedCount} failure${failedCount === 1 ? '' : 's'}.`
+          );
+        } else {
+          let message =
+            successCount > 0
+              ? `${actionLabel} complete: ${successCount} shipping action${successCount === 1 ? '' : 's'} ready.`
+              : `${actionLabel} complete. No automatic shipping actions were required.`;
+          let type = 'success';
+          if (manualCount > 0) {
+            type = 'info';
+            message = `${actionLabel} finished: ${successCount} ready, ${manualCount} manual follow-up required.`;
+          }
+          if (apply && !refreshed) {
+            type = 'info';
+            message = `${message} The page could not refresh automatically, so some details may update on the next reload.`;
+          }
+          setShippingExecutionToast({
+            type,
+            message,
+          });
+        }
+      } catch (err) {
+        setError(
+          err?.response?.data?.details?.[0] ||
+            err?.response?.data?.error ||
+            err?.message ||
+            'Failed to execute shipping actions'
+        );
+      } finally {
+        setShippingExecutionLoading(false);
+        setShippingExecutionAction(null);
+      }
+    },
+    [initialData?.id, onRefreshTest]
+  );
+
+  const handleRunShippingDiagnostics = useCallback(async () => {
+    const testId = initialData?.id;
+    if (!testId) return;
+    setShippingDiagnosticsLoading(true);
+    setError(null);
+    try {
+      const response = await apiGet(`/tests/${testId}/shipping/diagnostics`);
+      setShippingDiagnosticsReport(response?.data?.data ?? response?.data ?? {});
+    } catch (err) {
+      setError(
+        err?.response?.data?.details?.[0] ||
+          err?.response?.data?.error ||
+          err?.message ||
+          'Failed to load shipping diagnostics'
+      );
+    } finally {
+      setShippingDiagnosticsLoading(false);
+    }
+  }, [initialData?.id]);
+
   const canNavigateSteps =
     enableStepNavigation !== undefined
       ? enableStepNavigation
@@ -3511,34 +3723,47 @@ function TestWizard({
             >
               {contentTypesForStep.map(type => {
                 const isSelected = selectedTemplate === type.key;
+                const isUnavailable = !isTemplateTypeEnabled(type.key);
+                const unavailableReason = getTemplateUnavailableReason(type.key);
                 return (
                   <div
                     key={type.key}
                     role="button"
-                    tabIndex={0}
-                    className="template-grid-item"
+                    tabIndex={isUnavailable ? -1 : 0}
+                    className={`template-grid-item ${isUnavailable ? stepStyles.templateGridItemUnavailable : ''}`}
                     onClick={e => {
+                      if (isUnavailable) return;
                       e.preventDefault();
                       e.stopPropagation();
                       handleTemplateSelect(type.key);
                     }}
                     onKeyDown={e => {
+                      if (isUnavailable) return;
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
                         handleTemplateSelect(type.key);
                       }
                     }}
-                    aria-pressed={isSelected}
-                    aria-label={`Select ${type.name}: ${type.description}`}
+                    aria-disabled={isUnavailable}
+                    aria-pressed={!isUnavailable && isSelected}
+                    aria-label={
+                      isUnavailable
+                        ? `${type.name} unavailable: ${unavailableReason}`
+                        : `Select ${type.name}: ${type.description}`
+                    }
                   >
                     <Card sectioned className={`template-card ${isSelected ? 'selected' : ''}`}>
                       <div className={stepStyles.templateCardHeader}>
                         <span className={stepStyles.templateCardBadgeSlot}>
-                          {type.key === 'onsite-edit' && (
+                          {isUnavailable ? (
+                            <span className={stepStyles.templateCardUnavailable}>Unavailable</span>
+                          ) : type.key === 'onsite-edit' ? (
                             <span className={stepStyles.templateCardStarter}>Starter</span>
-                          )}
+                          ) : null}
                         </span>
-                        {isSelected && <div className="template-card-check">✓</div>}
+                        {!isUnavailable && isSelected && (
+                          <div className="template-card-check">✓</div>
+                        )}
                       </div>
                       <div className={stepStyles.templateCardBody}>
                         <div className={stepStyles.templateCardIcon}>{type.icon}</div>
@@ -3548,6 +3773,14 @@ function TestWizard({
                           <p className={stepStyles.templateCardDesc} title={type.description}>
                             {type.description}
                           </p>
+                          {isUnavailable && unavailableReason && (
+                            <p
+                              className={stepStyles.templateCardUnavailableReason}
+                              title={unavailableReason}
+                            >
+                              {unavailableReason}
+                            </p>
+                          )}
                         </div>
                       </div>
                     </Card>
@@ -3584,36 +3817,51 @@ function TestWizard({
               >
                 {TEST_TYPE_CATEGORIES.profit.types.map(type => {
                   const isSelected = selectedTemplate === type.key;
+                  const isUnavailable = !isTemplateTypeEnabled(type.key);
+                  const unavailableReason = getTemplateUnavailableReason(type.key);
                   return (
                     <div
                       key={type.key}
                       role="button"
-                      tabIndex={0}
-                      className="template-grid-item"
+                      tabIndex={isUnavailable ? -1 : 0}
+                      className={`template-grid-item ${isUnavailable ? stepStyles.templateGridItemUnavailable : ''}`}
                       onClick={e => {
+                        if (isUnavailable) return;
                         e.preventDefault();
                         e.stopPropagation();
                         handleTemplateSelect(type.key);
                       }}
                       onKeyDown={e => {
+                        if (isUnavailable) return;
                         if (e.key === 'Enter' || e.key === ' ') {
                           e.preventDefault();
                           handleTemplateSelect(type.key);
                         }
                       }}
-                      aria-pressed={isSelected}
-                      aria-label={`Select ${type.name}: ${type.description}`}
+                      aria-disabled={isUnavailable}
+                      aria-pressed={!isUnavailable && isSelected}
+                      aria-label={
+                        isUnavailable
+                          ? `${type.name} unavailable: ${unavailableReason}`
+                          : `Select ${type.name}: ${type.description}`
+                      }
                     >
                       <Card sectioned className={`template-card ${isSelected ? 'selected' : ''}`}>
                         <div className={stepStyles.templateCardHeader}>
                           <span className={stepStyles.templateCardBadgeSlot}>
-                            {type.key === 'pricing' && (
+                            {isUnavailable ? (
+                              <span className={stepStyles.templateCardUnavailable}>
+                                Unavailable
+                              </span>
+                            ) : type.key === 'pricing' ? (
                               <span className={stepStyles.templateCardRecommended}>
                                 Recommended
                               </span>
-                            )}
+                            ) : null}
                           </span>
-                          {isSelected && <div className="template-card-check">✓</div>}
+                          {!isUnavailable && isSelected && (
+                            <div className="template-card-check">✓</div>
+                          )}
                         </div>
                         <div className={stepStyles.templateCardBody}>
                           <div className={stepStyles.templateCardIcon}>{type.icon}</div>
@@ -3623,6 +3871,14 @@ function TestWizard({
                             <p className={stepStyles.templateCardDesc} title={type.description}>
                               {type.description}
                             </p>
+                            {isUnavailable && unavailableReason && (
+                              <p
+                                className={stepStyles.templateCardUnavailableReason}
+                                title={unavailableReason}
+                              >
+                                {unavailableReason}
+                              </p>
+                            )}
                           </div>
                         </div>
                       </Card>
@@ -3957,20 +4213,36 @@ function TestWizard({
                                 <Banner
                                   tone="info"
                                   title={
-                                    isOfferTestType
-                                      ? 'Offer tests use product-only scope'
-                                      : 'Price tests use product-only scope'
+                                    isShippingTestType
+                                      ? 'Shipping tests use cart-qualified product scope'
+                                      : isOfferTestType
+                                        ? 'Offer tests use product-only scope'
+                                        : 'Price tests use product-only scope'
                                   }
                                 >
                                   <Text as="p" variant="bodySm">
-                                    Choose between <strong>all products</strong> and{' '}
-                                    <strong>selected products</strong> here. You can also add
-                                    optional <strong>excluded products</strong> to prevent
-                                    assignment and storefront application for specific SKUs.
+                                    {isShippingTestType ? (
+                                      <>
+                                        Choose between <strong>all carts</strong> and{' '}
+                                        <strong>carts containing selected products</strong>. You can
+                                        also add optional <strong>excluded products</strong> to
+                                        block shipping assignment and checkout application for carts
+                                        that contain those SKUs.
+                                      </>
+                                    ) : (
+                                      <>
+                                        Choose between <strong>all products</strong> and{' '}
+                                        <strong>selected products</strong> here. You can also add
+                                        optional <strong>excluded products</strong> to prevent
+                                        assignment and storefront application for specific SKUs.
+                                      </>
+                                    )}
                                   </Text>
                                 </Banner>
                                 <div className={styles.panelSection}>
-                                  <span className={styles.panelSectionTitle}>Product scope</span>
+                                  <span className={styles.panelSectionTitle}>
+                                    {isShippingTestType ? 'Cart qualification' : 'Product scope'}
+                                  </span>
                                   <div className={styles.scopeSelectGrid}>
                                     <div
                                       className={`${styles.scopeCard} ${(formData.target_type || 'all-products') !== 'product' ? styles.scopeCardActive : ''}`}
@@ -3984,7 +4256,7 @@ function TestWizard({
                                           target_ids: null,
                                           segments: {
                                             ...prev.segments,
-                                            url_pattern: '/products/',
+                                            url_pattern: isShippingTestType ? '' : '/products/',
                                             page_rules: prev.segments?.page_rules || [],
                                           },
                                         }))
@@ -4001,7 +4273,7 @@ function TestWizard({
                                           target_ids: null,
                                           segments: {
                                             ...prev.segments,
-                                            url_pattern: '/products/',
+                                            url_pattern: isShippingTestType ? '' : '/products/',
                                             page_rules: prev.segments?.page_rules || [],
                                           },
                                         }));
@@ -4009,14 +4281,18 @@ function TestWizard({
                                       aria-pressed={
                                         (formData.target_type || 'all-products') !== 'product'
                                       }
-                                      aria-label="All products"
+                                      aria-label={isShippingTestType ? 'All carts' : 'All products'}
                                     >
                                       <span className={styles.scopeCardIcon}>
                                         <Icon source={ProductIcon} />
                                       </span>
-                                      <span className={styles.scopeCardLabel}>All products</span>
+                                      <span className={styles.scopeCardLabel}>
+                                        {isShippingTestType ? 'All carts' : 'All products'}
+                                      </span>
                                       <span className={styles.scopeCardDesc}>
-                                        Assign this test across your full product catalog
+                                        {isShippingTestType
+                                          ? 'Apply this shipping test to any eligible cart unless excluded'
+                                          : 'Assign this test across your full product catalog'}
                                       </span>
                                     </div>
                                     <div
@@ -4029,7 +4305,7 @@ function TestWizard({
                                           target_type: 'product',
                                           segments: {
                                             ...prev.segments,
-                                            url_pattern: '/products/',
+                                            url_pattern: isShippingTestType ? '' : '/products/',
                                             page_rules: prev.segments?.page_rules || [],
                                           },
                                         }))
@@ -4044,72 +4320,116 @@ function TestWizard({
                                           target_type: 'product',
                                           segments: {
                                             ...prev.segments,
-                                            url_pattern: '/products/',
+                                            url_pattern: isShippingTestType ? '' : '/products/',
                                             page_rules: prev.segments?.page_rules || [],
                                           },
                                         }));
                                       }}
                                       aria-pressed={formData.target_type === 'product'}
-                                      aria-label="Selected products only"
+                                      aria-label={
+                                        isShippingTestType
+                                          ? 'Carts with selected products'
+                                          : 'Selected products only'
+                                      }
                                     >
                                       <span className={styles.scopeCardIcon}>
                                         <Icon source={TargetIcon} />
                                       </span>
                                       <span className={styles.scopeCardLabel}>
-                                        Selected products
+                                        {isShippingTestType
+                                          ? 'Carts with selected products'
+                                          : 'Selected products'}
                                       </span>
                                       <span className={styles.scopeCardDesc}>
-                                        Assign only for specific products you choose
+                                        {isShippingTestType
+                                          ? 'Only apply when the delivery group contains one of the products you choose'
+                                          : 'Assign only for specific products you choose'}
                                       </span>
                                     </div>
                                   </div>
                                 </div>
-                                {formData.target_type === 'product' && (
-                                  <BlockStack gap="200">
-                                    <InlineStack align="space-between" blockAlign="center" wrap>
-                                      <Text as="span" variant="bodySm" tone="subdued">
-                                        Choose products from your store catalog for this test scope.
-                                      </Text>
-                                      <Button
-                                        size="slim"
-                                        variant="primary"
-                                        icon={ProductIcon}
-                                        onClick={() => openPriceProductModal('include')}
-                                        disabled={!canUseStoreProductPicker}
-                                      >
-                                        {`Choose products (${selectedScopeProductIds.length})`}
-                                      </Button>
-                                    </InlineStack>
-                                    {!canUseStoreProductPicker && (
-                                      <Text as="p" variant="bodySm" tone="subdued">
-                                        Product picker is available when connected to a Shopify
-                                        store.
-                                      </Text>
-                                    )}
-                                  </BlockStack>
-                                )}
-                                <BlockStack gap="200">
-                                  <InlineStack align="space-between" blockAlign="center" wrap>
-                                    <Text as="span" variant="bodySm" tone="subdued">
-                                      Optional exclusions are always skipped from bucketing and
-                                      storefront application.
-                                    </Text>
-                                    <Button
-                                      size="slim"
-                                      icon={FilterIcon}
-                                      onClick={() => openPriceProductModal('exclude')}
-                                      disabled={!canUseStoreProductPicker}
+                                <div className={styles.productScopePickerGrid}>
+                                  {formData.target_type === 'product' && (
+                                    <div
+                                      className={`${styles.productScopePickerCard} ${styles.productScopePickerCardPrimary}`}
                                     >
-                                      {`Choose excluded (${excludedScopeProductIds.length})`}
-                                    </Button>
-                                  </InlineStack>
-                                  {!canUseStoreProductPicker && (
-                                    <Text as="p" variant="bodySm" tone="subdued">
-                                      Excluded-products picker is available when connected to a
-                                      Shopify store.
-                                    </Text>
+                                      <BlockStack gap="200">
+                                        <InlineStack align="space-between" blockAlign="center" wrap>
+                                          <InlineStack gap="200" blockAlign="center">
+                                            <span className={styles.productScopePickerIcon}>
+                                              <Icon source={ProductIcon} />
+                                            </span>
+                                            <Text as="h4" variant="headingSm">
+                                              {isShippingTestType
+                                                ? 'Included products'
+                                                : 'Included products'}
+                                            </Text>
+                                          </InlineStack>
+                                          <Badge tone="info">
+                                            {`${selectedScopeProductIds.length} selected`}
+                                          </Badge>
+                                        </InlineStack>
+                                        <Text as="p" variant="bodySm" tone="subdued">
+                                          {isShippingTestType
+                                            ? 'Choose products that must appear in a delivery group before this shipping test can apply.'
+                                            : 'Choose products from your store catalog for this test scope.'}
+                                        </Text>
+                                        <InlineStack>
+                                          <Button
+                                            size="slim"
+                                            variant="primary"
+                                            icon={ProductIcon}
+                                            onClick={() => openPriceProductModal('include')}
+                                            disabled={!canUseStoreProductPicker}
+                                          >
+                                            {isShippingTestType
+                                              ? 'Choose included products'
+                                              : 'Choose products'}
+                                          </Button>
+                                        </InlineStack>
+                                      </BlockStack>
+                                    </div>
                                   )}
-                                </BlockStack>
+                                  <div className={styles.productScopePickerCard}>
+                                    <BlockStack gap="200">
+                                      <InlineStack align="space-between" blockAlign="center" wrap>
+                                        <InlineStack gap="200" blockAlign="center">
+                                          <span className={styles.productScopePickerIconMuted}>
+                                            <Icon source={FilterIcon} />
+                                          </span>
+                                          <Text as="h4" variant="headingSm">
+                                            Excluded products
+                                          </Text>
+                                        </InlineStack>
+                                        <Badge tone="attention">
+                                          {`${excludedScopeProductIds.length} excluded`}
+                                        </Badge>
+                                      </InlineStack>
+                                      <Text as="p" variant="bodySm" tone="subdued">
+                                        {isShippingTestType
+                                          ? 'Excluded products block shipping assignment and checkout application for any matching delivery group.'
+                                          : 'Optional exclusions are always skipped from bucketing and storefront application.'}
+                                      </Text>
+                                      <InlineStack>
+                                        <Button
+                                          size="slim"
+                                          icon={FilterIcon}
+                                          onClick={() => openPriceProductModal('exclude')}
+                                          disabled={!canUseStoreProductPicker}
+                                        >
+                                          {isShippingTestType
+                                            ? 'Choose excluded products'
+                                            : 'Choose excluded'}
+                                        </Button>
+                                      </InlineStack>
+                                    </BlockStack>
+                                  </div>
+                                </div>
+                                {!canUseStoreProductPicker && (
+                                  <Text as="p" variant="bodySm" tone="subdued">
+                                    Product picker is available when connected to a Shopify store.
+                                  </Text>
+                                )}
                               </BlockStack>
                             ) : (
                               <>
@@ -7309,7 +7629,16 @@ function TestWizard({
       'pricePercent' in source
     )
       return 'price';
-    if ('rate' in source) return 'shipping';
+    if (
+      'rate' in source ||
+      'strategy' in source ||
+      'shipping_strategy' in source ||
+      'threshold_amount' in source ||
+      'free_shipping_threshold' in source ||
+      'percent_off' in source ||
+      'profile_id' in source
+    )
+      return 'shipping';
     if (
       'template' in source ||
       'themeMode' in source ||
@@ -9408,48 +9737,267 @@ function TestWizard({
     );
   };
 
-  const renderVariantShippingModule = () => (
-    <BlockStack gap="400">
-      <Banner tone="warning" title="Shipping rates are not applied automatically">
-        <Text as="p" variant="bodySm">
-          RipX assigns the variant for analytics. To change the actual shipping rate or
-          free-shipping threshold at checkout, use Shopify Plus delivery Scripts or a{' '}
-          <strong>Delivery Customization Function</strong> that reads a cart attribute.{' '}
-          <Link to={`${ROUTES.DOCS}#tests`} rel="noopener noreferrer">
-            Test types &amp; docs →
-          </Link>
+  const renderVariantShippingModule = () => {
+    const strategyOptions = [
+      { label: 'Control (no shipping change)', value: 'control' },
+      { label: 'Flat shipping rate', value: 'flat_rate' },
+      { label: 'Free shipping above threshold', value: 'threshold_free_shipping' },
+      { label: 'Shipping discount (%)', value: 'discount_percentage' },
+      { label: 'Shipping discount (fixed)', value: 'discount_fixed' },
+      { label: 'Force free shipping', value: 'free_shipping' },
+      { label: 'Carrier quote adapter', value: 'carrier_quote' },
+    ];
+
+    const updateShippingVariantConfig = (index, patch) => {
+      const next = [...(formData.variants || [])];
+      const current = next[index] || {};
+      next[index] = {
+        ...current,
+        config: {
+          ...(current.config || {}),
+          ...patch,
+        },
+      };
+      setFormData({ ...formData, variants: next });
+    };
+    const updateShippingMetadata = (index, patch) => {
+      const next = [...(formData.variants || [])];
+      const current = next[index] || {};
+      next[index] = {
+        ...current,
+        config: {
+          ...(current.config || {}),
+          metadata: {
+            ...((current.config && current.config.metadata) || {}),
+            ...patch,
+          },
+        },
+      };
+      setFormData({ ...formData, variants: next });
+    };
+
+    const getShippingNumberValue = value =>
+      value === null || value === undefined || value === '' ? '' : String(value);
+
+    return (
+      <BlockStack gap="400">
+        <Banner tone="warning" title="Shipping execution depends on Shopify capabilities">
+          <Text as="p" variant="bodySm">
+            RipX assigns variants and tracks outcomes. Strategy execution depends on store plan and
+            configured Shopify adapters (CarrierService / Discount Function). Use diagnostics
+            endpoints to confirm auto-execution readiness for this shop.{' '}
+            <Link to={`${ROUTES.DOCS}#tests`} rel="noopener noreferrer">
+              Test types &amp; docs →
+            </Link>
+          </Text>
+        </Banner>
+        <Text variant="bodyMd" color="subdued" as="p">
+          Configure shipping strategy per variant. Keep Control unchanged and set actionable rules
+          on test variants.
         </Text>
-      </Banner>
-      <Text variant="bodyMd" color="subdued" as="p">
-        Set the shipping rate for each variant. Use empty for control (default rate).
-      </Text>
-      {(formData.variants || []).map((variant, index) => (
-        <Card key={`shipping-${index}`} sectioned>
-          <FormLayout>
-            <TextField
-              label={variant.name}
-              type="number"
-              value={
-                variant.config?.rate !== null && variant.config?.rate !== undefined
-                  ? String(variant.config.rate)
-                  : ''
-              }
-              onChange={value => {
-                const parsed = value === '' ? null : parseFloat(value);
-                const next = [...(formData.variants || [])];
-                next[index] = { ...next[index], config: { ...next[index].config, rate: parsed } };
-                setFormData({ ...formData, variants: next });
-              }}
-              placeholder="Default rate (leave empty)"
-              prefix="$"
-              helpText="Shipping rate override"
-              autoComplete="off"
-            />
-          </FormLayout>
-        </Card>
-      ))}
-    </BlockStack>
-  );
+        {(formData.variants || []).map((variant, index) => {
+          const cfg = variant?.config || {};
+          const strategy = String(cfg.strategy || cfg.shipping_strategy || '').trim() || 'control';
+          const isControlLike = index === 0 || /^control(\s|$)/i.test(String(variant?.name || ''));
+          const amountValue =
+            cfg.amount !== undefined && cfg.amount !== null ? cfg.amount : (cfg.rate ?? '');
+          const thresholdValue =
+            cfg.threshold_amount !== undefined && cfg.threshold_amount !== null
+              ? cfg.threshold_amount
+              : (cfg.free_shipping_threshold ?? '');
+          const percentOffValue =
+            cfg.percent_off !== undefined && cfg.percent_off !== null
+              ? cfg.percent_off
+              : (cfg.discount_percent ?? '');
+          const metadata = cfg.metadata && typeof cfg.metadata === 'object' ? cfg.metadata : {};
+          const quoteProvider = String(metadata.quote_provider || '').trim();
+          const zoneCountriesValue = Array.isArray(cfg.zone_countries)
+            ? cfg.zone_countries.join(', ')
+            : String(cfg.zone_countries || '');
+          const strategyGuidance =
+            strategy === 'flat_rate'
+              ? 'Best for simple fixed-price shipping tests. Watch for multi-profile carts where combined rates can be confusing.'
+              : strategy === 'threshold_free_shipping'
+                ? 'Use when all qualifying delivery options should become free after the cart threshold is reached.'
+                : strategy === 'discount_percentage'
+                  ? 'Use for broad shipping discounts that should scale with the selected delivery option.'
+                  : strategy === 'discount_fixed'
+                    ? 'Use when you want a capped dollar-off shipping incentive regardless of the chosen rate.'
+                    : strategy === 'carrier_quote'
+                      ? 'Use for provider-backed quotes or Delivery Customization flows. Configure a quote provider before applying CarrierService automation.'
+                      : 'Keep control variants unchanged and scope actionable variants carefully.';
+
+          return (
+            <Card key={`shipping-${index}`} sectioned>
+              <FormLayout>
+                <Text variant="headingSm" as="h3">
+                  {variant.name}
+                </Text>
+                <Text variant="bodySm" tone="subdued" as="p">
+                  {strategyGuidance}
+                </Text>
+                <Select
+                  label="Shipping strategy"
+                  options={strategyOptions}
+                  value={strategy}
+                  onChange={value => updateShippingVariantConfig(index, { strategy: value })}
+                  disabled={isControlLike}
+                  helpText={
+                    isControlLike
+                      ? 'Control variant should stay unchanged.'
+                      : 'Choose how this variant should modify shipping behavior.'
+                  }
+                />
+
+                {strategy === 'flat_rate' && (
+                  <TextField
+                    label="Flat shipping amount"
+                    type="number"
+                    value={getShippingNumberValue(amountValue)}
+                    onChange={value =>
+                      updateShippingVariantConfig(index, {
+                        amount: value === '' ? null : Number(value),
+                      })
+                    }
+                    prefix="$"
+                    autoComplete="off"
+                  />
+                )}
+
+                {!isControlLike && strategy !== 'control' && (
+                  <>
+                    <TextField
+                      label="Profile scope (optional)"
+                      value={cfg.profile_id || ''}
+                      onChange={value => updateShippingVariantConfig(index, { profile_id: value })}
+                      placeholder="gid://shopify/DeliveryProfile/..."
+                      helpText="Use a delivery profile ID when this variant should only affect one shipping profile."
+                      autoComplete="off"
+                    />
+                    <TextField
+                      label="Zone countries (optional)"
+                      value={zoneCountriesValue}
+                      onChange={value =>
+                        updateShippingVariantConfig(index, {
+                          zone_countries: value
+                            .split(',')
+                            .map(item => item.trim().toUpperCase())
+                            .filter(Boolean),
+                        })
+                      }
+                      helpText="Comma-separated ISO country codes for quick operator guidance and QA notes."
+                      autoComplete="off"
+                    />
+                  </>
+                )}
+
+                {strategy === 'threshold_free_shipping' && (
+                  <TextField
+                    label="Free shipping threshold"
+                    type="number"
+                    value={getShippingNumberValue(thresholdValue)}
+                    onChange={value =>
+                      updateShippingVariantConfig(index, {
+                        threshold_amount: value === '' ? null : Number(value),
+                      })
+                    }
+                    prefix="$"
+                    autoComplete="off"
+                  />
+                )}
+
+                {strategy === 'discount_percentage' && (
+                  <TextField
+                    label="Shipping discount percent"
+                    type="number"
+                    value={getShippingNumberValue(percentOffValue)}
+                    onChange={value =>
+                      updateShippingVariantConfig(index, {
+                        percent_off: value === '' ? null : Number(value),
+                      })
+                    }
+                    suffix="%"
+                    autoComplete="off"
+                  />
+                )}
+
+                {strategy === 'discount_fixed' && (
+                  <TextField
+                    label="Shipping discount amount"
+                    type="number"
+                    value={getShippingNumberValue(amountValue)}
+                    onChange={value =>
+                      updateShippingVariantConfig(index, {
+                        amount: value === '' ? null : Number(value),
+                      })
+                    }
+                    prefix="$"
+                    autoComplete="off"
+                  />
+                )}
+
+                {strategy === 'carrier_quote' && (
+                  <>
+                    <Select
+                      label="Quote provider"
+                      options={[
+                        { label: 'Select provider', value: '' },
+                        { label: 'Static rate', value: 'static_rate' },
+                        { label: 'Country table', value: 'country_table' },
+                      ]}
+                      value={quoteProvider}
+                      onChange={value => updateShippingMetadata(index, { quote_provider: value })}
+                      helpText="CarrierService automation requires a provider-ready quote source."
+                    />
+                    <TextField
+                      label="Method handles (comma separated, optional)"
+                      value={
+                        Array.isArray(cfg.method_handles)
+                          ? cfg.method_handles.join(', ')
+                          : String(cfg.method_handles || '')
+                      }
+                      onChange={value =>
+                        updateShippingVariantConfig(index, {
+                          method_handles: value
+                            .split(',')
+                            .map(item => item.trim())
+                            .filter(Boolean),
+                        })
+                      }
+                      autoComplete="off"
+                    />
+                    {quoteProvider === 'static_rate' && (
+                      <TextField
+                        label="Provider quote amount"
+                        type="number"
+                        value={getShippingNumberValue(metadata.quote_amount)}
+                        onChange={value =>
+                          updateShippingMetadata(index, {
+                            quote_amount: value === '' ? null : Number(value),
+                          })
+                        }
+                        prefix="$"
+                        autoComplete="off"
+                      />
+                    )}
+                    {quoteProvider === 'country_table' && (
+                      <TextField
+                        label="Country rates"
+                        value={String(metadata.country_rates || '')}
+                        onChange={value => updateShippingMetadata(index, { country_rates: value })}
+                        helpText="Use `US:5.00,CA:7.50,*:9.00` format for destination-aware fallback quotes."
+                        autoComplete="off"
+                      />
+                    )}
+                  </>
+                )}
+              </FormLayout>
+            </Card>
+          );
+        })}
+      </BlockStack>
+    );
+  };
 
   const renderVariantOfferModule = () => {
     const offerVariants = formData.variants || [];
@@ -10068,7 +10616,7 @@ function TestWizard({
       const moduleTitles = {
         url: 'Variant URLs',
         price: 'Variant Prices',
-        shipping: 'Variant Shipping Rates',
+        shipping: 'Variant Shipping Strategies',
         offer: 'Variant Offers',
         theme: 'Theme Variants',
       };
@@ -11624,6 +12172,34 @@ function TestWizard({
       ? formData.variants
       : initialData?.variants || [];
     const isPriceReview = isPriceLikeTestType(formData.type || initialData?.type);
+    const isShippingReview =
+      String(formData.type || initialData?.type || '').toLowerCase() === 'shipping';
+    const canExecuteShippingFromReview = canShowShippingExecution({
+      mode,
+      testType: formData.type || initialData?.type,
+      testId: initialData?.id,
+    });
+    const shippingExecSummary = shippingExecutionReport?.execution_result?.summary || null;
+    const shippingExecActions = Array.isArray(shippingExecutionReport?.execution_result?.actions)
+      ? shippingExecutionReport.execution_result.actions
+      : [];
+    const shippingDiagnostics = shippingDiagnosticsReport?.diagnostics || null;
+    const shippingExecutionDisabled = shouldDisableShippingExecution({
+      shippingExecutionLoading,
+      wizardLoading: loading,
+      submitLoading,
+      isDirty,
+    });
+    const actionableShippingVariants = isShippingReview
+      ? (formData.variants || []).map((variant, index) => ({
+          variant,
+          index,
+          strategy:
+            String(variant?.config?.strategy || '')
+              .trim()
+              .toLowerCase() || 'control',
+        }))
+      : [];
     const reviewTargetProductIds =
       (formData.target_type || initialData?.target_type) === 'product'
         ? formData.target_ids?.length
@@ -11998,6 +12574,192 @@ function TestWizard({
           )}
         </div>
 
+        {isShippingReview && canExecuteShippingFromReview && (
+          <div className={stepStyles.reviewSection}>
+            <div className={stepStyles.reviewSectionTitle}>
+              <span className={stepStyles.reviewSectionTitleIcon}>
+                <Icon source={CartIcon} />
+              </span>
+              Shipping Execution
+            </div>
+            <BlockStack gap="300">
+              <Text variant="bodySm" as="p">
+                Run a dry run to preview adapter actions, then apply when the plan looks correct.
+              </Text>
+              <InlineStack gap="200" wrap>
+                <Button
+                  size="slim"
+                  onClick={handleRunShippingDiagnostics}
+                  disabled={shippingDiagnosticsLoading || loading}
+                  loading={shippingDiagnosticsLoading}
+                  title="Check shipping readiness, assignment visibility, and live conflicts"
+                >
+                  Shipping diagnostics
+                </Button>
+                <Button
+                  size="slim"
+                  onClick={() => handleExecuteShippingFromReview(false)}
+                  disabled={shippingExecutionDisabled}
+                  loading={shippingExecutionLoading && shippingExecutionAction === 'dry_run'}
+                  title={
+                    isDirty
+                      ? 'Save pending changes before running shipping execution.'
+                      : 'Preview shipping adapter actions without creating/updating resources'
+                  }
+                >
+                  Shipping dry run
+                </Button>
+                <Button
+                  size="slim"
+                  variant="primary"
+                  onClick={() => handleExecuteShippingFromReview(true)}
+                  disabled={shippingExecutionDisabled}
+                  loading={shippingExecutionLoading && shippingExecutionAction === 'apply'}
+                  title={
+                    isDirty
+                      ? 'Save pending changes before applying shipping actions.'
+                      : 'Apply shipping adapter actions for actionable variants'
+                  }
+                >
+                  Apply shipping
+                </Button>
+              </InlineStack>
+              {actionableShippingVariants.some(item => item.strategy !== 'control') && (
+                <div className={stepStyles.reviewShippingVariantActions}>
+                  {actionableShippingVariants
+                    .filter(item => item.index > 0 && item.strategy !== 'control')
+                    .map(item => (
+                      <div
+                        key={`shipping-variant-action-${item.index}`}
+                        className={stepStyles.reviewShippingVariantActionRow}
+                      >
+                        <Text variant="bodySm" as="span">
+                          {item.variant?.name || `Variant ${item.index + 1}`} ({item.strategy})
+                        </Text>
+                        <InlineStack gap="200" wrap>
+                          <Button
+                            size="slim"
+                            onClick={() => handleExecuteShippingFromReview(false, item.index)}
+                            disabled={shippingExecutionDisabled}
+                          >
+                            Dry run
+                          </Button>
+                          <Button
+                            size="slim"
+                            variant="primary"
+                            onClick={() => handleExecuteShippingFromReview(true, item.index)}
+                            disabled={shippingExecutionDisabled}
+                          >
+                            Apply
+                          </Button>
+                        </InlineStack>
+                      </div>
+                    ))}
+                </div>
+              )}
+              {isDirty && (
+                <Text
+                  variant="bodySm"
+                  tone="subdued"
+                  as="p"
+                  className={stepStyles.reviewShippingHint}
+                >
+                  Save pending changes first so execution uses your latest variant strategies.
+                </Text>
+              )}
+              {shippingDiagnostics && (
+                <div className={stepStyles.reviewShippingDiagnostics}>
+                  <div className={stepStyles.reviewShippingHeader}>
+                    <span className={stepStyles.reviewShippingTitle}>Shipping diagnostics</span>
+                    <span className={stepStyles.reviewShippingMode}>
+                      Conflicts:{' '}
+                      {Number(shippingDiagnostics.readiness?.running_shipping_conflicts || 0)}
+                    </span>
+                  </div>
+                  <Banner
+                    tone={
+                      shippingDiagnostics.readiness?.running_shipping_conflicts > 0
+                        ? 'warning'
+                        : 'info'
+                    }
+                  >
+                    <Text as="p" variant="bodySm">
+                      Resolve URL:{' '}
+                      {shippingDiagnostics.urls?.shipping_resolve_batch_url
+                        ? 'configured'
+                        : 'missing'}{' '}
+                      | Carrier callback:{' '}
+                      {shippingDiagnostics.urls?.carrier_callback_url ? 'configured' : 'missing'} |
+                      Signed assignments:{' '}
+                      {shippingDiagnostics.readiness?.assignment_signature_required
+                        ? 'required'
+                        : 'optional'}
+                    </Text>
+                  </Banner>
+                </div>
+              )}
+              {shippingExecSummary && (
+                <div className={stepStyles.reviewShippingReport}>
+                  <div className={stepStyles.reviewShippingHeader}>
+                    <span className={stepStyles.reviewShippingTitle}>
+                      Latest shipping execution
+                    </span>
+                    <span className={stepStyles.reviewShippingMode}>
+                      Mode: {shippingExecSummary.apply_mode || 'dry_run'}
+                    </span>
+                  </div>
+                  <Banner
+                    tone={
+                      Number(shippingExecSummary.failed_count || 0) > 0
+                        ? 'critical'
+                        : Number(shippingExecSummary.manual_required_count || 0) > 0
+                          ? 'warning'
+                          : 'success'
+                    }
+                  >
+                    <Text as="p" variant="bodySm">
+                      {Number(shippingExecSummary.success_count || 0)} success,{' '}
+                      {Number(shippingExecSummary.manual_required_count || 0)} manual-required,{' '}
+                      {Number(shippingExecSummary.failed_count || 0)} failed.
+                    </Text>
+                  </Banner>
+                  <div className={stepStyles.reviewShippingList}>
+                    {shippingExecActions.map((action, index) => (
+                      <div
+                        key={`${action?.variant_index ?? index}-${action?.variant_id || action?.variant_name || index}`}
+                        className={stepStyles.reviewShippingItem}
+                      >
+                        <div className={stepStyles.reviewShippingItemHead}>
+                          <span className={stepStyles.reviewShippingVariantName}>
+                            {action?.variant_name || `Variant ${index + 1}`}
+                          </span>
+                          <span className={stepStyles.reviewShippingStatus}>
+                            {action?.status || 'unknown'}
+                          </span>
+                        </div>
+                        <p className={stepStyles.reviewShippingMeta}>
+                          Strategy: {action?.strategy || 'n/a'} | Adapter:{' '}
+                          {action?.execution_adapter || 'n/a'}
+                        </p>
+                        {action?.details?.message ? (
+                          <p className={stepStyles.reviewShippingDetail}>
+                            {action.details.message}
+                          </p>
+                        ) : null}
+                        {action?.details?.title ? (
+                          <p className={stepStyles.reviewShippingDetail}>
+                            Resource title: {action.details.title}
+                          </p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </BlockStack>
+          </div>
+        )}
+
         <div className={stepStyles.reviewSchedulingSection}>
           <div className={stepStyles.reviewSchedulingTitle}>
             <Icon source={ClockIcon} />
@@ -12188,6 +12950,14 @@ function TestWizard({
           type={antiFlickerToast.type}
           onClose={() => setAntiFlickerToast(null)}
           duration={2200}
+        />
+      )}
+      {shippingExecutionToast && (
+        <Toast
+          message={shippingExecutionToast.message}
+          type={shippingExecutionToast.type || 'success'}
+          onClose={() => setShippingExecutionToast(null)}
+          duration={3200}
         />
       )}
 

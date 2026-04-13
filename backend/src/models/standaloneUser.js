@@ -221,7 +221,14 @@ async function listAll(opts = {}) {
     const total = countRes.rows[0]?.c ?? 0;
 
     const sql = `
-      SELECT id, email, role, status, email_verified_at, accepted_at, accepted_by, account_id, primary_domain_id, primary_domain, created_at, updated_at
+      SELECT id, email, role, status, email_verified_at, accepted_at, accepted_by, account_id, primary_domain_id, primary_domain, created_at, updated_at,
+             (
+               SELECT MAX(al.created_at)
+               FROM audit_log al
+               WHERE al.entity_type = 'auth'
+                 AND al.action = 'login_success'
+                 AND LOWER(COALESCE(al.actor_id, '')) = LOWER(COALESCE(${USERS_TABLE}.email, ''))
+             ) AS last_login_at
       FROM ${USERS_TABLE}
       ${where}
       ORDER BY created_at DESC
@@ -242,6 +249,7 @@ async function listAll(opts = {}) {
       primaryDomain: r.primary_domain,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
+      lastLoginAt: r.last_login_at,
     }));
 
     return { users, total, limit: limitNum, offset: offsetNum };

@@ -61,7 +61,15 @@ function inferTemplateKey(variants = [], testType = '') {
     ) {
       return 'theme';
     }
-    if ('rate' in config) {
+    if (
+      'rate' in config ||
+      'strategy' in config ||
+      'shipping_strategy' in config ||
+      'threshold_amount' in config ||
+      'free_shipping_threshold' in config ||
+      'percent_off' in config ||
+      'profile_id' in config
+    ) {
       return 'shipping';
     }
     if ('discount_type' in config || 'discount_value' in config) {

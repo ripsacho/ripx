@@ -31,6 +31,23 @@ npm run build         # production frontend build
 
 Production deploy (host, SSH key, IP, and process manager) is environment-specific — keep those steps in your private runbook, not in the repo.
 
+## Shipping Execution Checklist
+
+Use this before enabling auto-applied shipping tests on a real shop:
+
+1. Add `read_shipping` and `write_shipping` to both `shopify.app.toml` and `SHOPIFY_SCOPES`, then reinstall/update app scopes on the shop.
+2. Set `RIPX_SHIPPING_CARRIER_CALLBACK_URL` when Shopify cannot reach `APP_URL`, or verify `APP_URL/api/track/shipping-carrier-rates` is publicly reachable.
+3. For `flat_rate`, confirm the shop plan supports carrier-calculated shipping before relying on `carrier_service` auto-apply.
+4. For `carrier_quote`, prefer `delivery_customization` on Plus shops when the delivery customization function is deployed; RipX now auto-selects this path in `auto` mode when available.
+5. Configure a quote provider for any `carrier_quote` variant that should auto-provision via CarrierService. RipX currently supports `static_rate` and `country_table` fallback providers in the shipping wizard.
+6. Run `npm run verify:shipping-readiness`, then use `Shipping diagnostics` from the test review or detail screen before apply.
+7. Run a dry run from the test review or test detail screen before apply, then verify the execution report shows each actionable variant as `ready`.
+8. After apply, place a live checkout QA pass on the target shop and confirm the expected shipping title/rate behavior for both control and treatment assignments.
+
+Current limitation: live external quote-source automation for `carrier_quote` still requires the quote provider logic behind the Shopify function/carrier callback to be wired for the target store.
+
+See [docs/SHOPIFY_SHIPPING_TEST_RUNBOOK.md](docs/SHOPIFY_SHIPPING_TEST_RUNBOOK.md) for the end-to-end rollout runbook.
+
 ## Build in CI (local -> live)
 
 This repo now includes GitHub Actions workflows for a "build in CI" release model:
@@ -150,6 +167,8 @@ Rollback (no rebuild):
 **Health (unauthenticated, rate-limited):** `GET /live` or `GET /api/live` — liveness (no DB). `GET /ready` or `GET /api/ready` — readiness (DB + Redis, minimal JSON; 503 when DB is down). `GET /health` or `GET /api/health` — full JSON for the app (maintenance/announcement, version, uptime). Tune with `RATE_LIMIT_HEALTH_WINDOW_MS` and `RATE_LIMIT_HEALTH_MAX`.
 
 **Checkout price QA:** **Settings → Installation → Checkout price test health** (calls authenticated `GET /api/settings/checkout-price-diagnostics` and returns full diagnostics). Public: `GET /api/track/price-checkout-diagnostics?shop=store.myshopify.com` returns a redacted payload by default (set `RIPX_PUBLIC_CHECKOUT_DIAGNOSTICS_FULL=true` only when you explicitly want full public output). **CLI (same checks, uses `.env`):** `npm run verify:price-pipeline` — optional `RIPX_VERIFY_SHOP=store.myshopify.com` with DB for tenant + running price-test count. **Signed-assignment migration checker:** `npm run verify:price-assignment-readiness` (optional `RIPX_VERIFY_SHOP=...` for synthetic signed/unsigned probe). See `extensions/ripx-checkout-discount/README.md` and `extensions/ripx-checkout-ui/README.md`. **Docs:** [Shopify checkout resolver guide](docs/SHOPIFY_CHECKOUT_PRICE_RESOLVER.md). Roadmap: `backend/docs/PRODUCT_EXCELLENCE_ROADMAP.md`.
+
+**Shipping QA:** `npm run verify:shipping-readiness` for env/scopes/callback checks, then use authenticated `GET /api/tests/:id/shipping/diagnostics` via the UI buttons in Test Detail / Test Wizard. Docs: [Shopify shipping runbook](docs/SHOPIFY_SHIPPING_TEST_RUNBOOK.md).
 
 **Local admin:** In `.env` set `RIPX_ADMIN_SHOP_DOMAINS=your-store.myshopify.com` to access the Admin panel at `/admin` without setting DB roles. Production: see [docs/getting-started/ADMIN_SETUP.md](docs/getting-started/ADMIN_SETUP.md).
 

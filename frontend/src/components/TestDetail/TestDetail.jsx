@@ -116,6 +116,11 @@ function TestDetail() {
   const [copyToast, setCopyToast] = useState(null);
   const [rolloutCsvLoading, setRolloutCsvLoading] = useState(false);
   const [reportDownloadLoading, setReportDownloadLoading] = useState(false);
+  const [shippingExecutionLoading, setShippingExecutionLoading] = useState(false);
+  const [shippingExecutionReport, setShippingExecutionReport] = useState(null);
+  const [shippingExecutionToast, setShippingExecutionToast] = useState(null);
+  const [shippingDiagnosticsLoading, setShippingDiagnosticsLoading] = useState(false);
+  const [shippingDiagnosticsReport, setShippingDiagnosticsReport] = useState(null);
   const [preLaunchOpen, setPreLaunchOpen] = useState(false);
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
   const [publishConfirmMode, setPublishConfirmMode] = useState('publish_only');
@@ -236,6 +241,7 @@ function TestDetail() {
   const isPriceLikeTest =
     String(test?.type || '').toLowerCase() === 'price' ||
     String(test?.type || '').toLowerCase() === 'pricing';
+  const isShippingTest = String(test?.type || '').toLowerCase() === 'shipping';
 
   const summarizePreflight = useCallback(preflight => {
     if (!preflight || typeof preflight !== 'object') {
@@ -647,6 +653,98 @@ function TestDetail() {
     }
   }, [id]);
 
+  const refreshTestAfterShippingExecution = useCallback(async () => {
+    try {
+      const response = await apiGet(`/tests/${id}`);
+      const updatedTest = unwrapData(response)?.test ?? unwrapData(response);
+      if (updatedTest?.id) {
+        const shop = getShopDomain();
+        queryClient.setQueryData(testDetailQueryKey(shop, id), updatedTest);
+        queryClient.setQueryData(testsListQueryKey(shop), old =>
+          Array.isArray(old)
+            ? old.map(item => (item.id === updatedTest.id ? updatedTest : item))
+            : old
+        );
+      }
+      invalidateTests(id);
+      return true;
+    } catch {
+      invalidateTests(id);
+      return false;
+    }
+  }, [id, invalidateTests, queryClient]);
+
+  const handleExecuteShipping = useCallback(
+    async (apply, variantIndex = null) => {
+      setShippingExecutionLoading(true);
+      setErrorMessage(null);
+      setShippingExecutionToast(null);
+      try {
+        const response = await apiPost(`/tests/${id}/shipping/execute`, {
+          apply: Boolean(apply),
+          dry_run: !apply,
+          ...(variantIndex !== null && variantIndex !== undefined ? { variantIndex } : {}),
+        });
+        const payload = unwrapData(response);
+        setShippingExecutionReport(payload);
+        const summary = payload?.execution_result?.summary || {};
+        const successCount = Number(summary.success_count || 0);
+        const manualCount = Number(summary.manual_required_count || 0);
+        const failedCount = Number(summary.failed_count || 0);
+        const refreshed = apply ? await refreshTestAfterShippingExecution() : true;
+        const actionLabel = apply ? 'Apply' : 'Dry run';
+        if (failedCount > 0) {
+          setErrorMessage(
+            `Shipping execution finished with ${failedCount} failure${failedCount === 1 ? '' : 's'}.`
+          );
+        } else {
+          let message =
+            successCount > 0
+              ? `${actionLabel} complete: ${successCount} shipping action${successCount === 1 ? '' : 's'} ready.`
+              : `${actionLabel} complete. No automatic shipping actions were required.`;
+          let type = 'success';
+          if (manualCount > 0) {
+            type = 'info';
+            message = `${actionLabel} finished: ${successCount} ready, ${manualCount} manual follow-up required.`;
+          }
+          if (apply && !refreshed) {
+            type = 'info';
+            message = `${message} The page could not refresh automatically, so some details may update on the next reload.`;
+          }
+          setShippingExecutionToast({ type, message });
+        }
+      } catch (err) {
+        setErrorMessage(
+          err?.response?.data?.details?.[0] ||
+            err?.response?.data?.error ||
+            err?.message ||
+            'Failed to execute shipping actions'
+        );
+      } finally {
+        setShippingExecutionLoading(false);
+      }
+    },
+    [id, refreshTestAfterShippingExecution]
+  );
+
+  const handleShippingDiagnostics = useCallback(async () => {
+    setShippingDiagnosticsLoading(true);
+    setErrorMessage(null);
+    try {
+      const response = await apiGet(`/tests/${id}/shipping/diagnostics`);
+      setShippingDiagnosticsReport(unwrapData(response));
+    } catch (err) {
+      setErrorMessage(
+        err?.response?.data?.details?.[0] ||
+          err?.response?.data?.error ||
+          err?.message ||
+          'Failed to load shipping diagnostics'
+      );
+    } finally {
+      setShippingDiagnosticsLoading(false);
+    }
+  }, [id]);
+
   const handleSaveCode = async codePayload => {
     const response = await apiPut(`/tests/${id}/variants/codes`, codePayload);
     const updatedTest = unwrapData(response)?.test ?? unwrapData(response);
@@ -757,6 +855,24 @@ function TestDetail() {
   const previewScannedVariants = Number(publishSummary.variants_scanned || 0);
   const previewScannedProducts = Number(publishSummary.products_scanned || 0);
   const previewExcludedProducts = Number(publishSummary.products_skipped_excluded || 0);
+  const shippingExecSummary = shippingExecutionReport?.execution_result?.summary || null;
+  const shippingExecActions = Array.isArray(shippingExecutionReport?.execution_result?.actions)
+    ? shippingExecutionReport.execution_result.actions
+    : [];
+  const shippingDiagnostics = shippingDiagnosticsReport?.diagnostics || null;
+  const actionableShippingVariants =
+    String(test?.type || '')
+      .trim()
+      .toLowerCase() === 'shipping'
+      ? (test?.variants || []).map((variant, index) => ({
+          variant,
+          index,
+          strategy:
+            String(variant?.config?.strategy || '')
+              .trim()
+              .toLowerCase() || 'control',
+        }))
+      : [];
 
   return (
     <PageShell className={`${styles.detailPage} wizard-page`}>
@@ -778,6 +894,12 @@ function TestDetail() {
         type="success"
         onClose={() => setSuccessMessage(null)}
         duration={3000}
+      />
+      <Toast
+        message={shippingExecutionToast?.message}
+        type={shippingExecutionToast?.type || 'success'}
+        onClose={() => setShippingExecutionToast(null)}
+        duration={4000}
       />
       <Toast
         message={copyToast}
@@ -1411,6 +1533,40 @@ function TestDetail() {
                             </button>
                           </>
                         )}
+                      {isShippingTest && (
+                        <>
+                          <button
+                            type="button"
+                            className={styles.detailSecondaryBtn}
+                            onClick={handleShippingDiagnostics}
+                            disabled={shippingDiagnosticsLoading || actionLoading}
+                            title="Check shipping readiness, assignment visibility, and live conflicts"
+                          >
+                            <Icon source={TargetIcon} />
+                            {shippingDiagnosticsLoading ? 'Checking…' : 'Shipping diagnostics'}
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.detailSecondaryBtn}
+                            onClick={() => handleExecuteShipping(false)}
+                            disabled={shippingExecutionLoading || actionLoading}
+                            title="Preview shipping adapter actions without creating/updating resources"
+                          >
+                            <Icon source={ChartVerticalFilledIcon} />
+                            {shippingExecutionLoading ? 'Running…' : 'Shipping dry run'}
+                          </button>
+                          <button
+                            type="button"
+                            className={`${styles.detailSecondaryBtn} ${styles.detailSecondaryBtnPrimary}`}
+                            onClick={() => handleExecuteShipping(true)}
+                            disabled={shippingExecutionLoading || actionLoading}
+                            title="Apply shipping adapter actions for actionable variants"
+                          >
+                            <Icon source={LinkIcon} />
+                            {shippingExecutionLoading ? 'Applying…' : 'Apply shipping'}
+                          </button>
+                        </>
+                      )}
                       <button
                         type="button"
                         className={styles.detailSecondaryBtn}
@@ -1609,6 +1765,129 @@ function TestDetail() {
             </div>
           </div>
 
+          {isShippingTest &&
+            actionableShippingVariants.some(
+              item => item.index > 0 && item.strategy !== 'control'
+            ) && (
+              <div className={styles.shippingVariantActions}>
+                {actionableShippingVariants
+                  .filter(item => item.index > 0 && item.strategy !== 'control')
+                  .map(item => (
+                    <div
+                      key={`shipping-action-${item.index}`}
+                      className={styles.shippingVariantActionRow}
+                    >
+                      <span className={styles.shippingVariantActionLabel}>
+                        {item.variant?.name || `Variant ${item.index + 1}`} ({item.strategy})
+                      </span>
+                      <div className={styles.shippingVariantActionButtons}>
+                        <button
+                          type="button"
+                          className={styles.detailSecondaryBtn}
+                          onClick={() => handleExecuteShipping(false, item.index)}
+                          disabled={shippingExecutionLoading || actionLoading}
+                        >
+                          Dry run
+                        </button>
+                        <button
+                          type="button"
+                          className={`${styles.detailSecondaryBtn} ${styles.detailSecondaryBtnPrimary}`}
+                          onClick={() => handleExecuteShipping(true, item.index)}
+                          disabled={shippingExecutionLoading || actionLoading}
+                        >
+                          Apply
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
+
+          {isShippingTest && shippingDiagnostics && (
+            <div className={styles.shippingExecutionPanel}>
+              <div className={styles.shippingExecutionHeader}>
+                <h3 className={styles.shippingExecutionTitle}>Shipping diagnostics</h3>
+                <span className={styles.shippingExecutionMode}>
+                  Conflicts:{' '}
+                  {Number(shippingDiagnostics.readiness?.running_shipping_conflicts || 0)}
+                </span>
+              </div>
+              <Banner
+                tone={
+                  Number(shippingDiagnostics.readiness?.running_shipping_conflicts || 0) > 0
+                    ? 'warning'
+                    : 'info'
+                }
+              >
+                <Text as="p" variant="bodySm">
+                  Resolve URL:{' '}
+                  {shippingDiagnostics.urls?.shipping_resolve_batch_url ? 'configured' : 'missing'}{' '}
+                  | Carrier callback:{' '}
+                  {shippingDiagnostics.urls?.carrier_callback_url ? 'configured' : 'missing'} |
+                  Signed assignments:{' '}
+                  {shippingDiagnostics.readiness?.assignment_signature_required
+                    ? 'required'
+                    : 'optional'}
+                </Text>
+              </Banner>
+            </div>
+          )}
+
+          {isShippingTest && shippingExecSummary && (
+            <div className={styles.shippingExecutionPanel}>
+              <div className={styles.shippingExecutionHeader}>
+                <h3 className={styles.shippingExecutionTitle}>Shipping execution report</h3>
+                <span className={styles.shippingExecutionMode}>
+                  Mode: {shippingExecSummary.apply_mode || 'dry_run'}
+                </span>
+              </div>
+              <Banner
+                tone={
+                  Number(shippingExecSummary.failed_count || 0) > 0
+                    ? 'critical'
+                    : Number(shippingExecSummary.manual_required_count || 0) > 0
+                      ? 'warning'
+                      : 'success'
+                }
+              >
+                <Text as="p" variant="bodySm">
+                  {Number(shippingExecSummary.success_count || 0)} success,{' '}
+                  {Number(shippingExecSummary.manual_required_count || 0)} manual-required,{' '}
+                  {Number(shippingExecSummary.failed_count || 0)} failed.
+                </Text>
+              </Banner>
+              <div className={styles.shippingExecutionList}>
+                {shippingExecActions.map((action, index) => (
+                  <div
+                    key={`${action?.variant_index ?? index}-${action?.variant_id || action?.variant_name || index}`}
+                    className={styles.shippingExecutionItem}
+                  >
+                    <div className={styles.shippingExecutionItemHead}>
+                      <span className={styles.shippingExecutionVariant}>
+                        {action?.variant_name || `Variant ${index + 1}`}
+                      </span>
+                      <span className={styles.shippingExecutionStatus}>
+                        {action?.status || 'unknown'}
+                      </span>
+                    </div>
+                    <p className={styles.shippingExecutionMeta}>
+                      Strategy: {action?.strategy || 'n/a'} | Adapter:{' '}
+                      {action?.execution_adapter || 'n/a'}
+                    </p>
+                    {action?.details?.message ? (
+                      <p className={styles.shippingExecutionDetail}>{action.details.message}</p>
+                    ) : null}
+                    {action?.details?.title ? (
+                      <p className={styles.shippingExecutionDetail}>
+                        Resource title: {action.details.title}
+                      </p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <Layout>
             <Layout.Section>
               <TestWizard
@@ -1622,6 +1901,7 @@ function TestDetail() {
                 onCancel={() => navigate(routes.tests)}
                 submitLoading={saveLoading}
                 onTitleRender={handleTitleRender}
+                onRefreshTest={refreshTestAfterShippingExecution}
               />
             </Layout.Section>
           </Layout>

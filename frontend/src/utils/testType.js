@@ -87,7 +87,16 @@ export function inferTemplateKeyFromVariants(variants = [], testType = '') {
     ) {
       return 'theme';
     }
-    if ('rate' in c) return 'shipping';
+    if (
+      'rate' in c ||
+      'strategy' in c ||
+      'shipping_strategy' in c ||
+      'threshold_amount' in c ||
+      'free_shipping_threshold' in c ||
+      'percent_off' in c ||
+      'profile_id' in c
+    )
+      return 'shipping';
     if ('discount_type' in c || 'discount_value' in c) return 'offer';
     if ('price' in c) return type === 'pricing' ? 'pricing' : 'price';
     if ('code' in c) return 'onsite-edit';
@@ -126,6 +135,12 @@ export function getTestTypeDisplay(test) {
     typeof config === 'object' &&
     Object.keys(config).length > 0 &&
     ('rate' in config ||
+      'strategy' in config ||
+      'shipping_strategy' in config ||
+      'threshold_amount' in config ||
+      'free_shipping_threshold' in config ||
+      'percent_off' in config ||
+      'profile_id' in config ||
       'discount_type' in config ||
       'discount_value' in config ||
       'url' in config ||
@@ -133,7 +148,15 @@ export function getTestTypeDisplay(test) {
       'price' in config ||
       'code' in config);
   if (hasDistinctiveConfig) {
-    if ('rate' in config)
+    if (
+      'rate' in config ||
+      'strategy' in config ||
+      'shipping_strategy' in config ||
+      'threshold_amount' in config ||
+      'free_shipping_threshold' in config ||
+      'percent_off' in config ||
+      'profile_id' in config
+    )
       return { label: TEST_TYPE_LABELS.shipping, icon: TEST_TYPE_ICONS.shipping };
     if ('discount_type' in config || 'discount_value' in config)
       return { label: TEST_TYPE_LABELS.offer, icon: TEST_TYPE_ICONS.offer };

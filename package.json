@@ -50,6 +50,7 @@
     "dev:align-tunnel": "node scripts/dev-align-tunnel.js",
     "dev:switch-tunnel": "node scripts/dev-switch-tunnel.js",
     "verify:price-pipeline": "node scripts/verify-price-pipeline.js",
+    "verify:shipping-readiness": "node scripts/verify-shipping-readiness.js",
     "verify:price-assignment-readiness": "node scripts/verify-price-assignment-readiness.js",
     "verify:price-go-no-go": "node scripts/verify-price-go-no-go.js",
     "verify:price-go-no-go:strict": "node scripts/verify-price-go-no-go.js --strict",

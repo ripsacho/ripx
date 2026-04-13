@@ -163,12 +163,16 @@ export const TEST_TEMPLATES = {
     name: 'Shipping Test',
     icon: '🚚',
     description:
-      'Test shipping rates or free-shipping thresholds. RipX assigns the variant for analytics; apply the actual rate via Shopify Plus or a Delivery Customization Function.',
+      'Test shipping strategies (flat rates, thresholds, free shipping, or carrier-quote paths). RipX tracks assignment and provides execution diagnostics for Shopify capability paths.',
     defaultConfig: {
       type: 'shipping',
       variants: [
-        { name: 'Control', allocation: 50, config: { rate: null } },
-        { name: 'Variant A', allocation: 50, config: { rate: null } },
+        { name: 'Control', allocation: 50, config: { strategy: 'control', currency: 'USD' } },
+        {
+          name: 'Variant A',
+          allocation: 50,
+          config: { strategy: 'flat_rate', amount: 4.99, currency: 'USD' },
+        },
       ],
     },
   },

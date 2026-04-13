@@ -39,10 +39,16 @@ jest.mock('../../models/test', () => ({
 
 const mockResolvePriceTestLineDiscount = jest.fn();
 const mockResolveCheckoutPriceBatchForDomain = jest.fn();
+const mockResolveCheckoutShippingBatchForDomain = jest.fn();
 
 jest.mock('../../services/priceTestCheckoutResolve', () => ({
   resolvePriceTestLineDiscount: (...args) => mockResolvePriceTestLineDiscount(...args),
   resolveCheckoutPriceBatchForDomain: (...args) => mockResolveCheckoutPriceBatchForDomain(...args),
+}));
+
+jest.mock('../../services/shippingCheckoutResolve', () => ({
+  resolveCheckoutShippingBatchForDomain: (...args) =>
+    mockResolveCheckoutShippingBatchForDomain(...args),
 }));
 
 // Prevent background intervals/processors from starting in integration tests.
@@ -71,6 +77,7 @@ describe('GET /api/track/price-resolve', () => {
     mockGetTestById.mockReset();
     mockResolvePriceTestLineDiscount.mockReset();
     mockResolveCheckoutPriceBatchForDomain.mockReset();
+    mockResolveCheckoutShippingBatchForDomain.mockReset();
     mockTenantExists.mockClear();
     mockGetTenantByDomain.mockClear();
   });
@@ -171,6 +178,7 @@ describe('POST /api/track/price-resolve-batch', () => {
   beforeEach(() => {
     process.env = { ...originalEnv };
     mockResolveCheckoutPriceBatchForDomain.mockReset();
+    mockResolveCheckoutShippingBatchForDomain.mockReset();
     mockTenantExists.mockClear();
     mockGetTenantByDomain.mockClear();
   });
@@ -328,5 +336,77 @@ describe('POST /api/track/price-resolve-batch', () => {
       expect.any(Function),
       { debug: true }
     );
+  });
+});
+
+describe('POST /api/track/shipping-resolve-batch', () => {
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+    mockResolveCheckoutShippingBatchForDomain.mockReset();
+    mockTenantExists.mockClear();
+    mockGetTenantByDomain.mockClear();
+  });
+
+  afterAll(() => {
+    process.env = { ...originalEnv };
+  });
+
+  it('returns 403 when checkout secret is required and missing', async () => {
+    process.env.RIPX_CHECKOUT_PRICE_SECRET = 'super-secret';
+    const res = await request(app)
+      .post('/api/track/shipping-resolve-batch')
+      .send({
+        shop_domain: 'test.myshopify.com',
+        groups: [
+          {
+            delivery_group_id: 'gid://shopify/CartDeliveryGroup/1',
+            test_id: '11111111-1111-4111-8111-111111111111',
+            assignment_variant: 'variant-b',
+            cart_total: '100',
+          },
+        ],
+      });
+    expect(res.status).toBe(403);
+    expect(res.body).toMatchObject({ success: false, error: 'Forbidden' });
+  });
+
+  it('returns resolved groups for valid request with secret header', async () => {
+    process.env.RIPX_CHECKOUT_PRICE_SECRET = 'super-secret';
+    mockResolveCheckoutShippingBatchForDomain.mockResolvedValueOnce([
+      {
+        delivery_group_id: 'gid://shopify/CartDeliveryGroup/1',
+        applies: true,
+        value_type: 'percentage',
+        value: '100',
+        strategy: 'threshold_free_shipping',
+      },
+    ]);
+    const res = await request(app)
+      .post('/api/track/shipping-resolve-batch')
+      .set('x-ripx-price-secret', 'super-secret')
+      .send({
+        shop_domain: 'test.myshopify.com',
+        groups: [
+          {
+            delivery_group_id: 'gid://shopify/CartDeliveryGroup/1',
+            test_id: '11111111-1111-4111-8111-111111111111',
+            assignment_variant: 'variant-b',
+            cart_total: '100',
+          },
+        ],
+      });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      success: true,
+      groups: [
+        {
+          delivery_group_id: 'gid://shopify/CartDeliveryGroup/1',
+          applies: true,
+          value_type: 'percentage',
+          value: '100',
+        },
+      ],
+    });
+    expect(mockResolveCheckoutShippingBatchForDomain).toHaveBeenCalled();
   });
 });

@@ -110,6 +110,122 @@ export function getWizardStepErrors(stepId, options) {
     return /^[A-Za-z0-9_-]+$/.test(value);
   }
 
+  function getShippingStrategy(cfg) {
+    const strategy = String(cfg?.strategy || cfg?.shipping_strategy || '')
+      .trim()
+      .toLowerCase();
+    if (strategy) return strategy;
+    const discountType = String(cfg?.discount_type || cfg?.discountType || '')
+      .trim()
+      .toLowerCase();
+    if (discountType === 'free_shipping') return 'free_shipping';
+    if (
+      cfg?.threshold_amount !== undefined ||
+      cfg?.free_shipping_threshold !== undefined ||
+      cfg?.freeShippingThreshold !== undefined
+    ) {
+      return 'threshold_free_shipping';
+    }
+    if (discountType === 'percent') return 'discount_percentage';
+    if (discountType === 'fixed') return 'discount_fixed';
+    if (cfg?.profile_id || cfg?.profileId) return 'carrier_quote';
+    if (
+      cfg?.amount !== undefined ||
+      cfg?.rate !== undefined ||
+      cfg?.shipping_rate !== undefined ||
+      cfg?.discount_value !== undefined
+    ) {
+      return 'flat_rate';
+    }
+    return 'control';
+  }
+
+  function toShippingNumber(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function hasActionableShippingConfig(cfg = {}) {
+    const strategy = getShippingStrategy(cfg);
+    const amount = toShippingNumber(
+      cfg.amount ?? cfg.rate ?? cfg.shipping_rate ?? cfg.discount_value
+    );
+    const threshold = toShippingNumber(
+      cfg.threshold_amount ?? cfg.free_shipping_threshold ?? cfg.freeShippingThreshold
+    );
+    const percentOff = toShippingNumber(
+      cfg.percent_off ??
+        cfg.discount_percent ??
+        (String(cfg.discount_type || '').toLowerCase() === 'percent' ? cfg.discount_value : null)
+    );
+    const profileId = String(cfg.profile_id || cfg.profileId || '').trim();
+    const methodHandles = Array.isArray(cfg.method_handles)
+      ? cfg.method_handles
+      : Array.isArray(cfg.methodHandles)
+        ? cfg.methodHandles
+        : [];
+    if (strategy === 'flat_rate') return amount !== null && amount >= 0;
+    if (strategy === 'threshold_free_shipping') return threshold !== null && threshold > 0;
+    if (strategy === 'discount_percentage') return percentOff !== null && percentOff > 0;
+    if (strategy === 'discount_fixed') return amount !== null && amount > 0;
+    if (strategy === 'free_shipping') return true;
+    if (strategy === 'carrier_quote') return Boolean(profileId || methodHandles.length > 0);
+    return false;
+  }
+
+  function validateShippingConfig(cfg = {}, label, isControl) {
+    const strategy = getShippingStrategy(cfg);
+    const amount = toShippingNumber(
+      cfg.amount ?? cfg.rate ?? cfg.shipping_rate ?? cfg.discount_value
+    );
+    const threshold = toShippingNumber(
+      cfg.threshold_amount ?? cfg.free_shipping_threshold ?? cfg.freeShippingThreshold
+    );
+    const percentOff = toShippingNumber(
+      cfg.percent_off ??
+        cfg.discount_percent ??
+        (String(cfg.discount_type || '').toLowerCase() === 'percent' ? cfg.discount_value : null)
+    );
+    const profileId = String(cfg.profile_id || cfg.profileId || '').trim();
+    const methodHandles = Array.isArray(cfg.method_handles)
+      ? cfg.method_handles
+      : Array.isArray(cfg.methodHandles)
+        ? cfg.methodHandles
+        : [];
+    const validStrategies = [
+      'control',
+      'flat_rate',
+      'threshold_free_shipping',
+      'discount_percentage',
+      'discount_fixed',
+      'free_shipping',
+      'carrier_quote',
+    ];
+    if (!validStrategies.includes(strategy)) {
+      errors.push(`${label}: shipping strategy is invalid.`);
+      return;
+    }
+    if (strategy === 'flat_rate' && (amount === null || amount < 0)) {
+      errors.push(`${label}: flat rate requires an amount >= 0.`);
+    }
+    if (strategy === 'threshold_free_shipping' && (threshold === null || threshold <= 0)) {
+      errors.push(`${label}: threshold free shipping requires a threshold > 0.`);
+    }
+    if (
+      strategy === 'discount_percentage' &&
+      (percentOff === null || percentOff <= 0 || percentOff > 100)
+    ) {
+      errors.push(`${label}: shipping percent off must be between 0 and 100.`);
+    }
+    if (strategy === 'discount_fixed' && (amount === null || amount <= 0)) {
+      errors.push(`${label}: shipping fixed discount requires an amount > 0.`);
+    }
+    if (strategy === 'carrier_quote' && !profileId && methodHandles.length === 0 && !isControl) {
+      errors.push(`${label}: carrier quote requires a profile ID or method handle.`);
+    }
+  }
+
   function normalizeProductIdValue(raw) {
     const value = String(raw ?? '').trim();
     if (!value) return '';
@@ -194,7 +310,9 @@ export function getWizardStepErrors(stepId, options) {
     )
       .trim()
       .toLowerCase();
-    const isCommerceTargetingTest = ['price', 'pricing', 'offer'].includes(templateKeyTargeting);
+    const isCommerceTargetingTest = ['price', 'pricing', 'offer', 'shipping'].includes(
+      templateKeyTargeting
+    );
     const targetType = formData.target_type || initialData?.target_type;
     const pageRules = formData.segments?.page_rules || initialData?.segments?.page_rules || [];
     const hasCustomScope = pageRules.length > 0;
@@ -226,6 +344,13 @@ export function getWizardStepErrors(stepId, options) {
           ...(Array.isArray(initialData?.target_ids) ? initialData.target_ids : []),
           initialData?.target_id,
         ]);
+        if (selectedProductIds.length === 0) {
+          errors.push(
+            templateKeyTargeting === 'shipping'
+              ? 'Shipping test is set to carts with selected products but no products are selected.'
+              : `${templateKeyTargeting === 'offer' ? 'Offer' : 'Price'} test is set to "Selected products only" but no products are selected.`
+          );
+        }
         const overlap = selectedProductIds.filter(id => excludedProductIds.includes(id));
         if (overlap.length > 0) {
           errors.push(
@@ -318,14 +443,17 @@ export function getWizardStepErrors(stepId, options) {
       templateKeyCode === 'pricing' ||
       (typeof templateKeyCode === 'string' && templateKeyCode.toLowerCase() === 'price');
     const isOfferTest = selectedTemplate === 'offer' || formData.type === 'offer';
-    const isCommerceScopeTest = isPriceTest || isOfferTest;
+    const isShippingTest = selectedTemplate === 'shipping' || formData.type === 'shipping';
+    const isCommerceScopeTest = isPriceTest || isOfferTest || isShippingTest;
     if (isCommerceScopeTest && formData.target_type === 'product') {
       const hasTargetId =
         (formData.target_id && String(formData.target_id).trim()) ||
         (Array.isArray(formData.target_ids) && formData.target_ids.length > 0);
       if (!hasTargetId) {
         errors.push(
-          `${isOfferTest ? 'Offer' : 'Price'} test is set to "Selected products only" but no products are selected. Select at least one product in Product scope.`
+          `${isShippingTest ? 'Shipping' : isOfferTest ? 'Offer' : 'Price'} test is set to "${
+            isShippingTest ? 'Carts with selected products' : 'Selected products only'
+          }" but no products are selected. Select at least one product in Product scope.`
         );
       }
     }
@@ -426,6 +554,23 @@ export function getWizardStepErrors(stepId, options) {
       if (formData.variants.length > 1 && !hasNonControlWithOfferCode) {
         errors.push(
           'At least one offer variant (non-control) must include a valid discount or free-shipping config.'
+        );
+      }
+    }
+
+    if (isShippingTest && Array.isArray(formData.variants)) {
+      let hasNonControlActionableShippingVariant = false;
+      formData.variants.forEach((v, i) => {
+        const cfg = v?.config || {};
+        const isControl = isLikelyControlVariant(v, i);
+        validateShippingConfig(cfg, v?.name || `Variant ${i + 1}`, isControl);
+        if (!isControl && hasActionableShippingConfig(cfg)) {
+          hasNonControlActionableShippingVariant = true;
+        }
+      });
+      if (formData.variants.length > 1 && !hasNonControlActionableShippingVariant) {
+        errors.push(
+          'At least one shipping variant (non-control) must include an actionable shipping strategy.'
         );
       }
     }
@@ -568,7 +713,7 @@ export function getWizardStepErrors(stepId, options) {
       errors.push('Target ID is required for the selected scope in the Targeting step.');
     }
     const isCommerceReview =
-      ['price', 'pricing', 'offer'].includes(
+      ['price', 'pricing', 'offer', 'shipping'].includes(
         String(selectedTemplate || formData.goal?.template_key || formData.type || '')
           .trim()
           .toLowerCase()
@@ -649,6 +794,24 @@ export function getWizardStepErrors(stepId, options) {
       if (formData.variants.length > 1 && !hasNonControlWithOfferReview) {
         errors.push(
           'At least one offer variant (non-control) must include a valid discount or free-shipping config.'
+        );
+      }
+    }
+
+    const isShippingReview = (formData.type || '').toLowerCase() === 'shipping';
+    if (isShippingReview && Array.isArray(formData.variants)) {
+      let hasNonControlActionableShippingVariant = false;
+      formData.variants.forEach((v, i) => {
+        const cfg = v?.config || {};
+        const isControl = isLikelyControlVariant(v, i);
+        validateShippingConfig(cfg, v?.name || `Variant ${i + 1}`, isControl);
+        if (!isControl && hasActionableShippingConfig(cfg)) {
+          hasNonControlActionableShippingVariant = true;
+        }
+      });
+      if (formData.variants.length > 1 && !hasNonControlActionableShippingVariant) {
+        errors.push(
+          'At least one shipping variant (non-control) must include an actionable shipping strategy.'
         );
       }
     }

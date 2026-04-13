@@ -1,8 +1,46 @@
 query RipxDeliveryFetch {
   cart {
+    shopAttr: attribute(key: "_ripx_shop") {
+      value
+    }
     cost {
       totalAmount {
         amount
+      }
+    }
+    deliveryGroups {
+      id
+      cartLines {
+        merchandise {
+          __typename
+          ... on ProductVariant {
+            id
+            product {
+              id
+            }
+          }
+        }
+        ripxShop: attribute(key: "_ripx_shop") {
+          value
+        }
+        ripxTest: attribute(key: "_ripx_price_test") {
+          value
+        }
+        ripxVariant: attribute(key: "_ripx_variant") {
+          value
+        }
+        ripxAssignmentSig: attribute(key: "_ripx_assignment_sig") {
+          value
+        }
+        ripxAssignmentTs: attribute(key: "_ripx_assignment_ts") {
+          value
+        }
+        ripxAssignmentUser: attribute(key: "_ripx_assignment_user") {
+          value
+        }
+      }
+      deliveryOptions {
+        handle
       }
     }
   }

@@ -563,6 +563,42 @@ describe('wizardValidation', () => {
         expect(errors.some(e => e.includes('discount code name'))).toBe(true);
       });
 
+      it('returns error for shipping test when no non-control variant is actionable', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'shipping',
+            variants: [
+              { name: 'Control', config: { strategy: 'control' } },
+              { name: 'Variant A', config: { strategy: 'control' } },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'shipping',
+        });
+        expect(errors.some(e => e.includes('At least one shipping variant'))).toBe(true);
+      });
+
+      it('returns no error for shipping test with actionable non-control variant', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'shipping',
+            variants: [
+              { name: 'Control', config: { strategy: 'control' } },
+              { name: 'Variant A', config: { strategy: 'flat_rate', amount: 5 } },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'shipping',
+        });
+        expect(errors.some(e => e.includes('At least one shipping variant'))).toBe(false);
+      });
+
       it('returns error on targeting step when selected and excluded products overlap', () => {
         const errors = getWizardStepErrors(stepIdsWithTemplate.targeting, {
           stepIds: stepIdsWithTemplate,
@@ -579,6 +615,44 @@ describe('wizardValidation', () => {
           initialData: {},
           showTemplateStep: true,
           selectedTemplate: 'price',
+        });
+        expect(errors.some(e => e.includes('also in the excluded products list'))).toBe(true);
+      });
+
+      it('returns error for shipping targeting when selected-products scope has no products', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.targeting, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'shipping',
+            target_type: 'product',
+            segments: { page_rules: [] },
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'shipping',
+        });
+        expect(
+          errors.some(e => e.includes('carts with selected products but no products are selected'))
+        ).toBe(true);
+      });
+
+      it('returns error for shipping targeting when selected and excluded products overlap', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.targeting, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'shipping',
+            target_type: 'product',
+            target_ids: ['gid://shopify/Product/100', 'gid://shopify/Product/200'],
+            segments: {
+              page_rules: [],
+              excluded_product_ids: ['gid://shopify/Product/200'],
+            },
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'shipping',
         });
         expect(errors.some(e => e.includes('also in the excluded products list'))).toBe(true);
       });
@@ -807,6 +881,25 @@ describe('wizardValidation', () => {
         expect(
           errors.some(e => e.includes('per-product override') && e.includes('0 or greater'))
         ).toBe(true);
+      });
+
+      it('returns shipping actionable error on review when all variants are control', () => {
+        const errors = getWizardStepErrors(reviewStepId, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId,
+          formData: {
+            name: 'Shipping Test',
+            type: 'shipping',
+            goal: { metric: 'revenue' },
+            variants: [
+              { name: 'Control', allocation: 50, config: { strategy: 'control' } },
+              { name: 'Variant A', allocation: 50, config: { strategy: 'control' } },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+        });
+        expect(errors.some(e => e.includes('At least one shipping variant'))).toBe(true);
       });
     });
 

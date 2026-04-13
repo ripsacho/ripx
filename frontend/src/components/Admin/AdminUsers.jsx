@@ -36,6 +36,7 @@ import { PageShell } from '../Shared';
 import LoadingSkeleton from '../LoadingSkeleton/LoadingSkeleton';
 import AdminPageLayout from './AdminPageLayout';
 import styles from './Admin.module.css';
+import { formatDate, formatDateTime } from '../../utils/dateFormat';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100];
 const USER_LIST_VIEW = [
@@ -191,7 +192,7 @@ function UserDetailModalContent({
                     d.domain,
                     d.domainType || (d.platform === 'shopify' ? 'Shopify' : 'Standalone'),
                     d.verifiedAt ? (
-                      <Badge tone="success">{new Date(d.verifiedAt).toLocaleDateString()}</Badge>
+                      <Badge tone="success">{formatDate(d.verifiedAt)}</Badge>
                     ) : (
                       <Badge tone="attention">Pending</Badge>
                     ),
@@ -225,13 +226,9 @@ function UserDetailModalContent({
               </Text>
               <dl className={styles.adminUserModalKeyValue}>
                 <dt>Created</dt>
-                <dd>
-                  {userDetail.createdAt ? new Date(userDetail.createdAt).toLocaleString() : '—'}
-                </dd>
+                <dd>{formatDateTime(userDetail.createdAt)}</dd>
                 <dt>Updated</dt>
-                <dd>
-                  {userDetail.updatedAt ? new Date(userDetail.updatedAt).toLocaleString() : '—'}
-                </dd>
+                <dd>{formatDateTime(userDetail.updatedAt)}</dd>
               </dl>
             </div>
           </div>
@@ -604,7 +601,7 @@ export default function AdminUsers() {
               {u.email || '—'}
             </Text>
             <Text as="p" variant="bodySm" tone="subdued">
-              Registered {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—'}
+              Registered {formatDate(u.createdAt)}
             </Text>
           </div>,
           u.status === 'pending' ? (
@@ -616,7 +613,8 @@ export default function AdminUsers() {
           ),
           renderRoleBadge(u.role),
           u.emailVerifiedAt ? <Badge tone="success">Yes</Badge> : <Badge tone="critical">No</Badge>,
-          u.acceptedAt ? new Date(u.acceptedAt).toLocaleDateString() : '—',
+          formatDate(u.acceptedAt),
+          formatDateTime(u.lastLoginAt),
           <div key={`domains-${u.id}`} className={styles.adminTableMetaCell}>
             <Button
               size="slim"
@@ -696,7 +694,7 @@ export default function AdminUsers() {
               {u.shopDomain}
             </Text>
             <Text as="p" variant="bodySm" tone="subdued">
-              Added {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—'}
+              Added {formatDate(u.createdAt)}
             </Text>
           </div>,
           <span key={`email-${u.shopDomain}`} className={styles.adminTableEmailValue}>
@@ -709,7 +707,8 @@ export default function AdminUsers() {
           ) : (
             <Badge tone="success">Active</Badge>
           ),
-          new Date(u.createdAt).toLocaleDateString(),
+          formatDate(u.createdAt),
+          formatDateTime(u.lastLoginAt),
           <div key={`view-${u.shopDomain}`} className={styles.adminTableMetaCell}>
             <Button
               size="slim"
@@ -832,7 +831,7 @@ export default function AdminUsers() {
                         ) : (
                           <Badge tone="attention">Pending</Badge>
                         ),
-                        p.created_at ? new Date(p.created_at).toLocaleString() : '—',
+                        formatDateTime(p.created_at),
                         <div key={p.id} className={styles.adminListActionsWrap}>
                           <div className={styles.adminListActions}>
                             <Button
@@ -982,8 +981,8 @@ export default function AdminUsers() {
                     <DataTable
                       columnContentTypes={
                         listView === 'email'
-                          ? ['text', 'text', 'text', 'text', 'text', 'text', 'text']
-                          : ['text', 'text', 'text', 'text', 'text', 'text', 'text', 'text']
+                          ? ['text', 'text', 'text', 'text', 'text', 'text', 'text', 'text']
+                          : ['text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text']
                       }
                       headings={
                         listView === 'email'
@@ -993,6 +992,7 @@ export default function AdminUsers() {
                               'Role',
                               'Email verified',
                               'Accepted at',
+                              'Last login',
                               'Connected domains',
                               'Actions',
                             ]
@@ -1003,6 +1003,7 @@ export default function AdminUsers() {
                               'Role',
                               'Status',
                               'Created',
+                              'Last login',
                               'Connected domains',
                               'Actions',
                             ]

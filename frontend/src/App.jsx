@@ -21,6 +21,9 @@ import {
 } from 'react-router-dom';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { initializeTheme } from './utils/theme';
+import { installDateFormattingPatch } from './utils/dateFormat';
+
+installDateFormattingPatch();
 
 const queryClient = new QueryClient({
   defaultOptions: {

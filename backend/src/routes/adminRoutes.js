@@ -493,7 +493,14 @@ router.get(
       SELECT DISTINCT ON (u.id) u.id, u.email, u.role, COALESCE(u.status, 'active') AS status,
              u.created_at, u.updated_at, t.domain AS shop_domain,
              u.profile->>'firstName' AS first_name, u.profile->>'lastName' AS last_name,
-             (SELECT COUNT(*)::int FROM tenants t2 WHERE t2.account_id = u.account_id) AS domain_count
+             (SELECT COUNT(*)::int FROM tenants t2 WHERE t2.account_id = u.account_id) AS domain_count,
+             (
+               SELECT MAX(al.created_at)
+               FROM audit_log al
+               WHERE al.entity_type = 'auth'
+                 AND al.action = 'login_success'
+                 AND LOWER(COALESCE(al.actor_id, '')) = LOWER(COALESCE(u.email, ''))
+             ) AS last_login_at
       FROM users u
       INNER JOIN tenants t ON t.account_id = u.account_id ${where}
       ORDER BY u.id, t.created_at ASC
@@ -512,6 +519,7 @@ router.get(
       domainCount: r.domain_count ?? 0,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
+      lastLoginAt: r.last_login_at,
     }));
 
     return sendSuccess(res, HTTP_STATUS.OK, {

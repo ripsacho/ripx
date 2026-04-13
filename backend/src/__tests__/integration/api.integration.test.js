@@ -292,6 +292,54 @@ describe('API integration', () => {
     });
   });
 
+  describe('POST /api/track/shipping-carrier-rates', () => {
+    it('returns a flat-rate carrier quote when amount is provided', async () => {
+      const res = await request(app)
+        .post('/api/track/shipping-carrier-rates?strategy=flat_rate&amount=6.5&test_id=test-1')
+        .send({ rate: { currency: 'USD' } });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('rates');
+      expect(Array.isArray(res.body.rates)).toBe(true);
+      expect(res.body.rates.length).toBe(1);
+      expect(res.body.rates[0]).toMatchObject({
+        service_name: expect.any(String),
+        service_code: expect.stringContaining('ripx_flat_'),
+        total_price: '650',
+        currency: 'USD',
+      });
+    });
+
+    it('returns provider-backed carrier_quote rates when quote_provider is configured', async () => {
+      const res = await request(app)
+        .post(
+          '/api/track/shipping-carrier-rates?strategy=carrier_quote&quote_provider=static_rate&amount=9.25&test_id=test-1'
+        )
+        .send({ rate: { currency: 'USD' } });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        rates: [
+          {
+            service_name: expect.any(String),
+            service_code: expect.stringContaining('ripx_quote_'),
+            total_price: '925',
+            currency: 'USD',
+          },
+        ],
+      });
+    });
+
+    it('returns empty rates array for carrier_quote strategy (manual quote source)', async () => {
+      const res = await request(app)
+        .post('/api/track/shipping-carrier-rates?strategy=carrier_quote&test_id=test-1')
+        .send({ rate: { currency: 'USD' } });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ rates: [] });
+    });
+  });
+
   describe('Protected routes (require auth)', () => {
     it('GET /api/tests returns 401 when no credentials', async () => {
       const res = await request(app).get('/api/tests');
@@ -314,6 +362,42 @@ describe('API integration', () => {
       const res = await request(app).get(
         '/api/tests/00000000-0000-4000-8000-000000000001/price-rollout-csv'
       );
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('GET /api/tests/:id/shipping/capabilities returns 401 when no credentials', async () => {
+      const res = await request(app).get(
+        '/api/tests/00000000-0000-4000-8000-000000000001/shipping/capabilities'
+      );
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('GET /api/tests/:id/shipping/execution-plan returns 401 when no credentials', async () => {
+      const res = await request(app).get(
+        '/api/tests/00000000-0000-4000-8000-000000000001/shipping/execution-plan'
+      );
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('GET /api/tests/:id/shipping/diagnostics returns 401 when no credentials', async () => {
+      const res = await request(app).get(
+        '/api/tests/00000000-0000-4000-8000-000000000001/shipping/diagnostics'
+      );
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('POST /api/tests/:id/shipping/execute returns 401 when no credentials', async () => {
+      const res = await request(app)
+        .post('/api/tests/00000000-0000-4000-8000-000000000001/shipping/execute')
+        .send({ apply: false, dry_run: true });
       expect(res.status).toBe(401);
       expect(res.body).toHaveProperty('success', false);
       expect(res.body).toHaveProperty('error');

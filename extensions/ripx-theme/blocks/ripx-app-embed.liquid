@@ -2,13 +2,13 @@
   RipX App Embed — primary load via Shopify App Proxy (/apps/ripx/script.js).
   Fallback: if proxy fails (e.g. stale dev preview tunnel), load direct public script endpoint.
   target: head — earlier fetch than body embeds; defer avoids blocking HTML parse.
-  ?v= must stay in sync with backend storefrontScriptRuntime.js SCRIPT_VERSION (currently 1.0.12).
+  ?v= must stay in sync with backend storefrontScriptRuntime.js SCRIPT_VERSION (currently 1.0.13).
 {% endcomment %}
 
 <script>
   (function () {
     var shopHost = '{{ request.host }}';
-    var version = '1.0.12';
+    var version = '1.0.13';
     var primarySrc = 'https://' + shopHost + '/apps/ripx/script.js?v=' + version;
     var fallbackSrc =
       'https://splitter.echologyx.com/api/track/script.js?shop=' +
