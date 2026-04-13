@@ -2143,12 +2143,18 @@ function TestWizard({
       if (hasLoadedVariants || hasMatrixFetchError || priceMatrixLoadingById[productId]) return;
       setPriceMatrixLoadingById(prev => ({ ...prev, [productId]: true }));
       setPriceMatrixErrorById(prev => ({ ...prev, [productId]: null }));
-      apiGet('/shopify/product-variants', {
-        shop: routeDomain,
-        productId,
-        first: 1,
-        variantsFirst: 100,
-      })
+      apiGet(
+        '/shopify/product-variants',
+        {
+          shop: routeDomain,
+          productId,
+          first: 1,
+          variantsFirst: 100,
+        },
+        {
+          timeout: 15000,
+        }
+      )
         .then(res => {
           if (cancelled) return;
           const product = Array.isArray(res.data?.products) ? res.data.products[0] : null;
@@ -2207,10 +2213,6 @@ function TestWizard({
     isStandalone,
     isShopifyFromRoute,
     routeDomain,
-    priceMatrixProductsById,
-    priceMatrixErrorById,
-    priceMatrixLoadingById,
-    priceProductMetaById,
   ]);
 
   useEffect(() => {

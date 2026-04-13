@@ -1,0 +1,1 @@
+import{j as r}from"./index-BJEhp2Xo.js";import"./polaris-vendor-CEIkC9x1.js";function e({children:e,className:i=""}){return r.jsxDEV("div",{className:`grid-responsive ${i}`.trim(),children:e},void 0,!1,{fileName:"/Users/m.a.k.ripon/Desktop/RipX/frontend/src/components/Shared/MetricGrid.jsx",lineNumber:17,columnNumber:10},this)}export{e as M};
