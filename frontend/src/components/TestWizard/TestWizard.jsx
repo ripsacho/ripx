@@ -2136,7 +2136,11 @@ function TestWizard({
     let cancelled = false;
     matrixProductIdsForFetching.forEach(productId => {
       if (!productId) return;
-      if (priceMatrixProductsById[productId] || priceMatrixLoadingById[productId]) return;
+      const existingMatrixProduct = priceMatrixProductsById[productId];
+      const hasLoadedVariants =
+        Array.isArray(existingMatrixProduct?.variants) && existingMatrixProduct.variants.length > 0;
+      const hasMatrixFetchError = Boolean(priceMatrixErrorById[productId]);
+      if (hasLoadedVariants || hasMatrixFetchError || priceMatrixLoadingById[productId]) return;
       setPriceMatrixLoadingById(prev => ({ ...prev, [productId]: true }));
       setPriceMatrixErrorById(prev => ({ ...prev, [productId]: null }));
       apiGet('/shopify/product-variants', {
@@ -2167,8 +2171,16 @@ function TestWizard({
               variants: [],
             },
           }));
-          if (!normalized && res.data?.empty_reason) {
-            setPriceMatrixErrorById(prev => ({ ...prev, [productId]: res.data.empty_reason }));
+          const hasNormalizedVariants =
+            Array.isArray(normalized?.variants) && normalized.variants.length > 0;
+          const emptyReasonMessage = res.data?.empty_reason;
+          if (!hasNormalizedVariants) {
+            setPriceMatrixErrorById(prev => ({
+              ...prev,
+              [productId]:
+                emptyReasonMessage ||
+                'No variant rows available for this product yet. Re-open the matrix after product data loads.',
+            }));
           }
         })
         .catch(err => {
@@ -2196,6 +2208,7 @@ function TestWizard({
     isShopifyFromRoute,
     routeDomain,
     priceMatrixProductsById,
+    priceMatrixErrorById,
     priceMatrixLoadingById,
     priceProductMetaById,
   ]);
@@ -8944,9 +8957,14 @@ function TestWizard({
                               : [
                                   {
                                     id: null,
-                                    displayName: 'All variants',
+                                    displayName: priceMatrixLoadingById[productId]
+                                      ? 'Loading variants...'
+                                      : priceMatrixErrorById[productId]
+                                        ? 'Variant data unavailable'
+                                        : 'No variants found',
                                     price: null,
                                     compareAtPrice: null,
+                                    _matrixPlaceholder: true,
                                   },
                                 ];
                           const rowCount = Math.max(1, productVariants.length);
@@ -9001,6 +9019,7 @@ function TestWizard({
                               (!Number.isFinite(currentSelling) ||
                                 Math.abs(parsedNewSelling - currentSelling) >= 0.001);
                             const rowHasChanges = hasActualChange || hasSellingChange;
+                            const isPlaceholderRow = productVariant?._matrixPlaceholder === true;
                             return {
                               productVariant,
                               variantKey,
@@ -9011,6 +9030,7 @@ function TestWizard({
                               hasActualChange,
                               hasSellingChange,
                               rowHasChanges,
+                              isPlaceholderRow,
                             };
                           });
                           const productEditedRows = productRowStates.filter(
@@ -9033,6 +9053,7 @@ function TestWizard({
                               hasActualChange,
                               hasSellingChange,
                               rowHasChanges,
+                              isPlaceholderRow,
                             } = rowState;
                             const resolvedVariantId =
                               variantKey ||
@@ -9156,13 +9177,25 @@ function TestWizard({
                                         </div>
                                       </div>
                                     </div>
+                                    {priceMatrixLoadingById[productId] && (
+                                      <div className={styles.priceMatrixProductSubtle}>
+                                        Loading variants...
+                                      </div>
+                                    )}
+                                    {priceMatrixErrorById[productId] && (
+                                      <div className={styles.priceMatrixProductError}>
+                                        {priceMatrixErrorById[productId]}
+                                      </div>
+                                    )}
                                   </td>
                                 )}
                                 <td>
                                   <div className={styles.priceMatrixVariantCell}>
-                                    <span className={styles.priceMatrixVariantId}>
-                                      {resolvedVariantId}
-                                    </span>
+                                    {!isPlaceholderRow ? (
+                                      <span className={styles.priceMatrixVariantId}>
+                                        {resolvedVariantId}
+                                      </span>
+                                    ) : null}
                                     {variantLabel ? (
                                       <span className={styles.priceMatrixVariantTitle}>
                                         {variantLabel}
@@ -9189,6 +9222,7 @@ function TestWizard({
                                     type="number"
                                     value={formatMatrixInputNumber(actualDelta)}
                                     onChange={val => {
+                                      if (isPlaceholderRow) return;
                                       const parsedDelta =
                                         val === '' ? null : Number.parseFloat(val);
                                       if (parsedDelta === null) {
@@ -9210,6 +9244,7 @@ function TestWizard({
                                     placeholder="+/-"
                                     prefix="$"
                                     autoComplete="off"
+                                    disabled={isPlaceholderRow}
                                   />
                                 </td>
                                 <td
@@ -9221,6 +9256,7 @@ function TestWizard({
                                     type="number"
                                     value={newActualValue === null ? '' : String(newActualValue)}
                                     onChange={val => {
+                                      if (isPlaceholderRow) return;
                                       const parsed = val === '' ? null : Number.parseFloat(val);
                                       updateRowOverride(
                                         'compareAtPrice',
@@ -9230,6 +9266,7 @@ function TestWizard({
                                     placeholder="Optional"
                                     prefix="$"
                                     autoComplete="off"
+                                    disabled={isPlaceholderRow}
                                   />
                                 </td>
                                 <td
@@ -9243,6 +9280,7 @@ function TestWizard({
                                     type="number"
                                     value={formatMatrixInputNumber(sellingDelta)}
                                     onChange={val => {
+                                      if (isPlaceholderRow) return;
                                       const parsedDelta =
                                         val === '' ? null : Number.parseFloat(val);
                                       if (parsedDelta === null) {
@@ -9264,6 +9302,7 @@ function TestWizard({
                                     placeholder="+/-"
                                     prefix="$"
                                     autoComplete="off"
+                                    disabled={isPlaceholderRow}
                                   />
                                 </td>
                                 <td
@@ -9277,6 +9316,7 @@ function TestWizard({
                                     type="number"
                                     value={newSellingValue === null ? '' : String(newSellingValue)}
                                     onChange={val => {
+                                      if (isPlaceholderRow) return;
                                       const parsed = val === '' ? null : Number.parseFloat(val);
                                       updateRowOverride(
                                         'price',
@@ -9286,6 +9326,7 @@ function TestWizard({
                                     placeholder="Required to apply"
                                     prefix="$"
                                     autoComplete="off"
+                                    disabled={isPlaceholderRow}
                                   />
                                 </td>
                               </tr>
