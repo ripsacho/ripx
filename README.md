@@ -151,6 +151,11 @@ git pull
 NODE_OPTIONS=--max-old-space-size=4096 npm run build --prefix frontend
 npm run migrate
 pm2 restart ripx --update-env
+
+npm run shopify:checkout-ui:prepare
+npm run shopify:cart-transform:prepare
+npm run shopify:checkout-discount:prepare
+shopify app deploy
 ```
 
 Then open PR `hotfix/<short-name>` -> `main`.

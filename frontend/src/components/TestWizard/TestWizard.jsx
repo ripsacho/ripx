@@ -911,6 +911,7 @@ function TestWizard({
   const [error, setError] = useState(null);
   const [selectedTemplate, setSelectedTemplate] = useState(initialTemplate);
   const [formData, setFormData] = useState(DEFAULT_FORM_DATA);
+  const isShippingTargetingMode = selectedTemplate === 'shipping' || formData.type === 'shipping';
   const [variantCodesData, setVariantCodesData] = useState([]);
   const [selectedVariantIndex, setSelectedVariantIndex] = useState(0);
   const [cssValidationErrors, setCssValidationErrors] = useState([]);
@@ -2170,22 +2171,30 @@ function TestWizard({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only reset when isStandalone changes
   }, [isStandalone]);
   useEffect(() => {
+    if (
+      isShippingTargetingMode &&
+      (placementSection === 'device' || placementSection === 'audience')
+    ) {
+      setPlacementSection('page');
+    }
+  }, [isShippingTargetingMode, placementSection]);
+  useEffect(() => {
     const handler = e => {
       if (currentStep !== stepIds.targeting) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === '1') {
         setPlacementSection('page');
         e.preventDefault();
-      } else if (e.key === '2' && !isStandalone) {
+      } else if (e.key === '2' && !isStandalone && !isShippingTargetingMode) {
         setPlacementSection('device');
         e.preventDefault();
-      } else if (e.key === '3' && !isStandalone) {
+      } else if (e.key === '3' && !isStandalone && !isShippingTargetingMode) {
         setPlacementSection('audience');
         e.preventDefault();
-      } else if (e.key === (isStandalone ? '2' : '4')) {
+      } else if (e.key === (isStandalone || isShippingTargetingMode ? '2' : '4')) {
         setPlacementSection('holdout');
         e.preventDefault();
-      } else if (e.key === (isStandalone ? '3' : '5')) {
+      } else if (e.key === (isStandalone || isShippingTargetingMode ? '3' : '5')) {
         setPlacementSection('advanced');
         e.preventDefault();
       } else if (e.key === 'ArrowLeft') {
@@ -2193,7 +2202,7 @@ function TestWizard({
           s === 'advanced'
             ? 'holdout'
             : s === 'holdout'
-              ? isStandalone
+              ? isStandalone || isShippingTargetingMode
                 ? 'page'
                 : 'audience'
               : s === 'audience'
@@ -2206,7 +2215,7 @@ function TestWizard({
       } else if (e.key === 'ArrowRight') {
         setPlacementSection(s =>
           s === 'page'
-            ? isStandalone
+            ? isStandalone || isShippingTargetingMode
               ? 'holdout'
               : 'device'
             : s === 'device'
@@ -2222,7 +2231,7 @@ function TestWizard({
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [currentStep, stepIds.targeting, isStandalone]);
+  }, [currentStep, isShippingTargetingMode, stepIds.targeting, isStandalone]);
 
   useEffect(() => {
     if (
@@ -4003,6 +4012,9 @@ function TestWizard({
 
   const renderTargetingStep = () => {
     const targetingScopeFixedForCommerce = isCommerceProductScopeTest;
+    const showDeviceAudienceTabs = !isStandalone && !isShippingTestType;
+    const holdoutStepNumber = isStandalone || isShippingTestType ? 2 : 4;
+    const advancedStepNumber = isStandalone || isShippingTestType ? 3 : 5;
     const countriesValue = formData.segments?.countries?.join(', ') || '';
     const holdoutValue =
       formData.holdout_percent === null || formData.holdout_percent === undefined
@@ -4033,9 +4045,11 @@ function TestWizard({
               <div>
                 <h2 className={styles.stepHeaderTitle}>Targeting & Segmentation</h2>
                 <p className={styles.stepHeaderSubtitle}>
-                  {isStandalone
-                    ? 'Define where your test runs (URL) and holdout.'
-                    : 'Define where your test runs and who sees it.'}
+                  {isShippingTestType
+                    ? 'Define cart qualification, holdout, and optional safety rules.'
+                    : isStandalone
+                      ? 'Define where your test runs (URL) and holdout.'
+                      : 'Define where your test runs and who sees it.'}
                 </p>
               </div>
             </div>
@@ -4045,9 +4059,13 @@ function TestWizard({
                 <div className={styles.tabPanelInner}>
                   <div className={styles.placementBar}>
                     <div className={styles.placementBarHeader}>
-                      <span className={styles.placementBarLabel}>Page integration</span>
+                      <span className={styles.placementBarLabel}>
+                        {isShippingTestType ? 'Shipping qualification' : 'Page integration'}
+                      </span>
                       <span className={styles.placementBarSubtext}>
-                        Where and who sees your test
+                        {isShippingTestType
+                          ? 'Cart qualification and test guardrails'
+                          : 'Where and who sees your test'}
                       </span>
                     </div>
                     <div className={styles.placementBarRow}>
@@ -4062,18 +4080,18 @@ function TestWizard({
                           aria-selected={placementSection === 'page'}
                           className={`${styles.placementTab} ${placementSection === 'page' ? styles.placementTabActive : ''}`}
                           onClick={() => setPlacementSection('page')}
-                          title="Page (1)"
+                          title={isShippingTestType ? 'Qualification (1)' : 'Page (1)'}
                         >
                           <span className={styles.placementTabStep}>1</span>
                           <Icon source={PageIcon} />
-                          <span>Page</span>
+                          <span>{isShippingTestType ? 'Qualification' : 'Page'}</span>
                           {((formData.segments?.page_rules || []).length > 0 ||
                             (customUrlModeActive &&
                               (formData.segments?.url_pattern ?? '') !== '')) && (
                             <span className={styles.placementTabDot} />
                           )}
                         </button>
-                        {!isStandalone && (
+                        {showDeviceAudienceTabs && (
                           <>
                             <button
                               type="button"
@@ -4113,11 +4131,9 @@ function TestWizard({
                           aria-selected={placementSection === 'holdout'}
                           className={`${styles.placementTab} ${styles.placementTabHoldout} ${placementSection === 'holdout' ? styles.placementTabActive : ''} ${Number(holdoutValue) > 0 ? styles.placementTabHighlight : ''}`}
                           onClick={() => setPlacementSection('holdout')}
-                          title={isStandalone ? 'Holdout (2)' : 'Holdout (4)'}
+                          title={`Holdout (${holdoutStepNumber})`}
                         >
-                          <span className={styles.placementTabStep}>
-                            {isStandalone ? '2' : '4'}
-                          </span>
+                          <span className={styles.placementTabStep}>{holdoutStepNumber}</span>
                           <Icon source={LockIcon} />
                           <span>Holdout</span>
                           {Number(holdoutValue) > 0 && <span className={styles.placementTabDot} />}
@@ -4128,11 +4144,9 @@ function TestWizard({
                           aria-selected={placementSection === 'advanced'}
                           className={`${styles.placementTab} ${styles.placementTabAdvanced} ${placementSection === 'advanced' ? styles.placementTabActive : ''}`}
                           onClick={() => setPlacementSection('advanced')}
-                          title={isStandalone ? 'Advanced (3)' : 'Advanced (5)'}
+                          title={`Advanced (${advancedStepNumber})`}
                         >
-                          <span className={styles.placementTabStep}>
-                            {isStandalone ? '3' : '5'}
-                          </span>
+                          <span className={styles.placementTabStep}>{advancedStepNumber}</span>
                           <Icon source={CodeIcon} />
                           <span>Advanced</span>
                           {(() => {
@@ -4156,6 +4170,17 @@ function TestWizard({
                       <div className={styles.placementBarSummary}>
                         <span className={styles.placementConfigPill}>
                           {(() => {
+                            if (isShippingTestType) {
+                              const scopeLabel =
+                                formData.target_type === 'product'
+                                  ? `${selectedScopeProductIds.length || 0} included product${selectedScopeProductIds.length === 1 ? '' : 's'}`
+                                  : 'All carts';
+                              const excludedLabel =
+                                excludedScopeProductIds.length > 0
+                                  ? ` · ${excludedScopeProductIds.length} excluded`
+                                  : '';
+                              return `${scopeLabel}${excludedLabel} · ${holdoutValue || 0}% holdout`;
+                            }
                             const pr = formData.segments?.page_rules || [];
                             const p = formData.segments?.url_pattern ?? '';
                             const pageLabel =
@@ -6088,13 +6113,15 @@ function TestWizard({
                           aria-labelledby="targeting-tab-holdout"
                         >
                           <div className={styles.targetingPanelHeader}>
-                            <span className={styles.targetingPanelStep}>Step 2 of 2</span>
+                            <span className={styles.targetingPanelStep}>
+                              Step {holdoutStepNumber} of {advancedStepNumber}
+                            </span>
                             <h4 className={styles.targetingPanelTitle}>Holdout (control group)</h4>
                             <p className={styles.targetingPanelHint}>
                               Reserve a percentage of visitors who never see any variant for a true
                               control. Use <kbd className={styles.panelKbd}>1</kbd>–
-                              <kbd className={styles.panelKbd}>4</kbd> or arrow keys to switch
-                              sections.
+                              <kbd className={styles.panelKbd}>{advancedStepNumber}</kbd> or arrow
+                              keys to switch sections.
                             </p>
                             {(Number(holdoutValue) || 0) > 0 && (
                               <span className={styles.holdoutBadge}>
@@ -6208,7 +6235,9 @@ function TestWizard({
                             {!isStandalone && (
                               <div className={styles.holdoutRecommendedBanner}>
                                 <span className={styles.holdoutRecommendedText}>
-                                  Quick apply: Product pages + 10% holdout
+                                  {isShippingTestType
+                                    ? 'Quick apply: All carts + 10% holdout'
+                                    : 'Quick apply: Product pages + 10% holdout'}
                                 </span>
                                 <button
                                   type="button"
@@ -6222,7 +6251,7 @@ function TestWizard({
                                       target_ids: null,
                                       segments: {
                                         ...prev.segments,
-                                        url_pattern: '/products/',
+                                        url_pattern: isShippingTestType ? '' : '/products/',
                                         page_rules: [],
                                         device: 'all',
                                         customer: 'all',
@@ -6249,7 +6278,7 @@ function TestWizard({
                         >
                           <div className={styles.targetingPanelHeader}>
                             <span className={styles.targetingPanelStep}>
-                              {isStandalone ? 'Step 3 of 3' : 'Step 5 of 5'}
+                              Step {advancedStepNumber} of {advancedStepNumber}
                             </span>
                             <h4 className={styles.targetingPanelTitle}>
                               Advanced targeting & safety
@@ -6257,8 +6286,8 @@ function TestWizard({
                             <p className={styles.targetingPanelHint}>
                               Safety, traffic, presets, and custom rules. Use{' '}
                               <kbd className={styles.panelKbd}>1</kbd>–
-                              <kbd className={styles.panelKbd}>{isStandalone ? '3' : '5'}</kbd> or
-                              arrow keys to switch sections.
+                              <kbd className={styles.panelKbd}>{advancedStepNumber}</kbd> or arrow
+                              keys to switch sections.
                             </p>
                           </div>
                           <div className={styles.targetingPanelBody}>
