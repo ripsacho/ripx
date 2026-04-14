@@ -2484,16 +2484,18 @@
       if (state._ripx_assignment_user) {
         setProperty('_ripx_assignment_user', state._ripx_assignment_user);
       }
-      var targetUnitValue = state._ripx_target_unit || getRememberedRipxTargetUnitForForm(form);
+      var rememberedTargetUnitForForm = getRememberedRipxTargetUnitForForm(form);
+      var targetUnitValue = rememberedTargetUnitForForm || state._ripx_target_unit;
       if (targetUnitValue) {
         setProperty('_ripx_target_unit', targetUnitValue);
       }
-      var discountUnitValue =
-        state._ripx_discount_unit || getRememberedRipxDiscountUnitForForm(form);
+      var rememberedDiscountUnitForForm = getRememberedRipxDiscountUnitForForm(form);
+      var discountUnitValue = rememberedDiscountUnitForForm || state._ripx_discount_unit;
       if (discountUnitValue) {
         setProperty('_ripx_discount_unit', discountUnitValue);
       }
-      var priceMethodValue = state._ripx_price_method || getRememberedRipxPriceMethodForForm(form);
+      var rememberedPriceMethodForForm = getRememberedRipxPriceMethodForForm(form);
+      var priceMethodValue = rememberedPriceMethodForForm || state._ripx_price_method;
       if (priceMethodValue) {
         setProperty('_ripx_price_method', priceMethodValue);
       }

@@ -986,6 +986,7 @@ function TestWizard({
   const [shippingDiagnosticsLoading, setShippingDiagnosticsLoading] = useState(false);
   const [shippingDiagnosticsReport, setShippingDiagnosticsReport] = useState(null);
   const [shippingExecutionToast, setShippingExecutionToast] = useState(null);
+  const [shippingStorewideApplyConfirmed, setShippingStorewideApplyConfirmed] = useState(false);
   useEffect(() => {
     const n = formData.variants?.length ?? 0;
     if (n === 0) {
@@ -1191,6 +1192,7 @@ function TestWizard({
   const [customUrlModeActive, setCustomUrlModeActive] = useState(false);
   const [deviceAdvancedOpen, setDeviceAdvancedOpen] = useState(false);
   const [audienceAdvancedOpen, setAudienceAdvancedOpen] = useState(false);
+  const [shippingScopeAdvancedOpen, setShippingScopeAdvancedOpen] = useState(false);
   const [_advancedTargetingOpen, _setAdvancedTargetingOpen] = useState(false);
   const [customEventInput, setCustomEventInput] = useState('');
   const [advancedSectionsOpen, setAdvancedSectionsOpen] = useState({
@@ -2216,21 +2218,60 @@ function TestWizard({
   ]);
 
   useEffect(() => {
-    if (!isShippingTargetingMode || formData.target_type === 'product') {
+    if (!isShippingTargetingMode) {
+      return;
+    }
+    const normalizedTargetType = String(formData.target_type || '')
+      .trim()
+      .toLowerCase();
+    if (normalizedTargetType === 'all-products' || normalizedTargetType === 'all_products') {
+      setShippingScopeAdvancedOpen(true);
+      return;
+    }
+    setShippingScopeAdvancedOpen(false);
+  }, [formData.target_type, isShippingTargetingMode]);
+
+  useEffect(() => {
+    const normalizedTargetType = String(formData.target_type || '')
+      .trim()
+      .toLowerCase();
+    const isStorewide =
+      normalizedTargetType === 'all-products' || normalizedTargetType === 'all_products';
+    if (!isStorewide) {
+      setShippingStorewideApplyConfirmed(false);
+    }
+  }, [formData.target_type]);
+
+  useEffect(() => {
+    if (!isShippingTargetingMode) {
+      return;
+    }
+    const normalizedTargetType = String(formData.target_type || '')
+      .trim()
+      .toLowerCase();
+    if (normalizedTargetType === 'product' || normalizedTargetType === 'all-products') {
       return;
     }
     setFormData(prev => {
-      if (
-        (prev.type !== 'shipping' && selectedTemplate !== 'shipping') ||
-        prev.target_type === 'product'
-      ) {
+      if (prev.type !== 'shipping' && selectedTemplate !== 'shipping') {
         return prev;
       }
+      const prevTargetType = String(prev.target_type || '')
+        .trim()
+        .toLowerCase();
+      const nextTargetType = prevTargetType === 'all_products' ? 'all-products' : 'product';
       return {
         ...prev,
-        target_type: 'product',
-        target_id: '',
-        target_ids: null,
+        target_type: nextTargetType,
+        ...(nextTargetType === 'all-products'
+          ? {
+              target_id: '',
+              target_ids: null,
+            }
+          : {
+              target_id: '',
+              target_ids: null,
+            }),
         segments: {
           ...prev.segments,
           url_pattern: '',
@@ -3617,6 +3658,31 @@ function TestWizard({
     }
   }, [initialData?.id]);
 
+  const openShippingDocs = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const docsPath = routeDomain ? ROUTES.appDocs(routeDomain) : ROUTES.DOCS;
+    window.open(`${docsPath}#shipping`, '_blank', 'noopener');
+  }, [routeDomain]);
+
+  const jumpToShippingTargeting = useCallback(
+    targetId => {
+      setCurrentStep(stepIds.targeting);
+      setPlacementSection('page');
+      if (targetId === 'shipping-exclusions-card') {
+        setShippingScopeAdvancedOpen(true);
+      }
+      if (typeof window === 'undefined') return;
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          const element = document.getElementById(targetId || 'targeting-scope');
+          if (!element) return;
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      });
+    },
+    [stepIds.targeting]
+  );
+
   const canNavigateSteps =
     enableStepNavigation !== undefined
       ? enableStepNavigation
@@ -4090,6 +4156,34 @@ function TestWizard({
     const showDeviceAudienceTabs = !isStandalone && !isShippingTestType;
     const holdoutStepNumber = isStandalone || isShippingTestType ? 2 : 4;
     const advancedStepNumber = isStandalone || isShippingTestType ? 3 : 5;
+    const shippingTargetType = String(formData.target_type || '')
+      .trim()
+      .toLowerCase();
+    const isShippingStorewideAdvanced =
+      isShippingTestType &&
+      (shippingTargetType === 'all-products' || shippingTargetType === 'all_products');
+    const shippingTargetingChecklist = isShippingTestType
+      ? [
+          {
+            label: 'Use a holdout of at least 10% for safer live rollout',
+            passed: Number(formData.holdout_percent || 0) >= 10,
+          },
+          {
+            label: 'Add excluded products to carve out sensitive SKUs',
+            passed: excludedScopeProductIds.length > 0,
+          },
+          {
+            label: 'Keep at least one actionable non-control shipping variant configured',
+            passed: (formData.variants || []).some(
+              (variant, index) =>
+                index > 0 &&
+                String(variant?.config?.strategy || '')
+                  .trim()
+                  .toLowerCase() !== 'control'
+            ),
+          },
+        ]
+      : [];
     const countriesValue = formData.segments?.countries?.join(', ') || '';
     const holdoutValue =
       formData.holdout_percent === null || formData.holdout_percent === undefined
@@ -4246,7 +4340,9 @@ function TestWizard({
                         <span className={styles.placementConfigPill}>
                           {(() => {
                             if (isShippingTestType) {
-                              const scopeLabel = `${selectedScopeProductIds.length || 0} included product${selectedScopeProductIds.length === 1 ? '' : 's'}`;
+                              const scopeLabel = isShippingStorewideAdvanced
+                                ? 'Storewide carts'
+                                : `${selectedScopeProductIds.length || 0} included product${selectedScopeProductIds.length === 1 ? '' : 's'}`;
                               const excludedLabel =
                                 excludedScopeProductIds.length > 0
                                   ? ` · ${excludedScopeProductIds.length} excluded`
@@ -4308,10 +4404,12 @@ function TestWizard({
                             {targetingScopeFixedForCommerce ? (
                               <BlockStack gap="300">
                                 <Banner
-                                  tone="info"
+                                  tone={isShippingStorewideAdvanced ? 'warning' : 'info'}
                                   title={
                                     isShippingTestType
-                                      ? 'Shipping tests use selected-product cart qualification'
+                                      ? isShippingStorewideAdvanced
+                                        ? 'Shipping test uses advanced storewide qualification'
+                                        : 'Shipping tests default to selected-product cart qualification'
                                       : isOfferTestType
                                         ? 'Offer tests use product-only scope'
                                         : 'Price tests use product-only scope'
@@ -4319,14 +4417,25 @@ function TestWizard({
                                 >
                                   <Text as="p" variant="bodySm">
                                     {isShippingTestType ? (
-                                      <>
-                                        Choose the{' '}
-                                        <strong>products that must appear in the cart</strong>{' '}
-                                        before this shipping test can apply. You can also add
-                                        optional <strong>excluded products</strong> to block
-                                        shipping assignment and checkout application for carts that
-                                        contain those SKUs.
-                                      </>
+                                      isShippingStorewideAdvanced ? (
+                                        <>
+                                          <strong>Storewide shipping</strong> qualifies nearly every
+                                          cart across your catalog. Use{' '}
+                                          <strong>excluded products</strong> to carve out
+                                          exceptions, then validate with diagnostics and holdout
+                                          before you apply it live.
+                                        </>
+                                      ) : (
+                                        <>
+                                          Choose the{' '}
+                                          <strong>products that must appear in the cart</strong>{' '}
+                                          before this shipping test can apply. You can also add
+                                          optional <strong>excluded products</strong> to block
+                                          shipping assignment and checkout application for carts
+                                          that contain those SKUs. If you need broader coverage,
+                                          unlock <strong>advanced storewide scope</strong> below.
+                                        </>
+                                      )
                                     ) : (
                                       <>
                                         Choose between <strong>all products</strong> and{' '}
@@ -4343,22 +4452,104 @@ function TestWizard({
                                   </span>
                                   <div className={styles.scopeSelectGrid}>
                                     {isShippingTestType ? (
-                                      <div
-                                        className={`${styles.scopeCard} ${styles.scopeCardActive}`}
-                                        aria-pressed="true"
-                                        aria-label="Carts with selected products"
-                                      >
-                                        <span className={styles.scopeCardIcon}>
-                                          <Icon source={TargetIcon} />
-                                        </span>
-                                        <span className={styles.scopeCardLabel}>
-                                          Carts with selected products
-                                        </span>
-                                        <span className={styles.scopeCardDesc}>
-                                          Shipping tests only apply when the cart contains one of
-                                          the products you choose below
-                                        </span>
-                                      </div>
+                                      <>
+                                        <div
+                                          className={`${styles.scopeCard} ${!isShippingStorewideAdvanced ? styles.scopeCardActive : ''}`}
+                                          role="button"
+                                          tabIndex={0}
+                                          onClick={() =>
+                                            setFormData(prev => ({
+                                              ...prev,
+                                              target_type: 'product',
+                                              segments: {
+                                                ...prev.segments,
+                                                url_pattern: '',
+                                                page_rules: prev.segments?.page_rules || [],
+                                              },
+                                            }))
+                                          }
+                                          onKeyDown={event => {
+                                            if (event.key !== 'Enter' && event.key !== ' ') {
+                                              return;
+                                            }
+                                            event.preventDefault();
+                                            setFormData(prev => ({
+                                              ...prev,
+                                              target_type: 'product',
+                                              segments: {
+                                                ...prev.segments,
+                                                url_pattern: '',
+                                                page_rules: prev.segments?.page_rules || [],
+                                              },
+                                            }));
+                                          }}
+                                          aria-pressed={!isShippingStorewideAdvanced}
+                                          aria-label="Carts with selected products"
+                                        >
+                                          <span className={styles.scopeCardIcon}>
+                                            <Icon source={TargetIcon} />
+                                          </span>
+                                          <span className={styles.scopeCardLabel}>
+                                            Carts with selected products
+                                          </span>
+                                          <span className={styles.scopeCardDesc}>
+                                            Qualify only carts that contain one of the products you
+                                            choose below
+                                          </span>
+                                        </div>
+                                        {(shippingScopeAdvancedOpen ||
+                                          isShippingStorewideAdvanced) && (
+                                          <div
+                                            className={`${styles.scopeCard} ${isShippingStorewideAdvanced ? styles.scopeCardActive : ''}`}
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={() =>
+                                              setFormData(prev => ({
+                                                ...prev,
+                                                target_type: 'all-products',
+                                                target_id: '',
+                                                target_ids: null,
+                                                segments: {
+                                                  ...prev.segments,
+                                                  url_pattern: '',
+                                                  page_rules: prev.segments?.page_rules || [],
+                                                },
+                                              }))
+                                            }
+                                            onKeyDown={event => {
+                                              if (event.key !== 'Enter' && event.key !== ' ') {
+                                                return;
+                                              }
+                                              event.preventDefault();
+                                              setFormData(prev => ({
+                                                ...prev,
+                                                target_type: 'all-products',
+                                                target_id: '',
+                                                target_ids: null,
+                                                segments: {
+                                                  ...prev.segments,
+                                                  url_pattern: '',
+                                                  page_rules: prev.segments?.page_rules || [],
+                                                },
+                                              }));
+                                            }}
+                                            aria-pressed={isShippingStorewideAdvanced}
+                                            aria-label="Storewide shipping qualification"
+                                          >
+                                            <span className={styles.scopeCardIcon}>
+                                              <Icon source={ProductIcon} />
+                                            </span>
+                                            <span className={styles.scopeCardLabel}>
+                                              Storewide shipping
+                                            </span>
+                                            <span className={styles.scopeCardDesc}>
+                                              Qualify carts across your full catalog. Excluded
+                                              products still block assignment and checkout
+                                              application.
+                                            </span>
+                                          </div>
+                                        )}
+                                      </>
                                     ) : (
                                       <>
                                         <div
@@ -4456,9 +4647,90 @@ function TestWizard({
                                       </>
                                     )}
                                   </div>
+                                  {isShippingTestType && (
+                                    <div className={styles.inlineAdvancedToggle}>
+                                      <button
+                                        type="button"
+                                        className={styles.inlineAdvancedToggleBtn}
+                                        onClick={() => {
+                                          const nextOpen = !shippingScopeAdvancedOpen;
+                                          setShippingScopeAdvancedOpen(nextOpen);
+                                          if (!nextOpen && isShippingStorewideAdvanced) {
+                                            setFormData(prev => ({
+                                              ...prev,
+                                              target_type: 'product',
+                                              segments: {
+                                                ...prev.segments,
+                                                url_pattern: '',
+                                                page_rules: prev.segments?.page_rules || [],
+                                              },
+                                            }));
+                                          }
+                                        }}
+                                        aria-expanded={shippingScopeAdvancedOpen}
+                                      >
+                                        <span
+                                          className={`${styles.inlineAdvancedChevron} ${shippingScopeAdvancedOpen ? styles.inlineAdvancedChevronOpen : ''}`}
+                                        >
+                                          <Icon source={ChevronDownIcon} />
+                                        </span>
+                                        Advanced: enable storewide shipping scope
+                                        {isShippingStorewideAdvanced && (
+                                          <span className={styles.inlineAdvancedCount}>On</span>
+                                        )}
+                                      </button>
+                                      {shippingScopeAdvancedOpen && (
+                                        <div className={styles.inlineAdvancedBody}>
+                                          <p className={styles.inlineAdvancedHint}>
+                                            Use storewide qualification only when you intentionally
+                                            want this shipping test to reach nearly every eligible
+                                            cart. RipX will still respect excluded products,
+                                            holdout, and shipping diagnostics.
+                                          </p>
+                                          <Banner
+                                            tone="warning"
+                                            title="Broader impact, stronger guardrails"
+                                          >
+                                            <BlockStack gap="200">
+                                              <Text as="p" variant="bodySm">
+                                                Storewide shipping tests are powerful but easier to
+                                                misconfigure. Add a holdout, use excluded products
+                                                to carve out sensitive SKUs, and run diagnostics
+                                                before you apply live.
+                                              </Text>
+                                              <BlockStack gap="100">
+                                                {shippingTargetingChecklist.map(item => (
+                                                  <InlineStack
+                                                    key={item.label}
+                                                    gap="200"
+                                                    blockAlign="start"
+                                                    wrap={false}
+                                                  >
+                                                    <Icon
+                                                      source={
+                                                        item.passed
+                                                          ? CheckCircleIcon
+                                                          : AlertTriangleIcon
+                                                      }
+                                                      tone={item.passed ? 'success' : 'warning'}
+                                                    />
+                                                    <Text as="span" variant="bodySm">
+                                                      {item.label}
+                                                    </Text>
+                                                  </InlineStack>
+                                                ))}
+                                              </BlockStack>
+                                            </BlockStack>
+                                          </Banner>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
                                 <div className={styles.productScopePickerGrid}>
-                                  {(isShippingTestType || formData.target_type === 'product') && (
+                                  {((isShippingTestType && !isShippingStorewideAdvanced) ||
+                                    (!isShippingTestType &&
+                                      formData.target_type === 'product')) && (
                                     <div
                                       className={`${styles.productScopePickerCard} ${styles.productScopePickerCardPrimary}`}
                                     >
@@ -4560,7 +4832,10 @@ function TestWizard({
                                       </BlockStack>
                                     </div>
                                   )}
-                                  <div className={styles.productScopePickerCard}>
+                                  <div
+                                    className={styles.productScopePickerCard}
+                                    id={isShippingTestType ? 'shipping-exclusions-card' : undefined}
+                                  >
                                     <BlockStack gap="200">
                                       <InlineStack align="space-between" blockAlign="center" wrap>
                                         <InlineStack gap="200" blockAlign="center">
@@ -4577,7 +4852,9 @@ function TestWizard({
                                       </InlineStack>
                                       <Text as="p" variant="bodySm" tone="subdued">
                                         {isShippingTestType
-                                          ? 'Excluded products block shipping assignment and checkout application for any matching delivery group.'
+                                          ? isShippingStorewideAdvanced
+                                            ? 'Excluded products carve out exceptions from storewide qualification and block checkout application for matching delivery groups.'
+                                            : 'Excluded products block shipping assignment and checkout application for any matching delivery group.'
                                           : 'Optional exclusions are always skipped from bucketing and storefront application.'}
                                       </Text>
                                       <InlineStack>
@@ -6432,7 +6709,9 @@ function TestWizard({
                               <div className={styles.holdoutRecommendedBanner}>
                                 <span className={styles.holdoutRecommendedText}>
                                   {isShippingTestType
-                                    ? 'Quick apply: Selected products + 10% holdout'
+                                    ? isShippingStorewideAdvanced
+                                      ? 'Quick apply: Storewide + 10% holdout'
+                                      : 'Quick apply: Selected products + 10% holdout'
                                     : 'Quick apply: Product pages + 10% holdout'}
                                 </span>
                                 <button
@@ -6442,7 +6721,11 @@ function TestWizard({
                                     setCustomUrlModeActive(false);
                                     setFormData(prev => ({
                                       ...prev,
-                                      target_type: isShippingTestType ? 'product' : 'all-products',
+                                      target_type: isShippingTestType
+                                        ? isShippingStorewideAdvanced
+                                          ? 'all-products'
+                                          : 'product'
+                                        : 'all-products',
                                       target_id: '',
                                       target_ids: null,
                                       segments: {
@@ -12601,12 +12884,25 @@ function TestWizard({
       ? shippingExecutionReport.execution_result.actions
       : [];
     const shippingDiagnostics = shippingDiagnosticsReport?.diagnostics || null;
+    const shippingCapabilityReport = shippingDiagnosticsReport?.capability_report || null;
+    const shippingExecutionPlanDiagnostics = shippingDiagnosticsReport?.execution_plan || null;
+    const reviewShippingTargetType = String(formData.target_type || initialData?.target_type || '')
+      .trim()
+      .toLowerCase();
+    const isShippingStorewideReview =
+      isShippingReview &&
+      (reviewShippingTargetType === 'all-products' || reviewShippingTargetType === 'all_products');
+    const shippingDiagnosticsConflictCount = Number(
+      shippingDiagnostics?.readiness?.running_shipping_conflicts || 0
+    );
     const shippingExecutionDisabled = shouldDisableShippingExecution({
       shippingExecutionLoading,
       wizardLoading: loading,
       submitLoading,
       isDirty,
     });
+    const shippingReviewApplyDisabled =
+      shippingExecutionDisabled || (isShippingStorewideReview && !shippingStorewideApplyConfirmed);
     const actionableShippingVariants = isShippingReview
       ? (formData.variants || []).map((variant, index) => ({
           variant,
@@ -12617,6 +12913,140 @@ function TestWizard({
               .toLowerCase() || 'control',
         }))
       : [];
+    const shippingReviewSafetyChecklist = isShippingReview
+      ? [
+          {
+            label: 'Holdout is 10% or higher for safer live exposure',
+            passed: Number(reviewHoldout || 0) >= 10,
+          },
+          {
+            label: 'Excluded products are configured for carve-outs',
+            passed: excludedScopeProductIds.length > 0,
+          },
+          {
+            label: 'Shipping diagnostics have been run in this session',
+            passed: Boolean(shippingDiagnostics),
+          },
+          {
+            label: 'No live shipping conflicts are currently reported',
+            passed: Boolean(shippingDiagnostics) && shippingDiagnosticsConflictCount === 0,
+          },
+        ]
+      : [];
+    const shippingDiagnosticsInsights = (() => {
+      if (!shippingDiagnostics) {
+        return [];
+      }
+
+      const insights = [];
+      const planVariants = Array.isArray(shippingExecutionPlanDiagnostics?.variants)
+        ? shippingExecutionPlanDiagnostics.variants
+        : [];
+      const manualRequiredVariants = planVariants.filter(
+        variant => variant?.status === 'manual_required'
+      );
+      const carrierVariants = planVariants.filter(
+        variant => variant?.execution_adapter === 'carrier_service' && variant?.actionable
+      );
+      const discountFunctionVariants = planVariants.filter(
+        variant => variant?.execution_adapter === 'discount_function' && variant?.actionable
+      );
+      const capabilityWarnings = Array.isArray(shippingCapabilityReport?.capabilities?.warnings)
+        ? shippingCapabilityReport.capabilities.warnings
+        : [];
+      const adapterSupport = shippingCapabilityReport?.capabilities?.adapter_support || {};
+
+      if (shippingDiagnosticsConflictCount > 0) {
+        insights.push({
+          tone: 'critical',
+          title: 'Another managed shipping test is already active',
+          body:
+            shippingDiagnosticsConflictCount === 1
+              ? 'RipX found 1 other running shipping test with managed resources. Launching another one can create overlapping carrier or delivery behavior.'
+              : `RipX found ${shippingDiagnosticsConflictCount} other running shipping tests with managed resources. Launching another one can create overlapping carrier or delivery behavior.`,
+          fix: 'Stop or clean up the other managed shipping test before applying this one, or keep this test in dry-run/manual mode until the overlap is removed.',
+          actions: ['rerun-diagnostics', 'jump-to-targeting'],
+        });
+      }
+
+      if (carrierVariants.length > 0 && !shippingDiagnostics.urls?.carrier_callback_url) {
+        insights.push({
+          tone: 'critical',
+          title: 'Carrier callback URL is missing',
+          body: 'At least one actionable variant plans to use CarrierService, but no carrier callback URL is configured. Carrier-based shipping actions will not be provisioned correctly until that URL is set.',
+          fix: 'Set `RIPX_SHIPPING_CARRIER_CALLBACK_URL` or make `APP_URL/api/track/shipping-carrier-rates` publicly reachable, then rerun shipping diagnostics.',
+          actions: ['rerun-diagnostics', 'open-docs'],
+        });
+      }
+
+      if (
+        discountFunctionVariants.length > 0 &&
+        !shippingDiagnostics.urls?.shipping_resolve_batch_url
+      ) {
+        insights.push({
+          tone: 'critical',
+          title: 'Shipping resolve endpoint is missing',
+          body: 'At least one actionable variant plans to use the checkout discount-function path, but the shipping batch resolve URL is not configured.',
+          fix: 'Set `RIPX_SHIPPING_RESOLVE_BATCH_URL` or ensure `APP_URL/api/track/shipping-resolve-batch` is reachable from Shopify, then rerun diagnostics.',
+          actions: ['rerun-diagnostics', 'open-docs'],
+        });
+      }
+
+      if (manualRequiredVariants.length > 0) {
+        const names = manualRequiredVariants
+          .slice(0, 3)
+          .map(variant => variant?.name || `Variant ${Number(variant?.index || 0) + 1}`);
+        const extraCount = manualRequiredVariants.length - names.length;
+        const adapterLabels = Array.from(
+          new Set(manualRequiredVariants.map(variant => variant?.execution_adapter).filter(Boolean))
+        );
+        const adapterReason = adapterLabels
+          .map(label => adapterSupport?.[label]?.reason)
+          .find(Boolean);
+        insights.push({
+          tone: 'warning',
+          title: 'Some variants still require manual rollout',
+          body: `${names.join(', ')}${extraCount > 0 ? ` +${extraCount} more` : ''} cannot be auto-applied with the current shop capabilities.${adapterReason ? ` ${adapterReason}` : ''}`,
+          fix: 'Switch those variants to a supported execution path, use a compatible store plan, or proceed with manual setup for the blocked variants only.',
+          actions: ['jump-to-targeting', 'open-docs'],
+        });
+      }
+
+      capabilityWarnings.forEach(message => {
+        insights.push({
+          tone: 'warning',
+          title: 'Shopify capability gap detected',
+          body: message,
+          fix: 'Update app scopes or shop capabilities, then reopen RipX from Shopify Admin and rerun diagnostics to confirm the gap is resolved.',
+          actions: ['rerun-diagnostics', 'open-docs'],
+        });
+      });
+
+      if (shippingDiagnostics.readiness?.assignment_signature_required) {
+        insights.push({
+          tone: 'info',
+          title: 'Signed assignment markers are required',
+          body: 'Checkout resolution expects signed `_ripx_*` assignment markers on cart lines. Verify the storefront script is live before you rely on shipping execution in checkout.',
+          fix: 'Confirm the latest storefront script is published and live on the store, then test a cart flow to verify `_ripx_*` assignment attributes are being injected.',
+          actions: ['open-docs'],
+        });
+      }
+
+      if (
+        shippingExecutionPlanDiagnostics?.recommended_execution_path &&
+        shippingExecutionPlanDiagnostics.recommended_execution_path === 'manual'
+      ) {
+        insights.push({
+          tone: 'info',
+          title: 'Manual execution is the current recommended path',
+          body: 'RipX diagnostics suggest a manual rollout path for this store right now. Use dry run output and diagnostics to confirm what can be automated versus what needs manual setup.',
+          fix: 'Run a dry run, review each actionable variant, and apply only the supported pieces automatically while following up manually on the rest.',
+          actions: ['jump-to-exclusions', 'open-docs'],
+        });
+      }
+
+      return insights;
+    })();
     const reviewTargetProductIds =
       (formData.target_type || initialData?.target_type) === 'product'
         ? formData.target_ids?.length
@@ -13000,6 +13430,35 @@ function TestWizard({
               Shipping Execution
             </div>
             <BlockStack gap="300">
+              {isShippingStorewideReview && (
+                <Banner tone="warning" title="Storewide shipping safety check">
+                  <BlockStack gap="300">
+                    <Text as="p" variant="bodySm">
+                      This test is configured for <strong>storewide shipping qualification</strong>.
+                      Dry runs remain available, but live apply is gated until you acknowledge the
+                      broader impact below.
+                    </Text>
+                    <BlockStack gap="100">
+                      {shippingReviewSafetyChecklist.map(item => (
+                        <InlineStack key={item.label} gap="200" blockAlign="start" wrap={false}>
+                          <Icon
+                            source={item.passed ? CheckCircleIcon : AlertTriangleIcon}
+                            tone={item.passed ? 'success' : 'warning'}
+                          />
+                          <Text as="span" variant="bodySm">
+                            {item.label}
+                          </Text>
+                        </InlineStack>
+                      ))}
+                    </BlockStack>
+                    <Checkbox
+                      label="I understand this will apply shipping actions to storewide-qualified carts, and I have reviewed holdout, exclusions, and diagnostics."
+                      checked={shippingStorewideApplyConfirmed}
+                      onChange={setShippingStorewideApplyConfirmed}
+                    />
+                  </BlockStack>
+                </Banner>
+              )}
               <Text variant="bodySm" as="p">
                 Run a dry run to preview adapter actions, then apply when the plan looks correct.
               </Text>
@@ -13030,12 +13489,14 @@ function TestWizard({
                   size="slim"
                   variant="primary"
                   onClick={() => handleExecuteShippingFromReview(true)}
-                  disabled={shippingExecutionDisabled}
+                  disabled={shippingReviewApplyDisabled}
                   loading={shippingExecutionLoading && shippingExecutionAction === 'apply'}
                   title={
-                    isDirty
-                      ? 'Save pending changes before applying shipping actions.'
-                      : 'Apply shipping adapter actions for actionable variants'
+                    isShippingStorewideReview && !shippingStorewideApplyConfirmed
+                      ? 'Confirm the storewide shipping safety acknowledgment before applying.'
+                      : isDirty
+                        ? 'Save pending changes before applying shipping actions.'
+                        : 'Apply shipping adapter actions for actionable variants'
                   }
                 >
                   Apply shipping
@@ -13065,7 +13526,12 @@ function TestWizard({
                             size="slim"
                             variant="primary"
                             onClick={() => handleExecuteShippingFromReview(true, item.index)}
-                            disabled={shippingExecutionDisabled}
+                            disabled={shippingReviewApplyDisabled}
+                            title={
+                              isShippingStorewideReview && !shippingStorewideApplyConfirmed
+                                ? 'Confirm the storewide shipping safety acknowledgment before applying.'
+                                : undefined
+                            }
                           >
                             Apply
                           </Button>
@@ -13113,6 +13579,59 @@ function TestWizard({
                         : 'optional'}
                     </Text>
                   </Banner>
+                  {shippingDiagnosticsInsights.map((insight, index) => (
+                    <Banner
+                      key={`${insight.title}-${index}`}
+                      tone={insight.tone}
+                      title={insight.title}
+                    >
+                      <BlockStack gap="100">
+                        <Text as="p" variant="bodySm">
+                          {insight.body}
+                        </Text>
+                        {insight.fix ? (
+                          <Text as="p" variant="bodySm" tone="subdued">
+                            <strong>Recommended fix:</strong> {insight.fix}
+                          </Text>
+                        ) : null}
+                        {Array.isArray(insight.actions) && insight.actions.length > 0 ? (
+                          <InlineStack gap="200" wrap>
+                            {insight.actions.includes('rerun-diagnostics') ? (
+                              <Button
+                                size="slim"
+                                onClick={handleRunShippingDiagnostics}
+                                disabled={shippingDiagnosticsLoading || loading}
+                                loading={shippingDiagnosticsLoading}
+                              >
+                                Rerun diagnostics
+                              </Button>
+                            ) : null}
+                            {insight.actions.includes('jump-to-targeting') ? (
+                              <Button
+                                size="slim"
+                                onClick={() => jumpToShippingTargeting('targeting-scope')}
+                              >
+                                Review qualification
+                              </Button>
+                            ) : null}
+                            {insight.actions.includes('jump-to-exclusions') ? (
+                              <Button
+                                size="slim"
+                                onClick={() => jumpToShippingTargeting('shipping-exclusions-card')}
+                              >
+                                Review exclusions
+                              </Button>
+                            ) : null}
+                            {insight.actions.includes('open-docs') ? (
+                              <Button size="slim" onClick={openShippingDocs}>
+                                Open shipping docs
+                              </Button>
+                            ) : null}
+                          </InlineStack>
+                        ) : null}
+                      </BlockStack>
+                    </Banner>
+                  ))}
                 </div>
               )}
               {shippingExecSummary && (
