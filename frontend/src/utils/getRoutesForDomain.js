@@ -34,7 +34,7 @@ export function getRoutesForDomain(domain) {
     testsPersonalization: ROUTES.appTestsPersonalization(domain),
     createTest: ROUTES.appCreateTest(domain),
     analytics: ROUTES.appAnalytics(domain),
-    setup: ROUTES.appSetup(domain),
+    setup: `${ROUTES.appSettings(domain)}?tab=installation&guided_setup=1`,
     settings: ROUTES.appSettings(domain),
     profile: ROUTES.appProfile(domain),
     notifications: ROUTES.appNotifications(domain),

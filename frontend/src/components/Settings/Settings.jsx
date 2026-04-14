@@ -1635,6 +1635,10 @@ function Settings() {
     if (!appSettingsDomain) return ROUTES.SETTINGS;
     return `${ROUTES.appSettings(appSettingsDomain)}?tab=installation&guided_setup=1`;
   }, [appSettingsDomain]);
+  const isFocusedInstallationMode =
+    isAppSettings && isGuidedSetupMode && activeTabId === 'installation';
+  const showInstallationSupportCards =
+    !isFocusedInstallationMode || installation?.platform !== 'shopify';
 
   const densityHelp = 'Comfortable adds more spacing. Compact shows more on screen.';
   const installationCheckRows = useMemo(() => {
@@ -1786,7 +1790,9 @@ function Settings() {
                       <div className={styles.settingsShellSubtitleRow}>
                         <p className={styles.settingsShellSubtitle}>
                           {isAppSettings
-                            ? 'Setup, checkout, defaults, integrations, presets, and appearance for this shop.'
+                            ? isFocusedInstallationMode
+                              ? 'Focused installation checklist with launch blockers first. Secondary details stay tucked behind modal actions.'
+                              : 'Setup, checkout, defaults, integrations, presets, and appearance for this shop.'
                             : 'Theme and appearance. Open the app from Home for tests and installation.'}
                         </p>
                         {isAppSettings && (
@@ -1803,7 +1809,7 @@ function Settings() {
                       </div>
                     </div>
                   </div>
-                  {isAppSettings && (
+                  {isAppSettings && !isFocusedInstallationMode && (
                     <div className={styles.settingsShellBadges}>
                       <Badge tone={setupComplete ? 'success' : 'attention'}>
                         {setupComplete ? 'Setup complete' : 'Setup incomplete'}
@@ -1839,7 +1845,7 @@ function Settings() {
                   )}
                 </div>
 
-                {isAppSettings && (
+                {isAppSettings && !isFocusedInstallationMode && (
                   <div
                     className={styles.settingsMetricsGrid}
                     role="region"
@@ -1938,7 +1944,7 @@ function Settings() {
                   </div>
                 )}
               </div>
-              {isAppSettings && (
+              {isAppSettings && !isFocusedInstallationMode && (
                 <div
                   className={styles.settingsCommandBar}
                   role="region"
@@ -2181,99 +2187,101 @@ function Settings() {
                         isAppSettings ? 'App settings sections' : 'Account settings panel'
                       }
                     >
-                      <div
-                        className={`${styles.settingsContextStrip} ${
-                          !showAllAppSections && isAppSettings && activeTabId === 'installation'
-                            ? styles.settingsContextStripMinimal
-                            : ''
-                        }`}
-                      >
-                        {!(
-                          !showAllAppSections &&
-                          isAppSettings &&
-                          activeTabId === 'installation'
-                        ) && (
-                          <Tooltip
-                            content={
-                              showAllAppSections
-                                ? 'All App Settings sections are visible in one organized page. Scroll to edit setup, defaults, integrations, presets, and appearance without switching tabs.'
-                                : tabSummaries[activeTabId] ||
-                                  'Tips and context for the tab you selected.'
-                            }
-                          >
-                            <span className={styles.settingsContextTabHint} tabIndex={0}>
-                              <span className={styles.settingsContextTabHintIcon} aria-hidden>
-                                <Icon source={InfoIcon} />
-                              </span>
-                              <span>
-                                {showAllAppSections ? 'About this page' : 'About this tab'}
-                              </span>
-                            </span>
-                          </Tooltip>
-                        )}
-                        <InlineStack gap="150" wrap blockAlign="center">
-                          {isAppSettings && !isGuidedSetupMode && (
-                            <>
-                              <Tooltip content="Sections view is cleaner for day-to-day work. All sections keeps everything on one page for audits and bulk updates.">
-                                <span className={styles.settingsDensityGroup}>
-                                  <Text as="span" variant="bodySm" tone="subdued">
-                                    View
-                                  </Text>
-                                  <span
-                                    className={styles.settingsMetricTip}
-                                    tabIndex={0}
-                                    aria-label="Choose between section tabs or one-page layout"
-                                  >
-                                    <Icon source={InfoIcon} />
-                                  </span>
+                      {!isFocusedInstallationMode && (
+                        <div
+                          className={`${styles.settingsContextStrip} ${
+                            !showAllAppSections && isAppSettings && activeTabId === 'installation'
+                              ? styles.settingsContextStripMinimal
+                              : ''
+                          }`}
+                        >
+                          {!(
+                            !showAllAppSections &&
+                            isAppSettings &&
+                            activeTabId === 'installation'
+                          ) && (
+                            <Tooltip
+                              content={
+                                showAllAppSections
+                                  ? 'All App Settings sections are visible in one organized page. Scroll to edit setup, defaults, integrations, presets, and appearance without switching tabs.'
+                                  : tabSummaries[activeTabId] ||
+                                    'Tips and context for the tab you selected.'
+                              }
+                            >
+                              <span className={styles.settingsContextTabHint} tabIndex={0}>
+                                <span className={styles.settingsContextTabHintIcon} aria-hidden>
+                                  <Icon source={InfoIcon} />
                                 </span>
-                              </Tooltip>
-                              <Button
-                                size="micro"
-                                pressed={settingsLayoutMode === 'tabbed'}
-                                onClick={() => setSettingsLayoutMode('tabbed')}
-                              >
-                                Sections
-                              </Button>
-                              <Button
-                                size="micro"
-                                pressed={settingsLayoutMode === 'all'}
-                                onClick={() => setSettingsLayoutMode('all')}
-                              >
-                                All sections
-                              </Button>
-                            </>
-                          )}
-                          <Tooltip content={densityHelp}>
-                            <span className={styles.settingsDensityGroup}>
-                              <Text as="span" variant="bodySm" tone="subdued">
-                                Density
-                              </Text>
-                              <span
-                                className={styles.settingsMetricTip}
-                                tabIndex={0}
-                                aria-label={densityHelp}
-                              >
-                                <Icon source={InfoIcon} />
+                                <span>
+                                  {showAllAppSections ? 'About this page' : 'About this tab'}
+                                </span>
                               </span>
-                            </span>
-                          </Tooltip>
-                          <Button
-                            size="micro"
-                            pressed={layoutDensity === 'comfortable'}
-                            onClick={() => setLayoutDensity('comfortable')}
-                          >
-                            Comfortable
-                          </Button>
-                          <Button
-                            size="micro"
-                            pressed={layoutDensity === 'compact'}
-                            onClick={() => setLayoutDensity('compact')}
-                          >
-                            Compact
-                          </Button>
-                        </InlineStack>
-                      </div>
+                            </Tooltip>
+                          )}
+                          <InlineStack gap="150" wrap blockAlign="center">
+                            {isAppSettings && !isGuidedSetupMode && (
+                              <>
+                                <Tooltip content="Sections view is cleaner for day-to-day work. All sections keeps everything on one page for audits and bulk updates.">
+                                  <span className={styles.settingsDensityGroup}>
+                                    <Text as="span" variant="bodySm" tone="subdued">
+                                      View
+                                    </Text>
+                                    <span
+                                      className={styles.settingsMetricTip}
+                                      tabIndex={0}
+                                      aria-label="Choose between section tabs or one-page layout"
+                                    >
+                                      <Icon source={InfoIcon} />
+                                    </span>
+                                  </span>
+                                </Tooltip>
+                                <Button
+                                  size="micro"
+                                  pressed={settingsLayoutMode === 'tabbed'}
+                                  onClick={() => setSettingsLayoutMode('tabbed')}
+                                >
+                                  Sections
+                                </Button>
+                                <Button
+                                  size="micro"
+                                  pressed={settingsLayoutMode === 'all'}
+                                  onClick={() => setSettingsLayoutMode('all')}
+                                >
+                                  All sections
+                                </Button>
+                              </>
+                            )}
+                            <Tooltip content={densityHelp}>
+                              <span className={styles.settingsDensityGroup}>
+                                <Text as="span" variant="bodySm" tone="subdued">
+                                  Density
+                                </Text>
+                                <span
+                                  className={styles.settingsMetricTip}
+                                  tabIndex={0}
+                                  aria-label={densityHelp}
+                                >
+                                  <Icon source={InfoIcon} />
+                                </span>
+                              </span>
+                            </Tooltip>
+                            <Button
+                              size="micro"
+                              pressed={layoutDensity === 'comfortable'}
+                              onClick={() => setLayoutDensity('comfortable')}
+                            >
+                              Comfortable
+                            </Button>
+                            <Button
+                              size="micro"
+                              pressed={layoutDensity === 'compact'}
+                              onClick={() => setLayoutDensity('compact')}
+                            >
+                              Compact
+                            </Button>
+                          </InlineStack>
+                        </div>
+                      )}
                       {isAppSettings && (showAllAppSections || activeTabId === 'installation') && (
                         <div
                           id="settings-panel-installation"
@@ -2436,162 +2444,167 @@ function Settings() {
                               </Box>
                             </Card>
                           )}
-                          <Card
-                            className={`${styles.settingsPanelCard} ${styles.installMain} ${styles.storefrontSnippetCard}`}
-                          >
-                            <Box padding="500">
-                              <BlockStack gap="400">
-                                <div className={styles.snippetSectionHeader}>
-                                  <div className={styles.snippetSectionHeaderIcon}>
-                                    <CodeIcon />
-                                  </div>
-                                  <div className={styles.snippetSectionHeaderContent}>
-                                    <Text
-                                      variant="headingMd"
-                                      as="h2"
-                                      className={styles.snippetSectionTitle}
-                                    >
-                                      Storefront Snippet
-                                    </Text>
-                                    {installation && (
-                                      <div className={styles.snippetBadges}>
-                                        <span className={styles.snippetPlatformBadge}>
-                                          {installation.platform === 'shopify'
-                                            ? 'Shopify'
-                                            : 'Standalone'}
-                                        </span>
-                                        {installation.scriptVerified && (
-                                          <span
-                                            className={styles.snippetVerifiedBadge}
-                                            title="Script detected on your site"
-                                          >
-                                            Script detected
-                                          </span>
-                                        )}
-                                      </div>
-                                    )}
-                                    <Text
-                                      as="p"
-                                      variant="bodySm"
-                                      tone="subdued"
-                                      className={styles.snippetSectionDesc}
-                                    >
-                                      {installationLoading
-                                        ? 'Loading your installation details…'
-                                        : installationError || !installation
-                                          ? 'Load the app to finish setup and get your snippet.'
-                                          : installation.platform === 'shopify'
-                                            ? 'Paste once in your theme or app embed (head).'
-                                            : "Add this script to your site's <head>."}
-                                    </Text>
-                                  </div>
-                                </div>
-
-                                {installationLoading ? (
-                                  <div className={styles.installationSkeleton}>
-                                    <div
-                                      className={styles.loadingBlock}
-                                      style={{ height: 48, marginBottom: '1rem' }}
-                                    />
-                                    <div className={styles.loadingBlock} style={{ height: 140 }} />
-                                    <div
-                                      className={styles.loadingBlock}
-                                      style={{ height: 32, marginTop: '1.5rem' }}
-                                    />
-                                    <div
-                                      className={styles.loadingBlock}
-                                      style={{ height: 40, marginTop: '0.5rem' }}
-                                    />
-                                  </div>
-                                ) : installationError || !installation ? (
-                                  <div className={styles.installationEmpty}>
-                                    <div className={styles.installationEmptyIcon}>
+                          {showInstallationSupportCards && (
+                            <Card
+                              className={`${styles.settingsPanelCard} ${styles.installMain} ${styles.storefrontSnippetCard}`}
+                            >
+                              <Box padding="500">
+                                <BlockStack gap="400">
+                                  <div className={styles.snippetSectionHeader}>
+                                    <div className={styles.snippetSectionHeaderIcon}>
                                       <CodeIcon />
                                     </div>
-                                    <Text as="p" variant="bodyMd" tone="subdued">
-                                      {installationError
-                                        ? "We couldn't load the installation snippet. Retry, or reopen the Installation hub after adding or reconnecting a domain."
-                                        : 'Use the Installation hub to load your storefront snippet and guided steps.'}
-                                    </Text>
-                                    <div className={styles.installationEmptyActions}>
-                                      {installationError && (
-                                        <Button size="slim" onClick={() => fetchInstallation()}>
-                                          Retry
-                                        </Button>
-                                      )}
-                                      <Link
-                                        to={ROUTES.USER_PANEL}
-                                        className={styles.installationEmptyCta}
+                                    <div className={styles.snippetSectionHeaderContent}>
+                                      <Text
+                                        variant="headingMd"
+                                        as="h2"
+                                        className={styles.snippetSectionTitle}
                                       >
-                                        Open app
-                                      </Link>
+                                        Storefront Snippet
+                                      </Text>
+                                      {installation && (
+                                        <div className={styles.snippetBadges}>
+                                          <span className={styles.snippetPlatformBadge}>
+                                            {installation.platform === 'shopify'
+                                              ? 'Shopify'
+                                              : 'Standalone'}
+                                          </span>
+                                          {installation.scriptVerified && (
+                                            <span
+                                              className={styles.snippetVerifiedBadge}
+                                              title="Script detected on your site"
+                                            >
+                                              Script detected
+                                            </span>
+                                          )}
+                                        </div>
+                                      )}
+                                      <Text
+                                        as="p"
+                                        variant="bodySm"
+                                        tone="subdued"
+                                        className={styles.snippetSectionDesc}
+                                      >
+                                        {installationLoading
+                                          ? 'Loading your installation details…'
+                                          : installationError || !installation
+                                            ? 'Load the app to finish setup and get your snippet.'
+                                            : installation.platform === 'shopify'
+                                              ? 'Paste once in your theme or app embed (head).'
+                                              : "Add this script to your site's <head>."}
+                                      </Text>
                                     </div>
                                   </div>
-                                ) : (
-                                  <div className={styles.snippetSection}>
-                                    <div className={styles.snippetBlock}>
-                                      <div className={styles.snippetBlockHeader}>
-                                        <span className={styles.snippetBlockLabel}>
-                                          <CodeIcon />
-                                          HTML snippet
-                                        </span>
-                                        <Button
-                                          icon={ClipboardIcon}
-                                          onClick={handleCopySnippet}
-                                          variant="primary"
-                                          size="slim"
-                                          className={styles.snippetCopyBtn}
-                                        >
-                                          {copiedSnippet ? 'Copied!' : 'Copy snippet'}
-                                        </Button>
+
+                                  {installationLoading ? (
+                                    <div className={styles.installationSkeleton}>
+                                      <div
+                                        className={styles.loadingBlock}
+                                        style={{ height: 48, marginBottom: '1rem' }}
+                                      />
+                                      <div
+                                        className={styles.loadingBlock}
+                                        style={{ height: 140 }}
+                                      />
+                                      <div
+                                        className={styles.loadingBlock}
+                                        style={{ height: 32, marginTop: '1.5rem' }}
+                                      />
+                                      <div
+                                        className={styles.loadingBlock}
+                                        style={{ height: 40, marginTop: '0.5rem' }}
+                                      />
+                                    </div>
+                                  ) : installationError || !installation ? (
+                                    <div className={styles.installationEmpty}>
+                                      <div className={styles.installationEmptyIcon}>
+                                        <CodeIcon />
                                       </div>
-                                      <div className={styles.snippetCodeWrap}>
-                                        <pre className={styles.snippetPre}>
-                                          <code>{installation.snippetHtml}</code>
-                                        </pre>
+                                      <Text as="p" variant="bodyMd" tone="subdued">
+                                        {installationError
+                                          ? "We couldn't load the installation snippet. Retry, or reopen the Installation hub after adding or reconnecting a domain."
+                                          : 'Use the Installation hub to load your storefront snippet and guided steps.'}
+                                      </Text>
+                                      <div className={styles.installationEmptyActions}>
+                                        {installationError && (
+                                          <Button size="slim" onClick={() => fetchInstallation()}>
+                                            Retry
+                                          </Button>
+                                        )}
+                                        <Link
+                                          to={ROUTES.USER_PANEL}
+                                          className={styles.installationEmptyCta}
+                                        >
+                                          Open app
+                                        </Link>
                                       </div>
                                     </div>
-
-                                    <div className={styles.snippetSubsection}>
-                                      <div className={styles.snippetSubsectionHeader}>
-                                        <span className={styles.snippetSubsectionLabel}>
-                                          Script URL
-                                        </span>
-                                      </div>
-                                      <div
-                                        className={`${styles.snippetBlock} ${styles.snippetBlockInline}`}
-                                      >
-                                        <code className={styles.snippetUrl}>
-                                          {installation.scriptUrl}
-                                        </code>
-                                        <div className={styles.snippetUrlActions}>
+                                  ) : (
+                                    <div className={styles.snippetSection}>
+                                      <div className={styles.snippetBlock}>
+                                        <div className={styles.snippetBlockHeader}>
+                                          <span className={styles.snippetBlockLabel}>
+                                            <CodeIcon />
+                                            HTML snippet
+                                          </span>
                                           <Button
                                             icon={ClipboardIcon}
-                                            onClick={() =>
-                                              handleCopy(installation.scriptUrl, 'URL copied')
-                                            }
-                                            variant="plain"
+                                            onClick={handleCopySnippet}
+                                            variant="primary"
                                             size="slim"
+                                            className={styles.snippetCopyBtn}
                                           >
-                                            Copy URL
+                                            {copiedSnippet ? 'Copied!' : 'Copy snippet'}
                                           </Button>
-                                          <Button
-                                            url={installation.scriptUrl}
-                                            external
-                                            variant="plain"
-                                            size="slim"
-                                          >
-                                            Test script
-                                          </Button>
+                                        </div>
+                                        <div className={styles.snippetCodeWrap}>
+                                          <pre className={styles.snippetPre}>
+                                            <code>{installation.snippetHtml}</code>
+                                          </pre>
+                                        </div>
+                                      </div>
+
+                                      <div className={styles.snippetSubsection}>
+                                        <div className={styles.snippetSubsectionHeader}>
+                                          <span className={styles.snippetSubsectionLabel}>
+                                            Script URL
+                                          </span>
+                                        </div>
+                                        <div
+                                          className={`${styles.snippetBlock} ${styles.snippetBlockInline}`}
+                                        >
+                                          <code className={styles.snippetUrl}>
+                                            {installation.scriptUrl}
+                                          </code>
+                                          <div className={styles.snippetUrlActions}>
+                                            <Button
+                                              icon={ClipboardIcon}
+                                              onClick={() =>
+                                                handleCopy(installation.scriptUrl, 'URL copied')
+                                              }
+                                              variant="plain"
+                                              size="slim"
+                                            >
+                                              Copy URL
+                                            </Button>
+                                            <Button
+                                              url={installation.scriptUrl}
+                                              external
+                                              variant="plain"
+                                              size="slim"
+                                            >
+                                              Test script
+                                            </Button>
+                                          </div>
                                         </div>
                                       </div>
                                     </div>
-                                  </div>
-                                )}
-                              </BlockStack>
-                            </Box>
-                          </Card>
-                          {installation && (
+                                  )}
+                                </BlockStack>
+                              </Box>
+                            </Card>
+                          )}
+                          {installation && showInstallationSupportCards && (
                             <Card className={`${styles.settingsPanelCard} ${styles.installSide}`}>
                               <Box padding="500">
                                 <BlockStack gap={CONTENT_GAP}>
@@ -2996,22 +3009,14 @@ function Settings() {
                                         </BlockStack>
                                       </div>
                                     )}
-                                    <InlineStack gap="300" blockAlign="center" wrap>
-                                      <Button onClick={() => setInstallDebugJsonOpen(true)}>
-                                        Open debug JSON
-                                      </Button>
-                                      <Button onClick={() => setInstallAdvancedOpen(true)}>
-                                        Open advanced diagnostics
-                                      </Button>
-                                      {installation?.domain && (
-                                        <Link
-                                          to={ROUTES.appDocs(installation.domain)}
-                                          className={styles.installDocLink}
-                                        >
-                                          Setup guide (snippets & checkout)
-                                        </Link>
-                                      )}
-                                    </InlineStack>
+                                    {installation?.domain && (
+                                      <Link
+                                        to={ROUTES.appDocs(installation.domain)}
+                                        className={styles.installDocLink}
+                                      >
+                                        Setup guide (snippets & checkout)
+                                      </Link>
+                                    )}
 
                                     {checkoutDiagLoading && (
                                       <InlineStack gap="200" blockAlign="center">

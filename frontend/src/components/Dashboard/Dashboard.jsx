@@ -345,7 +345,7 @@ function Dashboard() {
       },
       {
         id: 'setup',
-        label: 'Setup wizard',
+        label: 'Open settings',
         shortcut: 'S',
         onSelect: () => {
           setCommandPaletteOpen(false);
@@ -788,15 +788,11 @@ function Dashboard() {
                 </div>
                 <div className={styles.heroQuickLinks}>
                   <Link to={routes.setup} className={styles.heroQuickLink}>
-                    Setup
+                    Settings
                   </Link>
                   <span className={styles.heroQuickLinkDivider} aria-hidden="true" />
                   <Link to={routes.analytics} className={styles.heroQuickLink}>
                     Analytics
-                  </Link>
-                  <span className={styles.heroQuickLinkDivider} aria-hidden="true" />
-                  <Link to={routes.settings} className={styles.heroQuickLink}>
-                    App settings
                   </Link>
                   <span className={styles.heroQuickLinkDivider} aria-hidden="true" />
                   <Link to={routes.tests} className={styles.heroQuickLink}>

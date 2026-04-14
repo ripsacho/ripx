@@ -12,7 +12,6 @@ import {
   ClipboardChecklistIcon,
   PlusIcon,
   ChartLineIcon,
-  CompassIcon,
   ConnectIcon,
   MagicIcon,
   HomeIcon,
@@ -33,10 +32,9 @@ const baseNavigationGroups = (domain = null) => {
     : ROUTES.TESTS_PERSONALIZATION;
   const createTest = domain ? ROUTES.appCreateTest(domain) : ROUTES.CREATE_TEST;
   const analytics = domain ? ROUTES.appAnalytics(domain) : ROUTES.ANALYTICS;
-  const setup = domain
+  const appSettings = domain
     ? `${ROUTES.appSettings(domain)}?tab=installation&guided_setup=1`
     : ROUTES.SETUP;
-  const appSettings = domain ? ROUTES.appSettings(domain) : null;
   return [
     ...(domain
       ? [
@@ -63,10 +61,7 @@ const baseNavigationGroups = (domain = null) => {
     },
     {
       label: 'Configuration',
-      items: [
-        { path: setup, label: 'Installation', icon: CompassIcon },
-        ...(appSettings ? [{ path: appSettings, label: 'Settings', icon: SettingsIcon }] : []),
-      ],
+      items: [{ path: appSettings, label: 'Settings', icon: SettingsIcon }],
     },
   ];
 };
@@ -395,10 +390,10 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
                 const IconComponent = item.icon;
                 const badgeCount =
                   item.badgeKey === 'personalization' ? personalizationCount : null;
-                const setupPath = appDomain ? ROUTES.appSetup(appDomain) : ROUTES.SETUP;
                 const isSetupHealthApplicable =
                   isShopifyStoreDomain(appDomain || '') &&
-                  item.path === setupPath &&
+                  item.path ===
+                    `${ROUTES.appSettings(appDomain)}?tab=installation&guided_setup=1` &&
                   (setupHealth.loading || setupHealth.ready !== null);
                 const setupHealthToneClass = setupHealth.loading
                   ? 'sidebar-nav-badge--neutral'
