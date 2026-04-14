@@ -1565,8 +1565,13 @@ function Support() {
                         <div className={styles.featureRequestList}>
                           {featureRequests.map(item => (
                             <div key={item.id} className={styles.featureRequestItem}>
-                              <InlineStack align="space-between" blockAlign="start" wrap>
-                                <BlockStack gap="100">
+                              <InlineStack
+                                align="space-between"
+                                blockAlign="start"
+                                wrap
+                                className={styles.featureRequestHeaderRow}
+                              >
+                                <BlockStack gap="100" className={styles.featureRequestMeta}>
                                   <Text as="p" variant="headingSm">
                                     {item.title || 'Untitled request'}
                                   </Text>
@@ -1585,7 +1590,12 @@ function Support() {
                                     </Badge>
                                   </InlineStack>
                                 </BlockStack>
-                                <InlineStack gap="200" blockAlign="center" wrap>
+                                <InlineStack
+                                  gap="200"
+                                  blockAlign="center"
+                                  wrap
+                                  className={styles.featureRequestActions}
+                                >
                                   <Button
                                     size="slim"
                                     variant={Number(item.my_vote) === 1 ? 'primary' : 'secondary'}
@@ -1686,7 +1696,12 @@ function Support() {
                         <div className={styles.supportChangelogList}>
                           {supportChangelog.map(entry => (
                             <div key={entry.id} className={styles.supportChangelogItem}>
-                              <InlineStack align="space-between" blockAlign="center" wrap>
+                              <InlineStack
+                                align="space-between"
+                                blockAlign="start"
+                                wrap
+                                className={styles.supportChangelogHeaderRow}
+                              >
                                 <Text as="p" variant="headingSm">
                                   {entry.title || 'Untitled update'}
                                 </Text>

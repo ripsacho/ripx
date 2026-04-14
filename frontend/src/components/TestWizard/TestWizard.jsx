@@ -4698,28 +4698,32 @@ function TestWizard({
                                                 to carve out sensitive SKUs, and run diagnostics
                                                 before you apply live.
                                               </Text>
-                                              <BlockStack gap="100">
+                                              <div className={styles.bannerChecklist}>
                                                 {shippingTargetingChecklist.map(item => (
-                                                  <InlineStack
+                                                  <div
                                                     key={item.label}
-                                                    gap="200"
-                                                    blockAlign="start"
-                                                    wrap={false}
+                                                    className={styles.bannerChecklistItem}
                                                   >
-                                                    <Icon
-                                                      source={
-                                                        item.passed
-                                                          ? CheckCircleIcon
-                                                          : AlertTriangleIcon
-                                                      }
-                                                      tone={item.passed ? 'success' : 'warning'}
-                                                    />
-                                                    <Text as="span" variant="bodySm">
+                                                    <span className={styles.bannerChecklistIcon}>
+                                                      <Icon
+                                                        source={
+                                                          item.passed
+                                                            ? CheckCircleIcon
+                                                            : AlertTriangleIcon
+                                                        }
+                                                        tone={item.passed ? 'success' : 'warning'}
+                                                      />
+                                                    </span>
+                                                    <Text
+                                                      as="span"
+                                                      variant="bodySm"
+                                                      className={styles.bannerChecklistLabel}
+                                                    >
                                                       {item.label}
                                                     </Text>
-                                                  </InlineStack>
+                                                  </div>
                                                 ))}
-                                              </BlockStack>
+                                              </div>
                                             </BlockStack>
                                           </Banner>
                                         </div>
@@ -13429,19 +13433,21 @@ function TestWizard({
                       Dry runs remain available, but live apply is gated until you acknowledge the
                       broader impact below.
                     </Text>
-                    <BlockStack gap="100">
+                    <div className={styles.bannerChecklist}>
                       {shippingReviewSafetyChecklist.map(item => (
-                        <InlineStack key={item.label} gap="200" blockAlign="start" wrap={false}>
-                          <Icon
-                            source={item.passed ? CheckCircleIcon : AlertTriangleIcon}
-                            tone={item.passed ? 'success' : 'warning'}
-                          />
-                          <Text as="span" variant="bodySm">
+                        <div key={item.label} className={styles.bannerChecklistItem}>
+                          <span className={styles.bannerChecklistIcon}>
+                            <Icon
+                              source={item.passed ? CheckCircleIcon : AlertTriangleIcon}
+                              tone={item.passed ? 'success' : 'warning'}
+                            />
+                          </span>
+                          <Text as="span" variant="bodySm" className={styles.bannerChecklistLabel}>
                             {item.label}
                           </Text>
-                        </InlineStack>
+                        </div>
                       ))}
-                    </BlockStack>
+                    </div>
                     <Checkbox
                       label="I understand this will apply shipping actions to storewide-qualified carts, and I have reviewed holdout, exclusions, and diagnostics."
                       checked={shippingStorewideApplyConfirmed}

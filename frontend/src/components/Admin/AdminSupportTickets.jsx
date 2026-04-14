@@ -1509,8 +1509,18 @@ export default function AdminSupportTickets() {
                   const isPublished = String(entry.visibility || '').toLowerCase() === 'published';
                   return (
                     <div key={entry.id} className={styles.adminSupportChangelogItem}>
-                      <InlineStack align="space-between" blockAlign="center" wrap>
-                        <InlineStack gap="200" blockAlign="center" wrap>
+                      <InlineStack
+                        align="space-between"
+                        blockAlign="start"
+                        wrap
+                        className={styles.adminSupportChangelogHeaderRow}
+                      >
+                        <InlineStack
+                          gap="200"
+                          blockAlign="center"
+                          wrap
+                          className={styles.adminSupportChangelogMeta}
+                        >
                           <Text as="p" variant="headingSm">
                             {entry.title || 'Untitled'}
                           </Text>
@@ -1525,7 +1535,7 @@ export default function AdminSupportTickets() {
                             {isPublished ? 'published' : 'draft'}
                           </Badge>
                         </InlineStack>
-                        <InlineStack gap="200" wrap>
+                        <InlineStack gap="200" wrap className={styles.adminSupportChangelogActions}>
                           <Button
                             size="slim"
                             variant="plain"
@@ -1769,11 +1779,21 @@ export default function AdminSupportTickets() {
         >
           <Modal.Section>
             <BlockStack gap="300">
-              <InlineStack align="space-between" blockAlign="center" wrap>
+              <InlineStack
+                align="space-between"
+                blockAlign="start"
+                wrap
+                className={styles.adminSupportThreadHeaderRow}
+              >
                 <Text as="p" variant="bodySm" tone="subdued">
                   {threadTicket.subject || 'Support request'}
                 </Text>
-                <InlineStack gap="200" blockAlign="center">
+                <InlineStack
+                  gap="200"
+                  blockAlign="center"
+                  wrap
+                  className={styles.adminSupportThreadHeaderBadges}
+                >
                   {threadTicket.email ? <Badge tone="info">{threadTicket.email}</Badge> : null}
                   <Badge tone="info">{String(threadTicket.status || 'open')}</Badge>
                   <Badge

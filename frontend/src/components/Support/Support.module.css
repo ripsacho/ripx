@@ -1549,6 +1549,20 @@
   background: var(--bg-primary);
 }
 
+.featureRequestHeaderRow {
+  width: 100%;
+  gap: 0.6rem;
+}
+
+.featureRequestMeta {
+  min-width: 0;
+  flex: 1 1 360px;
+}
+
+.featureRequestActions {
+  align-self: flex-start;
+}
+
 .supportStatusCard {
   border: 1px solid var(--border-secondary);
   border-radius: 12px;
@@ -1573,6 +1587,11 @@
   flex-direction: column;
   gap: 0.45rem;
   background: var(--bg-primary);
+}
+
+.supportChangelogHeaderRow {
+  width: 100%;
+  gap: 0.55rem;
 }
 
 .contentSection :global(.Polaris-List__Item) {

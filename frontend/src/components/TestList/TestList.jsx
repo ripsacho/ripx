@@ -1525,9 +1525,27 @@ function TestList() {
                               Blocking errors ({launchGroupedPreflightChecks.errors.length})
                             </Text>
                             {launchGroupedPreflightChecks.errors.map(check => (
-                              <Text key={check.id || check.message} as="p" variant="bodySm">
-                                <strong>Error:</strong> {check.message}
-                              </Text>
+                              <div
+                                key={check.id || check.message}
+                                className={styles.preflightCheckRow}
+                              >
+                                <Text
+                                  as="span"
+                                  variant="bodySm"
+                                  fontWeight="semibold"
+                                  tone="critical"
+                                  className={styles.preflightCheckLabel}
+                                >
+                                  Error
+                                </Text>
+                                <Text
+                                  as="span"
+                                  variant="bodySm"
+                                  className={styles.preflightCheckText}
+                                >
+                                  {check.message}
+                                </Text>
+                              </div>
                             ))}
                           </BlockStack>
                         )}
@@ -1538,9 +1556,27 @@ function TestList() {
                               Warnings ({launchGroupedPreflightChecks.warnings.length})
                             </Text>
                             {launchGroupedPreflightChecks.warnings.map(check => (
-                              <Text key={check.id || check.message} as="p" variant="bodySm">
-                                <strong>Warn:</strong> {check.message}
-                              </Text>
+                              <div
+                                key={check.id || check.message}
+                                className={styles.preflightCheckRow}
+                              >
+                                <Text
+                                  as="span"
+                                  variant="bodySm"
+                                  fontWeight="semibold"
+                                  tone="warning"
+                                  className={styles.preflightCheckLabel}
+                                >
+                                  Warn
+                                </Text>
+                                <Text
+                                  as="span"
+                                  variant="bodySm"
+                                  className={styles.preflightCheckText}
+                                >
+                                  {check.message}
+                                </Text>
+                              </div>
                             ))}
                           </BlockStack>
                         )}
@@ -1548,9 +1584,27 @@ function TestList() {
                         launchGroupedPreflightChecks.ok.length > 0 && (
                           <BlockStack gap="100">
                             {launchGroupedPreflightChecks.ok.map(check => (
-                              <Text key={check.id || check.message} as="p" variant="bodySm">
-                                <strong>OK:</strong> {check.message}
-                              </Text>
+                              <div
+                                key={check.id || check.message}
+                                className={styles.preflightCheckRow}
+                              >
+                                <Text
+                                  as="span"
+                                  variant="bodySm"
+                                  fontWeight="semibold"
+                                  tone="success"
+                                  className={styles.preflightCheckLabel}
+                                >
+                                  OK
+                                </Text>
+                                <Text
+                                  as="span"
+                                  variant="bodySm"
+                                  className={styles.preflightCheckText}
+                                >
+                                  {check.message}
+                                </Text>
+                              </div>
                             ))}
                           </BlockStack>
                         )}

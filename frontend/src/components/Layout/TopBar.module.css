@@ -623,6 +623,10 @@
   padding: 1rem 1.25rem 0.75rem;
 }
 
+.notificationPopoverHeaderRow {
+  gap: 0.5rem;
+}
+
 .notificationPopoverList {
   flex: 1;
   min-height: 0;

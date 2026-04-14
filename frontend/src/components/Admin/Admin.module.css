@@ -2457,7 +2457,8 @@
 /* Quick actions - horizontal single line, scroll by wheel or drag */
 .adminQuickActionsWrap {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  flex-wrap: wrap;
   gap: 0.75rem;
   margin-top: var(--spacing-sm);
   margin-bottom: 0;
@@ -3877,6 +3878,20 @@
   gap: 8px;
 }
 
+.adminSupportChangelogHeaderRow {
+  width: 100%;
+  gap: 8px;
+}
+
+.adminSupportChangelogMeta {
+  min-width: 0;
+  flex: 1 1 340px;
+}
+
+.adminSupportChangelogActions {
+  align-self: flex-start;
+}
+
 .adminUnifiedInboxCounts {
   display: flex;
   flex-wrap: wrap;
@@ -3893,6 +3908,15 @@
   border-radius: 12px;
   padding: 10px;
   background: var(--bg-secondary);
+}
+
+.adminSupportThreadHeaderRow {
+  width: 100%;
+  gap: 8px;
+}
+
+.adminSupportThreadHeaderBadges {
+  min-width: 0;
 }
 
 .adminSupportThreadBubbleUser,

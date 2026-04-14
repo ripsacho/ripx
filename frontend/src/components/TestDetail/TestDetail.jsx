@@ -855,11 +855,6 @@ function TestDetail() {
   const previewScannedVariants = Number(publishSummary.variants_scanned || 0);
   const previewScannedProducts = Number(publishSummary.products_scanned || 0);
   const previewExcludedProducts = Number(publishSummary.products_skipped_excluded || 0);
-  const shippingExecSummary = shippingExecutionReport?.execution_result?.summary || null;
-  const shippingExecActions = Array.isArray(shippingExecutionReport?.execution_result?.actions)
-    ? shippingExecutionReport.execution_result.actions
-    : [];
-  const shippingDiagnostics = shippingDiagnosticsReport?.diagnostics || null;
   const actionableShippingVariants =
     String(test?.type || '')
       .trim()
@@ -1175,9 +1170,20 @@ function TestDetail() {
                           Blocking errors ({groupedPreflightChecks.errors.length})
                         </Text>
                         {groupedPreflightChecks.errors.map(check => (
-                          <Text key={check.id || check.message} as="p" variant="bodySm">
-                            <strong>Error:</strong> {check.message}
-                          </Text>
+                          <div key={check.id || check.message} className={styles.preflightCheckRow}>
+                            <Text
+                              as="span"
+                              variant="bodySm"
+                              fontWeight="semibold"
+                              tone="critical"
+                              className={styles.preflightCheckLabel}
+                            >
+                              Error
+                            </Text>
+                            <Text as="span" variant="bodySm" className={styles.preflightCheckText}>
+                              {check.message}
+                            </Text>
+                          </div>
                         ))}
                       </BlockStack>
                     )}
@@ -1187,18 +1193,40 @@ function TestDetail() {
                           Warnings ({groupedPreflightChecks.warnings.length})
                         </Text>
                         {groupedPreflightChecks.warnings.map(check => (
-                          <Text key={check.id || check.message} as="p" variant="bodySm">
-                            <strong>Warn:</strong> {check.message}
-                          </Text>
+                          <div key={check.id || check.message} className={styles.preflightCheckRow}>
+                            <Text
+                              as="span"
+                              variant="bodySm"
+                              fontWeight="semibold"
+                              tone="warning"
+                              className={styles.preflightCheckLabel}
+                            >
+                              Warn
+                            </Text>
+                            <Text as="span" variant="bodySm" className={styles.preflightCheckText}>
+                              {check.message}
+                            </Text>
+                          </div>
                         ))}
                       </BlockStack>
                     )}
                     {showPassedPreflightChecks && groupedPreflightChecks.ok.length > 0 && (
                       <BlockStack gap="100">
                         {groupedPreflightChecks.ok.map(check => (
-                          <Text key={check.id || check.message} as="p" variant="bodySm">
-                            <strong>OK:</strong> {check.message}
-                          </Text>
+                          <div key={check.id || check.message} className={styles.preflightCheckRow}>
+                            <Text
+                              as="span"
+                              variant="bodySm"
+                              fontWeight="semibold"
+                              tone="success"
+                              className={styles.preflightCheckLabel}
+                            >
+                              OK
+                            </Text>
+                            <Text as="span" variant="bodySm" className={styles.preflightCheckText}>
+                              {check.message}
+                            </Text>
+                          </div>
                         ))}
                       </BlockStack>
                     )}
@@ -1802,91 +1830,6 @@ function TestDetail() {
                   ))}
               </div>
             )}
-
-          {isShippingTest && shippingDiagnostics && (
-            <div className={styles.shippingExecutionPanel}>
-              <div className={styles.shippingExecutionHeader}>
-                <h3 className={styles.shippingExecutionTitle}>Shipping diagnostics</h3>
-                <span className={styles.shippingExecutionMode}>
-                  Conflicts:{' '}
-                  {Number(shippingDiagnostics.readiness?.running_shipping_conflicts || 0)}
-                </span>
-              </div>
-              <Banner
-                tone={
-                  Number(shippingDiagnostics.readiness?.running_shipping_conflicts || 0) > 0
-                    ? 'warning'
-                    : 'info'
-                }
-              >
-                <Text as="p" variant="bodySm">
-                  Resolve URL:{' '}
-                  {shippingDiagnostics.urls?.shipping_resolve_batch_url ? 'configured' : 'missing'}{' '}
-                  | Carrier callback:{' '}
-                  {shippingDiagnostics.urls?.carrier_callback_url ? 'configured' : 'missing'} |
-                  Signed assignments:{' '}
-                  {shippingDiagnostics.readiness?.assignment_signature_required
-                    ? 'required'
-                    : 'optional'}
-                </Text>
-              </Banner>
-            </div>
-          )}
-
-          {isShippingTest && shippingExecSummary && (
-            <div className={styles.shippingExecutionPanel}>
-              <div className={styles.shippingExecutionHeader}>
-                <h3 className={styles.shippingExecutionTitle}>Shipping execution report</h3>
-                <span className={styles.shippingExecutionMode}>
-                  Mode: {shippingExecSummary.apply_mode || 'dry_run'}
-                </span>
-              </div>
-              <Banner
-                tone={
-                  Number(shippingExecSummary.failed_count || 0) > 0
-                    ? 'critical'
-                    : Number(shippingExecSummary.manual_required_count || 0) > 0
-                      ? 'warning'
-                      : 'success'
-                }
-              >
-                <Text as="p" variant="bodySm">
-                  {Number(shippingExecSummary.success_count || 0)} success,{' '}
-                  {Number(shippingExecSummary.manual_required_count || 0)} manual-required,{' '}
-                  {Number(shippingExecSummary.failed_count || 0)} failed.
-                </Text>
-              </Banner>
-              <div className={styles.shippingExecutionList}>
-                {shippingExecActions.map((action, index) => (
-                  <div
-                    key={`${action?.variant_index ?? index}-${action?.variant_id || action?.variant_name || index}`}
-                    className={styles.shippingExecutionItem}
-                  >
-                    <div className={styles.shippingExecutionItemHead}>
-                      <span className={styles.shippingExecutionVariant}>
-                        {action?.variant_name || `Variant ${index + 1}`}
-                      </span>
-                      <span className={styles.shippingExecutionStatus}>
-                        {action?.status || 'unknown'}
-                      </span>
-                    </div>
-                    <p className={styles.shippingExecutionMeta}>
-                      Strategy: {action?.strategy || 'n/a'} | Adapter:{' '}
-                      {action?.execution_adapter || 'n/a'}
-                    </p>
-                    {action?.details?.message ? (
-                      <p className={styles.shippingExecutionDetail}>{action.details.message}</p>
-                    ) : null}
-                    {action?.details?.title ? (
-                      <p className={styles.shippingExecutionDetail}>
-                        Resource title: {action.details.title}
-                      </p>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           <Layout>
             <Layout.Section>

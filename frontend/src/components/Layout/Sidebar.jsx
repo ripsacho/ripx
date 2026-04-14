@@ -33,7 +33,9 @@ const baseNavigationGroups = (domain = null) => {
     : ROUTES.TESTS_PERSONALIZATION;
   const createTest = domain ? ROUTES.appCreateTest(domain) : ROUTES.CREATE_TEST;
   const analytics = domain ? ROUTES.appAnalytics(domain) : ROUTES.ANALYTICS;
-  const setup = domain ? ROUTES.appSetup(domain) : ROUTES.SETUP;
+  const setup = domain
+    ? `${ROUTES.appSettings(domain)}?tab=installation&guided_setup=1`
+    : ROUTES.SETUP;
   const appSettings = domain ? ROUTES.appSettings(domain) : null;
   return [
     ...(domain
@@ -62,7 +64,7 @@ const baseNavigationGroups = (domain = null) => {
     {
       label: 'Configuration',
       items: [
-        { path: setup, label: 'Setup', icon: CompassIcon },
+        { path: setup, label: 'Installation', icon: CompassIcon },
         ...(appSettings ? [{ path: appSettings, label: 'Settings', icon: SettingsIcon }] : []),
       ],
     },
@@ -149,7 +151,14 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
   const viewParam = searchParams.get('view');
 
   const isActive = (path, _item) => {
+    const [normalizedPath, normalizedSearch = ''] = String(path || '').split('?');
+    const pathSearchParams = new URLSearchParams(normalizedSearch);
     if (path === ROUTES.USER_PANEL) return location.pathname === ROUTES.USER_PANEL;
+    if (normalizedPath !== path && location.pathname === normalizedPath) {
+      const tabParam = pathSearchParams.get('tab');
+      if (!tabParam) return true;
+      return searchParams.get('tab') === tabParam;
+    }
     const dashboardPath = appDomain ? ROUTES.appDashboard(appDomain) : ROUTES.DASHBOARD;
     if (path === dashboardPath) {
       return location.pathname === dashboardPath || location.pathname === dashboardPath + '/';

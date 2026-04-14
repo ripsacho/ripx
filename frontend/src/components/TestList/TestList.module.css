@@ -865,3 +865,19 @@
   background: rgba(255, 255, 255, 0.3);
   color: inherit;
 }
+
+.preflightCheckRow {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.preflightCheckLabel {
+  line-height: 1.4;
+}
+
+.preflightCheckText {
+  min-width: 0;
+  line-height: 1.4;
+}

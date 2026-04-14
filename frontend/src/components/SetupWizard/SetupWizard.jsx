@@ -7,7 +7,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Navigate, useParams } from 'react-router-dom';
 import {
   Page,
   Card,
@@ -76,6 +76,9 @@ function SetupWizard() {
   const standalone = !isShopifyFromRoute && isStandaloneMode();
   const shopDomain = setupStatus?.shopDomain || getShopDomain();
   const settingsPath = domain ? ROUTES.appSettings(domain) : ROUTES.SETTINGS;
+  const installationHubPath = domain
+    ? `${ROUTES.appSettings(domain)}?tab=installation&guided_setup=1`
+    : settingsPath;
   const appUrl = setupStatus?.appUrl || '';
   const proxyTargetUrl = setupStatus?.proxyTargetUrl || '';
   const proxyScriptUrl = useMemo(() => {
@@ -170,6 +173,10 @@ function SetupWizard() {
 
   const embedBlockedByPassword =
     embedStatusCode === 401 || embedStatusCode === 302 || embedStatusCode === 403;
+
+  if (!standalone && domain) {
+    return <Navigate to={installationHubPath} replace />;
+  }
 
   const copyToClipboardStandalone = async (value, label) => {
     if (!value) return;
@@ -611,12 +618,22 @@ function SetupWizard() {
                       </InlineStack>
                       <Divider />
                       <BlockStack gap="200">
-                        <InlineStack align="space-between" blockAlign="center">
-                          <Text variant="bodySm" tone="subdued">
+                        <InlineStack
+                          align="space-between"
+                          blockAlign="start"
+                          className={styles.statusValueRow}
+                        >
+                          <Text variant="bodySm" tone="subdued" className={styles.statusValueLabel}>
                             App URL
                           </Text>
-                          <InlineStack gap="200" blockAlign="center">
-                            <Text variant="bodySm">{appUrl || 'Not set'}</Text>
+                          <InlineStack
+                            gap="200"
+                            blockAlign="start"
+                            className={styles.statusValueActions}
+                          >
+                            <Text variant="bodySm" className={styles.statusValueText}>
+                              {appUrl || 'Not set'}
+                            </Text>
                             <Button
                               size="slim"
                               onClick={() => copyToClipboard(appUrl, 'App URL')}
@@ -626,12 +643,22 @@ function SetupWizard() {
                             </Button>
                           </InlineStack>
                         </InlineStack>
-                        <InlineStack align="space-between" blockAlign="center">
-                          <Text variant="bodySm" tone="subdued">
+                        <InlineStack
+                          align="space-between"
+                          blockAlign="start"
+                          className={styles.statusValueRow}
+                        >
+                          <Text variant="bodySm" tone="subdued" className={styles.statusValueLabel}>
                             App Proxy target URL
                           </Text>
-                          <InlineStack gap="200" blockAlign="center">
-                            <Text variant="bodySm">{proxyTargetUrl || 'Not set'}</Text>
+                          <InlineStack
+                            gap="200"
+                            blockAlign="start"
+                            className={styles.statusValueActions}
+                          >
+                            <Text variant="bodySm" className={styles.statusValueText}>
+                              {proxyTargetUrl || 'Not set'}
+                            </Text>
                             <Button
                               size="slim"
                               onClick={() => copyToClipboard(proxyTargetUrl, 'Proxy URL')}
@@ -641,12 +668,22 @@ function SetupWizard() {
                             </Button>
                           </InlineStack>
                         </InlineStack>
-                        <InlineStack align="space-between" blockAlign="center">
-                          <Text variant="bodySm" tone="subdued">
+                        <InlineStack
+                          align="space-between"
+                          blockAlign="start"
+                          className={styles.statusValueRow}
+                        >
+                          <Text variant="bodySm" tone="subdued" className={styles.statusValueLabel}>
                             Script URL
                           </Text>
-                          <InlineStack gap="200" blockAlign="center">
-                            <Text variant="bodySm">{proxyScriptUrl || 'Missing shop domain'}</Text>
+                          <InlineStack
+                            gap="200"
+                            blockAlign="start"
+                            className={styles.statusValueActions}
+                          >
+                            <Text variant="bodySm" className={styles.statusValueText}>
+                              {proxyScriptUrl || 'Missing shop domain'}
+                            </Text>
                             <Button
                               size="slim"
                               onClick={() => copyToClipboard(proxyScriptUrl, 'Script URL')}

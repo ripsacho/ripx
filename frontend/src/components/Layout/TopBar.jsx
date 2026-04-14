@@ -505,7 +505,12 @@ function TopBar({
           >
             <div className={styles.notificationPopover}>
               <div className={styles.notificationPopoverHeader}>
-                <InlineStack align="space-between" blockAlign="center">
+                <InlineStack
+                  align="space-between"
+                  blockAlign="start"
+                  wrap
+                  className={styles.notificationPopoverHeaderRow}
+                >
                   <Text variant="headingMd" as="h2">
                     Notifications
                   </Text>

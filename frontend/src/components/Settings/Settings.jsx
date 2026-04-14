@@ -402,6 +402,7 @@ function Settings() {
   /** Installation → checkout card: keep primary actions visible; tuck tools & long copy here */
   const [installAdvancedOpen, setInstallAdvancedOpen] = useState(false);
   const [installDebugJsonOpen, setInstallDebugJsonOpen] = useState(false);
+  const [installSnippetModalOpen, setInstallSnippetModalOpen] = useState(false);
   const [shopifyFnInventory, setShopifyFnInventory] = useState(null);
   const [shopifyFnInventoryLoading, setShopifyFnInventoryLoading] = useState(false);
   const [shopifyFnInventoryError, setShopifyFnInventoryError] = useState(null);
@@ -1630,9 +1631,136 @@ function Settings() {
       return match[1];
     }
   }, [location.pathname]);
-  const setupWizardPath = appSettingsDomain ? ROUTES.appSetup(appSettingsDomain) : ROUTES.SETUP;
+  const installationHubPath = useMemo(() => {
+    if (!appSettingsDomain) return ROUTES.SETTINGS;
+    return `${ROUTES.appSettings(appSettingsDomain)}?tab=installation&guided_setup=1`;
+  }, [appSettingsDomain]);
 
   const densityHelp = 'Comfortable adds more spacing. Compact shows more on screen.';
+  const installationCheckRows = useMemo(() => {
+    if (!installation) return [];
+    return [
+      {
+        id: 'script',
+        title: 'Storefront script',
+        tone: installation.scriptVerified ? 'success' : 'warning',
+        status: installation.scriptVerified ? 'Detected' : 'Needs check',
+        summary: installation.scriptVerified
+          ? 'RipX script is loading on the storefront.'
+          : 'Verify the storefront script/snippet is present and loading.',
+        actionLabel: 'Check',
+        onAction: () => runCheckoutDiagnostics(),
+        loading: checkoutDiagLoading,
+        disabled: checkoutDiagLoading || checkoutFullVerifyRunning,
+        secondaryLabel: 'Snippet',
+        onSecondaryAction: () => setInstallSnippetModalOpen(true),
+      },
+      {
+        id: 'store-health',
+        title: 'Store health',
+        tone: storeHealth.ready ? 'success' : 'warning',
+        status: storeHealth.ready ? 'Passing' : `${storeHealth.failed.length} issue(s)`,
+        summary: storeHealth.ready
+          ? 'Core installation checks are aligned for this store.'
+          : storeHealth.failed[0]?.message || 'Run checks to see the current blocker.',
+        actionLabel: 'Run',
+        onAction: () => runFullCheckoutVerification(),
+        loading: checkoutFullVerifyRunning,
+        disabled:
+          checkoutFullVerifyRunning ||
+          checkoutCartTransformEnsuring ||
+          checkoutDiscountEnsuring ||
+          checkoutDiagLoading,
+      },
+      {
+        id: 'offer-readiness',
+        title: 'Offer checkout path',
+        tone: checkoutDiscountAttached ? 'success' : 'warning',
+        status: checkoutDiscountAttached ? 'Ready' : 'Needs install',
+        summary: checkoutDiscountAttached
+          ? 'Discount function is attached for Offer campaigns.'
+          : 'Attach the RipX automatic discount so Shopify can execute the offer checkout path.',
+        actionLabel: 'Install',
+        onAction: () => ensureCheckoutDiscount(),
+        loading: checkoutDiscountEnsuring,
+        disabled: checkoutDiscountEnsuring || checkoutFullVerifyRunning,
+      },
+    ];
+  }, [
+    installation,
+    storeHealth,
+    checkoutDiagLoading,
+    checkoutFullVerifyRunning,
+    checkoutCartTransformEnsuring,
+    checkoutDiscountEnsuring,
+    checkoutDiscountAttached,
+    runCheckoutDiagnostics,
+    runFullCheckoutVerification,
+    ensureCheckoutDiscount,
+  ]);
+  const cartTransformInstalled = checkoutDiag?.infrastructure?.cart_transform_installed === true;
+  const installationActionRows = useMemo(() => {
+    if (!installation || installation.platform !== 'shopify') return [];
+    return [
+      {
+        id: 'cart-transform',
+        title: 'Direct price override',
+        tone: cartTransformInstalled ? 'success' : 'warning',
+        status: cartTransformInstalled ? 'Installed' : 'Needs install',
+        summary: cartTransformInstalled
+          ? 'Cart Transform is installed and ready for matrix-based Price tests.'
+          : 'Install or verify the RipX cart transform for direct price override at cart and checkout.',
+        actionLabel: 'Install',
+        onAction: () => ensureCartTransform(),
+        loading: checkoutCartTransformEnsuring,
+        disabled: checkoutCartTransformEnsuring || checkoutFullVerifyRunning,
+      },
+      {
+        id: 'diagnostics',
+        title: 'Checkout diagnostics',
+        tone: checkoutDiag?.summary?.overall_ok ? 'success' : 'attention',
+        status: checkoutDiag?.summary?.overall_ok ? 'Passing' : 'Needs review',
+        summary: checkoutDiag?.summary?.overall_ok
+          ? 'Diagnostics passed for the current app URL and resolver configuration.'
+          : 'Run diagnostics after changing URLs, scopes, secrets, or installed functions.',
+        actionLabel: 'Run',
+        onAction: () => runCheckoutDiagnostics(),
+        loading: checkoutDiagLoading,
+        disabled: checkoutDiagLoading || checkoutFullVerifyRunning,
+        secondaryLabel: 'Advanced',
+        onSecondaryAction: () => setInstallAdvancedOpen(true),
+      },
+      {
+        id: 'discount-list',
+        title: 'Discount list check',
+        tone: checkoutDiscountListCheck?.inList ? 'success' : 'attention',
+        status: checkoutDiscountListCheck?.inList ? 'Found in Shopify' : 'Not checked',
+        summary: checkoutDiscountListCheck?.inList
+          ? 'RipX discount is present in the Shopify automatic discount list.'
+          : 'Confirm the attached discount is visible in Shopify after installation.',
+        actionLabel: 'Check',
+        onAction: () => runCheckoutDiscountListCheck(),
+        loading: checkoutDiscountListCheckLoading,
+        disabled:
+          checkoutDiscountListCheckLoading || checkoutDiscountEnsuring || checkoutFullVerifyRunning,
+        secondaryLabel: 'Debug',
+        onSecondaryAction: () => setInstallDebugJsonOpen(true),
+      },
+    ];
+  }, [
+    installation,
+    cartTransformInstalled,
+    checkoutDiag,
+    checkoutDiagLoading,
+    checkoutFullVerifyRunning,
+    checkoutDiscountListCheck,
+    checkoutDiscountListCheckLoading,
+    checkoutDiscountEnsuring,
+    checkoutCartTransformEnsuring,
+    ensureCartTransform,
+    runCheckoutDiagnostics,
+    runCheckoutDiscountListCheck,
+  ]);
   return (
     <PageShell
       message={message}
@@ -1821,8 +1949,8 @@ function Settings() {
                       Setup workflow
                     </Text>
                     <Text as="p" variant="bodySm" tone="subdued">
-                      Use Setup for onboarding and verification. Use this page for day-to-day
-                      advanced configuration.
+                      Use Installation as the single setup hub for onboarding, verification, and
+                      checkout readiness. Use the other sections for advanced configuration.
                     </Text>
                   </div>
                   <InlineStack
@@ -1834,8 +1962,8 @@ function Settings() {
                     <Badge tone={setupComplete ? 'success' : 'warning'}>
                       {setupComplete ? 'Setup ready' : 'Setup pending'}
                     </Badge>
-                    <Button size="slim" variant="primary" url={setupWizardPath}>
-                      Open Setup Wizard
+                    <Button size="slim" variant="primary" url={installationHubPath}>
+                      Open Installation hub
                     </Button>
                     <Button size="slim" onClick={() => runCheckoutDiagnostics()}>
                       Run checkout diagnostics
@@ -1878,17 +2006,17 @@ function Settings() {
                   action={{ content: 'Exit guided mode', onAction: clearGuidedSetupMode }}
                 >
                   <p>
-                    You&apos;re in focused setup mode. Complete Installation first, then continue to
-                    other settings.
+                    You&apos;re in focused installation mode. Complete the hub checklist first, then
+                    continue to the other settings sections.
                   </p>
                 </Banner>
               )}
               {isAppSettings && !setupComplete && !isGuidedSetupMode && (
                 <Banner tone="warning" title="Finish setup first for best results">
                   <p>
-                    Complete guided setup before editing advanced settings.{' '}
-                    <Link to={setupWizardPath} className={styles.installDocLink}>
-                      Open Setup Wizard
+                    Complete the Installation hub before editing advanced settings.{' '}
+                    <Link to={installationHubPath} className={styles.installDocLink}>
+                      Open Installation hub
                     </Link>
                   </p>
                 </Banner>
@@ -2157,6 +2285,157 @@ function Settings() {
                           aria-label={showAllAppSections ? 'Installation settings' : undefined}
                           className={`${styles.settingsContent} ${styles.settingsPanelLayout} ${styles.settingsPanelInstallation}`}
                         >
+                          {installation && (
+                            <Card
+                              className={`${styles.settingsPanelCard} ${styles.installHubCard}`}
+                            >
+                              <Box padding="500">
+                                <BlockStack gap="400">
+                                  <div className={styles.installHubHeader}>
+                                    <div className={styles.installHubHeaderContent}>
+                                      <Text variant="headingMd" as="h2">
+                                        Smart setup hub
+                                      </Text>
+                                      <Text as="p" variant="bodySm" tone="subdued">
+                                        Complete setup from these two lists: first check the store,
+                                        then run or install the required pieces. Technical details
+                                        stay behind focused actions.
+                                      </Text>
+                                    </div>
+                                    <InlineStack gap="200" wrap blockAlign="center">
+                                      {checkoutDiagCheckedLabel && (
+                                        <Badge tone={checkoutDiagIsStale ? 'attention' : 'success'}>
+                                          {checkoutDiagIsStale
+                                            ? 'Status may be stale'
+                                            : 'Status fresh'}
+                                        </Badge>
+                                      )}
+                                      <Button
+                                        size="slim"
+                                        onClick={() => setInstallSnippetModalOpen(true)}
+                                      >
+                                        Snippet details
+                                      </Button>
+                                      <Button
+                                        size="slim"
+                                        onClick={() => setInstallAdvancedOpen(true)}
+                                      >
+                                        Advanced tools
+                                      </Button>
+                                      <Button
+                                        size="slim"
+                                        onClick={() => setInstallDebugJsonOpen(true)}
+                                      >
+                                        Debug JSON
+                                      </Button>
+                                    </InlineStack>
+                                  </div>
+                                  <div className={styles.installHubGrid}>
+                                    <div className={styles.installHubSection}>
+                                      <div className={styles.installHubSectionHeader}>
+                                        <Text variant="headingSm" as="h3">
+                                          Setup checks
+                                        </Text>
+                                        <Text as="p" variant="bodySm" tone="subdued">
+                                          Check only the things that can block launch.
+                                        </Text>
+                                      </div>
+                                      <BlockStack gap="200">
+                                        {installationCheckRows.map(item => (
+                                          <div key={item.id} className={styles.installHubRow}>
+                                            <div className={styles.installHubRowMain}>
+                                              <div className={styles.installHubRowTitle}>
+                                                <Text
+                                                  as="span"
+                                                  variant="bodyMd"
+                                                  fontWeight="semibold"
+                                                >
+                                                  {item.title}
+                                                </Text>
+                                                <Badge tone={item.tone}>{item.status}</Badge>
+                                              </div>
+                                              <Text as="p" variant="bodySm" tone="subdued">
+                                                {item.summary}
+                                              </Text>
+                                            </div>
+                                            <div className={styles.installHubRowActions}>
+                                              <Button
+                                                size="slim"
+                                                onClick={item.onAction}
+                                                loading={item.loading}
+                                                disabled={item.disabled}
+                                              >
+                                                {item.actionLabel}
+                                              </Button>
+                                              {item.secondaryLabel && item.onSecondaryAction && (
+                                                <Button
+                                                  size="slim"
+                                                  variant="plain"
+                                                  onClick={item.onSecondaryAction}
+                                                >
+                                                  {item.secondaryLabel}
+                                                </Button>
+                                              )}
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </BlockStack>
+                                    </div>
+                                    <div className={styles.installHubSection}>
+                                      <div className={styles.installHubSectionHeader}>
+                                        <Text variant="headingSm" as="h3">
+                                          Installation actions
+                                        </Text>
+                                        <Text as="p" variant="bodySm" tone="subdued">
+                                          Install, run, or verify only what is needed right now.
+                                        </Text>
+                                      </div>
+                                      <BlockStack gap="200">
+                                        {installationActionRows.map(item => (
+                                          <div key={item.id} className={styles.installHubRow}>
+                                            <div className={styles.installHubRowMain}>
+                                              <div className={styles.installHubRowTitle}>
+                                                <Text
+                                                  as="span"
+                                                  variant="bodyMd"
+                                                  fontWeight="semibold"
+                                                >
+                                                  {item.title}
+                                                </Text>
+                                                <Badge tone={item.tone}>{item.status}</Badge>
+                                              </div>
+                                              <Text as="p" variant="bodySm" tone="subdued">
+                                                {item.summary}
+                                              </Text>
+                                            </div>
+                                            <div className={styles.installHubRowActions}>
+                                              <Button
+                                                size="slim"
+                                                onClick={item.onAction}
+                                                loading={item.loading}
+                                                disabled={item.disabled}
+                                              >
+                                                {item.actionLabel}
+                                              </Button>
+                                              {item.secondaryLabel && item.onSecondaryAction && (
+                                                <Button
+                                                  size="slim"
+                                                  variant="plain"
+                                                  onClick={item.onSecondaryAction}
+                                                >
+                                                  {item.secondaryLabel}
+                                                </Button>
+                                              )}
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </BlockStack>
+                                    </div>
+                                  </div>
+                                </BlockStack>
+                              </Box>
+                            </Card>
+                          )}
                           <Card
                             className={`${styles.settingsPanelCard} ${styles.installMain} ${styles.storefrontSnippetCard}`}
                           >
@@ -2231,8 +2510,8 @@ function Settings() {
                                     </div>
                                     <Text as="p" variant="bodyMd" tone="subdued">
                                       {installationError
-                                        ? "We couldn't load the installation snippet. Use the Setup Wizard to get your script and steps, or retry if you just added a domain."
-                                        : 'Get your storefront snippet and setup steps from the Setup Wizard.'}
+                                        ? "We couldn't load the installation snippet. Retry, or reopen the Installation hub after adding or reconnecting a domain."
+                                        : 'Use the Installation hub to load your storefront snippet and guided steps.'}
                                     </Text>
                                     <div className={styles.installationEmptyActions}>
                                       {installationError && (
@@ -2244,7 +2523,7 @@ function Settings() {
                                         to={ROUTES.USER_PANEL}
                                         className={styles.installationEmptyCta}
                                       >
-                                        Open app (Setup Wizard)
+                                        Open app
                                       </Link>
                                     </div>
                                   </div>
@@ -2485,8 +2764,8 @@ function Settings() {
                                     {!installation.instructions?.steps?.length &&
                                       !installation.instructions?.altMethod && (
                                         <Text as="p" variant="bodyMd" tone="subdued">
-                                          For guided setup, open the app and use the Setup Wizard
-                                          from the sidebar.
+                                          Use the Installation hub actions above to complete setup
+                                          or open snippet details for the full install code.
                                         </Text>
                                       )}
                                   </div>
@@ -2718,21 +2997,11 @@ function Settings() {
                                       </div>
                                     )}
                                     <InlineStack gap="300" blockAlign="center" wrap>
-                                      <Button
-                                        disclosure={installDebugJsonOpen ? 'up' : 'down'}
-                                        onClick={() => setInstallDebugJsonOpen(o => !o)}
-                                      >
-                                        {installDebugJsonOpen
-                                          ? 'Hide debug JSON'
-                                          : 'Show debug JSON'}
+                                      <Button onClick={() => setInstallDebugJsonOpen(true)}>
+                                        Open debug JSON
                                       </Button>
-                                      <Button
-                                        disclosure={installAdvancedOpen ? 'up' : 'down'}
-                                        onClick={() => setInstallAdvancedOpen(o => !o)}
-                                      >
-                                        {installAdvancedOpen
-                                          ? 'Hide advanced diagnostics'
-                                          : 'Show advanced diagnostics'}
+                                      <Button onClick={() => setInstallAdvancedOpen(true)}>
+                                        Open advanced diagnostics
                                       </Button>
                                       {installation?.domain && (
                                         <Link
@@ -2743,27 +3012,7 @@ function Settings() {
                                         </Link>
                                       )}
                                     </InlineStack>
-                                    <Collapsible
-                                      open={installDebugJsonOpen}
-                                      id="install-debug-json"
-                                    >
-                                      <BlockStack gap="200">
-                                        <Text variant="headingSm" as="h3">
-                                          Debug payloads
-                                        </Text>
-                                        <Text as="p" variant="bodySm" tone="subdued">
-                                          Checkout diagnostics and Shopify functions inventory (copy
-                                          for support). Redact secrets before sharing externally.
-                                        </Text>
-                                        <pre className={styles.checkoutDiagDebugBox}>
-                                          {JSON.stringify(
-                                            { checkoutDiag, shopifyFnInventory },
-                                            null,
-                                            2
-                                          )}
-                                        </pre>
-                                      </BlockStack>
-                                    </Collapsible>
+
                                     {checkoutDiagLoading && (
                                       <InlineStack gap="200" blockAlign="center">
                                         <Spinner size="small" />
@@ -2836,10 +3085,7 @@ function Settings() {
                                         {checkoutDiscountListCheckError}
                                       </Banner>
                                     )}
-                                    <Collapsible
-                                      open={installAdvancedOpen}
-                                      id="install-checkout-advanced"
-                                    >
+                                    <Collapsible open={false} id="install-checkout-advanced">
                                       <BlockStack gap="400">
                                         <Divider />
                                         <div className={styles.checkoutDiagHealthSummary}>
@@ -3222,7 +3468,11 @@ function Settings() {
                                                     >
                                                       {item.ok ? 'OK' : 'Fix'}
                                                     </Badge>
-                                                    <Text as="span" variant="bodySm">
+                                                    <Text
+                                                      as="span"
+                                                      variant="bodySm"
+                                                      className={styles.checkoutDiagCheckMessage}
+                                                    >
                                                       {item.message}
                                                     </Text>
                                                   </div>
@@ -4393,6 +4643,204 @@ function Settings() {
           </div>
         </div>
       </Page>
+
+      <Modal
+        open={installSnippetModalOpen}
+        onClose={() => setInstallSnippetModalOpen(false)}
+        title="Snippet details"
+        primaryAction={{ content: 'Close', onAction: () => setInstallSnippetModalOpen(false) }}
+      >
+        <Modal.Section>
+          <BlockStack gap="300">
+            <Text as="p" variant="bodySm" tone="subdued">
+              Copy, verify, or share installation details without leaving the main setup hub.
+            </Text>
+            {installation?.scriptUrl && (
+              <BlockStack gap="150">
+                <Text variant="headingSm" as="h3">
+                  Script URL
+                </Text>
+                <div className={styles.installModalCodeBlock}>
+                  <code className={styles.checkoutDiagMono}>{installation.scriptUrl}</code>
+                </div>
+                <InlineStack gap="200" wrap>
+                  <Button
+                    size="slim"
+                    onClick={() => handleCopy(installation.scriptUrl, 'URL copied')}
+                  >
+                    Copy URL
+                  </Button>
+                  <Button size="slim" variant="plain" onClick={runCheckoutDiagnostics}>
+                    Check now
+                  </Button>
+                </InlineStack>
+              </BlockStack>
+            )}
+            {installation?.snippetHtml && (
+              <BlockStack gap="150">
+                <Text variant="headingSm" as="h3">
+                  HTML snippet
+                </Text>
+                <pre className={styles.checkoutDiagDebugBox}>
+                  <code>{installation.snippetHtml}</code>
+                </pre>
+                <Button size="slim" onClick={handleCopySnippet}>
+                  Copy full snippet
+                </Button>
+              </BlockStack>
+            )}
+            {Array.isArray(installation?.instructions?.steps) &&
+              installation.instructions.steps.length > 0 && (
+                <BlockStack gap="150">
+                  <Text variant="headingSm" as="h3">
+                    Install steps
+                  </Text>
+                  <ul className={styles.installSteps}>
+                    {installation.instructions.steps.map((step, index) => (
+                      <li key={`install-step-${index}`}>
+                        <Text as="span" variant="bodySm">
+                          {step}
+                        </Text>
+                      </li>
+                    ))}
+                  </ul>
+                </BlockStack>
+              )}
+          </BlockStack>
+        </Modal.Section>
+      </Modal>
+
+      <Modal
+        open={installAdvancedOpen}
+        onClose={() => setInstallAdvancedOpen(false)}
+        title="Advanced installation tools"
+        primaryAction={{ content: 'Close', onAction: () => setInstallAdvancedOpen(false) }}
+      >
+        <Modal.Section>
+          <BlockStack gap="300">
+            <Text as="p" variant="bodySm" tone="subdued">
+              Power tools for verification, preview probing, and Shopify function inventory.
+            </Text>
+            <InlineStack gap="200" wrap>
+              <Button onClick={runFullCheckoutVerification} loading={checkoutFullVerifyRunning}>
+                Run full verify
+              </Button>
+              <Button onClick={runCheckoutDiagnostics} loading={checkoutDiagLoading}>
+                Run diagnostics
+              </Button>
+              <Button onClick={fetchShopifyFnInventory} loading={shopifyFnInventoryLoading}>
+                Refresh function inventory
+              </Button>
+            </InlineStack>
+            <div className={styles.installAdvancedModalGrid}>
+              <TextField
+                label="Preview probe test ID"
+                value={previewProbeTestId}
+                onChange={setPreviewProbeTestId}
+                autoComplete="off"
+                placeholder="68cbfbe8-6bee-479c-acce-58d0d9ffd9fe"
+              />
+              <TextField
+                label="Preview probe variant"
+                value={previewProbeVariant}
+                onChange={setPreviewProbeVariant}
+                autoComplete="off"
+                placeholder="Variant A"
+              />
+            </div>
+            <InlineStack gap="200" wrap>
+              <Button
+                size="slim"
+                onClick={autofillPreviewProbeFromRunningTest}
+                loading={previewProbeAutofillLoading}
+              >
+                Use running test
+              </Button>
+              <Button size="slim" onClick={runPreviewProbe} loading={previewProbeLoading}>
+                Run preview probe
+              </Button>
+              <Button
+                size="slim"
+                url={previewProbeUrl || undefined}
+                external
+                disabled={!previewProbeUrl}
+              >
+                Open preview URL
+              </Button>
+              {shopifyAdminDiscountsUrl && (
+                <Button size="slim" url={shopifyAdminDiscountsUrl} external>
+                  Open Shopify discounts
+                </Button>
+              )}
+            </InlineStack>
+            {previewProbeError && <Banner tone="critical">{previewProbeError}</Banner>}
+            {previewProbeResult && (
+              <div className={styles.checkoutDiagProbeResult}>
+                <Text as="p" variant="bodySm">
+                  <strong>Variant:</strong>{' '}
+                  {previewProbeResult.variantName || previewProbeResult.variantId || '—'}
+                </Text>
+                <Text as="p" variant="bodySm">
+                  <strong>Mode:</strong> {previewProbeResult.priceMode || '—'}
+                </Text>
+                <Text as="p" variant="bodySm">
+                  <strong>Fixed price:</strong> {previewProbeResult.price ?? '—'}
+                </Text>
+              </div>
+            )}
+            {shopifyFnInventory?.summary && (
+              <div className={styles.installModalInfoCard}>
+                <Text variant="headingSm" as="h3">
+                  Shopify Functions inventory
+                </Text>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  {shopifyFnInventory.summary.totalFunctionsReturned} function(s) returned
+                  {shopifyFnInventory.generatedAt
+                    ? ` · updated ${formatRelativeTime(shopifyFnInventory.generatedAt)}`
+                    : ''}
+                </Text>
+                {shopifyFnInventory.readiness && (
+                  <Badge tone={shopifyFnInventory.readiness === 'ready' ? 'success' : 'attention'}>
+                    {shopifyFnInventory.readiness}
+                  </Badge>
+                )}
+              </div>
+            )}
+          </BlockStack>
+        </Modal.Section>
+      </Modal>
+
+      <Modal
+        open={installDebugJsonOpen}
+        onClose={() => setInstallDebugJsonOpen(false)}
+        title="Debug JSON"
+        primaryAction={{ content: 'Close', onAction: () => setInstallDebugJsonOpen(false) }}
+      >
+        <Modal.Section>
+          <BlockStack gap="200">
+            <Text as="p" variant="bodySm" tone="subdued">
+              Copy for support or internal troubleshooting. Redact secrets before sharing
+              externally.
+            </Text>
+            <pre className={styles.checkoutDiagDebugBox}>
+              {JSON.stringify({ checkoutDiag, shopifyFnInventory, storeHealth }, null, 2)}
+            </pre>
+            <InlineStack gap="200">
+              <Button
+                size="slim"
+                onClick={() =>
+                  handleCopy(
+                    JSON.stringify({ checkoutDiag, shopifyFnInventory, storeHealth }, null, 2),
+                    'Diagnostics JSON copied'
+                  )
+                }
+              >
+                Copy diagnostics JSON
+              </Button>
+            </InlineStack>
+          </BlockStack>
+        </Modal.Section>
+      </Modal>
 
       <Modal
         open={!!deletePresetId}
