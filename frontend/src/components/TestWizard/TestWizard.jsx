@@ -9857,104 +9857,95 @@ function TestWizard({
       <>
         <BlockStack gap="400">
           <div className={styles.priceStepRoot}>
-            <div className={styles.priceGuidanceCompact}>
-              <div className={styles.priceModeCompactNotice}>
-                <InlineStack gap="200" wrap blockAlign="center">
-                  <Badge tone="success" size="small">
-                    Direct Price mode
-                  </Badge>
-                  <Text as="p" variant="bodySm" tone="subdued">
-                    This step is streamlined: all variants use Direct Price on cart and checkout.
-                  </Text>
-                </InlineStack>
-              </div>
-
-              <div className={styles.priceGuideToggleRow}>
-                <button
-                  type="button"
-                  className={`${styles.priceGuideToggleBtn} ${priceGuideSampleOpen ? styles.priceGuideToggleBtnOpen : ''}`}
-                  onClick={() => setPriceGuideSampleOpen(o => !o)}
-                  aria-expanded={priceGuideSampleOpen}
-                >
-                  <span className={styles.priceGuideToggleLabel}>
-                    <span className={styles.priceGuideToggleTitle}>
-                      Sample size &amp; run duration
-                    </span>
-                    <span className={styles.priceGuideToggleHint}>
-                      ~300 conversions/variant · 2–4 weeks typical
-                    </span>
+            <div className={styles.priceMetaCompactRow}>
+              <div className={styles.priceMetaCompactItem}>
+                <Badge tone="success" size="small">
+                  Direct Price mode
+                </Badge>
+                <TooltipWrapper content="This step is streamlined: all variants use Direct Price on cart and checkout.">
+                  <span className={styles.priceMetaCompactInfoIcon} aria-hidden>
+                    <Icon source={InfoIcon} />
                   </span>
-                  <span className={styles.priceGuideToggleChevron} aria-hidden>
-                    <Icon source={ChevronDownIcon} />
-                  </span>
-                </button>
-                <Collapsible open={priceGuideSampleOpen} id="price-guide-sample">
-                  <div className={styles.priceGuideBody}>
-                    <Text as="p" variant="bodySm">
-                      For reliable results: aim for <strong>~300 conversions per variant</strong> to
-                      detect a 10% change at 90% confidence. Run <strong>2–4 weeks</strong> and
-                      avoid stopping early to reduce false positives.{' '}
-                      <Link
-                        to={`${ROUTES.DOCS}#price-testing`}
-                        className={styles.priceDocLink}
-                        rel="noopener noreferrer"
-                      >
-                        Price testing guide →
-                      </Link>
-                    </Text>
-                    <Text as="p" variant="bodySm">
-                      <a
-                        href="https://www.evanmiller.org/ab-testing/sample-size.html"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={styles.priceDocLink}
-                      >
-                        Sample size calculator (opens in new tab) →
-                      </a>
-                    </Text>
-                  </div>
-                </Collapsible>
+                </TooltipWrapper>
               </div>
+              <button
+                type="button"
+                className={styles.priceMetaCompactItemButton}
+                onClick={() => setPriceGuideSampleOpen(true)}
+              >
+                <span className={styles.priceMetaCompactItemTitle}>
+                  Sample size &amp; run duration
+                </span>
+                <span className={styles.priceMetaCompactItemHint}>
+                  ~300 conversions/variant · 2-4 weeks
+                </span>
+              </button>
+              <div className={styles.priceMetaCompactItem}>
+                <span className={styles.priceMetaCompactItemTitle}>Product scope</span>
+                <Badge tone={formData.target_type === 'product' ? 'info' : 'success'} size="small">
+                  {formData.target_type === 'product' ? 'Selected products' : 'All products'}
+                </Badge>
+                {formData.target_type === 'product' && (
+                  <span className={styles.priceMetaCompactScopeHint}>
+                    {priceTargetProductIds.length} selected
+                    {Array.isArray(formData.segments?.excluded_product_ids) &&
+                    formData.segments.excluded_product_ids.length > 0
+                      ? ` · ${formData.segments.excluded_product_ids.length} excluded`
+                      : ''}
+                  </span>
+                )}
+                <TooltipWrapper content="Product selection now lives in the Targeting step for both Price and Offer tests.">
+                  <span className={styles.priceMetaCompactInfoIcon} aria-hidden>
+                    <Icon source={InfoIcon} />
+                  </span>
+                </TooltipWrapper>
+              </div>
+              <Button variant="plain" size="slim" onClick={() => setCurrentStep(stepIds.targeting)}>
+                Edit in Targeting
+              </Button>
             </div>
 
-            <Card className={`${styles.productScopeCard} ${styles.productScopeCardCompact}`}>
-              <div className={`${styles.productScopeSection} ${styles.productScopeSectionCompact}`}>
-                <InlineStack align="space-between" blockAlign="start" wrap>
-                  <BlockStack gap="100">
-                    <Text variant="headingSm" as="h3" fontWeight="semibold">
-                      Product scope
-                    </Text>
-                    <Text as="p" variant="bodySm" tone="subdued">
-                      Product selection now lives in the Targeting step for both Price and Offer
-                      tests.
-                    </Text>
-                  </BlockStack>
-                  <Button
-                    variant="plain"
-                    size="slim"
-                    onClick={() => setCurrentStep(stepIds.targeting)}
-                  >
-                    Edit in Targeting
-                  </Button>
-                </InlineStack>
-                <InlineStack gap="200" blockAlign="center" wrap>
-                  <Badge tone={formData.target_type === 'product' ? 'info' : 'success'}>
-                    {formData.target_type === 'product' ? 'Selected products' : 'All products'}
-                  </Badge>
-                  {formData.target_type === 'product' && (
-                    <Text as="span" variant="bodySm" tone="subdued">
-                      {priceTargetProductIds.length} selected
-                    </Text>
-                  )}
-                  {Array.isArray(formData.segments?.excluded_product_ids) &&
-                    formData.segments.excluded_product_ids.length > 0 && (
-                      <Text as="span" variant="bodySm" tone="subdued">
-                        {formData.segments.excluded_product_ids.length} excluded
-                      </Text>
-                    )}
-                </InlineStack>
-              </div>
-            </Card>
+            <Modal
+              open={priceGuideSampleOpen}
+              onClose={() => setPriceGuideSampleOpen(false)}
+              title="Sample size & run duration"
+              primaryAction={{
+                content: 'Close',
+                onAction: () => setPriceGuideSampleOpen(false),
+              }}
+            >
+              <Modal.Section>
+                <BlockStack gap="300">
+                  <Text as="p" variant="bodyMd">
+                    For reliable results, aim for <strong>~300 conversions per variant</strong> to
+                    detect a 10% change at 90% confidence.
+                  </Text>
+                  <Text as="p" variant="bodyMd">
+                    Typical run time is <strong>2-4 weeks</strong>. Avoid stopping early to reduce
+                    false positives.
+                  </Text>
+                  <Text as="p" variant="bodyMd">
+                    <Link
+                      to={`${ROUTES.DOCS}#price-testing`}
+                      className={styles.priceDocLink}
+                      rel="noopener noreferrer"
+                    >
+                      Price testing guide {'->'}
+                    </Link>
+                  </Text>
+                  <Text as="p" variant="bodyMd">
+                    <a
+                      href="https://www.evanmiller.org/ab-testing/sample-size.html"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={styles.priceDocLink}
+                    >
+                      Sample size calculator (opens in new tab) {'->'}
+                    </a>
+                  </Text>
+                </BlockStack>
+              </Modal.Section>
+            </Modal>
 
             {(isProductTargetScope ? priceTargetProductIds.length >= 1 : true) && (
               <div className={styles.priceOptionCard}>
