@@ -6,7 +6,7 @@
  */
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { useParams, Navigate, Outlet } from 'react-router-dom';
+import { useParams, useLocation, Navigate, Outlet } from 'react-router-dom';
 import { BlockStack } from '@shopify/polaris';
 import { useQuery } from '@tanstack/react-query';
 import { ROUTES, STORAGE_KEYS, RIPX_STORE_SWITCHED_EVENT } from '../../constants';
@@ -43,6 +43,7 @@ function isValidDomainParam(domain) {
 
 function AppDomainLayout() {
   const { domain } = useParams();
+  const location = useLocation();
   const [storeSynced, setStoreSynced] = useState(false);
   const [storeSwitchToast, setStoreSwitchToast] = useState(null);
   const connectPopupRef = useRef(null);
@@ -61,6 +62,19 @@ function AppDomainLayout() {
     (domain && (domainKeys[domain] || domainKeys[normalizeShopifyDomain(domain)]));
   const isShopify = domain ? isShopifyStoreDomain(domain) : false;
   const needsShopifySessionCheck = isShopify && !keyForDomain;
+  const hasEmailAuth = hasEmailSession();
+  const isAppSettingsRoute = Boolean(domain) && location.pathname === ROUTES.appSettings(domain);
+  const appSettingsQuery = new URLSearchParams(location.search || '');
+  const requestedSettingsTab = String(appSettingsQuery.get('tab') || '')
+    .trim()
+    .toLowerCase();
+  const allowDisconnectedSettingsView =
+    hasEmailAuth &&
+    isAppSettingsRoute &&
+    (!requestedSettingsTab ||
+      requestedSettingsTab === 'installation' ||
+      String(appSettingsQuery.get('guided_setup') || '').trim() === '1' ||
+      String(appSettingsQuery.get('auto_discount_setup') || '').trim() === '1');
 
   useEffect(() => {
     if (validDomain) {
@@ -230,7 +244,7 @@ function AppDomainLayout() {
         </>
       );
     }
-    if (notConnected) {
+    if (notConnected && !allowDisconnectedSettingsView) {
       return (
         <>
           {storeSwitchToastEl}

@@ -338,6 +338,40 @@ function normalizeAbsoluteHttpUrl(value) {
   return parsed.toString().replace(/\/+$/, '');
 }
 
+async function resolveRequestedShopDomain(req) {
+  const shopDomain = String(req.shopDomain || req.query.domain || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .split('/')[0];
+
+  if (req.authType !== 'email' || !req.email || (shopDomain && !shopDomain.includes('@'))) {
+    return shopDomain;
+  }
+
+  const user = await userModel.getByEmail(req.email);
+  if (!user) {
+    return '';
+  }
+
+  const tenantIds = await userDomainAccess.getTenantIdsForUser(user.id, user.account_id);
+  if (tenantIds.length === 0) {
+    return '';
+  }
+
+  const tenantsResult = await query(
+    'SELECT domain FROM tenants WHERE id = ANY($1::uuid[]) ORDER BY created_at ASC',
+    [tenantIds]
+  );
+  const allowedDomains = tenantsResult.rows.map(row => String(row.domain || '').toLowerCase());
+  if (shopDomain && allowedDomains.includes(shopDomain)) {
+    return shopDomain;
+  }
+  return String(tenantsResult.rows[0]?.domain || '')
+    .trim()
+    .toLowerCase();
+}
+
 /**
  * GET /api/settings
  * Get settings for the current shop
@@ -345,8 +379,8 @@ function normalizeAbsoluteHttpUrl(value) {
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const shopDomain = req.shopDomain;
-    if (!shopDomain) {
+    const shopDomain = await resolveRequestedShopDomain(req);
+    if (!shopDomain || shopDomain.includes('@')) {
       return sendError(res, 401, 'Shop domain required');
     }
 
@@ -541,35 +575,7 @@ router.put(
  */
 router.get('/installation', async (req, res, next) => {
   try {
-    let shopDomain = req.shopDomain || (req.query.domain && String(req.query.domain).trim()) || '';
-    // Email session: req.shopDomain is the user's email; resolve domain from query or first from DB
-    if (req.authType === 'email' && req.email && (shopDomain.includes('@') || !shopDomain)) {
-      const user = await userModel.getByEmail(req.email);
-      if (!user) {
-        return sendError(res, 401, 'User not found');
-      }
-      const tenantIds = await userDomainAccess.getTenantIdsForUser(user.id, user.account_id);
-      if (tenantIds.length === 0) {
-        return sendError(res, 400, 'Add a domain in My domains first, then open Setup wizard.');
-      }
-      const tenantsResult = await query(
-        'SELECT domain FROM tenants WHERE id = ANY($1::uuid[]) ORDER BY created_at ASC',
-        [tenantIds]
-      );
-      const allowedDomains = tenantsResult.rows.map(r => r.domain.toLowerCase());
-      const domainFromQuery =
-        req.query.domain &&
-        String(req.query.domain)
-          .trim()
-          .toLowerCase()
-          .replace(/^https?:\/\//, '')
-          .split('/')[0];
-      if (domainFromQuery && allowedDomains.includes(domainFromQuery)) {
-        shopDomain = domainFromQuery;
-      } else {
-        shopDomain = tenantsResult.rows[0]?.domain || '';
-      }
-    }
+    const shopDomain = await resolveRequestedShopDomain(req);
     if (!shopDomain || shopDomain.includes('@')) {
       return sendError(
         res,
@@ -690,8 +696,8 @@ ${resourceHints}<script src="${scriptUrl}" defer crossorigin="anonymous" fetchpr
 router.get(
   '/shopify-functions-inventory',
   asyncHandler(async (req, res) => {
-    const shopDomain = req.shopDomain;
-    if (!shopDomain) {
+    const shopDomain = await resolveRequestedShopDomain(req);
+    if (!shopDomain || shopDomain.includes('@')) {
       return sendError(res, 401, 'Shop domain required');
     }
 
@@ -734,8 +740,8 @@ router.get(
 router.get(
   '/checkout-price-diagnostics',
   asyncHandler(async (req, res) => {
-    const shopDomain = req.shopDomain;
-    if (!shopDomain) {
+    const shopDomain = await resolveRequestedShopDomain(req);
+    if (!shopDomain || shopDomain.includes('@')) {
       return sendError(res, 401, 'Shop domain required');
     }
 
@@ -1604,8 +1610,8 @@ router.get(
 router.get(
   '/integrations',
   asyncHandler(async (req, res) => {
-    const shopDomain = req.shopDomain;
-    if (!shopDomain) {
+    const shopDomain = await resolveRequestedShopDomain(req);
+    if (!shopDomain || shopDomain.includes('@')) {
       return sendError(res, 401, 'Shop domain required');
     }
 

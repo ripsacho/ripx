@@ -111,6 +111,11 @@
     var ty = String(test.type).toLowerCase();
     return ty === 'offer';
   }
+  function testTypeIsShipping(test) {
+    if (!test || test.type === undefined || test.type === null) return false;
+    var ty = String(test.type).toLowerCase();
+    return ty === 'shipping';
+  }
   function getTemplateKeyForTest(test) {
     if (!test || typeof test !== 'object') return '';
     return String(test.templateKey || test.template_key || '')
@@ -130,7 +135,9 @@
     var tt = String((test && (test.targetType || test.target_type)) || '')
       .toLowerCase()
       .trim();
-    if ((!tt || tt === 'all') && testTypeIsPrice(test)) return 'all-products';
+    if ((!tt || tt === 'all') && (testTypeIsPrice(test) || testTypeIsShipping(test))) {
+      return 'all-products';
+    }
     return tt;
   }
   function normalizeThemeMode(rawMode, fallbackMode) {
@@ -1379,7 +1386,14 @@
    * Shopify expects properties[_key] (not attributes[]) for line-level data. Leading underscore = hidden from buyers in most themes.
    * See docs/SHOPIFY_CHECKOUT_PRICE_RESOLVER.md
    */
-  function getRipxCartAttrsPayload(testId, variantId, shopDomain, assignmentProof, pricingProof) {
+  function getRipxCartAttrsPayload(
+    testId,
+    variantId,
+    shopDomain,
+    assignmentProof,
+    pricingProof,
+    offerProof
+  ) {
     var out = {
       _ripx_price_test: String(testId || ''),
       _ripx_variant: String(variantId == null ? '' : variantId),
@@ -1416,6 +1430,31 @@
     }
     if (pricingProof && pricingProof.priceMethod && String(pricingProof.priceMethod).trim()) {
       out._ripx_price_method = String(pricingProof.priceMethod).trim();
+    }
+    if (offerProof && offerProof.discountType) {
+      var offerType = String(offerProof.discountType || '')
+        .trim()
+        .toLowerCase();
+      if (offerType === 'percent' || offerType === 'fixed' || offerType === 'free_shipping') {
+        out._ripx_offer_discount_type = offerType;
+      }
+    }
+    if (
+      offerProof &&
+      offerProof.discountValue !== undefined &&
+      offerProof.discountValue !== null &&
+      String(offerProof.discountValue).trim() !== ''
+    ) {
+      var offerValueNum = Number(offerProof.discountValue);
+      if (isFinite(offerValueNum) && offerValueNum > 0) {
+        out._ripx_offer_discount_value = offerValueNum.toFixed(2);
+      }
+    }
+    if (offerProof && offerProof.codeName) {
+      var offerCodeName = normalizeExplicitOfferCode(offerProof.codeName);
+      if (offerCodeName) {
+        out._ripx_offer_code_name = offerCodeName;
+      }
     }
     return out;
   }
@@ -1490,6 +1529,24 @@
       payload._ripx_price_method,
       preserveExisting
     );
+    setRipxAttrValueOnFormData(
+      formData,
+      'properties[_ripx_offer_discount_type]',
+      payload._ripx_offer_discount_type,
+      preserveExisting
+    );
+    setRipxAttrValueOnFormData(
+      formData,
+      'properties[_ripx_offer_discount_value]',
+      payload._ripx_offer_discount_value,
+      preserveExisting
+    );
+    setRipxAttrValueOnFormData(
+      formData,
+      'properties[_ripx_offer_code_name]',
+      payload._ripx_offer_code_name,
+      preserveExisting
+    );
     return true;
   }
 
@@ -1556,6 +1613,24 @@
       params,
       'properties[_ripx_price_method]',
       payload._ripx_price_method,
+      preserveExisting
+    );
+    setRipxAttrValueOnSearchParams(
+      params,
+      'properties[_ripx_offer_discount_type]',
+      payload._ripx_offer_discount_type,
+      preserveExisting
+    );
+    setRipxAttrValueOnSearchParams(
+      params,
+      'properties[_ripx_offer_discount_value]',
+      payload._ripx_offer_discount_value,
+      preserveExisting
+    );
+    setRipxAttrValueOnSearchParams(
+      params,
+      'properties[_ripx_offer_code_name]',
+      payload._ripx_offer_code_name,
       preserveExisting
     );
     return true;
@@ -1790,6 +1865,15 @@
               setPropIfMissing('_ripx_target_unit', effectivePayload._ripx_target_unit);
               setPropIfMissing('_ripx_discount_unit', effectivePayload._ripx_discount_unit);
               setPropIfMissing('_ripx_price_method', effectivePayload._ripx_price_method);
+              setPropIfMissing(
+                '_ripx_offer_discount_type',
+                effectivePayload._ripx_offer_discount_type
+              );
+              setPropIfMissing(
+                '_ripx_offer_discount_value',
+                effectivePayload._ripx_offer_discount_value
+              );
+              setPropIfMissing('_ripx_offer_code_name', effectivePayload._ripx_offer_code_name);
               return nextProps;
             }
             function mapCartLinesWithRipx(arr) {
@@ -2400,18 +2484,29 @@
       if (state._ripx_assignment_user) {
         setProperty('_ripx_assignment_user', state._ripx_assignment_user);
       }
-      var targetUnitValue = state._ripx_target_unit || getRememberedRipxTargetUnitForForm(form);
+      var rememberedTargetUnitForForm = getRememberedRipxTargetUnitForForm(form);
+      var targetUnitValue = rememberedTargetUnitForForm || state._ripx_target_unit;
       if (targetUnitValue) {
         setProperty('_ripx_target_unit', targetUnitValue);
       }
-      var discountUnitValue =
-        state._ripx_discount_unit || getRememberedRipxDiscountUnitForForm(form);
+      var rememberedDiscountUnitForForm = getRememberedRipxDiscountUnitForForm(form);
+      var discountUnitValue = rememberedDiscountUnitForForm || state._ripx_discount_unit;
       if (discountUnitValue) {
         setProperty('_ripx_discount_unit', discountUnitValue);
       }
-      var priceMethodValue = state._ripx_price_method || getRememberedRipxPriceMethodForForm(form);
+      var rememberedPriceMethodForForm = getRememberedRipxPriceMethodForForm(form);
+      var priceMethodValue = rememberedPriceMethodForForm || state._ripx_price_method;
       if (priceMethodValue) {
         setProperty('_ripx_price_method', priceMethodValue);
+      }
+      if (state._ripx_offer_discount_type) {
+        setProperty('_ripx_offer_discount_type', state._ripx_offer_discount_type);
+      }
+      if (state._ripx_offer_discount_value) {
+        setProperty('_ripx_offer_discount_value', state._ripx_offer_discount_value);
+      }
+      if (state._ripx_offer_code_name) {
+        setProperty('_ripx_offer_code_name', state._ripx_offer_code_name);
       }
       var swapState = getRipxNativeVariantSwapState(state);
       if (swapState) {
@@ -2456,7 +2551,8 @@
     assignmentProof,
     targetProductIds,
     pricingProof,
-    checkoutMethodProof
+    checkoutMethodProof,
+    offerProof
   ) {
     if (!testId || variantId == null || String(variantId).trim() === '') return;
     var valueShop =
@@ -2471,7 +2567,8 @@
       String(variantId),
       valueShop,
       assignmentProof,
-      pricingProof
+      pricingProof,
+      offerProof
     );
     if (checkoutMethodProof && typeof checkoutMethodProof === 'object') {
       var resolvedMethod = normalizePriceApplicationMethod(checkoutMethodProof.applicationMethod);
@@ -2517,6 +2614,21 @@
       }
       if (!nextState._ripx_price_method && _ripxCartAttributeState._ripx_price_method) {
         nextState._ripx_price_method = _ripxCartAttributeState._ripx_price_method;
+      }
+      if (
+        !nextState._ripx_offer_discount_type &&
+        _ripxCartAttributeState._ripx_offer_discount_type
+      ) {
+        nextState._ripx_offer_discount_type = _ripxCartAttributeState._ripx_offer_discount_type;
+      }
+      if (
+        !nextState._ripx_offer_discount_value &&
+        _ripxCartAttributeState._ripx_offer_discount_value
+      ) {
+        nextState._ripx_offer_discount_value = _ripxCartAttributeState._ripx_offer_discount_value;
+      }
+      if (!nextState._ripx_offer_code_name && _ripxCartAttributeState._ripx_offer_code_name) {
+        nextState._ripx_offer_code_name = _ripxCartAttributeState._ripx_offer_code_name;
       }
     }
     _ripxCartAttributeState = nextState;
@@ -4878,7 +4990,11 @@
           : sb.indexOf('/Collection/') !== -1
             ? 'Collection'
             : '';
+      // Accept numeric <-> GID matching when one side has no explicit type.
+      // This keeps legacy numeric target IDs compatible with modern GID current IDs.
       if (typeA === typeB && typeA !== '') return true;
+      if (typeA !== '' && typeB === '') return true;
+      if (typeA === '' && typeB !== '') return true;
     }
     return false;
   }
@@ -4964,6 +5080,13 @@
     return isProductListingSurface();
   }
 
+  function shouldRunShippingTestOnListingSurface(test) {
+    if (!testTypeIsShipping(test)) return false;
+    var tt = getNormalizedTargetType(test);
+    if (!isProductScopeTargetType(tt)) return false;
+    return isProductListingSurface();
+  }
+
   function isProductScopeTargetType(targetType) {
     var tt = String(targetType || '').toLowerCase();
     return tt === 'product' || tt === 'all-products' || tt === 'all_products';
@@ -5027,15 +5150,11 @@
 
   function buildOfferValueToken(config) {
     var cfg = config && typeof config === 'object' ? config : {};
-    var discountType = String(cfg.discount_type || '')
-      .trim()
-      .toLowerCase();
+    var discountType = normalizeOfferDiscountType(cfg);
     if (discountType === 'free_shipping') {
       return 'SHIP';
     }
-    var rawValue = cfg.discount_value;
-    var numericValue =
-      rawValue !== null && rawValue !== undefined && rawValue !== '' ? Number(rawValue) : NaN;
+    var numericValue = parseOfferDiscountValue(cfg);
     var valueToken = isFinite(numericValue)
       ? String(numericValue).replace('.', '_')
       : discountType === 'fixed'
@@ -5058,15 +5177,452 @@
     return ('RIPX-' + testToken + '-' + variantToken + '-' + offerToken).slice(0, 48);
   }
 
-  function getOfferCodeNameForVariant(test, variant) {
+  function getOfferConfigCandidates(config) {
+    var base = config && typeof config === 'object' ? config : {};
+    var out = [base];
+    var nestedKeys = ['offer', 'discount', 'offer_config', 'offerConfig'];
+    for (var i = 0; i < nestedKeys.length; i += 1) {
+      var key = nestedKeys[i];
+      var nested = base[key];
+      if (nested && typeof nested === 'object') {
+        out.push(nested);
+      }
+    }
+    return out;
+  }
+
+  function normalizeExplicitOfferCode(rawValue) {
+    var code = String(rawValue === null || rawValue === undefined ? '' : rawValue).trim();
+    if (!code) return '';
+    if (code.length > 64) return '';
+    if (!/^[A-Za-z0-9_-]+$/.test(code)) return '';
+    return code;
+  }
+
+  function resolveExplicitOfferCodeFromConfig(config, labelPrefix) {
+    var sourceKeys = [
+      'discount_code_name',
+      'discountCodeName',
+      'discount_code',
+      'discountCode',
+      'code_name',
+      'codeName',
+      'coupon_code',
+      'couponCode',
+      'coupon',
+      'code',
+    ];
+    var nestedLabels = ['', 'offer', 'discount', 'offer_config', 'offerConfig'];
+    var candidates = getOfferConfigCandidates(config);
+    for (var i = 0; i < candidates.length; i += 1) {
+      var cfg = candidates[i];
+      for (var j = 0; j < sourceKeys.length; j += 1) {
+        var key = sourceKeys[j];
+        var code = normalizeExplicitOfferCode(cfg[key]);
+        if (code) {
+          var nestedLabel = nestedLabels[i];
+          var sourcePath = nestedLabel ? nestedLabel + '.' + key : key;
+          return {
+            codeName: code,
+            sourceKey: key,
+            sourceLabel: String(labelPrefix || 'config') + '.' + sourcePath,
+          };
+        }
+      }
+    }
+    return null;
+  }
+
+  function resolveOfferCodeForVariant(test, variant) {
     var cfg = variant && variant.config && typeof variant.config === 'object' ? variant.config : {};
-    var explicit = String(cfg.discount_code_name || cfg.discountCodeName || '').trim();
-    if (explicit) return explicit;
-    return buildAutoOfferCodeName(test, variant);
+    var explicit = resolveExplicitOfferCodeFromConfig(cfg, 'config');
+    if (explicit) {
+      return explicit;
+    }
+    var variantLevel = resolveExplicitOfferCodeFromConfig(variant, 'variant');
+    if (variantLevel) {
+      return variantLevel;
+    }
+    return {
+      codeName: buildAutoOfferCodeName(test, variant),
+      sourceKey: 'auto',
+      sourceLabel: 'auto-generated',
+    };
+  }
+
+  function getOfferCodeNameForVariant(test, variant) {
+    return resolveOfferCodeForVariant(test, variant).codeName;
+  }
+  function normalizeOfferDiscountType(config) {
+    var cfgCandidates = getOfferConfigCandidates(config);
+    var raw = '';
+    for (var i = 0; i < cfgCandidates.length; i += 1) {
+      var cfg = cfgCandidates[i];
+      raw = String(
+        cfg.discount_type || cfg.discountType || cfg.offer_type || cfg.offerType || cfg.type || ''
+      )
+        .trim()
+        .toLowerCase();
+      if (raw) break;
+    }
+    if (
+      raw === 'percent' ||
+      raw === 'percentage' ||
+      raw === 'pct' ||
+      raw === 'percent_off' ||
+      raw === 'percentage_off'
+    ) {
+      return 'percent';
+    }
+    if (
+      raw === 'fixed' ||
+      raw === 'fixed_amount' ||
+      raw === 'amount' ||
+      raw === 'flat' ||
+      raw === 'flat_amount' ||
+      raw === 'money'
+    ) {
+      return 'fixed';
+    }
+    if (
+      raw === 'free_shipping' ||
+      raw === 'free-shipping' ||
+      raw === 'freeshipping' ||
+      raw === 'free shipping'
+    ) {
+      return 'free_shipping';
+    }
+    if (!raw) {
+      var inferredValue = parseOfferDiscountValue(config);
+      if (isFinite(inferredValue) && inferredValue > 0) return 'percent';
+    }
+    return raw;
+  }
+  function parseOfferDiscountValue(config) {
+    var cfgCandidates = getOfferConfigCandidates(config);
+    for (var i = 0; i < cfgCandidates.length; i += 1) {
+      var cfg = cfgCandidates[i];
+      var valueCandidates = [
+        cfg.discount_value,
+        cfg.discountValue,
+        cfg.discount_amount,
+        cfg.discountAmount,
+        cfg.value,
+        cfg.amount,
+        cfg.percent,
+        cfg.percentage,
+        cfg.pct,
+      ];
+      for (var j = 0; j < valueCandidates.length; j += 1) {
+        var raw = valueCandidates[j];
+        if (raw === null || raw === undefined || String(raw).trim() === '') continue;
+        var n = Number(raw);
+        if (isFinite(n) && n !== 0) return Math.abs(n);
+      }
+    }
+    return NaN;
+  }
+  function isActionableOfferConfig(config) {
+    var discountType = normalizeOfferDiscountType(config);
+    if (discountType === 'free_shipping') return true;
+    if (resolveExplicitOfferCodeFromConfig(config, 'config')) return true;
+    if (discountType !== 'percent' && discountType !== 'fixed') return false;
+    var numericValue = parseOfferDiscountValue(config);
+    return isFinite(numericValue) && numericValue > 0;
+  }
+  function getOfferTargetProductIdsForCartAttrs(test) {
+    var tt = getNormalizedTargetType(test);
+    if (tt !== 'product') return null;
+    var ids =
+      test &&
+      (test.targetIds ||
+        (test.targetId || test.target_id ? [test.targetId || test.target_id] : []));
+    return Array.isArray(ids) && ids.length > 0 ? ids : null;
+  }
+  function injectOfferTestCartAttributes(test, variant) {
+    if (!test || !variant || !testTypeIsOffer(test)) return;
+    var tt = getNormalizedTargetType(test);
+    if (!isProductScopeTargetType(tt)) return;
+    var cfg = variant && variant.config && typeof variant.config === 'object' ? variant.config : {};
+    if (!isActionableOfferConfig(cfg)) return;
+    var variantIdForCart = variant.variantId != null ? variant.variantId : variant.id;
+    if (variantIdForCart == null || String(variantIdForCart).trim() === '') return;
+    injectPriceTestCartAttributes(
+      test.id,
+      variantIdForCart,
+      getAssignmentProofFromVariant(variant),
+      getOfferTargetProductIdsForCartAttrs(test),
+      null,
+      { applicationMethod: 'discounted_checkout_price' },
+      {
+        discountType: normalizeOfferDiscountType(cfg),
+        discountValue: parseOfferDiscountValue(cfg),
+        codeName: resolveOfferCodeForVariant(test, variant).codeName,
+      }
+    );
+  }
+  function getShippingTargetProductIdsForCartAttrs(test) {
+    var tt = getNormalizedTargetType(test);
+    if (tt !== 'product') return null;
+    var ids =
+      test &&
+      (test.targetIds ||
+        (test.targetId || test.target_id ? [test.targetId || test.target_id] : []));
+    return Array.isArray(ids) && ids.length > 0 ? ids : null;
+  }
+  function injectShippingTestCartAttributes(test, variant) {
+    if (!test || !variant || !testTypeIsShipping(test)) return;
+    var tt = getNormalizedTargetType(test);
+    if (!isProductScopeTargetType(tt)) return;
+    var variantIdForCart = variant.variantId != null ? variant.variantId : variant.id;
+    if (variantIdForCart == null || String(variantIdForCart).trim() === '') return;
+    injectPriceTestCartAttributes(
+      test.id,
+      variantIdForCart,
+      getAssignmentProofFromVariant(variant),
+      getShippingTargetProductIdsForCartAttrs(test)
+    );
+  }
+
+  var OFFER_CODE_APPLY_STATE_KEY = '__ripx_offer_code_apply_v1__';
+  function normalizeOfferCodeStateKey(codeName) {
+    return String(codeName || '')
+      .trim()
+      .toUpperCase();
+  }
+  function readOfferCodeApplyState() {
+    try {
+      if (!window.sessionStorage) return {};
+      var raw = window.sessionStorage.getItem(OFFER_CODE_APPLY_STATE_KEY);
+      if (!raw) return {};
+      var parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (e) {
+      return {};
+    }
+  }
+  function writeOfferCodeApplyState(state) {
+    try {
+      if (!window.sessionStorage) return;
+      window.sessionStorage.setItem(OFFER_CODE_APPLY_STATE_KEY, JSON.stringify(state || {}));
+    } catch (e) {}
+  }
+  function hasOfferCodeApplyAttempted(codeName) {
+    var key = normalizeOfferCodeStateKey(codeName);
+    if (!key) return false;
+    var state = readOfferCodeApplyState();
+    return !!state[key];
+  }
+  function markOfferCodeApplyAttempt(codeName) {
+    var key = normalizeOfferCodeStateKey(codeName);
+    if (!key) return;
+    var state = readOfferCodeApplyState();
+    state[key] = 1;
+    writeOfferCodeApplyState(state);
+  }
+  function hasMatchingDiscountParam(codeName) {
+    var key = normalizeOfferCodeStateKey(codeName);
+    if (!key) return false;
+    try {
+      var params = new URLSearchParams(window.location.search || '');
+      var candidates = ['discount', 'discount_code', 'code'];
+      for (var i = 0; i < candidates.length; i += 1) {
+        var raw = params.get(candidates[i]);
+        if (normalizeOfferCodeStateKey(raw) === key) return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+  function buildOfferCodeApplyUrl(codeName) {
+    var code = String(codeName || '').trim();
+    if (!code) return null;
+    var redirectPath = (window.location.pathname || '/') + (window.location.search || '');
+    return (
+      '/discount/' + encodeURIComponent(code) + '?redirect=' + encodeURIComponent(redirectPath)
+    );
+  }
+  function applyOfferCodeOnStorefront(codeName, options) {
+    var opts = options && typeof options === 'object' ? options : {};
+    var code = String(codeName || '').trim();
+    if (!code || PREVIEW_MODE) return false;
+    if (!opts.force && hasOfferCodeApplyAttempted(code)) return false;
+    if (!opts.force && hasMatchingDiscountParam(code)) return false;
+    var url = buildOfferCodeApplyUrl(code);
+    if (!url) return false;
+    markOfferCodeApplyAttempt(code);
+    try {
+      window.location.assign(url);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  function copyOfferCodeNameToClipboard(codeName) {
+    var code = String(codeName || '').trim();
+    if (!code) return false;
+    try {
+      if (
+        !navigator ||
+        !navigator.clipboard ||
+        typeof navigator.clipboard.writeText !== 'function'
+      ) {
+        return false;
+      }
+      navigator.clipboard.writeText(code).catch(function () {});
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  function getCartStateAppliedDiscountCodes(cartState) {
+    var seen = {};
+    var out = [];
+    function pushCode(raw) {
+      var token = normalizeOfferCodeStateKey(raw);
+      if (!token || seen[token]) return;
+      seen[token] = 1;
+      out.push(token);
+    }
+    if (!cartState || typeof cartState !== 'object') return out;
+    var topLevelCodes = Array.isArray(cartState.discount_codes) ? cartState.discount_codes : [];
+    topLevelCodes.forEach(function (row) {
+      if (row && typeof row === 'object') {
+        pushCode(row.code || row.title || '');
+      } else {
+        pushCode(row);
+      }
+    });
+    var levelApps = Array.isArray(cartState.cart_level_discount_applications)
+      ? cartState.cart_level_discount_applications
+      : [];
+    levelApps.forEach(function (row) {
+      if (!row || typeof row !== 'object') return;
+      pushCode(row.code || row.title || '');
+    });
+    var items = Array.isArray(cartState.items) ? cartState.items : [];
+    items.forEach(function (item) {
+      var discounts = Array.isArray(item && item.discounts) ? item.discounts : [];
+      discounts.forEach(function (row) {
+        if (!row || typeof row !== 'object') return;
+        pushCode(row.code || row.title || '');
+      });
+    });
+    return out;
+  }
+  function cartStateHasOfferCodeApplied(cartState, codeName) {
+    var key = normalizeOfferCodeStateKey(codeName);
+    if (!key) return false;
+    var codes = getCartStateAppliedDiscountCodes(cartState);
+    return codes.indexOf(key) !== -1;
+  }
+  function getOfferCodeDiagnostics(codeName) {
+    if (PREVIEW_MODE) {
+      return { status: 'preview', label: 'Preview only' };
+    }
+    var cartState =
+      _ripxCartNativeState && _ripxCartNativeState.cart ? _ripxCartNativeState.cart : null;
+    if (cartStateHasOfferCodeApplied(cartState, codeName)) {
+      return { status: 'applied', label: 'Applied' };
+    }
+    if (hasOfferCodeApplyAttempted(codeName)) {
+      if (hasMatchingDiscountParam(codeName)) {
+        return { status: 'failed', label: 'Not applied' };
+      }
+      return { status: 'pending', label: 'Pending check' };
+    }
+    return { status: 'generated', label: 'Generated' };
+  }
+  function getOfferCodeStatusStyles(status) {
+    var s = String(status || '')
+      .trim()
+      .toLowerCase();
+    if (s === 'applied') {
+      return {
+        background: 'rgba(22,163,74,0.16)',
+        border: 'rgba(22,163,74,0.35)',
+        color: '#166534',
+      };
+    }
+    if (s === 'failed') {
+      return {
+        background: 'rgba(239,68,68,0.12)',
+        border: 'rgba(239,68,68,0.35)',
+        color: '#991b1b',
+      };
+    }
+    if (s === 'pending') {
+      return {
+        background: 'rgba(234,179,8,0.14)',
+        border: 'rgba(234,179,8,0.35)',
+        color: '#854d0e',
+      };
+    }
+    if (s === 'preview') {
+      return {
+        background: 'rgba(100,116,139,0.12)',
+        border: 'rgba(100,116,139,0.3)',
+        color: '#334155',
+      };
+    }
+    return {
+      background: 'rgba(100,116,139,0.08)',
+      border: 'rgba(100,116,139,0.22)',
+      color: '#334155',
+    };
+  }
+  function getOfferCodeStatusHelpText(status) {
+    var s = String(status || '')
+      .trim()
+      .toLowerCase();
+    if (s === 'applied') return 'Applied: code is active in this cart.';
+    if (s === 'pending')
+      return 'Pending check: apply attempt made; waiting for cart state refresh.';
+    if (s === 'failed') return 'Not applied: discount link loaded but cart has no matching code.';
+    if (s === 'preview') return 'Preview only: no discount apply is attempted in preview mode.';
+    return 'Generated: code exists and is ready to apply.';
+  }
+  function getOfferCodeStatusLegendText() {
+    return 'Applied=green, Pending=amber, Not applied=red, Generated=gray, Preview=slate.';
+  }
+  function getOfferRuntimeParseMeta(config) {
+    var cfg = config && typeof config === 'object' ? config : {};
+    var discountType = normalizeOfferDiscountType(cfg);
+    var numericValue = parseOfferDiscountValue(cfg);
+    return {
+      discountType: discountType || 'unknown',
+      discountValue:
+        isFinite(numericValue) && numericValue > 0 ? String(Math.abs(numericValue)) : 'n/a',
+    };
   }
 
   function shouldShowOfferCodeOnCart(test) {
     if (!testTypeIsOffer(test)) return false;
+    if (!(isCartSurface() || hasCartUiInDom())) return false;
+
+    var tt = getNormalizedTargetType(test);
+    if (!isProductScopeTargetType(tt)) return false;
+    var cartIds = getCartVisibleProductTargetIds();
+    if (!cartIds.length) return false;
+
+    if (tt === 'all-products' || tt === 'all_products') {
+      return cartIds.some(function (pid) {
+        return !isExcludedProductForTest(test, pid);
+      });
+    }
+
+    var ids =
+      test.targetIds || (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
+    if (!ids.length) return false;
+    return cartIds.some(function (pid) {
+      if (isExcludedProductForTest(test, pid)) return false;
+      return ids.some(function (id) {
+        return id && gidMatches(id, pid);
+      });
+    });
+  }
+
+  function shouldShowShippingTestOnCart(test) {
+    if (!testTypeIsShipping(test)) return false;
     if (!(isCartSurface() || hasCartUiInDom())) return false;
 
     var tt = getNormalizedTargetType(test);
@@ -5116,6 +5672,14 @@
       container.style.borderRadius = '10px';
       container.style.border = '1px solid rgba(6,182,212,0.32)';
       container.style.background = 'rgba(6,182,212,0.08)';
+      var legend = document.createElement('div');
+      legend.setAttribute('data-ripx-offer-code-legend', '1');
+      legend.style.fontSize = '10px';
+      legend.style.color = '#334155';
+      legend.style.opacity = '0.9';
+      legend.style.marginBottom = '6px';
+      legend.textContent = getOfferCodeStatusLegendText();
+      container.appendChild(legend);
       if (mount.firstChild) mount.insertBefore(container, mount.firstChild);
       else mount.appendChild(container);
       return container;
@@ -5124,9 +5688,12 @@
     }
   }
 
-  function upsertOfferCodeNotice(test, variant) {
+  function upsertOfferCodeNotice(test, variant, options) {
+    var opts = options && typeof options === 'object' ? options : {};
     if (!shouldShowOfferCodeOnCart(test) || !variant) return;
-    var codeName = getOfferCodeNameForVariant(test, variant);
+    if (!isActionableOfferConfig(variant.config)) return;
+    var codeInfo = resolveOfferCodeForVariant(test, variant);
+    var codeName = codeInfo.codeName;
     if (!codeName) return;
 
     var container = getOfferCodeNoticeContainer();
@@ -5158,16 +5725,112 @@
     var label =
       'Offer code (' + String(variant.variantName || variant.name || 'Variant').trim() + '):';
     row.textContent = '';
+    row.style.alignItems = 'flex-start';
     var left = document.createElement('span');
     left.style.fontSize = '12px';
     left.style.color = '#0f172a';
     left.textContent = label;
+    var rightWrap = document.createElement('div');
+    rightWrap.style.display = 'flex';
+    rightWrap.style.alignItems = 'center';
+    rightWrap.style.gap = '8px';
+    rightWrap.style.flexWrap = 'wrap';
     var right = document.createElement('strong');
     right.style.fontSize = '12px';
     right.style.letterSpacing = '0.04em';
     right.textContent = codeName;
+    rightWrap.appendChild(right);
+    var sourceBadge = document.createElement('span');
+    sourceBadge.style.fontSize = '10px';
+    sourceBadge.style.padding = '2px 6px';
+    sourceBadge.style.borderRadius = '999px';
+    sourceBadge.style.border = '1px solid rgba(100,116,139,0.22)';
+    sourceBadge.style.background = 'rgba(100,116,139,0.08)';
+    sourceBadge.style.color = '#334155';
+    sourceBadge.textContent =
+      'src: ' + String(codeInfo.sourceKey === 'auto' ? 'auto' : codeInfo.sourceKey);
+    sourceBadge.title = 'Code source: ' + String(codeInfo.sourceLabel || 'auto-generated');
+    rightWrap.appendChild(sourceBadge);
+    var diag = getOfferCodeDiagnostics(codeName);
+    var parseMeta = getOfferRuntimeParseMeta(variant.config);
+    var diagStyle = getOfferCodeStatusStyles(diag.status);
+    var statusBadge = document.createElement('span');
+    statusBadge.style.fontSize = '10px';
+    statusBadge.style.padding = '2px 6px';
+    statusBadge.style.borderRadius = '999px';
+    statusBadge.style.border = '1px solid ' + String(diagStyle.border || 'rgba(100,116,139,0.22)');
+    statusBadge.style.background = String(diagStyle.background || 'rgba(100,116,139,0.08)');
+    statusBadge.style.color = String(diagStyle.color || '#334155');
+    statusBadge.textContent = String(diag.label || 'Generated');
+    statusBadge.title =
+      getOfferCodeStatusHelpText(diag.status) +
+      ' Source: ' +
+      String(codeInfo.sourceLabel || 'auto-generated') +
+      '. Parsed: ' +
+      String(parseMeta.discountType) +
+      '/' +
+      String(parseMeta.discountValue) +
+      '. ' +
+      getOfferCodeStatusLegendText();
+    rightWrap.appendChild(statusBadge);
+    if (DEBUG) {
+      var parseBadge = document.createElement('span');
+      parseBadge.style.fontSize = '10px';
+      parseBadge.style.padding = '2px 6px';
+      parseBadge.style.borderRadius = '999px';
+      parseBadge.style.border = '1px dashed rgba(15,23,42,0.25)';
+      parseBadge.style.background = 'rgba(255,255,255,0.65)';
+      parseBadge.style.color = '#1e293b';
+      parseBadge.textContent =
+        'cfg: ' + String(parseMeta.discountType) + '/' + String(parseMeta.discountValue);
+      parseBadge.title =
+        'Runtime offer parse (debug): type=' +
+        String(parseMeta.discountType) +
+        ', value=' +
+        String(parseMeta.discountValue);
+      rightWrap.appendChild(parseBadge);
+    }
+    row.setAttribute('data-ripx-offer-code-status', String(diag.status || 'generated'));
+    row.setAttribute('data-ripx-offer-code-source', String(codeInfo.sourceKey || 'auto'));
+    if (isCartSurface()) {
+      var applyBtn = document.createElement('button');
+      applyBtn.type = 'button';
+      applyBtn.style.fontSize = '11px';
+      applyBtn.style.padding = '4px 8px';
+      applyBtn.style.borderRadius = '8px';
+      applyBtn.style.border = '1px solid rgba(15,23,42,0.2)';
+      applyBtn.style.background = '#fff';
+      applyBtn.style.cursor = 'pointer';
+      applyBtn.textContent = 'Apply';
+      applyBtn.addEventListener('click', function () {
+        applyOfferCodeOnStorefront(codeName, { force: true });
+      });
+      rightWrap.appendChild(applyBtn);
+    }
+    var copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.style.fontSize = '11px';
+    copyBtn.style.padding = '4px 8px';
+    copyBtn.style.borderRadius = '8px';
+    copyBtn.style.border = '1px solid rgba(15,23,42,0.2)';
+    copyBtn.style.background = '#fff';
+    copyBtn.style.cursor = 'pointer';
+    copyBtn.textContent = 'Copy';
+    copyBtn.addEventListener('click', function () {
+      copyOfferCodeNameToClipboard(codeName);
+    });
+    rightWrap.appendChild(copyBtn);
     row.appendChild(left);
-    row.appendChild(right);
+    row.appendChild(rightWrap);
+
+    if (isCartSurface() && !opts.skipStatusRefresh) {
+      fetchRipxCartNativeState().then(function () {
+        upsertOfferCodeNotice(test, variant, { skipStatusRefresh: true, skipAutoApply: true });
+      });
+    }
+    if (isCartSurface() && !opts.skipAutoApply) {
+      applyOfferCodeOnStorefront(codeName, { force: false });
+    }
   }
 
   /**
@@ -5255,13 +5918,15 @@
     if (!test) return false;
     if (matchesTarget(test)) return true;
     if (testTypeIsOffer(test) && shouldShowOfferCodeOnCart(test)) return true;
+    if (testTypeIsShipping(test) && shouldShowShippingTestOnCart(test)) return true;
     if (shouldRunPriceTestOnListingSurface(test)) return true;
-    if (testTypeIsPrice(test)) {
+    if (shouldRunShippingTestOnListingSurface(test)) return true;
+    if (testTypeIsPrice(test) || testTypeIsShipping(test)) {
       var tt = getNormalizedTargetType(test);
       if (isProductScopeTargetType(tt) && isCartSurface()) {
         return true;
       }
-      if (tt === 'collection' && getCurrentProductId()) {
+      if (testTypeIsPrice(test) && tt === 'collection' && getCurrentProductId()) {
         var cids =
           test.targetIds ||
           (test.targetId || test.target_id ? [test.targetId || test.target_id] : []);
@@ -5272,7 +5937,7 @@
     // (preview links with ?ab_preview=1 were previously PDP-only, so cart/collection looked broken).
     if (
       PREVIEW_TEST_CONTEXT &&
-      testTypeIsPrice(test) &&
+      (testTypeIsPrice(test) || testTypeIsShipping(test)) &&
       isProductScopeTargetType(getNormalizedTargetType(test))
     ) {
       var pathPv = (window.location.pathname || '').toLowerCase();
@@ -5528,6 +6193,40 @@
                 }
                 if (matched && testTypeIsPrice(test) && variant && !variant.config) {
                   injectPreviewCartAttributesWhenConfigMissing(test.id, variant);
+                }
+                if (testTypeIsOffer(test)) {
+                  var offerTargetType = getNormalizedTargetType(test);
+                  var shouldInjectOfferAttrs =
+                    offerTargetType === 'all-products' ||
+                    offerTargetType === 'all_products' ||
+                    matched ||
+                    isProductListingSurface() ||
+                    shouldRunAllProductsCartFallback();
+                  if (shouldInjectOfferAttrs) {
+                    injectOfferTestCartAttributes(test, variant);
+                  }
+                }
+                if (testTypeIsShipping(test)) {
+                  var shippingTargetType = getNormalizedTargetType(test);
+                  var shouldInjectShippingAttrs = false;
+                  if (isCartSurface() || hasCartUiInDom()) {
+                    shouldInjectShippingAttrs = shouldShowShippingTestOnCart(test);
+                  } else if (shouldRunShippingTestOnListingSurface(test)) {
+                    shouldInjectShippingAttrs = true;
+                  } else if (
+                    shippingTargetType === 'all-products' ||
+                    shippingTargetType === 'all_products'
+                  ) {
+                    var shippingCurrentProductId = getCurrentProductId();
+                    shouldInjectShippingAttrs = shippingCurrentProductId
+                      ? !isExcludedProductForTest(test, shippingCurrentProductId)
+                      : matched;
+                  } else {
+                    shouldInjectShippingAttrs = matched;
+                  }
+                  if (shouldInjectShippingAttrs) {
+                    injectShippingTestCartAttributes(test, variant);
+                  }
                 }
                 if (testTypeIsOffer(test) && shouldShowOfferCodeOnCart(test)) {
                   upsertOfferCodeNotice(test, variant);
@@ -5990,6 +6689,8 @@
               targetUnit: _ripxCartAttributeState._ripx_target_unit || null,
               discountUnit: _ripxCartAttributeState._ripx_discount_unit || null,
               priceMethod: _ripxCartAttributeState._ripx_price_method || null,
+              offerDiscountType: _ripxCartAttributeState._ripx_offer_discount_type || null,
+              offerCodeName: _ripxCartAttributeState._ripx_offer_code_name || null,
               hasAssignmentSig: !!_ripxCartAttributeState._ripx_assignment_sig,
               hasAssignmentTs: !!_ripxCartAttributeState._ripx_assignment_ts,
               hasAssignmentUser: !!_ripxCartAttributeState._ripx_assignment_user,
@@ -6108,11 +6809,19 @@
     window.__RIPX_TEST_HOOKS__.previewMode = PREVIEW_MODE;
     window.__RIPX_TEST_HOOKS__.previewTestContext = PREVIEW_TEST_CONTEXT;
     window.__RIPX_TEST_HOOKS__.previewTestId = PREVIEW_TEST_ID;
+    window.__RIPX_TEST_HOOKS__.shouldRunPriceTestOnCurrentPage = shouldRunPriceTestOnCurrentPage;
+    window.__RIPX_TEST_HOOKS__.shouldShowShippingTestOnCart = shouldShowShippingTestOnCart;
+    window.__RIPX_TEST_HOOKS__.injectShippingTestCartAttributes = injectShippingTestCartAttributes;
     window.__RIPX_TEST_HOOKS__.setRipxCartAttributeState = function (payload) {
       _ripxCartAttributeState = payload || null;
     };
     window.__RIPX_TEST_HOOKS__.getRipxCartAttributeState = function () {
       return _ripxCartAttributeState;
+    };
+    window.__RIPX_TEST_HOOKS__.getRipxCartFormTargetProductIds = function () {
+      return Array.isArray(_ripxCartFormTargetProductIds)
+        ? _ripxCartFormTargetProductIds.slice()
+        : _ripxCartFormTargetProductIds || null;
     };
   }
   debugLog('init', 'v' + SCRIPT_VERSION);
