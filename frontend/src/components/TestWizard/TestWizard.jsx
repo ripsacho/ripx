@@ -96,6 +96,7 @@ import {
   canShowShippingExecution,
   shouldDisableShippingExecution,
 } from './reviewShippingExecution';
+import { getDefaultTestTypeState, normalizeTestTypeKey } from '../../utils/testTypeControls';
 
 /** URL pattern for homepage on Shopify: root and /index */
 const HOMEPAGE_URL_PATTERN_SHOPIFY = '^/$|^/index';
@@ -107,19 +108,7 @@ const VISUAL_EDITOR_MUTATION_TYPES = ['none', 'hide', 'show', 'set_text', 'set_a
 const PRICE_PRODUCT_MODAL_REVEAL_BATCH = 10;
 const MATRIX_SEARCH_BADGE_MAX_CHARS = 26;
 const THEME_TEST_MODES = ['template_switch', 'section_variant', 'asset_flag', 'theme_redirect'];
-const TEST_TYPE_TOGGLE_PREFIX = 'test_type.enabled.';
-const TEST_TYPE_MESSAGE_PREFIX = 'test_type.message.';
-const DEFAULT_TEST_TYPE_AVAILABILITY = Object.freeze({
-  'onsite-edit': true,
-  'split-url': true,
-  template: true,
-  theme: true,
-  pricing: true,
-  shipping: true,
-  offer: true,
-  checkout: true,
-  combination: true,
-});
+const DEFAULT_TEST_TYPE_STATE = Object.freeze(getDefaultTestTypeState());
 
 function buildProgressiveListWindow(items, visibleCount, options = {}) {
   const list = Array.isArray(items) ? items : [];
@@ -878,15 +867,6 @@ function _NativeVariantMappingAssistant({
   );
 }
 
-function normalizeTemplateAvailabilityKey(value) {
-  const key = String(value || '')
-    .trim()
-    .toLowerCase();
-  if (!key) return '';
-  if (key === 'price') return 'pricing';
-  return key;
-}
-
 function TestWizard({
   mode = 'create',
   showTemplateStep = true,
@@ -1160,34 +1140,52 @@ function TestWizard({
   const isShopifyFromRoute = routeDomain && isShopifyStoreDomain(routeDomain);
   const isStandalone = !isShopifyFromRoute && isStandaloneMode();
   const canUseStoreProductPicker = !isStandalone && isShopifyFromRoute && Boolean(routeDomain);
-  const [testTypeAvailability, setTestTypeAvailability] = useState(DEFAULT_TEST_TYPE_AVAILABILITY);
-  const [testTypeUnavailableMessages, setTestTypeUnavailableMessages] = useState({});
-  const contentTypesForStep = isStandalone
-    ? TEST_TYPE_CATEGORIES.content.types.filter(t => STANDALONE_TEST_TYPE_IDS.includes(t.key))
-    : TEST_TYPE_CATEGORIES.content.types;
+  const [testTypeControls, setTestTypeControls] = useState(DEFAULT_TEST_TYPE_STATE);
+  const getTemplateControl = useCallback(
+    templateKey => {
+      const normalized = normalizeTestTypeKey(templateKey);
+      if (!normalized) {
+        return { mode: 'enabled', message: '', hidden: false };
+      }
+      const control = testTypeControls[normalized] || { mode: 'enabled', message: '' };
+      return {
+        mode: control.mode || 'enabled',
+        message: control.message || '',
+        hidden: control.mode === 'hidden',
+      };
+    },
+    [testTypeControls]
+  );
   const isTemplateTypeEnabled = useCallback(
     templateKey => {
-      const normalized = normalizeTemplateAvailabilityKey(templateKey);
-      if (!normalized) return true;
-      return testTypeAvailability[normalized] !== false;
+      const control = getTemplateControl(templateKey);
+      return control.mode === 'enabled';
     },
-    [testTypeAvailability]
+    [getTemplateControl]
+  );
+  const isTemplateTypeHidden = useCallback(
+    templateKey => getTemplateControl(templateKey).hidden,
+    [getTemplateControl]
   );
   const getTemplateUnavailableReason = useCallback(
     templateKey => {
       if (isTemplateTypeEnabled(templateKey)) {
         return '';
       }
-      const normalized = normalizeTemplateAvailabilityKey(templateKey);
-      if (!normalized) {
-        return 'This test type is currently unavailable (under construction).';
-      }
-      return (
-        testTypeUnavailableMessages[normalized] ||
-        'This test type is currently unavailable (under construction).'
-      );
+      const control = getTemplateControl(templateKey);
+      return control.message || 'This test type is currently unavailable (under construction).';
     },
-    [isTemplateTypeEnabled, testTypeUnavailableMessages]
+    [getTemplateControl, isTemplateTypeEnabled]
+  );
+  const contentTypesForStep = useMemo(() => {
+    const baseTypes = isStandalone
+      ? TEST_TYPE_CATEGORIES.content.types.filter(t => STANDALONE_TEST_TYPE_IDS.includes(t.key))
+      : TEST_TYPE_CATEGORIES.content.types;
+    return baseTypes.filter(type => !isTemplateTypeHidden(type.key));
+  }, [isStandalone, isTemplateTypeHidden]);
+  const profitTypesForStep = useMemo(
+    () => TEST_TYPE_CATEGORIES.profit.types.filter(type => !isTemplateTypeHidden(type.key)),
+    [isTemplateTypeHidden]
   );
   const [customUrlModeActive, setCustomUrlModeActive] = useState(false);
   const [deviceAdvancedOpen, setDeviceAdvancedOpen] = useState(false);
@@ -1232,45 +1230,29 @@ function TestWizard({
     let cancelled = false;
     (async () => {
       try {
-        const res = await apiGet('/admin/kv', { prefix: 'test_type.' });
+        const res = await apiGet('/settings/test-type-controls');
         const payload = res?.data?.data ?? res?.data;
-        const keys = Array.isArray(payload?.keys) ? payload.keys : [];
-        const next = { ...DEFAULT_TEST_TYPE_AVAILABILITY };
-        const nextMessages = {};
-        keys.forEach(item => {
-          const key = String(item?.key || '').trim();
-          const valueRaw = String(item?.valuePreview ?? '')
-            .replace(/…$/, '')
-            .trim();
-          if (key.startsWith(TEST_TYPE_TOGGLE_PREFIX)) {
-            const typeKey = normalizeTemplateAvailabilityKey(
-              key.slice(TEST_TYPE_TOGGLE_PREFIX.length)
-            );
-            if (!typeKey || !(typeKey in next)) return;
-            const normalized = valueRaw.toLowerCase();
-            if (normalized === 'false' || normalized === '0') {
-              next[typeKey] = false;
-            } else if (normalized === 'true' || normalized === '1') {
-              next[typeKey] = true;
-            }
-          } else if (key.startsWith(TEST_TYPE_MESSAGE_PREFIX)) {
-            const typeKey = normalizeTemplateAvailabilityKey(
-              key.slice(TEST_TYPE_MESSAGE_PREFIX.length)
-            );
-            if (!typeKey) return;
-            if (valueRaw) {
-              nextMessages[typeKey] = valueRaw;
-            }
+        const types = Array.isArray(payload?.types) ? payload.types : [];
+        const next = { ...DEFAULT_TEST_TYPE_STATE };
+        types.forEach(type => {
+          const typeKey = normalizeTestTypeKey(type?.key);
+          if (!typeKey || !(typeKey in next)) {
+            return;
           }
+          next[typeKey] = {
+            mode:
+              String(type?.mode || 'enabled')
+                .trim()
+                .toLowerCase() || 'enabled',
+            message: String(type?.message || '').trim(),
+          };
         });
         if (!cancelled) {
-          setTestTypeAvailability(next);
-          setTestTypeUnavailableMessages(nextMessages);
+          setTestTypeControls(next);
         }
       } catch (_err) {
         if (!cancelled) {
-          setTestTypeAvailability({ ...DEFAULT_TEST_TYPE_AVAILABILITY });
-          setTestTypeUnavailableMessages({});
+          setTestTypeControls({ ...DEFAULT_TEST_TYPE_STATE });
         }
       }
     })();
@@ -1281,9 +1263,9 @@ function TestWizard({
 
   useEffect(() => {
     if (!selectedTemplate) return;
-    if (isTemplateTypeEnabled(selectedTemplate)) return;
+    if (!isTemplateTypeHidden(selectedTemplate) && isTemplateTypeEnabled(selectedTemplate)) return;
     setSelectedTemplate(null);
-  }, [selectedTemplate, isTemplateTypeEnabled]);
+  }, [selectedTemplate, isTemplateTypeEnabled, isTemplateTypeHidden]);
   const [priceModalVisibleCount, setPriceModalVisibleCount] = useState(
     PRICE_PRODUCT_MODAL_REVEAL_BATCH
   );
@@ -3965,7 +3947,7 @@ function TestWizard({
               <div
                 className={`template-grid ${stepStyles.templateGrid} ${stepStyles.templateGridProfit}`}
               >
-                {TEST_TYPE_CATEGORIES.profit.types.map(type => {
+                {profitTypesForStep.map(type => {
                   const isSelected = selectedTemplate === type.key;
                   const isUnavailable = !isTemplateTypeEnabled(type.key);
                   const unavailableReason = getTemplateUnavailableReason(type.key);

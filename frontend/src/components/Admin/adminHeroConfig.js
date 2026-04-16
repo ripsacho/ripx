@@ -60,6 +60,11 @@ export const ADMIN_HERO_CONFIG = {
     subtitle: 'Enable or disable features per shop or globally.',
     icon: FlagIcon,
   },
+  [ROUTES.ADMIN_TEST_TYPE_CONTROLS]: {
+    title: 'Test type controls',
+    subtitle: 'Control which test types are enabled, disabled, or hidden globally and per store.',
+    icon: FlagIcon,
+  },
   [ROUTES.ADMIN_PROMO_LINKS]: {
     title: 'Promo links',
     subtitle: 'Manage promo links across all shops.',

@@ -63,6 +63,7 @@ const adminNavGroups = [
       { path: ROUTES.ADMIN_KV, label: 'Key-value store', icon: KeyIcon },
       { path: ROUTES.ADMIN_JOBS, label: 'Jobs', icon: ClockIcon },
       { path: ROUTES.ADMIN_FEATURE_FLAGS, label: 'Feature flags', icon: FlagIcon },
+      { path: ROUTES.ADMIN_TEST_TYPE_CONTROLS, label: 'Test type controls', icon: FlagIcon },
       { path: ROUTES.ADMIN_AGGREGATION, label: 'Aggregation', icon: ClockIcon },
     ],
   },

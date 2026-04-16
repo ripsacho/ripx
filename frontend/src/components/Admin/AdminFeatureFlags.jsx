@@ -6,18 +6,9 @@
 
 import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  Card,
-  DataTable,
-  BlockStack,
-  Text,
-  Checkbox,
-  Banner,
-  TextField,
-  Button,
-  InlineStack,
-} from '@shopify/polaris';
+import { Card, DataTable, BlockStack, Text, Checkbox, Banner, Button } from '@shopify/polaris';
 import { apiGet, apiPut } from '../../services';
+import { ROUTES } from '../../constants';
 import { PageShell } from '../Shared';
 import Toast from '../Toast/Toast';
 import AdminPageLayout from './AdminPageLayout';
@@ -46,72 +37,14 @@ const KNOWN_FLAGS = [
     description: 'Enable scheduled start/stop',
   },
 ];
-const TEST_TYPE_TOGGLE_PREFIX = 'test_type.enabled.';
-const TEST_TYPE_MESSAGE_PREFIX = 'test_type.message.';
-const KNOWN_TEST_TYPES = [
-  {
-    key: `${TEST_TYPE_TOGGLE_PREFIX}onsite-edit`,
-    label: 'Onsite Edit',
-    description: 'Enable or disable Onsite Edit test creation',
-  },
-  {
-    key: `${TEST_TYPE_TOGGLE_PREFIX}split-url`,
-    label: 'Split URL',
-    description: 'Enable or disable Split URL test creation',
-  },
-  {
-    key: `${TEST_TYPE_TOGGLE_PREFIX}template`,
-    label: 'Template',
-    description: 'Enable or disable Template test creation',
-  },
-  {
-    key: `${TEST_TYPE_TOGGLE_PREFIX}theme`,
-    label: 'Theme',
-    description: 'Enable or disable Theme test creation',
-  },
-  {
-    key: `${TEST_TYPE_TOGGLE_PREFIX}pricing`,
-    label: 'Pricing',
-    description: 'Enable or disable Pricing test creation',
-  },
-  {
-    key: `${TEST_TYPE_TOGGLE_PREFIX}shipping`,
-    label: 'Shipping',
-    description: 'Enable or disable Shipping test creation',
-  },
-  {
-    key: `${TEST_TYPE_TOGGLE_PREFIX}offer`,
-    label: 'Offer',
-    description: 'Enable or disable Offer test creation',
-  },
-  {
-    key: `${TEST_TYPE_TOGGLE_PREFIX}checkout`,
-    label: 'Checkout',
-    description: 'Enable or disable Checkout test creation',
-  },
-  {
-    key: `${TEST_TYPE_TOGGLE_PREFIX}combination`,
-    label: 'Combination',
-    description: 'Enable or disable Combination test creation',
-  },
-];
-
 export default function AdminFeatureFlags() {
   const queryClient = useQueryClient();
   const [toast, setToast] = React.useState({ message: null, type: 'success' });
-  const [testTypeMessageDrafts, setTestTypeMessageDrafts] = React.useState({});
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'kv', 'flag.'],
     queryFn: async () => {
       const res = await apiGet('/admin/kv', { prefix: 'flag.' });
-      return res.data?.data ?? res.data;
-    },
-  });
-  const { data: testTypeData, isLoading: isLoadingTestTypes } = useQuery({
-    queryKey: ['admin', 'kv', 'test_type.'],
-    queryFn: async () => {
-      const res = await apiGet('/admin/kv', { prefix: 'test_type.' });
       return res.data?.data ?? res.data;
     },
   });
@@ -151,45 +84,9 @@ export default function AdminFeatureFlags() {
     });
     return map;
   }, [data]);
-  const { testTypeMap, testTypeMessages } = React.useMemo(() => {
-    const list = testTypeData?.keys ?? [];
-    const map = {};
-    const messages = {};
-    list.forEach(k => {
-      const key = String(k.key || '');
-      if (key.startsWith(TEST_TYPE_TOGGLE_PREFIX)) {
-        map[key] = parseBoolean(k.valuePreview);
-      } else if (key.startsWith(TEST_TYPE_MESSAGE_PREFIX)) {
-        messages[key] = String(k.valuePreview ?? '')
-          .replace(/…$/, '')
-          .trim();
-      }
-    });
-    return { testTypeMap: map, testTypeMessages: messages };
-  }, [testTypeData]);
-  const getMessageDraft = React.useCallback(
-    key => {
-      if (Object.prototype.hasOwnProperty.call(testTypeMessageDrafts, key)) {
-        return testTypeMessageDrafts[key];
-      }
-      return testTypeMessages[key] || '';
-    },
-    [testTypeMessageDrafts, testTypeMessages]
-  );
 
   const handleToggle = (key, checked) => {
     putMutation.mutate({ key, value: checked ? 'true' : 'false' });
-  };
-  const handleMessageSave = (key, rawValue) => {
-    putMutation.mutate(
-      { key, value: String(rawValue || '').trim() },
-      {
-        onSuccess: () => {
-          setToast({ message: 'Test type message updated', type: 'success' });
-          queryClient.invalidateQueries({ queryKey: ['admin', 'kv'] });
-        },
-      }
-    );
   };
 
   const rows = KNOWN_FLAGS.map(f => [
@@ -205,52 +102,6 @@ export default function AdminFeatureFlags() {
       disabled={putMutation.isPending}
     />,
   ]);
-  const testTypeRows = KNOWN_TEST_TYPES.map(t => {
-    const explicitValue = testTypeMap[t.key];
-    const isEnabled = explicitValue !== false;
-    const testTypeKey = String(t.key).replace(TEST_TYPE_TOGGLE_PREFIX, '');
-    const messageKey = `${TEST_TYPE_MESSAGE_PREFIX}${testTypeKey}`;
-    const messageValue = getMessageDraft(messageKey);
-    return [
-      t.key,
-      t.label,
-      t.description,
-      <Checkbox
-        key={t.key}
-        label=""
-        labelHidden
-        checked={isEnabled}
-        onChange={checked => handleToggle(t.key, checked)}
-        disabled={putMutation.isPending}
-      />,
-      <InlineStack key={`${t.key}-msg`} gap="200" wrap={false} blockAlign="center">
-        <div style={{ minWidth: 240 }}>
-          <TextField
-            label=""
-            labelHidden
-            value={messageValue}
-            onChange={value =>
-              setTestTypeMessageDrafts(prev => ({
-                ...prev,
-                [messageKey]: value,
-              }))
-            }
-            placeholder="Optional unavailable reason"
-            autoComplete="off"
-            disabled={putMutation.isPending}
-          />
-        </div>
-        <Button
-          size="slim"
-          onClick={() => handleMessageSave(messageKey, messageValue)}
-          disabled={putMutation.isPending}
-        >
-          Save
-        </Button>
-      </InlineStack>,
-    ];
-  });
-
   return (
     <PageShell className={`${styles.adminPage} ${styles.adminPageWithHero}`}>
       <AdminPageLayout>
@@ -289,30 +140,18 @@ export default function AdminFeatureFlags() {
           </Card>
           <Card>
             <BlockStack gap="300">
-              <section className={styles.adminMainSection} aria-label="Test type availability">
-                <Text
-                  as="p"
-                  variant="bodySm"
-                  tone="subdued"
-                  className={styles.adminPageDescription}
-                >
-                  Control which test types can be created in the wizard. If disabled, the type is
-                  marked unavailable and creation is blocked.
-                </Text>
-              </section>
-              {isLoadingTestTypes ? (
-                <Text as="p" tone="subdued">
-                  Loading…
-                </Text>
-              ) : (
-                <div className={styles.adminTableWrap}>
-                  <DataTable
-                    columnContentTypes={['text', 'text', 'text', 'text', 'text']}
-                    headings={['Key', 'Test type', 'Description', 'Enabled', 'Unavailable message']}
-                    rows={testTypeRows}
-                  />
-                </div>
-              )}
+              <Text as="h2" variant="headingMd">
+                Test type controls moved
+              </Text>
+              <Banner tone="info">
+                Test type availability, hidden states, and store-specific overrides now live on a
+                dedicated admin screen.
+              </Banner>
+              <div>
+                <Button url={ROUTES.ADMIN_TEST_TYPE_CONTROLS} variant="primary">
+                  Open test type controls
+                </Button>
+              </div>
             </BlockStack>
           </Card>
         </BlockStack>

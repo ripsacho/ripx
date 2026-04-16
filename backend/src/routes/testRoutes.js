@@ -58,83 +58,25 @@ const { getShopSession } = require('../models/shopSession');
 const shopifyService = require('../services/shopifyService');
 const { shouldRequireSignedAssignment } = require('../utils/priceAssignmentSignature');
 const logger = require('../utils/logger');
-const { query } = require('../utils/database');
+const {
+  resolveTemplateKeyFromPayload,
+  getResolvedTestTypeRule,
+} = require('../services/testTypeControlService');
 
-const TEST_TYPE_ENABLED_PREFIX = 'test_type.enabled.';
-const TEST_TYPE_DEFAULTS = Object.freeze({
-  'onsite-edit': true,
-  'split-url': true,
-  template: true,
-  theme: true,
-  pricing: true,
-  shipping: true,
-  offer: true,
-  checkout: true,
-  combination: true,
-});
-
-function normalizeTemplateKey(value) {
-  const key = String(value || '')
-    .trim()
-    .toLowerCase();
-  if (!key) {
-    return '';
-  }
-  if (key === 'price') {
-    return 'pricing';
-  }
-  return key;
-}
-
-function resolveTemplateKeyFromPayload(payload = {}) {
-  const goalTemplateKey =
-    payload?.goal && typeof payload.goal === 'object' ? payload.goal.template_key : null;
-  const raw =
-    payload?.template_key ??
-    payload?.templateKey ??
-    payload?.test_type_id ??
-    payload?.testTypeId ??
-    goalTemplateKey ??
-    payload?.type;
-  return normalizeTemplateKey(raw);
-}
-
-async function getEnabledTestTypeMap() {
-  const enabledMap = { ...TEST_TYPE_DEFAULTS };
-  try {
-    const result = await query(
-      `SELECT key, value FROM key_value_store WHERE key LIKE '${TEST_TYPE_ENABLED_PREFIX}%'`
-    );
-    for (const row of result.rows) {
-      const key = String(row?.key || '');
-      const typeKey = normalizeTemplateKey(key.slice(TEST_TYPE_ENABLED_PREFIX.length));
-      if (!typeKey || !(typeKey in enabledMap)) {
-        continue;
-      }
-      const normalizedValue = String(row?.value || '')
-        .trim()
-        .toLowerCase();
-      enabledMap[typeKey] = !(normalizedValue === 'false' || normalizedValue === '0');
-    }
-  } catch (error) {
-    if (!String(error?.message || '').includes('does not exist')) {
-      throw error;
-    }
-  }
-  return enabledMap;
-}
-
-async function ensureTemplateTypeEnabledOrThrow(payload) {
+async function ensureTemplateTypeEnabledOrThrow(payload, shopDomain) {
   const templateKey = resolveTemplateKeyFromPayload(payload);
-  if (!templateKey || !(templateKey in TEST_TYPE_DEFAULTS)) {
+  if (!templateKey) {
     return null;
   }
-  const enabledMap = await getEnabledTestTypeMap();
-  if (enabledMap[templateKey] !== false) {
+  const resolvedType = await getResolvedTestTypeRule(templateKey, { domain: shopDomain });
+  if (!resolvedType || resolvedType.effective.enabled) {
     return templateKey;
   }
-  const label = templateKey === 'pricing' ? 'Pricing' : templateKey;
-  const err = new Error(`${label} test type is currently unavailable.`);
+  const fallbackLabel = templateKey === 'pricing' ? 'Pricing' : templateKey;
+  const message =
+    resolvedType.effective.message ||
+    `${resolvedType.label || fallbackLabel} test type is currently unavailable.`;
+  const err = new Error(message);
   err.statusCode = HTTP_STATUS.BAD_REQUEST;
   err.isValidation = true;
   throw err;
@@ -1107,7 +1049,7 @@ router.post(
 
     testData = normalizeShippingTestPayload(testData);
     try {
-      await ensureTemplateTypeEnabledOrThrow(testData);
+      await ensureTemplateTypeEnabledOrThrow(testData, shopDomain);
     } catch (error) {
       if (error?.isValidation) {
         return sendValidationError(res, [error.message]);
@@ -2061,7 +2003,7 @@ router.put(
         updates.type = testData.type;
       }
       try {
-        await ensureTemplateTypeEnabledOrThrow(testData);
+        await ensureTemplateTypeEnabledOrThrow(testData, shopDomain);
       } catch (error) {
         if (error?.isValidation) {
           return sendValidationError(res, [error.message]);

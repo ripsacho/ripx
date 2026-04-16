@@ -7,7 +7,7 @@
 const express = require('express');
 const router = express.Router();
 const { query } = require('../utils/database');
-const { sendError } = require('../utils/response');
+const { sendError, sendSuccess } = require('../utils/response');
 const { getLastExportTime } = require('../jobs/bigQueryExport');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const integrationConfig = require('../services/integrationConfigService');
@@ -29,6 +29,8 @@ const { buildShopifyFunctionsInventory } = require('../services/shopifyFunctions
 const { SCRIPT_VERSION } = require('../utils/storefrontScriptRuntime');
 const shopifyService = require('../services/shopifyService');
 const { getShopSession } = require('../models/shopSession');
+const { HTTP_STATUS } = require('../constants');
+const { getTestTypeControlSnapshot } = require('../services/testTypeControlService');
 
 const RIPX_DEFAULT_AUTOMATIC_DISCOUNT_TITLE = 'RipX Offer Checkout Function';
 const ALLOWED_DISCOUNT_CLASSES = new Set(['PRODUCT', 'ORDER', 'SHIPPING']);
@@ -371,6 +373,30 @@ async function resolveRequestedShopDomain(req) {
     .trim()
     .toLowerCase();
 }
+
+router.get(
+  '/test-type-controls',
+  asyncHandler(async (req, res) => {
+    const shopDomain = await resolveRequestedShopDomain(req);
+    if (!shopDomain || shopDomain.includes('@')) {
+      return sendError(res, 401, 'Shop domain required');
+    }
+    const snapshot = await getTestTypeControlSnapshot({ domain: shopDomain });
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      domain: shopDomain,
+      types: snapshot.types.map(type => ({
+        key: type.key,
+        label: type.label,
+        description: type.description,
+        mode: type.effective.mode,
+        message: type.effective.message,
+        enabled: type.effective.enabled,
+        hidden: type.effective.hidden,
+        visible: type.effective.visible,
+      })),
+    });
+  })
+);
 
 /**
  * GET /api/settings

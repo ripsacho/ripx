@@ -196,6 +196,7 @@ import {
   AdminKv,
   AdminJobs,
   AdminFeatureFlags,
+  AdminTestTypeControls,
   AdminPromoLinks,
   AdminBlockList,
   AdminWebhookEvents,
@@ -1171,6 +1172,7 @@ function AppContent() {
                 <Route path="kv" element={<AdminKv />} />
                 <Route path="jobs" element={<AdminJobs />} />
                 <Route path="feature-flags" element={<AdminFeatureFlags />} />
+                <Route path="test-type-controls" element={<AdminTestTypeControls />} />
                 <Route path="promo-links" element={<AdminPromoLinks />} />
                 <Route path="block-list" element={<AdminBlockList />} />
                 <Route path="webhook-events" element={<AdminWebhookEvents />} />

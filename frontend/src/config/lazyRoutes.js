@@ -32,6 +32,9 @@ export const AdminAudit = lazy(() => import('../components/Admin/AdminAudit'));
 export const AdminKv = lazy(() => import('../components/Admin/AdminKv'));
 export const AdminJobs = lazy(() => import('../components/Admin/AdminJobs'));
 export const AdminFeatureFlags = lazy(() => import('../components/Admin/AdminFeatureFlags'));
+export const AdminTestTypeControls = lazy(
+  () => import('../components/Admin/AdminTestTypeControls')
+);
 export const AdminPromoLinks = lazy(() => import('../components/Admin/AdminPromoLinks'));
 export const AdminBlockList = lazy(() => import('../components/Admin/AdminBlockList'));
 export const AdminWebhookEvents = lazy(() => import('../components/Admin/AdminWebhookEvents'));

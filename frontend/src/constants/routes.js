@@ -72,6 +72,7 @@ export const ROUTES = {
   ADMIN_KV: '/admin/kv',
   ADMIN_JOBS: '/admin/jobs',
   ADMIN_FEATURE_FLAGS: '/admin/feature-flags',
+  ADMIN_TEST_TYPE_CONTROLS: '/admin/test-type-controls',
   ADMIN_PROMO_LINKS: '/admin/promo-links',
   ADMIN_BLOCK_LIST: '/admin/block-list',
   ADMIN_WEBHOOK_EVENTS: '/admin/webhook-events',
