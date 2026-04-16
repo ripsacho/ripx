@@ -118,7 +118,7 @@ export function getBreadcrumb(pathname, search = '') {
       [ROUTES.ADMIN_KV]: 'Key-value store',
       [ROUTES.ADMIN_JOBS]: 'Jobs',
       [ROUTES.ADMIN_FEATURE_FLAGS]: 'Feature flags',
-      [ROUTES.ADMIN_TEST_TYPE_CONTROLS]: 'Test type controls',
+      [ROUTES.ADMIN_TEST_TYPE_CONTROLS]: 'Test types',
       [ROUTES.ADMIN_PROMO_LINKS]: 'Promo links',
       [ROUTES.ADMIN_BLOCK_LIST]: 'Block list',
       [ROUTES.ADMIN_WEBHOOK_EVENTS]: 'Webhook events',

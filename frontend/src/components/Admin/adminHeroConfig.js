@@ -61,7 +61,7 @@ export const ADMIN_HERO_CONFIG = {
     icon: FlagIcon,
   },
   [ROUTES.ADMIN_TEST_TYPE_CONTROLS]: {
-    title: 'Test type controls',
+    title: 'Test types',
     subtitle: 'Control which test types are enabled, disabled, or hidden globally and per store.',
     icon: FlagIcon,
   },

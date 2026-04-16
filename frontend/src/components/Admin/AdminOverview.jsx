@@ -287,6 +287,15 @@ export default function AdminOverview() {
                 <button
                   type="button"
                   className={styles.adminQuickActionBtn}
+                  onClick={() => navigate(getNavigateToWithEmbed(ROUTES.ADMIN_TEST_TYPE_CONTROLS))}
+                >
+                  Test types
+                </button>
+              </span>
+              <span className={styles.adminQuickActionItem}>
+                <button
+                  type="button"
+                  className={styles.adminQuickActionBtn}
                   onClick={() => navigate(getNavigateToWithEmbed(ROUTES.ADMIN_AUDIT))}
                 >
                   Audit log

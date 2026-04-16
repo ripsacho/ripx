@@ -149,11 +149,6 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
     const [normalizedPath, normalizedSearch = ''] = String(path || '').split('?');
     const pathSearchParams = new URLSearchParams(normalizedSearch);
     if (path === ROUTES.USER_PANEL) return location.pathname === ROUTES.USER_PANEL;
-    if (normalizedPath !== path && location.pathname === normalizedPath) {
-      const tabParam = pathSearchParams.get('tab');
-      if (!tabParam) return true;
-      return searchParams.get('tab') === tabParam;
-    }
     const dashboardPath = appDomain ? ROUTES.appDashboard(appDomain) : ROUTES.DASHBOARD;
     if (path === dashboardPath) {
       return location.pathname === dashboardPath || location.pathname === dashboardPath + '/';
@@ -167,6 +162,12 @@ function Sidebar({ collapsed = false, onToggleSidebar, mobileOpen = false, onMob
     }
     if (path === testsListPath) {
       return location.pathname === testsListPath && viewParam !== 'personalization';
+    }
+    if (normalizedPath !== path && location.pathname === normalizedPath) {
+      if (pathSearchParams.size === 0) return true;
+      return Array.from(pathSearchParams.entries()).every(
+        ([key, value]) => searchParams.get(key) === value
+      );
     }
     if (location.pathname === path) return true;
     if (location.pathname.startsWith(path)) {
