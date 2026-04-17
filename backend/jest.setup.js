@@ -12,4 +12,4 @@ process.env.SHOPIFY_API_KEY = process.env.SHOPIFY_API_KEY || 'test_shopify_api_k
 process.env.SHOPIFY_API_SECRET = process.env.SHOPIFY_API_SECRET || 'test_shopify_api_secret';
 process.env.SHOPIFY_SCOPES =
   process.env.SHOPIFY_SCOPES ||
-  'read_online_store_pages,read_orders,read_products,write_products,read_collections';
+  'read_online_store_pages,read_orders,read_products,write_products,read_collections,read_shipping,write_shipping,read_payment_customizations,write_payment_customizations,read_delivery_customizations,write_delivery_customizations,read_discounts,write_discounts,read_cart_transforms,write_cart_transforms,read_content,write_content,read_metaobjects,write_metaobjects,read_themes,write_themes,write_orders,write_collections';
