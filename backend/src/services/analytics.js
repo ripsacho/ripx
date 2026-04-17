@@ -13,6 +13,12 @@ const { getTestAnalytics, getSecondaryEventMetrics } = require('../models/analyt
 const { getTestById } = require('../models/test');
 const { STATISTICAL_THRESHOLD, SETTINGS_BOUNDS } = require('../constants');
 
+const CHECKOUT_SECTION_EVENT_NAMES = Object.freeze([
+  'checkout_section_impression',
+  'checkout_section_cta_click',
+  'checkout_section_offer_apply',
+]);
+
 class AnalyticsService {
   /**
    * Calculate conversion rate
@@ -241,6 +247,19 @@ class AnalyticsService {
     };
   }
 
+  _getBuiltInCheckoutEventNames(test = {}) {
+    const type = String(test?.type || '')
+      .trim()
+      .toLowerCase();
+    const checkoutPhase = String(test?.goal?.checkout_phase || '')
+      .trim()
+      .toLowerCase();
+    if (type !== 'checkout' || checkoutPhase !== 'experience') {
+      return [];
+    }
+    return [...CHECKOUT_SECTION_EVENT_NAMES];
+  }
+
   /**
    * Sample Ratio Mismatch (SRM) detection
    * Detects if observed traffic split deviates significantly from expected allocation.
@@ -447,12 +466,16 @@ class AnalyticsService {
     });
 
     const secondaryEventNames = goal ? this._getSecondaryEventNames(goal) : [];
-    let secondaryMetrics = {};
-    if (secondaryEventNames.length > 0) {
-      secondaryMetrics = await getSecondaryEventMetrics(
+    const checkoutSectionEventNames = this._getBuiltInCheckoutEventNames(test);
+    const eventNamesForMetrics = Array.from(
+      new Set([...secondaryEventNames, ...checkoutSectionEventNames])
+    );
+    let eventMetrics = {};
+    if (eventNamesForMetrics.length > 0) {
+      eventMetrics = await getSecondaryEventMetrics(
         testId,
         shopDomain,
-        secondaryEventNames,
+        eventNamesForMetrics,
         options
       );
     }
@@ -471,10 +494,19 @@ class AnalyticsService {
         revenue: variant.revenue || 0,
         avgOrderValue: variant.conversions > 0 ? (variant.revenue || 0) / variant.conversions : 0,
         secondaryEvents: {},
+        checkoutSectionEvents: {},
       };
       secondaryEventNames.forEach(eventName => {
-        const data = secondaryMetrics[eventName]?.[variant.variant_id];
+        const data = eventMetrics[eventName]?.[variant.variant_id];
         v.secondaryEvents[eventName] = {
+          count: data?.count ?? 0,
+          sum: data?.sum ?? 0,
+          rate: v.visitors > 0 ? ((data?.count ?? 0) / v.visitors) * 100 : 0,
+        };
+      });
+      checkoutSectionEventNames.forEach(eventName => {
+        const data = eventMetrics[eventName]?.[variant.variant_id];
+        v.checkoutSectionEvents[eventName] = {
           count: data?.count ?? 0,
           sum: data?.sum ?? 0,
           rate: v.visitors > 0 ? ((data?.count ?? 0) / v.visitors) * 100 : 0,
@@ -489,6 +521,7 @@ class AnalyticsService {
         error: 'Insufficient data for analysis',
         variants,
         secondaryEventNames,
+        checkoutSectionEventNames,
         significance: {
           significant: false,
           pValue: 1,
@@ -574,6 +607,7 @@ class AnalyticsService {
       analysisMethod: analysisMethod || 'frequentist',
       revenueImpact,
       secondaryEventNames,
+      checkoutSectionEventNames,
       srm,
       summary: {
         totalVisitors,

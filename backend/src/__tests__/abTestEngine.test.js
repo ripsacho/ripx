@@ -382,6 +382,64 @@ describe('ABTestEngine.validateTest theme contract', () => {
     expect(result.errors.some(err => err.includes('target payment methods'))).toBe(true);
   });
 
+  it('accepts checkout experience tests using structured checkout sections', () => {
+    const result = ABTestEngine.validateTest({
+      name: 'Checkout experience test',
+      type: 'checkout',
+      goal: { type: 'conversion', checkout_phase: 'experience' },
+      variants: [
+        { name: 'Control', allocation: 50, config: {} },
+        {
+          name: 'Variant A',
+          allocation: 50,
+          config: {
+            checkout_placement: 'purchase.checkout.block.render',
+            checkout_sections: [
+              {
+                type: 'hero_notice',
+                enabled: true,
+                props: {
+                  title: 'Complete your order with confidence',
+                  message: 'Free returns and secure payment on every order.',
+                  cta_label: 'Apply offer',
+                },
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(result.isValid).toBe(true);
+  });
+
+  it('rejects checkout experience tests with unsupported structured sections', () => {
+    const result = ABTestEngine.validateTest({
+      name: 'Checkout experience test',
+      type: 'checkout',
+      goal: { type: 'conversion', checkout_phase: 'experience' },
+      variants: [
+        { name: 'Control', allocation: 50, config: {} },
+        {
+          name: 'Variant A',
+          allocation: 50,
+          config: {
+            checkout_sections: [
+              {
+                type: 'countdown_timer',
+                enabled: true,
+                props: { title: 'Only 5 minutes left' },
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some(err => err.includes('checkout_sections[0] type'))).toBe(true);
+  });
+
   it('rejects rename-based delivery checkout tests without rename target', () => {
     const result = ABTestEngine.validateTest({
       name: 'Checkout delivery rename test',

@@ -29,7 +29,7 @@ EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "const http=require('http');const req=http.get('http://localhost:3000/health',(res)=>{res.resume();process.exit(res.statusCode===200?0:1)});req.on('error',()=>process.exit(1));req.setTimeout(2500,()=>{req.destroy();process.exit(1)});setTimeout(()=>process.exit(1),2800);"
+  CMD node -e "const http=require('http');let done=false;const finish=(code)=>{if(done)return;done=true;clearTimeout(failTimer);process.exit(code);};const failTimer=setTimeout(()=>finish(1),2800);const req=http.get('http://localhost:3000/health',(res)=>{res.resume();finish(res.statusCode===200?0:1);});req.on('error',()=>finish(1));req.setTimeout(2500,()=>{req.destroy();finish(1);});"
 
 # Start application
 CMD ["node", "backend/src/app.js"]

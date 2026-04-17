@@ -74,7 +74,28 @@ describe('checkoutReadinessService', () => {
         id: 'test-checkout-1',
         name: 'Checkout block test',
         type: 'checkout',
-        variants: [{ id: 'control', name: 'Control', config: {} }],
+        goal: { checkout_phase: 'experience' },
+        variants: [
+          { id: 'control', name: 'Control', config: {} },
+          {
+            id: 'variant-a',
+            name: 'Variant A',
+            config: {
+              checkout_sections: [
+                {
+                  type: 'hero_notice',
+                  enabled: true,
+                  props: {
+                    title: 'Checkout with confidence',
+                    message: 'Secure payment and free returns.',
+                    cta_kind: 'track',
+                    cta_label: 'Continue securely',
+                  },
+                },
+              ],
+            },
+          },
+        ],
       },
       shopDomain: 'store.myshopify.com',
       checkoutUiConfig: {
@@ -96,6 +117,111 @@ describe('checkoutReadinessService', () => {
       false
     );
     expect(readiness.checks.find(item => item.id === 'checkout_ui_secret_synced')?.ok).toBe(false);
+  });
+
+  it('blocks checkout experience readiness when no renderable checkout sections are configured', async () => {
+    process.env.APP_URL = 'https://app.ripx.com';
+    setShopifyEnv();
+
+    const { buildTestCheckoutReadiness } = require('../checkoutReadinessService');
+    const readiness = await buildTestCheckoutReadiness({
+      test: {
+        id: 'test-checkout-empty',
+        name: 'Checkout block test',
+        type: 'checkout',
+        goal: { checkout_phase: 'experience' },
+        variants: [
+          { id: 'control', name: 'Control', config: {} },
+          {
+            id: 'variant-a',
+            name: 'Variant A',
+            config: {
+              checkout_sections: [
+                {
+                  type: 'hero_notice',
+                  enabled: true,
+                  props: {
+                    title: '',
+                    message: '',
+                    cta_kind: 'none',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+      shopDomain: 'store.myshopify.com',
+      checkoutUiConfig: {
+        source: 'present',
+        contents: `
+          export const RIPX_CHECKOUT_ASSIGNMENT_URL = 'https://app.ripx.com/api/track/checkout-assignment';
+          export const RIPX_CHECKOUT_CONVERSION_URL = 'https://app.ripx.com/api/track/checkout-conversion';
+          export const RIPX_CHECKOUT_PRICE_SECRET = '';
+          export const RIPX_CHECKOUT_UI_TEST_ID = 'test-checkout-empty';
+          export const RIPX_CHECKOUT_UI_SHOP_DOMAIN = 'store.myshopify.com';
+        `,
+      },
+    });
+
+    expect(readiness.summary.status).toBe('blocked');
+    expect(readiness.capabilities.checkout_experience_sections.level).toBe('blocked');
+    expect(
+      readiness.checks.find(item => item.id === 'checkout_experience_variants_configured')?.ok
+    ).toBe(false);
+  });
+
+  it('reports checkout experience readiness as ready when renderable sections are configured', async () => {
+    process.env.APP_URL = 'https://app.ripx.com';
+    setShopifyEnv();
+
+    const { buildTestCheckoutReadiness } = require('../checkoutReadinessService');
+    const readiness = await buildTestCheckoutReadiness({
+      test: {
+        id: 'test-checkout-sections',
+        name: 'Checkout block test',
+        type: 'checkout',
+        goal: { checkout_phase: 'experience' },
+        variants: [
+          { id: 'control', name: 'Control', config: {} },
+          {
+            id: 'variant-a',
+            name: 'Variant A',
+            config: {
+              checkout_sections: [
+                {
+                  type: 'hero_notice',
+                  enabled: true,
+                  props: {
+                    title: 'Checkout with confidence',
+                    message: 'Secure payment and free returns.',
+                    cta_kind: 'track',
+                    cta_label: 'Continue securely',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+      shopDomain: 'store.myshopify.com',
+      checkoutUiConfig: {
+        source: 'present',
+        contents: `
+          export const RIPX_CHECKOUT_ASSIGNMENT_URL = 'https://app.ripx.com/api/track/checkout-assignment';
+          export const RIPX_CHECKOUT_CONVERSION_URL = 'https://app.ripx.com/api/track/checkout-conversion';
+          export const RIPX_CHECKOUT_PRICE_SECRET = '';
+          export const RIPX_CHECKOUT_UI_TEST_ID = 'test-checkout-sections';
+          export const RIPX_CHECKOUT_UI_SHOP_DOMAIN = 'store.myshopify.com';
+        `,
+      },
+    });
+
+    expect(readiness.summary.status).toBe('ready');
+    expect(readiness.capabilities.checkout_experience_sections.level).toBe('ready');
+    expect(readiness.sources.checkout_experience.renderable_section_count).toBeGreaterThanOrEqual(
+      1
+    );
   });
 
   it('reports shipping readiness as ready with a prepared execution plan', async () => {

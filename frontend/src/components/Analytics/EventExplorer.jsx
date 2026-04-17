@@ -18,6 +18,12 @@ import {
 import { DuplicateIcon } from '@shopify/polaris-icons';
 import { apiGet } from '../../services';
 import { getDefaultAnalyticsDateRange } from '../../utils/preferences';
+import {
+  CHECKOUT_SECTION_EVENT_DEFINITIONS,
+  formatCheckoutSectionEventLabel,
+  getCheckoutSectionEventContext,
+  isCheckoutSectionEventName,
+} from '../../utils/checkoutReporting';
 import styles from './EventExplorer.module.css';
 
 const DATE_RANGES = [
@@ -91,6 +97,7 @@ function EventExplorer({ testId, variants = [] }) {
   }, [fetchEvents]);
 
   const getVariantName = vid => variants.find(v => v.id === vid)?.name || vid;
+  const hasCheckoutSectionSignals = eventNames.some(isCheckoutSectionEventName);
 
   const handleCopyId = id => {
     navigator.clipboard?.writeText(id).then(() => {
@@ -99,31 +106,62 @@ function EventExplorer({ testId, variants = [] }) {
     });
   };
 
-  const rows = events.map(ev => [
-    <InlineStack key={`${ev.id}-actions`} gap="200" align="center" blockAlign="center">
-      <Button
-        variant="plain"
-        icon={DuplicateIcon}
-        accessibilityLabel="Copy event ID"
-        onClick={() => handleCopyId(ev.id)}
+  const rows = events.map(ev => {
+    const context = getCheckoutSectionEventContext(ev);
+    return [
+      <InlineStack key={`${ev.id}-actions`} gap="200" align="center" blockAlign="center">
+        <Button
+          variant="plain"
+          icon={DuplicateIcon}
+          accessibilityLabel="Copy event ID"
+          onClick={() => handleCopyId(ev.id)}
+        >
+          {copiedId === ev.id ? 'Copied!' : ''}
+        </Button>
+        <Text variant="bodySm" as="span" tone="subdued">
+          {ev.id ? `${ev.id.slice(0, 8)}…` : '—'}
+        </Text>
+      </InlineStack>,
+      <Badge
+        key={`${ev.id}-badge`}
+        tone={
+          isCheckoutSectionEventName(ev.event_name)
+            ? 'attention'
+            : ev.event_type === 'conversion'
+              ? 'success'
+              : 'info'
+        }
       >
-        {copiedId === ev.id ? 'Copied!' : ''}
-      </Button>
-      <Text variant="bodySm" as="span" tone="subdued">
-        {ev.id ? `${ev.id.slice(0, 8)}…` : '—'}
-      </Text>
-    </InlineStack>,
-    <Badge key={`${ev.id}-badge`} tone={ev.event_type === 'conversion' ? 'success' : 'info'}>
-      {ev.event_type}
-    </Badge>,
-    ev.event_name || '—',
-    getVariantName(ev.variant_id),
-    ev.user_id?.slice(0, 12) + (ev.user_id?.length > 12 ? '…' : ''),
-    ev.event_type === 'conversion'
-      ? `$${Number(ev.event_value || 0).toFixed(2)}`
-      : (ev.event_value ?? '—'),
-    ev.created_at ? new Date(ev.created_at).toLocaleString() : '—',
-  ]);
+        {ev.event_type}
+      </Badge>,
+      <div key={`${ev.id}-event`} className={styles.eventsCellStack}>
+        <Text as="span" variant="bodySm" fontWeight="semibold">
+          {formatCheckoutSectionEventLabel(ev.event_name)}
+        </Text>
+        {ev.event_name ? (
+          <Text as="span" variant="bodySm" tone="subdued">
+            {ev.event_name}
+          </Text>
+        ) : null}
+      </div>,
+      <div key={`${ev.id}-context`} className={styles.eventsCellStack}>
+        <Text as="span" variant="bodySm">
+          {context.summary || '—'}
+        </Text>
+        {context.hasSectionContext ? (
+          <Text as="span" variant="bodySm" tone="subdued">
+            Phase: {context.checkoutPhase.replace(/_/g, ' ')}
+          </Text>
+        ) : null}
+      </div>,
+      getVariantName(ev.variant_id),
+      ev.user_id?.slice(0, 12) + (ev.user_id?.length > 12 ? '…' : ''),
+      ev.event_type === 'conversion'
+        ? `$${Number(ev.event_value || 0).toFixed(2)}`
+        : (ev.event_value ?? '—'),
+      ev.created_at ? new Date(ev.created_at).toLocaleString() : '—',
+    ];
+  });
 
   const variantOptions = [
     { label: 'All variants', value: 'all' },
@@ -137,7 +175,10 @@ function EventExplorer({ testId, variants = [] }) {
 
   const nameOptions = [
     { label: 'All events', value: 'all' },
-    ...eventNames.map(n => ({ label: n, value: n })),
+    ...eventNames.map(n => ({
+      label: isCheckoutSectionEventName(n) ? formatCheckoutSectionEventLabel(n) : n,
+      value: n,
+    })),
   ];
 
   const totalPages = Math.ceil(total / PAGE_SIZE) || 1;
@@ -171,6 +212,26 @@ function EventExplorer({ testId, variants = [] }) {
           Common events: add_to_cart, view_content, newsletter_signup, signup, form_submit
         </p>
       </div>
+
+      {hasCheckoutSectionSignals && (
+        <div className={styles.eventsSignalCard}>
+          <h3 className={styles.eventsSetupTitle}>Checkout section signals detected</h3>
+          <p className={styles.eventsSetupDesc}>
+            These are built-in RipX checkout experience events, so you can validate section render
+            and engagement without adding custom theme code.
+          </p>
+          <div className={styles.eventsSignalList}>
+            {eventNames.filter(isCheckoutSectionEventName).map(name => (
+              <span key={name} className={styles.eventsSignalChip}>
+                {formatCheckoutSectionEventLabel(name)}
+                {CHECKOUT_SECTION_EVENT_DEFINITIONS[name]?.description
+                  ? ` - ${CHECKOUT_SECTION_EVENT_DEFINITIONS[name].description}`
+                  : ''}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className={styles.eventsFilters}>
         <Select
@@ -213,8 +274,17 @@ function EventExplorer({ testId, variants = [] }) {
           <>
             <div className={styles.eventsTableWrapper}>
               <DataTable
-                columnContentTypes={['text', 'text', 'text', 'text', 'text', 'text', 'text']}
-                headings={['ID', 'Type', 'Event', 'Variant', 'User', 'Value', 'Time']}
+                columnContentTypes={[
+                  'text',
+                  'text',
+                  'text',
+                  'text',
+                  'text',
+                  'text',
+                  'text',
+                  'text',
+                ]}
+                headings={['ID', 'Type', 'Event', 'Context', 'Variant', 'User', 'Value', 'Time']}
                 rows={rows}
               />
             </div>

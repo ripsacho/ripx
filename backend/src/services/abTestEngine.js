@@ -22,6 +22,11 @@ const {
   normalizeShippingTestPayload,
   validateShippingVariants,
 } = require('./shippingTestConfigService');
+const {
+  normalizeCheckoutExperienceConfig,
+  normalizeCheckoutPhase,
+  validateCheckoutExperienceConfig,
+} = require('./checkoutExperienceConfigService');
 
 /** Derive pathname from URL for path-based url_pattern matching (homepage, etc.) */
 function getPathnameFromUrl(currentUrl) {
@@ -75,13 +80,6 @@ function isProductScopeTargetType(targetType) {
     .trim()
     .toLowerCase();
   return tt === 'product' || tt === 'all-products' || tt === 'all_products';
-}
-
-function normalizeCheckoutPhase(rawPhase) {
-  const phase = String(rawPhase || 'experience')
-    .trim()
-    .toLowerCase();
-  return ['experience', 'payment_method', 'delivery_method'].includes(phase) ? phase : 'experience';
 }
 
 function toCheckoutTargetList(value) {
@@ -1181,18 +1179,17 @@ class ABTestEngine {
           const cfg = variant?.config && typeof variant.config === 'object' ? variant.config : {};
           const isControl = isLikelyControlVariant(variant, index);
           if (checkoutPhase === 'experience') {
-            const hasExperienceContent = Boolean(
-              String(
-                cfg.checkout_message ||
-                  cfg.checkout_title ||
-                  cfg.checkout_badge_text ||
-                  cfg.checkout_cta_label ||
-                  ''
-              ).trim() ||
-              (Array.isArray(cfg.checkout_feature_bullets) &&
-                cfg.checkout_feature_bullets.some(item => String(item || '').trim()))
-            );
-            if (!isControl && hasExperienceContent) {
+            const validation = validateCheckoutExperienceConfig(cfg, {
+              requireRenderableSection: !isControl,
+            });
+            variant.config = {
+              ...cfg,
+              ...normalizeCheckoutExperienceConfig(cfg),
+            };
+            validation.errors.forEach(error => {
+              errors.push(`Variant ${index + 1}: ${error}`);
+            });
+            if (!isControl && validation.actionableSectionCount > 0) {
               hasActionableVariant = true;
             }
             return;

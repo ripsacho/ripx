@@ -299,12 +299,108 @@ function parseCheckoutFeatureBullets(rawValue) {
     .filter(Boolean);
 }
 
+function normalizeCheckoutSectionType(rawValue) {
+  const value = String(rawValue || 'hero_notice')
+    .trim()
+    .toLowerCase();
+  return [
+    'hero_notice',
+    'trust_box',
+    'guarantee_box',
+    'shipping_promise',
+    'offer_code_panel',
+  ].includes(value)
+    ? value
+    : 'hero_notice';
+}
+
+function normalizeCheckoutCtaKind(rawValue) {
+  const value = String(rawValue || 'track')
+    .trim()
+    .toLowerCase();
+  return ['track', 'offer_code', 'none'].includes(value) ? value : 'track';
+}
+
+function normalizeCheckoutSectionProps(rawSection = {}) {
+  const source =
+    rawSection.props && typeof rawSection.props === 'object'
+      ? { ...rawSection, ...rawSection.props }
+      : rawSection;
+  return {
+    title: String(source.title || source.checkout_title || '').trim(),
+    message: String(source.message || source.checkout_message || '').trim(),
+    badge_text: String(source.badge_text || source.checkout_badge_text || '').trim(),
+    disclaimer: String(source.disclaimer || source.checkout_disclaimer || '').trim(),
+    cta_label: String(source.cta_label || source.checkout_cta_label || '').trim(),
+    tone: normalizeCheckoutTone(source.tone || source.checkout_tone),
+    layout: normalizeCheckoutLayout(source.layout || source.checkout_layout),
+    cta_kind: normalizeCheckoutCtaKind(source.cta_kind || source.checkout_cta_kind),
+    feature_bullets: parseCheckoutFeatureBullets(
+      source.feature_bullets || source.checkout_feature_bullets
+    ),
+  };
+}
+
+function hasRenderableCheckoutSection(section = {}) {
+  const props = section?.props && typeof section.props === 'object' ? section.props : {};
+  if (section.enabled === false) {
+    return false;
+  }
+  return Boolean(
+    props.title ||
+    props.message ||
+    props.badge_text ||
+    props.disclaimer ||
+    props.cta_label ||
+    props.feature_bullets?.length
+  );
+}
+
+function normalizeCheckoutSection(rawSection = {}, index = 0) {
+  const type = normalizeCheckoutSectionType(rawSection.type);
+  return {
+    id:
+      String(rawSection.id || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, '-')
+        .replace(/^-+|-+$/g, '') || `${type}-${index + 1}`,
+    type,
+    enabled: rawSection.enabled !== false,
+    order: Number.isInteger(rawSection.order) ? rawSection.order : index,
+    props: normalizeCheckoutSectionProps(rawSection),
+  };
+}
+
+function getCheckoutSections(config = {}) {
+  const source = config && typeof config === 'object' ? config : {};
+  if (Array.isArray(source.checkout_sections) && source.checkout_sections.length > 0) {
+    return source.checkout_sections
+      .map((section, index) => normalizeCheckoutSection(section, index))
+      .sort((left, right) => left.order - right.order);
+  }
+  const legacySection = normalizeCheckoutSection(
+    {
+      id: 'hero-notice-1',
+      type: 'hero_notice',
+      enabled: true,
+      order: 0,
+      props: source,
+    },
+    0
+  );
+  return hasRenderableCheckoutSection(legacySection) ? [legacySection] : [];
+}
+
 function inferCheckoutPhaseFromConfig(config = {}) {
   if (parseCheckoutFeatureBullets(config.payment_method_names).length > 0) {
     return 'payment_method';
   }
   if (parseCheckoutFeatureBullets(config.delivery_method_names).length > 0) {
     return 'delivery_method';
+  }
+  if (getCheckoutSections(config).length > 0) {
+    return 'experience';
   }
   return 'experience';
 }
@@ -314,6 +410,9 @@ const CHECKOUT_EVENT_NAMES = {
   ctaClick: 'checkout_phase_cta_click',
   offerApplied: 'checkout_phase_offer_apply',
   conversion: 'checkout_phase_conversion',
+  sectionImpression: 'checkout_section_impression',
+  sectionCtaClick: 'checkout_section_cta_click',
+  sectionOfferApplied: 'checkout_section_offer_apply',
 };
 
 function CheckoutExperiment() {
@@ -361,18 +460,11 @@ function CheckoutExperiment() {
     [cartLines, testId]
   );
 
-  const trackConversion = useCallback(
+  const sendCheckoutEvent = useCallback(
     async (eventName, metadata = {}) => {
-      if (
-        sendingConversion ||
-        !RIPX_CHECKOUT_CONVERSION_URL ||
-        !shopDomain ||
-        !checkoutId ||
-        !testId
-      ) {
+      if (!RIPX_CHECKOUT_CONVERSION_URL || !shopDomain || !checkoutId || !testId) {
         return;
       }
-      setSendingConversion(true);
       try {
         await fetch(RIPX_CHECKOUT_CONVERSION_URL, {
           method: 'POST',
@@ -393,11 +485,24 @@ function CheckoutExperiment() {
         });
       } catch (_) {
         // Best-effort tracking only.
+      }
+    },
+    [shopDomain, checkoutId, testId]
+  );
+
+  const trackConversion = useCallback(
+    async (eventName, metadata = {}) => {
+      if (sendingConversion) {
+        return;
+      }
+      setSendingConversion(true);
+      try {
+        await sendCheckoutEvent(eventName, metadata);
       } finally {
         setSendingConversion(false);
       }
     },
-    [sendingConversion, shopDomain, checkoutId, testId]
+    [sendingConversion, sendCheckoutEvent]
   );
 
   useEffect(() => {
@@ -470,11 +575,25 @@ function CheckoutExperiment() {
       assignment?.config && typeof assignment.config === 'object'
         ? inferCheckoutPhaseFromConfig(assignment.config)
         : 'experience';
-    void trackConversion(CHECKOUT_EVENT_NAMES.impression, {
+    const sections =
+      assignment?.config && typeof assignment.config === 'object'
+        ? getCheckoutSections(assignment.config).filter(section =>
+            hasRenderableCheckoutSection(section)
+          )
+        : [];
+    void sendCheckoutEvent(CHECKOUT_EVENT_NAMES.impression, {
       variant_id: assignment?.variant_id || null,
       checkout_phase: phase,
     });
-  }, [assignment, impressionTracked, trackConversion]);
+    sections.forEach(section => {
+      void sendCheckoutEvent(CHECKOUT_EVENT_NAMES.sectionImpression, {
+        variant_id: assignment?.variant_id || null,
+        checkout_phase: phase,
+        checkout_section_id: section.id || null,
+        checkout_section_type: section.type || null,
+      });
+    });
+  }, [assignment, impressionTracked, sendCheckoutEvent]);
 
   const cfg =
     assignment && assignment.config && typeof assignment.config === 'object'
@@ -492,20 +611,12 @@ function CheckoutExperiment() {
   );
   const discountCodeName = resolvedOfferCode.codeName;
   const offerCodeSourceLabel = resolvedOfferCode.sourceLabel;
-  const title =
-    String(cfg.checkout_title || cfg.title || '').trim() ||
-    (hasOfferConfig ? `Offer variant: ${variantName}` : `RipX Variant: ${variantName}`);
-  const message = String(cfg.checkout_message || cfg.message || '').trim();
-  const cta = String(cfg.checkout_cta_label || cfg.cta_label || 'Track conversion').trim();
-  const badgeText = String(cfg.checkout_badge_text || '').trim();
-  const disclaimer = String(cfg.checkout_disclaimer || '').trim();
-  const layout = normalizeCheckoutLayout(cfg.checkout_layout || cfg.layout);
-  const tone = normalizeCheckoutTone(cfg.checkout_tone || cfg.tone);
+  const checkoutSections = getCheckoutSections(cfg);
+  const primarySection =
+    checkoutSections.find(section => hasRenderableCheckoutSection(section)) ||
+    checkoutSections[0] ||
+    null;
   const checkoutPhase = inferCheckoutPhaseFromConfig(cfg);
-  const ctaKind = String(cfg.checkout_cta_kind || 'track')
-    .trim()
-    .toLowerCase();
-  const featureBullets = parseCheckoutFeatureBullets(cfg.checkout_feature_bullets);
   const activeDiscountCodes = useMemo(() => {
     const rows = Array.isArray(discountCodes)
       ? discountCodes
@@ -580,11 +691,20 @@ function CheckoutExperiment() {
           );
           return;
         }
-        void trackConversion(CHECKOUT_EVENT_NAMES.offerApplied, {
+        void sendCheckoutEvent(CHECKOUT_EVENT_NAMES.offerApplied, {
           variant_id: assignment?.variant_id || null,
           discount_code: discountCodeName,
           checkout_phase: checkoutPhase,
         });
+        if (primarySection) {
+          void sendCheckoutEvent(CHECKOUT_EVENT_NAMES.sectionOfferApplied, {
+            variant_id: assignment?.variant_id || null,
+            discount_code: discountCodeName,
+            checkout_phase: checkoutPhase,
+            checkout_section_id: primarySection.id || null,
+            checkout_section_type: primarySection.type || null,
+          });
+        }
       } catch (e) {
         setDiscountCodeApplyError(
           String(e?.message || 'Could not apply discount code at checkout.')
@@ -599,7 +719,8 @@ function CheckoutExperiment() {
       discountCodeName,
       hasDiscountCodeApplied,
       hasOfferConfig,
-      trackConversion,
+      primarySection,
+      sendCheckoutEvent,
     ]
   );
 
@@ -651,73 +772,99 @@ function CheckoutExperiment() {
       )
     );
   }
-  const commonChildren = [
-    badgeText ? h('s-text', null, badgeText) : null,
-    message ? h('s-text', null, message) : null,
-    ...featureBullets.map((item, index) => h('s-text', { key: `bullet-${index}` }, `• ${item}`)),
-    disclaimer ? h('s-text', null, disclaimer) : null,
-    hasOfferConfig
-      ? h(
-          's-text',
-          null,
-          hasDiscountCodeApplied
-            ? `Discount code applied: ${discountCodeName}`
-            : `Discount code: ${discountCodeName}`
-        )
-      : null,
-    hasOfferConfig ? h('s-text', null, offerCodeStatusLabel) : null,
-    hasOfferConfig ? h('s-text', null, offerCodeStatusLegend) : null,
-    hasOfferConfig && !hasDiscountCodeApplied && ctaKind !== 'none'
-      ? h(
-          's-button',
-          {
-            variant: 'secondary',
-            loading: applyingDiscountCode,
-            onClick: () => void applyOfferDiscountCode(true),
-          },
-          ctaKind === 'offer_code' ? cta || 'Apply discount code' : 'Apply discount code'
-        )
-      : null,
-    discountCodeApplyError ? h('s-text', null, discountCodeApplyError) : null,
-    h('s-text', null, `Test ID: ${testId}`),
-    ctaKind !== 'none' && (!hasOfferConfig || ctaKind === 'track')
-      ? h(
-          's-button',
-          {
-            variant: 'secondary',
-            loading: sendingConversion,
-            onClick: () =>
-              void trackConversion(CHECKOUT_EVENT_NAMES.ctaClick, {
-                variant_id: assignment?.variant_id || null,
-                checkout_phase: checkoutPhase,
-              }),
-          },
-          cta
-        )
-      : null,
-  ].filter(Boolean);
-
-  if (layout === 'compact') {
-    return h(
-      's-stack',
-      { direction: 'block', gap: 'tight' },
-      h('s-text', null, title),
-      ...commonChildren
-    );
-  }
-
-  if (layout === 'stacked') {
-    return h(
-      's-stack',
-      { direction: 'block', gap: 'tight' },
-      h('s-banner', { heading: title, tone }, ...commonChildren)
-    );
-  }
-
   return h(
     's-stack',
     { direction: 'block', gap: 'tight' },
-    h('s-banner', { heading: title, tone }, ...commonChildren)
+    ...(checkoutSections.length > 0 ? checkoutSections : [null]).map((section, sectionIndex) => {
+      const props = section?.props || {};
+      const title =
+        String(props.title || '').trim() ||
+        (sectionIndex === 0
+          ? hasOfferConfig
+            ? `Offer variant: ${variantName}`
+            : `RipX Variant: ${variantName}`
+          : `Checkout section ${sectionIndex + 1}`);
+      const cta = String(props.cta_label || 'Track conversion').trim();
+      const layout = normalizeCheckoutLayout(props.layout);
+      const tone = normalizeCheckoutTone(props.tone);
+      const ctaKind = normalizeCheckoutCtaKind(props.cta_kind);
+      const isOfferSection =
+        hasOfferConfig &&
+        ((section && section.type === 'offer_code_panel') ||
+          (primarySection && section?.id === primarySection.id) ||
+          (!section && sectionIndex === 0));
+      const children = [
+        props.badge_text ? h('s-text', { key: 'badge' }, props.badge_text) : null,
+        props.message ? h('s-text', { key: 'message' }, props.message) : null,
+        ...parseCheckoutFeatureBullets(props.feature_bullets).map((item, bulletIndex) =>
+          h('s-text', { key: `bullet-${bulletIndex}` }, `• ${item}`)
+        ),
+        props.disclaimer ? h('s-text', { key: 'disclaimer' }, props.disclaimer) : null,
+        isOfferSection
+          ? h(
+              's-text',
+              { key: 'discount-code' },
+              hasDiscountCodeApplied
+                ? `Discount code applied: ${discountCodeName}`
+                : `Discount code: ${discountCodeName}`
+            )
+          : null,
+        isOfferSection ? h('s-text', { key: 'status' }, offerCodeStatusLabel) : null,
+        isOfferSection ? h('s-text', { key: 'legend' }, offerCodeStatusLegend) : null,
+        isOfferSection && !hasDiscountCodeApplied && ctaKind !== 'none'
+          ? h(
+              's-button',
+              {
+                key: 'offer-button',
+                variant: 'secondary',
+                loading: applyingDiscountCode,
+                onClick: () => void applyOfferDiscountCode(true),
+              },
+              ctaKind === 'offer_code' ? cta || 'Apply discount code' : 'Apply discount code'
+            )
+          : null,
+        isOfferSection && discountCodeApplyError
+          ? h('s-text', { key: 'error' }, discountCodeApplyError)
+          : null,
+        sectionIndex === 0 ? h('s-text', { key: 'test-id' }, `Test ID: ${testId}`) : null,
+        ctaKind !== 'none' && (!hasOfferConfig || ctaKind === 'track')
+          ? h(
+              's-button',
+              {
+                key: 'track-button',
+                variant: 'secondary',
+                loading: sendingConversion,
+                onClick: async () => {
+                  const metadata = {
+                    variant_id: assignment?.variant_id || null,
+                    checkout_phase: checkoutPhase,
+                    checkout_section_id: section?.id || null,
+                    checkout_section_type: section?.type || null,
+                  };
+                  await trackConversion(CHECKOUT_EVENT_NAMES.ctaClick, metadata);
+                  await sendCheckoutEvent(CHECKOUT_EVENT_NAMES.sectionCtaClick, metadata);
+                },
+              },
+              cta
+            )
+          : null,
+      ].filter(Boolean);
+
+      if (layout === 'compact') {
+        return h(
+          's-stack',
+          { key: section?.id || `section-${sectionIndex}`, direction: 'block', gap: 'tight' },
+          h('s-text', null, title),
+          ...children
+        );
+      }
+
+      return h(
+        's-banner',
+        { key: section?.id || `section-${sectionIndex}`, heading: title, tone },
+        ...children
+      );
+    })
   );
 }
 

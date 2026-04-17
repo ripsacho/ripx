@@ -1,3 +1,13 @@
+import {
+  CHECKOUT_CTA_KINDS,
+  CHECKOUT_LAYOUTS,
+  CHECKOUT_TONES,
+  getActionableCheckoutSections,
+  getNormalizedCheckoutExperienceConfig,
+  normalizeCheckoutListInput,
+  normalizeCheckoutPhase,
+} from '../../utils/checkoutSections';
+
 /**
  * Test Wizard validation (pure functions)
  *
@@ -277,88 +287,83 @@ export function getWizardStepErrors(stepId, options) {
     };
   }
 
-  function normalizeCheckoutPhase(rawValue) {
-    const value = String(rawValue || 'experience')
-      .trim()
-      .toLowerCase();
-    return ['experience', 'payment_method', 'delivery_method'].includes(value)
-      ? value
-      : 'experience';
-  }
-
-  function normalizeCheckoutList(rawValue) {
-    if (Array.isArray(rawValue)) {
-      return rawValue.map(item => String(item || '').trim()).filter(Boolean);
-    }
-    return String(rawValue || '')
-      .split(/\n|,/)
-      .map(item => item.trim())
-      .filter(Boolean);
-  }
-
   function hasActionableCheckoutConfig(cfg = {}, phase = 'experience') {
     const config = cfg && typeof cfg === 'object' ? cfg : {};
     if (phase === 'payment_method') {
-      return normalizeCheckoutList(config.payment_method_names).length > 0;
+      return normalizeCheckoutListInput(config.payment_method_names).length > 0;
     }
     if (phase === 'delivery_method') {
-      return normalizeCheckoutList(config.delivery_method_names).length > 0;
+      return normalizeCheckoutListInput(config.delivery_method_names).length > 0;
     }
-    return Boolean(
-      String(
-        config.checkout_title ||
-          config.checkout_message ||
-          config.checkout_badge_text ||
-          config.checkout_disclaimer ||
-          ''
-      ).trim() || normalizeCheckoutList(config.checkout_feature_bullets).length > 0
-    );
+    return getActionableCheckoutSections(config).length > 0;
   }
 
   function validateCheckoutConfig(cfg = {}, label, phase, isControl) {
     const config = cfg && typeof cfg === 'object' ? cfg : {};
-    const ctaKind = String(config.checkout_cta_kind || 'track')
-      .trim()
-      .toLowerCase();
-    const validCtaKinds = ['track', 'offer_code', 'none'];
-    if (!validCtaKinds.includes(ctaKind)) {
-      errors.push(`${label}: CTA behavior must be track, offer_code, or none.`);
-    }
     if (phase === 'experience') {
-      const title = String(config.checkout_title || '').trim();
-      const message = String(config.checkout_message || '').trim();
-      const bullets = normalizeCheckoutList(config.checkout_feature_bullets);
-      const layout = String(config.checkout_layout || 'banner')
-        .trim()
-        .toLowerCase();
-      const tone = String(config.checkout_tone || 'success')
-        .trim()
-        .toLowerCase();
-      if (!['banner', 'stacked', 'compact'].includes(layout)) {
-        errors.push(`${label}: layout must be banner, stacked, or compact.`);
-      }
-      if (!['success', 'info', 'warning', 'critical'].includes(tone)) {
-        errors.push(`${label}: tone must be success, info, warning, or critical.`);
-      }
-      if (!isControl && !title && !message && bullets.length === 0) {
+      const normalized = getNormalizedCheckoutExperienceConfig(config);
+      normalized.checkout_sections.forEach((section, sectionIndex) => {
+        const props = section?.props || {};
+        if (
+          !CHECKOUT_LAYOUTS.includes(
+            String(props.layout || '')
+              .trim()
+              .toLowerCase()
+          )
+        ) {
+          errors.push(
+            `${label}: section ${sectionIndex + 1} layout must be banner, stacked, or compact.`
+          );
+        }
+        if (
+          !CHECKOUT_TONES.includes(
+            String(props.tone || '')
+              .trim()
+              .toLowerCase()
+          )
+        ) {
+          errors.push(
+            `${label}: section ${sectionIndex + 1} tone must be success, info, warning, or critical.`
+          );
+        }
+        if (
+          !CHECKOUT_CTA_KINDS.includes(
+            String(props.cta_kind || '')
+              .trim()
+              .toLowerCase()
+          )
+        ) {
+          errors.push(
+            `${label}: section ${sectionIndex + 1} CTA behavior must be track, offer_code, or none.`
+          );
+        }
+        if (
+          !isControl &&
+          section.enabled !== false &&
+          props.cta_kind !== 'none' &&
+          !String(props.cta_label || '').trim()
+        ) {
+          errors.push(
+            `${label}: section ${sectionIndex + 1} CTA label is required when CTA behavior is enabled.`
+          );
+        }
+      });
+      if (!isControl && getActionableCheckoutSections(config).length === 0) {
         errors.push(
-          `${label}: add a title, message, or feature bullets for this checkout experience variant.`
+          `${label}: add at least one enabled checkout section with a title, message, badge, disclaimer, CTA, or feature bullets.`
         );
-      }
-      if (ctaKind !== 'none' && !String(config.checkout_cta_label || '').trim() && !isControl) {
-        errors.push(`${label}: CTA label is required when CTA behavior is enabled.`);
       }
       return;
     }
     if (phase === 'payment_method') {
-      const methods = normalizeCheckoutList(config.payment_method_names);
+      const methods = normalizeCheckoutListInput(config.payment_method_names);
       if (!isControl && methods.length === 0) {
         errors.push(`${label}: add at least one payment method name to target.`);
       }
       return;
     }
     if (phase === 'delivery_method') {
-      const methods = normalizeCheckoutList(config.delivery_method_names);
+      const methods = normalizeCheckoutListInput(config.delivery_method_names);
       if (!isControl && methods.length === 0) {
         errors.push(`${label}: add at least one delivery method name to target.`);
       }

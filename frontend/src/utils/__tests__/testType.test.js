@@ -59,6 +59,23 @@ describe('inferTemplateKeyFromVariants', () => {
     expect(inferTemplateKeyFromVariants([{ config: { discount_type: 'percent' } }])).toBe('offer');
   });
 
+  it('returns checkout when variant config has structured checkout sections', () => {
+    expect(
+      inferTemplateKeyFromVariants([
+        {
+          config: {
+            checkout_sections: [
+              {
+                type: 'hero_notice',
+                props: { title: 'Checkout with confidence' },
+              },
+            ],
+          },
+        },
+      ])
+    ).toBe('checkout');
+  });
+
   it('returns price or pricing from config price', () => {
     expect(inferTemplateKeyFromVariants([{ config: { price: 10 } }], 'price')).toBe('price');
     expect(inferTemplateKeyFromVariants([{ config: { price: 10 } }], 'pricing')).toBe('pricing');

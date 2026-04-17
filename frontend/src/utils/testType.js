@@ -88,6 +88,17 @@ export function inferTemplateKeyFromVariants(variants = [], testType = '') {
       return 'theme';
     }
     if (
+      'checkout_sections' in c ||
+      'checkout_placement' in c ||
+      'checkout_title' in c ||
+      'checkout_message' in c ||
+      'checkout_cta_label' in c ||
+      'payment_method_names' in c ||
+      'delivery_method_names' in c
+    ) {
+      return 'checkout';
+    }
+    if (
       'rate' in c ||
       'strategy' in c ||
       'shipping_strategy' in c ||

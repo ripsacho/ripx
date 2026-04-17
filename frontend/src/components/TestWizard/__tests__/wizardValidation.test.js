@@ -923,6 +923,79 @@ describe('wizardValidation', () => {
         expect(errors.some(e => e.includes('payment method'))).toBe(true);
       });
 
+      it('accepts structured checkout experience sections on the code step', () => {
+        const errors = getWizardStepErrors(stepIdsNoTemplate.code, {
+          stepIds: stepIdsNoTemplate,
+          reviewStepId: 5,
+          formData: {
+            type: 'checkout',
+            goal: { checkout_phase: 'experience' },
+            variants: [
+              { name: 'Control', allocation: 50, config: {} },
+              {
+                name: 'Variant A',
+                allocation: 50,
+                config: {
+                  checkout_sections: [
+                    {
+                      type: 'hero_notice',
+                      enabled: true,
+                      props: {
+                        title: 'Checkout with confidence',
+                        message: 'Secure payment and free returns.',
+                        cta_kind: 'track',
+                        cta_label: 'Continue securely',
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: false,
+          selectedTemplate: 'checkout',
+        });
+
+        expect(errors).toHaveLength(0);
+      });
+
+      it('rejects structured checkout experience sections without actionable content', () => {
+        const errors = getWizardStepErrors(stepIdsNoTemplate.code, {
+          stepIds: stepIdsNoTemplate,
+          reviewStepId: 5,
+          formData: {
+            type: 'checkout',
+            goal: { checkout_phase: 'experience' },
+            variants: [
+              { name: 'Control', allocation: 50, config: {} },
+              {
+                name: 'Variant A',
+                allocation: 50,
+                config: {
+                  checkout_sections: [
+                    {
+                      type: 'trust_box',
+                      enabled: true,
+                      props: {
+                        title: '',
+                        message: '',
+                        cta_kind: 'none',
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: false,
+          selectedTemplate: 'checkout',
+        });
+
+        expect(errors.some(e => e.includes('enabled checkout section'))).toBe(true);
+      });
+
       it('goal step uses stepIds.goal (3)', () => {
         const errors = getWizardStepErrors(stepIdsNoTemplate.goal, {
           stepIds: stepIdsNoTemplate,

@@ -665,6 +665,9 @@ npm run dev`}
             stay consistent across checkout surfaces. The primary events are{' '}
             <code>checkout_phase_impression</code>, <code>checkout_phase_cta_click</code>,{' '}
             <code>checkout_phase_offer_apply</code>, and <code>checkout_phase_conversion</code>.
+            Multi-section checkout experiences also emit <code>checkout_section_impression</code>,{' '}
+            <code>checkout_section_cta_click</code>, and <code>checkout_section_offer_apply</code>{' '}
+            with section metadata so you can analyze which section actually drove the interaction.
           </p>
           <Text variant="headingMd" as="h4">
             Discounts vs price increases

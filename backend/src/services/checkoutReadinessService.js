@@ -10,6 +10,10 @@ const { buildShippingCapabilityReport } = require('./shippingCapabilityPlanner')
 const { buildShippingExecutionPlan } = require('./shippingExecutionPlanner');
 const { isShippingTestPayload } = require('./shippingTestConfigService');
 const {
+  hasRenderableSection,
+  normalizeCheckoutExperienceTestPayload,
+} = require('./checkoutExperienceConfigService');
+const {
   buildCustomizationTitle,
   fetchExistingCustomizations,
   pickCustomizationFunction,
@@ -30,6 +34,13 @@ function normalizeDomain(value) {
   return String(value || '')
     .trim()
     .toLowerCase();
+}
+
+function isLikelyControlVariant(variant, index) {
+  const name = String(variant?.name || '')
+    .trim()
+    .toLowerCase();
+  return index === 0 || name === 'control' || name.startsWith('control ');
 }
 
 function normalizeTemplateKey(test = {}) {
@@ -532,24 +543,73 @@ async function buildCheckoutExperienceReadiness({
 }) {
   const phase = normalizeCheckoutPhase(test);
   if (phase === 'experience') {
+    const normalizedTest = normalizeCheckoutExperienceTestPayload(test || {});
+    const variants = Array.isArray(normalizedTest?.variants) ? normalizedTest.variants : [];
+    const actionableVariants = variants.filter((variant, index) => {
+      if (isLikelyControlVariant(variant, index)) {
+        return false;
+      }
+      const sections = Array.isArray(variant?.config?.checkout_sections)
+        ? variant.config.checkout_sections
+        : [];
+      return sections.some(section => hasRenderableSection(section));
+    });
+    const totalRenderableSections = actionableVariants.reduce((sum, variant) => {
+      const sections = Array.isArray(variant?.config?.checkout_sections)
+        ? variant.config.checkout_sections
+        : [];
+      return sum + sections.filter(section => hasRenderableSection(section)).length;
+    }, 0);
     const uiDiagnostics = buildCheckoutUiExtensionDiagnostics({
-      test,
+      test: normalizedTest,
       shopDomain,
       checkoutUiConfig: checkoutUiConfig || readCheckoutUiExtensionConfigFile(),
     });
+    const checklist = [
+      buildCheck(
+        'checkout_experience_variants_configured',
+        actionableVariants.length > 0,
+        'error',
+        actionableVariants.length > 0
+          ? `${actionableVariants.length} non-control checkout experience variant(s) include renderable checkout sections.`
+          : 'Add at least one non-control checkout experience variant with an enabled checkout section before launch.'
+      ),
+      buildCheck(
+        'checkout_experience_sections_present',
+        totalRenderableSections > 0,
+        'error',
+        totalRenderableSections > 0
+          ? `${totalRenderableSections} renderable checkout section(s) are saved across non-control variants.`
+          : 'No renderable checkout sections are saved yet for this checkout experience test.'
+      ),
+      ...(uiDiagnostics.checklist || []),
+    ];
+    const summary = summarizeChecks(checklist, getTypeLabel('checkout'));
     return {
-      summary: summarizeChecks(uiDiagnostics.checklist || [], getTypeLabel('checkout')),
-      checks: uiDiagnostics.checklist || [],
+      summary,
+      checks: checklist,
       capabilities: {
         checkout_ui_extension: uiDiagnostics.support,
+        checkout_experience_sections: {
+          level: actionableVariants.length > 0 && totalRenderableSections > 0 ? 'ready' : 'blocked',
+          summary:
+            actionableVariants.length > 0
+              ? `${actionableVariants.length} variant(s) contain ${totalRenderableSections} renderable checkout section(s).`
+              : 'No non-control variants currently contain renderable checkout sections.',
+        },
         checkout_phase: {
-          level: 'ready',
+          level: summary.status === 'blocked' ? 'blocked' : 'ready',
           summary: 'Experience block phase is selected for this checkout test.',
         },
       },
       sources: {
         checkout_ui: uiDiagnostics.infrastructure,
         checkout_phase: phase,
+        checkout_experience: {
+          actionable_variant_count: actionableVariants.length,
+          renderable_section_count: totalRenderableSections,
+          normalized_variant_count: variants.length,
+        },
       },
     };
   }

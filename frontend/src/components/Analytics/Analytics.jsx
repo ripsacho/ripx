@@ -55,6 +55,10 @@ import HeatmapView from './HeatmapView';
 import FunnelView from './FunnelView';
 import EventExplorer from './EventExplorer';
 import { CHART_PALETTE } from '../../constants';
+import {
+  CHECKOUT_SECTION_EVENT_DEFINITIONS,
+  formatCheckoutSectionEventLabel,
+} from '../../utils/checkoutReporting';
 
 const COLORS = CHART_PALETTE;
 
@@ -167,6 +171,9 @@ function Analytics() {
 
   const variants = Array.isArray(analytics?.variants) ? analytics.variants : [];
   const analyticsError = analytics?.error;
+  const checkoutSectionEventNames = Array.isArray(analytics?.checkoutSectionEventNames)
+    ? analytics.checkoutSectionEventNames
+    : [];
 
   const chartData = variants.map((v, index) => ({
     name: v.name || `Variant ${index + 1}`,
@@ -857,6 +864,60 @@ function Analytics() {
                       </BlockStack>
                     </Card>
                   </Layout.Section>
+
+                  {/* Checkout Section Signals */}
+                  {checkoutSectionEventNames.length > 0 && (
+                    <Layout.Section>
+                      <Card>
+                        <BlockStack gap="400">
+                          <Text variant="headingLg" as="h2">
+                            Checkout Section Signals
+                          </Text>
+                          <Text variant="bodySm" color="subdued" as="p">
+                            Built-in checkout experience events tracked for section impressions, CTA
+                            clicks, and offer applies.
+                          </Text>
+                          {checkoutSectionEventNames.map(eventName => (
+                            <BlockStack key={eventName} gap="200">
+                              <Text variant="headingMd" as="h3">
+                                {formatCheckoutSectionEventLabel(eventName)}
+                              </Text>
+                              <Text variant="bodySm" color="subdued" as="p">
+                                {CHECKOUT_SECTION_EVENT_DEFINITIONS[eventName]?.description ||
+                                  'Checkout section engagement signal.'}
+                              </Text>
+                              <div className="grid-responsive">
+                                {variants.map(variant => {
+                                  const ev = variant.checkoutSectionEvents?.[eventName] || {
+                                    count: 0,
+                                    sum: 0,
+                                    rate: 0,
+                                  };
+                                  return (
+                                    <Card key={`${variant.id}-${eventName}`} sectioned>
+                                      <BlockStack gap="100">
+                                        <Text variant="bodySm" color="subdued" as="p">
+                                          {variant.name}
+                                        </Text>
+                                        <Text variant="headingLg" as="p" fontWeight="bold">
+                                          {ev.count.toLocaleString()}
+                                        </Text>
+                                        <Text variant="bodySm" color="subdued" as="p">
+                                          {(variant.visitors ?? 0) > 0
+                                            ? `${(ev.rate ?? 0).toFixed(2)}% of visitors`
+                                            : '—'}
+                                        </Text>
+                                      </BlockStack>
+                                    </Card>
+                                  );
+                                })}
+                              </div>
+                            </BlockStack>
+                          ))}
+                        </BlockStack>
+                      </Card>
+                    </Layout.Section>
+                  )}
 
                   {/* Secondary Events */}
                   {analytics.secondaryEventNames?.length > 0 && (

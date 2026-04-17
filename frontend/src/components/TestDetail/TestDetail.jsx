@@ -49,6 +49,7 @@ import {
 } from '../../hooks';
 import { useQueryClient } from '@tanstack/react-query';
 import { getTestTypeDisplay, getVariantCount } from '../../utils/testType';
+import { getActionableCheckoutSections } from '../../utils/checkoutSections';
 import {
   consumeFirstStartUltraCelebrationFlag,
   getCelebrationAnimationPreference,
@@ -950,8 +951,11 @@ function TestDetail() {
     }
     return (test?.variants || []).map((variant, index) => {
       const cfg = variant?.config && typeof variant.config === 'object' ? variant.config : {};
-      const featureBullets = Array.isArray(cfg.checkout_feature_bullets)
-        ? cfg.checkout_feature_bullets.filter(Boolean)
+      const experienceSections = getActionableCheckoutSections(cfg);
+      const primarySection = experienceSections[0] || null;
+      const primaryProps = primarySection?.props || {};
+      const featureBullets = Array.isArray(primaryProps.feature_bullets)
+        ? primaryProps.feature_bullets.filter(Boolean)
         : [];
       const paymentMethods = Array.isArray(cfg.payment_method_names)
         ? cfg.payment_method_names.filter(Boolean)
@@ -965,16 +969,16 @@ function TestDetail() {
           : checkoutPhaseLabel === 'Delivery methods'
             ? deliveryMethods.join(', ') || 'No delivery methods selected'
             : String(
-                cfg.checkout_message || cfg.checkout_title || cfg.checkout_badge_text || ''
+                primaryProps.message || primaryProps.title || primaryProps.badge_text || ''
               ).trim() || 'No checkout content configured';
       const detail =
         checkoutPhaseLabel === 'Payment methods'
           ? `${String(cfg.payment_action || 'hide')} methods`
           : checkoutPhaseLabel === 'Delivery methods'
             ? `${String(cfg.delivery_action || 'hide')} methods`
-            : `${String(cfg.checkout_layout || 'banner')} layout • ${String(
-                cfg.checkout_tone || 'success'
-              )} tone`;
+            : `${experienceSections.length || 0} section(s) • ${String(
+                primaryProps.layout || 'banner'
+              )} layout • ${String(primaryProps.tone || 'success')} tone`;
       return {
         index,
         name: variant?.name || `Variant ${index + 1}`,
@@ -983,7 +987,7 @@ function TestDetail() {
         detail,
         cta:
           checkoutPhaseLabel === 'Experience block'
-            ? String(cfg.checkout_cta_label || '').trim()
+            ? String(primaryProps.cta_label || '').trim()
             : '',
         featureBullets: checkoutPhaseLabel === 'Experience block' ? featureBullets : [],
       };

@@ -46,6 +46,9 @@ const {
   normalizeShippingTestPayload,
   isShippingTestPayload,
 } = require('../services/shippingTestConfigService');
+const {
+  normalizeCheckoutExperienceTestPayload,
+} = require('../services/checkoutExperienceConfigService');
 const { buildShippingCapabilityReport } = require('../services/shippingCapabilityPlanner');
 const { buildShippingExecutionPlan } = require('../services/shippingExecutionPlanner');
 const {
@@ -1055,7 +1058,7 @@ router.post(
       testData.holdout_percent = holdoutResult.value;
     }
 
-    testData = normalizeShippingTestPayload(testData);
+    testData = normalizeCheckoutExperienceTestPayload(normalizeShippingTestPayload(testData));
     try {
       await ensureTemplateTypeEnabledOrThrow(testData, shopDomain);
     } catch (error) {
@@ -2088,7 +2091,9 @@ router.put(
         }));
       }
 
-      const testData = normalizeShippingTestPayload({ ...existingTest, ...updates });
+      const testData = normalizeCheckoutExperienceTestPayload(
+        normalizeShippingTestPayload({ ...existingTest, ...updates })
+      );
       if (Array.isArray(testData.variants)) {
         updates.variants = testData.variants;
       }
@@ -2706,7 +2711,9 @@ router.post(
       auto_stop: false,
       timezone: originalTest.timezone || 'UTC',
     };
-    clonedTestData = normalizeShippingTestPayload(clonedTestData);
+    clonedTestData = normalizeCheckoutExperienceTestPayload(
+      normalizeShippingTestPayload(clonedTestData)
+    );
 
     // Validate cloned test
     const validation = abTestEngine.validateTest(clonedTestData);

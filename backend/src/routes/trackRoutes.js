@@ -32,6 +32,10 @@ const {
   getBlockListMessage,
 } = require('../utils/maintenanceMode');
 const logger = require('../utils/logger');
+const {
+  normalizeCheckoutTrackingMetadata,
+  normalizeEventName,
+} = require('../utils/checkoutTracking');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const {
   HEATMAP_EVENTS_BATCH_MAX,
@@ -1430,15 +1434,15 @@ router.post(
     }
 
     const eventNameRaw = body.event_name ?? req.query.event_name;
-    const eventName = String(eventNameRaw || 'checkout_phase_conversion')
-      .trim()
-      .slice(0, 120);
+    const eventName = normalizeEventName(eventNameRaw, 'checkout_phase_conversion');
     const eventValueRaw = body.event_value ?? req.query.event_value;
     const eventValue =
       eventValueRaw === undefined || eventValueRaw === null || eventValueRaw === ''
         ? 0
         : Number(eventValueRaw);
-    const metadata = body.metadata && typeof body.metadata === 'object' ? body.metadata : {};
+    const metadata = normalizeCheckoutTrackingMetadata(
+      body.metadata && typeof body.metadata === 'object' ? body.metadata : {}
+    );
 
     const eventPayload = {
       test_id: testId,

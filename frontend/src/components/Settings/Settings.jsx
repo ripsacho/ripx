@@ -45,6 +45,10 @@ import { PageShell } from '../Shared';
 import { CONTENT_GAP, ROUTES, APP_META, STORAGE_KEYS } from '../../constants';
 import styles from './Settings.module.css';
 import { apiGet, apiPut, apiPost, apiDelete, isStandaloneMode, unwrapData } from '../../services';
+import {
+  getCheckoutExperienceTestInventory,
+  summarizeCheckoutExperienceInventory,
+} from '../../utils/checkoutReporting';
 import { getSavedTheme, updateTheme } from '../../utils/theme';
 
 const WEBHOOK_EVENT_CHOICES = [
@@ -1658,6 +1662,18 @@ function Settings() {
       },
     ];
   }, [checkoutDiag, installation?.scriptVerified]);
+  const checkoutExperienceInventory = useMemo(() => {
+    return getCheckoutExperienceTestInventory(checkoutCustomizationTests).map(item => ({
+      ...item,
+      detailPath:
+        isAppSettings && installation?.domain
+          ? ROUTES.appTestDetail(installation.domain, item.id)
+          : ROUTES.TEST_DETAIL(item.id),
+    }));
+  }, [checkoutCustomizationTests, installation?.domain, isAppSettings]);
+  const checkoutExperienceInventorySummary = useMemo(() => {
+    return summarizeCheckoutExperienceInventory(checkoutExperienceInventory);
+  }, [checkoutExperienceInventory]);
   const checkoutExperienceReadiness = useMemo(() => {
     const summary = checkoutExperienceDiag?.summary || null;
     const checks = Array.isArray(checkoutExperienceDiag?.checklist)
@@ -1672,6 +1688,10 @@ function Settings() {
     const supportLevel = String(
       checkoutExperienceDiag?.support?.checkout_ui_extension?.level || ''
     ).toLowerCase();
+    const savedExperienceSummary =
+      checkoutExperienceInventorySummary.testCount > 0
+        ? `${checkoutExperienceInventorySummary.testCount} saved experience test${checkoutExperienceInventorySummary.testCount === 1 ? '' : 's'} with ${checkoutExperienceInventorySummary.renderableSections} renderable section${checkoutExperienceInventorySummary.renderableSections === 1 ? '' : 's'} across ${checkoutExperienceInventorySummary.actionableVariants} treatment variant${checkoutExperienceInventorySummary.actionableVariants === 1 ? '' : 's'}.`
+        : 'No saved checkout experience tests yet.';
     return [
       {
         id: 'checkout_experience',
@@ -1689,14 +1709,15 @@ function Settings() {
               ? 'Blocked'
               : 'Needs sync',
         summary:
-          checkoutExperienceDiag?.support?.checkout_ui_extension?.summary ||
-          'Verify the checkout UI extension config before launching content-based checkout tests.',
+          `${checkoutExperienceDiag?.support?.checkout_ui_extension?.summary || 'Verify the checkout UI extension config before launching content-based checkout tests.'} ${savedExperienceSummary}`.trim(),
         nextAction:
           blockers > 0
             ? 'Set app URLs/secrets and redeploy the checkout UI extension before launch.'
             : warnings > 0
               ? 'Run the checkout UI config sync command and rebuild the extension so Settings, Wizard, and Test Detail agree.'
-              : 'Use Checkout Tests to launch trust, reassurance, and offer-message experiments at checkout.',
+              : checkoutExperienceInventorySummary.testCount > 0
+                ? 'Open a saved experience test below to refine sections, then launch trust, reassurance, and offer-message experiments at checkout.'
+                : 'Create a Checkout Test in the Experience phase to launch trust, reassurance, and offer-message experiments at checkout.',
       },
       {
         id: 'payment_methods',
@@ -1765,7 +1786,12 @@ function Settings() {
           'Open a shipping test and use Checkout readiness to confirm whether each variant is automatic, discount-only, or manual before launch.',
       },
     ];
-  }, [checkoutDiag, checkoutExperienceDiag, shopifyFnInventory]);
+  }, [
+    checkoutDiag,
+    checkoutExperienceDiag,
+    checkoutExperienceInventorySummary,
+    shopifyFnInventory,
+  ]);
   const deployableCheckoutCustomizationTests = useMemo(() => {
     return (Array.isArray(checkoutCustomizationTests) ? checkoutCustomizationTests : [])
       .filter(
@@ -3456,6 +3482,86 @@ function Settings() {
                                             {checkoutCustomizationTestsError}
                                           </Text>
                                         )}
+                                        <div className={styles.checkoutReadinessSection}>
+                                          <div className={styles.checkoutReadinessHeader}>
+                                            <Text variant="headingSm" as="h4">
+                                              Checkout experience inventory
+                                            </Text>
+                                            <Text as="p" variant="bodySm" tone="subdued">
+                                              Saved experience-phase checkout tests are
+                                              section-aware now. Review how many renderable sections
+                                              are already configured before launch.
+                                            </Text>
+                                          </div>
+                                          {checkoutExperienceInventory.length > 0 ? (
+                                            <div className={styles.checkoutReadinessList}>
+                                              {checkoutExperienceInventory.map(item => (
+                                                <div
+                                                  key={item.id}
+                                                  className={styles.checkoutReadinessRow}
+                                                >
+                                                  <div className={styles.checkoutReadinessRowMain}>
+                                                    <div
+                                                      className={styles.checkoutReadinessCardHeader}
+                                                    >
+                                                      <Text
+                                                        as="span"
+                                                        variant="bodySm"
+                                                        fontWeight="semibold"
+                                                      >
+                                                        {item.name}
+                                                      </Text>
+                                                      <InlineStack gap="200" wrap>
+                                                        <Badge tone="info">Experience</Badge>
+                                                        <Badge
+                                                          tone={
+                                                            item.totalRenderableSections > 0
+                                                              ? 'success'
+                                                              : 'warning'
+                                                          }
+                                                        >
+                                                          {item.totalRenderableSections} section
+                                                          {item.totalRenderableSections === 1
+                                                            ? ''
+                                                            : 's'}
+                                                        </Badge>
+                                                      </InlineStack>
+                                                    </div>
+                                                    <Text as="p" variant="bodySm">
+                                                      {item.actionableVariants > 0
+                                                        ? `${item.actionableVariants} treatment variant${item.actionableVariants === 1 ? '' : 's'} contain ${item.totalRenderableSections} renderable section${item.totalRenderableSections === 1 ? '' : 's'}.`
+                                                        : 'No treatment variants contain renderable checkout sections yet.'}
+                                                    </Text>
+                                                  </div>
+                                                  <div className={styles.checkoutReadinessRowText}>
+                                                    <Text as="p" variant="bodySm" tone="subdued">
+                                                      Status: {item.status}. Section types:{' '}
+                                                      {item.sectionTypeLabels.length > 0
+                                                        ? item.sectionTypeLabels.join(', ')
+                                                        : 'Not configured yet'}
+                                                      .
+                                                    </Text>
+                                                    <div
+                                                      className={styles.checkoutReadinessRowActions}
+                                                    >
+                                                      <Button size="slim" url={item.detailPath}>
+                                                        Open test
+                                                      </Button>
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          ) : (
+                                            !checkoutCustomizationTestsLoading && (
+                                              <Text as="p" variant="bodySm" tone="subdued">
+                                                No saved experience-phase checkout tests are
+                                                available yet. Create one in Checkout Tests to start
+                                                authoring section-based checkout content.
+                                              </Text>
+                                            )
+                                          )}
+                                        </div>
                                         {deployableCheckoutCustomizationTests.length > 0 ? (
                                           <div className={styles.checkoutReadinessList}>
                                             {deployableCheckoutCustomizationTests.map(item => {
