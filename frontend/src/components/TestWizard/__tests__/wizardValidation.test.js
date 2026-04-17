@@ -904,6 +904,25 @@ describe('wizardValidation', () => {
     });
 
     describe('without template step (5-step flow)', () => {
+      it('requires payment methods for checkout payment-method variants', () => {
+        const errors = getWizardStepErrors(stepIdsNoTemplate.code, {
+          stepIds: stepIdsNoTemplate,
+          reviewStepId: 5,
+          formData: {
+            type: 'checkout',
+            goal: { checkout_phase: 'payment_method' },
+            variants: [
+              { name: 'Control', allocation: 50, config: {} },
+              { name: 'Variant A', allocation: 50, config: { payment_action: 'hide' } },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: false,
+          selectedTemplate: 'checkout',
+        });
+        expect(errors.some(e => e.includes('payment method'))).toBe(true);
+      });
+
       it('goal step uses stepIds.goal (3)', () => {
         const errors = getWizardStepErrors(stepIdsNoTemplate.goal, {
           stepIds: stepIdsNoTemplate,

@@ -108,7 +108,52 @@ const VISUAL_EDITOR_MUTATION_TYPES = ['none', 'hide', 'show', 'set_text', 'set_a
 const PRICE_PRODUCT_MODAL_REVEAL_BATCH = 10;
 const MATRIX_SEARCH_BADGE_MAX_CHARS = 26;
 const THEME_TEST_MODES = ['template_switch', 'section_variant', 'asset_flag', 'theme_redirect'];
+const CHECKOUT_PHASE_OPTIONS = [
+  { label: 'Experience block', value: 'experience' },
+  { label: 'Payment methods', value: 'payment_method' },
+  { label: 'Delivery methods', value: 'delivery_method' },
+];
+const CHECKOUT_LAYOUT_OPTIONS = [
+  { label: 'Banner', value: 'banner' },
+  { label: 'Stacked', value: 'stacked' },
+  { label: 'Compact', value: 'compact' },
+];
+const CHECKOUT_TONE_OPTIONS = [
+  { label: 'Success', value: 'success' },
+  { label: 'Info', value: 'info' },
+  { label: 'Warning', value: 'warning' },
+  { label: 'Critical', value: 'critical' },
+];
+const CHECKOUT_CTA_KIND_OPTIONS = [
+  { label: 'Track CTA', value: 'track' },
+  { label: 'Offer code button', value: 'offer_code' },
+  { label: 'No CTA', value: 'none' },
+];
 const DEFAULT_TEST_TYPE_STATE = Object.freeze(getDefaultTestTypeState());
+
+function normalizeCheckoutPhase(rawValue) {
+  const value = String(rawValue || 'experience')
+    .trim()
+    .toLowerCase();
+  return ['experience', 'payment_method', 'delivery_method'].includes(value) ? value : 'experience';
+}
+
+function getCheckoutPhaseLabel(rawValue) {
+  const phase = normalizeCheckoutPhase(rawValue);
+  return CHECKOUT_PHASE_OPTIONS.find(option => option.value === phase)?.label || 'Experience block';
+}
+
+function normalizeCheckoutListInput(rawValue) {
+  return String(rawValue || '')
+    .split(/\n|,/)
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+function getCheckoutListPreview(rawValue) {
+  const items = Array.isArray(rawValue) ? rawValue : normalizeCheckoutListInput(rawValue);
+  return items.join(', ');
+}
 
 function buildProgressiveListWindow(items, visibleCount, options = {}) {
   const list = Array.isArray(items) ? items : [];
@@ -966,6 +1011,9 @@ function TestWizard({
   const [shippingDiagnosticsLoading, setShippingDiagnosticsLoading] = useState(false);
   const [shippingDiagnosticsReport, setShippingDiagnosticsReport] = useState(null);
   const [shippingExecutionToast, setShippingExecutionToast] = useState(null);
+  const [checkoutCustomizationLoading, setCheckoutCustomizationLoading] = useState(false);
+  const [checkoutCustomizationAction, setCheckoutCustomizationAction] = useState(null);
+  const [checkoutCustomizationToast, setCheckoutCustomizationToast] = useState(null);
   const [shippingStorewideApplyConfirmed, setShippingStorewideApplyConfirmed] = useState(false);
   useEffect(() => {
     const n = formData.variants?.length ?? 0;
@@ -1297,6 +1345,14 @@ function TestWizard({
   const [checkoutDiagnostics, setCheckoutDiagnostics] = useState(null);
   const [checkoutDiagnosticsLoading, setCheckoutDiagnosticsLoading] = useState(false);
   const [checkoutDiagnosticsError, setCheckoutDiagnosticsError] = useState(null);
+  const [checkoutExperienceDiagnostics, setCheckoutExperienceDiagnostics] = useState(null);
+  const [_checkoutExperienceDiagnosticsLoading, setCheckoutExperienceDiagnosticsLoading] =
+    useState(false);
+  const [checkoutExperienceDiagnosticsError, setCheckoutExperienceDiagnosticsError] =
+    useState(null);
+  const [wizardCheckoutReadiness, setWizardCheckoutReadiness] = useState(null);
+  const [wizardCheckoutReadinessLoading, setWizardCheckoutReadinessLoading] = useState(false);
+  const [wizardCheckoutReadinessError, setWizardCheckoutReadinessError] = useState(null);
   const wizardUiStateKey = useMemo(
     () => (mode === 'edit' && initialData?.id ? `ripx-test-wizard-ui:${initialData.id}` : null),
     [mode, initialData?.id]
@@ -1388,6 +1444,7 @@ function TestWizard({
 
   const steps = buildWizardSteps(showTemplateStep, mode);
   const stepIds = getStepIds(showTemplateStep);
+  const reviewStepId = steps[steps.length - 1]?.id;
 
   useEffect(() => {
     pendingWizardUiStateRef.current = null;
@@ -1438,6 +1495,99 @@ function TestWizard({
       cancelled = true;
     };
   }, [isShopifyFromRoute, isStandalone, routeDomain]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const isCheckoutTemplate =
+      selectedTemplate === 'checkout' || String(formData.type || '').toLowerCase() === 'checkout';
+
+    if (!isShopifyFromRoute || isStandalone || !isCheckoutTemplate) {
+      setCheckoutExperienceDiagnostics(null);
+      setCheckoutExperienceDiagnosticsError(null);
+      setCheckoutExperienceDiagnosticsLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const loadCheckoutExperienceDiagnostics = async () => {
+      setCheckoutExperienceDiagnosticsLoading(true);
+      setCheckoutExperienceDiagnosticsError(null);
+      try {
+        const data = await apiGet('/settings/checkout-experience-diagnostics');
+        if (!cancelled) {
+          setCheckoutExperienceDiagnostics(data || null);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setCheckoutExperienceDiagnostics(null);
+          setCheckoutExperienceDiagnosticsError(
+            e?.message || 'Could not load checkout experience diagnostics'
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setCheckoutExperienceDiagnosticsLoading(false);
+        }
+      }
+    };
+
+    loadCheckoutExperienceDiagnostics();
+    return () => {
+      cancelled = true;
+    };
+  }, [formData.type, isShopifyFromRoute, isStandalone, routeDomain, selectedTemplate]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const currentType = String(formData.type || initialData?.type || '').toLowerCase();
+    const supportsWizardCheckoutReadiness = [
+      'price',
+      'pricing',
+      'offer',
+      'checkout',
+      'shipping',
+    ].includes(currentType);
+
+    if (
+      mode !== 'edit' ||
+      !initialData?.id ||
+      currentStep !== reviewStepId ||
+      !supportsWizardCheckoutReadiness
+    ) {
+      setWizardCheckoutReadiness(null);
+      setWizardCheckoutReadinessError(null);
+      setWizardCheckoutReadinessLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const loadWizardCheckoutReadiness = async () => {
+      setWizardCheckoutReadinessLoading(true);
+      setWizardCheckoutReadinessError(null);
+      try {
+        const data = await apiGet(`/tests/${initialData.id}/checkout/readiness`);
+        if (!cancelled) {
+          setWizardCheckoutReadiness(data || null);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setWizardCheckoutReadiness(null);
+          setWizardCheckoutReadinessError(e?.message || 'Could not load checkout readiness');
+        }
+      } finally {
+        if (!cancelled) {
+          setWizardCheckoutReadinessLoading(false);
+        }
+      }
+    };
+
+    loadWizardCheckoutReadiness();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentStep, formData.type, initialData?.id, initialData?.type, mode, reviewStepId]);
 
   useEffect(() => {
     if (!wizardUiStateKey || didRestoreWizardUiStateRef.current) return;
@@ -3164,6 +3314,10 @@ function TestWizard({
       setFormData(prev => ({
         ...prev,
         type: template.defaultConfig.type,
+        goal: {
+          ...(prev.goal || {}),
+          ...(template.defaultConfig.goal || {}),
+        },
         target_type: targetType,
         target_id: '',
         target_ids: null,
@@ -3639,6 +3793,51 @@ function TestWizard({
       setShippingDiagnosticsLoading(false);
     }
   }, [initialData?.id]);
+
+  const handleEnsureCheckoutCustomizationFromReview = useCallback(
+    async apply => {
+      const testId = initialData?.id;
+      if (!testId) {
+        setError('Save this checkout test first, then run checkout customization deployment.');
+        return;
+      }
+      setCheckoutCustomizationLoading(true);
+      setCheckoutCustomizationAction(apply ? 'apply' : 'dry_run');
+      setError(null);
+      setCheckoutCustomizationToast(null);
+      try {
+        const response = await apiPost(`/tests/${testId}/checkout/customization/ensure`, {
+          apply: Boolean(apply),
+          dry_run: !apply,
+        });
+        const payload = response?.data?.data ?? response?.data ?? {};
+        const refreshed =
+          apply && typeof onRefreshTest === 'function' ? await onRefreshTest() : true;
+        let message =
+          payload?.message ||
+          (apply
+            ? 'Checkout customization applied successfully.'
+            : 'Checkout customization dry run completed successfully.');
+        let type = 'success';
+        if (apply && !refreshed) {
+          type = 'info';
+          message = `${message} The review screen could not refresh automatically, so saved details may update on the next reload.`;
+        }
+        setCheckoutCustomizationToast({ type, message });
+      } catch (err) {
+        setError(
+          err?.response?.data?.details?.[0] ||
+            err?.response?.data?.error ||
+            err?.message ||
+            'Failed to ensure checkout customization'
+        );
+      } finally {
+        setCheckoutCustomizationLoading(false);
+        setCheckoutCustomizationAction(null);
+      }
+    },
+    [initialData?.id, onRefreshTest]
+  );
 
   const openShippingDocs = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -8106,6 +8305,7 @@ function TestWizard({
     if (testType === 'price' || template === 'price' || template === 'pricing') return 'price';
     if (testType === 'shipping' || template === 'shipping') return 'shipping';
     if (testType === 'offer' || template === 'offer') return 'offer';
+    if (testType === 'checkout' || template === 'checkout') return 'checkout';
     if (testType === 'theme' || template === 'theme' || template === 'template') return 'theme';
     if (template === 'split-url') return 'url';
     if (template === 'onsite-edit' || template === 'content') return 'code';
@@ -8149,6 +8349,14 @@ function TestWizard({
       return 'theme';
     if ('discount' in source || 'discount_type' in source || 'discount_value' in source)
       return 'offer';
+    if (
+      'checkout_title' in source ||
+      'checkout_message' in source ||
+      'checkout_cta_label' in source ||
+      'payment_method_names' in source ||
+      'delivery_method_names' in source
+    )
+      return 'checkout';
     return 'code';
   };
 
@@ -11133,6 +11341,358 @@ function TestWizard({
     );
   };
 
+  const renderVariantCheckoutModule = () => {
+    const checkoutVariants = formData.variants || [];
+    const checkoutPhase = normalizeCheckoutPhase(formData.goal?.checkout_phase);
+    const nonControlIndices = checkoutVariants
+      .map((variant, index) => ({ variant, index }))
+      .filter(
+        ({ variant, index }) => !(index === 0 || /control/i.test(String(variant?.name || '')))
+      )
+      .map(({ index }) => index);
+
+    const configuredCount = checkoutVariants.reduce((count, variant, index) => {
+      const cfg = variant?.config || {};
+      const isControlLike = index === 0 || /control/i.test(String(variant?.name || ''));
+      let actionable = false;
+      if (checkoutPhase === 'experience') {
+        actionable = Boolean(
+          String(
+            cfg.checkout_title ||
+              cfg.checkout_message ||
+              cfg.checkout_badge_text ||
+              cfg.checkout_disclaimer ||
+              ''
+          ).trim() || normalizeCheckoutListInput(cfg.checkout_feature_bullets).length > 0
+        );
+      } else if (checkoutPhase === 'payment_method') {
+        actionable = normalizeCheckoutListInput(cfg.payment_method_names).length > 0;
+      } else if (checkoutPhase === 'delivery_method') {
+        actionable = normalizeCheckoutListInput(cfg.delivery_method_names).length > 0;
+      }
+      return count + (!isControlLike && actionable ? 1 : 0);
+    }, 0);
+    const configuredPercent =
+      nonControlIndices.length > 0
+        ? Math.max(0, Math.min(100, Math.round((configuredCount / nonControlIndices.length) * 100)))
+        : 100;
+
+    const updateCheckoutGoal = patch => {
+      setIsDirty(true);
+      setFormData(prev => ({
+        ...prev,
+        goal: {
+          ...(prev.goal || {}),
+          ...patch,
+        },
+      }));
+    };
+
+    const updateCheckoutVariantConfig = (index, patch) => {
+      setIsDirty(true);
+      setFormData(prev => {
+        const nextVariants = [...(prev.variants || [])];
+        const current =
+          nextVariants[index]?.config && typeof nextVariants[index].config === 'object'
+            ? nextVariants[index].config
+            : {};
+        nextVariants[index] = {
+          ...nextVariants[index],
+          config: {
+            ...current,
+            ...patch,
+          },
+        };
+        return {
+          ...prev,
+          variants: nextVariants,
+        };
+      });
+    };
+
+    return (
+      <BlockStack gap="400">
+        <Banner tone="info" title="Checkout phase setup">
+          <Text as="p" variant="bodySm">
+            Checkout tests can now be modeled as <strong>experience blocks</strong>,{' '}
+            <strong>payment-method</strong> experiments, or <strong>delivery-method</strong>{' '}
+            experiments. Experience blocks already render through the Checkout UI Extension; payment
+            and delivery phases store the same deployable contract used by readiness checks and
+            Shopify customization deployment.
+          </Text>
+        </Banner>
+
+        <Card>
+          <BlockStack gap="300">
+            <InlineStack align="space-between" blockAlign="center" wrap>
+              <Text variant="headingSm" as="h3" fontWeight="semibold">
+                Checkout experiment phase
+              </Text>
+              <Badge tone={configuredCount > 0 ? 'success' : 'attention'}>
+                {configuredCount}/{nonControlIndices.length || 1} treatments configured
+              </Badge>
+            </InlineStack>
+            <Select
+              label="Checkout phase"
+              options={CHECKOUT_PHASE_OPTIONS}
+              value={checkoutPhase}
+              onChange={value => updateCheckoutGoal({ checkout_phase: value })}
+              helpText="Choose which checkout surface this test is changing. Experience blocks render through the Checkout UI extension, while payment and delivery phases deploy through Shopify customizations."
+            />
+            <Text as="p" variant="bodySm" tone="subdued">
+              Readiness: {configuredPercent}% of non-control variants are configured for{' '}
+              {getCheckoutPhaseLabel(checkoutPhase).toLowerCase()}.
+            </Text>
+          </BlockStack>
+        </Card>
+
+        {checkoutVariants.map((variant, index) => {
+          const cfg = variant?.config || {};
+          const isControlLike = index === 0 || /control/i.test(String(variant?.name || ''));
+          const paymentMethods = getCheckoutListPreview(cfg.payment_method_names);
+          const deliveryMethods = getCheckoutListPreview(cfg.delivery_method_names);
+          return (
+            <Card key={`checkout-${index}`} sectioned>
+              <BlockStack gap="300">
+                <InlineStack align="space-between" blockAlign="center" wrap>
+                  <Text variant="headingSm" as="h4" fontWeight="semibold">
+                    {variant.name}
+                  </Text>
+                  <InlineStack gap="200" blockAlign="center" wrap>
+                    <Badge tone="info">{variant.allocation ?? 0}% traffic</Badge>
+                    <Badge tone={isControlLike ? 'info' : 'success'}>
+                      {isControlLike ? 'Control' : getCheckoutPhaseLabel(checkoutPhase)}
+                    </Badge>
+                  </InlineStack>
+                </InlineStack>
+
+                {checkoutPhase === 'experience' ? (
+                  <FormLayout>
+                    <TextField
+                      label={`${variant.name} title`}
+                      value={String(cfg.checkout_title || '')}
+                      onChange={value =>
+                        updateCheckoutVariantConfig(index, { checkout_title: value })
+                      }
+                      placeholder="e.g. Checkout with confidence"
+                      autoComplete="off"
+                    />
+                    <TextField
+                      label={`${variant.name} message`}
+                      value={String(cfg.checkout_message || '')}
+                      onChange={value =>
+                        updateCheckoutVariantConfig(index, { checkout_message: value })
+                      }
+                      placeholder="Add reassurance, urgency, or support copy for this checkout experience."
+                      multiline={3}
+                      autoComplete="off"
+                    />
+                    <TextField
+                      label={`${variant.name} badge text`}
+                      value={String(cfg.checkout_badge_text || '')}
+                      onChange={value =>
+                        updateCheckoutVariantConfig(index, { checkout_badge_text: value })
+                      }
+                      placeholder="e.g. Secure checkout"
+                      autoComplete="off"
+                    />
+                    <TextField
+                      label={`${variant.name} feature bullets`}
+                      value={
+                        Array.isArray(cfg.checkout_feature_bullets)
+                          ? cfg.checkout_feature_bullets.join('\n')
+                          : String(cfg.checkout_feature_bullets || '')
+                      }
+                      onChange={value =>
+                        updateCheckoutVariantConfig(index, {
+                          checkout_feature_bullets: normalizeCheckoutListInput(value),
+                        })
+                      }
+                      placeholder={'One bullet per line\n30-day guarantee\nFast support'}
+                      multiline={4}
+                      autoComplete="off"
+                    />
+                    <TextField
+                      label={`${variant.name} disclaimer`}
+                      value={String(cfg.checkout_disclaimer || '')}
+                      onChange={value =>
+                        updateCheckoutVariantConfig(index, { checkout_disclaimer: value })
+                      }
+                      placeholder="Optional fine print shown under the main message."
+                      autoComplete="off"
+                    />
+                    <InlineStack gap="300" wrap>
+                      <div style={{ minWidth: 220, flex: '1 1 220px' }}>
+                        <Select
+                          label="Layout"
+                          options={CHECKOUT_LAYOUT_OPTIONS}
+                          value={String(cfg.checkout_layout || 'banner')}
+                          onChange={value =>
+                            updateCheckoutVariantConfig(index, { checkout_layout: value })
+                          }
+                        />
+                      </div>
+                      <div style={{ minWidth: 220, flex: '1 1 220px' }}>
+                        <Select
+                          label="Tone"
+                          options={CHECKOUT_TONE_OPTIONS}
+                          value={String(cfg.checkout_tone || 'success')}
+                          onChange={value =>
+                            updateCheckoutVariantConfig(index, { checkout_tone: value })
+                          }
+                        />
+                      </div>
+                    </InlineStack>
+                    <InlineStack gap="300" wrap>
+                      <div style={{ minWidth: 220, flex: '1 1 220px' }}>
+                        <Select
+                          label="CTA behavior"
+                          options={CHECKOUT_CTA_KIND_OPTIONS}
+                          value={String(cfg.checkout_cta_kind || 'track')}
+                          onChange={value =>
+                            updateCheckoutVariantConfig(index, { checkout_cta_kind: value })
+                          }
+                        />
+                      </div>
+                      <div style={{ minWidth: 260, flex: '1 1 260px' }}>
+                        <TextField
+                          label="CTA label"
+                          value={String(cfg.checkout_cta_label || '')}
+                          onChange={value =>
+                            updateCheckoutVariantConfig(index, { checkout_cta_label: value })
+                          }
+                          disabled={String(cfg.checkout_cta_kind || 'track') === 'none'}
+                          placeholder="e.g. Continue securely"
+                          autoComplete="off"
+                        />
+                      </div>
+                    </InlineStack>
+                  </FormLayout>
+                ) : checkoutPhase === 'payment_method' ? (
+                  <FormLayout>
+                    <Select
+                      label={`${variant.name} payment action`}
+                      options={[
+                        { label: 'Hide methods', value: 'hide' },
+                        { label: 'Rename methods', value: 'rename' },
+                        { label: 'Reorder methods', value: 'reorder' },
+                      ]}
+                      value={String(cfg.payment_action || 'hide')}
+                      onChange={value =>
+                        updateCheckoutVariantConfig(index, { payment_action: value })
+                      }
+                    />
+                    <TextField
+                      label={`${variant.name} payment methods`}
+                      value={
+                        Array.isArray(cfg.payment_method_names)
+                          ? cfg.payment_method_names.join('\n')
+                          : String(cfg.payment_method_names || '')
+                      }
+                      onChange={value =>
+                        updateCheckoutVariantConfig(index, {
+                          payment_method_names: normalizeCheckoutListInput(value),
+                        })
+                      }
+                      placeholder={'One payment method per line\nCash on Delivery\nPayPal'}
+                      multiline={4}
+                      helpText="Use the checkout-facing method names you expect Shopify to expose."
+                      autoComplete="off"
+                    />
+                    <TextField
+                      label={`${variant.name} rename to`}
+                      value={String(cfg.payment_rename_to || '')}
+                      onChange={value =>
+                        updateCheckoutVariantConfig(index, { payment_rename_to: value })
+                      }
+                      disabled={String(cfg.payment_action || 'hide') !== 'rename'}
+                      placeholder="Optional shared rename target for matched methods"
+                      autoComplete="off"
+                    />
+                    <TextField
+                      label={`${variant.name} operator note`}
+                      value={String(cfg.checkout_message || '')}
+                      onChange={value =>
+                        updateCheckoutVariantConfig(index, { checkout_message: value })
+                      }
+                      placeholder="Explain what should change in checkout for this payment-method variant."
+                      multiline={2}
+                      autoComplete="off"
+                    />
+                    {paymentMethods ? (
+                      <Text as="p" variant="bodySm" tone="subdued">
+                        Current methods: {paymentMethods}
+                      </Text>
+                    ) : null}
+                  </FormLayout>
+                ) : (
+                  <FormLayout>
+                    <Select
+                      label={`${variant.name} delivery action`}
+                      options={[
+                        { label: 'Hide methods', value: 'hide' },
+                        { label: 'Rename methods', value: 'rename' },
+                        { label: 'Reorder methods', value: 'reorder' },
+                      ]}
+                      value={String(cfg.delivery_action || 'hide')}
+                      onChange={value =>
+                        updateCheckoutVariantConfig(index, { delivery_action: value })
+                      }
+                    />
+                    <TextField
+                      label={`${variant.name} delivery methods`}
+                      value={
+                        Array.isArray(cfg.delivery_method_names)
+                          ? cfg.delivery_method_names.join('\n')
+                          : String(cfg.delivery_method_names || '')
+                      }
+                      onChange={value =>
+                        updateCheckoutVariantConfig(index, {
+                          delivery_method_names: normalizeCheckoutListInput(value),
+                        })
+                      }
+                      placeholder={
+                        'One delivery method per line\nStandard Shipping\nExpress Shipping'
+                      }
+                      multiline={4}
+                      helpText="Use the delivery option names or labels you want the customization layer to target."
+                      autoComplete="off"
+                    />
+                    <TextField
+                      label={`${variant.name} rename to`}
+                      value={String(cfg.delivery_rename_to || '')}
+                      onChange={value =>
+                        updateCheckoutVariantConfig(index, { delivery_rename_to: value })
+                      }
+                      disabled={String(cfg.delivery_action || 'hide') !== 'rename'}
+                      placeholder="Optional shared rename target for matched delivery methods"
+                      autoComplete="off"
+                    />
+                    <TextField
+                      label={`${variant.name} operator note`}
+                      value={String(cfg.checkout_message || '')}
+                      onChange={value =>
+                        updateCheckoutVariantConfig(index, { checkout_message: value })
+                      }
+                      placeholder="Explain what should change in checkout for this delivery-method variant."
+                      multiline={2}
+                      autoComplete="off"
+                    />
+                    {deliveryMethods ? (
+                      <Text as="p" variant="bodySm" tone="subdued">
+                        Current methods: {deliveryMethods}
+                      </Text>
+                    ) : null}
+                  </FormLayout>
+                )}
+              </BlockStack>
+            </Card>
+          );
+        })}
+      </BlockStack>
+    );
+  };
+
   const renderVariantThemeModule = () => (
     <BlockStack gap="400">
       <Banner tone="info" title="Theme test contract">
@@ -11295,6 +11855,7 @@ function TestWizard({
         price: 'Variant Prices',
         shipping: 'Variant Shipping Strategies',
         offer: 'Variant Offers',
+        checkout: 'Checkout Variants',
         theme: 'Theme Variants',
       };
       return (
@@ -11319,6 +11880,7 @@ function TestWizard({
             {variantConfigType === 'price' && renderVariantPriceModule()}
             {variantConfigType === 'shipping' && renderVariantShippingModule()}
             {variantConfigType === 'offer' && renderVariantOfferModule()}
+            {variantConfigType === 'checkout' && renderVariantCheckoutModule()}
             {variantConfigType === 'theme' && renderVariantThemeModule()}
           </BlockStack>
         </Card>
@@ -12849,8 +13411,25 @@ function TestWizard({
       ? formData.variants
       : initialData?.variants || [];
     const isPriceReview = isPriceLikeTestType(formData.type || initialData?.type);
+    const isCheckoutReview =
+      String(formData.type || initialData?.type || '').toLowerCase() === 'checkout';
     const isShippingReview =
       String(formData.type || initialData?.type || '').toLowerCase() === 'shipping';
+    const checkoutReviewPhase = normalizeCheckoutPhase(
+      formData.goal?.checkout_phase || initialData?.goal?.checkout_phase
+    );
+    const isDeployableCheckoutCustomizationReview =
+      isCheckoutReview &&
+      (checkoutReviewPhase === 'payment_method' || checkoutReviewPhase === 'delivery_method');
+    const canEnsureCheckoutCustomizationFromReview =
+      isDeployableCheckoutCustomizationReview && Boolean(initialData?.id);
+    const checkoutCustomizationReviewDisabled =
+      checkoutCustomizationLoading || loading || submitLoading || isDirty;
+    const wizardCheckoutReadinessSummary = wizardCheckoutReadiness?.summary || null;
+    const wizardCheckoutReadinessHighlights = Array.isArray(wizardCheckoutReadiness?.highlights)
+      ? wizardCheckoutReadiness.highlights.slice(0, 3)
+      : [];
+    const checkoutExperienceSummary = checkoutExperienceDiagnostics?.summary || null;
     const canExecuteShippingFromReview = canShowShippingExecution({
       mode,
       testType: formData.type || initialData?.type,
@@ -13383,6 +13962,95 @@ function TestWizard({
                 );
               })}
             </div>
+          ) : isCheckoutReview ? (
+            <BlockStack gap="300">
+              <Banner tone="info" title="Checkout launch contract">
+                <Text as="p" variant="bodySm">
+                  This test is configured as a{' '}
+                  <strong>{getCheckoutPhaseLabel(checkoutReviewPhase).toLowerCase()}</strong>{' '}
+                  experiment. Experience blocks can render through the Checkout UI Extension today.
+                  Payment and delivery phases use the same saved schema so readiness and Shopify
+                  customization deployment target the right checkout surface.
+                </Text>
+              </Banner>
+              <div className={stepStyles.reviewVariantGrid}>
+                {reviewVariants.map((v, i) => {
+                  const cfg = v?.config || {};
+                  const paymentMethods = getCheckoutListPreview(cfg.payment_method_names);
+                  const deliveryMethods = getCheckoutListPreview(cfg.delivery_method_names);
+                  const experienceSummary = String(
+                    cfg.checkout_message ||
+                      cfg.checkout_title ||
+                      cfg.checkout_badge_text ||
+                      cfg.checkout_disclaimer ||
+                      ''
+                  ).trim();
+                  const reviewSummary =
+                    checkoutReviewPhase === 'payment_method'
+                      ? paymentMethods || 'No payment methods selected'
+                      : checkoutReviewPhase === 'delivery_method'
+                        ? deliveryMethods || 'No delivery methods selected'
+                        : experienceSummary || 'No checkout content configured';
+                  const reviewDetail =
+                    checkoutReviewPhase === 'payment_method'
+                      ? `${String(cfg.payment_action || 'hide')} methods`
+                      : checkoutReviewPhase === 'delivery_method'
+                        ? `${String(cfg.delivery_action || 'hide')} methods`
+                        : `${String(cfg.checkout_layout || 'banner')} layout • ${String(
+                            cfg.checkout_tone || 'success'
+                          )} tone`;
+                  return (
+                    <div key={i} className={stepStyles.reviewVariantCard}>
+                      <div className={stepStyles.reviewVariantCardHeader}>
+                        <div className={stepStyles.reviewVariantCardTitleRow}>
+                          <span
+                            className={stepStyles.reviewVariantChipColor}
+                            style={{ backgroundColor: getVariantColor(i) }}
+                          />
+                          <span className={stepStyles.reviewVariantCardTitle}>{v.name}</span>
+                        </div>
+                        <Badge tone="info">{v.allocation}% traffic</Badge>
+                      </div>
+                      <div className={stepStyles.reviewVariantMetrics}>
+                        <div className={stepStyles.reviewVariantMetric}>
+                          <span className={stepStyles.reviewVariantMetricLabel}>Phase</span>
+                          <span className={stepStyles.reviewVariantMetricValue}>
+                            {getCheckoutPhaseLabel(checkoutReviewPhase)}
+                          </span>
+                        </div>
+                        <div className={stepStyles.reviewVariantMetric}>
+                          <span className={stepStyles.reviewVariantMetricLabel}>Summary</span>
+                          <span className={stepStyles.reviewVariantMetricValue}>
+                            {reviewSummary}
+                          </span>
+                        </div>
+                        <div className={stepStyles.reviewVariantMetric}>
+                          <span className={stepStyles.reviewVariantMetricLabel}>Execution</span>
+                          <span className={stepStyles.reviewVariantMetricValue}>
+                            {reviewDetail}
+                          </span>
+                        </div>
+                      </div>
+                      {checkoutReviewPhase === 'experience' &&
+                      Array.isArray(cfg.checkout_feature_bullets) &&
+                      cfg.checkout_feature_bullets.length > 0 ? (
+                        <p className={stepStyles.reviewVariantCardHint}>
+                          Bullets: {cfg.checkout_feature_bullets.join(', ')}
+                        </p>
+                      ) : (
+                        <p className={stepStyles.reviewVariantCardHint}>
+                          {checkoutReviewPhase === 'payment_method'
+                            ? 'Use checkout readiness after save to verify payment-method setup and extension availability.'
+                            : checkoutReviewPhase === 'delivery_method'
+                              ? 'Use checkout readiness after save to verify delivery-method targeting and deployment status.'
+                              : 'Use checkout readiness after save to verify the Checkout UI Extension configuration and sync state.'}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </BlockStack>
           ) : (
             <div className={stepStyles.reviewVariantsList}>
               {reviewVariants.map((v, i) => (
@@ -13397,6 +14065,134 @@ function TestWizard({
             </div>
           )}
         </div>
+
+        {((isCheckoutReview && checkoutExperienceSummary) || wizardCheckoutReadinessSummary) && (
+          <div className={stepStyles.reviewSection}>
+            <div className={stepStyles.reviewSectionTitle}>
+              <span className={stepStyles.reviewSectionTitleIcon}>
+                <Icon source={TargetIcon} />
+              </span>
+              Checkout launch readiness
+            </div>
+            <BlockStack gap="300">
+              {isCheckoutReview && checkoutExperienceSummary && (
+                <Banner
+                  tone={checkoutExperienceSummary.overall_ok ? 'success' : 'warning'}
+                  title="Store-level checkout experience status"
+                >
+                  <Text as="p" variant="bodySm">
+                    {checkoutExperienceSummary.headline}
+                  </Text>
+                </Banner>
+              )}
+              {wizardCheckoutReadinessSummary && (
+                <Banner
+                  tone={
+                    wizardCheckoutReadinessSummary.status === 'ready'
+                      ? 'success'
+                      : wizardCheckoutReadinessSummary.status === 'blocked'
+                        ? 'critical'
+                        : 'warning'
+                  }
+                  title="Per-test checkout readiness"
+                >
+                  <BlockStack gap="200">
+                    <Text as="p" variant="bodySm">
+                      {wizardCheckoutReadinessSummary.headline}
+                    </Text>
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      Next:{' '}
+                      {wizardCheckoutReadinessSummary.next_action ||
+                        'Review the highlighted blockers before launch.'}
+                    </Text>
+                    {wizardCheckoutReadinessHighlights.map(item => (
+                      <Text key={item.id} as="p" variant="bodySm" tone="subdued">
+                        • {item.message}
+                      </Text>
+                    ))}
+                  </BlockStack>
+                </Banner>
+              )}
+              {wizardCheckoutReadinessLoading && (
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Checking per-test checkout readiness...
+                </Text>
+              )}
+              {wizardCheckoutReadinessError && (
+                <Text as="p" variant="bodySm" tone="critical">
+                  {wizardCheckoutReadinessError}
+                </Text>
+              )}
+              {checkoutExperienceDiagnosticsError && isCheckoutReview && (
+                <Text as="p" variant="bodySm" tone="critical">
+                  {checkoutExperienceDiagnosticsError}
+                </Text>
+              )}
+            </BlockStack>
+          </div>
+        )}
+
+        {isDeployableCheckoutCustomizationReview && (
+          <div className={stepStyles.reviewSection}>
+            <div className={stepStyles.reviewSectionTitle}>
+              <span className={stepStyles.reviewSectionTitleIcon}>
+                <Icon source={TargetIcon} />
+              </span>
+              Checkout customization deployment
+            </div>
+            <BlockStack gap="300">
+              <Text as="p" variant="bodySm">
+                Dry run previews whether RipX will create or update the Shopify{' '}
+                {checkoutReviewPhase === 'payment_method'
+                  ? 'payment customization'
+                  : 'delivery customization'}{' '}
+                for this saved test. Apply writes the customization and its JSON config metafield on
+                the shop.
+              </Text>
+              {!canEnsureCheckoutCustomizationFromReview ? (
+                <Banner tone="info" title="Save before deploying">
+                  <Text as="p" variant="bodySm">
+                    Save this checkout test first so RipX has a test ID and can deploy the matching
+                    Shopify customization.
+                  </Text>
+                </Banner>
+              ) : null}
+              {canEnsureCheckoutCustomizationFromReview && isDirty ? (
+                <Banner tone="warning" title="Unsaved changes">
+                  <Text as="p" variant="bodySm">
+                    Save your latest checkout edits before running deployment. The Shopify apply
+                    flow uses the saved test config, not unsaved draft changes in this wizard.
+                  </Text>
+                </Banner>
+              ) : null}
+              <InlineStack gap="200" wrap>
+                <Button
+                  size="slim"
+                  onClick={() => handleEnsureCheckoutCustomizationFromReview(false)}
+                  disabled={
+                    !canEnsureCheckoutCustomizationFromReview || checkoutCustomizationReviewDisabled
+                  }
+                  loading={
+                    checkoutCustomizationLoading && checkoutCustomizationAction === 'dry_run'
+                  }
+                >
+                  Checkout customization dry run
+                </Button>
+                <Button
+                  variant="primary"
+                  size="slim"
+                  onClick={() => handleEnsureCheckoutCustomizationFromReview(true)}
+                  disabled={
+                    !canEnsureCheckoutCustomizationFromReview || checkoutCustomizationReviewDisabled
+                  }
+                  loading={checkoutCustomizationLoading && checkoutCustomizationAction === 'apply'}
+                >
+                  Apply checkout customization
+                </Button>
+              </InlineStack>
+            </BlockStack>
+          </div>
+        )}
 
         {isShippingReview && canExecuteShippingFromReview && (
           <div className={stepStyles.reviewSection}>
@@ -13872,6 +14668,14 @@ function TestWizard({
           message={shippingExecutionToast.message}
           type={shippingExecutionToast.type || 'success'}
           onClose={() => setShippingExecutionToast(null)}
+          duration={3200}
+        />
+      )}
+      {checkoutCustomizationToast && (
+        <Toast
+          message={checkoutCustomizationToast.message}
+          type={checkoutCustomizationToast.type || 'success'}
+          onClose={() => setCheckoutCustomizationToast(null)}
           duration={3200}
         />
       )}

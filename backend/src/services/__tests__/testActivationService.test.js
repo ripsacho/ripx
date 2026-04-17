@@ -2,12 +2,23 @@ jest.mock('../../models/test', () => ({
   getTestsByShop: jest.fn(),
 }));
 
+jest.mock('../../models/shopSession', () => ({
+  getShopSession: jest.fn(),
+}));
+
 jest.mock('../conflictDetectionService', () => ({
   findConflicts: jest.fn(),
 }));
 
+jest.mock('../checkoutReadinessService', () => ({
+  buildTestCheckoutReadiness: jest.fn(),
+  supportsCheckoutReadiness: jest.fn(),
+}));
+
+const { getShopSession } = require('../../models/shopSession');
 const { getTestsByShop } = require('../../models/test');
 const conflictDetectionService = require('../conflictDetectionService');
+const checkoutReadinessService = require('../checkoutReadinessService');
 const {
   parseActivationStartOptions,
   applyActivationStartOptionsToTest,
@@ -18,7 +29,13 @@ describe('testActivationService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     getTestsByShop.mockResolvedValue([]);
+    getShopSession.mockResolvedValue({ access_token: 'token' });
     conflictDetectionService.findConflicts.mockResolvedValue([]);
+    checkoutReadinessService.supportsCheckoutReadiness.mockReturnValue(false);
+    checkoutReadinessService.buildTestCheckoutReadiness.mockResolvedValue({
+      summary: { status: 'ready', headline: 'Checkout readiness looks good for this test.' },
+      checks: [],
+    });
   });
 
   describe('parseActivationStartOptions', () => {
@@ -104,6 +121,46 @@ describe('testActivationService', () => {
   });
 
   describe('runActivationPreflight', () => {
+    it('blocks checkout launch when readiness reports blockers', async () => {
+      checkoutReadinessService.supportsCheckoutReadiness.mockReturnValue(true);
+      checkoutReadinessService.buildTestCheckoutReadiness.mockResolvedValue({
+        summary: {
+          status: 'blocked',
+          headline: 'Checkout readiness is blocked for this checkout test.',
+        },
+        checks: [
+          {
+            id: 'payment_method_customization_applied',
+            ok: false,
+            severity: 'error',
+            message: 'Apply the payment customization for this test before launch.',
+          },
+        ],
+      });
+
+      const preflight = await runActivationPreflight(
+        {
+          id: 't-checkout',
+          status: 'draft',
+          type: 'checkout',
+          guardrail_config: { enabled: true },
+          goal: { checkout_phase: 'payment_method' },
+          variants: [
+            { name: 'Control', allocation: 50, config: {} },
+            {
+              name: 'Variant A',
+              allocation: 50,
+              config: { payment_method_names: ['Cash on Delivery'], payment_action: 'hide' },
+            },
+          ],
+        },
+        'shop.test'
+      );
+
+      expect(preflight.ok).toBe(false);
+      expect(preflight.errors.some(item => item.id === 'checkout_launch_readiness')).toBe(true);
+    });
+
     it('fails theme preflight when non-control template switch variant has no template handle', async () => {
       const preflight = await runActivationPreflight(
         {

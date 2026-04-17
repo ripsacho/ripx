@@ -31,6 +31,7 @@ const shopifyService = require('../services/shopifyService');
 const { getShopSession } = require('../models/shopSession');
 const { HTTP_STATUS } = require('../constants');
 const { getTestTypeControlSnapshot } = require('../services/testTypeControlService');
+const { buildCheckoutExperienceStoreDiagnostics } = require('../services/checkoutReadinessService');
 
 const RIPX_DEFAULT_AUTOMATIC_DISCOUNT_TITLE = 'RipX Offer Checkout Function';
 const ALLOWED_DISCOUNT_CLASSES = new Set(['PRODUCT', 'ORDER', 'SHIPPING']);
@@ -763,6 +764,20 @@ router.get(
  * Same payload as GET /api/track/price-checkout-diagnostics?shop=… but uses the authenticated
  * shop domain (no query param). Use from the RipX app UI to avoid cross-origin fetch/CORS issues.
  */
+router.get(
+  '/checkout-experience-diagnostics',
+  asyncHandler(async (req, res) => {
+    const shopDomain = await resolveRequestedShopDomain(req);
+    if (!shopDomain || shopDomain.includes('@')) {
+      return sendError(res, 401, 'Shop domain required');
+    }
+
+    const body = buildCheckoutExperienceStoreDiagnostics({ shopDomain });
+    res.set('Cache-Control', 'no-store');
+    return res.json(body);
+  })
+);
+
 router.get(
   '/checkout-price-diagnostics',
   asyncHandler(async (req, res) => {

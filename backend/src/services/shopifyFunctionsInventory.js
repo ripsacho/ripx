@@ -1,6 +1,7 @@
 /**
  * Inventory of Shopify Functions the RipX app expects on a store (Admin API shopifyFunctions).
- * Repo: exactly two function extensions — extensions/ripx-checkout-discount, extensions/ripx-cart-transform.
+ * Repo: RipX checkout functions currently cover discounting, cart transforms, payment
+ * customization, and delivery customization.
  */
 
 const RIPX_EXTENSION_MANIFEST = [
@@ -17,6 +18,20 @@ const RIPX_EXTENSION_MANIFEST = [
     description:
       'extensions/ripx-cart-transform — Cart Transform API (Direct Price Override / lineUpdate on Plus or dev stores)',
     apiTypeIncludes: ['cart_transform', 'cart transform'],
+  },
+  {
+    key: 'payment_customization',
+    label: 'Payment customization function',
+    description:
+      'extensions/ripx-payment-customization — Payment Customization API (hide, rename, or reorder payment methods at checkout)',
+    apiTypeIncludes: ['payment_customization', 'payment customization'],
+  },
+  {
+    key: 'delivery_customization',
+    label: 'Delivery customization function',
+    description:
+      'extensions/ripx-delivery-customization — Delivery Customization API (hide, rename, or reorder delivery methods at checkout)',
+    apiTypeIncludes: ['delivery_customization', 'delivery customization'],
   },
 ];
 
@@ -47,6 +62,14 @@ function buildShopifyFunctionsInventory(shopifyFunctions, shopDomain) {
     const t = normalizeType(fn?.apiType);
     return t.includes('cart_transform') || t.includes('cart transform');
   });
+  const paymentCandidates = nodes.filter(fn => {
+    const t = normalizeType(fn?.apiType);
+    return t.includes('payment_customization') || t.includes('payment customization');
+  });
+  const deliveryCandidates = nodes.filter(fn => {
+    const t = normalizeType(fn?.apiType);
+    return t.includes('delivery_customization') || t.includes('delivery customization');
+  });
 
   const expectations = RIPX_EXTENSION_MANIFEST.map(spec => {
     const pool =
@@ -54,7 +77,11 @@ function buildShopifyFunctionsInventory(shopifyFunctions, shopDomain) {
         ? discountCandidates
         : spec.key === 'cart_transform'
           ? cartCandidates
-          : [];
+          : spec.key === 'payment_customization'
+            ? paymentCandidates
+            : spec.key === 'delivery_customization'
+              ? deliveryCandidates
+              : [];
     const selected = pickRipxPreferred(pool);
     return {
       key: spec.key,
@@ -70,13 +97,15 @@ function buildShopifyFunctionsInventory(shopifyFunctions, shopDomain) {
 
   const discountDetected = expectations.some(e => e.key === 'checkout_discount' && e.detected);
   const cartDetected = expectations.some(e => e.key === 'cart_transform' && e.detected);
+  const paymentDetected = expectations.some(e => e.key === 'payment_customization' && e.detected);
+  const deliveryDetected = expectations.some(e => e.key === 'delivery_customization' && e.detected);
 
   return {
     success: true,
     shopDomain: shopDomain || null,
     generatedAt: new Date().toISOString(),
     manifestNotes: [
-      'This codebase defines exactly two Shopify Functions extensions: ripx-checkout-discount (discount) and ripx-cart-transform (cart transform). RipX does not ship a second cart transform or an extra discount function in this repository.',
+      'This codebase defines checkout-oriented Shopify Functions for discounting, cart transforms, payment customization, and delivery customization. Payment/delivery customization remain optional product surfaces until those phases are deployed on the target shop.',
     ],
     operationalNotes: [
       'You do not need a running price test to deploy these extensions or to create the automatic discount from App settings.',
@@ -87,12 +116,16 @@ function buildShopifyFunctionsInventory(shopifyFunctions, shopDomain) {
       totalFunctionsReturned: nodes.length,
       discountCandidates: discountCandidates.length,
       cartTransformCandidates: cartCandidates.length,
+      paymentCustomizationCandidates: paymentCandidates.length,
+      deliveryCustomizationCandidates: deliveryCandidates.length,
     },
     /** High-level gates for price-test checkout paths */
     readiness: {
       discount_function_for_checkout: discountDetected,
       cart_transform_for_direct_price: cartDetected,
       both_detected: discountDetected && cartDetected,
+      payment_customization_for_checkout: paymentDetected,
+      delivery_customization_for_checkout: deliveryDetected,
     },
     expectations,
     shopifyFunctions: nodes,

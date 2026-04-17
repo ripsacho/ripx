@@ -24,6 +24,8 @@ describe('shippingExecutionPlanner', () => {
       }
     );
     expect(plan.summary.variants_ready).toBe(1);
+    expect(plan.summary.variants_automatic).toBe(1);
+    expect(plan.variants[1].execution_mode).toBe('automatic');
     expect(plan.plan_status).toBe('ready');
   });
 
@@ -50,6 +52,8 @@ describe('shippingExecutionPlanner', () => {
       }
     );
     expect(plan.summary.variants_manual_required).toBe(1);
+    expect(plan.summary.variants_manual).toBe(1);
+    expect(plan.variants[1].execution_mode).toBe('manual');
     expect(plan.plan_status).toBe('partial');
   });
 
@@ -86,6 +90,7 @@ describe('shippingExecutionPlanner', () => {
     );
 
     expect(plan.variants[1].execution_adapter).toBe('delivery_customization');
+    expect(plan.variants[1].execution_mode).toBe('automatic');
     expect(plan.variants[1].status).toBe('ready');
     expect(plan.plan_status).toBe('ready');
   });

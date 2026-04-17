@@ -52,6 +52,14 @@ const {
   executeShippingTestPlan,
   cleanupManagedShippingResources,
 } = require('../services/shippingAutoExecutionService');
+const {
+  buildTestCheckoutReadiness,
+  supportsCheckoutReadiness,
+} = require('../services/checkoutReadinessService');
+const {
+  ensureCheckoutCustomizationDeployment,
+  isCheckoutCustomizationPhase,
+} = require('../services/checkoutCustomizationDeploymentService');
 const { getTestAnalytics, getBatchVariantMetrics } = require('../models/analytics');
 const { normalizeDomain } = require('../models/tenant');
 const { getShopSession } = require('../models/shopSession');
@@ -1507,9 +1515,94 @@ router.get(
 );
 
 /**
- * GET /api/tests/:id/shipping/capabilities
- * Resolve Shopify plan-based shipping execution capabilities for this shop.
+ * GET /api/tests/:id/checkout/readiness
+ * Resolve launch readiness for pricing, offer, checkout, or shipping tests.
  */
+router.get(
+  '/:id/checkout/readiness',
+  validateTestId,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const shopDomain = req.shopDomain;
+    const test = await getTestById(id, shopDomain);
+    if (!test) {
+      return sendNotFound(res, 'Test');
+    }
+    if (!supportsCheckoutReadiness(test)) {
+      return sendValidationError(res, [
+        'Checkout readiness is available only for pricing, offer, checkout, or shipping tests.',
+      ]);
+    }
+
+    const fallbackSession = await getShopSession(shopDomain);
+    const accessToken = req.shopifyAccessToken || fallbackSession?.access_token || '';
+    const readiness = await buildTestCheckoutReadiness({
+      test,
+      shopDomain,
+      accessToken,
+    });
+
+    res.set('Cache-Control', 'no-store');
+    return sendSuccess(res, HTTP_STATUS.OK, readiness);
+  })
+);
+
+router.post(
+  '/:id/checkout/customization/ensure',
+  validateTestId,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const shopDomain = req.shopDomain;
+    const test = await getTestById(id, shopDomain);
+    if (!test) {
+      return sendNotFound(res, 'Test');
+    }
+    if (
+      String(test?.type || '')
+        .trim()
+        .toLowerCase() !== 'checkout' ||
+      !isCheckoutCustomizationPhase(test)
+    ) {
+      return sendValidationError(res, [
+        'Checkout customization deployment is available only for payment-method or delivery-method checkout tests.',
+      ]);
+    }
+
+    const fallbackSession = await getShopSession(shopDomain);
+    const accessToken = req.shopifyAccessToken || fallbackSession?.access_token || '';
+    if (!accessToken) {
+      return sendValidationError(res, [
+        'Missing Shopify access token for this store. Open RipX from Shopify Admin and try again.',
+      ]);
+    }
+
+    const applyMode =
+      req.body?.apply === true || req.body?.dry_run === false || req.body?.dryRun === false;
+    try {
+      const result = await ensureCheckoutCustomizationDeployment({
+        test,
+        shopDomain,
+        accessToken,
+        apply: applyMode,
+      });
+      return sendSuccess(
+        res,
+        HTTP_STATUS.OK,
+        {
+          test_id: id,
+          apply_mode: applyMode ? 'apply' : 'dry_run',
+          ...result,
+        },
+        result.message
+      );
+    } catch (error) {
+      return sendValidationError(res, [
+        error.message || 'Could not ensure checkout customization.',
+      ]);
+    }
+  })
+);
+
 router.get(
   '/:id/shipping/capabilities',
   validateTestId,

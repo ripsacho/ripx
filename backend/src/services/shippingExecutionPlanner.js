@@ -68,12 +68,28 @@ function buildShippingExecutionPlan(test, capabilityReport) {
     const actionable = isActionableShippingConfig(config);
     const adapterAvailable = adapter === 'manual' || isAdapterAvailable(capabilityReport, adapter);
     const status = actionable ? (adapterAvailable ? 'ready' : 'manual_required') : 'control';
+    const executionMode = !actionable
+      ? 'control'
+      : status === 'manual_required' || adapter === 'manual'
+        ? 'manual'
+        : adapter === 'discount_function'
+          ? 'discount_only'
+          : 'automatic';
     return {
       index,
       id: variant?.id || null,
       name: variant?.name || `Variant ${index + 1}`,
       strategy: config.strategy,
       execution_adapter: adapter,
+      execution_mode: executionMode,
+      execution_mode_label:
+        executionMode === 'automatic'
+          ? 'Automatic'
+          : executionMode === 'discount_only'
+            ? 'Discount-only'
+            : executionMode === 'manual'
+              ? 'Manual'
+              : 'Control',
       actionable,
       status,
       config,
@@ -83,6 +99,11 @@ function buildShippingExecutionPlan(test, capabilityReport) {
   const readyCount = variantPlans.filter(plan => plan.status === 'ready').length;
   const blockedCount = variantPlans.filter(plan => plan.status === 'manual_required').length;
   const controlCount = variantPlans.filter(plan => plan.status === 'control').length;
+  const automaticCount = variantPlans.filter(plan => plan.execution_mode === 'automatic').length;
+  const discountOnlyCount = variantPlans.filter(
+    plan => plan.execution_mode === 'discount_only'
+  ).length;
+  const manualCount = variantPlans.filter(plan => plan.execution_mode === 'manual').length;
 
   return {
     test_id: normalizedTest?.id || null,
@@ -93,6 +114,9 @@ function buildShippingExecutionPlan(test, capabilityReport) {
       variants_ready: readyCount,
       variants_manual_required: blockedCount,
       variants_control: controlCount,
+      variants_automatic: automaticCount,
+      variants_discount_only: discountOnlyCount,
+      variants_manual: manualCount,
     },
     variants: variantPlans,
     recommended_execution_path:

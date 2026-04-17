@@ -1983,3 +1983,113 @@
   min-width: 0;
   line-height: 1.4;
 }
+
+.checkoutReadinessPanel {
+  margin: 1rem 0 0;
+}
+
+.checkoutExperiencePanel {
+  margin: 1rem 0 0;
+}
+
+.checkoutExperienceGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.checkoutExperienceCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(248, 250, 252, 0.85);
+}
+
+.checkoutExperienceCardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.checkoutExperienceCardTitle {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--p-color-text, #0f172a);
+}
+
+.checkoutReadinessMetaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.checkoutReadinessPill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(15, 23, 42, 0.04);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--p-color-text, #0f172a);
+}
+
+.checkoutReadinessCapabilities {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.checkoutReadinessCapability {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.8rem 0.9rem;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(248, 250, 252, 0.85);
+}
+
+.checkoutReadinessCapabilityLabel {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--p-color-text-subdued, #475569);
+  text-transform: capitalize;
+}
+
+.checkoutReadinessCapabilityLevel {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--p-color-text, #0f172a);
+  text-transform: capitalize;
+}
+
+.checkoutReadinessChecks {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.checkoutReadinessCheck {
+  padding: 0.75rem 0.85rem;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  border: 1px solid transparent;
+}
+
+.checkoutReadinessCheckError {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.2);
+  color: #991b1b;
+}
+
+.checkoutReadinessCheckWarning {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.22);
+  color: #92400e;
+}

@@ -77,6 +77,23 @@ function isProductScopeTargetType(targetType) {
   return tt === 'product' || tt === 'all-products' || tt === 'all_products';
 }
 
+function normalizeCheckoutPhase(rawPhase) {
+  const phase = String(rawPhase || 'experience')
+    .trim()
+    .toLowerCase();
+  return ['experience', 'payment_method', 'delivery_method'].includes(phase) ? phase : 'experience';
+}
+
+function toCheckoutTargetList(value) {
+  if (Array.isArray(value)) {
+    return value.map(item => String(item || '').trim()).filter(Boolean);
+  }
+  return String(value || '')
+    .split(/[\n,]+/)
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
 class ABTestEngine {
   _shouldPersistAssignment(context = {}) {
     if (!context || typeof context !== 'object') {
@@ -1154,6 +1171,71 @@ class ABTestEngine {
         const shippingErrors = validateShippingVariants(testConfig.variants);
         if (shippingErrors.length > 0) {
           errors.push(...shippingErrors);
+        }
+      }
+
+      if (testType === 'checkout' && testConfig.variants.length > 1) {
+        const checkoutPhase = normalizeCheckoutPhase(testConfig.goal?.checkout_phase);
+        let hasActionableVariant = false;
+        testConfig.variants.forEach((variant, index) => {
+          const cfg = variant?.config && typeof variant.config === 'object' ? variant.config : {};
+          const isControl = isLikelyControlVariant(variant, index);
+          if (checkoutPhase === 'experience') {
+            const hasExperienceContent = Boolean(
+              String(
+                cfg.checkout_message ||
+                  cfg.checkout_title ||
+                  cfg.checkout_badge_text ||
+                  cfg.checkout_cta_label ||
+                  ''
+              ).trim() ||
+              (Array.isArray(cfg.checkout_feature_bullets) &&
+                cfg.checkout_feature_bullets.some(item => String(item || '').trim()))
+            );
+            if (!isControl && hasExperienceContent) {
+              hasActionableVariant = true;
+            }
+            return;
+          }
+
+          const isPaymentPhase = checkoutPhase === 'payment_method';
+          const targetField = isPaymentPhase ? 'payment_method_names' : 'delivery_method_names';
+          const actionField = isPaymentPhase ? 'payment_action' : 'delivery_action';
+          const renameField = isPaymentPhase ? 'payment_rename_to' : 'delivery_rename_to';
+          const targetNames = toCheckoutTargetList(cfg[targetField]);
+          const action = String(cfg[actionField] || 'hide')
+            .trim()
+            .toLowerCase();
+          const renameTo = String(cfg[renameField] || '').trim();
+
+          if (!['hide', 'rename', 'reorder'].includes(action)) {
+            errors.push(
+              `Variant ${index + 1}: ${actionField} must be one of hide, rename, reorder`
+            );
+          }
+          if (!isControl && targetNames.length === 0) {
+            errors.push(
+              `Variant ${index + 1}: add at least one ${isPaymentPhase ? 'payment' : 'delivery'} method target`
+            );
+          }
+          if (!isControl && action === 'rename' && !renameTo) {
+            errors.push(
+              `Variant ${index + 1}: ${renameField} is required when ${actionField} is rename`
+            );
+          }
+          if (!isControl && targetNames.length > 0) {
+            hasActionableVariant = true;
+          }
+        });
+
+        if (!hasActionableVariant) {
+          errors.push(
+            checkoutPhase === 'payment_method'
+              ? 'Payment-method checkout tests require at least one non-control variant with target payment methods'
+              : checkoutPhase === 'delivery_method'
+                ? 'Delivery-method checkout tests require at least one non-control variant with target delivery methods'
+                : 'Checkout experience tests require at least one non-control variant with checkout content'
+          );
         }
       }
     }

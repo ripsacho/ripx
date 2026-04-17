@@ -201,12 +201,35 @@ export const TEST_TEMPLATES = {
     name: 'Checkout Test',
     icon: '🛒',
     description:
-      'Test checkout experience (e.g. trust badges, copy). RipX assigns the variant for analytics; change checkout content with a Checkout UI Extension that reads the variant.',
+      'Test checkout experience blocks first, then expand into payment-method or delivery-method experiments. RipX assigns the variant for analytics and can render checkout content through the Checkout UI Extension.',
     defaultConfig: {
       type: 'checkout',
+      goal: {
+        checkout_phase: 'experience',
+      },
       variants: [
-        { name: 'Control', allocation: 50, config: {} },
-        { name: 'Variant A', allocation: 50, config: {} },
+        {
+          name: 'Control',
+          allocation: 50,
+          config: {
+            checkout_layout: 'banner',
+            checkout_tone: 'info',
+            checkout_cta_kind: 'track',
+          },
+        },
+        {
+          name: 'Variant A',
+          allocation: 50,
+          config: {
+            checkout_title: 'Checkout with confidence',
+            checkout_message: 'Show reassurance, urgency, or offer messaging directly in checkout.',
+            checkout_cta_label: 'Continue securely',
+            checkout_badge_text: 'RipX test',
+            checkout_layout: 'banner',
+            checkout_tone: 'success',
+            checkout_cta_kind: 'track',
+          },
+        },
       ],
     },
   },

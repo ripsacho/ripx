@@ -1,5 +1,10 @@
 const conflictDetectionService = require('./conflictDetectionService');
+const { getShopSession } = require('../models/shopSession');
 const { getTestsByShop } = require('../models/test');
+const {
+  buildTestCheckoutReadiness,
+  supportsCheckoutReadiness,
+} = require('./checkoutReadinessService');
 
 const MAX_CANARY_DAYS = 30;
 const DEFAULT_CANARY_DAYS = 7;
@@ -779,6 +784,49 @@ async function runActivationPreflight(test, shopDomain) {
           : `Visual QA check is stale (${qaAgeDays} day(s) ago). Re-run visual QA before launch.`,
       });
     }
+  }
+
+  if (supportsCheckoutReadiness(test)) {
+    const fallbackSession = shopDomain ? await getShopSession(shopDomain).catch(() => null) : null;
+    const accessToken = fallbackSession?.access_token || '';
+    const readiness = await buildTestCheckoutReadiness({
+      test,
+      shopDomain,
+      accessToken,
+    }).catch(error => ({
+      summary: { status: 'blocked' },
+      checks: [
+        {
+          id: 'checkout_readiness_lookup_failed',
+          ok: false,
+          severity: 'error',
+          message: String(error?.message || 'Checkout readiness could not be resolved.'),
+        },
+      ],
+    }));
+    const failedReadinessChecks = Array.isArray(readiness?.checks)
+      ? readiness.checks.filter(item => item?.ok === false)
+      : [];
+    addCheck(preflight, {
+      id: 'checkout_launch_readiness',
+      ok: failedReadinessChecks.length === 0,
+      severity: failedReadinessChecks.some(item => item?.severity === 'error')
+        ? 'error'
+        : 'warning',
+      message:
+        readiness?.summary?.headline ||
+        (failedReadinessChecks.length === 0
+          ? 'Checkout launch readiness checks passed.'
+          : 'Checkout launch readiness needs attention.'),
+      meta: {
+        status: readiness?.summary?.status || 'unknown',
+        failed_checks: failedReadinessChecks.map(item => ({
+          id: item.id,
+          severity: item.severity,
+          message: item.message,
+        })),
+      },
+    });
   }
 
   const experimentGroup = getExperimentGroupKey(test);

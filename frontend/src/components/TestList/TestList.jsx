@@ -48,7 +48,7 @@ import {
   useAppRoutes,
 } from '../../hooks';
 import { TEST_STATUS_OPTIONS, PERSONALIZATION_MODES } from '../../constants';
-import { getTestTypeDisplay, getVariantCount } from '../../utils/testType';
+import { getCheckoutPhaseDisplay, getTestTypeDisplay, getVariantCount } from '../../utils/testType';
 import {
   consumeFirstStartUltraCelebrationFlag,
   getCelebrationAnimationPreference,
@@ -527,8 +527,11 @@ function TestList() {
       filtered = filtered.filter(test => {
         const nameMatch = test.name?.toLowerCase().includes(query);
         const typeDisplay = getTestTypeDisplay(test).label;
+        const checkoutPhaseDisplay = getCheckoutPhaseDisplay(test);
         const typeMatch =
-          test.type?.toLowerCase().includes(query) || typeDisplay?.toLowerCase().includes(query);
+          test.type?.toLowerCase().includes(query) ||
+          typeDisplay?.toLowerCase().includes(query) ||
+          checkoutPhaseDisplay?.toLowerCase().includes(query);
         const descriptionMatch = test.description?.toLowerCase().includes(query);
         const statusMatch = test.status?.toLowerCase().includes(query);
 
@@ -649,6 +652,7 @@ function TestList() {
     const totalRevenue = test.variants?.reduce((sum, v) => sum + (v.revenue || 0), 0) || 0;
     const conversionRate = totalVisitors > 0 ? (totalConversions / totalVisitors) * 100 : 0;
     const variantCount = getVariantCount(test);
+    const checkoutPhaseDisplay = getCheckoutPhaseDisplay(test);
     const preflightStatus =
       test.status === 'running'
         ? { state: 'running', summary: null }
@@ -693,10 +697,13 @@ function TestList() {
                     {test.name || 'Unnamed'}
                   </Text>
                 </span>
-                <Text variant="bodySm" color="subdued" as="p" className={styles.testListCardMeta}>
-                  {getTestTypeDisplay(test).label} • {variantCount} variant
-                  {variantCount !== 1 ? 's' : ''} • Created {createdDate}
-                </Text>
+                <div className={styles.testListCardMetaRow}>
+                  <Text variant="bodySm" color="subdued" as="p" className={styles.testListCardMeta}>
+                    {getTestTypeDisplay(test).label} • {variantCount} variant
+                    {variantCount !== 1 ? 's' : ''} • Created {createdDate}
+                  </Text>
+                  {checkoutPhaseDisplay ? <Badge tone="info">{checkoutPhaseDisplay}</Badge> : null}
+                </div>
               </div>
             </div>
             <div className={styles.testListCardBadges}>

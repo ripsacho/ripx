@@ -1,0 +1,21 @@
+query RunInput {
+  cart {
+    lines {
+      ripxTest: attribute(key: "_ripx_price_test") {
+        value
+      }
+      ripxVariant: attribute(key: "_ripx_variant") {
+        value
+      }
+    }
+  }
+  paymentMethods {
+    id
+    name
+  }
+  paymentCustomization {
+    metafield(namespace: "payment-customization", key: "function-configuration") {
+      jsonValue
+    }
+  }
+}

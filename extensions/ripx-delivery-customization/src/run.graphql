@@ -1,0 +1,23 @@
+query RunInput {
+  cart {
+    deliveryGroups {
+      cartLines {
+        ripxTest: attribute(key: "_ripx_price_test") {
+          value
+        }
+        ripxVariant: attribute(key: "_ripx_variant") {
+          value
+        }
+      }
+      deliveryOptions {
+        handle
+        title
+      }
+    }
+  }
+  deliveryCustomization {
+    metafield(namespace: "delivery-customization", key: "function-configuration") {
+      jsonValue
+    }
+  }
+}

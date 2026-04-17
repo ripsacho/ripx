@@ -275,6 +275,47 @@ function isActionableOfferConfig(config = {}) {
   return Number.isFinite(value) && value > 0;
 }
 
+function normalizeCheckoutTone(rawValue) {
+  const value = String(rawValue || 'success')
+    .trim()
+    .toLowerCase();
+  return ['success', 'info', 'warning', 'critical'].includes(value) ? value : 'success';
+}
+
+function normalizeCheckoutLayout(rawValue) {
+  const value = String(rawValue || 'banner')
+    .trim()
+    .toLowerCase();
+  return ['banner', 'stacked', 'compact'].includes(value) ? value : 'banner';
+}
+
+function parseCheckoutFeatureBullets(rawValue) {
+  if (Array.isArray(rawValue)) {
+    return rawValue.map(item => String(item || '').trim()).filter(Boolean);
+  }
+  return String(rawValue || '')
+    .split(/\n|,/)
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+function inferCheckoutPhaseFromConfig(config = {}) {
+  if (parseCheckoutFeatureBullets(config.payment_method_names).length > 0) {
+    return 'payment_method';
+  }
+  if (parseCheckoutFeatureBullets(config.delivery_method_names).length > 0) {
+    return 'delivery_method';
+  }
+  return 'experience';
+}
+
+const CHECKOUT_EVENT_NAMES = {
+  impression: 'checkout_phase_impression',
+  ctaClick: 'checkout_phase_cta_click',
+  offerApplied: 'checkout_phase_offer_apply',
+  conversion: 'checkout_phase_conversion',
+};
+
 function CheckoutExperiment() {
   const attributes = useAttributes() || [];
   const cartLines = useCartLines() || [];
@@ -425,8 +466,13 @@ function CheckoutExperiment() {
       return;
     }
     setImpressionTracked(true);
-    void trackConversion('checkout_extension_impression', {
+    const phase =
+      assignment?.config && typeof assignment.config === 'object'
+        ? inferCheckoutPhaseFromConfig(assignment.config)
+        : 'experience';
+    void trackConversion(CHECKOUT_EVENT_NAMES.impression, {
       variant_id: assignment?.variant_id || null,
+      checkout_phase: phase,
     });
   }, [assignment, impressionTracked, trackConversion]);
 
@@ -451,6 +497,15 @@ function CheckoutExperiment() {
     (hasOfferConfig ? `Offer variant: ${variantName}` : `RipX Variant: ${variantName}`);
   const message = String(cfg.checkout_message || cfg.message || '').trim();
   const cta = String(cfg.checkout_cta_label || cfg.cta_label || 'Track conversion').trim();
+  const badgeText = String(cfg.checkout_badge_text || '').trim();
+  const disclaimer = String(cfg.checkout_disclaimer || '').trim();
+  const layout = normalizeCheckoutLayout(cfg.checkout_layout || cfg.layout);
+  const tone = normalizeCheckoutTone(cfg.checkout_tone || cfg.tone);
+  const checkoutPhase = inferCheckoutPhaseFromConfig(cfg);
+  const ctaKind = String(cfg.checkout_cta_kind || 'track')
+    .trim()
+    .toLowerCase();
+  const featureBullets = parseCheckoutFeatureBullets(cfg.checkout_feature_bullets);
   const activeDiscountCodes = useMemo(() => {
     const rows = Array.isArray(discountCodes)
       ? discountCodes
@@ -525,9 +580,10 @@ function CheckoutExperiment() {
           );
           return;
         }
-        void trackConversion('checkout_extension_discount_code_applied', {
+        void trackConversion(CHECKOUT_EVENT_NAMES.offerApplied, {
           variant_id: assignment?.variant_id || null,
           discount_code: discountCodeName,
+          checkout_phase: checkoutPhase,
         });
       } catch (e) {
         setDiscountCodeApplyError(
@@ -595,50 +651,73 @@ function CheckoutExperiment() {
       )
     );
   }
+  const commonChildren = [
+    badgeText ? h('s-text', null, badgeText) : null,
+    message ? h('s-text', null, message) : null,
+    ...featureBullets.map((item, index) => h('s-text', { key: `bullet-${index}` }, `• ${item}`)),
+    disclaimer ? h('s-text', null, disclaimer) : null,
+    hasOfferConfig
+      ? h(
+          's-text',
+          null,
+          hasDiscountCodeApplied
+            ? `Discount code applied: ${discountCodeName}`
+            : `Discount code: ${discountCodeName}`
+        )
+      : null,
+    hasOfferConfig ? h('s-text', null, offerCodeStatusLabel) : null,
+    hasOfferConfig ? h('s-text', null, offerCodeStatusLegend) : null,
+    hasOfferConfig && !hasDiscountCodeApplied && ctaKind !== 'none'
+      ? h(
+          's-button',
+          {
+            variant: 'secondary',
+            loading: applyingDiscountCode,
+            onClick: () => void applyOfferDiscountCode(true),
+          },
+          ctaKind === 'offer_code' ? cta || 'Apply discount code' : 'Apply discount code'
+        )
+      : null,
+    discountCodeApplyError ? h('s-text', null, discountCodeApplyError) : null,
+    h('s-text', null, `Test ID: ${testId}`),
+    ctaKind !== 'none' && (!hasOfferConfig || ctaKind === 'track')
+      ? h(
+          's-button',
+          {
+            variant: 'secondary',
+            loading: sendingConversion,
+            onClick: () =>
+              void trackConversion(CHECKOUT_EVENT_NAMES.ctaClick, {
+                variant_id: assignment?.variant_id || null,
+                checkout_phase: checkoutPhase,
+              }),
+          },
+          cta
+        )
+      : null,
+  ].filter(Boolean);
+
+  if (layout === 'compact') {
+    return h(
+      's-stack',
+      { direction: 'block', gap: 'tight' },
+      h('s-text', null, title),
+      ...commonChildren
+    );
+  }
+
+  if (layout === 'stacked') {
+    return h(
+      's-stack',
+      { direction: 'block', gap: 'tight' },
+      h('s-banner', { heading: title, tone }, ...commonChildren)
+    );
+  }
+
   return h(
     's-stack',
     { direction: 'block', gap: 'tight' },
-    h(
-      's-banner',
-      { heading: title, tone: 'success' },
-      message ? h('s-text', null, message) : null,
-      hasOfferConfig
-        ? h(
-            's-text',
-            null,
-            hasDiscountCodeApplied
-              ? `Discount code applied: ${discountCodeName}`
-              : `Discount code: ${discountCodeName}`
-          )
-        : null,
-      hasOfferConfig ? h('s-text', null, offerCodeStatusLabel) : null,
-      hasOfferConfig ? h('s-text', null, offerCodeStatusLegend) : null,
-      hasOfferConfig && !hasDiscountCodeApplied
-        ? h(
-            's-button',
-            {
-              variant: 'secondary',
-              loading: applyingDiscountCode,
-              onClick: () => void applyOfferDiscountCode(true),
-            },
-            'Apply discount code'
-          )
-        : null,
-      discountCodeApplyError ? h('s-text', null, discountCodeApplyError) : null,
-      h('s-text', null, `Test ID: ${testId}`),
-      h(
-        's-button',
-        {
-          variant: 'secondary',
-          loading: sendingConversion,
-          onClick: () =>
-            void trackConversion('checkout_extension_cta_click', {
-              variant_id: assignment?.variant_id || null,
-            }),
-        },
-        cta
-      )
-    )
+    h('s-banner', { heading: title, tone }, ...commonChildren)
   );
 }
 

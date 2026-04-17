@@ -277,6 +277,94 @@ export function getWizardStepErrors(stepId, options) {
     };
   }
 
+  function normalizeCheckoutPhase(rawValue) {
+    const value = String(rawValue || 'experience')
+      .trim()
+      .toLowerCase();
+    return ['experience', 'payment_method', 'delivery_method'].includes(value)
+      ? value
+      : 'experience';
+  }
+
+  function normalizeCheckoutList(rawValue) {
+    if (Array.isArray(rawValue)) {
+      return rawValue.map(item => String(item || '').trim()).filter(Boolean);
+    }
+    return String(rawValue || '')
+      .split(/\n|,/)
+      .map(item => item.trim())
+      .filter(Boolean);
+  }
+
+  function hasActionableCheckoutConfig(cfg = {}, phase = 'experience') {
+    const config = cfg && typeof cfg === 'object' ? cfg : {};
+    if (phase === 'payment_method') {
+      return normalizeCheckoutList(config.payment_method_names).length > 0;
+    }
+    if (phase === 'delivery_method') {
+      return normalizeCheckoutList(config.delivery_method_names).length > 0;
+    }
+    return Boolean(
+      String(
+        config.checkout_title ||
+          config.checkout_message ||
+          config.checkout_badge_text ||
+          config.checkout_disclaimer ||
+          ''
+      ).trim() || normalizeCheckoutList(config.checkout_feature_bullets).length > 0
+    );
+  }
+
+  function validateCheckoutConfig(cfg = {}, label, phase, isControl) {
+    const config = cfg && typeof cfg === 'object' ? cfg : {};
+    const ctaKind = String(config.checkout_cta_kind || 'track')
+      .trim()
+      .toLowerCase();
+    const validCtaKinds = ['track', 'offer_code', 'none'];
+    if (!validCtaKinds.includes(ctaKind)) {
+      errors.push(`${label}: CTA behavior must be track, offer_code, or none.`);
+    }
+    if (phase === 'experience') {
+      const title = String(config.checkout_title || '').trim();
+      const message = String(config.checkout_message || '').trim();
+      const bullets = normalizeCheckoutList(config.checkout_feature_bullets);
+      const layout = String(config.checkout_layout || 'banner')
+        .trim()
+        .toLowerCase();
+      const tone = String(config.checkout_tone || 'success')
+        .trim()
+        .toLowerCase();
+      if (!['banner', 'stacked', 'compact'].includes(layout)) {
+        errors.push(`${label}: layout must be banner, stacked, or compact.`);
+      }
+      if (!['success', 'info', 'warning', 'critical'].includes(tone)) {
+        errors.push(`${label}: tone must be success, info, warning, or critical.`);
+      }
+      if (!isControl && !title && !message && bullets.length === 0) {
+        errors.push(
+          `${label}: add a title, message, or feature bullets for this checkout experience variant.`
+        );
+      }
+      if (ctaKind !== 'none' && !String(config.checkout_cta_label || '').trim() && !isControl) {
+        errors.push(`${label}: CTA label is required when CTA behavior is enabled.`);
+      }
+      return;
+    }
+    if (phase === 'payment_method') {
+      const methods = normalizeCheckoutList(config.payment_method_names);
+      if (!isControl && methods.length === 0) {
+        errors.push(`${label}: add at least one payment method name to target.`);
+      }
+      return;
+    }
+    if (phase === 'delivery_method') {
+      const methods = normalizeCheckoutList(config.delivery_method_names);
+      if (!isControl && methods.length === 0) {
+        errors.push(`${label}: add at least one delivery method name to target.`);
+      }
+    }
+  }
+
   // Step 1 (template step) – only when showTemplateStep
   if (showTemplateStep && stepId === 1) {
     const nameToCheck = formData.name?.trim() || initialData?.name?.trim();
@@ -443,6 +531,7 @@ export function getWizardStepErrors(stepId, options) {
       templateKeyCode === 'pricing' ||
       (typeof templateKeyCode === 'string' && templateKeyCode.toLowerCase() === 'price');
     const isOfferTest = selectedTemplate === 'offer' || formData.type === 'offer';
+    const isCheckoutTest = selectedTemplate === 'checkout' || formData.type === 'checkout';
     const isShippingTest = selectedTemplate === 'shipping' || formData.type === 'shipping';
     const isCommerceScopeTest = isPriceTest || isOfferTest || isShippingTest;
     if (isCommerceScopeTest && formData.target_type === 'product') {
@@ -571,6 +660,24 @@ export function getWizardStepErrors(stepId, options) {
       if (formData.variants.length > 1 && !hasNonControlActionableShippingVariant) {
         errors.push(
           'At least one shipping variant (non-control) must include an actionable shipping strategy.'
+        );
+      }
+    }
+
+    if (isCheckoutTest && Array.isArray(formData.variants)) {
+      const checkoutPhase = normalizeCheckoutPhase(formData.goal?.checkout_phase);
+      let hasNonControlCheckoutVariant = false;
+      formData.variants.forEach((v, i) => {
+        const cfg = v?.config || {};
+        const isControl = isLikelyControlVariant(v, i);
+        validateCheckoutConfig(cfg, v?.name || `Variant ${i + 1}`, checkoutPhase, isControl);
+        if (!isControl && hasActionableCheckoutConfig(cfg, checkoutPhase)) {
+          hasNonControlCheckoutVariant = true;
+        }
+      });
+      if (formData.variants.length > 1 && !hasNonControlCheckoutVariant) {
+        errors.push(
+          `At least one checkout variant (non-control) must include actionable ${checkoutPhase.replace(/_/g, ' ')} configuration.`
         );
       }
     }
@@ -812,6 +919,27 @@ export function getWizardStepErrors(stepId, options) {
       if (formData.variants.length > 1 && !hasNonControlActionableShippingVariant) {
         errors.push(
           'At least one shipping variant (non-control) must include an actionable shipping strategy.'
+        );
+      }
+    }
+
+    const isCheckoutReview = (formData.type || '').toLowerCase() === 'checkout';
+    if (isCheckoutReview && Array.isArray(formData.variants)) {
+      const checkoutPhase = normalizeCheckoutPhase(
+        formData.goal?.checkout_phase || initialData?.goal?.checkout_phase
+      );
+      let hasNonControlActionableCheckoutVariant = false;
+      formData.variants.forEach((v, i) => {
+        const cfg = v?.config || {};
+        const isControl = isLikelyControlVariant(v, i);
+        validateCheckoutConfig(cfg, v?.name || `Variant ${i + 1}`, checkoutPhase, isControl);
+        if (!isControl && hasActionableCheckoutConfig(cfg, checkoutPhase)) {
+          hasNonControlActionableCheckoutVariant = true;
+        }
+      });
+      if (formData.variants.length > 1 && !hasNonControlActionableCheckoutVariant) {
+        errors.push(
+          `At least one checkout variant (non-control) must include actionable ${checkoutPhase.replace(/_/g, ' ')} configuration.`
         );
       }
     }

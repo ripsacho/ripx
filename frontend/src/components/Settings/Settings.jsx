@@ -161,6 +161,20 @@ function formatRelativeTime(iso) {
   return d.toLocaleDateString();
 }
 
+function normalizeCheckoutPhaseValue(rawValue) {
+  const value = String(rawValue || 'experience')
+    .trim()
+    .toLowerCase();
+  return ['experience', 'payment_method', 'delivery_method'].includes(value) ? value : 'experience';
+}
+
+function getCheckoutPhaseDisplayLabel(rawValue) {
+  const phase = normalizeCheckoutPhaseValue(rawValue);
+  if (phase === 'payment_method') return 'Payment methods';
+  if (phase === 'delivery_method') return 'Delivery methods';
+  return 'Experience block';
+}
+
 function getCheckoutDiagCacheKey(domain) {
   const normalized = String(domain || '')
     .trim()
@@ -393,6 +407,9 @@ function Settings() {
   const [checkoutDiag, setCheckoutDiag] = useState(null);
   const [checkoutDiagError, setCheckoutDiagError] = useState(null);
   const [checkoutDiagLastCheckedAt, setCheckoutDiagLastCheckedAt] = useState(null);
+  const [_checkoutExperienceDiagLoading, setCheckoutExperienceDiagLoading] = useState(false);
+  const [checkoutExperienceDiag, setCheckoutExperienceDiag] = useState(null);
+  const [checkoutExperienceDiagError, setCheckoutExperienceDiagError] = useState(null);
   const [checkoutDiscountEnsuring, setCheckoutDiscountEnsuring] = useState(false);
   const [checkoutDiscountEnsureResult, setCheckoutDiscountEnsureResult] = useState(null);
   const [checkoutDiscountEnsureError, setCheckoutDiscountEnsureError] = useState(null);
@@ -404,6 +421,10 @@ function Settings() {
   const [checkoutCartTransformEnsureResult, setCheckoutCartTransformEnsureResult] = useState(null);
   const [checkoutCartTransformEnsureError, setCheckoutCartTransformEnsureError] = useState(null);
   const [checkoutFullVerifyRunning, setCheckoutFullVerifyRunning] = useState(false);
+  const [checkoutCustomizationTests, setCheckoutCustomizationTests] = useState([]);
+  const [checkoutCustomizationTestsLoading, setCheckoutCustomizationTestsLoading] = useState(false);
+  const [checkoutCustomizationTestsError, setCheckoutCustomizationTestsError] = useState(null);
+  const [checkoutCustomizationAction, setCheckoutCustomizationAction] = useState(null);
   const [layoutDensity, setLayoutDensity] = useState(() => {
     if (typeof window === 'undefined') return 'compact';
     try {
@@ -631,6 +652,52 @@ function Settings() {
       setShopifyFnInventoryLoading(false);
     }
   }, [installation?.domain]);
+
+  const runCheckoutExperienceDiagnostics = useCallback(async () => {
+    if (!installation?.domain) return;
+    setCheckoutExperienceDiagLoading(true);
+    setCheckoutExperienceDiagError(null);
+    try {
+      const res = await apiGet('/settings/checkout-experience-diagnostics', {
+        domain: installation.domain,
+      });
+      const data = unwrapData(res);
+      if (!data || data.success === false) {
+        throw new Error(data?.error || 'Invalid checkout experience diagnostics response');
+      }
+      setCheckoutExperienceDiag(data);
+    } catch (e) {
+      setCheckoutExperienceDiagError(
+        e?.message || 'Could not load checkout experience diagnostics'
+      );
+      setCheckoutExperienceDiag(null);
+    } finally {
+      setCheckoutExperienceDiagLoading(false);
+    }
+  }, [installation?.domain]);
+
+  const fetchCheckoutCustomizationTests = useCallback(async () => {
+    if (!isAppSettings) return;
+    setCheckoutCustomizationTestsLoading(true);
+    setCheckoutCustomizationTestsError(null);
+    try {
+      const listRes = await apiGet('/tests');
+      const listData = unwrapData(listRes);
+      const tests = Array.isArray(listData?.tests)
+        ? listData.tests
+        : Array.isArray(listData)
+          ? listData
+          : [];
+      setCheckoutCustomizationTests(tests);
+    } catch (e) {
+      setCheckoutCustomizationTests([]);
+      setCheckoutCustomizationTestsError(
+        e?.message || 'Could not load checkout customization tests'
+      );
+    } finally {
+      setCheckoutCustomizationTestsLoading(false);
+    }
+  }, [isAppSettings]);
 
   const runCheckoutDiagnostics = useCallback(
     async (options = {}) => {
@@ -998,6 +1065,16 @@ function Settings() {
     checkoutDiagLoading,
     runCheckoutDiagnostics,
   ]);
+
+  useEffect(() => {
+    if (!isAppSettings || !installation?.domain) return;
+    runCheckoutExperienceDiagnostics();
+  }, [isAppSettings, installation?.domain, runCheckoutExperienceDiagnostics]);
+
+  useEffect(() => {
+    if (!isAppSettings) return;
+    fetchCheckoutCustomizationTests();
+  }, [fetchCheckoutCustomizationTests, isAppSettings]);
 
   const handleCopy = useCallback(async (text, successMsg = 'Copied') => {
     if (!text) return;
@@ -1581,6 +1658,196 @@ function Settings() {
       },
     ];
   }, [checkoutDiag, installation?.scriptVerified]);
+  const checkoutExperienceReadiness = useMemo(() => {
+    const summary = checkoutExperienceDiag?.summary || null;
+    const checks = Array.isArray(checkoutExperienceDiag?.checklist)
+      ? checkoutExperienceDiag.checklist
+      : [];
+    const blockers = checks.filter(
+      item => item?.ok === false && String(item?.severity || '').toLowerCase() === 'error'
+    ).length;
+    const warnings = checks.filter(
+      item => item?.ok === false && String(item?.severity || '').toLowerCase() !== 'error'
+    ).length;
+    const supportLevel = String(
+      checkoutExperienceDiag?.support?.checkout_ui_extension?.level || ''
+    ).toLowerCase();
+    return [
+      {
+        id: 'checkout_experience',
+        title: 'Checkout experience',
+        tone:
+          summary?.overall_ok || supportLevel === 'ready'
+            ? 'success'
+            : blockers > 0
+              ? 'critical'
+              : 'warning',
+        status:
+          summary?.overall_ok || supportLevel === 'ready'
+            ? 'Ready'
+            : blockers > 0
+              ? 'Blocked'
+              : 'Needs sync',
+        summary:
+          checkoutExperienceDiag?.support?.checkout_ui_extension?.summary ||
+          'Verify the checkout UI extension config before launching content-based checkout tests.',
+        nextAction:
+          blockers > 0
+            ? 'Set app URLs/secrets and redeploy the checkout UI extension before launch.'
+            : warnings > 0
+              ? 'Run the checkout UI config sync command and rebuild the extension so Settings, Wizard, and Test Detail agree.'
+              : 'Use Checkout Tests to launch trust, reassurance, and offer-message experiments at checkout.',
+      },
+      {
+        id: 'payment_methods',
+        title: 'Payment methods',
+        tone: shopifyFnInventory?.readiness?.payment_customization_for_checkout
+          ? 'success'
+          : 'warning',
+        status: shopifyFnInventory?.readiness?.payment_customization_for_checkout
+          ? 'Ready'
+          : 'Needs deploy',
+        summary: shopifyFnInventory?.readiness?.payment_customization_for_checkout
+          ? 'Payment customization capability is visible in Shopify function inventory.'
+          : 'Payment-method experiments need the RipX payment customization function deployed on the shop.',
+        nextAction: shopifyFnInventory?.readiness?.payment_customization_for_checkout
+          ? 'Create checkout tests in the Payment methods phase to hide, rename, or reorder payment options.'
+          : 'Deploy the RipX payment customization extension, then reopen Settings to verify it is visible to Admin API.',
+      },
+      {
+        id: 'delivery_methods',
+        title: 'Delivery methods',
+        tone: shopifyFnInventory?.readiness?.delivery_customization_for_checkout
+          ? 'success'
+          : 'warning',
+        status: shopifyFnInventory?.readiness?.delivery_customization_for_checkout
+          ? 'Ready'
+          : 'Needs deploy',
+        summary: shopifyFnInventory?.readiness?.delivery_customization_for_checkout
+          ? 'Delivery customization capability is visible in Shopify function inventory.'
+          : 'Delivery-method experiments need the RipX delivery customization function deployed on the shop.',
+        nextAction: shopifyFnInventory?.readiness?.delivery_customization_for_checkout
+          ? 'Use delivery-method phases for hide/rename/reorder experiments; keep shipping price/rate tests on the shipping surface.'
+          : 'Deploy the RipX delivery customization extension before launching delivery-method experiments.',
+      },
+      {
+        id: 'offer_path',
+        title: 'Offer path',
+        tone:
+          checkoutDiag?.summary?.overall_ok &&
+          checkoutDiag?.infrastructure?.discount_function_available === true
+            ? 'success'
+            : 'warning',
+        status:
+          checkoutDiag?.summary?.overall_ok &&
+          checkoutDiag?.infrastructure?.discount_function_available === true
+            ? 'Ready'
+            : 'Needs setup',
+        summary:
+          checkoutDiag?.summary?.overall_ok &&
+          checkoutDiag?.infrastructure?.discount_function_available === true
+            ? 'Discount function configuration is aligned for offer and promo paths.'
+            : 'Offer tests still depend on the RipX discount function being attached and healthy.',
+        nextAction:
+          checkoutDiag?.summary?.overall_ok &&
+          checkoutDiag?.infrastructure?.discount_function_available === true
+            ? 'Launch offer campaigns with checkout discount-code or auto-apply flows.'
+            : 'Attach the RipX discount function, then rerun diagnostics before launching offer tests.',
+      },
+      {
+        id: 'shipping_path',
+        title: 'Shipping path',
+        tone: 'info',
+        status: 'Review in test',
+        summary:
+          'Shipping checkout paths now report adapter-specific readiness per test, because automatic, discount-only, and manual strategies can differ by variant.',
+        nextAction:
+          'Open a shipping test and use Checkout readiness to confirm whether each variant is automatic, discount-only, or manual before launch.',
+      },
+    ];
+  }, [checkoutDiag, checkoutExperienceDiag, shopifyFnInventory]);
+  const deployableCheckoutCustomizationTests = useMemo(() => {
+    return (Array.isArray(checkoutCustomizationTests) ? checkoutCustomizationTests : [])
+      .filter(
+        test =>
+          String(test?.type || '')
+            .trim()
+            .toLowerCase() === 'checkout'
+      )
+      .map(test => {
+        const phase = normalizeCheckoutPhaseValue(test?.goal?.checkout_phase);
+        if (phase !== 'payment_method' && phase !== 'delivery_method') {
+          return null;
+        }
+        const variants = Array.isArray(test?.variants) ? test.variants : [];
+        const actionableVariants = variants.filter((variant, index) => {
+          if (index === 0 || /^control\b/i.test(String(variant?.name || '').trim())) {
+            return false;
+          }
+          const cfg = variant?.config && typeof variant.config === 'object' ? variant.config : {};
+          const rawList =
+            phase === 'payment_method' ? cfg.payment_method_names : cfg.delivery_method_names;
+          const items = Array.isArray(rawList)
+            ? rawList.filter(Boolean)
+            : String(rawList || '')
+                .split(/\n|,/)
+                .map(item => item.trim())
+                .filter(Boolean);
+          return items.length > 0;
+        }).length;
+        return {
+          id: test?.id || null,
+          name: String(test?.name || 'Untitled checkout test').trim(),
+          status: String(test?.status || 'draft').trim() || 'draft',
+          phase,
+          phaseLabel: getCheckoutPhaseDisplayLabel(phase),
+          actionableVariants,
+          detailPath:
+            isAppSettings && installation?.domain
+              ? ROUTES.appTestDetail(installation.domain, test.id)
+              : ROUTES.TEST_DETAIL(test.id),
+        };
+      })
+      .filter(item => item?.id);
+  }, [checkoutCustomizationTests, installation?.domain, isAppSettings]);
+  const handleEnsureCheckoutCustomizationFromSettings = useCallback(
+    async (testId, apply) => {
+      if (!testId) return;
+      setCheckoutCustomizationAction({
+        testId,
+        mode: apply ? 'apply' : 'dry_run',
+      });
+      setCheckoutCustomizationTestsError(null);
+      try {
+        const response = await apiPost(`/tests/${testId}/checkout/customization/ensure`, {
+          apply: Boolean(apply),
+          dry_run: !apply,
+        });
+        const payload = unwrapData(response);
+        setMessage(
+          payload?.message ||
+            (apply
+              ? 'Checkout customization applied successfully'
+              : 'Checkout customization dry run completed')
+        );
+        if (apply) {
+          fetchCheckoutCustomizationTests();
+        }
+      } catch (err) {
+        setMessage(
+          `Failed to ensure checkout customization: ${
+            err?.response?.data?.details?.[0] ||
+            err?.response?.data?.error ||
+            err?.message ||
+            'Unknown error'
+          }`
+        );
+      } finally {
+        setCheckoutCustomizationAction(null);
+      }
+    },
+    [fetchCheckoutCustomizationTests]
+  );
   const selectedSettingsPresetKey = useMemo(() => {
     const match = Object.entries(SETTINGS_PRESETS).find(([, preset]) => {
       return (
@@ -2136,6 +2403,9 @@ function Settings() {
                     </Button>
                     <Button size="slim" onClick={() => runCheckoutDiagnostics()}>
                       Run checkout diagnostics
+                    </Button>
+                    <Button size="slim" onClick={() => runCheckoutExperienceDiagnostics()}>
+                      Sync checkout UI status
                     </Button>
                   </InlineStack>
                 </div>
@@ -3111,6 +3381,178 @@ function Settings() {
                                         )}
                                       </InlineStack>
                                     </div>
+                                    {(checkoutDiag || checkoutExperienceDiag || installation) && (
+                                      <div className={styles.checkoutReadinessSection}>
+                                        <div className={styles.checkoutReadinessHeader}>
+                                          <Text variant="headingSm" as="h3">
+                                            Checkout launch surfaces
+                                          </Text>
+                                          <Text as="p" variant="bodySm" tone="subdued">
+                                            Track the main launch paths separately so checkout
+                                            experience, offers, and shipping do not collapse into
+                                            one generic setup status.
+                                          </Text>
+                                        </div>
+                                        <div className={styles.checkoutReadinessList}>
+                                          {checkoutExperienceReadiness.map(item => (
+                                            <div
+                                              key={item.id}
+                                              className={styles.checkoutReadinessRow}
+                                            >
+                                              <div className={styles.checkoutReadinessRowMain}>
+                                                <div className={styles.checkoutReadinessCardHeader}>
+                                                  <Text
+                                                    as="span"
+                                                    variant="bodySm"
+                                                    fontWeight="semibold"
+                                                  >
+                                                    {item.title}
+                                                  </Text>
+                                                  <Badge tone={item.tone}>{item.status}</Badge>
+                                                </div>
+                                                <Text as="p" variant="bodySm">
+                                                  {item.summary}
+                                                </Text>
+                                              </div>
+                                              <div className={styles.checkoutReadinessRowText}>
+                                                <Text as="p" variant="bodySm" tone="subdued">
+                                                  {item.nextAction}
+                                                </Text>
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                        {checkoutExperienceDiagError && (
+                                          <Text as="p" variant="bodySm" tone="critical">
+                                            {checkoutExperienceDiagError}
+                                          </Text>
+                                        )}
+                                      </div>
+                                    )}
+                                    {isAppSettings && (
+                                      <div className={styles.checkoutReadinessSection}>
+                                        <div className={styles.checkoutReadinessHeader}>
+                                          <Text variant="headingSm" as="h3">
+                                            Checkout customization deployment
+                                          </Text>
+                                          <Text as="p" variant="bodySm" tone="subdued">
+                                            Deploy saved payment-method and delivery-method checkout
+                                            tests directly from Installation. Dry run previews the
+                                            Shopify customization action; apply creates or updates
+                                            the customization and writes the RipX config metafield.
+                                          </Text>
+                                        </div>
+                                        <InlineStack gap="200" wrap>
+                                          <Button
+                                            size="slim"
+                                            onClick={fetchCheckoutCustomizationTests}
+                                            loading={checkoutCustomizationTestsLoading}
+                                          >
+                                            Refresh checkout tests
+                                          </Button>
+                                        </InlineStack>
+                                        {checkoutCustomizationTestsError && (
+                                          <Text as="p" variant="bodySm" tone="critical">
+                                            {checkoutCustomizationTestsError}
+                                          </Text>
+                                        )}
+                                        {deployableCheckoutCustomizationTests.length > 0 ? (
+                                          <div className={styles.checkoutReadinessList}>
+                                            {deployableCheckoutCustomizationTests.map(item => {
+                                              const isRunning =
+                                                checkoutCustomizationAction?.testId === item.id;
+                                              return (
+                                                <div
+                                                  key={item.id}
+                                                  className={styles.checkoutReadinessRow}
+                                                >
+                                                  <div className={styles.checkoutReadinessRowMain}>
+                                                    <div
+                                                      className={styles.checkoutReadinessCardHeader}
+                                                    >
+                                                      <Text
+                                                        as="span"
+                                                        variant="bodySm"
+                                                        fontWeight="semibold"
+                                                      >
+                                                        {item.name}
+                                                      </Text>
+                                                      <Badge tone="info">{item.phaseLabel}</Badge>
+                                                    </div>
+                                                    <Text as="p" variant="bodySm">
+                                                      {item.actionableVariants > 0
+                                                        ? `${item.actionableVariants} treatment variant${item.actionableVariants === 1 ? '' : 's'} configured for ${item.phaseLabel.toLowerCase()}.`
+                                                        : `No actionable ${item.phaseLabel.toLowerCase()} variants are configured yet.`}
+                                                    </Text>
+                                                  </div>
+                                                  <div className={styles.checkoutReadinessRowText}>
+                                                    <Text as="p" variant="bodySm" tone="subdued">
+                                                      Status: {item.status}. Open the test to edit
+                                                      targeting or variant config before applying if
+                                                      needed.
+                                                    </Text>
+                                                    <div
+                                                      className={styles.checkoutReadinessRowActions}
+                                                    >
+                                                      <Button
+                                                        size="slim"
+                                                        onClick={() =>
+                                                          handleEnsureCheckoutCustomizationFromSettings(
+                                                            item.id,
+                                                            false
+                                                          )
+                                                        }
+                                                        disabled={Boolean(
+                                                          checkoutCustomizationAction
+                                                        )}
+                                                        loading={
+                                                          isRunning &&
+                                                          checkoutCustomizationAction?.mode ===
+                                                            'dry_run'
+                                                        }
+                                                      >
+                                                        Dry run
+                                                      </Button>
+                                                      <Button
+                                                        size="slim"
+                                                        variant="primary"
+                                                        onClick={() =>
+                                                          handleEnsureCheckoutCustomizationFromSettings(
+                                                            item.id,
+                                                            true
+                                                          )
+                                                        }
+                                                        disabled={Boolean(
+                                                          checkoutCustomizationAction
+                                                        )}
+                                                        loading={
+                                                          isRunning &&
+                                                          checkoutCustomizationAction?.mode ===
+                                                            'apply'
+                                                        }
+                                                      >
+                                                        Apply
+                                                      </Button>
+                                                      <Button size="slim" url={item.detailPath}>
+                                                        Open test
+                                                      </Button>
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        ) : (
+                                          !checkoutCustomizationTestsLoading && (
+                                            <Text as="p" variant="bodySm" tone="subdued">
+                                              No saved payment-method or delivery-method checkout
+                                              tests are available yet. Create one in Checkout Tests,
+                                              save it, then return here to deploy.
+                                            </Text>
+                                          )
+                                        )}
+                                      </div>
+                                    )}
                                     {(checkoutDiag || installation) && (
                                       <div className={styles.checkoutReadinessSection}>
                                         <div className={styles.checkoutReadinessHeader}>

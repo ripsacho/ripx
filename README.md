@@ -24,6 +24,10 @@ npm run build         # production frontend build
 # npm run shopify:checkout-ui:prepare && shopify app deploy
 # Direct price override cart transform (Shopify Plus / dev stores):
 # npm run shopify:cart-transform:prepare && shopify app deploy
+# Payment-method checkout function:
+# npm run shopify:payment-customization:prepare && shopify app deploy
+# Delivery-method checkout function:
+# npm run shopify:delivery-customization:prepare && shopify app deploy
 # Pricing method behavior:
 # - Price tests are now Direct Price Override only (matrix editor in Test Wizard).
 # - Offer tests use the checkout discount function path.
@@ -41,8 +45,12 @@ Use this before enabling auto-applied shipping tests on a real shop:
 4. For `carrier_quote`, prefer `delivery_customization` on Plus shops when the delivery customization function is deployed; RipX now auto-selects this path in `auto` mode when available.
 5. Configure a quote provider for any `carrier_quote` variant that should auto-provision via CarrierService. RipX currently supports `static_rate` and `country_table` fallback providers in the shipping wizard.
 6. Run `npm run verify:shipping-readiness`, then use `Shipping diagnostics` from the test review or detail screen before apply.
-7. Run a dry run from the test review or test detail screen before apply, then verify the execution report shows each actionable variant as `ready`.
-8. After apply, place a live checkout QA pass on the target shop and confirm the expected shipping title/rate behavior for both control and treatment assignments.
+7. Treat the diagnostics split as the source of truth:
+   - `automatic`: Carrier Service or Delivery Customization can fully provision the variant.
+   - `discount-only`: the checkout discount function can change rates/titles, but no resource provisioning is needed.
+   - `manual`: the variant still needs merchant setup, a missing adapter, or a missing callback/resolve URL.
+8. Run a dry run from the test review or test detail screen before apply, then verify the execution report shows each actionable variant as `ready` and the execution split matches your rollout expectations.
+9. After apply, place a live checkout QA pass on the target shop and confirm the expected shipping title/rate behavior for both control and treatment assignments.
 
 Current limitation: live external quote-source automation for `carrier_quote` still requires the quote provider logic behind the Shopify function/carrier callback to be wired for the target store.
 
@@ -155,6 +163,7 @@ pm2 restart ripx --update-env
 npm run shopify:checkout-ui:prepare
 npm run shopify:cart-transform:prepare
 npm run shopify:checkout-discount:prepare
+npm run shopify:payment-customization:prepare
 shopify app deploy
 ```
 

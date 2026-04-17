@@ -18,7 +18,7 @@ import { setupDataTableButtonStyling } from '../../utils/dataTableStyles';
 import Toast from '../Toast/Toast';
 import LoadingSkeleton from '../LoadingSkeleton/LoadingSkeleton';
 import { MetricCard } from '../Shared';
-import { getTestTypeDisplay, getVariantCount } from '../../utils/testType';
+import { getCheckoutPhaseDisplay, getTestTypeDisplay, getVariantCount } from '../../utils/testType';
 import pageShell from '../Shared/PageShell.module.css';
 import styles from './Dashboard.module.css';
 import {
@@ -375,7 +375,7 @@ function Dashboard() {
     const testItems = (tests || []).slice(0, 5).map(t => ({
       id: `test-${t.id}`,
       label: t.name,
-      sublabel: `${getTestTypeDisplay(t).label} • ${t.status}`,
+      sublabel: `${getTestTypeDisplay(t).label}${getCheckoutPhaseDisplay(t) ? ` • ${getCheckoutPhaseDisplay(t)}` : ''} • ${t.status}`,
       onSelect: () => {
         setCommandPaletteOpen(false);
         navigate(routes.testDetail(t.id));
@@ -433,6 +433,7 @@ function Dashboard() {
     const totalRevenue = test.variants?.reduce((sum, v) => sum + (v.revenue || 0), 0) || 0;
     const conversionRate = totalVisitors > 0 ? (totalConversions / totalVisitors) * 100 : 0;
     const variantCount = getVariantCount(test);
+    const checkoutPhaseDisplay = getCheckoutPhaseDisplay(test);
 
     return (
       <div
@@ -448,11 +449,14 @@ function Dashboard() {
             <Text variant="bodyMd" fontWeight="semibold" as="span" className="test-card-name">
               {test.name}
             </Text>
-            <Text variant="bodySm" color="subdued" as="p" className="test-card-meta">
-              {getTestTypeDisplay(test).label} • {variantCount} variant
-              {variantCount !== 1 ? 's' : ''} • Created{' '}
-              {test.created_at ? new Date(test.created_at).toLocaleDateString() : '—'}
-            </Text>
+            <div className={styles.testCardMetaRow}>
+              <Text variant="bodySm" color="subdued" as="p" className="test-card-meta">
+                {getTestTypeDisplay(test).label} • {variantCount} variant
+                {variantCount !== 1 ? 's' : ''} • Created{' '}
+                {test.created_at ? new Date(test.created_at).toLocaleDateString() : '—'}
+              </Text>
+              {checkoutPhaseDisplay ? <Badge tone="info">{checkoutPhaseDisplay}</Badge> : null}
+            </div>
           </div>
           <div className="test-card-badges">
             {getStatusBadge(test.status)}
@@ -1059,25 +1063,35 @@ function Dashboard() {
               {recentActivity.length > 0 && (
                 <div className={styles.recentActivityStrip}>
                   <span className={styles.recentActivityLabel}>Recent:</span>
-                  {recentActivity.slice(0, 4).map(({ test, type }) => (
-                    <button
-                      key={test.id}
-                      type="button"
-                      className={styles.recentActivityItem}
-                      onClick={() => navigate(routes.testDetail(test.id))}
-                      title={test.name}
-                    >
-                      <span className={styles.recentActivityItemText}>
-                        {getTestTypeDisplay(test).icon}{' '}
-                        {(test.name || '').length > 24
-                          ? `${(test.name || '').slice(0, 24)}…`
-                          : test.name || 'Unnamed'}
-                      </span>
-                      <span className={styles.recentActivityType}>
-                        {type === 'started' ? '▶' : type === 'ended' ? '■' : '•'}
-                      </span>
-                    </button>
-                  ))}
+                  {recentActivity.slice(0, 4).map(({ test, type }) => {
+                    const checkoutPhaseDisplay = getCheckoutPhaseDisplay(test, { short: true });
+                    return (
+                      <button
+                        key={test.id}
+                        type="button"
+                        className={styles.recentActivityItem}
+                        onClick={() => navigate(routes.testDetail(test.id))}
+                        title={
+                          checkoutPhaseDisplay
+                            ? `${test.name} · ${checkoutPhaseDisplay}`
+                            : test.name
+                        }
+                      >
+                        <span className={styles.recentActivityItemText}>
+                          {getTestTypeDisplay(test).icon}{' '}
+                          {(test.name || '').length > 24
+                            ? `${(test.name || '').slice(0, 24)}…`
+                            : test.name || 'Unnamed'}
+                        </span>
+                        {checkoutPhaseDisplay ? (
+                          <span className={styles.recentActivityMeta}>{checkoutPhaseDisplay}</span>
+                        ) : null}
+                        <span className={styles.recentActivityType}>
+                          {type === 'started' ? '▶' : type === 'ended' ? '■' : '•'}
+                        </span>
+                      </button>
+                    );
+                  })}
                   {recentActivity.length > 4 && (
                     <button
                       type="button"

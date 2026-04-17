@@ -630,6 +630,43 @@ npm run dev`}
             ]}
           />
           <Text variant="headingMd" as="h4">
+            Checkout phases
+          </Text>
+          <DocTable
+            headers={['Phase', 'What it changes', 'Current readiness signal']}
+            rows={[
+              [
+                'Experience block',
+                'Trust, reassurance, offer copy, CTA label, and layout inside checkout',
+                'Checkout UI extension sync + per-test checkout readiness',
+              ],
+              [
+                'Payment methods',
+                'Hide, rename, or reorder checkout payment options',
+                'Payment customization function must be deployed on the shop',
+              ],
+              [
+                'Delivery methods',
+                'Hide, rename, or reorder checkout delivery options',
+                'Delivery customization function must be deployed on the shop',
+              ],
+              [
+                'Shipping rate tests',
+                'Rate/threshold/discount behavior for shipping tests',
+                'Shipping diagnostics now classify variants as automatic, discount-only, or manual',
+              ],
+            ]}
+          />
+          <Text variant="headingMd" as="h4">
+            Checkout tracking events
+          </Text>
+          <p>
+            RipX checkout reporting uses phase-aware events so launch reports and troubleshooting
+            stay consistent across checkout surfaces. The primary events are{' '}
+            <code>checkout_phase_impression</code>, <code>checkout_phase_cta_click</code>,{' '}
+            <code>checkout_phase_offer_apply</code>, and <code>checkout_phase_conversion</code>.
+          </p>
+          <Text variant="headingMd" as="h4">
             Discounts vs price increases
           </Text>
           <DocTable

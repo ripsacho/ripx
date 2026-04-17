@@ -5,15 +5,23 @@ describe('shopifyFunctionsInventory', () => {
     const nodes = [
       { id: 'gid://1', title: 'RipX checkout discount', apiType: 'product_discount' },
       { id: 'gid://2', title: 'RipX cart transform', apiType: 'cart_transform' },
+      { id: 'gid://3', title: 'RipX payment customization', apiType: 'payment_customization' },
+      { id: 'gid://4', title: 'RipX delivery customization', apiType: 'delivery_customization' },
     ];
     const res = buildShopifyFunctionsInventory(nodes, 'dev.myshopify.com');
     expect(res.success).toBe(true);
     const discount = res.expectations.find(e => e.key === 'checkout_discount');
     const cart = res.expectations.find(e => e.key === 'cart_transform');
+    const payment = res.expectations.find(e => e.key === 'payment_customization');
+    const delivery = res.expectations.find(e => e.key === 'delivery_customization');
     expect(discount.detected).toBe(true);
     expect(cart.detected).toBe(true);
+    expect(payment.detected).toBe(true);
+    expect(delivery.detected).toBe(true);
     expect(discount.matchedFunction.id).toBe('gid://1');
     expect(cart.matchedFunction.id).toBe('gid://2');
+    expect(payment.matchedFunction.id).toBe('gid://3');
+    expect(delivery.matchedFunction.id).toBe('gid://4');
   });
 
   it('falls back to first discount/cart candidate when title has no RipX', () => {
@@ -32,6 +40,8 @@ describe('shopifyFunctionsInventory', () => {
     expect(res.summary.totalFunctionsReturned).toBe(0);
     expect(res.readiness.discount_function_for_checkout).toBe(false);
     expect(res.readiness.cart_transform_for_direct_price).toBe(false);
+    expect(res.readiness.payment_customization_for_checkout).toBe(false);
+    expect(res.readiness.delivery_customization_for_checkout).toBe(false);
     expect(res.readiness.both_detected).toBe(false);
   });
 

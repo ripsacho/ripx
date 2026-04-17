@@ -1430,7 +1430,7 @@ router.post(
     }
 
     const eventNameRaw = body.event_name ?? req.query.event_name;
-    const eventName = String(eventNameRaw || 'checkout_extension_conversion')
+    const eventName = String(eventNameRaw || 'checkout_phase_conversion')
       .trim()
       .slice(0, 120);
     const eventValueRaw = body.event_value ?? req.query.event_value;

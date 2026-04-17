@@ -367,4 +367,40 @@ describe('ABTestEngine.validateTest theme contract', () => {
     });
     expect(result.isValid).toBe(true);
   });
+
+  it('rejects payment-method checkout tests without target methods', () => {
+    const result = ABTestEngine.validateTest({
+      name: 'Checkout payment test',
+      type: 'checkout',
+      goal: { type: 'conversion', checkout_phase: 'payment_method' },
+      variants: [
+        { name: 'Control', allocation: 50, config: {} },
+        { name: 'Variant A', allocation: 50, config: { payment_action: 'hide' } },
+      ],
+    });
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some(err => err.includes('target payment methods'))).toBe(true);
+  });
+
+  it('rejects rename-based delivery checkout tests without rename target', () => {
+    const result = ABTestEngine.validateTest({
+      name: 'Checkout delivery rename test',
+      type: 'checkout',
+      goal: { type: 'conversion', checkout_phase: 'delivery_method' },
+      variants: [
+        { name: 'Control', allocation: 50, config: {} },
+        {
+          name: 'Variant A',
+          allocation: 50,
+          config: {
+            delivery_method_names: ['Standard Shipping'],
+            delivery_action: 'rename',
+            delivery_rename_to: '',
+          },
+        },
+      ],
+    });
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some(err => err.includes('delivery_rename_to'))).toBe(true);
+  });
 });

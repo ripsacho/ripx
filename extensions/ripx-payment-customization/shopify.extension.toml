@@ -1,0 +1,17 @@
+api_version = "2026-01"
+
+[[extensions]]
+name = "RipX payment customization"
+handle = "ripx-payment-customization"
+uid = "d1c02fd0-4979-6ec7-4f73-ab0e84b931a8db87f414"
+type = "function"
+description = "Apply RipX checkout payment-method experiments by hiding, renaming, or reordering payment options."
+
+[[extensions.targeting]]
+target = "cart.payment-methods.transform.run"
+input_query = "src/run.graphql"
+export = "cart-payment-methods-transform-run"
+
+[extensions.build]
+command = ""
+path = "dist/function.wasm"

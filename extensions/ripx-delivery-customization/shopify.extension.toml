@@ -1,0 +1,17 @@
+api_version = "2026-01"
+
+[[extensions]]
+name = "RipX delivery customization"
+handle = "ripx-delivery-customization"
+uid = "afb7addb-234b-39e4-376e-828eac60180cffb41eaa"
+type = "function"
+description = "Apply RipX checkout delivery-method experiments by hiding, renaming, or reordering delivery options."
+
+[[extensions.targeting]]
+target = "cart.delivery-options.transform.run"
+input_query = "src/run.graphql"
+export = "cart-delivery-options-transform-run"
+
+[extensions.build]
+command = ""
+path = "dist/function.wasm"

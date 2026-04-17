@@ -108,6 +108,28 @@ export function inferTemplateKeyFromVariants(variants = [], testType = '') {
   return null;
 }
 
+export function normalizeCheckoutPhase(rawValue) {
+  const value = String(rawValue || 'experience')
+    .trim()
+    .toLowerCase();
+  return ['experience', 'payment_method', 'delivery_method'].includes(value) ? value : 'experience';
+}
+
+export function getCheckoutPhaseDisplay(test, options = {}) {
+  if (String(test?.type || '').toLowerCase() !== 'checkout') {
+    return null;
+  }
+  const short = options?.short === true;
+  const phase = normalizeCheckoutPhase(test?.goal?.checkout_phase);
+  if (phase === 'payment_method') {
+    return short ? 'Payment' : 'Payment methods';
+  }
+  if (phase === 'delivery_method') {
+    return short ? 'Delivery' : 'Delivery methods';
+  }
+  return short ? 'Experience' : 'Experience block';
+}
+
 /**
  * Get display info (label + icon) for a test.
  * Uses goal.template_key first, then config inference, then type.
