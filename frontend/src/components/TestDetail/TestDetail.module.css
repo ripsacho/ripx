@@ -1942,7 +1942,81 @@
 .shippingVariantActions {
   display: grid;
   gap: 0.65rem;
-  margin: 1rem 0;
+  margin: 0;
+}
+
+.detailPostWizardPanels {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.detailInsightPanel {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.92));
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+  overflow: hidden;
+}
+
+.detailInsightToggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+  padding: 0.95rem 1rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.detailInsightToggle:hover {
+  background: rgba(15, 23, 42, 0.025);
+}
+
+.detailInsightToggle:focus-visible {
+  outline: 2px solid var(--p-color-border-interactive, #2563eb);
+  outline-offset: -2px;
+}
+
+.detailInsightToggleMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.detailInsightToggleTitle {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--p-color-text, #0f172a);
+}
+
+.detailInsightToggleSummary {
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--p-color-text-subdued, #64748b);
+}
+
+.detailInsightChevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--p-color-text-subdued, #64748b);
+  transition: transform 180ms ease;
+  flex-shrink: 0;
+}
+
+.detailInsightChevronOpen {
+  transform: rotate(180deg);
+}
+
+.detailInsightBody {
+  padding: 0 1rem 1rem;
 }
 
 .shippingVariantActionRow {
@@ -1985,11 +2059,11 @@
 }
 
 .checkoutReadinessPanel {
-  margin: 1rem 0 0;
+  margin: 0;
 }
 
 .checkoutExperiencePanel {
-  margin: 1rem 0 0;
+  margin: 0;
 }
 
 .checkoutExperienceGrid {

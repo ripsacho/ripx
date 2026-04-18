@@ -15,6 +15,7 @@ import {
 } from '@shopify/polaris';
 import {
   ChartLineIcon,
+  ChevronDownIcon,
   ClipboardIcon,
   DeleteIcon,
   DuplicateIcon,
@@ -120,6 +121,12 @@ function TestDetail() {
   const [shippingExecutionLoading, setShippingExecutionLoading] = useState(false);
   const [, setShippingExecutionReport] = useState(null);
   const [shippingExecutionToast, setShippingExecutionToast] = useState(null);
+  const [detailInsightPanels, setDetailInsightPanels] = useState({
+    readiness: true,
+    checkoutSummary: false,
+    shippingPlan: false,
+    shippingActions: false,
+  });
   const [shippingDiagnosticsLoading, setShippingDiagnosticsLoading] = useState(false);
   const [shippingDiagnosticsReport, setShippingDiagnosticsReport] = useState(null);
   const [checkoutReadinessLoading, setCheckoutReadinessLoading] = useState(false);
@@ -800,6 +807,13 @@ function TestDetail() {
     },
     [id]
   );
+
+  const toggleDetailInsightPanel = useCallback(key => {
+    setDetailInsightPanels(prev => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  }, []);
 
   const handleSaveCode = async codePayload => {
     const response = await apiPut(`/tests/${id}/variants/codes`, codePayload);
@@ -1995,213 +2009,6 @@ function TestDetail() {
             </div>
           </div>
 
-          {supportsCheckoutReadiness && checkoutReadinessSummary && (
-            <div className={styles.checkoutReadinessPanel}>
-              <Banner title={checkoutReadinessLabel} tone={checkoutReadinessTone}>
-                <BlockStack gap="300">
-                  <Text as="p" variant="bodySm">
-                    {checkoutReadinessSummary.headline}
-                  </Text>
-                  <div className={styles.checkoutReadinessMetaRow}>
-                    <span className={styles.checkoutReadinessPill}>
-                      Status: {checkoutReadinessSummary.status || 'unknown'}
-                    </span>
-                    <span className={styles.checkoutReadinessPill}>
-                      Passed: {checkoutReadinessSummary.checks_passed ?? 0}/
-                      {checkoutReadinessSummary.checks_total ?? 0}
-                    </span>
-                    <span className={styles.checkoutReadinessPill}>
-                      Blockers: {checkoutReadinessSummary.blockers ?? 0}
-                    </span>
-                    <span className={styles.checkoutReadinessPill}>
-                      Warnings: {checkoutReadinessSummary.warnings ?? 0}
-                    </span>
-                  </div>
-                  {capabilityEntries.length > 0 && (
-                    <div className={styles.checkoutReadinessCapabilities}>
-                      {capabilityEntries.map(entry => (
-                        <div key={entry.key} className={styles.checkoutReadinessCapability}>
-                          <span className={styles.checkoutReadinessCapabilityLabel}>
-                            {entry.label}
-                          </span>
-                          <span className={styles.checkoutReadinessCapabilityLevel}>
-                            {entry.level.replace(/_/g, ' ')}
-                          </span>
-                          {entry.summary ? (
-                            <Text as="p" variant="bodySm" tone="subdued">
-                              {entry.summary}
-                            </Text>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {checkoutReadinessSummary.next_action && (
-                    <Text as="p" variant="bodySm" tone="subdued">
-                      Next: {checkoutReadinessSummary.next_action}
-                    </Text>
-                  )}
-                  {checkoutReadinessHighlights.length > 0 && (
-                    <div className={styles.checkoutReadinessChecks}>
-                      {checkoutReadinessHighlights.map(item => (
-                        <div
-                          key={item.id}
-                          className={`${styles.checkoutReadinessCheck} ${
-                            item.severity === 'error'
-                              ? styles.checkoutReadinessCheckError
-                              : styles.checkoutReadinessCheckWarning
-                          }`}
-                        >
-                          {item.message}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </BlockStack>
-              </Banner>
-            </div>
-          )}
-
-          {isCheckoutTest && checkoutVariantSummaries.length > 0 && (
-            <div className={styles.checkoutExperiencePanel}>
-              <Banner title={`Checkout phase: ${checkoutPhaseLabel}`} tone="info">
-                <BlockStack gap="300">
-                  <Text as="p" variant="bodySm">
-                    Review the saved checkout contract for each variant. Experience blocks render
-                    through the checkout UI extension, and payment/delivery phases use the same
-                    saved schema for readiness plus Shopify customization deployment.
-                  </Text>
-                  <div className={styles.checkoutExperienceGrid}>
-                    {checkoutVariantSummaries.map(item => (
-                      <div
-                        key={`checkout-summary-${item.index}`}
-                        className={styles.checkoutExperienceCard}
-                      >
-                        <div className={styles.checkoutExperienceCardHeader}>
-                          <span className={styles.checkoutExperienceCardTitle}>{item.name}</span>
-                          <span className={styles.checkoutReadinessPill}>
-                            {item.allocation}% traffic
-                          </span>
-                        </div>
-                        <Text as="p" variant="bodySm">
-                          {item.summary}
-                        </Text>
-                        <Text as="p" variant="bodySm" tone="subdued">
-                          {item.detail}
-                        </Text>
-                        {item.cta ? (
-                          <Text as="p" variant="bodySm" tone="subdued">
-                            CTA: {item.cta}
-                          </Text>
-                        ) : null}
-                        {item.featureBullets.length > 0 ? (
-                          <Text as="p" variant="bodySm" tone="subdued">
-                            Bullets: {item.featureBullets.join(', ')}
-                          </Text>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                </BlockStack>
-              </Banner>
-            </div>
-          )}
-
-          {isShippingTest && shippingExecutionPlan && (
-            <div className={styles.checkoutExperiencePanel}>
-              <Banner title="Shipping execution split" tone="info">
-                <BlockStack gap="300">
-                  <Text as="p" variant="bodySm">
-                    RipX classifies shipping variants by execution path so you can tell which ones
-                    are fully automatic, discount-only, or still manual before launch.
-                  </Text>
-                  <div className={styles.checkoutReadinessMetaRow}>
-                    <span className={styles.checkoutReadinessPill}>
-                      Automatic: {shippingExecutionMix.automatic}
-                    </span>
-                    <span className={styles.checkoutReadinessPill}>
-                      Discount-only: {shippingExecutionMix.discountOnly}
-                    </span>
-                    <span className={styles.checkoutReadinessPill}>
-                      Manual: {shippingExecutionMix.manual}
-                    </span>
-                  </div>
-                  <div className={styles.checkoutExperienceGrid}>
-                    {shippingPlanVariants.map(item => (
-                      <div
-                        key={`shipping-plan-${item.index}`}
-                        className={styles.checkoutExperienceCard}
-                      >
-                        <div className={styles.checkoutExperienceCardHeader}>
-                          <span className={styles.checkoutExperienceCardTitle}>{item.name}</span>
-                          <span className={styles.checkoutReadinessPill}>
-                            {item.execution_mode_label ||
-                              item.execution_mode ||
-                              item.execution_adapter}
-                          </span>
-                        </div>
-                        <Text as="p" variant="bodySm">
-                          Strategy: {item.strategy}
-                        </Text>
-                        <Text as="p" variant="bodySm" tone="subdued">
-                          Adapter: {String(item.execution_adapter || 'manual').replace(/_/g, ' ')}
-                        </Text>
-                      </div>
-                    ))}
-                  </div>
-                  {shippingCapabilityReport?.capabilities?.adapter_support ? (
-                    <Text as="p" variant="bodySm" tone="subdued">
-                      Recommended path:{' '}
-                      {String(
-                        shippingCapabilityReport.recommended_execution_path ||
-                          shippingExecutionPlan.recommended_execution_path ||
-                          'manual'
-                      ).replace(/_/g, ' ')}
-                    </Text>
-                  ) : null}
-                </BlockStack>
-              </Banner>
-            </div>
-          )}
-
-          {isShippingTest &&
-            actionableShippingVariants.some(
-              item => item.index > 0 && item.strategy !== 'control'
-            ) && (
-              <div className={styles.shippingVariantActions}>
-                {actionableShippingVariants
-                  .filter(item => item.index > 0 && item.strategy !== 'control')
-                  .map(item => (
-                    <div
-                      key={`shipping-action-${item.index}`}
-                      className={styles.shippingVariantActionRow}
-                    >
-                      <span className={styles.shippingVariantActionLabel}>
-                        {item.variant?.name || `Variant ${item.index + 1}`} ({item.strategy})
-                      </span>
-                      <div className={styles.shippingVariantActionButtons}>
-                        <button
-                          type="button"
-                          className={styles.detailSecondaryBtn}
-                          onClick={() => handleExecuteShipping(false, item.index)}
-                          disabled={shippingExecutionLoading || actionLoading}
-                        >
-                          Dry run
-                        </button>
-                        <button
-                          type="button"
-                          className={`${styles.detailSecondaryBtn} ${styles.detailSecondaryBtnPrimary}`}
-                          onClick={() => handleExecuteShipping(true, item.index)}
-                          disabled={shippingExecutionLoading || actionLoading}
-                        >
-                          Apply
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-              </div>
-            )}
-
           <Layout>
             <Layout.Section>
               <TestWizard
@@ -2219,6 +2026,346 @@ function TestDetail() {
               />
             </Layout.Section>
           </Layout>
+
+          {((supportsCheckoutReadiness && checkoutReadinessSummary) ||
+            (isCheckoutTest && checkoutVariantSummaries.length > 0) ||
+            (isShippingTest && shippingExecutionPlan) ||
+            (isShippingTest &&
+              actionableShippingVariants.some(
+                item => item.index > 0 && item.strategy !== 'control'
+              ))) && (
+            <div className={styles.detailPostWizardPanels}>
+              {supportsCheckoutReadiness && checkoutReadinessSummary && (
+                <div className={styles.detailInsightPanel}>
+                  <button
+                    type="button"
+                    className={styles.detailInsightToggle}
+                    onClick={() => toggleDetailInsightPanel('readiness')}
+                    aria-expanded={detailInsightPanels.readiness}
+                  >
+                    <span className={styles.detailInsightToggleMeta}>
+                      <span className={styles.detailInsightToggleTitle}>
+                        {checkoutReadinessLabel}
+                      </span>
+                      <span className={styles.detailInsightToggleSummary}>
+                        {checkoutReadinessSummary.status || 'unknown'} status,{' '}
+                        {checkoutReadinessSummary.blockers ?? 0} blockers,{' '}
+                        {checkoutReadinessSummary.warnings ?? 0} warnings
+                      </span>
+                    </span>
+                    <span
+                      className={`${styles.detailInsightChevron} ${
+                        detailInsightPanels.readiness ? styles.detailInsightChevronOpen : ''
+                      }`}
+                    >
+                      <Icon source={ChevronDownIcon} />
+                    </span>
+                  </button>
+                  {detailInsightPanels.readiness && (
+                    <div className={`${styles.detailInsightBody} ${styles.checkoutReadinessPanel}`}>
+                      <Banner title={checkoutReadinessLabel} tone={checkoutReadinessTone}>
+                        <BlockStack gap="300">
+                          <Text as="p" variant="bodySm">
+                            {checkoutReadinessSummary.headline}
+                          </Text>
+                          <div className={styles.checkoutReadinessMetaRow}>
+                            <span className={styles.checkoutReadinessPill}>
+                              Status: {checkoutReadinessSummary.status || 'unknown'}
+                            </span>
+                            <span className={styles.checkoutReadinessPill}>
+                              Passed: {checkoutReadinessSummary.checks_passed ?? 0}/
+                              {checkoutReadinessSummary.checks_total ?? 0}
+                            </span>
+                            <span className={styles.checkoutReadinessPill}>
+                              Blockers: {checkoutReadinessSummary.blockers ?? 0}
+                            </span>
+                            <span className={styles.checkoutReadinessPill}>
+                              Warnings: {checkoutReadinessSummary.warnings ?? 0}
+                            </span>
+                          </div>
+                          {capabilityEntries.length > 0 && (
+                            <div className={styles.checkoutReadinessCapabilities}>
+                              {capabilityEntries.map(entry => (
+                                <div key={entry.key} className={styles.checkoutReadinessCapability}>
+                                  <span className={styles.checkoutReadinessCapabilityLabel}>
+                                    {entry.label}
+                                  </span>
+                                  <span className={styles.checkoutReadinessCapabilityLevel}>
+                                    {entry.level.replace(/_/g, ' ')}
+                                  </span>
+                                  {entry.summary ? (
+                                    <Text as="p" variant="bodySm" tone="subdued">
+                                      {entry.summary}
+                                    </Text>
+                                  ) : null}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {checkoutReadinessSummary.next_action && (
+                            <Text as="p" variant="bodySm" tone="subdued">
+                              Next: {checkoutReadinessSummary.next_action}
+                            </Text>
+                          )}
+                          {checkoutReadinessHighlights.length > 0 && (
+                            <div className={styles.checkoutReadinessChecks}>
+                              {checkoutReadinessHighlights.map(item => (
+                                <div
+                                  key={item.id}
+                                  className={`${styles.checkoutReadinessCheck} ${
+                                    item.severity === 'error'
+                                      ? styles.checkoutReadinessCheckError
+                                      : styles.checkoutReadinessCheckWarning
+                                  }`}
+                                >
+                                  {item.message}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </BlockStack>
+                      </Banner>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {isCheckoutTest && checkoutVariantSummaries.length > 0 && (
+                <div className={styles.detailInsightPanel}>
+                  <button
+                    type="button"
+                    className={styles.detailInsightToggle}
+                    onClick={() => toggleDetailInsightPanel('checkoutSummary')}
+                    aria-expanded={detailInsightPanels.checkoutSummary}
+                  >
+                    <span className={styles.detailInsightToggleMeta}>
+                      <span className={styles.detailInsightToggleTitle}>
+                        Checkout phase: {checkoutPhaseLabel}
+                      </span>
+                      <span className={styles.detailInsightToggleSummary}>
+                        {checkoutVariantSummaries.length} variant
+                        {checkoutVariantSummaries.length === 1 ? '' : 's'} saved for this phase
+                      </span>
+                    </span>
+                    <span
+                      className={`${styles.detailInsightChevron} ${
+                        detailInsightPanels.checkoutSummary ? styles.detailInsightChevronOpen : ''
+                      }`}
+                    >
+                      <Icon source={ChevronDownIcon} />
+                    </span>
+                  </button>
+                  {detailInsightPanels.checkoutSummary && (
+                    <div
+                      className={`${styles.detailInsightBody} ${styles.checkoutExperiencePanel}`}
+                    >
+                      <Banner title={`Checkout phase: ${checkoutPhaseLabel}`} tone="info">
+                        <BlockStack gap="300">
+                          <Text as="p" variant="bodySm">
+                            Review the saved checkout contract for each variant. Experience blocks
+                            render through the checkout UI extension, and payment/delivery phases
+                            use the same saved schema for readiness plus Shopify customization
+                            deployment.
+                          </Text>
+                          <div className={styles.checkoutExperienceGrid}>
+                            {checkoutVariantSummaries.map(item => (
+                              <div
+                                key={`checkout-summary-${item.index}`}
+                                className={styles.checkoutExperienceCard}
+                              >
+                                <div className={styles.checkoutExperienceCardHeader}>
+                                  <span className={styles.checkoutExperienceCardTitle}>
+                                    {item.name}
+                                  </span>
+                                  <span className={styles.checkoutReadinessPill}>
+                                    {item.allocation}% traffic
+                                  </span>
+                                </div>
+                                <Text as="p" variant="bodySm">
+                                  {item.summary}
+                                </Text>
+                                <Text as="p" variant="bodySm" tone="subdued">
+                                  {item.detail}
+                                </Text>
+                                {item.cta ? (
+                                  <Text as="p" variant="bodySm" tone="subdued">
+                                    CTA: {item.cta}
+                                  </Text>
+                                ) : null}
+                                {item.featureBullets.length > 0 ? (
+                                  <Text as="p" variant="bodySm" tone="subdued">
+                                    Bullets: {item.featureBullets.join(', ')}
+                                  </Text>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        </BlockStack>
+                      </Banner>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {isShippingTest && shippingExecutionPlan && (
+                <div className={styles.detailInsightPanel}>
+                  <button
+                    type="button"
+                    className={styles.detailInsightToggle}
+                    onClick={() => toggleDetailInsightPanel('shippingPlan')}
+                    aria-expanded={detailInsightPanels.shippingPlan}
+                  >
+                    <span className={styles.detailInsightToggleMeta}>
+                      <span className={styles.detailInsightToggleTitle}>
+                        Shipping execution split
+                      </span>
+                      <span className={styles.detailInsightToggleSummary}>
+                        {shippingPlanVariants.length} variant
+                        {shippingPlanVariants.length === 1 ? '' : 's'}, automatic{' '}
+                        {shippingExecutionMix.automatic}, manual {shippingExecutionMix.manual}
+                      </span>
+                    </span>
+                    <span
+                      className={`${styles.detailInsightChevron} ${
+                        detailInsightPanels.shippingPlan ? styles.detailInsightChevronOpen : ''
+                      }`}
+                    >
+                      <Icon source={ChevronDownIcon} />
+                    </span>
+                  </button>
+                  {detailInsightPanels.shippingPlan && (
+                    <div
+                      className={`${styles.detailInsightBody} ${styles.checkoutExperiencePanel}`}
+                    >
+                      <Banner title="Shipping execution split" tone="info">
+                        <BlockStack gap="300">
+                          <Text as="p" variant="bodySm">
+                            RipX classifies shipping variants by execution path so you can tell
+                            which ones are fully automatic, discount-only, or still manual before
+                            launch.
+                          </Text>
+                          <div className={styles.checkoutReadinessMetaRow}>
+                            <span className={styles.checkoutReadinessPill}>
+                              Automatic: {shippingExecutionMix.automatic}
+                            </span>
+                            <span className={styles.checkoutReadinessPill}>
+                              Discount-only: {shippingExecutionMix.discountOnly}
+                            </span>
+                            <span className={styles.checkoutReadinessPill}>
+                              Manual: {shippingExecutionMix.manual}
+                            </span>
+                          </div>
+                          <div className={styles.checkoutExperienceGrid}>
+                            {shippingPlanVariants.map(item => (
+                              <div
+                                key={`shipping-plan-${item.index}`}
+                                className={styles.checkoutExperienceCard}
+                              >
+                                <div className={styles.checkoutExperienceCardHeader}>
+                                  <span className={styles.checkoutExperienceCardTitle}>
+                                    {item.name}
+                                  </span>
+                                  <span className={styles.checkoutReadinessPill}>
+                                    {item.execution_mode_label ||
+                                      item.execution_mode ||
+                                      item.execution_adapter}
+                                  </span>
+                                </div>
+                                <Text as="p" variant="bodySm">
+                                  Strategy: {item.strategy}
+                                </Text>
+                                <Text as="p" variant="bodySm" tone="subdued">
+                                  Adapter:{' '}
+                                  {String(item.execution_adapter || 'manual').replace(/_/g, ' ')}
+                                </Text>
+                              </div>
+                            ))}
+                          </div>
+                          {shippingCapabilityReport?.capabilities?.adapter_support ? (
+                            <Text as="p" variant="bodySm" tone="subdued">
+                              Recommended path:{' '}
+                              {String(
+                                shippingCapabilityReport.recommended_execution_path ||
+                                  shippingExecutionPlan.recommended_execution_path ||
+                                  'manual'
+                              ).replace(/_/g, ' ')}
+                            </Text>
+                          ) : null}
+                        </BlockStack>
+                      </Banner>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {isShippingTest &&
+                actionableShippingVariants.some(
+                  item => item.index > 0 && item.strategy !== 'control'
+                ) && (
+                  <div className={styles.detailInsightPanel}>
+                    <button
+                      type="button"
+                      className={styles.detailInsightToggle}
+                      onClick={() => toggleDetailInsightPanel('shippingActions')}
+                      aria-expanded={detailInsightPanels.shippingActions}
+                    >
+                      <span className={styles.detailInsightToggleMeta}>
+                        <span className={styles.detailInsightToggleTitle}>
+                          Shipping variant actions
+                        </span>
+                        <span className={styles.detailInsightToggleSummary}>
+                          Run dry tests or apply actionable shipping variants individually
+                        </span>
+                      </span>
+                      <span
+                        className={`${styles.detailInsightChevron} ${
+                          detailInsightPanels.shippingActions ? styles.detailInsightChevronOpen : ''
+                        }`}
+                      >
+                        <Icon source={ChevronDownIcon} />
+                      </span>
+                    </button>
+                    {detailInsightPanels.shippingActions && (
+                      <div
+                        className={`${styles.detailInsightBody} ${styles.shippingVariantActions}`}
+                      >
+                        {actionableShippingVariants
+                          .filter(item => item.index > 0 && item.strategy !== 'control')
+                          .map(item => (
+                            <div
+                              key={`shipping-action-${item.index}`}
+                              className={styles.shippingVariantActionRow}
+                            >
+                              <span className={styles.shippingVariantActionLabel}>
+                                {item.variant?.name || `Variant ${item.index + 1}`} ({item.strategy}
+                                )
+                              </span>
+                              <div className={styles.shippingVariantActionButtons}>
+                                <button
+                                  type="button"
+                                  className={styles.detailSecondaryBtn}
+                                  onClick={() => handleExecuteShipping(false, item.index)}
+                                  disabled={shippingExecutionLoading || actionLoading}
+                                >
+                                  Dry run
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`${styles.detailSecondaryBtn} ${styles.detailSecondaryBtnPrimary}`}
+                                  onClick={() => handleExecuteShipping(true, item.index)}
+                                  disabled={shippingExecutionLoading || actionLoading}
+                                >
+                                  Apply
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+            </div>
+          )}
         </div>
       </Page>
     </PageShell>

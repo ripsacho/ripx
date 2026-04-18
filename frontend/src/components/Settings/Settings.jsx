@@ -233,7 +233,7 @@ const TAB_CONFIG_APP = [
   { id: 'installation', label: 'Installation', icon: CodeIcon },
   { id: 'general', label: 'Test defaults', icon: SettingsIcon },
   { id: 'integrations', label: 'Connections', icon: ChartVerticalIcon },
-  { id: 'presets', label: 'Audience presets', icon: TargetIcon },
+  { id: 'presets', label: 'Targeting presets', icon: TargetIcon },
   { id: 'appearance', label: 'Appearance', icon: PaintBrushFlatIcon },
 ];
 
@@ -252,7 +252,7 @@ const SECTION_HELP = {
     'Account-level preferences (notifications, dashboard defaults, theme schedule, export format) are in Profile.',
   analyticsData: 'Optional integrations: GA4 for event forwarding and BigQuery for exports.',
   integrationsSave: 'Save writes GA4 and BigQuery credentials and dataset settings.',
-  targetingPresets: 'Saved audience presets from the Test Wizard, reusable on new tests.',
+  targetingPresets: 'Saved targeting presets from the Test Wizard, reusable on new tests.',
   themeAppearance: 'Choose light, dark, or auto. For a custom schedule, use Profile → Preferences.',
 };
 
@@ -357,12 +357,16 @@ function Settings() {
           const next = new URLSearchParams(prev);
           if (id === 'installation') next.delete('tab');
           else next.set('tab', id);
+          if (isGuidedSetupMode && id !== 'installation') {
+            next.delete('guided_setup');
+            next.delete('source');
+          }
           return next;
         },
         { replace: true }
       );
     },
-    [setSearchParams, TAB_CONFIG.length, TAB_IDS]
+    [isGuidedSetupMode, setSearchParams, TAB_CONFIG.length, TAB_IDS]
   );
 
   const clearGuidedSetupMode = useCallback(() => {
@@ -1985,7 +1989,7 @@ function Settings() {
       },
       {
         id: 'presets',
-        label: 'Audience presets',
+        label: 'Targeting presets',
         shortLabel: 'PR',
         status: Array.isArray(targetingPresets) && targetingPresets.length > 0 ? 'ok' : 'neutral',
       },
@@ -2010,14 +2014,14 @@ function Settings() {
         configuredIntegrationCount > 0
           ? `${configuredIntegrationCount} integration(s) configured and active.`
           : 'Connect GA4 or BigQuery to activate external analytics flow.',
-      presets: `${Array.isArray(targetingPresets) ? targetingPresets.length : 0} saved audience preset(s).`,
+      presets: `${Array.isArray(targetingPresets) ? targetingPresets.length : 0} saved targeting preset(s).`,
       appearance: 'Tune visual preferences and operator experience.',
     }),
     [setupComplete, configuredIntegrationCount, targetingPresets]
   );
 
   const appSettingsSubtitleHelp =
-    'Manage snippet and checkout setup, defaults, integrations, presets, and appearance for this shop.';
+    'Manage snippet and checkout setup, defaults, integrations, targeting presets, and appearance for this shop.';
 
   const metricTips = useMemo(
     () => ({
@@ -2070,9 +2074,9 @@ function Settings() {
   }, [selectedThemeLabel]);
   const presetsSectionSummary = useMemo(() => {
     if (targetingPresets.length === 0) {
-      return 'No saved audience presets yet. Create one in the Test Wizard when you want reusable targeting.';
+      return 'No saved targeting presets yet. Create one in the Test Wizard when you want reusable targeting.';
     }
-    return `${targetingPresets.length} saved audience preset${
+    return `${targetingPresets.length} saved targeting preset${
       targetingPresets.length === 1 ? '' : 's'
     } ready to reuse in the Test Wizard.`;
   }, [targetingPresets]);
@@ -2227,7 +2231,7 @@ function Settings() {
                           {isAppSettings
                             ? isFocusedInstallationMode || isInstallationSectionActive
                               ? 'Installation hub surfaces launch blockers first and keeps secondary setup details behind focused actions.'
-                              : 'Setup, checkout, defaults, integrations, presets, and appearance for this shop.'
+                              : 'Setup, checkout, defaults, integrations, targeting presets, and appearance for this shop.'
                             : 'Theme and appearance. Open the app from Home for tests and installation.'}
                         </p>
                         {isAppSettings && (
@@ -2247,33 +2251,16 @@ function Settings() {
                   {isAppSettings && !isFocusedInstallationMode && (
                     <div className={styles.settingsShellBadges}>
                       <Badge tone={setupComplete ? 'success' : 'attention'}>
-                        {setupComplete ? 'Setup complete' : 'Setup incomplete'}
+                        {setupComplete ? 'Setup ready' : 'Setup pending'}
                       </Badge>
-                      <Badge tone={storeHealth.ready ? 'success' : 'attention'}>
-                        {storeHealth.ready ? 'Store healthy' : 'Needs attention'}
-                      </Badge>
-                      <Badge
-                        tone={
-                          storeHealth.supportLevel === 'native_cart_checkout_aligned'
-                            ? 'success'
-                            : storeHealth.supportLevel === 'checkout_aligned_cart_fallback'
-                              ? 'attention'
-                              : 'warning'
-                        }
-                      >
-                        {storeHealth.supportLevel === 'native_cart_checkout_aligned'
-                          ? 'Support: Native cart + checkout'
-                          : storeHealth.supportLevel === 'checkout_aligned_cart_fallback'
-                            ? 'Support: Checkout aligned + cart fallback'
-                            : 'Support: Setup incomplete'}
-                      </Badge>
+                      <Badge tone={supportLevelBadgeTone}>Support: {supportLevelBadgeLabel}</Badge>
                       <Tooltip content={supportLevelHelpText}>
                         <span
                           className={styles.supportLevelHint}
                           role="note"
                           aria-label="Support level help"
                         >
-                          What this means
+                          Support details
                         </span>
                       </Tooltip>
                     </div>
@@ -2289,7 +2276,7 @@ function Settings() {
                     <div className={styles.settingsMetricCell}>
                       <span className={styles.settingsMetricLabelWithTip}>
                         <span className={styles.settingsMetricLabel}>
-                          {showAllAppSections ? 'Layout' : 'Active section'}
+                          {showAllAppSections ? 'View mode' : 'Active section'}
                         </span>
                         <Tooltip
                           content={
@@ -2312,11 +2299,15 @@ function Settings() {
                         </Tooltip>
                       </span>
                       <span className={styles.settingsMetricValue}>
-                        <Icon
-                          source={
-                            showAllAppSections ? SettingsIcon : activeTabMeta?.icon || SettingsIcon
-                          }
-                        />
+                        <span className={styles.settingsMetricValueIcon} aria-hidden>
+                          <Icon
+                            source={
+                              showAllAppSections
+                                ? SettingsIcon
+                                : activeTabMeta?.icon || SettingsIcon
+                            }
+                          />
+                        </span>
                         <span>
                           {showAllAppSections ? 'All sections' : activeTabMeta?.label || 'Settings'}
                         </span>
@@ -2411,8 +2402,8 @@ function Settings() {
                       Setup workflow
                     </Text>
                     <Text as="p" variant="bodySm" tone="subdued">
-                      Use Installation as the single setup hub for onboarding, verification, and
-                      checkout readiness. Use the other sections for advanced configuration.
+                      Use Installation for setup, verification, and checkout readiness. Use the
+                      other sections for advanced configuration.
                     </Text>
                   </div>
                   <InlineStack
@@ -2425,7 +2416,7 @@ function Settings() {
                       {setupComplete ? 'Setup ready' : 'Setup pending'}
                     </Badge>
                     <Button size="slim" variant="primary" url={installationHubPath}>
-                      Open Installation hub
+                      Go to Installation
                     </Button>
                     <Button size="slim" onClick={() => runCheckoutDiagnostics()}>
                       Run checkout diagnostics
@@ -2467,12 +2458,12 @@ function Settings() {
               {isGuidedSetupMode && (
                 <Banner
                   tone="info"
-                  title="Guided setup mode"
+                  title="Focused installation mode"
                   action={{ content: 'Exit guided mode', onAction: clearGuidedSetupMode }}
                 >
                   <p>
-                    You&apos;re in focused installation mode. Complete the hub checklist first, then
-                    continue to the other settings sections.
+                    Installation is pinned first so you can finish onboarding faster. Opening any
+                    other tab will automatically exit this focused mode.
                   </p>
                 </Banner>
               )}
@@ -2484,7 +2475,7 @@ function Settings() {
                     <p>
                       Complete the Installation hub before editing advanced settings.{' '}
                       <Link to={installationHubPath} className={styles.installDocLink}>
-                        Open Installation hub
+                        Go to Installation
                       </Link>
                     </p>
                   </Banner>
@@ -2665,7 +2656,7 @@ function Settings() {
                             <Tooltip
                               content={
                                 showAllAppSections
-                                  ? 'All App Settings sections are visible in one organized page. Scroll to edit setup, defaults, integrations, presets, and appearance without switching tabs.'
+                                  ? 'All App Settings sections are visible in one organized page. Scroll to edit setup, defaults, integrations, targeting presets, and appearance without switching tabs.'
                                   : tabSummaries[activeTabId] ||
                                     'Tips and context for the tab you selected.'
                               }
@@ -2985,8 +2976,8 @@ function Settings() {
                                       </div>
                                       <Text as="p" variant="bodyMd" tone="subdued">
                                         {installationError
-                                          ? "We couldn't load the installation snippet. Retry, or reopen the Installation hub after adding or reconnecting a domain."
-                                          : 'Use the Installation hub to load your storefront snippet and guided steps.'}
+                                          ? "We couldn't load the storefront snippet. Retry, or reopen Installation after adding or reconnecting a domain."
+                                          : 'Open Installation to load your storefront snippet and setup steps.'}
                                       </Text>
                                       <div className={styles.installationEmptyActions}>
                                         {installationError && (
@@ -3047,9 +3038,9 @@ function Settings() {
                                       </div>
                                       <div className={styles.installSupportCallout}>
                                         <Text as="p" variant="bodySm" tone="subdued">
-                                          Keep the Installation tab focused on launch actions. Full
-                                          snippet code, alternate embed options, and cart-native
-                                          theme instructions stay in the detail modal.
+                                          Keep this tab focused on launch actions. Full snippet, alt
+                                          embed, and cart-native instructions stay in the detail
+                                          modal.
                                         </Text>
                                       </div>
                                       <InlineStack gap="200" wrap>
@@ -3105,8 +3096,8 @@ function Settings() {
                                         Setup helpers
                                       </Text>
                                       <Text as="p" variant="bodySm" tone="subdued">
-                                        Secondary install guidance and fallback options when the
-                                        default flow needs a manual assist.
+                                        Fallback install options for stores that need a manual
+                                        assist.
                                       </Text>
                                     </div>
                                   </div>
@@ -3120,8 +3111,8 @@ function Settings() {
                                           <Text as="p" variant="bodySm" tone="subdued">
                                             {Array.isArray(installation.instructions?.steps) &&
                                             installation.instructions.steps.length > 0
-                                              ? `${installation.instructions.steps.length} optional manual step(s) are available if you need them.`
-                                              : 'No extra manual steps are currently suggested.'}
+                                              ? `${installation.instructions.steps.length} optional manual step(s) are available if needed.`
+                                              : 'No extra manual steps are suggested right now.'}
                                           </Text>
                                         </div>
                                         <Badge
@@ -3145,7 +3136,7 @@ function Settings() {
                                           </Text>
                                           <Text as="p" variant="bodySm" tone="subdued">
                                             {installation.instructions?.altMethod
-                                              ? `${installation.instructions.altMethod} is available as a fallback install path.`
+                                              ? `${installation.instructions.altMethod} is available as a fallback path.`
                                               : 'No alternate embed method is configured for this store.'}
                                           </Text>
                                         </div>
@@ -3228,9 +3219,8 @@ function Settings() {
                                         </Text>
                                         <Text as="p" variant="bodySm" tone="subdued">
                                           Confirms your discount function and API can align checkout
-                                          with price tests. You do not need a running price test to
-                                          deploy extensions or create the automatic discount. Run
-                                          checks after changing app URL or secrets.
+                                          with price tests. Run checks after changing app URLs,
+                                          secrets, or extensions.
                                         </Text>
                                       </div>
                                     </div>
@@ -3386,7 +3376,7 @@ function Settings() {
                                               role="note"
                                               aria-label="Support level help"
                                             >
-                                              What this means
+                                              Support details
                                             </span>
                                           </Tooltip>
                                         )}
@@ -3414,9 +3404,9 @@ function Settings() {
                                             Checkout launch surfaces
                                           </Text>
                                           <Text as="p" variant="bodySm" tone="subdued">
-                                            Track the main launch paths separately so checkout
-                                            experience, offers, and shipping do not collapse into
-                                            one generic setup status.
+                                            Track checkout experience, offers, and shipping
+                                            separately instead of relying on one generic setup
+                                            status.
                                           </Text>
                                         </div>
                                         <div className={styles.checkoutReadinessList}>
@@ -3462,10 +3452,9 @@ function Settings() {
                                             Checkout customization deployment
                                           </Text>
                                           <Text as="p" variant="bodySm" tone="subdued">
-                                            Deploy saved payment-method and delivery-method checkout
-                                            tests directly from Installation. Dry run previews the
-                                            Shopify customization action; apply creates or updates
-                                            the customization and writes the RipX config metafield.
+                                            Deploy saved payment-method and delivery-method tests
+                                            here. Dry run previews the Shopify action; Apply creates
+                                            or updates the customization and RipX metafield.
                                           </Text>
                                         </div>
                                         <InlineStack gap="200" wrap>
@@ -3488,9 +3477,8 @@ function Settings() {
                                               Checkout experience inventory
                                             </Text>
                                             <Text as="p" variant="bodySm" tone="subdued">
-                                              Saved experience-phase checkout tests are
-                                              section-aware now. Review how many renderable sections
-                                              are already configured before launch.
+                                              Review saved experience-phase tests and how many
+                                              renderable checkout sections are already configured.
                                             </Text>
                                           </div>
                                           {checkoutExperienceInventory.length > 0 ? (
@@ -3555,9 +3543,9 @@ function Settings() {
                                           ) : (
                                             !checkoutCustomizationTestsLoading && (
                                               <Text as="p" variant="bodySm" tone="subdued">
-                                                No saved experience-phase checkout tests are
-                                                available yet. Create one in Checkout Tests to start
-                                                authoring section-based checkout content.
+                                                No saved experience-phase checkout tests yet. Create
+                                                one in Checkout Tests to start building
+                                                section-based checkout content.
                                               </Text>
                                             )
                                           )}
@@ -5361,12 +5349,12 @@ function Settings() {
                           data-app-section="presets"
                           role={showAllAppSections ? 'region' : 'tabpanel'}
                           aria-labelledby={showAllAppSections ? undefined : 'settings-tab-presets'}
-                          aria-label={showAllAppSections ? 'Audience presets settings' : undefined}
+                          aria-label={showAllAppSections ? 'Targeting presets settings' : undefined}
                           className={`${styles.settingsContent} ${styles.settingsPanelLayout} ${styles.settingsPanelPresets}`}
                         >
                           {showAllAppSections && (
                             <SettingsSectionLead
-                              title="Audience presets"
+                              title="Targeting presets"
                               summary={presetsSectionSummary}
                               badgeLabel={`${targetingPresets.length}`}
                               badgeTone={targetingPresets.length > 0 ? 'success' : 'info'}
@@ -5542,7 +5530,7 @@ function Settings() {
                     <InlineStack gap="200" blockAlign="center" wrap>
                       <Badge tone="attention">{installation.instructions.altMethod}</Badge>
                       <Text as="span" variant="bodySm" tone="subdued">
-                        Fallback option when the default snippet path does not fit the theme setup.
+                        Use this when the default snippet path does not fit the theme setup.
                       </Text>
                     </InlineStack>
                     {installation.instructions.altSnippet && (

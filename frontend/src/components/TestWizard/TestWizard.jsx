@@ -11730,6 +11730,11 @@ function TestWizard({
       nonControlIndices.length > 0
         ? Math.max(0, Math.min(100, Math.round((configuredCount / nonControlIndices.length) * 100)))
         : 100;
+    const totalVariants = checkoutVariants.length;
+    const designStudioTitle =
+      checkoutPhase === 'experience'
+        ? 'Checkout Experience Design Studio'
+        : `${phaseDetails.title} Design Studio`;
 
     const updateCheckoutGoal = patch => {
       setIsDirty(true);
@@ -11787,15 +11792,54 @@ function TestWizard({
 
     return (
       <BlockStack gap="400">
-        <Banner tone="info" title="Checkout phase setup">
-          <Text as="p" variant="bodySm">
-            Checkout tests can now be modeled as <strong>experience blocks</strong>,{' '}
-            <strong>payment-method</strong> experiments, or <strong>delivery-method</strong>{' '}
-            experiments. Experience blocks already render through the Checkout UI Extension; payment
-            and delivery phases store the same deployable contract used by readiness checks and
-            Shopify customization deployment.
-          </Text>
-        </Banner>
+        <div className={styles.checkoutStudioHero}>
+          <InlineStack align="space-between" blockAlign="start" wrap gap="400">
+            <div className={styles.checkoutStudioHeroCopy}>
+              <span className={styles.checkoutStudioEyebrow}>Checkout design studio</span>
+              <Text as="h3" variant="headingLg">
+                {designStudioTitle}
+              </Text>
+              <Text as="p" variant="bodyMd" tone="subdued">
+                {checkoutPhase === 'experience'
+                  ? 'Build modular checkout content with clearer hierarchy, faster section starters, and a deployable schema that stays aligned with readiness and analytics.'
+                  : `Shape ${phaseDetails.title.toLowerCase()} experiments with a cleaner contract, clearer treatment status, and deployment-safe configuration for each variant.`}
+              </Text>
+            </div>
+            <div className={styles.checkoutStudioHeroBadges}>
+              <Badge tone="info">{phaseDetails.title}</Badge>
+              <Badge tone={configuredCount > 0 ? 'success' : 'attention'}>
+                {configuredCount}/{nonControlIndices.length || 1} treatments ready
+              </Badge>
+            </div>
+          </InlineStack>
+
+          <div className={styles.checkoutStudioStats}>
+            <div className={styles.checkoutStudioStatCard}>
+              <span className={styles.checkoutStudioStatLabel}>Active phase</span>
+              <span className={styles.checkoutStudioStatValue}>{phaseDetails.title}</span>
+              <span className={styles.checkoutStudioStatHint}>{phaseDetails.surface}</span>
+            </div>
+            <div className={styles.checkoutStudioStatCard}>
+              <span className={styles.checkoutStudioStatLabel}>Treatment readiness</span>
+              <span className={styles.checkoutStudioStatValue}>
+                {configuredPercent}% configured
+              </span>
+              <span className={styles.checkoutStudioStatHint}>
+                {configuredCount} of {nonControlIndices.length || 1} non-control variants are
+                actionable
+              </span>
+            </div>
+            <div className={styles.checkoutStudioStatCard}>
+              <span className={styles.checkoutStudioStatLabel}>Variant system</span>
+              <span className={styles.checkoutStudioStatValue}>
+                {totalVariants} variant{totalVariants === 1 ? '' : 's'}
+              </span>
+              <span className={styles.checkoutStudioStatHint}>
+                Structured contract shared by editor, readiness, and deployment
+              </span>
+            </div>
+          </div>
+        </div>
 
         <Card>
           <div className={styles.checkoutPhaseShell}>
@@ -11853,6 +11897,12 @@ function TestWizard({
           const paymentMethods = getCheckoutListPreview(cfg.payment_method_names);
           const deliveryMethods = getCheckoutListPreview(cfg.delivery_method_names);
           const normalizedExperience = getNormalizedCheckoutExperienceConfig(cfg);
+          const placementLabel =
+            CHECKOUT_PLACEMENT_OPTIONS.find(
+              option =>
+                option.value ===
+                String(normalizedExperience.checkout_placement || 'purchase.checkout.block.render')
+            )?.label || 'Checkout block';
           const experienceSections =
             normalizedExperience.checkout_sections.length > 0
               ? normalizedExperience.checkout_sections
@@ -11872,27 +11922,67 @@ function TestWizard({
           return (
             <Card key={`checkout-${index}`}>
               <div className={styles.checkoutVariantShell}>
-                <InlineStack align="space-between" blockAlign="center" wrap>
-                  <div>
-                    <Text variant="headingSm" as="h4" fontWeight="semibold">
-                      {variant.name}
-                    </Text>
-                    <Text as="p" variant="bodySm" tone="subdued">
-                      {isControlLike
-                        ? 'Baseline checkout experience used as the control.'
-                        : `Treatment configured for ${phaseDetails.title.toLowerCase()}.`}
-                    </Text>
-                  </div>
-                  <InlineStack gap="200" blockAlign="center" wrap>
-                    <Badge tone="info">{variant.allocation ?? 0}% traffic</Badge>
-                    <Badge tone={variantConfigured ? 'success' : 'attention'}>
-                      {variantConfigured ? 'Configured' : 'Needs content'}
-                    </Badge>
-                    <Badge tone={isControlLike ? 'info' : 'success'}>
-                      {isControlLike ? 'Control' : phaseDetails.title}
-                    </Badge>
+                <div className={styles.checkoutVariantHero}>
+                  <InlineStack align="space-between" blockAlign="start" wrap gap="300">
+                    <div className={styles.checkoutVariantHeroCopy}>
+                      <span className={styles.checkoutVariantHeroEyebrow}>
+                        {isControlLike ? 'Control baseline' : 'Treatment variant'}
+                      </span>
+                      <Text variant="headingSm" as="h4" fontWeight="semibold">
+                        {variant.name}
+                      </Text>
+                      <Text as="p" variant="bodySm" tone="subdued">
+                        {isControlLike
+                          ? 'Baseline checkout experience used as the control.'
+                          : `Treatment configured for ${phaseDetails.title.toLowerCase()} with a deployment-safe checkout contract.`}
+                      </Text>
+                    </div>
+                    <InlineStack gap="200" blockAlign="center" wrap>
+                      <Badge tone="info">{variant.allocation ?? 0}% traffic</Badge>
+                      <Badge tone={variantConfigured ? 'success' : 'attention'}>
+                        {variantConfigured ? 'Configured' : 'Needs content'}
+                      </Badge>
+                      <Badge tone={isControlLike ? 'info' : 'success'}>
+                        {isControlLike ? 'Control' : phaseDetails.title}
+                      </Badge>
+                    </InlineStack>
                   </InlineStack>
-                </InlineStack>
+
+                  <div className={styles.checkoutVariantMetrics}>
+                    <div className={styles.checkoutVariantMetric}>
+                      <span className={styles.checkoutVariantMetricLabel}>Phase</span>
+                      <span className={styles.checkoutVariantMetricValue}>
+                        {phaseDetails.title}
+                      </span>
+                    </div>
+                    <div className={styles.checkoutVariantMetric}>
+                      <span className={styles.checkoutVariantMetricLabel}>Status</span>
+                      <span className={styles.checkoutVariantMetricValue}>
+                        {variantConfigured ? 'Ready to render' : 'Draft'}
+                      </span>
+                    </div>
+                    <div className={styles.checkoutVariantMetric}>
+                      <span className={styles.checkoutVariantMetricLabel}>
+                        {checkoutPhase === 'experience' ? 'Placement' : 'Surface'}
+                      </span>
+                      <span className={styles.checkoutVariantMetricValue}>
+                        {checkoutPhase === 'experience' ? placementLabel : phaseDetails.surface}
+                      </span>
+                    </div>
+                    <div className={styles.checkoutVariantMetric}>
+                      <span className={styles.checkoutVariantMetricLabel}>
+                        {checkoutPhase === 'experience' ? 'Renderable units' : 'Target methods'}
+                      </span>
+                      <span className={styles.checkoutVariantMetricValue}>
+                        {checkoutPhase === 'experience'
+                          ? `${actionableSections.length} section${actionableSections.length === 1 ? '' : 's'}`
+                          : checkoutPhase === 'payment_method'
+                            ? `${normalizeCheckoutListInput(cfg.payment_method_names).length} method${normalizeCheckoutListInput(cfg.payment_method_names).length === 1 ? '' : 's'}`
+                            : `${normalizeCheckoutListInput(cfg.delivery_method_names).length} method${normalizeCheckoutListInput(cfg.delivery_method_names).length === 1 ? '' : 's'}`}
+                      </span>
+                    </div>
+                  </div>
+                </div>
 
                 {checkoutPhase === 'experience' ? (
                   <BlockStack gap="300">
@@ -12438,36 +12528,52 @@ function TestWizard({
                         );
                       })}
 
-                      <div className={styles.checkoutQuickAddRow}>
-                        {CHECKOUT_SECTION_TYPE_OPTIONS.map(option => (
-                          <button
-                            key={`${variant.name}-${option.value}`}
-                            type="button"
-                            className={styles.checkoutQuickAddButton}
-                            onClick={() =>
-                              updateCheckoutExperienceVariantConfig(index, current => {
-                                const currentSections =
-                                  getNormalizedCheckoutExperienceConfig(current).checkout_sections;
-                                return {
-                                  ...current,
-                                  checkout_sections: [
-                                    ...currentSections,
-                                    {
-                                      ...createEmptyCheckoutSection(
-                                        currentSections.length,
-                                        option.value
-                                      ),
-                                      props: buildCheckoutSectionSmartPreset(option.value),
-                                    },
-                                  ],
-                                };
-                              })
-                            }
-                          >
-                            <strong>Add {option.label}</strong>
-                            <span>{getCheckoutSectionDetails(option.value).description}</span>
-                          </button>
-                        ))}
+                      <div className={styles.checkoutQuickAddShell}>
+                        <InlineStack align="space-between" blockAlign="center" wrap gap="300">
+                          <div>
+                            <Text as="h5" variant="headingSm">
+                              Smart section starters
+                            </Text>
+                            <Text as="p" variant="bodySm" tone="subdued">
+                              Drop in a polished section with preset content, then fine-tune copy,
+                              tone, and CTA behavior.
+                            </Text>
+                          </div>
+                          <Badge tone="info">Preset content included</Badge>
+                        </InlineStack>
+                        <div className={styles.checkoutQuickAddRow}>
+                          {CHECKOUT_SECTION_TYPE_OPTIONS.map(option => (
+                            <button
+                              key={`${variant.name}-${option.value}`}
+                              type="button"
+                              className={styles.checkoutQuickAddButton}
+                              onClick={() =>
+                                updateCheckoutExperienceVariantConfig(index, current => {
+                                  const currentSections =
+                                    getNormalizedCheckoutExperienceConfig(
+                                      current
+                                    ).checkout_sections;
+                                  return {
+                                    ...current,
+                                    checkout_sections: [
+                                      ...currentSections,
+                                      {
+                                        ...createEmptyCheckoutSection(
+                                          currentSections.length,
+                                          option.value
+                                        ),
+                                        props: buildCheckoutSectionSmartPreset(option.value),
+                                      },
+                                    ],
+                                  };
+                                })
+                              }
+                            >
+                              <strong>Add {option.label}</strong>
+                              <span>{getCheckoutSectionDetails(option.value).description}</span>
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </BlockStack>
                   </BlockStack>
@@ -12759,6 +12865,19 @@ function TestWizard({
       return renderConfigStepLoader();
     }
     if (variantConfigType !== 'code') {
+      const checkoutConfigPhase = normalizeCheckoutPhase(formData.goal?.checkout_phase);
+      const checkoutConfigPhaseDetails = getCheckoutPhaseDetails(checkoutConfigPhase);
+      const isCheckoutVariantConfig = variantConfigType === 'checkout';
+      const moduleHeading = isCheckoutVariantConfig
+        ? checkoutConfigPhase === 'experience'
+          ? 'Checkout Experience Design'
+          : `${checkoutConfigPhaseDetails.title} Configuration`
+        : 'Variant Configuration';
+      const moduleSubtitle = isCheckoutVariantConfig
+        ? checkoutConfigPhase === 'experience'
+          ? 'Design modular checkout content, placement, and smart section treatments for every variant.'
+          : `Configure ${checkoutConfigPhaseDetails.title.toLowerCase()} behavior, readiness, and deployable contract details.`
+        : null;
       const moduleTitles = {
         url: 'Variant URLs',
         price: 'Variant Prices',
@@ -12772,17 +12891,25 @@ function TestWizard({
           <BlockStack gap="400">
             <div
               className={
-                variantConfigType === 'price' ? stepStyles.variantConfigHeadPrice : undefined
+                variantConfigType === 'price'
+                  ? stepStyles.variantConfigHeadPrice
+                  : isCheckoutVariantConfig
+                    ? stepStyles.variantConfigHeadCheckout
+                    : undefined
               }
             >
               <InlineStack gap="300" blockAlign="center" wrap>
                 <Text variant="headingLg" as="h2" fontWeight="bold">
-                  Variant Configuration
+                  {moduleHeading}
                 </Text>
                 {variantConfigType === 'price' && <Badge tone="info">Price test</Badge>}
+                {isCheckoutVariantConfig && (
+                  <Badge tone="info">{checkoutConfigPhaseDetails.title}</Badge>
+                )}
+                {isCheckoutVariantConfig && <Badge tone="success">Structured contract</Badge>}
               </InlineStack>
               <Text variant="bodySm" color="subdued" as="p" style={{ marginTop: '0.25rem' }}>
-                {moduleTitles[variantConfigType]}
+                {moduleSubtitle || moduleTitles[variantConfigType]}
               </Text>
             </div>
             {variantConfigType === 'url' && renderVariantUrlModule()}
