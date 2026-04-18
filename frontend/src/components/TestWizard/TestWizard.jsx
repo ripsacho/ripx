@@ -148,11 +148,147 @@ const CHECKOUT_SECTION_TYPE_OPTIONS = [
 const CHECKOUT_PLACEMENT_OPTIONS = [
   { label: 'Checkout block', value: 'purchase.checkout.block.render' },
 ];
+const CHECKOUT_PHASE_DETAILS = Object.freeze({
+  experience: {
+    eyebrow: 'Checkout UI extension',
+    title: 'Experience block',
+    description:
+      'Render reassurance, urgency, guarantees, and offer content directly inside the checkout block extension.',
+    surface: 'Fixed to checkout content rendering',
+  },
+  payment_method: {
+    eyebrow: 'Shopify customization',
+    title: 'Payment methods',
+    description: 'Experiment with hiding, renaming, or reordering payment options during checkout.',
+    surface: 'Targets the payment step only',
+  },
+  delivery_method: {
+    eyebrow: 'Shopify customization',
+    title: 'Delivery methods',
+    description:
+      'Experiment with hiding, renaming, or reordering delivery methods during checkout.',
+    surface: 'Targets the delivery step only',
+  },
+});
+const CHECKOUT_SECTION_DETAILS = Object.freeze({
+  hero_notice: {
+    label: 'Hero notice',
+    description: 'Primary reassurance or urgency message',
+  },
+  trust_box: {
+    label: 'Trust box',
+    description: 'Trust badges, benefits, and proof points',
+  },
+  guarantee_box: {
+    label: 'Guarantee box',
+    description: 'Guarantees, refund promises, and policy confidence',
+  },
+  shipping_promise: {
+    label: 'Shipping promise',
+    description: 'Shipping expectation or arrival messaging',
+  },
+  offer_code_panel: {
+    label: 'Offer code panel',
+    description: 'Promo or offer messaging with CTA support',
+  },
+});
 const DEFAULT_TEST_TYPE_STATE = Object.freeze(getDefaultTestTypeState());
 
 function getCheckoutPhaseLabel(rawValue) {
   const phase = normalizeCheckoutPhase(rawValue);
   return CHECKOUT_PHASE_OPTIONS.find(option => option.value === phase)?.label || 'Experience block';
+}
+
+function getCheckoutPhaseDetails(rawValue) {
+  const phase = normalizeCheckoutPhase(rawValue);
+  return CHECKOUT_PHASE_DETAILS[phase] || CHECKOUT_PHASE_DETAILS.experience;
+}
+
+function getCheckoutSectionDetails(rawValue) {
+  const type = String(rawValue || 'hero_notice')
+    .trim()
+    .toLowerCase();
+  return CHECKOUT_SECTION_DETAILS[type] || CHECKOUT_SECTION_DETAILS.hero_notice;
+}
+
+function buildCheckoutSectionSmartPreset(rawType) {
+  const type = String(rawType || 'hero_notice')
+    .trim()
+    .toLowerCase();
+  switch (type) {
+    case 'trust_box':
+      return {
+        title: 'Why customers complete checkout',
+        message:
+          'Reinforce trust with fast support, secure payment handling, and clear order protection.',
+        badge_text: 'Trusted by shoppers',
+        disclaimer: 'Support and policy details stay available after purchase.',
+        cta_label: 'Continue securely',
+        tone: 'info',
+        layout: 'stacked',
+        cta_kind: 'track',
+        feature_bullets: ['Secure payment flow', 'Fast support response', 'Transparent policies'],
+      };
+    case 'guarantee_box':
+      return {
+        title: 'Protected purchase guarantee',
+        message:
+          'Reduce hesitation with a direct reminder of your return, refund, or satisfaction promise.',
+        badge_text: 'Risk-free',
+        disclaimer: 'Terms apply based on your store policy.',
+        cta_label: 'Review guarantee',
+        tone: 'success',
+        layout: 'banner',
+        cta_kind: 'track',
+        feature_bullets: [
+          'Money-back coverage',
+          'Simple returns',
+          'Support if anything goes wrong',
+        ],
+      };
+    case 'shipping_promise':
+      return {
+        title: 'Shipping promise',
+        message: 'Set clear delivery expectations before the customer places the order.',
+        badge_text: 'Fast dispatch',
+        disclaimer: 'Delivery timing depends on carrier and destination.',
+        cta_label: 'View delivery info',
+        tone: 'info',
+        layout: 'compact',
+        cta_kind: 'track',
+        feature_bullets: ['Quick fulfillment', 'Tracking updates', 'Clear delivery expectations'],
+      };
+    case 'offer_code_panel':
+      return {
+        title: 'Complete checkout with your offer',
+        message:
+          'Surface the active offer at the final step so the shopper does not second-guess the value.',
+        badge_text: 'Checkout incentive',
+        disclaimer: 'Offer availability follows your test and store rules.',
+        cta_label: 'Apply offer',
+        tone: 'warning',
+        layout: 'banner',
+        cta_kind: 'offer_code',
+        feature_bullets: [
+          'Offer shown at the final step',
+          'One-click CTA tracking',
+          'Strong conversion reminder',
+        ],
+      };
+    case 'hero_notice':
+    default:
+      return {
+        title: 'Checkout with confidence',
+        message: 'Use a clear reassurance statement to reduce friction right before purchase.',
+        badge_text: 'Secure checkout',
+        disclaimer: 'Optional note for guarantees, timing, or policy details.',
+        cta_label: 'Continue securely',
+        tone: 'success',
+        layout: 'banner',
+        cta_kind: 'track',
+        feature_bullets: ['Secure payment', 'Fast support', 'Clear next step'],
+      };
+  }
 }
 
 function buildProgressiveListWindow(items, visibleCount, options = {}) {
@@ -1445,6 +1581,45 @@ function TestWizard({
   const steps = buildWizardSteps(showTemplateStep, mode);
   const stepIds = getStepIds(showTemplateStep);
   const reviewStepId = steps[steps.length - 1]?.id;
+  const displaySteps = useMemo(() => {
+    const checkoutTemplateActive =
+      selectedTemplate === 'checkout' || String(formData.type || '').toLowerCase() === 'checkout';
+    if (!checkoutTemplateActive) {
+      return steps;
+    }
+    const checkoutPhase = normalizeCheckoutPhase(formData.goal?.checkout_phase);
+    const phaseDetails = getCheckoutPhaseDetails(checkoutPhase);
+    return steps.map(step => {
+      if (step.id === stepIds.targeting) {
+        return {
+          ...step,
+          title: 'Checkout Exposure',
+          description: 'Fixed checkout scope and holdout',
+        };
+      }
+      if (step.id === stepIds.code) {
+        return {
+          ...step,
+          title:
+            checkoutPhase === 'experience'
+              ? 'Checkout Experience Design'
+              : `${phaseDetails.title} Configuration`,
+          description:
+            checkoutPhase === 'experience'
+              ? 'Build checkout sections and smart content'
+              : `Configure ${phaseDetails.title.toLowerCase()} behavior`,
+        };
+      }
+      return step;
+    });
+  }, [
+    formData.goal?.checkout_phase,
+    formData.type,
+    selectedTemplate,
+    stepIds.code,
+    stepIds.targeting,
+    steps,
+  ]);
 
   useEffect(() => {
     pendingWizardUiStateRef.current = null;
@@ -2427,6 +2602,40 @@ function TestWizard({
     }
   }, [isShippingTargetingMode, placementSection]);
   useEffect(() => {
+    if (isStandalone || !isCheckoutTestType) {
+      return;
+    }
+    setFormData(prev => {
+      const currentTargetType = String(prev.target_type || '')
+        .trim()
+        .toLowerCase();
+      const currentUrlPattern = String(prev.segments?.url_pattern || '').trim();
+      const currentPageRules = Array.isArray(prev.segments?.page_rules)
+        ? prev.segments.page_rules
+        : [];
+      if (
+        currentTargetType === 'checkout' &&
+        currentUrlPattern === '/checkout' &&
+        currentPageRules.length === 0 &&
+        !prev.target_id &&
+        !prev.target_ids
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        target_type: 'checkout',
+        target_id: '',
+        target_ids: null,
+        segments: {
+          ...(prev.segments || {}),
+          url_pattern: '/checkout',
+          page_rules: [],
+        },
+      };
+    });
+  }, [isCheckoutTestType, isStandalone]);
+  useEffect(() => {
     const handler = e => {
       if (currentStep !== stepIds.targeting) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -3389,6 +3598,8 @@ function TestWizard({
     isPriceLikeTestType(formData.type);
   const isOfferTestType = selectedTemplate === 'offer' || isOfferLikeTestType(formData.type);
   const isShippingTestType = selectedTemplate === 'shipping' || formData.type === 'shipping';
+  const isCheckoutTestType =
+    selectedTemplate === 'checkout' || String(formData.type || '').toLowerCase() === 'checkout';
   const isCommerceProductScopeTest = isPriceTestType || isOfferTestType || isShippingTestType;
 
   const handleNext = () => {
@@ -3909,7 +4120,7 @@ function TestWizard({
 
   const renderStepIndicator = () => (
     <div className="wizard-progress">
-      {steps.map((step, index) => {
+      {displaySteps.map((step, index) => {
         const isActive = currentStep === step.id;
         const isCompleted = currentStep > step.id;
         const isClickable = canNavigateSteps && (mode === 'edit' || step.id <= currentStep);
@@ -4370,6 +4581,154 @@ function TestWizard({
       formData.holdout_percent === null || formData.holdout_percent === undefined
         ? ''
         : String(formData.holdout_percent);
+    if (isCheckoutTestType) {
+      const checkoutPhase = normalizeCheckoutPhase(formData.goal?.checkout_phase);
+      const phaseDetails = getCheckoutPhaseDetails(checkoutPhase);
+      const holdoutPercent = Math.min(50, Math.max(0, Number(holdoutValue) || 0));
+      return (
+        <BlockStack gap="400">
+          <Card>
+            <div className={styles.checkoutTargetingShell}>
+              <div className={styles.stepHeader}>
+                <span className={styles.stepHeaderIcon}>
+                  <Icon source={CreditCardIcon} />
+                </span>
+                <div>
+                  <h2 className={styles.stepHeaderTitle}>Checkout targeting</h2>
+                  <p className={styles.stepHeaderSubtitle}>
+                    Checkout tests now use a dedicated targeting flow. The surface is fixed to
+                    checkout, so the noisy storefront targeting controls have been removed.
+                  </p>
+                </div>
+              </div>
+
+              <div className={styles.checkoutTargetingSummary}>
+                <span className={styles.checkoutTargetingSummaryChip}>
+                  Surface locked to `/checkout`
+                </span>
+                <span className={styles.checkoutTargetingSummaryChip}>
+                  Phase: {getCheckoutPhaseLabel(checkoutPhase)}
+                </span>
+                <span className={styles.checkoutTargetingSummaryChip}>
+                  Holdout: {holdoutPercent}%
+                </span>
+              </div>
+
+              <div className={styles.checkoutTargetingGrid}>
+                <div className={styles.checkoutTargetingTile}>
+                  <span className={styles.checkoutTargetingTileEyebrow}>Fixed location</span>
+                  <Text as="h3" variant="headingSm">
+                    Checkout only
+                  </Text>
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    RipX pins this test to the live checkout surface and automatically keeps the
+                    target on `/checkout`.
+                  </Text>
+                </div>
+                <div className={styles.checkoutTargetingTile}>
+                  <span className={styles.checkoutTargetingTileEyebrow}>Current phase</span>
+                  <Text as="h3" variant="headingSm">
+                    {phaseDetails.title}
+                  </Text>
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    {phaseDetails.description}
+                  </Text>
+                </div>
+                <div className={styles.checkoutTargetingTile}>
+                  <span className={styles.checkoutTargetingTileEyebrow}>Deployment layer</span>
+                  <Text as="h3" variant="headingSm">
+                    {phaseDetails.eyebrow}
+                  </Text>
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    {phaseDetails.surface}
+                  </Text>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          <Card>
+            <div className={styles.checkoutHoldoutShell}>
+              <div className={styles.checkoutHoldoutHeader}>
+                <div>
+                  <Text as="h3" variant="headingSm">
+                    Checkout holdout
+                  </Text>
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    Keep a clean control group for checkout performance comparisons without exposing
+                    every buyer to a treatment.
+                  </Text>
+                </div>
+                <Badge tone={holdoutPercent >= 10 ? 'success' : 'attention'}>
+                  {holdoutPercent}% reserved
+                </Badge>
+              </div>
+
+              <div className={styles.checkoutPresetRow}>
+                {[0, 10, 25, 50].map(pct => (
+                  <button
+                    key={pct}
+                    type="button"
+                    className={`${styles.checkoutPresetButton} ${holdoutPercent === pct ? styles.checkoutPresetButtonActive : ''}`}
+                    onClick={() => setFormData(prev => ({ ...prev, holdout_percent: pct }))}
+                  >
+                    {pct}%{pct === 10 ? <span>Recommended</span> : null}
+                  </button>
+                ))}
+              </div>
+
+              <InlineStack gap="300" wrap>
+                <div style={{ minWidth: 180, flex: '0 0 180px' }}>
+                  <TextField
+                    label="Holdout percentage"
+                    type="number"
+                    min={0}
+                    max={50}
+                    value={holdoutValue ?? ''}
+                    onChange={value =>
+                      setFormData(prev => ({
+                        ...prev,
+                        holdout_percent: value,
+                      }))
+                    }
+                    autoComplete="off"
+                  />
+                </div>
+                <div className={styles.checkoutHoldoutRangeShell}>
+                  <input
+                    type="range"
+                    className={styles.checkoutHoldoutRange}
+                    min={0}
+                    max={50}
+                    value={holdoutPercent}
+                    onChange={e =>
+                      setFormData(prev => ({
+                        ...prev,
+                        holdout_percent: e.target.value,
+                      }))
+                    }
+                    aria-label="Checkout holdout percentage"
+                  />
+                  <div className={styles.checkoutHoldoutRangeLabels}>
+                    <span>0%</span>
+                    <span>25%</span>
+                    <span>50%</span>
+                  </div>
+                </div>
+              </InlineStack>
+
+              <Banner tone="info" title="What changed">
+                <Text as="p" variant="bodySm">
+                  Page scope, device filters, audience filters, and custom checkout URL rules are no
+                  longer authored here for checkout tests. This step stays focused on checkout-only
+                  exposure and clean experiment measurement.
+                </Text>
+              </Banner>
+            </div>
+          </Card>
+        </BlockStack>
+      );
+    }
     const currentTemplateKey = String(
       selectedTemplate || formData.goal?.template_key || formData.type || ''
     ).toLowerCase();
@@ -11346,6 +11705,7 @@ function TestWizard({
   const renderVariantCheckoutModule = () => {
     const checkoutVariants = formData.variants || [];
     const checkoutPhase = normalizeCheckoutPhase(formData.goal?.checkout_phase);
+    const phaseDetails = getCheckoutPhaseDetails(checkoutPhase);
     const nonControlIndices = checkoutVariants
       .map((variant, index) => ({ variant, index }))
       .filter(
@@ -11438,27 +11798,53 @@ function TestWizard({
         </Banner>
 
         <Card>
-          <BlockStack gap="300">
-            <InlineStack align="space-between" blockAlign="center" wrap>
-              <Text variant="headingSm" as="h3" fontWeight="semibold">
-                Checkout experiment phase
-              </Text>
+          <div className={styles.checkoutPhaseShell}>
+            <InlineStack align="space-between" blockAlign="center" wrap gap="300">
+              <div>
+                <Text variant="headingSm" as="h3" fontWeight="semibold">
+                  Checkout experiment phase
+                </Text>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Pick the checkout surface first, then RipX keeps the variant contract aligned for
+                  readiness, deployment, and analytics.
+                </Text>
+              </div>
               <Badge tone={configuredCount > 0 ? 'success' : 'attention'}>
                 {configuredCount}/{nonControlIndices.length || 1} treatments configured
               </Badge>
             </InlineStack>
-            <Select
-              label="Checkout phase"
-              options={CHECKOUT_PHASE_OPTIONS}
-              value={checkoutPhase}
-              onChange={value => updateCheckoutGoal({ checkout_phase: value })}
-              helpText="Choose which checkout surface this test is changing. Experience blocks render through the Checkout UI extension, while payment and delivery phases deploy through Shopify customizations."
-            />
-            <Text as="p" variant="bodySm" tone="subdued">
-              Readiness: {configuredPercent}% of non-control variants are configured for{' '}
-              {getCheckoutPhaseLabel(checkoutPhase).toLowerCase()}.
-            </Text>
-          </BlockStack>
+
+            <div className={styles.checkoutPhaseGrid}>
+              {CHECKOUT_PHASE_OPTIONS.map(option => {
+                const details = getCheckoutPhaseDetails(option.value);
+                const active = option.value === checkoutPhase;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`${styles.checkoutPhaseCard} ${active ? styles.checkoutPhaseCardActive : ''}`}
+                    onClick={() => updateCheckoutGoal({ checkout_phase: option.value })}
+                    aria-pressed={active}
+                  >
+                    <span className={styles.checkoutPhaseEyebrow}>{details.eyebrow}</span>
+                    <span className={styles.checkoutPhaseTitle}>{details.title}</span>
+                    <span className={styles.checkoutPhaseDescription}>{details.description}</span>
+                    <span className={styles.checkoutPhaseSurface}>{details.surface}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className={styles.checkoutPhaseSummaryBar}>
+              <span className={styles.checkoutPhaseSummaryChip}>
+                Live phase: {phaseDetails.title}
+              </span>
+              <span className={styles.checkoutPhaseSummaryChip}>
+                Readiness: {configuredPercent}% configured
+              </span>
+              <span className={styles.checkoutPhaseSummaryChip}>{phaseDetails.surface}</span>
+            </div>
+          </div>
         </Card>
 
         {checkoutVariants.map((variant, index) => {
@@ -11466,67 +11852,466 @@ function TestWizard({
           const isControlLike = index === 0 || /control/i.test(String(variant?.name || ''));
           const paymentMethods = getCheckoutListPreview(cfg.payment_method_names);
           const deliveryMethods = getCheckoutListPreview(cfg.delivery_method_names);
+          const normalizedExperience = getNormalizedCheckoutExperienceConfig(cfg);
+          const experienceSections =
+            normalizedExperience.checkout_sections.length > 0
+              ? normalizedExperience.checkout_sections
+              : [createEmptyCheckoutSection(0)];
+          const actionableSections = getActionableCheckoutSections(cfg);
+          const actionableTypeLabels = Array.from(
+            new Set(
+              actionableSections.map(section => getCheckoutSectionDetails(section.type).label)
+            )
+          );
+          const variantConfigured =
+            checkoutPhase === 'experience'
+              ? actionableSections.length > 0
+              : checkoutPhase === 'payment_method'
+                ? normalizeCheckoutListInput(cfg.payment_method_names).length > 0
+                : normalizeCheckoutListInput(cfg.delivery_method_names).length > 0;
           return (
-            <Card key={`checkout-${index}`} sectioned>
-              <BlockStack gap="300">
+            <Card key={`checkout-${index}`}>
+              <div className={styles.checkoutVariantShell}>
                 <InlineStack align="space-between" blockAlign="center" wrap>
-                  <Text variant="headingSm" as="h4" fontWeight="semibold">
-                    {variant.name}
-                  </Text>
+                  <div>
+                    <Text variant="headingSm" as="h4" fontWeight="semibold">
+                      {variant.name}
+                    </Text>
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      {isControlLike
+                        ? 'Baseline checkout experience used as the control.'
+                        : `Treatment configured for ${phaseDetails.title.toLowerCase()}.`}
+                    </Text>
+                  </div>
                   <InlineStack gap="200" blockAlign="center" wrap>
                     <Badge tone="info">{variant.allocation ?? 0}% traffic</Badge>
+                    <Badge tone={variantConfigured ? 'success' : 'attention'}>
+                      {variantConfigured ? 'Configured' : 'Needs content'}
+                    </Badge>
                     <Badge tone={isControlLike ? 'info' : 'success'}>
-                      {isControlLike ? 'Control' : getCheckoutPhaseLabel(checkoutPhase)}
+                      {isControlLike ? 'Control' : phaseDetails.title}
                     </Badge>
                   </InlineStack>
                 </InlineStack>
 
                 {checkoutPhase === 'experience' ? (
                   <BlockStack gap="300">
-                    <Select
-                      label="Checkout placement"
-                      options={CHECKOUT_PLACEMENT_OPTIONS}
-                      value={
-                        getNormalizedCheckoutExperienceConfig(cfg).checkout_placement ||
-                        'purchase.checkout.block.render'
-                      }
-                      onChange={value =>
-                        updateCheckoutExperienceVariantConfig(index, current => ({
-                          ...current,
-                          checkout_placement: value,
-                        }))
-                      }
-                      helpText="All sections for this variant currently render inside the Checkout UI block extension."
-                    />
-                    {(function renderSections() {
-                      const normalizedExperience = getNormalizedCheckoutExperienceConfig(cfg);
-                      const sections =
-                        normalizedExperience.checkout_sections.length > 0
-                          ? normalizedExperience.checkout_sections
-                          : [createEmptyCheckoutSection(0)];
-                      return (
-                        <BlockStack gap="300">
-                          {sections.map((section, sectionIndex) => {
-                            const props = section?.props || {};
-                            const isOnlySection = sections.length === 1;
-                            return (
-                              <Card key={`${variant.name}-section-${section.id || sectionIndex}`}>
-                                <BlockStack gap="300">
-                                  <InlineStack align="space-between" blockAlign="center" wrap>
-                                    <Text variant="headingXs" as="h5" fontWeight="semibold">
-                                      Section {sectionIndex + 1}
+                    <div className={styles.checkoutVariantBlock}>
+                      <InlineStack align="space-between" blockAlign="center" wrap>
+                        <div>
+                          <Text as="h5" variant="headingSm">
+                            Experience layout
+                          </Text>
+                          <Text as="p" variant="bodySm" tone="subdued">
+                            Build a modular checkout treatment with reusable content blocks and live
+                            previews.
+                          </Text>
+                        </div>
+                        <Badge tone={actionableSections.length > 0 ? 'success' : 'attention'}>
+                          {actionableSections.length} renderable section
+                          {actionableSections.length === 1 ? '' : 's'}
+                        </Badge>
+                      </InlineStack>
+                      {actionableTypeLabels.length > 0 ? (
+                        <div className={styles.checkoutVariantChips}>
+                          {actionableTypeLabels.map(label => (
+                            <span
+                              key={`${variant.name}-${label}`}
+                              className={styles.checkoutVariantChip}
+                            >
+                              {label}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className={styles.checkoutVariantEmptyHint}>
+                          Start with a smart section below to generate a stronger checkout treatment
+                          faster.
+                        </div>
+                      )}
+                      <Select
+                        label="Checkout placement"
+                        options={CHECKOUT_PLACEMENT_OPTIONS}
+                        value={
+                          normalizedExperience.checkout_placement ||
+                          'purchase.checkout.block.render'
+                        }
+                        onChange={value =>
+                          updateCheckoutExperienceVariantConfig(index, current => ({
+                            ...current,
+                            checkout_placement: value,
+                          }))
+                        }
+                        helpText="All sections for this variant render inside the checkout block extension."
+                      />
+                    </div>
+
+                    <BlockStack gap="300">
+                      {experienceSections.map((section, sectionIndex) => {
+                        const props = section?.props || {};
+                        const isOnlySection = experienceSections.length === 1;
+                        const sectionDetails = getCheckoutSectionDetails(section.type);
+                        const featureBullets = normalizeCheckoutListInput(props.feature_bullets);
+                        const hasSectionContent = Boolean(
+                          props.title ||
+                          props.message ||
+                          props.badge_text ||
+                          props.disclaimer ||
+                          props.cta_label ||
+                          featureBullets.length > 0
+                        );
+                        return (
+                          <Card key={`${variant.name}-section-${section.id || sectionIndex}`}>
+                            <div className={styles.checkoutSectionShell}>
+                              <InlineStack align="space-between" blockAlign="center" wrap>
+                                <div>
+                                  <Text variant="headingXs" as="h5" fontWeight="semibold">
+                                    Section {sectionIndex + 1}: {sectionDetails.label}
+                                  </Text>
+                                  <Text as="p" variant="bodySm" tone="subdued">
+                                    {sectionDetails.description}
+                                  </Text>
+                                </div>
+                                <InlineStack gap="200" blockAlign="center" wrap>
+                                  <Badge tone={section.enabled === false ? 'critical' : 'success'}>
+                                    {section.enabled === false ? 'Disabled' : 'Enabled'}
+                                  </Badge>
+                                  <Badge tone="info">{String(props.layout || 'banner')}</Badge>
+                                  <Badge tone="info">{String(props.tone || 'success')}</Badge>
+                                  <Button
+                                    size="micro"
+                                    onClick={() =>
+                                      updateCheckoutExperienceVariantConfig(index, current => {
+                                        const currentSections =
+                                          getNormalizedCheckoutExperienceConfig(
+                                            current
+                                          ).checkout_sections;
+                                        const source = currentSections[sectionIndex] || section;
+                                        const duplicated = {
+                                          ...source,
+                                          id: `${String(source.id || source.type || 'section')}-copy-${currentSections.length + 1}`,
+                                          order: sectionIndex + 1,
+                                        };
+                                        const nextSections = [
+                                          ...currentSections.slice(0, sectionIndex + 1),
+                                          duplicated,
+                                          ...currentSections.slice(sectionIndex + 1),
+                                        ].map((item, itemIndex) => ({
+                                          ...item,
+                                          order: itemIndex,
+                                        }));
+                                        return {
+                                          ...current,
+                                          checkout_sections: nextSections,
+                                        };
+                                      })
+                                    }
+                                  >
+                                    Duplicate
+                                  </Button>
+                                  <Button
+                                    size="micro"
+                                    tone="critical"
+                                    disabled={isOnlySection}
+                                    onClick={() =>
+                                      updateCheckoutExperienceVariantConfig(index, current => {
+                                        const currentSections =
+                                          getNormalizedCheckoutExperienceConfig(
+                                            current
+                                          ).checkout_sections;
+                                        return {
+                                          ...current,
+                                          checkout_sections: currentSections
+                                            .filter(
+                                              (_, currentIndex) => currentIndex !== sectionIndex
+                                            )
+                                            .map((item, itemIndex) => ({
+                                              ...item,
+                                              order: itemIndex,
+                                            })),
+                                        };
+                                      })
+                                    }
+                                  >
+                                    Remove
+                                  </Button>
+                                </InlineStack>
+                              </InlineStack>
+
+                              <div
+                                className={`${styles.checkoutSectionPreview} ${!hasSectionContent ? styles.checkoutSectionPreviewEmpty : ''}`}
+                              >
+                                {hasSectionContent ? (
+                                  <BlockStack gap="200">
+                                    {props.badge_text ? (
+                                      <span className={styles.checkoutSectionPreviewBadge}>
+                                        {props.badge_text}
+                                      </span>
+                                    ) : null}
+                                    <Text as="h6" variant="headingSm">
+                                      {props.title || sectionDetails.label}
                                     </Text>
-                                    <InlineStack gap="200" blockAlign="center" wrap>
-                                      <Badge
-                                        tone={section.enabled === false ? 'critical' : 'success'}
-                                      >
-                                        {section.enabled === false ? 'Disabled' : 'Enabled'}
-                                      </Badge>
-                                      <Button
-                                        size="micro"
-                                        tone="critical"
-                                        disabled={isOnlySection}
-                                        onClick={() =>
+                                    <Text as="p" variant="bodySm" tone="subdued">
+                                      {props.message ||
+                                        'Add supporting copy to preview how this section feels inside checkout.'}
+                                    </Text>
+                                    {featureBullets.length > 0 ? (
+                                      <ul className={styles.checkoutSectionPreviewList}>
+                                        {featureBullets.slice(0, 3).map(item => (
+                                          <li key={item}>{item}</li>
+                                        ))}
+                                      </ul>
+                                    ) : null}
+                                    <div className={styles.checkoutSectionPreviewFooter}>
+                                      <span>{String(props.cta_kind || 'track')}</span>
+                                      {props.cta_label ? <strong>{props.cta_label}</strong> : null}
+                                    </div>
+                                  </BlockStack>
+                                ) : (
+                                  <Text as="p" variant="bodySm" tone="subdued">
+                                    This section is empty. Add title, message, proof points, or CTA
+                                    copy to make it render in checkout.
+                                  </Text>
+                                )}
+                              </div>
+
+                              <div className={styles.checkoutSectionControls}>
+                                <div className={styles.checkoutSectionActionRow}>
+                                  <Button
+                                    size="slim"
+                                    onClick={() =>
+                                      updateCheckoutExperienceVariantConfig(index, current => {
+                                        const currentSections =
+                                          getNormalizedCheckoutExperienceConfig(
+                                            current
+                                          ).checkout_sections;
+                                        return {
+                                          ...current,
+                                          checkout_sections: currentSections.map(
+                                            (item, itemIndex) =>
+                                              itemIndex === sectionIndex
+                                                ? {
+                                                    ...item,
+                                                    props: buildCheckoutSectionSmartPreset(
+                                                      item.type
+                                                    ),
+                                                  }
+                                                : item
+                                          ),
+                                        };
+                                      })
+                                    }
+                                  >
+                                    Use smart starter
+                                  </Button>
+                                  <Text as="span" variant="bodySm" tone="subdued">
+                                    Auto-fills this section with a strong starting structure for{' '}
+                                    {sectionDetails.label.toLowerCase()}.
+                                  </Text>
+                                </div>
+                                <Checkbox
+                                  label="Section enabled"
+                                  checked={section.enabled !== false}
+                                  onChange={value =>
+                                    updateCheckoutExperienceVariantConfig(index, current => {
+                                      const currentSections =
+                                        getNormalizedCheckoutExperienceConfig(
+                                          current
+                                        ).checkout_sections;
+                                      return {
+                                        ...current,
+                                        checkout_sections: currentSections.map((item, itemIndex) =>
+                                          itemIndex === sectionIndex
+                                            ? { ...item, enabled: value }
+                                            : item
+                                        ),
+                                      };
+                                    })
+                                  }
+                                />
+
+                                <Select
+                                  label="Section type"
+                                  options={CHECKOUT_SECTION_TYPE_OPTIONS}
+                                  value={String(section.type || 'hero_notice')}
+                                  onChange={value =>
+                                    updateCheckoutExperienceVariantConfig(index, current => {
+                                      const currentSections =
+                                        getNormalizedCheckoutExperienceConfig(
+                                          current
+                                        ).checkout_sections;
+                                      return {
+                                        ...current,
+                                        checkout_sections: currentSections.map((item, itemIndex) =>
+                                          itemIndex === sectionIndex
+                                            ? { ...item, type: value }
+                                            : item
+                                        ),
+                                      };
+                                    })
+                                  }
+                                />
+
+                                <FormLayout>
+                                  <TextField
+                                    label="Title"
+                                    value={String(props.title || '')}
+                                    onChange={value =>
+                                      updateCheckoutExperienceVariantConfig(index, current => {
+                                        const currentSections =
+                                          getNormalizedCheckoutExperienceConfig(
+                                            current
+                                          ).checkout_sections;
+                                        return {
+                                          ...current,
+                                          checkout_sections: currentSections.map(
+                                            (item, itemIndex) =>
+                                              itemIndex === sectionIndex
+                                                ? {
+                                                    ...item,
+                                                    props: {
+                                                      ...(item.props || {}),
+                                                      title: value,
+                                                    },
+                                                  }
+                                                : item
+                                          ),
+                                        };
+                                      })
+                                    }
+                                    placeholder="e.g. Checkout with confidence"
+                                    autoComplete="off"
+                                  />
+                                  <TextField
+                                    label="Message"
+                                    value={String(props.message || '')}
+                                    onChange={value =>
+                                      updateCheckoutExperienceVariantConfig(index, current => {
+                                        const currentSections =
+                                          getNormalizedCheckoutExperienceConfig(
+                                            current
+                                          ).checkout_sections;
+                                        return {
+                                          ...current,
+                                          checkout_sections: currentSections.map(
+                                            (item, itemIndex) =>
+                                              itemIndex === sectionIndex
+                                                ? {
+                                                    ...item,
+                                                    props: {
+                                                      ...(item.props || {}),
+                                                      message: value,
+                                                    },
+                                                  }
+                                                : item
+                                          ),
+                                        };
+                                      })
+                                    }
+                                    placeholder="Add reassurance, urgency, or support copy for this section."
+                                    multiline={3}
+                                    autoComplete="off"
+                                  />
+                                  <TextField
+                                    label="Badge text"
+                                    value={String(props.badge_text || '')}
+                                    onChange={value =>
+                                      updateCheckoutExperienceVariantConfig(index, current => {
+                                        const currentSections =
+                                          getNormalizedCheckoutExperienceConfig(
+                                            current
+                                          ).checkout_sections;
+                                        return {
+                                          ...current,
+                                          checkout_sections: currentSections.map(
+                                            (item, itemIndex) =>
+                                              itemIndex === sectionIndex
+                                                ? {
+                                                    ...item,
+                                                    props: {
+                                                      ...(item.props || {}),
+                                                      badge_text: value,
+                                                    },
+                                                  }
+                                                : item
+                                          ),
+                                        };
+                                      })
+                                    }
+                                    placeholder="e.g. Secure checkout"
+                                    autoComplete="off"
+                                  />
+                                  <TextField
+                                    label="Feature bullets"
+                                    value={normalizeCheckoutListInput(props.feature_bullets).join(
+                                      '\n'
+                                    )}
+                                    onChange={value =>
+                                      updateCheckoutExperienceVariantConfig(index, current => {
+                                        const currentSections =
+                                          getNormalizedCheckoutExperienceConfig(
+                                            current
+                                          ).checkout_sections;
+                                        return {
+                                          ...current,
+                                          checkout_sections: currentSections.map(
+                                            (item, itemIndex) =>
+                                              itemIndex === sectionIndex
+                                                ? {
+                                                    ...item,
+                                                    props: {
+                                                      ...(item.props || {}),
+                                                      feature_bullets:
+                                                        normalizeCheckoutListInput(value),
+                                                    },
+                                                  }
+                                                : item
+                                          ),
+                                        };
+                                      })
+                                    }
+                                    placeholder={
+                                      'One bullet per line\n30-day guarantee\nFast support'
+                                    }
+                                    multiline={4}
+                                    autoComplete="off"
+                                  />
+                                  <TextField
+                                    label="Disclaimer"
+                                    value={String(props.disclaimer || '')}
+                                    onChange={value =>
+                                      updateCheckoutExperienceVariantConfig(index, current => {
+                                        const currentSections =
+                                          getNormalizedCheckoutExperienceConfig(
+                                            current
+                                          ).checkout_sections;
+                                        return {
+                                          ...current,
+                                          checkout_sections: currentSections.map(
+                                            (item, itemIndex) =>
+                                              itemIndex === sectionIndex
+                                                ? {
+                                                    ...item,
+                                                    props: {
+                                                      ...(item.props || {}),
+                                                      disclaimer: value,
+                                                    },
+                                                  }
+                                                : item
+                                          ),
+                                        };
+                                      })
+                                    }
+                                    placeholder="Optional fine print shown under the main message."
+                                    autoComplete="off"
+                                  />
+                                  <InlineStack gap="300" wrap>
+                                    <div style={{ minWidth: 220, flex: '1 1 220px' }}>
+                                      <Select
+                                        label="Layout"
+                                        options={CHECKOUT_LAYOUT_OPTIONS}
+                                        value={String(props.layout || 'banner')}
+                                        onChange={value =>
                                           updateCheckoutExperienceVariantConfig(index, current => {
                                             const currentSections =
                                               getNormalizedCheckoutExperienceConfig(
@@ -11534,366 +12319,131 @@ function TestWizard({
                                               ).checkout_sections;
                                             return {
                                               ...current,
-                                              checkout_sections: currentSections
-                                                .filter(
-                                                  (_, currentIndex) => currentIndex !== sectionIndex
-                                                )
-                                                .map((item, itemIndex) => ({
-                                                  ...item,
-                                                  order: itemIndex,
-                                                })),
+                                              checkout_sections: currentSections.map(
+                                                (item, itemIndex) =>
+                                                  itemIndex === sectionIndex
+                                                    ? {
+                                                        ...item,
+                                                        props: {
+                                                          ...(item.props || {}),
+                                                          layout: value,
+                                                        },
+                                                      }
+                                                    : item
+                                              ),
                                             };
                                           })
                                         }
-                                      >
-                                        Remove
-                                      </Button>
-                                    </InlineStack>
+                                      />
+                                    </div>
+                                    <div style={{ minWidth: 220, flex: '1 1 220px' }}>
+                                      <Select
+                                        label="Tone"
+                                        options={CHECKOUT_TONE_OPTIONS}
+                                        value={String(props.tone || 'success')}
+                                        onChange={value =>
+                                          updateCheckoutExperienceVariantConfig(index, current => {
+                                            const currentSections =
+                                              getNormalizedCheckoutExperienceConfig(
+                                                current
+                                              ).checkout_sections;
+                                            return {
+                                              ...current,
+                                              checkout_sections: currentSections.map(
+                                                (item, itemIndex) =>
+                                                  itemIndex === sectionIndex
+                                                    ? {
+                                                        ...item,
+                                                        props: {
+                                                          ...(item.props || {}),
+                                                          tone: value,
+                                                        },
+                                                      }
+                                                    : item
+                                              ),
+                                            };
+                                          })
+                                        }
+                                      />
+                                    </div>
                                   </InlineStack>
+                                  <InlineStack gap="300" wrap>
+                                    <div style={{ minWidth: 220, flex: '1 1 220px' }}>
+                                      <Select
+                                        label="CTA behavior"
+                                        options={CHECKOUT_CTA_KIND_OPTIONS}
+                                        value={String(props.cta_kind || 'track')}
+                                        onChange={value =>
+                                          updateCheckoutExperienceVariantConfig(index, current => {
+                                            const currentSections =
+                                              getNormalizedCheckoutExperienceConfig(
+                                                current
+                                              ).checkout_sections;
+                                            return {
+                                              ...current,
+                                              checkout_sections: currentSections.map(
+                                                (item, itemIndex) =>
+                                                  itemIndex === sectionIndex
+                                                    ? {
+                                                        ...item,
+                                                        props: {
+                                                          ...(item.props || {}),
+                                                          cta_kind: value,
+                                                        },
+                                                      }
+                                                    : item
+                                              ),
+                                            };
+                                          })
+                                        }
+                                      />
+                                    </div>
+                                    <div style={{ minWidth: 260, flex: '1 1 260px' }}>
+                                      <TextField
+                                        label="CTA label"
+                                        value={String(props.cta_label || '')}
+                                        onChange={value =>
+                                          updateCheckoutExperienceVariantConfig(index, current => {
+                                            const currentSections =
+                                              getNormalizedCheckoutExperienceConfig(
+                                                current
+                                              ).checkout_sections;
+                                            return {
+                                              ...current,
+                                              checkout_sections: currentSections.map(
+                                                (item, itemIndex) =>
+                                                  itemIndex === sectionIndex
+                                                    ? {
+                                                        ...item,
+                                                        props: {
+                                                          ...(item.props || {}),
+                                                          cta_label: value,
+                                                        },
+                                                      }
+                                                    : item
+                                              ),
+                                            };
+                                          })
+                                        }
+                                        disabled={String(props.cta_kind || 'track') === 'none'}
+                                        placeholder="e.g. Continue securely"
+                                        autoComplete="off"
+                                      />
+                                    </div>
+                                  </InlineStack>
+                                </FormLayout>
+                              </div>
+                            </div>
+                          </Card>
+                        );
+                      })}
 
-                                  <Checkbox
-                                    label="Section enabled"
-                                    checked={section.enabled !== false}
-                                    onChange={value =>
-                                      updateCheckoutExperienceVariantConfig(index, current => {
-                                        const currentSections =
-                                          getNormalizedCheckoutExperienceConfig(
-                                            current
-                                          ).checkout_sections;
-                                        return {
-                                          ...current,
-                                          checkout_sections: currentSections.map(
-                                            (item, itemIndex) =>
-                                              itemIndex === sectionIndex
-                                                ? { ...item, enabled: value }
-                                                : item
-                                          ),
-                                        };
-                                      })
-                                    }
-                                  />
-
-                                  <Select
-                                    label="Section type"
-                                    options={CHECKOUT_SECTION_TYPE_OPTIONS}
-                                    value={String(section.type || 'hero_notice')}
-                                    onChange={value =>
-                                      updateCheckoutExperienceVariantConfig(index, current => {
-                                        const currentSections =
-                                          getNormalizedCheckoutExperienceConfig(
-                                            current
-                                          ).checkout_sections;
-                                        return {
-                                          ...current,
-                                          checkout_sections: currentSections.map(
-                                            (item, itemIndex) =>
-                                              itemIndex === sectionIndex
-                                                ? { ...item, type: value }
-                                                : item
-                                          ),
-                                        };
-                                      })
-                                    }
-                                  />
-
-                                  <FormLayout>
-                                    <TextField
-                                      label="Title"
-                                      value={String(props.title || '')}
-                                      onChange={value =>
-                                        updateCheckoutExperienceVariantConfig(index, current => {
-                                          const currentSections =
-                                            getNormalizedCheckoutExperienceConfig(
-                                              current
-                                            ).checkout_sections;
-                                          return {
-                                            ...current,
-                                            checkout_sections: currentSections.map(
-                                              (item, itemIndex) =>
-                                                itemIndex === sectionIndex
-                                                  ? {
-                                                      ...item,
-                                                      props: {
-                                                        ...(item.props || {}),
-                                                        title: value,
-                                                      },
-                                                    }
-                                                  : item
-                                            ),
-                                          };
-                                        })
-                                      }
-                                      placeholder="e.g. Checkout with confidence"
-                                      autoComplete="off"
-                                    />
-                                    <TextField
-                                      label="Message"
-                                      value={String(props.message || '')}
-                                      onChange={value =>
-                                        updateCheckoutExperienceVariantConfig(index, current => {
-                                          const currentSections =
-                                            getNormalizedCheckoutExperienceConfig(
-                                              current
-                                            ).checkout_sections;
-                                          return {
-                                            ...current,
-                                            checkout_sections: currentSections.map(
-                                              (item, itemIndex) =>
-                                                itemIndex === sectionIndex
-                                                  ? {
-                                                      ...item,
-                                                      props: {
-                                                        ...(item.props || {}),
-                                                        message: value,
-                                                      },
-                                                    }
-                                                  : item
-                                            ),
-                                          };
-                                        })
-                                      }
-                                      placeholder="Add reassurance, urgency, or support copy for this section."
-                                      multiline={3}
-                                      autoComplete="off"
-                                    />
-                                    <TextField
-                                      label="Badge text"
-                                      value={String(props.badge_text || '')}
-                                      onChange={value =>
-                                        updateCheckoutExperienceVariantConfig(index, current => {
-                                          const currentSections =
-                                            getNormalizedCheckoutExperienceConfig(
-                                              current
-                                            ).checkout_sections;
-                                          return {
-                                            ...current,
-                                            checkout_sections: currentSections.map(
-                                              (item, itemIndex) =>
-                                                itemIndex === sectionIndex
-                                                  ? {
-                                                      ...item,
-                                                      props: {
-                                                        ...(item.props || {}),
-                                                        badge_text: value,
-                                                      },
-                                                    }
-                                                  : item
-                                            ),
-                                          };
-                                        })
-                                      }
-                                      placeholder="e.g. Secure checkout"
-                                      autoComplete="off"
-                                    />
-                                    <TextField
-                                      label="Feature bullets"
-                                      value={normalizeCheckoutListInput(props.feature_bullets).join(
-                                        '\n'
-                                      )}
-                                      onChange={value =>
-                                        updateCheckoutExperienceVariantConfig(index, current => {
-                                          const currentSections =
-                                            getNormalizedCheckoutExperienceConfig(
-                                              current
-                                            ).checkout_sections;
-                                          return {
-                                            ...current,
-                                            checkout_sections: currentSections.map(
-                                              (item, itemIndex) =>
-                                                itemIndex === sectionIndex
-                                                  ? {
-                                                      ...item,
-                                                      props: {
-                                                        ...(item.props || {}),
-                                                        feature_bullets:
-                                                          normalizeCheckoutListInput(value),
-                                                      },
-                                                    }
-                                                  : item
-                                            ),
-                                          };
-                                        })
-                                      }
-                                      placeholder={
-                                        'One bullet per line\n30-day guarantee\nFast support'
-                                      }
-                                      multiline={4}
-                                      autoComplete="off"
-                                    />
-                                    <TextField
-                                      label="Disclaimer"
-                                      value={String(props.disclaimer || '')}
-                                      onChange={value =>
-                                        updateCheckoutExperienceVariantConfig(index, current => {
-                                          const currentSections =
-                                            getNormalizedCheckoutExperienceConfig(
-                                              current
-                                            ).checkout_sections;
-                                          return {
-                                            ...current,
-                                            checkout_sections: currentSections.map(
-                                              (item, itemIndex) =>
-                                                itemIndex === sectionIndex
-                                                  ? {
-                                                      ...item,
-                                                      props: {
-                                                        ...(item.props || {}),
-                                                        disclaimer: value,
-                                                      },
-                                                    }
-                                                  : item
-                                            ),
-                                          };
-                                        })
-                                      }
-                                      placeholder="Optional fine print shown under the main message."
-                                      autoComplete="off"
-                                    />
-                                    <InlineStack gap="300" wrap>
-                                      <div style={{ minWidth: 220, flex: '1 1 220px' }}>
-                                        <Select
-                                          label="Layout"
-                                          options={CHECKOUT_LAYOUT_OPTIONS}
-                                          value={String(props.layout || 'banner')}
-                                          onChange={value =>
-                                            updateCheckoutExperienceVariantConfig(
-                                              index,
-                                              current => {
-                                                const currentSections =
-                                                  getNormalizedCheckoutExperienceConfig(
-                                                    current
-                                                  ).checkout_sections;
-                                                return {
-                                                  ...current,
-                                                  checkout_sections: currentSections.map(
-                                                    (item, itemIndex) =>
-                                                      itemIndex === sectionIndex
-                                                        ? {
-                                                            ...item,
-                                                            props: {
-                                                              ...(item.props || {}),
-                                                              layout: value,
-                                                            },
-                                                          }
-                                                        : item
-                                                  ),
-                                                };
-                                              }
-                                            )
-                                          }
-                                        />
-                                      </div>
-                                      <div style={{ minWidth: 220, flex: '1 1 220px' }}>
-                                        <Select
-                                          label="Tone"
-                                          options={CHECKOUT_TONE_OPTIONS}
-                                          value={String(props.tone || 'success')}
-                                          onChange={value =>
-                                            updateCheckoutExperienceVariantConfig(
-                                              index,
-                                              current => {
-                                                const currentSections =
-                                                  getNormalizedCheckoutExperienceConfig(
-                                                    current
-                                                  ).checkout_sections;
-                                                return {
-                                                  ...current,
-                                                  checkout_sections: currentSections.map(
-                                                    (item, itemIndex) =>
-                                                      itemIndex === sectionIndex
-                                                        ? {
-                                                            ...item,
-                                                            props: {
-                                                              ...(item.props || {}),
-                                                              tone: value,
-                                                            },
-                                                          }
-                                                        : item
-                                                  ),
-                                                };
-                                              }
-                                            )
-                                          }
-                                        />
-                                      </div>
-                                    </InlineStack>
-                                    <InlineStack gap="300" wrap>
-                                      <div style={{ minWidth: 220, flex: '1 1 220px' }}>
-                                        <Select
-                                          label="CTA behavior"
-                                          options={CHECKOUT_CTA_KIND_OPTIONS}
-                                          value={String(props.cta_kind || 'track')}
-                                          onChange={value =>
-                                            updateCheckoutExperienceVariantConfig(
-                                              index,
-                                              current => {
-                                                const currentSections =
-                                                  getNormalizedCheckoutExperienceConfig(
-                                                    current
-                                                  ).checkout_sections;
-                                                return {
-                                                  ...current,
-                                                  checkout_sections: currentSections.map(
-                                                    (item, itemIndex) =>
-                                                      itemIndex === sectionIndex
-                                                        ? {
-                                                            ...item,
-                                                            props: {
-                                                              ...(item.props || {}),
-                                                              cta_kind: value,
-                                                            },
-                                                          }
-                                                        : item
-                                                  ),
-                                                };
-                                              }
-                                            )
-                                          }
-                                        />
-                                      </div>
-                                      <div style={{ minWidth: 260, flex: '1 1 260px' }}>
-                                        <TextField
-                                          label="CTA label"
-                                          value={String(props.cta_label || '')}
-                                          onChange={value =>
-                                            updateCheckoutExperienceVariantConfig(
-                                              index,
-                                              current => {
-                                                const currentSections =
-                                                  getNormalizedCheckoutExperienceConfig(
-                                                    current
-                                                  ).checkout_sections;
-                                                return {
-                                                  ...current,
-                                                  checkout_sections: currentSections.map(
-                                                    (item, itemIndex) =>
-                                                      itemIndex === sectionIndex
-                                                        ? {
-                                                            ...item,
-                                                            props: {
-                                                              ...(item.props || {}),
-                                                              cta_label: value,
-                                                            },
-                                                          }
-                                                        : item
-                                                  ),
-                                                };
-                                              }
-                                            )
-                                          }
-                                          disabled={String(props.cta_kind || 'track') === 'none'}
-                                          placeholder="e.g. Continue securely"
-                                          autoComplete="off"
-                                        />
-                                      </div>
-                                    </InlineStack>
-                                  </FormLayout>
-                                </BlockStack>
-                              </Card>
-                            );
-                          })}
-                          <Button
-                            icon={PlusIcon}
+                      <div className={styles.checkoutQuickAddRow}>
+                        {CHECKOUT_SECTION_TYPE_OPTIONS.map(option => (
+                          <button
+                            key={`${variant.name}-${option.value}`}
+                            type="button"
+                            className={styles.checkoutQuickAddButton}
                             onClick={() =>
                               updateCheckoutExperienceVariantConfig(index, current => {
                                 const currentSections =
@@ -11902,136 +12452,149 @@ function TestWizard({
                                   ...current,
                                   checkout_sections: [
                                     ...currentSections,
-                                    createEmptyCheckoutSection(currentSections.length),
+                                    {
+                                      ...createEmptyCheckoutSection(
+                                        currentSections.length,
+                                        option.value
+                                      ),
+                                      props: buildCheckoutSectionSmartPreset(option.value),
+                                    },
                                   ],
                                 };
                               })
                             }
                           >
-                            Add section
-                          </Button>
-                        </BlockStack>
-                      );
-                    })()}
+                            <strong>Add {option.label}</strong>
+                            <span>{getCheckoutSectionDetails(option.value).description}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </BlockStack>
                   </BlockStack>
                 ) : checkoutPhase === 'payment_method' ? (
-                  <FormLayout>
-                    <Select
-                      label={`${variant.name} payment action`}
-                      options={[
-                        { label: 'Hide methods', value: 'hide' },
-                        { label: 'Rename methods', value: 'rename' },
-                        { label: 'Reorder methods', value: 'reorder' },
-                      ]}
-                      value={String(cfg.payment_action || 'hide')}
-                      onChange={value =>
-                        updateCheckoutVariantConfig(index, { payment_action: value })
-                      }
-                    />
-                    <TextField
-                      label={`${variant.name} payment methods`}
-                      value={
-                        Array.isArray(cfg.payment_method_names)
-                          ? cfg.payment_method_names.join('\n')
-                          : String(cfg.payment_method_names || '')
-                      }
-                      onChange={value =>
-                        updateCheckoutVariantConfig(index, {
-                          payment_method_names: normalizeCheckoutListInput(value),
-                        })
-                      }
-                      placeholder={'One payment method per line\nCash on Delivery\nPayPal'}
-                      multiline={4}
-                      helpText="Use the checkout-facing method names you expect Shopify to expose."
-                      autoComplete="off"
-                    />
-                    <TextField
-                      label={`${variant.name} rename to`}
-                      value={String(cfg.payment_rename_to || '')}
-                      onChange={value =>
-                        updateCheckoutVariantConfig(index, { payment_rename_to: value })
-                      }
-                      disabled={String(cfg.payment_action || 'hide') !== 'rename'}
-                      placeholder="Optional shared rename target for matched methods"
-                      autoComplete="off"
-                    />
-                    <TextField
-                      label={`${variant.name} operator note`}
-                      value={String(cfg.checkout_message || '')}
-                      onChange={value =>
-                        updateCheckoutVariantConfig(index, { checkout_message: value })
-                      }
-                      placeholder="Explain what should change in checkout for this payment-method variant."
-                      multiline={2}
-                      autoComplete="off"
-                    />
+                  <div className={styles.checkoutVariantBlock}>
                     {paymentMethods ? (
-                      <Text as="p" variant="bodySm" tone="subdued">
-                        Current methods: {paymentMethods}
-                      </Text>
+                      <div className={styles.checkoutMethodSummary}>
+                        <span className={styles.checkoutMethodSummaryLabel}>Target methods</span>
+                        <span className={styles.checkoutMethodSummaryValue}>{paymentMethods}</span>
+                      </div>
                     ) : null}
-                  </FormLayout>
+                    <FormLayout>
+                      <Select
+                        label={`${variant.name} payment action`}
+                        options={[
+                          { label: 'Hide methods', value: 'hide' },
+                          { label: 'Rename methods', value: 'rename' },
+                          { label: 'Reorder methods', value: 'reorder' },
+                        ]}
+                        value={String(cfg.payment_action || 'hide')}
+                        onChange={value =>
+                          updateCheckoutVariantConfig(index, { payment_action: value })
+                        }
+                      />
+                      <TextField
+                        label={`${variant.name} payment methods`}
+                        value={
+                          Array.isArray(cfg.payment_method_names)
+                            ? cfg.payment_method_names.join('\n')
+                            : String(cfg.payment_method_names || '')
+                        }
+                        onChange={value =>
+                          updateCheckoutVariantConfig(index, {
+                            payment_method_names: normalizeCheckoutListInput(value),
+                          })
+                        }
+                        placeholder={'One payment method per line\nCash on Delivery\nPayPal'}
+                        multiline={4}
+                        helpText="Use the checkout-facing method names you expect Shopify to expose."
+                        autoComplete="off"
+                      />
+                      <TextField
+                        label={`${variant.name} rename to`}
+                        value={String(cfg.payment_rename_to || '')}
+                        onChange={value =>
+                          updateCheckoutVariantConfig(index, { payment_rename_to: value })
+                        }
+                        disabled={String(cfg.payment_action || 'hide') !== 'rename'}
+                        placeholder="Optional shared rename target for matched methods"
+                        autoComplete="off"
+                      />
+                      <TextField
+                        label={`${variant.name} operator note`}
+                        value={String(cfg.checkout_message || '')}
+                        onChange={value =>
+                          updateCheckoutVariantConfig(index, { checkout_message: value })
+                        }
+                        placeholder="Explain what should change in checkout for this payment-method variant."
+                        multiline={2}
+                        autoComplete="off"
+                      />
+                    </FormLayout>
+                  </div>
                 ) : (
-                  <FormLayout>
-                    <Select
-                      label={`${variant.name} delivery action`}
-                      options={[
-                        { label: 'Hide methods', value: 'hide' },
-                        { label: 'Rename methods', value: 'rename' },
-                        { label: 'Reorder methods', value: 'reorder' },
-                      ]}
-                      value={String(cfg.delivery_action || 'hide')}
-                      onChange={value =>
-                        updateCheckoutVariantConfig(index, { delivery_action: value })
-                      }
-                    />
-                    <TextField
-                      label={`${variant.name} delivery methods`}
-                      value={
-                        Array.isArray(cfg.delivery_method_names)
-                          ? cfg.delivery_method_names.join('\n')
-                          : String(cfg.delivery_method_names || '')
-                      }
-                      onChange={value =>
-                        updateCheckoutVariantConfig(index, {
-                          delivery_method_names: normalizeCheckoutListInput(value),
-                        })
-                      }
-                      placeholder={
-                        'One delivery method per line\nStandard Shipping\nExpress Shipping'
-                      }
-                      multiline={4}
-                      helpText="Use the delivery option names or labels you want the customization layer to target."
-                      autoComplete="off"
-                    />
-                    <TextField
-                      label={`${variant.name} rename to`}
-                      value={String(cfg.delivery_rename_to || '')}
-                      onChange={value =>
-                        updateCheckoutVariantConfig(index, { delivery_rename_to: value })
-                      }
-                      disabled={String(cfg.delivery_action || 'hide') !== 'rename'}
-                      placeholder="Optional shared rename target for matched delivery methods"
-                      autoComplete="off"
-                    />
-                    <TextField
-                      label={`${variant.name} operator note`}
-                      value={String(cfg.checkout_message || '')}
-                      onChange={value =>
-                        updateCheckoutVariantConfig(index, { checkout_message: value })
-                      }
-                      placeholder="Explain what should change in checkout for this delivery-method variant."
-                      multiline={2}
-                      autoComplete="off"
-                    />
+                  <div className={styles.checkoutVariantBlock}>
                     {deliveryMethods ? (
-                      <Text as="p" variant="bodySm" tone="subdued">
-                        Current methods: {deliveryMethods}
-                      </Text>
+                      <div className={styles.checkoutMethodSummary}>
+                        <span className={styles.checkoutMethodSummaryLabel}>Target methods</span>
+                        <span className={styles.checkoutMethodSummaryValue}>{deliveryMethods}</span>
+                      </div>
                     ) : null}
-                  </FormLayout>
+                    <FormLayout>
+                      <Select
+                        label={`${variant.name} delivery action`}
+                        options={[
+                          { label: 'Hide methods', value: 'hide' },
+                          { label: 'Rename methods', value: 'rename' },
+                          { label: 'Reorder methods', value: 'reorder' },
+                        ]}
+                        value={String(cfg.delivery_action || 'hide')}
+                        onChange={value =>
+                          updateCheckoutVariantConfig(index, { delivery_action: value })
+                        }
+                      />
+                      <TextField
+                        label={`${variant.name} delivery methods`}
+                        value={
+                          Array.isArray(cfg.delivery_method_names)
+                            ? cfg.delivery_method_names.join('\n')
+                            : String(cfg.delivery_method_names || '')
+                        }
+                        onChange={value =>
+                          updateCheckoutVariantConfig(index, {
+                            delivery_method_names: normalizeCheckoutListInput(value),
+                          })
+                        }
+                        placeholder={
+                          'One delivery method per line\nStandard Shipping\nExpress Shipping'
+                        }
+                        multiline={4}
+                        helpText="Use the delivery option names or labels you want the customization layer to target."
+                        autoComplete="off"
+                      />
+                      <TextField
+                        label={`${variant.name} rename to`}
+                        value={String(cfg.delivery_rename_to || '')}
+                        onChange={value =>
+                          updateCheckoutVariantConfig(index, { delivery_rename_to: value })
+                        }
+                        disabled={String(cfg.delivery_action || 'hide') !== 'rename'}
+                        placeholder="Optional shared rename target for matched delivery methods"
+                        autoComplete="off"
+                      />
+                      <TextField
+                        label={`${variant.name} operator note`}
+                        value={String(cfg.checkout_message || '')}
+                        onChange={value =>
+                          updateCheckoutVariantConfig(index, { checkout_message: value })
+                        }
+                        placeholder="Explain what should change in checkout for this delivery-method variant."
+                        multiline={2}
+                        autoComplete="off"
+                      />
+                    </FormLayout>
+                  </div>
                 )}
-              </BlockStack>
+              </div>
             </Card>
           );
         })}
