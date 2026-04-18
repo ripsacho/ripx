@@ -1489,6 +1489,8 @@ function TestWizard({
   const [wizardCheckoutReadiness, setWizardCheckoutReadiness] = useState(null);
   const [wizardCheckoutReadinessLoading, setWizardCheckoutReadinessLoading] = useState(false);
   const [wizardCheckoutReadinessError, setWizardCheckoutReadinessError] = useState(null);
+  const isCheckoutTestType =
+    selectedTemplate === 'checkout' || String(formData.type || '').toLowerCase() === 'checkout';
   const wizardUiStateKey = useMemo(
     () => (mode === 'edit' && initialData?.id ? `ripx-test-wizard-ui:${initialData.id}` : null),
     [mode, initialData?.id]
@@ -3598,8 +3600,6 @@ function TestWizard({
     isPriceLikeTestType(formData.type);
   const isOfferTestType = selectedTemplate === 'offer' || isOfferLikeTestType(formData.type);
   const isShippingTestType = selectedTemplate === 'shipping' || formData.type === 'shipping';
-  const isCheckoutTestType =
-    selectedTemplate === 'checkout' || String(formData.type || '').toLowerCase() === 'checkout';
   const isCommerceProductScopeTest = isPriceTestType || isOfferTestType || isShippingTestType;
 
   const handleNext = () => {
