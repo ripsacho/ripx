@@ -3580,7 +3580,9 @@ div[class*="Modal__Dialog"] {
   box-shadow: 0 8px 32px rgba(6, 182, 212, 0.08), 0 0 0 1px rgba(255, 255, 255, 0.5) inset, var(--surface-3) !important;
   overflow: hidden;
   position: relative;
-  max-width: min(500px, 92vw);
+  width: min(720px, calc(100vw - 2rem));
+  max-width: min(720px, calc(100vw - 2rem));
+  max-height: min(88vh, 860px);
   transition: box-shadow var(--transition-base), border-color var(--transition-base);
 }
 
@@ -3788,13 +3790,20 @@ div[class*="Modal__Section"] {
   padding-top: 0 !important;
 }
 
-/* Admin page: constrain modal overlay to main section (right of app sidebar) and center dialog */
+/* Admin page: keep modal overlay full viewport and center dialog */
 body.admin-page .Polaris-Modal-DialogContainer,
 body.admin-page div[class*="Polaris-Modal"][class*="Container"] {
-  left: 280px !important;
+  position: fixed !important;
+  inset: 0 !important;
+  left: 0 !important;
   right: 0 !important;
-  width: auto !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
   max-width: none !important;
+  padding: 1rem !important;
+  box-sizing: border-box !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -3818,6 +3827,81 @@ body.admin-page div[class*="Polaris-Modal"][class*="Container"]:has([data-modal=
 body.admin-page .Polaris-Modal-Dialog,
 body.admin-page div[class*="Polaris-Modal"] [class*="Dialog"] {
   margin: auto !important;
+}
+
+/* Settings install/detail modals: wider, less cramped, better suited for code blocks */
+.Polaris-Modal-Dialog:has([data-modal="settings-install-detail"]),
+div[class*="Polaris-Modal"][class*="Dialog"]:has([data-modal="settings-install-detail"]) {
+  width: 100% !important;
+  min-width: min(720px, calc(100vw - 2rem)) !important;
+  max-width: min(920px, calc(100vw - 2rem)) !important;
+  max-height: min(88vh, 860px) !important;
+  margin: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+.Polaris-Modal-Dialog:has([data-modal="settings-install-detail"]) .Polaris-Modal__Body,
+.Polaris-Modal-Dialog:has([data-modal="settings-install-detail"]) div[class*="Modal__Body"],
+div[class*="Polaris-Modal"][class*="Dialog"]:has([data-modal="settings-install-detail"]) [class*="Modal__Body"] {
+  padding: 0 !important;
+  min-height: 0 !important;
+}
+
+.Polaris-Modal-Dialog:has([data-modal="settings-install-detail"]) .Polaris-Modal__Section,
+.Polaris-Modal-Dialog:has([data-modal="settings-install-detail"]) div[class*="Modal__Section"],
+div[class*="Polaris-Modal"][class*="Dialog"]:has([data-modal="settings-install-detail"]) [class*="Modal__Section"] {
+  padding: 1rem 1.25rem 0 !important;
+}
+
+/* Larger admin detail modals: domain/support dialogs should feel like workspace panels, not narrow alerts */
+body.admin-page .Polaris-Modal-Dialog:has([data-modal="domain-detail"]),
+body.admin-page .Polaris-Modal-Dialog:has([data-modal="support-thread"]),
+body.admin-page .Polaris-Modal-Dialog:has([data-modal="support-suggest-reply"]),
+body.admin-page div[class*="Polaris-Modal"] [class*="Dialog"]:has([data-modal="domain-detail"]),
+body.admin-page div[class*="Polaris-Modal"] [class*="Dialog"]:has([data-modal="support-thread"]),
+body.admin-page div[class*="Polaris-Modal"] [class*="Dialog"]:has([data-modal="support-suggest-reply"]) {
+  width: 100% !important;
+  min-width: min(720px, calc(100vw - 2rem)) !important;
+  max-width: min(980px, calc(100vw - 2rem)) !important;
+  max-height: min(88vh, 860px) !important;
+  margin: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+body.admin-page .Polaris-Modal-Dialog:has([data-modal="domain-detail"]) .Polaris-Modal__Body,
+body.admin-page .Polaris-Modal-Dialog:has([data-modal="support-thread"]) .Polaris-Modal__Body,
+body.admin-page .Polaris-Modal-Dialog:has([data-modal="support-suggest-reply"]) .Polaris-Modal__Body,
+body.admin-page .Polaris-Modal-Dialog:has([data-modal="domain-detail"]) div[class*="Modal__Body"],
+body.admin-page .Polaris-Modal-Dialog:has([data-modal="support-thread"]) div[class*="Modal__Body"],
+body.admin-page .Polaris-Modal-Dialog:has([data-modal="support-suggest-reply"]) div[class*="Modal__Body"],
+body.admin-page div[class*="Polaris-Modal"] [class*="Dialog"]:has([data-modal="domain-detail"]) [class*="Modal__Body"],
+body.admin-page div[class*="Polaris-Modal"] [class*="Dialog"]:has([data-modal="support-thread"]) [class*="Modal__Body"],
+body.admin-page div[class*="Polaris-Modal"] [class*="Dialog"]:has([data-modal="support-suggest-reply"]) [class*="Modal__Body"] {
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+body.admin-page .Polaris-Modal-Dialog:has([data-modal="domain-detail"]) .Polaris-Modal__Section,
+body.admin-page .Polaris-Modal-Dialog:has([data-modal="support-thread"]) .Polaris-Modal__Section,
+body.admin-page .Polaris-Modal-Dialog:has([data-modal="support-suggest-reply"]) .Polaris-Modal__Section,
+body.admin-page .Polaris-Modal-Dialog:has([data-modal="domain-detail"]) div[class*="Modal__Section"],
+body.admin-page .Polaris-Modal-Dialog:has([data-modal="support-thread"]) div[class*="Modal__Section"],
+body.admin-page .Polaris-Modal-Dialog:has([data-modal="support-suggest-reply"]) div[class*="Modal__Section"],
+body.admin-page div[class*="Polaris-Modal"] [class*="Dialog"]:has([data-modal="domain-detail"]) [class*="Modal__Section"],
+body.admin-page div[class*="Polaris-Modal"] [class*="Dialog"]:has([data-modal="support-thread"]) [class*="Modal__Section"],
+body.admin-page div[class*="Polaris-Modal"] [class*="Dialog"]:has([data-modal="support-suggest-reply"]) [class*="Modal__Section"] {
+  padding: 1rem 1.25rem 0 !important;
+  overflow: auto !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
 }
 
 /* User-detail modal: wider dialog (not thin), balanced proportions */
@@ -3853,6 +3937,24 @@ body.admin-page .Polaris-Modal-Dialog:has([data-modal="user-detail"]) div[class*
   body.admin-page .Polaris-Modal-DialogContainer,
   body.admin-page div[class*="Polaris-Modal"][class*="Container"] {
     left: 0 !important;
+  }
+
+  .Polaris-Modal-Dialog:has([data-modal="settings-install-detail"]),
+  div[class*="Polaris-Modal"][class*="Dialog"]:has([data-modal="settings-install-detail"]) {
+    min-width: 0 !important;
+    max-width: calc(100vw - 1rem) !important;
+    max-height: calc(100vh - 1rem) !important;
+  }
+
+  body.admin-page .Polaris-Modal-Dialog:has([data-modal="domain-detail"]),
+  body.admin-page .Polaris-Modal-Dialog:has([data-modal="support-thread"]),
+  body.admin-page .Polaris-Modal-Dialog:has([data-modal="support-suggest-reply"]),
+  body.admin-page div[class*="Polaris-Modal"] [class*="Dialog"]:has([data-modal="domain-detail"]),
+  body.admin-page div[class*="Polaris-Modal"] [class*="Dialog"]:has([data-modal="support-thread"]),
+  body.admin-page div[class*="Polaris-Modal"] [class*="Dialog"]:has([data-modal="support-suggest-reply"]) {
+    min-width: 0 !important;
+    max-width: calc(100vw - 1rem) !important;
+    max-height: calc(100vh - 1rem) !important;
   }
 }
 

@@ -1778,7 +1778,7 @@ export default function AdminSupportTickets() {
           ]}
         >
           <Modal.Section>
-            <BlockStack gap="300">
+            <BlockStack gap="300" data-modal="support-thread">
               <InlineStack
                 align="space-between"
                 blockAlign="start"
@@ -1903,7 +1903,7 @@ export default function AdminSupportTickets() {
           ]}
         >
           <Modal.Section>
-            <BlockStack gap="300">
+            <BlockStack gap="300" data-modal="support-suggest-reply">
               <Text as="p" variant="bodySm" tone="subdued">
                 Subject: {suggestReplyTicket.subject || '—'}
               </Text>

@@ -396,7 +396,7 @@ export default function AdminDomains() {
             {detailLoading ? (
               <LoadingSkeleton type="text" count={5} />
             ) : domainDetail ? (
-              <BlockStack gap="400">
+              <BlockStack gap="400" data-modal="domain-detail">
                 <InlineStack gap="800" wrap>
                   <BlockStack gap="100">
                     <Text as="span" variant="bodySm" tone="subdued">

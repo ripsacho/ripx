@@ -5462,10 +5462,11 @@ function Settings() {
         open={installSnippetModalOpen}
         onClose={() => setInstallSnippetModalOpen(false)}
         title="Snippet details"
+        size="large"
         primaryAction={{ content: 'Close', onAction: () => setInstallSnippetModalOpen(false) }}
       >
         <Modal.Section>
-          <BlockStack gap="300">
+          <BlockStack gap="300" data-modal="settings-install-detail">
             <Text as="p" variant="bodySm" tone="subdued">
               Copy, verify, or share installation details without leaving the main setup hub.
             </Text>
@@ -5648,10 +5649,11 @@ function Settings() {
         open={installAdvancedOpen}
         onClose={() => setInstallAdvancedOpen(false)}
         title="Advanced installation tools"
+        size="large"
         primaryAction={{ content: 'Close', onAction: () => setInstallAdvancedOpen(false) }}
       >
         <Modal.Section>
-          <BlockStack gap="300">
+          <BlockStack gap="300" data-modal="settings-install-detail">
             <Text as="p" variant="bodySm" tone="subdued">
               Power tools for verification, preview probing, and Shopify function inventory.
             </Text>
@@ -5748,10 +5750,11 @@ function Settings() {
         open={installDebugJsonOpen}
         onClose={() => setInstallDebugJsonOpen(false)}
         title="Debug JSON"
+        size="large"
         primaryAction={{ content: 'Close', onAction: () => setInstallDebugJsonOpen(false) }}
       >
         <Modal.Section>
-          <BlockStack gap="200">
+          <BlockStack gap="200" data-modal="settings-install-detail">
             <Text as="p" variant="bodySm" tone="subdued">
               Copy for support or internal troubleshooting. Redact secrets before sharing
               externally.

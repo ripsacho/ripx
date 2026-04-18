@@ -607,7 +607,17 @@
   border-radius: 12px;
   background: rgba(6, 182, 212, 0.04);
   padding: 0.75rem;
-  overflow-x: auto;
+  max-width: 100%;
+  overflow: auto;
+}
+
+.installModalCodeBlock code {
+  display: block;
+  font-size: 0.72rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .installModalInfoCard {
@@ -1572,8 +1582,11 @@
 
 .checkoutDiagMono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.8125rem;
-  word-break: break-all;
+  font-size: 0.72rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .checkoutDiagCheckRow {
@@ -1687,6 +1700,23 @@
   border-radius: 12px;
   padding: 0.9rem 1rem;
   background: linear-gradient(180deg, rgba(139, 92, 246, 0.08) 0%, rgba(6, 182, 212, 0.03) 100%);
+  max-width: 100%;
+  max-height: min(44vh, 420px);
+  overflow: auto;
+  font-size: 0.72rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.checkoutDiagDebugBox code {
+  display: block;
+  font-size: inherit;
+  line-height: inherit;
+  white-space: inherit;
+  overflow-wrap: inherit;
+  word-break: inherit;
 }
 
 .checkoutDiagVerifyList {
@@ -3334,6 +3364,10 @@
 }
 
 @media (max-width: 768px) {
+  .installAdvancedModalGrid {
+    grid-template-columns: 1fr;
+  }
+
   .installSupportGrid {
     grid-template-columns: 1fr;
   }
