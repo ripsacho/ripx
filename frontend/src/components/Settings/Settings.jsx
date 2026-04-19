@@ -2084,6 +2084,39 @@ function Settings() {
     }),
     [setupComplete, configuredIntegrationCount, targetingPresets]
   );
+  const tabStatusMeta = useMemo(
+    () => ({
+      installation: {
+        label: setupComplete ? 'Ready' : 'Needs setup',
+        status: setupComplete ? 'ok' : 'warn',
+      },
+      general: {
+        label: selectedSettingsPresetKey
+          ? SETTINGS_PRESETS[selectedSettingsPresetKey]?.label || 'Preset'
+          : 'Custom',
+        status: selectedSettingsPresetKey ? 'ok' : 'neutral',
+      },
+      integrations: {
+        label: configuredIntegrationCount > 0 ? `${configuredIntegrationCount} linked` : 'Optional',
+        status: configuredIntegrationCount > 0 ? 'ok' : 'neutral',
+      },
+      presets: {
+        label: `${Array.isArray(targetingPresets) ? targetingPresets.length : 0} saved`,
+        status: Array.isArray(targetingPresets) && targetingPresets.length > 0 ? 'ok' : 'neutral',
+      },
+      appearance: {
+        label: selectedThemeLabel,
+        status: 'neutral',
+      },
+    }),
+    [
+      configuredIntegrationCount,
+      selectedSettingsPresetKey,
+      selectedThemeLabel,
+      setupComplete,
+      targetingPresets,
+    ]
+  );
 
   const appSettingsSubtitleHelp =
     'Manage snippet and checkout setup, defaults, integrations, targeting presets, and appearance for this shop.';
@@ -2453,18 +2486,50 @@ function Settings() {
                       Jump to
                     </Text>
                     <div className={styles.settingsShellQuickNavScroll}>
-                      <InlineStack gap="200" wrap={false} blockAlign="center">
+                      <div className={styles.settingsShellQuickNavTrack}>
                         {appSettingsSectionIndex.map(section => (
-                          <Button
+                          <button
                             key={section.id}
-                            size="slim"
-                            pressed={activeAppSectionId === section.id}
+                            type="button"
+                            className={`${styles.settingsShellQuickNavChip} ${
+                              activeAppSectionId === section.id
+                                ? styles.settingsShellQuickNavChipActive
+                                : ''
+                            }`}
                             onClick={() => scrollToAppSection(section.id)}
+                            aria-current={activeAppSectionId === section.id ? 'true' : undefined}
                           >
-                            {section.label}
-                          </Button>
+                            <span className={styles.settingsShellQuickNavChipMain}>
+                              <span className={styles.settingsShellQuickNavChipLabel}>
+                                {section.label}
+                              </span>
+                              <span className={styles.settingsShellQuickNavChipMeta}>
+                                <span
+                                  className={`${styles.settingsShellQuickNavChipDot} ${
+                                    section.status === 'ok'
+                                      ? styles.settingsShellQuickNavChipDotOk
+                                      : section.status === 'warn'
+                                        ? styles.settingsShellQuickNavChipDotWarn
+                                        : styles.settingsShellQuickNavChipDotNeutral
+                                  }`}
+                                  aria-hidden="true"
+                                />
+                                {section.status === 'ok'
+                                  ? section.id === 'installation'
+                                    ? 'Ready'
+                                    : section.id === 'integrations'
+                                      ? 'Connected'
+                                      : section.id === 'presets'
+                                        ? 'Saved'
+                                        : 'Available'
+                                  : section.status === 'warn'
+                                    ? 'Needs focus'
+                                    : 'Available'}
+                              </span>
+                            </span>
+                          </button>
                         ))}
-                      </InlineStack>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -2576,24 +2641,48 @@ function Settings() {
                     }
                     onKeyDown={handleTabNavKeyDown}
                   >
-                    {visibleTabEntries.map(({ tab, index }) => (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        role="tab"
-                        tabIndex={selectedTab === index ? 0 : -1}
-                        aria-selected={selectedTab === index}
-                        aria-controls={`settings-panel-${tab.id}`}
-                        id={`settings-tab-${tab.id}`}
-                        className={`${styles.settingsTab} ${selectedTab === index ? styles.settingsTabActive : ''}`}
-                        onClick={() => setSelectedTab(index)}
-                      >
-                        <span className={styles.settingsTabIcon}>
-                          <Icon source={tab.icon} />
-                        </span>
-                        {tab.label}
-                      </button>
-                    ))}
+                    {visibleTabEntries.map(({ tab, index }) => {
+                      const meta = isAppSettings ? tabStatusMeta[tab.id] : null;
+                      const status = meta?.status || 'neutral';
+                      const statusClass =
+                        status === 'ok'
+                          ? styles.settingsTabMetaDotOk
+                          : status === 'warn'
+                            ? styles.settingsTabMetaDotWarn
+                            : styles.settingsTabMetaDotNeutral;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          role="tab"
+                          tabIndex={selectedTab === index ? 0 : -1}
+                          aria-selected={selectedTab === index}
+                          aria-controls={`settings-panel-${tab.id}`}
+                          id={`settings-tab-${tab.id}`}
+                          className={`${styles.settingsTab} ${
+                            selectedTab === index ? styles.settingsTabActive : ''
+                          }`}
+                          onClick={() => setSelectedTab(index)}
+                          data-tab-status={status}
+                        >
+                          <span className={styles.settingsTabIcon}>
+                            <Icon source={tab.icon} />
+                          </span>
+                          <span className={styles.settingsTabLabelWrap}>
+                            <span className={styles.settingsTabLabel}>{tab.label}</span>
+                            {meta?.label ? (
+                              <span className={styles.settingsTabMeta}>
+                                <span
+                                  className={`${styles.settingsTabMetaDot} ${statusClass}`}
+                                  aria-hidden="true"
+                                />
+                                {meta.label}
+                              </span>
+                            ) : null}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </nav>
                 </div>
               )}
@@ -2749,9 +2838,9 @@ function Settings() {
                               </span>
                             </Tooltip>
                           )}
-                          <InlineStack gap="150" wrap blockAlign="center">
+                          <div className={styles.settingsContextControls}>
                             {isAppSettings && !isGuidedSetupMode && (
-                              <>
+                              <div className={styles.settingsContextControlGroup}>
                                 <Tooltip content="Sections view is cleaner for day-to-day work. All sections keeps everything on one page for audits and bulk updates.">
                                   <span className={styles.settingsDensityGroup}>
                                     <Text as="span" variant="bodySm" tone="subdued">
@@ -2766,51 +2855,57 @@ function Settings() {
                                     </span>
                                   </span>
                                 </Tooltip>
-                                <Button
-                                  size="micro"
-                                  pressed={settingsLayoutMode === 'tabbed'}
-                                  onClick={() => setSettingsLayoutMode('tabbed')}
-                                >
-                                  Sections
-                                </Button>
-                                <Button
-                                  size="micro"
-                                  pressed={settingsLayoutMode === 'all'}
-                                  onClick={() => setSettingsLayoutMode('all')}
-                                >
-                                  All sections
-                                </Button>
-                              </>
+                                <div className={styles.settingsContextToggleGroup}>
+                                  <Button
+                                    size="micro"
+                                    pressed={settingsLayoutMode === 'tabbed'}
+                                    onClick={() => setSettingsLayoutMode('tabbed')}
+                                  >
+                                    Sections
+                                  </Button>
+                                  <Button
+                                    size="micro"
+                                    pressed={settingsLayoutMode === 'all'}
+                                    onClick={() => setSettingsLayoutMode('all')}
+                                  >
+                                    All sections
+                                  </Button>
+                                </div>
+                              </div>
                             )}
-                            <Tooltip content={densityHelp}>
-                              <span className={styles.settingsDensityGroup}>
-                                <Text as="span" variant="bodySm" tone="subdued">
-                                  Density
-                                </Text>
-                                <span
-                                  className={styles.settingsMetricTip}
-                                  tabIndex={0}
-                                  aria-label={densityHelp}
-                                >
-                                  <Icon source={InfoIcon} />
+                            <div className={styles.settingsContextControlGroup}>
+                              <Tooltip content={densityHelp}>
+                                <span className={styles.settingsDensityGroup}>
+                                  <Text as="span" variant="bodySm" tone="subdued">
+                                    Density
+                                  </Text>
+                                  <span
+                                    className={styles.settingsMetricTip}
+                                    tabIndex={0}
+                                    aria-label={densityHelp}
+                                  >
+                                    <Icon source={InfoIcon} />
+                                  </span>
                                 </span>
-                              </span>
-                            </Tooltip>
-                            <Button
-                              size="micro"
-                              pressed={layoutDensity === 'comfortable'}
-                              onClick={() => setLayoutDensity('comfortable')}
-                            >
-                              Comfortable
-                            </Button>
-                            <Button
-                              size="micro"
-                              pressed={layoutDensity === 'compact'}
-                              onClick={() => setLayoutDensity('compact')}
-                            >
-                              Compact
-                            </Button>
-                          </InlineStack>
+                              </Tooltip>
+                              <div className={styles.settingsContextToggleGroup}>
+                                <Button
+                                  size="micro"
+                                  pressed={layoutDensity === 'comfortable'}
+                                  onClick={() => setLayoutDensity('comfortable')}
+                                >
+                                  Comfortable
+                                </Button>
+                                <Button
+                                  size="micro"
+                                  pressed={layoutDensity === 'compact'}
+                                  onClick={() => setLayoutDensity('compact')}
+                                >
+                                  Compact
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       )}
                       {isAppSettings && (showAllAppSections || activeTabId === 'installation') && (
@@ -4621,7 +4716,7 @@ function Settings() {
                           aria-label={showAllAppSections ? 'Test defaults settings' : undefined}
                           className={`${styles.settingsContent} ${styles.settingsPanelLayout} ${styles.settingsPanelGeneral}`}
                         >
-                          {showAllAppSections ? (
+                          {showAllAppSections && (
                             <SettingsSectionLead
                               title="Test defaults"
                               summary={generalSectionSummary}
@@ -4632,41 +4727,6 @@ function Settings() {
                               actionLabel="Open only this section"
                               onAction={() => focusAppSection('general')}
                             />
-                          ) : (
-                            <Card
-                              className={`${styles.settingsPanelCard} ${styles.settingsPanelCardFull} ${styles.settingsOverviewCard}`}
-                            >
-                              <Box padding="400">
-                                <BlockStack gap="300">
-                                  <div className={styles.sectionHeader}>
-                                    <div className={styles.sectionHeaderIcon}>
-                                      <SettingsIcon />
-                                    </div>
-                                    <div className={styles.sectionHeaderContent}>
-                                      <SectionTitleWithTip
-                                        title="Defaults snapshot"
-                                        tip={SECTION_HELP.defaultsSnapshot}
-                                      />
-                                    </div>
-                                  </div>
-                                  <div className={styles.settingsOverviewGrid}>
-                                    {generalDefaultsOverview.map(item => (
-                                      <div key={item.id} className={styles.settingsOverviewMetric}>
-                                        <span className={styles.settingsOverviewLabel}>
-                                          {item.label}
-                                        </span>
-                                        <span className={styles.settingsOverviewValue}>
-                                          {item.value}
-                                        </span>
-                                        <span className={styles.settingsOverviewHint}>
-                                          {item.hint}
-                                        </span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </BlockStack>
-                              </Box>
-                            </Card>
                           )}
                           {isStandaloneMode() && (
                             <Card
@@ -4694,7 +4754,11 @@ function Settings() {
                             </Card>
                           )}
 
-                          <Card className={`${styles.settingsPanelCard} ${styles.testConfigCard}`}>
+                          <Card
+                            className={`${styles.settingsPanelCard} ${styles.testConfigCard} ${
+                              showAllAppSections ? styles.settingsPanelCardFull : ''
+                            }`}
+                          >
                             <Box padding="500">
                               <BlockStack gap="400">
                                 <div className={styles.sectionHeaderWithAction}>
@@ -4714,22 +4778,42 @@ function Settings() {
                                     </div>
                                   </div>
                                   <InlineStack gap="200" wrap blockAlign="center">
-                                    <Badge
-                                      tone={selectedSettingsPresetKey ? 'success' : 'attention'}
-                                    >
-                                      {selectedSettingsPresetKey
-                                        ? SETTINGS_PRESETS[selectedSettingsPresetKey]?.label ||
-                                          'Preset aligned'
-                                        : 'Custom mix'}
-                                    </Badge>
                                     <Button variant="primary" onClick={handleSave} loading={saving}>
                                       Save defaults
                                     </Button>
                                   </InlineStack>
                                 </div>
 
-                                {showAllAppSections && (
-                                  <div className={styles.settingsOverviewGrid}>
+                                <div className={styles.testConfigHero}>
+                                  <div className={styles.testConfigHeroMain}>
+                                    <span className={styles.configSubsection}>
+                                      Defaults snapshot
+                                    </span>
+                                    <Text as="h3" variant="headingMd">
+                                      {selectedSettingsPresetKey
+                                        ? SETTINGS_PRESETS[selectedSettingsPresetKey]?.label ||
+                                          'Preset aligned'
+                                        : 'Custom defaults'}
+                                    </Text>
+                                    <Text as="p" variant="bodySm" tone="subdued">
+                                      {generalSectionSummary}
+                                    </Text>
+                                    <InlineStack gap="200" wrap>
+                                      <Badge
+                                        tone={selectedSettingsPresetKey ? 'success' : 'attention'}
+                                      >
+                                        {selectedSettingsPresetKey
+                                          ? 'Preset aligned'
+                                          : 'Custom mix'}
+                                      </Badge>
+                                      <Badge tone={settings.autoStopEnabled ? 'success' : 'info'}>
+                                        {settings.autoStopEnabled
+                                          ? 'Auto-stop on'
+                                          : 'Manual stop review'}
+                                      </Badge>
+                                    </InlineStack>
+                                  </div>
+                                  <div className={styles.testConfigHeroMetrics}>
                                     {generalDefaultsOverview.map(item => (
                                       <div
                                         key={item.id}
@@ -4747,7 +4831,7 @@ function Settings() {
                                       </div>
                                     ))}
                                   </div>
-                                )}
+                                </div>
 
                                 <div className={styles.testConfigPresets}>
                                   <span className={styles.configSubsection}>Quick presets</span>
