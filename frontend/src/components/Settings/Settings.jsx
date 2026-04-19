@@ -4697,17 +4697,57 @@ function Settings() {
                           <Card className={`${styles.settingsPanelCard} ${styles.testConfigCard}`}>
                             <Box padding="500">
                               <BlockStack gap="400">
-                                <div className={styles.sectionHeader}>
-                                  <div className={styles.sectionHeaderIcon}>
-                                    <TargetIcon />
+                                <div className={styles.sectionHeaderWithAction}>
+                                  <div className={styles.sectionHeader}>
+                                    <div className={styles.sectionHeaderIcon}>
+                                      <TargetIcon />
+                                    </div>
+                                    <div className={styles.sectionHeaderContent}>
+                                      <SectionTitleWithTip
+                                        title="Test configuration"
+                                        tip={SECTION_HELP.testConfiguration}
+                                      />
+                                      <Text as="p" variant="bodySm" tone="subdued">
+                                        Set the default confidence, sample size, and stop behavior
+                                        for new tests.
+                                      </Text>
+                                    </div>
                                   </div>
-                                  <div className={styles.sectionHeaderContent}>
-                                    <SectionTitleWithTip
-                                      title="Test configuration"
-                                      tip={SECTION_HELP.testConfiguration}
-                                    />
-                                  </div>
+                                  <InlineStack gap="200" wrap blockAlign="center">
+                                    <Badge
+                                      tone={selectedSettingsPresetKey ? 'success' : 'attention'}
+                                    >
+                                      {selectedSettingsPresetKey
+                                        ? SETTINGS_PRESETS[selectedSettingsPresetKey]?.label ||
+                                          'Preset aligned'
+                                        : 'Custom mix'}
+                                    </Badge>
+                                    <Button variant="primary" onClick={handleSave} loading={saving}>
+                                      Save defaults
+                                    </Button>
+                                  </InlineStack>
                                 </div>
+
+                                {showAllAppSections && (
+                                  <div className={styles.settingsOverviewGrid}>
+                                    {generalDefaultsOverview.map(item => (
+                                      <div
+                                        key={item.id}
+                                        className={`${styles.settingsOverviewMetric} ${styles.testConfigOverviewMetric}`}
+                                      >
+                                        <span className={styles.settingsOverviewLabel}>
+                                          {item.label}
+                                        </span>
+                                        <span className={styles.settingsOverviewValue}>
+                                          {item.value}
+                                        </span>
+                                        <span className={styles.settingsOverviewHint}>
+                                          {item.hint}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
 
                                 <div className={styles.testConfigPresets}>
                                   <span className={styles.configSubsection}>Quick presets</span>
@@ -4782,119 +4822,140 @@ function Settings() {
                                     </span>
                                   </div>
                                   <div className={styles.configFieldGroups}>
-                                    <div className={styles.configFieldGroup}>
-                                      <Text
-                                        variant="bodySm"
-                                        fontWeight="semibold"
-                                        as="span"
-                                        className={styles.configFieldLabel}
-                                      >
-                                        Minimum Sample Size
-                                      </Text>
-                                      <div className={styles.configQuickSelect}>
-                                        {SAMPLE_SIZE_QUICK.map(n => (
-                                          <Button
-                                            key={n}
-                                            size="slim"
-                                            pressed={settings.minSampleSize === n}
-                                            onClick={() =>
-                                              setSettings({ ...settings, minSampleSize: n })
-                                            }
-                                          >
-                                            {n}
-                                          </Button>
-                                        ))}
+                                    <div className={styles.configFieldGrid}>
+                                      <div className={styles.configFieldGroup}>
+                                        <Text
+                                          variant="bodySm"
+                                          fontWeight="semibold"
+                                          as="span"
+                                          className={styles.configFieldLabel}
+                                        >
+                                          Minimum Sample Size
+                                        </Text>
+                                        <div className={styles.configQuickSelect}>
+                                          {SAMPLE_SIZE_QUICK.map(n => (
+                                            <Button
+                                              key={n}
+                                              size="slim"
+                                              pressed={settings.minSampleSize === n}
+                                              onClick={() =>
+                                                setSettings({ ...settings, minSampleSize: n })
+                                              }
+                                            >
+                                              {n}
+                                            </Button>
+                                          ))}
+                                        </div>
+                                        <div className={styles.configTextField}>
+                                          <TextField
+                                            label="Or enter custom (10–10,000)"
+                                            type="number"
+                                            value={String(
+                                              settings.minSampleSize ??
+                                                DEFAULT_SETTINGS.minSampleSize
+                                            )}
+                                            onChange={value => {
+                                              const num = parseInt(
+                                                String(value).replace(/\D/g, ''),
+                                                10
+                                              );
+                                              setSettings({
+                                                ...settings,
+                                                minSampleSize: Number.isFinite(num)
+                                                  ? Math.max(10, Math.min(10000, num))
+                                                  : DEFAULT_SETTINGS.minSampleSize,
+                                              });
+                                            }}
+                                            helpText="Minimum visitors before showing results"
+                                            min={10}
+                                            max={10000}
+                                            autoComplete="off"
+                                          />
+                                        </div>
                                       </div>
-                                      <div className={styles.configTextField}>
-                                        <TextField
-                                          label="Or enter custom (10–10,000)"
-                                          type="number"
-                                          value={String(
-                                            settings.minSampleSize ?? DEFAULT_SETTINGS.minSampleSize
-                                          )}
-                                          onChange={value => {
-                                            const num = parseInt(
-                                              String(value).replace(/\D/g, ''),
-                                              10
-                                            );
-                                            setSettings({
-                                              ...settings,
-                                              minSampleSize: Number.isFinite(num)
-                                                ? Math.max(10, Math.min(10000, num))
-                                                : DEFAULT_SETTINGS.minSampleSize,
-                                            });
-                                          }}
-                                          helpText="Minimum visitors before showing results"
-                                          min={10}
-                                          max={10000}
-                                          autoComplete="off"
-                                        />
+
+                                      <div className={styles.configFieldGroup}>
+                                        <Text
+                                          variant="bodySm"
+                                          fontWeight="semibold"
+                                          as="span"
+                                          className={styles.configFieldLabel}
+                                        >
+                                          Confidence Level
+                                        </Text>
+                                        <div className={styles.configQuickSelect}>
+                                          {CONFIDENCE_QUICK.map(({ label, value }) => (
+                                            <Button
+                                              key={value}
+                                              size="slim"
+                                              pressed={
+                                                Math.abs(Number(settings.confidenceLevel) - value) <
+                                                0.001
+                                              }
+                                              onClick={() =>
+                                                setSettings({ ...settings, confidenceLevel: value })
+                                              }
+                                            >
+                                              {label}
+                                            </Button>
+                                          ))}
+                                        </div>
+                                        <div className={styles.configTextField}>
+                                          <TextField
+                                            label="Or enter custom (0.8–0.99)"
+                                            type="number"
+                                            value={String(
+                                              settings.confidenceLevel ??
+                                                DEFAULT_SETTINGS.confidenceLevel
+                                            )}
+                                            onChange={value => {
+                                              const num = parseFloat(
+                                                String(value).replace(/[^\d.]/g, '')
+                                              );
+                                              setSettings({
+                                                ...settings,
+                                                confidenceLevel: Number.isFinite(num)
+                                                  ? Math.max(0.8, Math.min(0.99, num))
+                                                  : DEFAULT_SETTINGS.confidenceLevel,
+                                              });
+                                            }}
+                                            helpText="Higher = more conservative, waits for stronger evidence"
+                                            min={0.8}
+                                            max={1}
+                                            step={0.01}
+                                            autoComplete="off"
+                                          />
+                                        </div>
                                       </div>
                                     </div>
 
                                     <div className={styles.configFieldGroup}>
-                                      <Text
-                                        variant="bodySm"
-                                        fontWeight="semibold"
-                                        as="span"
-                                        className={styles.configFieldLabel}
-                                      >
-                                        Confidence Level
-                                      </Text>
-                                      <div className={styles.configQuickSelect}>
-                                        {CONFIDENCE_QUICK.map(({ label, value }) => (
-                                          <Button
-                                            key={value}
-                                            size="slim"
-                                            pressed={
-                                              Math.abs(Number(settings.confidenceLevel) - value) <
-                                              0.001
-                                            }
-                                            onClick={() =>
-                                              setSettings({ ...settings, confidenceLevel: value })
-                                            }
-                                          >
-                                            {label}
-                                          </Button>
-                                        ))}
-                                      </div>
-                                      <div className={styles.configTextField}>
-                                        <TextField
-                                          label="Or enter custom (0.8–0.99)"
-                                          type="number"
-                                          value={String(
-                                            settings.confidenceLevel ??
-                                              DEFAULT_SETTINGS.confidenceLevel
-                                          )}
-                                          onChange={value => {
-                                            const num = parseFloat(
-                                              String(value).replace(/[^\d.]/g, '')
-                                            );
-                                            setSettings({
-                                              ...settings,
-                                              confidenceLevel: Number.isFinite(num)
-                                                ? Math.max(0.8, Math.min(0.99, num))
-                                                : DEFAULT_SETTINGS.confidenceLevel,
-                                            });
-                                          }}
-                                          helpText="Higher = more conservative, waits for stronger evidence"
-                                          min={0.8}
-                                          max={1}
-                                          step={0.01}
-                                          autoComplete="off"
+                                      <div className={styles.configAutoStop}>
+                                        <Checkbox
+                                          label="Auto-stop when winner is clear"
+                                          helpText="Automatically stop tests when statistical significance is reached — recommended for most users"
+                                          checked={settings.autoStopEnabled}
+                                          onChange={checked =>
+                                            setSettings({ ...settings, autoStopEnabled: checked })
+                                          }
                                         />
                                       </div>
                                     </div>
 
-                                    <div className={styles.configAutoStop}>
-                                      <Checkbox
-                                        label="Auto-stop when winner is clear"
-                                        helpText="Automatically stop tests when statistical significance is reached — recommended for most users"
-                                        checked={settings.autoStopEnabled}
-                                        onChange={checked =>
-                                          setSettings({ ...settings, autoStopEnabled: checked })
-                                        }
-                                      />
+                                    <div className={styles.configFooterBar}>
+                                      <Text as="p" variant="bodySm" tone="subdued">
+                                        These defaults apply to new tests only. Existing tests keep
+                                        their current settings.
+                                      </Text>
+                                      <InlineStack gap="200" wrap>
+                                        <Button
+                                          variant="primary"
+                                          onClick={handleSave}
+                                          loading={saving}
+                                        >
+                                          Save defaults
+                                        </Button>
+                                      </InlineStack>
                                     </div>
                                   </div>
                                 </div>
