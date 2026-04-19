@@ -452,6 +452,13 @@ function Settings() {
     }
   });
   const showAllAppSections = isAppSettings && settingsLayoutMode === 'all';
+  const visibleTabEntries = useMemo(() => {
+    const entries = TAB_CONFIG.map((tab, index) => ({ tab, index }));
+    if (isAppSettings && isGuidedSetupMode && !showAllAppSections) {
+      return entries.filter(entry => entry.tab.id === 'installation');
+    }
+    return entries;
+  }, [TAB_CONFIG, isAppSettings, isGuidedSetupMode, showAllAppSections]);
   const [sectionRailCollapsed, setSectionRailCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
     try {
@@ -474,6 +481,7 @@ function Settings() {
   const [installAdvancedOpen, setInstallAdvancedOpen] = useState(false);
   const [installDebugJsonOpen, setInstallDebugJsonOpen] = useState(false);
   const [installSnippetModalOpen, setInstallSnippetModalOpen] = useState(false);
+  const [webhooksModalOpen, setWebhooksModalOpen] = useState(false);
   const isInstallDetailModalOpen =
     installSnippetModalOpen || installAdvancedOpen || installDebugJsonOpen;
   const [shopifyFnInventory, setShopifyFnInventory] = useState(null);
@@ -1215,7 +1223,7 @@ function Settings() {
         new URL(webhookUrl);
       } catch {
         setWebhookError('Please enter a valid URL (e.g. https://...)');
-        return;
+        return false;
       }
     }
     const minSize = Math.max(
@@ -1242,8 +1250,10 @@ function Settings() {
       await apiPut('/settings', payload);
       setSettings(payload);
       setMessage('App settings saved successfully');
+      return true;
     } catch (err) {
       setMessage(err?.response?.data?.error || 'Failed to save app settings');
+      return false;
     } finally {
       setSaving(false);
     }
@@ -1373,6 +1383,9 @@ function Settings() {
 
   const handleTabNavKeyDown = useCallback(
     e => {
+      if (isGuidedSetupMode) {
+        return;
+      }
       const count = TAB_CONFIG.length;
       if (e.key === 'ArrowLeft' && selectedTab > 0) {
         e.preventDefault();
@@ -1388,7 +1401,7 @@ function Settings() {
         setSelectedTab(count - 1);
       }
     },
-    [TAB_CONFIG.length, selectedTab, setSelectedTab]
+    [TAB_CONFIG.length, isGuidedSetupMode, selectedTab, setSelectedTab]
   );
 
   useEffect(() => {
@@ -2093,7 +2106,7 @@ function Settings() {
   const isFocusedInstallationMode =
     isAppSettings && isGuidedSetupMode && activeTabId === 'installation';
   const showInstallationSupportCards =
-    !isFocusedInstallationMode || installation?.platform !== 'shopify';
+    (!isFocusedInstallationMode && !showAllAppSections) || installation?.platform !== 'shopify';
 
   const densityHelp = 'Comfortable adds more spacing. Compact shows more on screen.';
   const generalSectionSummary = useMemo(() => {
@@ -2113,6 +2126,19 @@ function Settings() {
     settings.confidenceLevel,
     settings.autoStopEnabled,
   ]);
+  const webhookEventsSummary = useMemo(() => {
+    const selectedValues =
+      Array.isArray(settings.outboundWebhookEvents) && settings.outboundWebhookEvents.length > 0
+        ? settings.outboundWebhookEvents
+        : DEFAULT_SETTINGS.outboundWebhookEvents;
+    const labels = WEBHOOK_EVENT_CHOICES.filter(choice =>
+      selectedValues.includes(choice.value)
+    ).map(choice => choice.label);
+    return labels.join(', ') || 'No events selected';
+  }, [settings.outboundWebhookEvents]);
+  const webhookDeliveryStatus = useMemo(() => {
+    return String(settings.outboundWebhookUrl || '').trim() ? 'Enabled' : 'Disabled';
+  }, [settings.outboundWebhookUrl]);
   const integrationsSectionSummary = useMemo(() => {
     if (configuredIntegrationCount === 0) {
       return 'No external analytics destinations are connected yet. Add GA4 or BigQuery only when you need them.';
@@ -2514,8 +2540,8 @@ function Settings() {
                   action={{ content: 'Exit guided mode', onAction: clearGuidedSetupMode }}
                 >
                   <p>
-                    Installation is pinned first so you can finish onboarding faster. Opening any
-                    other tab will automatically exit this focused mode.
+                    Only the Installation section is shown in this mode so you can finish setup
+                    faster. Exit focused mode to access the other settings sections.
                   </p>
                 </Banner>
               )}
@@ -2550,17 +2576,17 @@ function Settings() {
                     }
                     onKeyDown={handleTabNavKeyDown}
                   >
-                    {TAB_CONFIG.map((tab, i) => (
+                    {visibleTabEntries.map(({ tab, index }) => (
                       <button
                         key={tab.id}
                         type="button"
                         role="tab"
-                        tabIndex={selectedTab === i ? 0 : -1}
-                        aria-selected={selectedTab === i}
+                        tabIndex={selectedTab === index ? 0 : -1}
+                        aria-selected={selectedTab === index}
                         aria-controls={`settings-panel-${tab.id}`}
                         id={`settings-tab-${tab.id}`}
-                        className={`${styles.settingsTab} ${selectedTab === i ? styles.settingsTabActive : ''}`}
-                        onClick={() => setSelectedTab(i)}
+                        className={`${styles.settingsTab} ${selectedTab === index ? styles.settingsTabActive : ''}`}
+                        onClick={() => setSelectedTab(index)}
                       >
                         <span className={styles.settingsTabIcon}>
                           <Icon source={tab.icon} />
@@ -2811,9 +2837,9 @@ function Settings() {
                                         Smart setup hub
                                       </Text>
                                       <Text as="p" variant="bodySm" tone="subdued">
-                                        Complete setup from these two lists: first check the store,
-                                        then run or install the required pieces. Technical details
-                                        stay behind focused actions.
+                                        Work top to bottom: first confirm the store is ready, then
+                                        enable only the checkout pieces you still need. Deeper
+                                        details stay behind the row actions.
                                       </Text>
                                     </div>
                                     <InlineStack gap="200" wrap blockAlign="center">
@@ -2824,34 +2850,17 @@ function Settings() {
                                             : 'Status fresh'}
                                         </Badge>
                                       )}
-                                      <Button
-                                        size="slim"
-                                        onClick={() => setInstallSnippetModalOpen(true)}
-                                      >
-                                        Snippet details
-                                      </Button>
-                                      <Button
-                                        size="slim"
-                                        onClick={() => setInstallAdvancedOpen(true)}
-                                      >
-                                        Advanced tools
-                                      </Button>
-                                      <Button
-                                        size="slim"
-                                        onClick={() => setInstallDebugJsonOpen(true)}
-                                      >
-                                        Debug JSON
-                                      </Button>
                                     </InlineStack>
                                   </div>
                                   <div className={styles.installHubGrid}>
                                     <div className={styles.installHubSection}>
                                       <div className={styles.installHubSectionHeader}>
                                         <Text variant="headingSm" as="h3">
-                                          Setup checks
+                                          1. Verify store
                                         </Text>
                                         <Text as="p" variant="bodySm" tone="subdued">
-                                          Check only the things that can block launch.
+                                          Confirm the blockers first before installing anything
+                                          else.
                                         </Text>
                                       </div>
                                       <BlockStack gap="200">
@@ -2898,10 +2907,10 @@ function Settings() {
                                     <div className={styles.installHubSection}>
                                       <div className={styles.installHubSectionHeader}>
                                         <Text variant="headingSm" as="h3">
-                                          Installation actions
+                                          2. Enable checkout path
                                         </Text>
                                         <Text as="p" variant="bodySm" tone="subdued">
-                                          Install, run, or verify only what is needed right now.
+                                          Turn on only the missing checkout pieces for this store.
                                         </Text>
                                       </div>
                                       <BlockStack gap="200">
@@ -4898,61 +4907,43 @@ function Settings() {
                             }`}
                           >
                             <Card
-                              className={`${styles.settingsPanelCard} ${styles.generalSideCard}`}
+                              className={`${styles.settingsPanelCard} ${styles.generalSideCard} ${styles.generalCompactCard}`}
                             >
                               <Box padding="400">
-                                <BlockStack gap={CONTENT_GAP}>
+                                <BlockStack gap="300">
                                   <div className={styles.sectionHeader}>
                                     <div className={styles.sectionHeaderIcon}>
                                       <ChartVerticalIcon />
                                     </div>
                                     <div className={styles.sectionHeaderContent}>
                                       <SectionTitleWithTip
-                                        title="Webhooks"
+                                        title="Webhook delivery"
                                         tip={SECTION_HELP.webhooks}
                                       />
+                                      <Text as="p" variant="bodySm" tone="subdued">
+                                        Keep this off unless another system needs test lifecycle
+                                        events from RipX.
+                                      </Text>
                                     </div>
                                   </div>
-                                  <div className={styles.panelCardBody}>
-                                    <FormLayout>
-                                      <TextField
-                                        label="Webhook URL"
-                                        value={settings.outboundWebhookUrl}
-                                        onChange={value => {
-                                          setSettings({ ...settings, outboundWebhookUrl: value });
-                                          setWebhookError(null);
-                                        }}
-                                        helpText="Leave empty to disable. Must be a valid URL when set."
-                                        placeholder="https://your-server.com/webhook"
-                                        autoComplete="off"
-                                        error={webhookError}
-                                      />
-                                      <ChoiceList
-                                        title="Send webhook when"
-                                        choices={WEBHOOK_EVENT_CHOICES}
-                                        selected={settings.outboundWebhookEvents}
-                                        onChange={selected =>
-                                          setSettings({
-                                            ...settings,
-                                            outboundWebhookEvents: selected.length
-                                              ? selected
-                                              : DEFAULT_SETTINGS.outboundWebhookEvents,
-                                          })
-                                        }
-                                        allowMultiple
-                                      />
-
-                                      <Box paddingBlockStart="400">
-                                        <Button
-                                          variant="primary"
-                                          onClick={handleSave}
-                                          loading={saving}
-                                        >
-                                          Save settings
-                                        </Button>
-                                      </Box>
-                                    </FormLayout>
+                                  <div className={styles.configCallout}>
+                                    <span className={styles.configCalloutLabel}>
+                                      Delivery status
+                                    </span>
+                                    <span className={styles.configCalloutValue}>
+                                      {webhookDeliveryStatus}
+                                    </span>
+                                    <span className={styles.configCalloutHint}>
+                                      {String(settings.outboundWebhookUrl || '').trim()
+                                        ? webhookEventsSummary
+                                        : 'No webhook endpoint configured'}
+                                    </span>
                                   </div>
+                                  <InlineStack gap="200" wrap>
+                                    <Button size="slim" onClick={() => setWebhooksModalOpen(true)}>
+                                      Edit webhook delivery
+                                    </Button>
+                                  </InlineStack>
                                 </BlockStack>
                               </Box>
                             </Card>
@@ -5511,6 +5502,65 @@ function Settings() {
       </Page>
 
       <Modal
+        open={webhooksModalOpen}
+        onClose={() => setWebhooksModalOpen(false)}
+        title="Webhook delivery"
+        primaryAction={{
+          content: 'Save webhook settings',
+          onAction: async () => {
+            const saved = await handleSave();
+            if (saved) {
+              setWebhooksModalOpen(false);
+            }
+          },
+          loading: saving,
+        }}
+        secondaryActions={[
+          {
+            content: 'Close',
+            onAction: () => setWebhooksModalOpen(false),
+            disabled: saving,
+          },
+        ]}
+      >
+        <Modal.Section>
+          <BlockStack gap="300">
+            <Text as="p" variant="bodySm" tone="subdued">
+              Send JSON to your endpoint only when another system needs RipX test lifecycle events.
+            </Text>
+            <FormLayout>
+              <TextField
+                label="Webhook URL"
+                value={settings.outboundWebhookUrl}
+                onChange={value => {
+                  setSettings({ ...settings, outboundWebhookUrl: value });
+                  setWebhookError(null);
+                }}
+                helpText="Leave empty to disable. Must be a valid URL when set."
+                placeholder="https://your-server.com/webhook"
+                autoComplete="off"
+                error={webhookError}
+              />
+              <ChoiceList
+                title="Send webhook when"
+                choices={WEBHOOK_EVENT_CHOICES}
+                selected={settings.outboundWebhookEvents}
+                onChange={selected =>
+                  setSettings({
+                    ...settings,
+                    outboundWebhookEvents: selected.length
+                      ? selected
+                      : DEFAULT_SETTINGS.outboundWebhookEvents,
+                  })
+                }
+                allowMultiple
+              />
+            </FormLayout>
+          </BlockStack>
+        </Modal.Section>
+      </Modal>
+
+      <Modal
         open={installSnippetModalOpen}
         onClose={() => setInstallSnippetModalOpen(false)}
         title="Snippet details"
@@ -5788,9 +5838,42 @@ function Settings() {
                     : ''}
                 </Text>
                 {shopifyFnInventory.readiness && (
-                  <Badge tone={shopifyFnInventory.readiness === 'ready' ? 'success' : 'attention'}>
-                    {shopifyFnInventory.readiness}
-                  </Badge>
+                  <InlineStack gap="200" wrap>
+                    {typeof shopifyFnInventory.readiness === 'string' ? (
+                      <Badge
+                        tone={shopifyFnInventory.readiness === 'ready' ? 'success' : 'attention'}
+                      >
+                        {shopifyFnInventory.readiness}
+                      </Badge>
+                    ) : (
+                      <>
+                        <Badge
+                          tone={
+                            shopifyFnInventory.readiness.discount_function_for_checkout
+                              ? 'success'
+                              : 'attention'
+                          }
+                        >
+                          Discount path:{' '}
+                          {shopifyFnInventory.readiness.discount_function_for_checkout
+                            ? 'ready'
+                            : 'not detected'}
+                        </Badge>
+                        <Badge
+                          tone={
+                            shopifyFnInventory.readiness.cart_transform_for_direct_price
+                              ? 'success'
+                              : 'attention'
+                          }
+                        >
+                          Direct price path:{' '}
+                          {shopifyFnInventory.readiness.cart_transform_for_direct_price
+                            ? 'ready'
+                            : 'not detected'}
+                        </Badge>
+                      </>
+                    )}
+                  </InlineStack>
                 )}
               </div>
             )}
