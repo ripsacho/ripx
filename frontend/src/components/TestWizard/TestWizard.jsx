@@ -11956,6 +11956,7 @@ function TestWizard({
               {checkoutVariants.map((variant, index) => {
                 const cfg = variant?.config || {};
                 const isControlLike = index === 0 || /control/i.test(String(variant?.name || ''));
+                const variantColor = getVariantColor(index);
                 const variantConfigured =
                   checkoutPhase === 'experience'
                     ? getActionableCheckoutSections(cfg).length > 0
@@ -11973,8 +11974,8 @@ function TestWizard({
                     aria-controls={`checkout-variant-panel-${index}`}
                     className={`${styles.checkoutVariantBrowserTab} ${active ? styles.checkoutVariantBrowserTabActive : ''}`}
                     style={{
-                      '--checkout-variant-accent': getVariantColor(index),
-                      '--checkout-variant-accent-soft': getVariantColorLight(index),
+                      '--checkout-variant-accent': variantColor,
+                      '--checkout-variant-accent-soft': getVariantColorLight(variantColor),
                     }}
                     onClick={() => setCheckoutStudioVariantIndex(index)}
                   >
@@ -12015,6 +12016,7 @@ function TestWizard({
         {checkoutVariants.map((variant, index) => {
           const cfg = variant?.config || {};
           const isControlLike = index === 0 || /control/i.test(String(variant?.name || ''));
+          const variantColor = getVariantColor(index);
           const paymentMethods = getCheckoutListPreview(cfg.payment_method_names);
           const deliveryMethods = getCheckoutListPreview(cfg.delivery_method_names);
           const normalizedExperience = getNormalizedCheckoutExperienceConfig(cfg);
@@ -12051,8 +12053,8 @@ function TestWizard({
                 aria-labelledby={`checkout-variant-tab-${index}`}
                 className={styles.checkoutVariantShell}
                 style={{
-                  '--checkout-variant-accent': getVariantColor(index),
-                  '--checkout-variant-accent-soft': getVariantColorLight(index),
+                  '--checkout-variant-accent': variantColor,
+                  '--checkout-variant-accent-soft': getVariantColorLight(variantColor),
                 }}
               >
                 <div className={styles.checkoutVariantHero}>
