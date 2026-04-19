@@ -9939,6 +9939,54 @@
   gap: 18px;
 }
 
+.checkoutStudioCompactBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(6, 182, 212, 0.16);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.96) 0%, rgba(248, 250, 252, 0.9) 100%);
+  box-shadow:
+    0 10px 24px rgba(15, 23, 42, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.checkoutStudioCompactMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.checkoutStudioCompactChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(6, 182, 212, 0.16);
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.checkoutStudioCompactInfo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid rgba(6, 182, 212, 0.16);
+  background: rgba(255, 255, 255, 0.86);
+  color: #0891b2;
+  flex: 0 0 auto;
+  box-shadow: 0 6px 18px rgba(6, 182, 212, 0.08);
+}
+
 .checkoutStudioHero {
   position: relative;
   overflow: hidden;
@@ -10228,62 +10276,22 @@
 .checkoutPhaseShellTop {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
-.checkoutPhaseOverviewGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 14px;
-}
-
-.checkoutPhaseOverviewCard {
+.checkoutPhaseHeaderCompact {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 16px 18px;
-  border-radius: 18px;
-  border: 1px solid rgba(79, 70, 229, 0.12);
-  background: rgba(255, 255, 255, 0.82);
-  box-shadow:
-    0 10px 24px rgba(15, 23, 42, 0.05),
-    inset 0 1px 0 rgba(255, 255, 255, 0.72);
-  transition:
-    transform var(--transition-standard),
-    border-color var(--transition-standard),
-    box-shadow var(--transition-standard);
-}
-
-.checkoutPhaseOverviewCard:hover {
-  transform: translateY(-2px);
-  border-color: rgba(79, 70, 229, 0.22);
-  box-shadow:
-    0 16px 32px rgba(15, 23, 42, 0.07),
-    0 0 24px rgba(139, 92, 246, 0.07),
-    inset 0 1px 0 rgba(255, 255, 255, 0.76);
-}
-
-.checkoutPhaseOverviewLabel {
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #4f46e5;
-  font-weight: 800;
-}
-
-.checkoutPhaseOverviewValue {
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: var(--text-primary);
+  gap: 2px;
 }
 
 .checkoutPhaseCard {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
-  padding: 18px;
+  padding: 15px 16px;
   text-align: left;
   cursor: pointer;
   color: inherit;
@@ -10308,16 +10316,34 @@
   color: #4f46e5;
 }
 
+.checkoutPhaseInlineNote {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding-top: 2px;
+}
+
+.checkoutPhaseInlineNoteLabel {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.checkoutPhaseInlineNoteText {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
 .checkoutVariantShell {
-  padding: 22px;
+  padding: 18px;
 }
 
 .checkoutVariantBrowser {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px 18px 18px;
-  border-radius: 22px;
+  gap: 10px;
+  padding: 12px 14px 14px;
+  border-radius: 18px;
   border: 1px solid rgba(15, 23, 42, 0.08);
   background:
     linear-gradient(180deg, rgba(15, 23, 42, 0.04) 0%, rgba(15, 23, 42, 0.02) 100%),
@@ -10342,11 +10368,11 @@
   display: inline-flex;
   align-items: center;
   gap: 12px;
-  min-width: 220px;
+  min-width: 210px;
   max-width: 320px;
   flex: 0 0 auto;
-  padding: 12px 14px;
-  border-radius: 16px 16px 12px 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
   border: 1px solid rgba(15, 23, 42, 0.08);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(241, 245, 249, 0.88) 100%);
@@ -10436,7 +10462,7 @@
 .checkoutVariantBrowserStatus {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
 }
 
 .checkoutVariantHero {
@@ -10526,7 +10552,7 @@
 
 .checkoutVariantBlock,
 .checkoutSectionControls {
-  padding: 18px;
+  padding: 16px;
 }
 
 .checkoutVariantChips {
@@ -10577,13 +10603,112 @@
 }
 
 .checkoutSectionShell {
-  padding: 18px;
+  padding: 16px;
+}
+
+.checkoutSectionAccordionHead {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.checkoutSectionAccordionHead:focus-visible {
+  outline: none;
+}
+
+.checkoutSectionAccordionHead:focus-visible .checkoutSectionAccordionChevron {
+  border-color: rgba(14, 165, 233, 0.42);
+  box-shadow:
+    0 0 0 3px rgba(14, 165, 233, 0.14),
+    0 10px 20px rgba(14, 165, 233, 0.18);
+}
+
+.checkoutSectionAccordionHeadActive {
+  padding-bottom: 10px;
+}
+
+.checkoutSectionAccordionMain {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 auto;
+}
+
+.checkoutSectionAccordionTitleRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  align-items: center;
+}
+
+.checkoutSectionAccordionSummary {
+  min-width: 0;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.checkoutSectionAccordionMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.checkoutSectionAccordionChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(6, 182, 212, 0.14);
+  background: rgba(255, 255, 255, 0.68);
+  font-size: 0.73rem;
+  font-weight: 700;
+  color: #0f766e;
+}
+
+.checkoutSectionAccordionChipMuted {
+  border-color: rgba(239, 68, 68, 0.16);
+  color: #b91c1c;
+  background: rgba(254, 242, 242, 0.82);
+}
+
+.checkoutSectionAccordionChevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid rgba(6, 182, 212, 0.14);
+  background: rgba(255, 255, 255, 0.76);
+  color: #0891b2;
+  flex: 0 0 auto;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background 160ms ease;
+}
+
+.checkoutSectionAccordionBody {
+  padding-top: 4px;
 }
 
 .checkoutSectionStudio {
   display: grid;
-  grid-template-columns: minmax(240px, 0.92fr) minmax(320px, 1.08fr);
-  gap: 16px;
+  grid-template-columns: minmax(220px, 0.84fr) minmax(340px, 1.16fr);
+  gap: 14px;
   align-items: start;
 }
 
@@ -10591,10 +10716,10 @@
   border-radius: 16px;
   border: 1px solid rgba(6, 182, 212, 0.16);
   background: linear-gradient(160deg, rgba(239, 246, 255, 0.92) 0%, rgba(250, 245, 255, 0.94) 100%);
-  padding: 18px;
+  padding: 16px;
   box-shadow:
-    0 18px 34px rgba(15, 23, 42, 0.08),
-    0 0 28px rgba(6, 182, 212, 0.06);
+    0 14px 28px rgba(15, 23, 42, 0.07),
+    0 0 22px rgba(6, 182, 212, 0.05);
 }
 
 .checkoutSectionPreviewEmpty {
@@ -10616,31 +10741,72 @@
   margin: 0;
   padding-left: 18px;
   display: grid;
-  gap: 6px;
+  gap: 5px;
   color: var(--text-secondary);
-  font-size: 0.84rem;
+  font-size: 0.81rem;
 }
 
 .checkoutSectionPreviewFooter {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 0.8rem;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 0.76rem;
   color: var(--text-secondary);
+}
+
+.checkoutSectionPreviewMeta {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(79, 70, 229, 0.14);
+  background: rgba(255, 255, 255, 0.66);
+  color: #4f46e5;
+  font-size: 0.74rem;
+  font-weight: 700;
 }
 
 .checkoutSectionActionRow {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px 14px;
+  gap: 8px 12px;
 }
 
 .checkoutSectionEditorHeader {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
+}
+
+.checkoutSectionGuideRow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.checkoutSectionGuideIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid rgba(6, 182, 212, 0.16);
+  background: rgba(255, 255, 255, 0.86);
+  color: #0891b2;
+}
+
+.checkoutInlineDocLink {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #0891b2;
+  text-decoration: none;
+}
+
+.checkoutInlineDocLink:hover {
+  text-decoration: underline;
 }
 
 .checkoutSectionControls {
@@ -10648,7 +10814,7 @@
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.9) 0%, rgba(248, 250, 252, 0.84) 100%);
   box-shadow:
-    0 16px 34px rgba(15, 23, 42, 0.06),
+    0 12px 28px rgba(15, 23, 42, 0.055),
     inset 0 1px 0 rgba(255, 255, 255, 0.76);
 }
 
@@ -10667,6 +10833,32 @@
   grid-column: 1 / -1;
 }
 
+.checkoutBulletEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(6, 182, 212, 0.12);
+  background: rgba(248, 250, 252, 0.68);
+}
+
+.checkoutBulletRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.checkoutBulletEmpty {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px dashed rgba(6, 182, 212, 0.22);
+  background: rgba(255, 255, 255, 0.74);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
 .checkoutQuickAddRow {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
@@ -10674,15 +10866,15 @@
 .checkoutQuickAddShell {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 18px;
-  border-radius: 18px;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 16px;
   border: 1px solid rgba(6, 182, 212, 0.16);
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.94) 0%, rgba(248, 250, 252, 0.88) 100%);
   box-shadow:
-    0 16px 32px rgba(15, 23, 42, 0.06),
-    0 0 24px rgba(6, 182, 212, 0.05);
+    0 12px 26px rgba(15, 23, 42, 0.055),
+    0 0 20px rgba(6, 182, 212, 0.045);
 }
 
 .checkoutMethodStudio {
@@ -10730,9 +10922,9 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
-  padding: 16px;
+  padding: 14px;
   cursor: pointer;
   text-align: left;
 }
@@ -10743,12 +10935,40 @@
 }
 
 .checkoutQuickAddButton span {
-  font-size: 0.8rem;
-  line-height: 1.45;
+  font-size: 0.78rem;
+  line-height: 1.4;
   color: var(--text-secondary);
 }
 
+@media (min-width: 1200px) {
+  .checkoutSectionStudio {
+    grid-template-columns: minmax(210px, 0.78fr) minmax(380px, 1.22fr);
+    gap: 12px;
+  }
+
+  .checkoutSectionShell,
+  .checkoutVariantBlock,
+  .checkoutSectionControls,
+  .checkoutQuickAddShell {
+    padding: 14px;
+  }
+
+  .checkoutSectionPreview {
+    padding: 14px;
+  }
+}
+
 @media (max-width: 640px) {
+  .checkoutStudioCompactBar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .checkoutStudioCompactInfo {
+    width: 28px;
+    height: 28px;
+  }
+
   .checkoutVariantBrowser {
     padding: 14px;
   }
@@ -10774,6 +10994,19 @@
   .checkoutSectionMetaGrid,
   .checkoutSelectGrid {
     grid-template-columns: 1fr;
+  }
+
+  .checkoutBulletRow {
+    grid-template-columns: 1fr;
+  }
+
+  .checkoutSectionAccordionHead {
+    align-items: flex-start;
+  }
+
+  .checkoutSectionAccordionChevron {
+    width: 28px;
+    height: 28px;
   }
 
   .checkoutFieldSpanWide {

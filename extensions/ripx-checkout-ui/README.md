@@ -34,3 +34,5 @@ This writes `src/ripxConfig.js` from root `.env`:
 
 - If `RIPX_CHECKOUT_PRICE_SECRET` is enabled on the backend, this extension sends it in header/body for both API calls.
 - This is intentionally a lightweight foundation: content can be fully controlled via assigned variant config fields (`checkout_title`, `checkout_message`, `checkout_cta_label`) and expanded later.
+- Structured checkout sections can include a stable `id` per section (for example `trust-box` or `shipping-promise`).
+- RipX emits that value as `checkout_section_id` in checkout analytics events, so using the same ID you reference in your checkout editor/theme naming makes debugging and reporting easier.

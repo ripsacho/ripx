@@ -1151,6 +1151,9 @@ function TestWizard({
   const [checkoutCustomizationLoading, setCheckoutCustomizationLoading] = useState(false);
   const [checkoutCustomizationAction, setCheckoutCustomizationAction] = useState(null);
   const [checkoutCustomizationToast, setCheckoutCustomizationToast] = useState(null);
+  const [checkoutBulletDrafts, setCheckoutBulletDrafts] = useState({});
+  const [checkoutExpandedSectionsByVariant, setCheckoutExpandedSectionsByVariant] = useState({});
+  const [checkoutPendingScrollTarget, setCheckoutPendingScrollTarget] = useState(null);
   const [shippingStorewideApplyConfirmed, setShippingStorewideApplyConfirmed] = useState(false);
   useEffect(() => {
     const n = formData.variants?.length ?? 0;
@@ -1176,6 +1179,27 @@ function TestWizard({
     }
     setCheckoutStudioVariantIndex(prev => Math.min(prev, n - 1));
   }, [formData.variants?.length]);
+  useEffect(() => {
+    if (!checkoutPendingScrollTarget) {
+      return undefined;
+    }
+    if (checkoutStudioVariantIndex !== checkoutPendingScrollTarget.variantIndex) {
+      return undefined;
+    }
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return undefined;
+    }
+    const targetId = `checkout-section-head-${checkoutPendingScrollTarget.variantIndex}-${checkoutPendingScrollTarget.sectionIndex}`;
+    const targetElement = document.getElementById(targetId);
+    if (!targetElement) {
+      return undefined;
+    }
+    const frameId = window.requestAnimationFrame(() => {
+      targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setCheckoutPendingScrollTarget(null);
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, [checkoutPendingScrollTarget, checkoutStudioVariantIndex, formData.variants]);
   const [changingSelectorIndex, setChangingSelectorIndex] = useState(null); // when set, next click in preview replaces this slot
   const visualSnippetPanelRef = useRef(null);
   const visualSnippetBackdropRef = useRef(null);
@@ -11729,16 +11753,12 @@ function TestWizard({
       }
       return count + (!isControlLike && actionable ? 1 : 0);
     }, 0);
-    const configuredPercent =
-      nonControlIndices.length > 0
-        ? Math.max(0, Math.min(100, Math.round((configuredCount / nonControlIndices.length) * 100)))
-        : 100;
     const totalVariants = checkoutVariants.length;
     const activeCheckoutVariantIndex =
       checkoutVariants.length > 0
         ? Math.min(checkoutStudioVariantIndex, checkoutVariants.length - 1)
         : 0;
-    const designStudioTitle = 'Checkout Variant Studio';
+    const checkoutDocsPath = routeDomain ? ROUTES.appDocs(routeDomain) : ROUTES.DOCS;
     const phaseActionOptions = [
       { label: 'Hide methods', value: 'hide' },
       { label: 'Rename methods', value: 'rename' },
@@ -11752,13 +11772,6 @@ function TestWizard({
           : 'track';
     const selectedPhaseActionLabel =
       phaseActionOptions.find(option => option.value === phaseActionValue)?.label || 'Hide methods';
-    const phaseIntentSummary =
-      checkoutPhase === 'experience'
-        ? 'Compose modular checkout content blocks with placement, tone, and CTA control.'
-        : checkoutPhase === 'payment_method'
-          ? 'Control which payment options show, how they are named, and what operators should expect.'
-          : 'Control which delivery options show, how they are named, and how shipping choices are presented.';
-
     const updateCheckoutGoal = patch => {
       setIsDirty(true);
       setFormData(prev => ({
@@ -11812,83 +11825,81 @@ function TestWizard({
         };
       });
     };
+    const openCheckoutSection = (variantIndex, sectionIndex, { scrollIntoView = false } = {}) => {
+      setCheckoutExpandedSectionsByVariant(prev => ({
+        ...prev,
+        [variantIndex]: sectionIndex,
+      }));
+      if (scrollIntoView) {
+        setCheckoutPendingScrollTarget({ variantIndex, sectionIndex });
+      }
+    };
+    const toggleCheckoutSection = (variantIndex, sectionIndex) => {
+      setCheckoutExpandedSectionsByVariant(prev => {
+        const hasStoredValue = Object.prototype.hasOwnProperty.call(prev, variantIndex);
+        const currentValue = hasStoredValue ? prev[variantIndex] : 0;
+        return {
+          ...prev,
+          [variantIndex]: currentValue === sectionIndex ? null : sectionIndex,
+        };
+      });
+    };
 
     return (
       <BlockStack gap="400">
-        <div className={styles.checkoutStudioHero}>
-          <InlineStack align="space-between" blockAlign="start" wrap gap="400">
-            <div className={styles.checkoutStudioHeroCopy}>
-              <span className={styles.checkoutStudioEyebrow}>Checkout design studio</span>
-              <Text as="h3" variant="headingLg">
-                {designStudioTitle}
-              </Text>
-              <Text as="p" variant="bodyMd" tone="subdued">
-                {phaseIntentSummary}
-              </Text>
-            </div>
-            <div className={styles.checkoutStudioHeroBadges}>
-              <Badge tone="info">{phaseDetails.title}</Badge>
-              <Badge tone={configuredCount > 0 ? 'success' : 'attention'}>
-                {configuredCount}/{nonControlIndices.length || 1} treatments ready
-              </Badge>
-            </div>
-          </InlineStack>
-
-          <div className={styles.checkoutStudioStats}>
-            <div className={styles.checkoutStudioStatCard}>
-              <span className={styles.checkoutStudioStatLabel}>Active phase</span>
-              <span className={styles.checkoutStudioStatValue}>{phaseDetails.title}</span>
-              <span className={styles.checkoutStudioStatHint}>{phaseDetails.surface}</span>
-            </div>
-            <div className={styles.checkoutStudioStatCard}>
-              <span className={styles.checkoutStudioStatLabel}>Treatment readiness</span>
-              <span className={styles.checkoutStudioStatValue}>
-                {configuredPercent}% configured
-              </span>
-              <span className={styles.checkoutStudioStatHint}>
-                {configuredCount} of {nonControlIndices.length || 1} non-control variants are
-                actionable
-              </span>
-            </div>
-            <div className={styles.checkoutStudioStatCard}>
-              <span className={styles.checkoutStudioStatLabel}>Studio mode</span>
-              <span className={styles.checkoutStudioStatValue}>
-                {checkoutPhase === 'experience' ? 'Section design' : selectedPhaseActionLabel}
-              </span>
-              <span className={styles.checkoutStudioStatHint}>
-                {checkoutPhase === 'experience'
-                  ? 'Preview, compose, and fine-tune content blocks per variant.'
-                  : 'Use the selected method action as the primary execution pattern for this phase.'}
-              </span>
-            </div>
-            <div className={styles.checkoutStudioStatCard}>
-              <span className={styles.checkoutStudioStatLabel}>Variant system</span>
-              <span className={styles.checkoutStudioStatValue}>
-                {totalVariants} variant{totalVariants === 1 ? '' : 's'}
-              </span>
-              <span className={styles.checkoutStudioStatHint}>
-                Structured contract shared by editor, readiness, and deployment
-              </span>
-            </div>
+        <div className={styles.checkoutStudioCompactBar}>
+          <div className={styles.checkoutStudioCompactMeta}>
+            <span className={styles.checkoutStudioCompactChip}>{phaseDetails.title}</span>
+            <span className={styles.checkoutStudioCompactChip}>
+              {configuredCount}/{nonControlIndices.length || 1} ready
+            </span>
+            <span className={styles.checkoutStudioCompactChip}>
+              {checkoutPhase === 'experience' ? 'Section design' : selectedPhaseActionLabel}
+            </span>
+            <span className={styles.checkoutStudioCompactChip}>
+              {totalVariants} variant{totalVariants === 1 ? '' : 's'}
+            </span>
           </div>
+          <TooltipWrapper
+            content={
+              checkoutPhase === 'experience'
+                ? 'Use this step to select the checkout surface once, then edit the active control or treatment tab below. Supporting rollout details stay in readiness and reporting surfaces.'
+                : 'Select the checkout surface once, then edit the active control or treatment tab below. Supporting rollout details stay in readiness and reporting surfaces.'
+            }
+            accessibilityLabel="Checkout studio guidance"
+          >
+            <span className={styles.checkoutStudioCompactInfo} aria-hidden>
+              <Icon source={InfoIcon} />
+            </span>
+          </TooltipWrapper>
         </div>
 
         <Card>
           <div className={styles.checkoutPhaseShell}>
             <div className={styles.checkoutPhaseShellTop}>
               <InlineStack align="space-between" blockAlign="center" wrap gap="300">
-                <div>
+                <div className={styles.checkoutPhaseHeaderCompact}>
                   <Text variant="headingSm" as="h3" fontWeight="semibold">
-                    Checkout phase architecture
+                    Checkout surface
                   </Text>
                   <Text as="p" variant="bodySm" tone="subdued">
-                    Select the checkout surface once, then build every variant inside the same
-                    structured studio.
+                    Pick the checkout surface once, then edit the active control or treatment in the
+                    tabs below.
                   </Text>
                 </div>
-                <Badge tone={configuredCount > 0 ? 'success' : 'attention'}>
-                  {configuredCount}/{nonControlIndices.length || 1} treatments configured
-                </Badge>
+                <InlineStack gap="200" blockAlign="center">
+                  <Badge tone={configuredCount > 0 ? 'success' : 'attention'}>
+                    {configuredCount}/{nonControlIndices.length || 1} configured
+                  </Badge>
+                  <TooltipWrapper
+                    content="Experience block uses the checkout UI extension. Payment and delivery methods use Shopify checkout customizations. Change this once, then continue in the variant tabs."
+                    accessibilityLabel="Checkout surface help"
+                  >
+                    <span className={styles.checkoutStudioCompactInfo} aria-hidden>
+                      <Icon source={InfoIcon} />
+                    </span>
+                  </TooltipWrapper>
+                </InlineStack>
               </InlineStack>
 
               <div className={styles.checkoutPhaseGrid}>
@@ -11912,36 +11923,9 @@ function TestWizard({
                 })}
               </div>
             </div>
-
-            <div className={styles.checkoutPhaseOverviewGrid}>
-              <div className={styles.checkoutPhaseOverviewCard}>
-                <span className={styles.checkoutPhaseOverviewLabel}>Selected surface</span>
-                <span className={styles.checkoutPhaseOverviewValue}>{phaseDetails.title}</span>
-                <Text as="p" variant="bodySm" tone="subdued">
-                  {phaseDetails.description}
-                </Text>
-              </div>
-              <div className={styles.checkoutPhaseOverviewCard}>
-                <span className={styles.checkoutPhaseOverviewLabel}>Editor approach</span>
-                <span className={styles.checkoutPhaseOverviewValue}>
-                  {checkoutPhase === 'experience'
-                    ? 'Content composition'
-                    : selectedPhaseActionLabel}
-                </span>
-                <Text as="p" variant="bodySm" tone="subdued">
-                  {checkoutPhase === 'experience'
-                    ? 'Compose sections, preview content, and refine CTA behavior before launch.'
-                    : 'Target live checkout-facing methods with a clean operator note and execution-safe list.'}
-                </Text>
-              </div>
-            </div>
-
-            <div className={styles.checkoutPhaseSummaryBar}>
-              <span className={styles.checkoutPhaseSummaryChip}>Studio: {designStudioTitle}</span>
-              <span className={styles.checkoutPhaseSummaryChip}>
-                Readiness: {configuredPercent}% configured
-              </span>
-              <span className={styles.checkoutPhaseSummaryChip}>{phaseDetails.surface}</span>
+            <div className={styles.checkoutPhaseInlineNote}>
+              <span className={styles.checkoutPhaseInlineNoteLabel}>{phaseDetails.title}</span>
+              <span className={styles.checkoutPhaseInlineNoteText}>{phaseDetails.surface}</span>
             </div>
           </div>
         </Card>
@@ -12004,10 +11988,6 @@ function TestWizard({
                 Active tab:{' '}
                 {checkoutVariants[activeCheckoutVariantIndex]?.name ||
                   `Variant ${activeCheckoutVariantIndex + 1}`}
-              </span>
-              <span className={styles.checkoutPhaseSummaryChip}>
-                {checkoutVariants.length} variant{checkoutVariants.length === 1 ? '' : 's'} in
-                studio
               </span>
             </div>
           </div>
@@ -12171,12 +12151,78 @@ function TestWizard({
                       />
                     </div>
 
+                    <div className={styles.checkoutQuickAddShell}>
+                      <InlineStack align="space-between" blockAlign="center" wrap gap="300">
+                        <div>
+                          <Text as="h5" variant="headingSm">
+                            Section starters
+                          </Text>
+                          <Text as="p" variant="bodySm" tone="subdued">
+                            Add a preset section first, then refine copy, bullets, and CTA behavior
+                            in the editor.
+                          </Text>
+                        </div>
+                        <Badge tone="info">Preset content included</Badge>
+                      </InlineStack>
+                      <div className={styles.checkoutQuickAddRow}>
+                        {CHECKOUT_SECTION_TYPE_OPTIONS.map(option => (
+                          <button
+                            key={`${variant.name}-${option.value}`}
+                            type="button"
+                            className={styles.checkoutQuickAddButton}
+                            onClick={() => {
+                              openCheckoutSection(index, experienceSections.length, {
+                                scrollIntoView: true,
+                              });
+                              updateCheckoutExperienceVariantConfig(index, current => {
+                                const currentSections =
+                                  getNormalizedCheckoutExperienceConfig(current).checkout_sections;
+                                return {
+                                  ...current,
+                                  checkout_sections: [
+                                    ...currentSections,
+                                    {
+                                      ...createEmptyCheckoutSection(
+                                        currentSections.length,
+                                        option.value
+                                      ),
+                                      props: buildCheckoutSectionSmartPreset(option.value),
+                                    },
+                                  ],
+                                };
+                              });
+                            }}
+                          >
+                            <strong>Add {option.label}</strong>
+                            <span>{getCheckoutSectionDetails(option.value).description}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
                     <BlockStack gap="300">
                       {experienceSections.map((section, sectionIndex) => {
                         const props = section?.props || {};
                         const isOnlySection = experienceSections.length === 1;
                         const sectionDetails = getCheckoutSectionDetails(section.type);
                         const featureBullets = normalizeCheckoutListInput(props.feature_bullets);
+                        const sectionId = String(section?.id || '').trim();
+                        const bulletDraftKey = `checkout-bullet-${index}-${section.id || sectionIndex}`;
+                        const bulletDraft = String(checkoutBulletDrafts[bulletDraftKey] || '');
+                        const hasStoredExpandedSection = Object.prototype.hasOwnProperty.call(
+                          checkoutExpandedSectionsByVariant,
+                          index
+                        );
+                        const expandedSectionIndex = hasStoredExpandedSection
+                          ? checkoutExpandedSectionsByVariant[index]
+                          : 0;
+                        const isExpandedSection = expandedSectionIndex === sectionIndex;
+                        const sectionSummary =
+                          String(props.title || '').trim() ||
+                          String(props.message || '').trim() ||
+                          (featureBullets.length > 0
+                            ? `${featureBullets.length} proof point${featureBullets.length === 1 ? '' : 's'}`
+                            : 'No content yet');
                         const hasSectionContent = Boolean(
                           props.title ||
                           props.message ||
@@ -12188,442 +12234,209 @@ function TestWizard({
                         return (
                           <Card key={`${variant.name}-section-${section.id || sectionIndex}`}>
                             <div className={styles.checkoutSectionShell}>
-                              <InlineStack align="space-between" blockAlign="center" wrap>
-                                <div>
-                                  <Text variant="headingXs" as="h5" fontWeight="semibold">
-                                    Section {sectionIndex + 1}: {sectionDetails.label}
-                                  </Text>
-                                  <Text as="p" variant="bodySm" tone="subdued">
-                                    {sectionDetails.description}
-                                  </Text>
-                                </div>
-                                <InlineStack gap="200" blockAlign="center" wrap>
-                                  <Badge tone={section.enabled === false ? 'critical' : 'success'}>
-                                    {section.enabled === false ? 'Disabled' : 'Enabled'}
-                                  </Badge>
-                                  <Badge tone="info">{String(props.layout || 'banner')}</Badge>
-                                  <Badge tone="info">{String(props.tone || 'success')}</Badge>
-                                  <Button
-                                    size="micro"
-                                    onClick={() =>
-                                      updateCheckoutExperienceVariantConfig(index, current => {
-                                        const currentSections =
-                                          getNormalizedCheckoutExperienceConfig(
-                                            current
-                                          ).checkout_sections;
-                                        const source = currentSections[sectionIndex] || section;
-                                        const duplicated = {
-                                          ...source,
-                                          id: `${String(source.id || source.type || 'section')}-copy-${currentSections.length + 1}`,
-                                          order: sectionIndex + 1,
-                                        };
-                                        const nextSections = [
-                                          ...currentSections.slice(0, sectionIndex + 1),
-                                          duplicated,
-                                          ...currentSections.slice(sectionIndex + 1),
-                                        ].map((item, itemIndex) => ({
-                                          ...item,
-                                          order: itemIndex,
-                                        }));
-                                        return {
-                                          ...current,
-                                          checkout_sections: nextSections,
-                                        };
-                                      })
-                                    }
-                                  >
-                                    Duplicate
-                                  </Button>
-                                  <Button
-                                    size="micro"
-                                    tone="critical"
-                                    disabled={isOnlySection}
-                                    onClick={() =>
-                                      updateCheckoutExperienceVariantConfig(index, current => {
-                                        const currentSections =
-                                          getNormalizedCheckoutExperienceConfig(
-                                            current
-                                          ).checkout_sections;
-                                        return {
-                                          ...current,
-                                          checkout_sections: currentSections
-                                            .filter(
-                                              (_, currentIndex) => currentIndex !== sectionIndex
-                                            )
-                                            .map((item, itemIndex) => ({
-                                              ...item,
-                                              order: itemIndex,
-                                            })),
-                                        };
-                                      })
-                                    }
-                                  >
-                                    Remove
-                                  </Button>
-                                </InlineStack>
-                              </InlineStack>
-
-                              <div className={styles.checkoutSectionStudio}>
-                                <div
-                                  className={`${styles.checkoutSectionPreview} ${!hasSectionContent ? styles.checkoutSectionPreviewEmpty : ''}`}
-                                >
-                                  {hasSectionContent ? (
-                                    <BlockStack gap="200">
-                                      {props.badge_text ? (
-                                        <span className={styles.checkoutSectionPreviewBadge}>
-                                          {props.badge_text}
-                                        </span>
-                                      ) : null}
-                                      <Text as="h6" variant="headingSm">
-                                        {props.title || sectionDetails.label}
-                                      </Text>
-                                      <Text as="p" variant="bodySm" tone="subdued">
-                                        {props.message ||
-                                          'Add supporting copy to preview how this section feels inside checkout.'}
-                                      </Text>
-                                      {featureBullets.length > 0 ? (
-                                        <ul className={styles.checkoutSectionPreviewList}>
-                                          {featureBullets.slice(0, 3).map(item => (
-                                            <li key={item}>{item}</li>
-                                          ))}
-                                        </ul>
-                                      ) : null}
-                                      <div className={styles.checkoutSectionPreviewFooter}>
-                                        <span>{String(props.cta_kind || 'track')}</span>
-                                        {props.cta_label ? (
-                                          <strong>{props.cta_label}</strong>
-                                        ) : null}
-                                      </div>
-                                    </BlockStack>
-                                  ) : (
-                                    <Text as="p" variant="bodySm" tone="subdued">
-                                      This section is empty. Add title, message, proof points, or
-                                      CTA copy to make it render in checkout.
+                              <button
+                                type="button"
+                                className={`${styles.checkoutSectionAccordionHead} ${isExpandedSection ? styles.checkoutSectionAccordionHeadActive : ''}`}
+                                onClick={() => toggleCheckoutSection(index, sectionIndex)}
+                                aria-expanded={isExpandedSection}
+                                aria-controls={`checkout-section-panel-${index}-${sectionIndex}`}
+                                id={`checkout-section-head-${index}-${sectionIndex}`}
+                              >
+                                <div className={styles.checkoutSectionAccordionMain}>
+                                  <div className={styles.checkoutSectionAccordionTitleRow}>
+                                    <Text variant="headingXs" as="h5" fontWeight="semibold">
+                                      Section {sectionIndex + 1}: {sectionDetails.label}
                                     </Text>
-                                  )}
-                                </div>
-
-                                <div className={styles.checkoutSectionControls}>
-                                  <div className={styles.checkoutSectionEditorHeader}>
-                                    <div>
-                                      <Text as="h6" variant="headingSm">
-                                        Section editor
-                                      </Text>
-                                      <Text as="p" variant="bodySm" tone="subdued">
-                                        Tune message structure, visual tone, and CTA behavior for
-                                        this section.
-                                      </Text>
-                                    </div>
+                                    <span className={styles.checkoutSectionAccordionSummary}>
+                                      {sectionSummary}
+                                    </span>
                                   </div>
-                                  <div className={styles.checkoutSectionActionRow}>
-                                    <Button
-                                      size="slim"
-                                      onClick={() =>
-                                        updateCheckoutExperienceVariantConfig(index, current => {
-                                          const currentSections =
-                                            getNormalizedCheckoutExperienceConfig(
-                                              current
-                                            ).checkout_sections;
-                                          return {
-                                            ...current,
-                                            checkout_sections: currentSections.map(
-                                              (item, itemIndex) =>
-                                                itemIndex === sectionIndex
-                                                  ? {
-                                                      ...item,
-                                                      props: buildCheckoutSectionSmartPreset(
-                                                        item.type
-                                                      ),
-                                                    }
-                                                  : item
-                                            ),
-                                          };
-                                        })
-                                      }
+                                  <div className={styles.checkoutSectionAccordionMeta}>
+                                    <span
+                                      className={`${styles.checkoutSectionAccordionChip} ${section.enabled === false ? styles.checkoutSectionAccordionChipMuted : ''}`}
                                     >
-                                      Use smart starter
-                                    </Button>
-                                    <Text as="span" variant="bodySm" tone="subdued">
-                                      Auto-fills this section with a strong starting structure for{' '}
-                                      {sectionDetails.label.toLowerCase()}.
-                                    </Text>
+                                      {section.enabled === false ? 'Disabled' : 'Enabled'}
+                                    </span>
+                                    <span className={styles.checkoutSectionAccordionChip}>
+                                      {String(props.layout || 'banner')}
+                                    </span>
+                                    <span className={styles.checkoutSectionAccordionChip}>
+                                      {String(props.tone || 'success')}
+                                    </span>
+                                    {sectionId ? (
+                                      <span className={styles.checkoutSectionAccordionChip}>
+                                        ID: {sectionId}
+                                      </span>
+                                    ) : null}
                                   </div>
-                                  <div className={styles.checkoutSectionMetaGrid}>
-                                    <div className={styles.checkoutFieldSpanWide}>
-                                      <Checkbox
-                                        label="Section enabled"
-                                        checked={section.enabled !== false}
-                                        onChange={value =>
-                                          updateCheckoutExperienceVariantConfig(index, current => {
-                                            const currentSections =
-                                              getNormalizedCheckoutExperienceConfig(
-                                                current
-                                              ).checkout_sections;
-                                            return {
-                                              ...current,
-                                              checkout_sections: currentSections.map(
-                                                (item, itemIndex) =>
-                                                  itemIndex === sectionIndex
-                                                    ? { ...item, enabled: value }
-                                                    : item
-                                              ),
-                                            };
-                                          })
-                                        }
-                                      />
-                                    </div>
-                                    <Select
-                                      label="Section type"
-                                      options={CHECKOUT_SECTION_TYPE_OPTIONS}
-                                      value={String(section.type || 'hero_notice')}
-                                      onChange={value =>
-                                        updateCheckoutExperienceVariantConfig(index, current => {
-                                          const currentSections =
-                                            getNormalizedCheckoutExperienceConfig(
-                                              current
-                                            ).checkout_sections;
-                                          return {
-                                            ...current,
-                                            checkout_sections: currentSections.map(
-                                              (item, itemIndex) =>
-                                                itemIndex === sectionIndex
-                                                  ? { ...item, type: value }
-                                                  : item
-                                            ),
-                                          };
-                                        })
-                                      }
-                                    />
-                                  </div>
+                                </div>
+                                <span
+                                  className={styles.checkoutSectionAccordionChevron}
+                                  aria-hidden
+                                >
+                                  <Icon
+                                    source={isExpandedSection ? ChevronDownIcon : ChevronRightIcon}
+                                  />
+                                </span>
+                              </button>
 
-                                  <FormLayout>
-                                    <TextField
-                                      label="Title"
-                                      value={String(props.title || '')}
-                                      onChange={value =>
-                                        updateCheckoutExperienceVariantConfig(index, current => {
-                                          const currentSections =
-                                            getNormalizedCheckoutExperienceConfig(
-                                              current
-                                            ).checkout_sections;
-                                          return {
-                                            ...current,
-                                            checkout_sections: currentSections.map(
-                                              (item, itemIndex) =>
-                                                itemIndex === sectionIndex
-                                                  ? {
-                                                      ...item,
-                                                      props: {
-                                                        ...(item.props || {}),
-                                                        title: value,
-                                                      },
-                                                    }
-                                                  : item
-                                            ),
-                                          };
-                                        })
-                                      }
-                                      placeholder="e.g. Checkout with confidence"
-                                      autoComplete="off"
-                                    />
-                                    <TextField
-                                      label="Message"
-                                      value={String(props.message || '')}
-                                      onChange={value =>
-                                        updateCheckoutExperienceVariantConfig(index, current => {
-                                          const currentSections =
-                                            getNormalizedCheckoutExperienceConfig(
-                                              current
-                                            ).checkout_sections;
-                                          return {
-                                            ...current,
-                                            checkout_sections: currentSections.map(
-                                              (item, itemIndex) =>
-                                                itemIndex === sectionIndex
-                                                  ? {
-                                                      ...item,
-                                                      props: {
-                                                        ...(item.props || {}),
-                                                        message: value,
-                                                      },
-                                                    }
-                                                  : item
-                                            ),
-                                          };
-                                        })
-                                      }
-                                      placeholder="Add reassurance, urgency, or support copy for this section."
-                                      multiline={3}
-                                      autoComplete="off"
-                                    />
-                                    <TextField
-                                      label="Badge text"
-                                      value={String(props.badge_text || '')}
-                                      onChange={value =>
-                                        updateCheckoutExperienceVariantConfig(index, current => {
-                                          const currentSections =
-                                            getNormalizedCheckoutExperienceConfig(
-                                              current
-                                            ).checkout_sections;
-                                          return {
-                                            ...current,
-                                            checkout_sections: currentSections.map(
-                                              (item, itemIndex) =>
-                                                itemIndex === sectionIndex
-                                                  ? {
-                                                      ...item,
-                                                      props: {
-                                                        ...(item.props || {}),
-                                                        badge_text: value,
-                                                      },
-                                                    }
-                                                  : item
-                                            ),
-                                          };
-                                        })
-                                      }
-                                      placeholder="e.g. Secure checkout"
-                                      autoComplete="off"
-                                    />
-                                    <TextField
-                                      label="Feature bullets"
-                                      value={normalizeCheckoutListInput(props.feature_bullets).join(
-                                        '\n'
+                              <Collapsible
+                                open={isExpandedSection}
+                                id={`checkout-section-panel-${index}-${sectionIndex}`}
+                                transition={{ duration: '180ms', timingFunction: 'ease' }}
+                              >
+                                <div
+                                  className={styles.checkoutSectionAccordionBody}
+                                  aria-labelledby={`checkout-section-head-${index}-${sectionIndex}`}
+                                >
+                                  <div className={styles.checkoutSectionStudio}>
+                                    <div
+                                      className={`${styles.checkoutSectionPreview} ${!hasSectionContent ? styles.checkoutSectionPreviewEmpty : ''}`}
+                                    >
+                                      {hasSectionContent ? (
+                                        <BlockStack gap="200">
+                                          {props.badge_text ? (
+                                            <span className={styles.checkoutSectionPreviewBadge}>
+                                              {props.badge_text}
+                                            </span>
+                                          ) : null}
+                                          <Text as="h6" variant="headingSm">
+                                            {props.title || sectionDetails.label}
+                                          </Text>
+                                          <Text as="p" variant="bodySm" tone="subdued">
+                                            {props.message ||
+                                              'Add supporting copy to preview how this section feels inside checkout.'}
+                                          </Text>
+                                          {featureBullets.length > 0 ? (
+                                            <ul className={styles.checkoutSectionPreviewList}>
+                                              {featureBullets.slice(0, 3).map(item => (
+                                                <li key={item}>{item}</li>
+                                              ))}
+                                            </ul>
+                                          ) : null}
+                                          <div className={styles.checkoutSectionPreviewFooter}>
+                                            <span>{String(props.cta_kind || 'track')}</span>
+                                            {sectionId ? (
+                                              <span className={styles.checkoutSectionPreviewMeta}>
+                                                ID: {sectionId}
+                                              </span>
+                                            ) : null}
+                                            {props.cta_label ? (
+                                              <strong>{props.cta_label}</strong>
+                                            ) : null}
+                                          </div>
+                                        </BlockStack>
+                                      ) : (
+                                        <Text as="p" variant="bodySm" tone="subdued">
+                                          This section is empty. Add title, message, proof points,
+                                          or CTA copy to make it render in checkout.
+                                        </Text>
                                       )}
-                                      onChange={value =>
-                                        updateCheckoutExperienceVariantConfig(index, current => {
-                                          const currentSections =
-                                            getNormalizedCheckoutExperienceConfig(
-                                              current
-                                            ).checkout_sections;
-                                          return {
-                                            ...current,
-                                            checkout_sections: currentSections.map(
-                                              (item, itemIndex) =>
-                                                itemIndex === sectionIndex
-                                                  ? {
-                                                      ...item,
-                                                      props: {
-                                                        ...(item.props || {}),
-                                                        feature_bullets:
-                                                          normalizeCheckoutListInput(value),
-                                                      },
-                                                    }
-                                                  : item
-                                            ),
-                                          };
-                                        })
-                                      }
-                                      placeholder={
-                                        'One bullet per line\n30-day guarantee\nFast support'
-                                      }
-                                      multiline={4}
-                                      autoComplete="off"
-                                    />
-                                    <TextField
-                                      label="Disclaimer"
-                                      value={String(props.disclaimer || '')}
-                                      onChange={value =>
-                                        updateCheckoutExperienceVariantConfig(index, current => {
-                                          const currentSections =
-                                            getNormalizedCheckoutExperienceConfig(
-                                              current
-                                            ).checkout_sections;
-                                          return {
-                                            ...current,
-                                            checkout_sections: currentSections.map(
-                                              (item, itemIndex) =>
-                                                itemIndex === sectionIndex
-                                                  ? {
-                                                      ...item,
-                                                      props: {
-                                                        ...(item.props || {}),
-                                                        disclaimer: value,
-                                                      },
-                                                    }
-                                                  : item
-                                            ),
-                                          };
-                                        })
-                                      }
-                                      placeholder="Optional fine print shown under the main message."
-                                      autoComplete="off"
-                                    />
-                                    <div className={styles.checkoutSelectGrid}>
-                                      <div className={styles.checkoutSelectItem}>
-                                        <Select
-                                          label="Layout"
-                                          options={CHECKOUT_LAYOUT_OPTIONS}
-                                          value={String(props.layout || 'banner')}
-                                          onChange={value =>
-                                            updateCheckoutExperienceVariantConfig(
-                                              index,
-                                              current => {
-                                                const currentSections =
-                                                  getNormalizedCheckoutExperienceConfig(
-                                                    current
-                                                  ).checkout_sections;
-                                                return {
-                                                  ...current,
-                                                  checkout_sections: currentSections.map(
-                                                    (item, itemIndex) =>
-                                                      itemIndex === sectionIndex
-                                                        ? {
-                                                            ...item,
-                                                            props: {
-                                                              ...(item.props || {}),
-                                                              layout: value,
-                                                            },
-                                                          }
-                                                        : item
-                                                  ),
-                                                };
-                                              }
-                                            )
-                                          }
-                                        />
-                                      </div>
-                                      <div className={styles.checkoutSelectItem}>
-                                        <Select
-                                          label="Tone"
-                                          options={CHECKOUT_TONE_OPTIONS}
-                                          value={String(props.tone || 'success')}
-                                          onChange={value =>
-                                            updateCheckoutExperienceVariantConfig(
-                                              index,
-                                              current => {
-                                                const currentSections =
-                                                  getNormalizedCheckoutExperienceConfig(
-                                                    current
-                                                  ).checkout_sections;
-                                                return {
-                                                  ...current,
-                                                  checkout_sections: currentSections.map(
-                                                    (item, itemIndex) =>
-                                                      itemIndex === sectionIndex
-                                                        ? {
-                                                            ...item,
-                                                            props: {
-                                                              ...(item.props || {}),
-                                                              tone: value,
-                                                            },
-                                                          }
-                                                        : item
-                                                  ),
-                                                };
-                                              }
-                                            )
-                                          }
-                                        />
-                                      </div>
                                     </div>
-                                    <div className={styles.checkoutSelectGrid}>
-                                      <div className={styles.checkoutSelectItem}>
-                                        <Select
-                                          label="CTA behavior"
-                                          options={CHECKOUT_CTA_KIND_OPTIONS}
-                                          value={String(props.cta_kind || 'track')}
-                                          onChange={value =>
+
+                                    <div className={styles.checkoutSectionControls}>
+                                      <div className={styles.checkoutSectionEditorHeader}>
+                                        <InlineStack
+                                          align="space-between"
+                                          blockAlign="center"
+                                          wrap
+                                          gap="200"
+                                        >
+                                          <div>
+                                            <Text as="h6" variant="headingSm">
+                                              Section editor
+                                            </Text>
+                                            <Text as="p" variant="bodySm" tone="subdued">
+                                              Tune message structure, visual tone, and CTA behavior
+                                              for this section.
+                                            </Text>
+                                          </div>
+                                          <InlineStack gap="200" blockAlign="center" wrap>
+                                            <Button
+                                              size="micro"
+                                              onClick={() => {
+                                                openCheckoutSection(index, sectionIndex + 1, {
+                                                  scrollIntoView: true,
+                                                });
+                                                updateCheckoutExperienceVariantConfig(
+                                                  index,
+                                                  current => {
+                                                    const currentSections =
+                                                      getNormalizedCheckoutExperienceConfig(
+                                                        current
+                                                      ).checkout_sections;
+                                                    const source =
+                                                      currentSections[sectionIndex] || section;
+                                                    const duplicated = {
+                                                      ...source,
+                                                      id: `${String(source.id || source.type || 'section')}-copy-${currentSections.length + 1}`,
+                                                      order: sectionIndex + 1,
+                                                    };
+                                                    const nextSections = [
+                                                      ...currentSections.slice(0, sectionIndex + 1),
+                                                      duplicated,
+                                                      ...currentSections.slice(sectionIndex + 1),
+                                                    ].map((item, itemIndex) => ({
+                                                      ...item,
+                                                      order: itemIndex,
+                                                    }));
+                                                    return {
+                                                      ...current,
+                                                      checkout_sections: nextSections,
+                                                    };
+                                                  }
+                                                );
+                                              }}
+                                            >
+                                              Duplicate
+                                            </Button>
+                                            <Button
+                                              size="micro"
+                                              tone="critical"
+                                              disabled={isOnlySection}
+                                              onClick={() => {
+                                                openCheckoutSection(
+                                                  index,
+                                                  Math.max(
+                                                    0,
+                                                    Math.min(
+                                                      sectionIndex,
+                                                      experienceSections.length - 2
+                                                    )
+                                                  )
+                                                );
+                                                updateCheckoutExperienceVariantConfig(
+                                                  index,
+                                                  current => {
+                                                    const currentSections =
+                                                      getNormalizedCheckoutExperienceConfig(
+                                                        current
+                                                      ).checkout_sections;
+                                                    return {
+                                                      ...current,
+                                                      checkout_sections: currentSections
+                                                        .filter(
+                                                          (_, currentIndex) =>
+                                                            currentIndex !== sectionIndex
+                                                        )
+                                                        .map((item, itemIndex) => ({
+                                                          ...item,
+                                                          order: itemIndex,
+                                                        })),
+                                                    };
+                                                  }
+                                                );
+                                              }}
+                                            >
+                                              Remove
+                                            </Button>
+                                          </InlineStack>
+                                        </InlineStack>
+                                      </div>
+                                      <div className={styles.checkoutSectionActionRow}>
+                                        <Button
+                                          size="slim"
+                                          onClick={() =>
                                             updateCheckoutExperienceVariantConfig(
                                               index,
                                               current => {
@@ -12638,11 +12451,69 @@ function TestWizard({
                                                       itemIndex === sectionIndex
                                                         ? {
                                                             ...item,
-                                                            props: {
-                                                              ...(item.props || {}),
-                                                              cta_kind: value,
-                                                            },
+                                                            props: buildCheckoutSectionSmartPreset(
+                                                              item.type
+                                                            ),
                                                           }
+                                                        : item
+                                                  ),
+                                                };
+                                              }
+                                            )
+                                          }
+                                        >
+                                          Use smart starter
+                                        </Button>
+                                        <Text as="span" variant="bodySm" tone="subdued">
+                                          Auto-fills this section with a strong starting structure
+                                          for {sectionDetails.label.toLowerCase()}.
+                                        </Text>
+                                      </div>
+                                      <div className={styles.checkoutSectionMetaGrid}>
+                                        <div className={styles.checkoutFieldSpanWide}>
+                                          <Checkbox
+                                            label="Section enabled"
+                                            checked={section.enabled !== false}
+                                            onChange={value =>
+                                              updateCheckoutExperienceVariantConfig(
+                                                index,
+                                                current => {
+                                                  const currentSections =
+                                                    getNormalizedCheckoutExperienceConfig(
+                                                      current
+                                                    ).checkout_sections;
+                                                  return {
+                                                    ...current,
+                                                    checkout_sections: currentSections.map(
+                                                      (item, itemIndex) =>
+                                                        itemIndex === sectionIndex
+                                                          ? { ...item, enabled: value }
+                                                          : item
+                                                    ),
+                                                  };
+                                                }
+                                              )
+                                            }
+                                          />
+                                        </div>
+                                        <Select
+                                          label="Section type"
+                                          options={CHECKOUT_SECTION_TYPE_OPTIONS}
+                                          value={String(section.type || 'hero_notice')}
+                                          onChange={value =>
+                                            updateCheckoutExperienceVariantConfig(
+                                              index,
+                                              current => {
+                                                const currentSections =
+                                                  getNormalizedCheckoutExperienceConfig(
+                                                    current
+                                                  ).checkout_sections;
+                                                return {
+                                                  ...current,
+                                                  checkout_sections: currentSections.map(
+                                                    (item, itemIndex) =>
+                                                      itemIndex === sectionIndex
+                                                        ? { ...item, type: value }
                                                         : item
                                                   ),
                                                 };
@@ -12651,12 +12522,63 @@ function TestWizard({
                                           }
                                         />
                                       </div>
-                                      <div
-                                        className={`${styles.checkoutSelectItem} ${styles.checkoutFieldSpanWide}`}
-                                      >
+
+                                      <FormLayout>
+                                        <div className={styles.checkoutSectionGuideRow}>
+                                          <InlineStack gap="200" blockAlign="center" wrap>
+                                            <Text as="span" variant="bodySm" fontWeight="semibold">
+                                              Section ID
+                                            </Text>
+                                            <TooltipWrapper
+                                              content="Use a stable kebab-case ID such as trust-box or shipping-promise. RipX emits this as checkout_section_id in checkout analytics, so matching your checkout block naming makes setup and debugging easier."
+                                              accessibilityLabel="Section ID setup help"
+                                            >
+                                              <span
+                                                className={styles.checkoutSectionGuideIcon}
+                                                aria-hidden
+                                              >
+                                                <Icon source={InfoIcon} />
+                                              </span>
+                                            </TooltipWrapper>
+                                            <Link
+                                              to={`${checkoutDocsPath}#tests`}
+                                              className={styles.checkoutInlineDocLink}
+                                              rel="noopener noreferrer"
+                                            >
+                                              Setup guide
+                                            </Link>
+                                          </InlineStack>
+                                          <TextField
+                                            labelHidden
+                                            label="Section ID"
+                                            value={sectionId}
+                                            onChange={value =>
+                                              updateCheckoutExperienceVariantConfig(
+                                                index,
+                                                current => {
+                                                  const currentSections =
+                                                    getNormalizedCheckoutExperienceConfig(
+                                                      current
+                                                    ).checkout_sections;
+                                                  return {
+                                                    ...current,
+                                                    checkout_sections: currentSections.map(
+                                                      (item, itemIndex) =>
+                                                        itemIndex === sectionIndex
+                                                          ? { ...item, id: value.trim() }
+                                                          : item
+                                                    ),
+                                                  };
+                                                }
+                                              )
+                                            }
+                                            placeholder="e.g. trust-box"
+                                            autoComplete="off"
+                                          />
+                                        </div>
                                         <TextField
-                                          label="CTA label"
-                                          value={String(props.cta_label || '')}
+                                          label="Title"
+                                          value={String(props.title || '')}
                                           onChange={value =>
                                             updateCheckoutExperienceVariantConfig(
                                               index,
@@ -12674,7 +12596,7 @@ function TestWizard({
                                                             ...item,
                                                             props: {
                                                               ...(item.props || {}),
-                                                              cta_label: value,
+                                                              title: value,
                                                             },
                                                           }
                                                         : item
@@ -12683,67 +12605,455 @@ function TestWizard({
                                               }
                                             )
                                           }
-                                          disabled={String(props.cta_kind || 'track') === 'none'}
-                                          placeholder="e.g. Continue securely"
+                                          placeholder="e.g. Checkout with confidence"
                                           autoComplete="off"
                                         />
-                                      </div>
+                                        <TextField
+                                          label="Message"
+                                          value={String(props.message || '')}
+                                          onChange={value =>
+                                            updateCheckoutExperienceVariantConfig(
+                                              index,
+                                              current => {
+                                                const currentSections =
+                                                  getNormalizedCheckoutExperienceConfig(
+                                                    current
+                                                  ).checkout_sections;
+                                                return {
+                                                  ...current,
+                                                  checkout_sections: currentSections.map(
+                                                    (item, itemIndex) =>
+                                                      itemIndex === sectionIndex
+                                                        ? {
+                                                            ...item,
+                                                            props: {
+                                                              ...(item.props || {}),
+                                                              message: value,
+                                                            },
+                                                          }
+                                                        : item
+                                                  ),
+                                                };
+                                              }
+                                            )
+                                          }
+                                          placeholder="Add reassurance, urgency, or support copy for this section."
+                                          multiline={3}
+                                          autoComplete="off"
+                                        />
+                                        <TextField
+                                          label="Badge text"
+                                          value={String(props.badge_text || '')}
+                                          onChange={value =>
+                                            updateCheckoutExperienceVariantConfig(
+                                              index,
+                                              current => {
+                                                const currentSections =
+                                                  getNormalizedCheckoutExperienceConfig(
+                                                    current
+                                                  ).checkout_sections;
+                                                return {
+                                                  ...current,
+                                                  checkout_sections: currentSections.map(
+                                                    (item, itemIndex) =>
+                                                      itemIndex === sectionIndex
+                                                        ? {
+                                                            ...item,
+                                                            props: {
+                                                              ...(item.props || {}),
+                                                              badge_text: value,
+                                                            },
+                                                          }
+                                                        : item
+                                                  ),
+                                                };
+                                              }
+                                            )
+                                          }
+                                          placeholder="e.g. Secure checkout"
+                                          autoComplete="off"
+                                        />
+                                        <div className={styles.checkoutBulletEditor}>
+                                          <InlineStack
+                                            align="space-between"
+                                            blockAlign="center"
+                                            wrap
+                                            gap="200"
+                                          >
+                                            <InlineStack gap="200" blockAlign="center" wrap>
+                                              <Text
+                                                as="span"
+                                                variant="bodySm"
+                                                fontWeight="semibold"
+                                              >
+                                                Feature bullets
+                                              </Text>
+                                              <TooltipWrapper
+                                                content="Use short proof points, one idea per bullet. These render as a compact list in the checkout block."
+                                                accessibilityLabel="Feature bullets help"
+                                              >
+                                                <span
+                                                  className={styles.checkoutSectionGuideIcon}
+                                                  aria-hidden
+                                                >
+                                                  <Icon source={InfoIcon} />
+                                                </span>
+                                              </TooltipWrapper>
+                                              <Link
+                                                to={`${checkoutDocsPath}#tests`}
+                                                className={styles.checkoutInlineDocLink}
+                                                rel="noopener noreferrer"
+                                              >
+                                                Setup guide
+                                              </Link>
+                                            </InlineStack>
+                                            <Badge tone="info">
+                                              {featureBullets.length} item
+                                              {featureBullets.length === 1 ? '' : 's'}
+                                            </Badge>
+                                          </InlineStack>
+                                          <BlockStack gap="200">
+                                            {featureBullets.length > 0 ? (
+                                              featureBullets.map((bullet, bulletIndex) => (
+                                                <div
+                                                  key={`${section.id || sectionIndex}-bullet-${bulletIndex}`}
+                                                  className={styles.checkoutBulletRow}
+                                                >
+                                                  <TextField
+                                                    labelHidden
+                                                    label={`Feature bullet ${bulletIndex + 1}`}
+                                                    value={bullet}
+                                                    onChange={value =>
+                                                      updateCheckoutExperienceVariantConfig(
+                                                        index,
+                                                        current => {
+                                                          const currentSections =
+                                                            getNormalizedCheckoutExperienceConfig(
+                                                              current
+                                                            ).checkout_sections;
+                                                          return {
+                                                            ...current,
+                                                            checkout_sections: currentSections.map(
+                                                              (item, itemIndex) => {
+                                                                if (itemIndex !== sectionIndex) {
+                                                                  return item;
+                                                                }
+                                                                const nextBullets =
+                                                                  normalizeCheckoutListInput(
+                                                                    item?.props?.feature_bullets
+                                                                  );
+                                                                nextBullets[bulletIndex] = value;
+                                                                return {
+                                                                  ...item,
+                                                                  props: {
+                                                                    ...(item.props || {}),
+                                                                    feature_bullets:
+                                                                      normalizeCheckoutListInput(
+                                                                        nextBullets
+                                                                      ),
+                                                                  },
+                                                                };
+                                                              }
+                                                            ),
+                                                          };
+                                                        }
+                                                      )
+                                                    }
+                                                    placeholder="e.g. 30-day guarantee"
+                                                    autoComplete="off"
+                                                  />
+                                                  <Button
+                                                    size="micro"
+                                                    tone="critical"
+                                                    onClick={() =>
+                                                      updateCheckoutExperienceVariantConfig(
+                                                        index,
+                                                        current => {
+                                                          const currentSections =
+                                                            getNormalizedCheckoutExperienceConfig(
+                                                              current
+                                                            ).checkout_sections;
+                                                          return {
+                                                            ...current,
+                                                            checkout_sections: currentSections.map(
+                                                              (item, itemIndex) => {
+                                                                if (itemIndex !== sectionIndex) {
+                                                                  return item;
+                                                                }
+                                                                return {
+                                                                  ...item,
+                                                                  props: {
+                                                                    ...(item.props || {}),
+                                                                    feature_bullets:
+                                                                      normalizeCheckoutListInput(
+                                                                        item?.props?.feature_bullets
+                                                                      ).filter(
+                                                                        (_, currentBulletIndex) =>
+                                                                          currentBulletIndex !==
+                                                                          bulletIndex
+                                                                      ),
+                                                                  },
+                                                                };
+                                                              }
+                                                            ),
+                                                          };
+                                                        }
+                                                      )
+                                                    }
+                                                  >
+                                                    Remove
+                                                  </Button>
+                                                </div>
+                                              ))
+                                            ) : (
+                                              <div className={styles.checkoutBulletEmpty}>
+                                                Add short proof points to show benefits, trust, or
+                                                next steps in a compact checkout list.
+                                              </div>
+                                            )}
+                                          </BlockStack>
+                                          <InlineStack gap="200" blockAlign="center" wrap>
+                                            <TextField
+                                              labelHidden
+                                              label="New feature bullet"
+                                              value={bulletDraft}
+                                              onChange={value =>
+                                                setCheckoutBulletDrafts(prev => ({
+                                                  ...prev,
+                                                  [bulletDraftKey]: value,
+                                                }))
+                                              }
+                                              placeholder="e.g. Fast support response"
+                                              autoComplete="off"
+                                            />
+                                            <Button
+                                              size="slim"
+                                              disabled={!bulletDraft.trim()}
+                                              onClick={() => (
+                                                updateCheckoutExperienceVariantConfig(
+                                                  index,
+                                                  current => {
+                                                    const currentSections =
+                                                      getNormalizedCheckoutExperienceConfig(
+                                                        current
+                                                      ).checkout_sections;
+                                                    return {
+                                                      ...current,
+                                                      checkout_sections: currentSections.map(
+                                                        (item, itemIndex) => {
+                                                          if (itemIndex !== sectionIndex) {
+                                                            return item;
+                                                          }
+                                                          return {
+                                                            ...item,
+                                                            props: {
+                                                              ...(item.props || {}),
+                                                              feature_bullets: [
+                                                                ...normalizeCheckoutListInput(
+                                                                  item?.props?.feature_bullets
+                                                                ),
+                                                                bulletDraft.trim(),
+                                                              ],
+                                                            },
+                                                          };
+                                                        }
+                                                      ),
+                                                    };
+                                                  }
+                                                ),
+                                                setCheckoutBulletDrafts(prev => ({
+                                                  ...prev,
+                                                  [bulletDraftKey]: '',
+                                                }))
+                                              )}
+                                            >
+                                              Add bullet
+                                            </Button>
+                                          </InlineStack>
+                                        </div>
+                                        <TextField
+                                          label="Disclaimer"
+                                          value={String(props.disclaimer || '')}
+                                          onChange={value =>
+                                            updateCheckoutExperienceVariantConfig(
+                                              index,
+                                              current => {
+                                                const currentSections =
+                                                  getNormalizedCheckoutExperienceConfig(
+                                                    current
+                                                  ).checkout_sections;
+                                                return {
+                                                  ...current,
+                                                  checkout_sections: currentSections.map(
+                                                    (item, itemIndex) =>
+                                                      itemIndex === sectionIndex
+                                                        ? {
+                                                            ...item,
+                                                            props: {
+                                                              ...(item.props || {}),
+                                                              disclaimer: value,
+                                                            },
+                                                          }
+                                                        : item
+                                                  ),
+                                                };
+                                              }
+                                            )
+                                          }
+                                          placeholder="Optional fine print shown under the main message."
+                                          autoComplete="off"
+                                        />
+                                        <div className={styles.checkoutSelectGrid}>
+                                          <div className={styles.checkoutSelectItem}>
+                                            <Select
+                                              label="Layout"
+                                              options={CHECKOUT_LAYOUT_OPTIONS}
+                                              value={String(props.layout || 'banner')}
+                                              onChange={value =>
+                                                updateCheckoutExperienceVariantConfig(
+                                                  index,
+                                                  current => {
+                                                    const currentSections =
+                                                      getNormalizedCheckoutExperienceConfig(
+                                                        current
+                                                      ).checkout_sections;
+                                                    return {
+                                                      ...current,
+                                                      checkout_sections: currentSections.map(
+                                                        (item, itemIndex) =>
+                                                          itemIndex === sectionIndex
+                                                            ? {
+                                                                ...item,
+                                                                props: {
+                                                                  ...(item.props || {}),
+                                                                  layout: value,
+                                                                },
+                                                              }
+                                                            : item
+                                                      ),
+                                                    };
+                                                  }
+                                                )
+                                              }
+                                            />
+                                          </div>
+                                          <div className={styles.checkoutSelectItem}>
+                                            <Select
+                                              label="Tone"
+                                              options={CHECKOUT_TONE_OPTIONS}
+                                              value={String(props.tone || 'success')}
+                                              onChange={value =>
+                                                updateCheckoutExperienceVariantConfig(
+                                                  index,
+                                                  current => {
+                                                    const currentSections =
+                                                      getNormalizedCheckoutExperienceConfig(
+                                                        current
+                                                      ).checkout_sections;
+                                                    return {
+                                                      ...current,
+                                                      checkout_sections: currentSections.map(
+                                                        (item, itemIndex) =>
+                                                          itemIndex === sectionIndex
+                                                            ? {
+                                                                ...item,
+                                                                props: {
+                                                                  ...(item.props || {}),
+                                                                  tone: value,
+                                                                },
+                                                              }
+                                                            : item
+                                                      ),
+                                                    };
+                                                  }
+                                                )
+                                              }
+                                            />
+                                          </div>
+                                        </div>
+                                        <div className={styles.checkoutSelectGrid}>
+                                          <div className={styles.checkoutSelectItem}>
+                                            <Select
+                                              label="CTA behavior"
+                                              options={CHECKOUT_CTA_KIND_OPTIONS}
+                                              value={String(props.cta_kind || 'track')}
+                                              onChange={value =>
+                                                updateCheckoutExperienceVariantConfig(
+                                                  index,
+                                                  current => {
+                                                    const currentSections =
+                                                      getNormalizedCheckoutExperienceConfig(
+                                                        current
+                                                      ).checkout_sections;
+                                                    return {
+                                                      ...current,
+                                                      checkout_sections: currentSections.map(
+                                                        (item, itemIndex) =>
+                                                          itemIndex === sectionIndex
+                                                            ? {
+                                                                ...item,
+                                                                props: {
+                                                                  ...(item.props || {}),
+                                                                  cta_kind: value,
+                                                                },
+                                                              }
+                                                            : item
+                                                      ),
+                                                    };
+                                                  }
+                                                )
+                                              }
+                                            />
+                                          </div>
+                                          <div
+                                            className={`${styles.checkoutSelectItem} ${styles.checkoutFieldSpanWide}`}
+                                          >
+                                            <TextField
+                                              label="CTA label"
+                                              value={String(props.cta_label || '')}
+                                              onChange={value =>
+                                                updateCheckoutExperienceVariantConfig(
+                                                  index,
+                                                  current => {
+                                                    const currentSections =
+                                                      getNormalizedCheckoutExperienceConfig(
+                                                        current
+                                                      ).checkout_sections;
+                                                    return {
+                                                      ...current,
+                                                      checkout_sections: currentSections.map(
+                                                        (item, itemIndex) =>
+                                                          itemIndex === sectionIndex
+                                                            ? {
+                                                                ...item,
+                                                                props: {
+                                                                  ...(item.props || {}),
+                                                                  cta_label: value,
+                                                                },
+                                                              }
+                                                            : item
+                                                      ),
+                                                    };
+                                                  }
+                                                )
+                                              }
+                                              disabled={
+                                                String(props.cta_kind || 'track') === 'none'
+                                              }
+                                              placeholder="e.g. Continue securely"
+                                              autoComplete="off"
+                                            />
+                                          </div>
+                                        </div>
+                                      </FormLayout>
                                     </div>
-                                  </FormLayout>
+                                  </div>
                                 </div>
-                              </div>
+                              </Collapsible>
                             </div>
                           </Card>
                         );
                       })}
-
-                      <div className={styles.checkoutQuickAddShell}>
-                        <InlineStack align="space-between" blockAlign="center" wrap gap="300">
-                          <div>
-                            <Text as="h5" variant="headingSm">
-                              Smart section starters
-                            </Text>
-                            <Text as="p" variant="bodySm" tone="subdued">
-                              Drop in a polished section with preset content, then fine-tune copy,
-                              tone, and CTA behavior.
-                            </Text>
-                          </div>
-                          <Badge tone="info">Preset content included</Badge>
-                        </InlineStack>
-                        <div className={styles.checkoutQuickAddRow}>
-                          {CHECKOUT_SECTION_TYPE_OPTIONS.map(option => (
-                            <button
-                              key={`${variant.name}-${option.value}`}
-                              type="button"
-                              className={styles.checkoutQuickAddButton}
-                              onClick={() =>
-                                updateCheckoutExperienceVariantConfig(index, current => {
-                                  const currentSections =
-                                    getNormalizedCheckoutExperienceConfig(
-                                      current
-                                    ).checkout_sections;
-                                  return {
-                                    ...current,
-                                    checkout_sections: [
-                                      ...currentSections,
-                                      {
-                                        ...createEmptyCheckoutSection(
-                                          currentSections.length,
-                                          option.value
-                                        ),
-                                        props: buildCheckoutSectionSmartPreset(option.value),
-                                      },
-                                    ],
-                                  };
-                                })
-                              }
-                            >
-                              <strong>Add {option.label}</strong>
-                              <span>{getCheckoutSectionDetails(option.value).description}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
                     </BlockStack>
                   </BlockStack>
                 ) : checkoutPhase === 'payment_method' ? (
@@ -13087,7 +13397,7 @@ function TestWizard({
         ? 'Checkout Variant Studio'
         : 'Variant Configuration';
       const moduleSubtitle = isCheckoutVariantConfig
-        ? `Build ${checkoutConfigPhaseDetails.title.toLowerCase()} variants with a unified checkout studio, structured contract, and stronger launch-ready editing flow.`
+        ? `Choose the checkout surface once, then edit the active control or treatment tab below.`
         : null;
       const moduleTitles = {
         url: 'Variant URLs',
@@ -13118,6 +13428,16 @@ function TestWizard({
                   <Badge tone="info">{checkoutConfigPhaseDetails.title}</Badge>
                 )}
                 {isCheckoutVariantConfig && <Badge tone="success">Structured contract</Badge>}
+                {isCheckoutVariantConfig && (
+                  <TooltipWrapper
+                    content="This step is intentionally compact: surface selection stays at the top, while detailed rollout and readiness guidance lives in the related review and diagnostics surfaces."
+                    accessibilityLabel="Checkout variant studio help"
+                  >
+                    <span className={styles.checkoutStudioCompactInfo} aria-hidden>
+                      <Icon source={InfoIcon} />
+                    </span>
+                  </TooltipWrapper>
+                )}
               </InlineStack>
               <Text variant="bodySm" color="subdued" as="p" style={{ marginTop: '0.25rem' }}>
                 {moduleSubtitle || moduleTitles[variantConfigType]}
