@@ -50,7 +50,6 @@ import {
 } from '../../hooks';
 import { useQueryClient } from '@tanstack/react-query';
 import { getTestTypeDisplay, getVariantCount } from '../../utils/testType';
-import { getActionableCheckoutSections } from '../../utils/checkoutSections';
 import {
   consumeFirstStartUltraCelebrationFlag,
   getCelebrationAnimationPreference,
@@ -123,7 +122,6 @@ function TestDetail() {
   const [shippingExecutionToast, setShippingExecutionToast] = useState(null);
   const [detailInsightPanels, setDetailInsightPanels] = useState({
     readiness: true,
-    checkoutSummary: false,
     shippingPlan: false,
     shippingActions: false,
   });
@@ -959,54 +957,6 @@ function TestDetail() {
   })();
   const hasDeployableCheckoutCustomizationPhase =
     checkoutPhaseLabel === 'Payment methods' || checkoutPhaseLabel === 'Delivery methods';
-  const checkoutVariantSummaries = (() => {
-    if (!isCheckoutTest) {
-      return [];
-    }
-    return (test?.variants || []).map((variant, index) => {
-      const cfg = variant?.config && typeof variant.config === 'object' ? variant.config : {};
-      const experienceSections = getActionableCheckoutSections(cfg);
-      const primarySection = experienceSections[0] || null;
-      const primaryProps = primarySection?.props || {};
-      const featureBullets = Array.isArray(primaryProps.feature_bullets)
-        ? primaryProps.feature_bullets.filter(Boolean)
-        : [];
-      const paymentMethods = Array.isArray(cfg.payment_method_names)
-        ? cfg.payment_method_names.filter(Boolean)
-        : [];
-      const deliveryMethods = Array.isArray(cfg.delivery_method_names)
-        ? cfg.delivery_method_names.filter(Boolean)
-        : [];
-      const summary =
-        checkoutPhaseLabel === 'Payment methods'
-          ? paymentMethods.join(', ') || 'No payment methods selected'
-          : checkoutPhaseLabel === 'Delivery methods'
-            ? deliveryMethods.join(', ') || 'No delivery methods selected'
-            : String(
-                primaryProps.message || primaryProps.title || primaryProps.badge_text || ''
-              ).trim() || 'No checkout content configured';
-      const detail =
-        checkoutPhaseLabel === 'Payment methods'
-          ? `${String(cfg.payment_action || 'hide')} methods`
-          : checkoutPhaseLabel === 'Delivery methods'
-            ? `${String(cfg.delivery_action || 'hide')} methods`
-            : `${experienceSections.length || 0} section(s) • ${String(
-                primaryProps.layout || 'banner'
-              )} layout • ${String(primaryProps.tone || 'success')} tone`;
-      return {
-        index,
-        name: variant?.name || `Variant ${index + 1}`,
-        allocation: variant?.allocation ?? 0,
-        summary,
-        detail,
-        cta:
-          checkoutPhaseLabel === 'Experience block'
-            ? String(primaryProps.cta_label || '').trim()
-            : '',
-        featureBullets: checkoutPhaseLabel === 'Experience block' ? featureBullets : [],
-      };
-    });
-  })();
   const checkoutReadinessSummary = checkoutReadinessReport?.summary || null;
   const checkoutReadinessChecks = Array.isArray(checkoutReadinessReport?.checks)
     ? checkoutReadinessReport.checks
@@ -2028,13 +1978,26 @@ function TestDetail() {
           </Layout>
 
           {((supportsCheckoutReadiness && checkoutReadinessSummary) ||
-            (isCheckoutTest && checkoutVariantSummaries.length > 0) ||
             (isShippingTest && shippingExecutionPlan) ||
             (isShippingTest &&
               actionableShippingVariants.some(
                 item => item.index > 0 && item.strategy !== 'control'
               ))) && (
             <div className={styles.detailPostWizardPanels}>
+              <div className={styles.detailPostWizardHeader}>
+                <span className={styles.detailPostWizardHeaderIcon} aria-hidden>
+                  <Icon source={ChartVerticalFilledIcon} />
+                </span>
+                <div className={styles.detailPostWizardHeaderCopy}>
+                  <Text as="h3" variant="headingSm">
+                    Supporting diagnostics
+                  </Text>
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    Readiness, execution, and launch support panels stay below the editor so the
+                    wizard remains the primary workspace.
+                  </Text>
+                </div>
+              </div>
               {supportsCheckoutReadiness && checkoutReadinessSummary && (
                 <div className={styles.detailInsightPanel}>
                   <button
@@ -2123,83 +2086,6 @@ function TestDetail() {
                               ))}
                             </div>
                           )}
-                        </BlockStack>
-                      </Banner>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {isCheckoutTest && checkoutVariantSummaries.length > 0 && (
-                <div className={styles.detailInsightPanel}>
-                  <button
-                    type="button"
-                    className={styles.detailInsightToggle}
-                    onClick={() => toggleDetailInsightPanel('checkoutSummary')}
-                    aria-expanded={detailInsightPanels.checkoutSummary}
-                  >
-                    <span className={styles.detailInsightToggleMeta}>
-                      <span className={styles.detailInsightToggleTitle}>
-                        Checkout phase: {checkoutPhaseLabel}
-                      </span>
-                      <span className={styles.detailInsightToggleSummary}>
-                        {checkoutVariantSummaries.length} variant
-                        {checkoutVariantSummaries.length === 1 ? '' : 's'} saved for this phase
-                      </span>
-                    </span>
-                    <span
-                      className={`${styles.detailInsightChevron} ${
-                        detailInsightPanels.checkoutSummary ? styles.detailInsightChevronOpen : ''
-                      }`}
-                    >
-                      <Icon source={ChevronDownIcon} />
-                    </span>
-                  </button>
-                  {detailInsightPanels.checkoutSummary && (
-                    <div
-                      className={`${styles.detailInsightBody} ${styles.checkoutExperiencePanel}`}
-                    >
-                      <Banner title={`Checkout phase: ${checkoutPhaseLabel}`} tone="info">
-                        <BlockStack gap="300">
-                          <Text as="p" variant="bodySm">
-                            Review the saved checkout contract for each variant. Experience blocks
-                            render through the checkout UI extension, and payment/delivery phases
-                            use the same saved schema for readiness plus Shopify customization
-                            deployment.
-                          </Text>
-                          <div className={styles.checkoutExperienceGrid}>
-                            {checkoutVariantSummaries.map(item => (
-                              <div
-                                key={`checkout-summary-${item.index}`}
-                                className={styles.checkoutExperienceCard}
-                              >
-                                <div className={styles.checkoutExperienceCardHeader}>
-                                  <span className={styles.checkoutExperienceCardTitle}>
-                                    {item.name}
-                                  </span>
-                                  <span className={styles.checkoutReadinessPill}>
-                                    {item.allocation}% traffic
-                                  </span>
-                                </div>
-                                <Text as="p" variant="bodySm">
-                                  {item.summary}
-                                </Text>
-                                <Text as="p" variant="bodySm" tone="subdued">
-                                  {item.detail}
-                                </Text>
-                                {item.cta ? (
-                                  <Text as="p" variant="bodySm" tone="subdued">
-                                    CTA: {item.cta}
-                                  </Text>
-                                ) : null}
-                                {item.featureBullets.length > 0 ? (
-                                  <Text as="p" variant="bodySm" tone="subdued">
-                                    Bullets: {item.featureBullets.join(', ')}
-                                  </Text>
-                                ) : null}
-                              </div>
-                            ))}
-                          </div>
                         </BlockStack>
                       </Banner>
                     </div>
