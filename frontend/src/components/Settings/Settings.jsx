@@ -474,6 +474,8 @@ function Settings() {
   const [installAdvancedOpen, setInstallAdvancedOpen] = useState(false);
   const [installDebugJsonOpen, setInstallDebugJsonOpen] = useState(false);
   const [installSnippetModalOpen, setInstallSnippetModalOpen] = useState(false);
+  const isInstallDetailModalOpen =
+    installSnippetModalOpen || installAdvancedOpen || installDebugJsonOpen;
   const [shopifyFnInventory, setShopifyFnInventory] = useState(null);
   const [shopifyFnInventoryLoading, setShopifyFnInventoryLoading] = useState(false);
   const [shopifyFnInventoryError, setShopifyFnInventoryError] = useState(null);
@@ -485,6 +487,56 @@ function Settings() {
   useEffect(() => {
     checkoutDiagRef.current = checkoutDiag;
   }, [checkoutDiag]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const modalClass = 'ripx-install-detail-modal-open';
+    const root = document.documentElement;
+    if (isInstallDetailModalOpen) {
+      document.body.classList.add(modalClass);
+      root?.classList.add(modalClass);
+    } else {
+      document.body.classList.remove(modalClass);
+      root?.classList.remove(modalClass);
+    }
+    return () => {
+      document.body.classList.remove(modalClass);
+      root?.classList.remove(modalClass);
+    };
+  }, [isInstallDetailModalOpen]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const overlayId = 'ripx-install-detail-modal-overlay';
+    if (!isInstallDetailModalOpen) {
+      const existing = document.getElementById(overlayId);
+      if (existing) existing.remove();
+      return undefined;
+    }
+
+    const ensureOverlay = () => {
+      let overlay = document.getElementById(overlayId);
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = overlayId;
+        overlay.className = 'ripx-install-detail-modal-overlay';
+        overlay.setAttribute('aria-hidden', 'true');
+        document.body.appendChild(overlay);
+      }
+    };
+
+    ensureOverlay();
+    const observer = new MutationObserver(() => {
+      ensureOverlay();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      observer.disconnect();
+      const existing = document.getElementById(overlayId);
+      if (existing) existing.remove();
+    };
+  }, [isInstallDetailModalOpen]);
 
   useEffect(() => {
     if (!isGuidedSetupMode) return;
