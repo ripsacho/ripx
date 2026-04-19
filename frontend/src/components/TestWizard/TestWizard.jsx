@@ -1075,6 +1075,7 @@ function TestWizard({
   const isShippingTargetingMode = selectedTemplate === 'shipping' || formData.type === 'shipping';
   const [variantCodesData, setVariantCodesData] = useState([]);
   const [selectedVariantIndex, setSelectedVariantIndex] = useState(0);
+  const [checkoutStudioVariantIndex, setCheckoutStudioVariantIndex] = useState(0);
   const [cssValidationErrors, setCssValidationErrors] = useState([]);
   const [jsValidationErrors, setJsValidationErrors] = useState([]);
   const validationTimeoutRef = useRef(null);
@@ -1166,6 +1167,14 @@ function TestWizard({
       return;
     }
     setOfferAccordionExpandedIndices(prev => prev.filter(i => i >= 0 && i < n));
+  }, [formData.variants?.length]);
+  useEffect(() => {
+    const n = formData.variants?.length ?? 0;
+    if (n === 0) {
+      setCheckoutStudioVariantIndex(0);
+      return;
+    }
+    setCheckoutStudioVariantIndex(prev => Math.min(prev, n - 1));
   }, [formData.variants?.length]);
   const [changingSelectorIndex, setChangingSelectorIndex] = useState(null); // when set, next click in preview replaces this slot
   const visualSnippetPanelRef = useRef(null);
@@ -11725,6 +11734,10 @@ function TestWizard({
         ? Math.max(0, Math.min(100, Math.round((configuredCount / nonControlIndices.length) * 100)))
         : 100;
     const totalVariants = checkoutVariants.length;
+    const activeCheckoutVariantIndex =
+      checkoutVariants.length > 0
+        ? Math.min(checkoutStudioVariantIndex, checkoutVariants.length - 1)
+        : 0;
     const designStudioTitle = 'Checkout Variant Studio';
     const phaseActionOptions = [
       { label: 'Hide methods', value: 'hide' },
@@ -11933,6 +11946,72 @@ function TestWizard({
           </div>
         </Card>
 
+        {checkoutVariants.length > 0 && (
+          <div className={styles.checkoutVariantBrowser}>
+            <div
+              className={styles.checkoutVariantBrowserTabs}
+              role="tablist"
+              aria-label="Checkout variants"
+            >
+              {checkoutVariants.map((variant, index) => {
+                const cfg = variant?.config || {};
+                const isControlLike = index === 0 || /control/i.test(String(variant?.name || ''));
+                const variantConfigured =
+                  checkoutPhase === 'experience'
+                    ? getActionableCheckoutSections(cfg).length > 0
+                    : checkoutPhase === 'payment_method'
+                      ? normalizeCheckoutListInput(cfg.payment_method_names).length > 0
+                      : normalizeCheckoutListInput(cfg.delivery_method_names).length > 0;
+                const active = index === activeCheckoutVariantIndex;
+                return (
+                  <button
+                    key={`checkout-tab-${index}`}
+                    id={`checkout-variant-tab-${index}`}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    aria-controls={`checkout-variant-panel-${index}`}
+                    className={`${styles.checkoutVariantBrowserTab} ${active ? styles.checkoutVariantBrowserTabActive : ''}`}
+                    style={{
+                      '--checkout-variant-accent': getVariantColor(index),
+                      '--checkout-variant-accent-soft': getVariantColorLight(index),
+                    }}
+                    onClick={() => setCheckoutStudioVariantIndex(index)}
+                  >
+                    <span className={styles.checkoutVariantBrowserDot} aria-hidden />
+                    <span className={styles.checkoutVariantBrowserTabMeta}>
+                      <span className={styles.checkoutVariantBrowserTabTitle}>
+                        {variant?.name || `Variant ${index + 1}`}
+                      </span>
+                      <span className={styles.checkoutVariantBrowserTabSummary}>
+                        {isControlLike
+                          ? 'Control baseline'
+                          : variantConfigured
+                            ? 'Configured treatment'
+                            : 'Draft treatment'}
+                      </span>
+                    </span>
+                    <span className={styles.checkoutVariantBrowserTabTraffic}>
+                      {variant?.allocation ?? 0}%
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className={styles.checkoutVariantBrowserStatus}>
+              <span className={styles.checkoutPhaseSummaryChip}>
+                Active tab:{' '}
+                {checkoutVariants[activeCheckoutVariantIndex]?.name ||
+                  `Variant ${activeCheckoutVariantIndex + 1}`}
+              </span>
+              <span className={styles.checkoutPhaseSummaryChip}>
+                {checkoutVariants.length} variant{checkoutVariants.length === 1 ? '' : 's'} in
+                studio
+              </span>
+            </div>
+          </div>
+        )}
+
         {checkoutVariants.map((variant, index) => {
           const cfg = variant?.config || {};
           const isControlLike = index === 0 || /control/i.test(String(variant?.name || ''));
@@ -11961,9 +12040,21 @@ function TestWizard({
               : checkoutPhase === 'payment_method'
                 ? normalizeCheckoutListInput(cfg.payment_method_names).length > 0
                 : normalizeCheckoutListInput(cfg.delivery_method_names).length > 0;
+          if (index !== activeCheckoutVariantIndex) {
+            return null;
+          }
           return (
             <Card key={`checkout-${index}`}>
-              <div className={styles.checkoutVariantShell}>
+              <div
+                id={`checkout-variant-panel-${index}`}
+                role="tabpanel"
+                aria-labelledby={`checkout-variant-tab-${index}`}
+                className={styles.checkoutVariantShell}
+                style={{
+                  '--checkout-variant-accent': getVariantColor(index),
+                  '--checkout-variant-accent-soft': getVariantColorLight(index),
+                }}
+              >
                 <div className={styles.checkoutVariantHero}>
                   <InlineStack align="space-between" blockAlign="start" wrap gap="300">
                     <div className={styles.checkoutVariantHeroCopy}>
