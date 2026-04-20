@@ -101,4 +101,98 @@ describe('checkoutExperienceConfigService', () => {
     expect(normalized.variants[1].config.checkout_tone).toBe('info');
     expect(normalized.variants[1].config.checkout_layout).toBe('stacked');
   });
+
+  it('accepts product list sections with manual product cards', () => {
+    const result = validateCheckoutExperienceConfig({
+      checkout_sections: [
+        {
+          type: 'product_list',
+          enabled: true,
+          props: {
+            title: 'Add one more item',
+            product_items: [{ title: 'Gift wrap', subtitle: 'Premium presentation', price: '$9' }],
+          },
+        },
+      ],
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(result.normalizedConfig.checkout_sections[0]).toMatchObject({
+      type: 'product_list',
+      props: {
+        title: 'Add one more item',
+        product_items: [{ title: 'Gift wrap', subtitle: 'Premium presentation', price: '$9' }],
+      },
+    });
+  });
+
+  it('does not count blank product cards as renderable checkout content', () => {
+    const result = validateCheckoutExperienceConfig({
+      checkout_sections: [
+        {
+          type: 'product_list',
+          enabled: true,
+          props: {
+            product_items: [{ id: 'product-1', title: '', subtitle: '', price: '' }],
+          },
+        },
+      ],
+    });
+
+    expect(result.errors.some(error => error.includes('checkout_sections must include'))).toBe(
+      true
+    );
+  });
+
+  it('accepts cart-related product lists without manual cards', () => {
+    const result = validateCheckoutExperienceConfig({
+      checkout_sections: [
+        {
+          type: 'product_list',
+          enabled: true,
+          props: {
+            product_source_mode: 'cart_related',
+            product_source_limit: '5',
+          },
+        },
+      ],
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(result.actionableSectionCount).toBe(1);
+    expect(result.normalizedConfig.checkout_sections[0].props).toMatchObject({
+      product_source_mode: 'cart_related',
+      product_source_limit: 5,
+      product_items: [],
+    });
+  });
+
+  it('accepts collection-fed product lists when collections are configured', () => {
+    const result = validateCheckoutExperienceConfig({
+      checkout_sections: [
+        {
+          type: 'product_list',
+          enabled: true,
+          props: {
+            product_source_mode: 'collection',
+            product_source_limit: '2',
+            product_source_collections: [
+              { id: 'gid://shopify/Collection/999', title: 'New', handle: 'new' },
+            ],
+            product_items: [],
+          },
+        },
+      ],
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(result.actionableSectionCount).toBe(1);
+    expect(result.normalizedConfig.checkout_sections[0].props).toMatchObject({
+      product_source_mode: 'collection',
+      product_source_limit: 2,
+      product_source_collections: [
+        { id: 'gid://shopify/Collection/999', title: 'New', handle: 'new' },
+      ],
+    });
+  });
 });

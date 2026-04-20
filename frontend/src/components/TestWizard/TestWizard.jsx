@@ -104,6 +104,9 @@ import {
   getNormalizedCheckoutExperienceConfig,
   normalizeCheckoutListInput,
   normalizeCheckoutPhase,
+  normalizeCheckoutProductSourceCollections,
+  normalizeCheckoutProductSourceLimit,
+  normalizeCheckoutProductSourceMode,
   syncLegacyCheckoutExperienceFields,
 } from '../../utils/checkoutSections';
 
@@ -138,12 +141,26 @@ const CHECKOUT_CTA_KIND_OPTIONS = [
   { label: 'Offer code button', value: 'offer_code' },
   { label: 'No CTA', value: 'none' },
 ];
+const CHECKOUT_PRODUCT_SOURCE_OPTIONS = [
+  { label: 'Manual cards', value: 'manual' },
+  { label: 'Cart-related', value: 'cart_related' },
+  { label: 'Collection-fed', value: 'collection' },
+];
+const CHECKOUT_PRODUCT_SOURCE_LIMIT_OPTIONS = [
+  { label: '1 card', value: '1' },
+  { label: '2 cards', value: '2' },
+  { label: '3 cards', value: '3' },
+  { label: '4 cards', value: '4' },
+  { label: '5 cards', value: '5' },
+  { label: '6 cards', value: '6' },
+];
 const CHECKOUT_SECTION_TYPE_OPTIONS = [
   { label: 'Hero notice', value: 'hero_notice' },
   { label: 'Trust box', value: 'trust_box' },
   { label: 'Guarantee box', value: 'guarantee_box' },
   { label: 'Shipping promise', value: 'shipping_promise' },
   { label: 'Offer code panel', value: 'offer_code_panel' },
+  { label: 'Product list', value: 'product_list' },
 ];
 const CHECKOUT_PLACEMENT_OPTIONS = [
   { label: 'Checkout block', value: 'purchase.checkout.block.render' },
@@ -190,6 +207,10 @@ const CHECKOUT_SECTION_DETAILS = Object.freeze({
   offer_code_panel: {
     label: 'Offer code panel',
     description: 'Promo or offer messaging with CTA support',
+  },
+  product_list: {
+    label: 'Product list',
+    description: 'Manual, cart-related, or collection-fed merchandising for checkout',
   },
 });
 const DEFAULT_TEST_TYPE_STATE = Object.freeze(getDefaultTestTypeState());
@@ -275,6 +296,45 @@ function buildCheckoutSectionSmartPreset(rawType) {
           'Strong conversion reminder',
         ],
       };
+    case 'product_list':
+      return {
+        title: 'Complete your order with these picks',
+        message: 'Merchandise manual cards or auto-pull cart-related products inside checkout.',
+        badge_text: 'Recommended',
+        disclaimer: 'Product availability and pricing should match your live store configuration.',
+        cta_label: 'Review picks',
+        tone: 'info',
+        layout: 'stacked',
+        cta_kind: 'track',
+        feature_bullets: [
+          'Manual checkout merchandising',
+          'Cart-aware product highlights',
+          'Collection-fed product picks',
+        ],
+        product_source_mode: 'manual',
+        product_source_limit: 3,
+        product_source_collections: [],
+        product_items: [
+          {
+            id: 'product-1',
+            image_url: '',
+            title: 'Premium add-on',
+            subtitle: 'High-intent upsell for checkout',
+            price: '$29',
+            compare_at_price: '$39',
+            badge_text: 'Best seller',
+          },
+          {
+            id: 'product-2',
+            image_url: '',
+            title: 'Protection plan',
+            subtitle: 'Low-friction checkout companion',
+            price: '$9',
+            compare_at_price: '',
+            badge_text: 'Popular',
+          },
+        ],
+      };
     case 'hero_notice':
     default:
       return {
@@ -289,6 +349,102 @@ function buildCheckoutSectionSmartPreset(rawType) {
         feature_bullets: ['Secure payment', 'Fast support', 'Clear next step'],
       };
   }
+}
+
+function normalizeCheckoutProductItems(rawValue) {
+  const rows = Array.isArray(rawValue) ? rawValue : [];
+  return rows
+    .map((item, index) => {
+      const source = item && typeof item === 'object' ? item : {};
+      const imageUrl = String(
+        source.image_url || source.image || source.product_image_url || ''
+      ).trim();
+      const title = String(source.title || source.product_title || '').trim();
+      const subtitle = String(source.subtitle || source.product_subtitle || '').trim();
+      const price = String(source.price || source.product_price || '').trim();
+      const compareAtPrice = String(
+        source.compare_at_price || source.product_compare_at_price || ''
+      ).trim();
+      const badgeText = String(source.badge_text || source.product_badge_text || '').trim();
+      if (!source || typeof source !== 'object') {
+        return null;
+      }
+      return {
+        id:
+          String(source.id || '')
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9_-]+/g, '-')
+            .replace(/^-+|-+$/g, '') || `product-${index + 1}`,
+        image_url: imageUrl,
+        title,
+        subtitle,
+        price,
+        compare_at_price: compareAtPrice,
+        badge_text: badgeText,
+      };
+    })
+    .filter(Boolean);
+}
+
+function hasRenderableCheckoutProductItem(item = {}) {
+  return Boolean(
+    item.image_url ||
+    item.title ||
+    item.subtitle ||
+    item.price ||
+    item.compare_at_price ||
+    item.badge_text
+  );
+}
+
+function createEmptyCheckoutProductItem(index = 0) {
+  return {
+    id: `product-${index + 1}`,
+    image_url: '',
+    title: '',
+    subtitle: '',
+    price: '',
+    compare_at_price: '',
+    badge_text: '',
+  };
+}
+
+function buildCheckoutCartRelatedPreviewItems(limit = 3) {
+  return Array.from({ length: Math.max(1, Number(limit) || 1) }, (_, index) => ({
+    id: `cart-related-preview-${index + 1}`,
+    image_url: '',
+    title: index === 0 ? 'Cart product highlight' : `Cart companion ${index + 1}`,
+    subtitle:
+      index === 0
+        ? 'Auto-filled from the shopper checkout cart'
+        : 'Shown dynamically from current cart lines',
+    price: index === 0 ? 'Runtime price' : '',
+    compare_at_price: '',
+    badge_text: index === 0 ? 'Cart-related' : 'Auto',
+  }));
+}
+
+function buildCheckoutCollectionPreviewItems(collections = [], limit = 3) {
+  const selectedCollections = normalizeCheckoutProductSourceCollections(collections);
+  const count = Math.max(1, Number(limit) || 1);
+  return Array.from({ length: count }, (_, index) => {
+    const sourceCollection =
+      selectedCollections[index % Math.max(1, selectedCollections.length)] ||
+      selectedCollections[0] ||
+      null;
+    const collectionLabel =
+      sourceCollection?.title || sourceCollection?.handle || `Collection ${index + 1}`;
+    return {
+      id: `collection-preview-${index + 1}`,
+      image_url: '',
+      title: index === 0 ? `${collectionLabel} pick` : `Featured from ${collectionLabel}`,
+      subtitle: 'Auto-filled from selected Shopify collection products',
+      price: 'Runtime price',
+      compare_at_price: '',
+      badge_text: collectionLabel,
+    };
+  });
 }
 
 function buildProgressiveListWindow(items, visibleCount, options = {}) {
@@ -1152,6 +1308,7 @@ function TestWizard({
   const [checkoutCustomizationAction, setCheckoutCustomizationAction] = useState(null);
   const [checkoutCustomizationToast, setCheckoutCustomizationToast] = useState(null);
   const [checkoutBulletDrafts, setCheckoutBulletDrafts] = useState({});
+  const [checkoutMethodDrafts, setCheckoutMethodDrafts] = useState({});
   const [checkoutExpandedSectionsByVariant, setCheckoutExpandedSectionsByVariant] = useState({});
   const [checkoutPendingScrollTarget, setCheckoutPendingScrollTarget] = useState(null);
   const [shippingStorewideApplyConfirmed, setShippingStorewideApplyConfirmed] = useState(false);
@@ -1432,6 +1589,19 @@ function TestWizard({
   );
   /** When store-resources API fails or returns empty_reason, show this instead of generic message */
   const [storeResourcesError, setStoreResourcesError] = useState(null);
+  const [checkoutCollectionResources, setCheckoutCollectionResources] = useState([]);
+  const [checkoutCollectionLoading, setCheckoutCollectionLoading] = useState(false);
+  const [checkoutCollectionSearch, setCheckoutCollectionSearch] = useState('');
+  const [checkoutCollectionSearchDebounced, setCheckoutCollectionSearchDebounced] = useState('');
+  const [checkoutCollectionError, setCheckoutCollectionError] = useState(null);
+  const [checkoutCollectionPageInfo, setCheckoutCollectionPageInfo] = useState({
+    hasNextPage: false,
+    endCursor: null,
+  });
+  const [checkoutCollectionLoadingMore, setCheckoutCollectionLoadingMore] = useState(false);
+  const [checkoutCollectionVisibleCount, setCheckoutCollectionVisibleCount] = useState(
+    PRICE_PRODUCT_MODAL_REVEAL_BATCH
+  );
   const [priceProductModalOpen, setPriceProductModalOpen] = useState(false);
   const [priceModalSearch, setPriceModalSearch] = useState('');
   const [priceModalSearchDebounced, setPriceModalSearchDebounced] = useState('');
@@ -1904,6 +2074,119 @@ function TestWizard({
     const t = setTimeout(() => setStoreResourceSearchDebounced(storeResourceSearch), 400);
     return () => clearTimeout(t);
   }, [storeResourceSearch]);
+  useEffect(() => {
+    const t = setTimeout(() => setCheckoutCollectionSearchDebounced(checkoutCollectionSearch), 400);
+    return () => clearTimeout(t);
+  }, [checkoutCollectionSearch]);
+  useEffect(() => {
+    if (isStandalone || !isShopifyFromRoute || !routeDomain) {
+      setCheckoutCollectionResources([]);
+      setCheckoutCollectionError(null);
+      setCheckoutCollectionPageInfo({ hasNextPage: false, endCursor: null });
+      setCheckoutCollectionVisibleCount(PRICE_PRODUCT_MODAL_REVEAL_BATCH);
+      return;
+    }
+    setCheckoutCollectionLoading(true);
+    setCheckoutCollectionError(null);
+    setCheckoutCollectionVisibleCount(PRICE_PRODUCT_MODAL_REVEAL_BATCH);
+    const query = encodeURIComponent(checkoutCollectionSearchDebounced.trim());
+    apiGet(`/shopify/store-resources?type=collection&query=${query}&first=40`, {
+      shop: routeDomain,
+    })
+      .then(res => {
+        const list = Array.isArray(res.data?.resources) ? res.data.resources : [];
+        const emptyReason = res.data?.empty_reason || null;
+        setCheckoutCollectionResources(list);
+        setCheckoutCollectionPageInfo(
+          res.data?.page_info || {
+            hasNextPage: false,
+            endCursor: null,
+          }
+        );
+        setCheckoutCollectionError(list.length === 0 && emptyReason ? emptyReason : null);
+      })
+      .catch(err => {
+        setCheckoutCollectionResources([]);
+        setCheckoutCollectionPageInfo({ hasNextPage: false, endCursor: null });
+        const msg =
+          err?.response?.data?.error ||
+          err?.message ||
+          'Could not load collections from Shopify right now.';
+        setCheckoutCollectionError(msg);
+      })
+      .finally(() => setCheckoutCollectionLoading(false));
+  }, [checkoutCollectionSearchDebounced, isStandalone, isShopifyFromRoute, routeDomain]);
+
+  const handleLoadMoreCheckoutCollections = useCallback(async () => {
+    if (checkoutCollectionVisibleCount < checkoutCollectionResources.length) {
+      setCheckoutCollectionVisibleCount(prev =>
+        Math.min(prev + PRICE_PRODUCT_MODAL_REVEAL_BATCH, checkoutCollectionResources.length)
+      );
+      return;
+    }
+    if (
+      isStandalone ||
+      !isShopifyFromRoute ||
+      !routeDomain ||
+      !checkoutCollectionPageInfo?.hasNextPage ||
+      !checkoutCollectionPageInfo?.endCursor ||
+      checkoutCollectionLoadingMore
+    ) {
+      return;
+    }
+    const shop = routeDomain;
+    const query = encodeURIComponent(checkoutCollectionSearchDebounced.trim());
+    setCheckoutCollectionLoadingMore(true);
+    try {
+      const res = await apiGet(
+        `/shopify/store-resources?type=collection&query=${query}&first=40&after=${encodeURIComponent(
+          checkoutCollectionPageInfo.endCursor
+        )}`,
+        { shop }
+      );
+      const incoming = Array.isArray(res.data?.resources) ? res.data.resources : [];
+      if (incoming.length > 0) {
+        setCheckoutCollectionResources(prev => {
+          const seen = new Set((prev || []).map(r => String(r?.id || '')));
+          const merged = [...(prev || [])];
+          incoming.forEach(item => {
+            const id = String(item?.id || '');
+            if (id && !seen.has(id)) {
+              seen.add(id);
+              merged.push(item);
+            }
+          });
+          return merged;
+        });
+        setCheckoutCollectionVisibleCount(prev => prev + PRICE_PRODUCT_MODAL_REVEAL_BATCH);
+      }
+      setCheckoutCollectionPageInfo(
+        res.data?.page_info || {
+          hasNextPage: false,
+          endCursor: null,
+        }
+      );
+    } catch (err) {
+      setCheckoutCollectionError(
+        err?.response?.data?.error ||
+          err?.message ||
+          'Could not load more collections. Please retry.'
+      );
+    } finally {
+      setCheckoutCollectionLoadingMore(false);
+    }
+  }, [
+    checkoutCollectionVisibleCount,
+    checkoutCollectionResources.length,
+    checkoutCollectionPageInfo?.hasNextPage,
+    checkoutCollectionPageInfo?.endCursor,
+    checkoutCollectionLoadingMore,
+    checkoutCollectionSearchDebounced,
+    isStandalone,
+    isShopifyFromRoute,
+    routeDomain,
+  ]);
+
   useEffect(() => {
     if (isStandalone || !['product', 'collection', 'page'].includes(targetTypeForResources)) {
       setStoreResources([]);
@@ -11844,6 +12127,223 @@ function TestWizard({
         };
       });
     };
+    const updateCheckoutMethodTargets = (index, configKey, updater) => {
+      const currentTargets = normalizeCheckoutListInput(
+        checkoutVariants[index]?.config?.[configKey]
+      );
+      const nextTargets =
+        typeof updater === 'function'
+          ? normalizeCheckoutListInput(updater(currentTargets))
+          : normalizeCheckoutListInput(updater);
+      updateCheckoutVariantConfig(index, { [configKey]: nextTargets });
+    };
+    const renderCheckoutMethodStudio = ({
+      index,
+      cfg,
+      actionKey,
+      namesKey,
+      renameKey,
+      summaryLabel,
+      description,
+      emptyText,
+      inputPlaceholder,
+      renamePlaceholder,
+      notePlaceholder,
+    }) => {
+      const actionValue = String(cfg[actionKey] || 'hide');
+      const targetMethods = normalizeCheckoutListInput(cfg[namesKey]);
+      const methodDraftKey = `${actionKey}-${index}`;
+      const methodDraft = String(checkoutMethodDrafts[methodDraftKey] || '');
+      const renameValue = String(cfg[renameKey] || '');
+      const summaryValue =
+        phaseActionOptions.find(option => option.value === actionValue)?.label || 'Hide methods';
+
+      return (
+        <div className={styles.checkoutVariantBlock}>
+          <div className={styles.checkoutMethodStudio}>
+            <div className={styles.checkoutMethodGuide}>
+              <span className={styles.checkoutMethodSummaryLabel}>{summaryLabel}</span>
+              <span className={styles.checkoutMethodGuideValue}>{summaryValue}</span>
+              <Text as="p" variant="bodySm" tone="subdued">
+                {description}
+              </Text>
+              <div className={styles.checkoutMethodMeta}>
+                <span className={styles.checkoutVariantChip}>
+                  {targetMethods.length} target{targetMethods.length === 1 ? '' : 's'}
+                </span>
+                <span className={styles.checkoutVariantChip}>
+                  {actionValue === 'rename' ? 'Rename output on' : 'Rename output off'}
+                </span>
+                <span className={styles.checkoutVariantChip}>
+                  {String(cfg.checkout_message || '').trim()
+                    ? 'Operator note ready'
+                    : 'No note yet'}
+                </span>
+              </div>
+              {targetMethods.length > 0 ? (
+                <div className={styles.checkoutMethodSummary}>
+                  <span className={styles.checkoutMethodSummaryLabel}>Target methods</span>
+                  <span className={styles.checkoutMethodSummaryValue}>
+                    {getCheckoutListPreview(cfg[namesKey])}
+                  </span>
+                </div>
+              ) : (
+                <div className={styles.checkoutMethodEmpty}>{emptyText}</div>
+              )}
+            </div>
+
+            <div className={styles.checkoutMethodForm}>
+              <div className={styles.checkoutMethodActionBar}>
+                {phaseActionOptions.map(option => {
+                  const active = option.value === actionValue;
+                  return (
+                    <button
+                      key={`${actionKey}-${option.value}`}
+                      type="button"
+                      className={`${styles.checkoutMethodActionChip} ${active ? styles.checkoutMethodActionChipActive : ''}`}
+                      aria-pressed={active}
+                      onClick={() =>
+                        updateCheckoutVariantConfig(index, { [actionKey]: option.value })
+                      }
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className={styles.checkoutMethodEditorPanel}>
+                <div className={styles.checkoutMethodEditorHeader}>
+                  <div>
+                    <Text as="h6" variant="headingSm">
+                      Target methods
+                    </Text>
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      Add the checkout-facing method labels you want this action to target.
+                    </Text>
+                  </div>
+                  <Badge tone={targetMethods.length > 0 ? 'info' : 'attention'}>
+                    {targetMethods.length} target{targetMethods.length === 1 ? '' : 's'}
+                  </Badge>
+                </div>
+
+                {targetMethods.length > 0 ? (
+                  <BlockStack gap="200">
+                    {targetMethods.map((methodName, methodIndex) => (
+                      <div
+                        key={`${methodDraftKey}-${methodIndex}`}
+                        className={styles.checkoutMethodRow}
+                      >
+                        <TextField
+                          label={`${summaryLabel} target ${methodIndex + 1}`}
+                          labelHidden
+                          value={methodName}
+                          onChange={value =>
+                            updateCheckoutMethodTargets(index, namesKey, currentTargets =>
+                              currentTargets.map((item, currentIndex) =>
+                                currentIndex === methodIndex ? value : item
+                              )
+                            )
+                          }
+                          autoComplete="off"
+                        />
+                        <Button
+                          tone="critical"
+                          variant="secondary"
+                          onClick={() =>
+                            updateCheckoutMethodTargets(index, namesKey, currentTargets =>
+                              currentTargets.filter(
+                                (_, currentIndex) => currentIndex !== methodIndex
+                              )
+                            )
+                          }
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    ))}
+                  </BlockStack>
+                ) : (
+                  <div className={styles.checkoutMethodEmpty}>
+                    No methods added yet. Build a clean target list instead of maintaining a
+                    multiline textarea.
+                  </div>
+                )}
+
+                <div className={styles.checkoutMethodInputRow}>
+                  <TextField
+                    label="Add target method"
+                    labelHidden
+                    placeholder={inputPlaceholder}
+                    value={methodDraft}
+                    onChange={value =>
+                      setCheckoutMethodDrafts(prev => ({
+                        ...prev,
+                        [methodDraftKey]: value,
+                      }))
+                    }
+                    autoComplete="off"
+                  />
+                  <Button
+                    onClick={() => {
+                      const nextValue = methodDraft.trim();
+                      if (!nextValue) {
+                        return;
+                      }
+                      updateCheckoutMethodTargets(index, namesKey, currentTargets => [
+                        ...currentTargets,
+                        nextValue,
+                      ]);
+                      setCheckoutMethodDrafts(prev => ({
+                        ...prev,
+                        [methodDraftKey]: '',
+                      }));
+                    }}
+                    disabled={!methodDraft.trim()}
+                  >
+                    Add target
+                  </Button>
+                </div>
+              </div>
+
+              <div className={styles.checkoutMethodEditorPanel}>
+                <div className={styles.checkoutMethodEditorHeader}>
+                  <div>
+                    <Text as="h6" variant="headingSm">
+                      Output controls
+                    </Text>
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      Control the resulting customer-facing label and leave an operator note for the
+                      variant intent.
+                    </Text>
+                  </div>
+                </div>
+                <div className={styles.checkoutMethodEditorGrid}>
+                  <TextField
+                    label="Rename matched methods to"
+                    value={renameValue}
+                    onChange={value => updateCheckoutVariantConfig(index, { [renameKey]: value })}
+                    disabled={actionValue !== 'rename'}
+                    placeholder={renamePlaceholder}
+                    autoComplete="off"
+                  />
+                  <TextField
+                    label="Operator note"
+                    value={String(cfg.checkout_message || '')}
+                    onChange={value =>
+                      updateCheckoutVariantConfig(index, { checkout_message: value })
+                    }
+                    placeholder={notePlaceholder}
+                    multiline={2}
+                    autoComplete="off"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    };
 
     return (
       <BlockStack gap="400">
@@ -11997,8 +12497,6 @@ function TestWizard({
           const cfg = variant?.config || {};
           const isControlLike = index === 0 || /control/i.test(String(variant?.name || ''));
           const variantColor = getVariantColor(index);
-          const paymentMethods = getCheckoutListPreview(cfg.payment_method_names);
-          const deliveryMethods = getCheckoutListPreview(cfg.delivery_method_names);
           const normalizedExperience = getNormalizedCheckoutExperienceConfig(cfg);
           const placementLabel =
             CHECKOUT_PLACEMENT_OPTIONS.find(
@@ -12162,7 +12660,12 @@ function TestWizard({
                             in the editor.
                           </Text>
                         </div>
-                        <Badge tone="info">Preset content included</Badge>
+                        <div className={styles.checkoutStarterHeaderMeta}>
+                          <span className={styles.checkoutStarterPill}>Preset copy</span>
+                          <span className={styles.checkoutStarterPill}>
+                            {CHECKOUT_SECTION_TYPE_OPTIONS.length} starter types
+                          </span>
+                        </div>
                       </InlineStack>
                       <div className={styles.checkoutQuickAddRow}>
                         {CHECKOUT_SECTION_TYPE_OPTIONS.map(option => (
@@ -12193,7 +12696,10 @@ function TestWizard({
                               });
                             }}
                           >
-                            <strong>Add {option.label}</strong>
+                            <div className={styles.checkoutQuickAddButtonTop}>
+                              <strong>{option.label}</strong>
+                              <span className={styles.checkoutQuickAddButtonBadge}>Starter</span>
+                            </div>
                             <span>{getCheckoutSectionDetails(option.value).description}</span>
                           </button>
                         ))}
@@ -12206,6 +12712,28 @@ function TestWizard({
                         const isOnlySection = experienceSections.length === 1;
                         const sectionDetails = getCheckoutSectionDetails(section.type);
                         const featureBullets = normalizeCheckoutListInput(props.feature_bullets);
+                        const productItems = normalizeCheckoutProductItems(props.product_items);
+                        const productSourceMode = normalizeCheckoutProductSourceMode(
+                          props.product_source_mode
+                        );
+                        const productSourceLimit = normalizeCheckoutProductSourceLimit(
+                          props.product_source_limit
+                        );
+                        const productSourceCollections = normalizeCheckoutProductSourceCollections(
+                          props.product_source_collections
+                        );
+                        const renderableProductItems = productItems.filter(
+                          hasRenderableCheckoutProductItem
+                        );
+                        const previewProductItems =
+                          section.type === 'product_list' && productSourceMode === 'cart_related'
+                            ? buildCheckoutCartRelatedPreviewItems(productSourceLimit)
+                            : section.type === 'product_list' && productSourceMode === 'collection'
+                              ? buildCheckoutCollectionPreviewItems(
+                                  productSourceCollections,
+                                  productSourceLimit
+                                )
+                              : renderableProductItems;
                         const sectionId = String(section?.id || '').trim();
                         const bulletDraftKey = `checkout-bullet-${index}-${section.id || sectionIndex}`;
                         const bulletDraft = String(checkoutBulletDrafts[bulletDraftKey] || '');
@@ -12220,6 +12748,15 @@ function TestWizard({
                         const sectionSummary =
                           String(props.title || '').trim() ||
                           String(props.message || '').trim() ||
+                          (section.type === 'product_list' && productSourceMode === 'cart_related'
+                            ? `Cart-related source - ${productSourceLimit} slot${productSourceLimit === 1 ? '' : 's'}`
+                            : section.type === 'product_list' &&
+                                productSourceMode === 'collection' &&
+                                productSourceCollections.length > 0
+                              ? `Collection source - ${productSourceCollections.length} collection${productSourceCollections.length === 1 ? '' : 's'}`
+                              : productItems.length > 0
+                                ? `${productItems.length} product card${productItems.length === 1 ? '' : 's'}`
+                                : '') ||
                           (featureBullets.length > 0
                             ? `${featureBullets.length} proof point${featureBullets.length === 1 ? '' : 's'}`
                             : 'No content yet');
@@ -12229,7 +12766,13 @@ function TestWizard({
                           props.badge_text ||
                           props.disclaimer ||
                           props.cta_label ||
-                          featureBullets.length > 0
+                          featureBullets.length > 0 ||
+                          (section.type === 'product_list' &&
+                            productSourceMode === 'cart_related') ||
+                          (section.type === 'product_list' &&
+                            productSourceMode === 'collection' &&
+                            productSourceCollections.length > 0) ||
+                          renderableProductItems.length > 0
                         );
                         return (
                           <Card key={`${variant.name}-section-${section.id || sectionIndex}`}>
@@ -12314,6 +12857,84 @@ function TestWizard({
                                               ))}
                                             </ul>
                                           ) : null}
+                                          {section.type === 'product_list' &&
+                                          productSourceMode === 'collection' &&
+                                          productSourceCollections.length > 0 ? (
+                                            <Text as="p" variant="bodySm" tone="subdued">
+                                              Collections:{' '}
+                                              {productSourceCollections
+                                                .map(item => item.title || item.handle || item.id)
+                                                .filter(Boolean)
+                                                .slice(0, 3)
+                                                .join(', ')}
+                                            </Text>
+                                          ) : null}
+                                          {previewProductItems.length > 0 ? (
+                                            <div className={styles.checkoutProductPreviewList}>
+                                              {previewProductItems.slice(0, 3).map(item => (
+                                                <div
+                                                  key={item.id}
+                                                  className={styles.checkoutProductPreviewCard}
+                                                >
+                                                  {item.image_url ? (
+                                                    <div
+                                                      className={styles.checkoutProductPreviewMedia}
+                                                    >
+                                                      <img
+                                                        src={item.image_url}
+                                                        alt={item.title || 'Product image'}
+                                                      />
+                                                    </div>
+                                                  ) : (
+                                                    <div
+                                                      className={
+                                                        styles.checkoutProductPreviewMediaPlaceholder
+                                                      }
+                                                    >
+                                                      No image
+                                                    </div>
+                                                  )}
+                                                  <div className={styles.checkoutProductPreviewTop}>
+                                                    <strong>
+                                                      {item.title || 'Untitled product'}
+                                                    </strong>
+                                                    {item.badge_text ? (
+                                                      <span
+                                                        className={
+                                                          styles.checkoutProductPreviewBadge
+                                                        }
+                                                      >
+                                                        {item.badge_text}
+                                                      </span>
+                                                    ) : null}
+                                                  </div>
+                                                  {item.subtitle ? (
+                                                    <span
+                                                      className={
+                                                        styles.checkoutProductPreviewSubtitle
+                                                      }
+                                                    >
+                                                      {item.subtitle}
+                                                    </span>
+                                                  ) : null}
+                                                  {item.price || item.compare_at_price ? (
+                                                    <div
+                                                      className={
+                                                        styles.checkoutProductPreviewPrices
+                                                      }
+                                                    >
+                                                      {item.price ? (
+                                                        <strong>{item.price}</strong>
+                                                      ) : null}
+                                                      {item.compare_at_price ? (
+                                                        <span>{item.compare_at_price}</span>
+                                                      ) : null}
+                                                    </div>
+                                                  ) : null}
+                                                </div>
+                                              ))}
+                                            </div>
+                                          ) : null}
                                           <div className={styles.checkoutSectionPreviewFooter}>
                                             <span>{String(props.cta_kind || 'track')}</span>
                                             {sectionId ? (
@@ -12350,6 +12971,27 @@ function TestWizard({
                                               Tune message structure, visual tone, and CTA behavior
                                               for this section.
                                             </Text>
+                                            <div className={styles.checkoutSectionEditorMeta}>
+                                              <span
+                                                className={`${styles.checkoutSectionAccordionChip} ${!hasSectionContent ? styles.checkoutSectionAccordionChipMuted : ''}`}
+                                              >
+                                                {hasSectionContent
+                                                  ? 'Content ready'
+                                                  : 'Draft content'}
+                                              </span>
+                                              <span className={styles.checkoutSectionAccordionChip}>
+                                                {section.type === 'product_list'
+                                                  ? productSourceMode === 'cart_related'
+                                                    ? `Cart-related - ${productSourceLimit} slot${productSourceLimit === 1 ? '' : 's'}`
+                                                    : productSourceMode === 'collection'
+                                                      ? `Collection - ${productSourceCollections.length} selected`
+                                                      : `${productItems.length} product card${productItems.length === 1 ? '' : 's'}`
+                                                  : `${featureBullets.length} proof point${featureBullets.length === 1 ? '' : 's'}`}
+                                              </span>
+                                              <span className={styles.checkoutSectionAccordionChip}>
+                                                CTA {String(props.cta_kind || 'track')}
+                                              </span>
+                                            </div>
                                           </div>
                                           <InlineStack gap="200" blockAlign="center" wrap>
                                             <Button
@@ -12871,6 +13513,964 @@ function TestWizard({
                                             </Button>
                                           </InlineStack>
                                         </div>
+                                        {section.type === 'product_list' ? (
+                                          <div className={styles.checkoutProductEditor}>
+                                            <InlineStack
+                                              align="space-between"
+                                              blockAlign="center"
+                                              wrap
+                                              gap="200"
+                                            >
+                                              <InlineStack gap="200" blockAlign="center" wrap>
+                                                <Text
+                                                  as="span"
+                                                  variant="bodySm"
+                                                  fontWeight="semibold"
+                                                >
+                                                  Product cards
+                                                </Text>
+                                                <TooltipWrapper
+                                                  content="Add manual product cards for checkout merchandising. Keep them short and high intent."
+                                                  accessibilityLabel="Product cards help"
+                                                >
+                                                  <span
+                                                    className={styles.checkoutSectionGuideIcon}
+                                                    aria-hidden
+                                                  >
+                                                    <Icon source={InfoIcon} />
+                                                  </span>
+                                                </TooltipWrapper>
+                                              </InlineStack>
+                                              <Badge
+                                                tone={
+                                                  productSourceMode === 'cart_related' ||
+                                                  productSourceMode === 'collection'
+                                                    ? 'success'
+                                                    : productItems.length > 0
+                                                      ? 'info'
+                                                      : 'attention'
+                                                }
+                                              >
+                                                {productSourceMode === 'cart_related'
+                                                  ? `Cart-related - ${productSourceLimit}`
+                                                  : productSourceMode === 'collection'
+                                                    ? `Collection - ${productSourceCollections.length} picked`
+                                                    : `${productItems.length} card${productItems.length === 1 ? '' : 's'}`}
+                                              </Badge>
+                                            </InlineStack>
+                                            <div className={styles.checkoutProductSourceControls}>
+                                              <Select
+                                                label="Product source"
+                                                options={CHECKOUT_PRODUCT_SOURCE_OPTIONS}
+                                                value={productSourceMode}
+                                                onChange={value =>
+                                                  updateCheckoutExperienceVariantConfig(
+                                                    index,
+                                                    current => {
+                                                      const currentSections =
+                                                        getNormalizedCheckoutExperienceConfig(
+                                                          current
+                                                        ).checkout_sections;
+                                                      return {
+                                                        ...current,
+                                                        checkout_sections: currentSections.map(
+                                                          (item, itemIndex) =>
+                                                            itemIndex === sectionIndex
+                                                              ? {
+                                                                  ...item,
+                                                                  props: {
+                                                                    ...(item.props || {}),
+                                                                    product_source_mode: value,
+                                                                    ...(value === 'collection'
+                                                                      ? { product_items: [] }
+                                                                      : {}),
+                                                                    ...(value === 'manual' ||
+                                                                    value === 'cart_related'
+                                                                      ? {
+                                                                          product_source_collections:
+                                                                            [],
+                                                                        }
+                                                                      : {}),
+                                                                  },
+                                                                }
+                                                              : item
+                                                        ),
+                                                      };
+                                                    }
+                                                  )
+                                                }
+                                                helpText="Manual cards are fully curated. Cart-related mirrors the shopper cart. Collection-fed pulls featured products from the collections you pick (resolved at checkout runtime)."
+                                              />
+                                              <Select
+                                                label="Max cards"
+                                                options={CHECKOUT_PRODUCT_SOURCE_LIMIT_OPTIONS}
+                                                value={String(productSourceLimit)}
+                                                onChange={value =>
+                                                  updateCheckoutExperienceVariantConfig(
+                                                    index,
+                                                    current => {
+                                                      const currentSections =
+                                                        getNormalizedCheckoutExperienceConfig(
+                                                          current
+                                                        ).checkout_sections;
+                                                      return {
+                                                        ...current,
+                                                        checkout_sections: currentSections.map(
+                                                          (item, itemIndex) =>
+                                                            itemIndex === sectionIndex
+                                                              ? {
+                                                                  ...item,
+                                                                  props: {
+                                                                    ...(item.props || {}),
+                                                                    product_source_limit: value,
+                                                                  },
+                                                                }
+                                                              : item
+                                                        ),
+                                                      };
+                                                    }
+                                                  )
+                                                }
+                                                helpText="Controls how many products the block shows in checkout."
+                                              />
+                                            </div>
+                                            {productSourceMode === 'cart_related' ? (
+                                              <div className={styles.checkoutProductSourceNote}>
+                                                Cart-related mode pulls up to {productSourceLimit}{' '}
+                                                product
+                                                {productSourceLimit === 1 ? '' : 's'} from the live
+                                                checkout cart at runtime. Titles, images,
+                                                quantities, and price text come from the shopper
+                                                cart automatically.
+                                              </div>
+                                            ) : null}
+                                            {productSourceMode === 'collection' ? (
+                                              <BlockStack gap="300">
+                                                <div className={styles.checkoutProductSourceNote}>
+                                                  Collection-fed mode shows up to{' '}
+                                                  {productSourceLimit} product
+                                                  {productSourceLimit === 1 ? '' : 's'} from your
+                                                  selected Shopify collections. The live checkout
+                                                  block receives resolved product cards when the
+                                                  shopper loads checkout (same secret-protected
+                                                  assignment request as other checkout UI data).
+                                                </div>
+                                                {canUseStoreProductPicker ? (
+                                                  <div className={styles.storeResourceList}>
+                                                    <div className={styles.storeResourceListHeader}>
+                                                      <div
+                                                        className={styles.storeResourceListSearch}
+                                                      >
+                                                        <TextField
+                                                          label="Search collections"
+                                                          labelHidden
+                                                          value={checkoutCollectionSearch}
+                                                          onChange={setCheckoutCollectionSearch}
+                                                          placeholder="Search collections…"
+                                                          autoComplete="off"
+                                                          clearButton
+                                                          onClearButtonClick={() =>
+                                                            setCheckoutCollectionSearch('')
+                                                          }
+                                                        />
+                                                      </div>
+                                                      {productSourceCollections.length > 0 ? (
+                                                        <span
+                                                          className={
+                                                            styles.storeResourceSelectedBadge
+                                                          }
+                                                        >
+                                                          {productSourceCollections.length} selected
+                                                        </span>
+                                                      ) : null}
+                                                    </div>
+                                                    {checkoutCollectionLoading ? (
+                                                      <div
+                                                        className={styles.storeResourceListLoading}
+                                                      >
+                                                        <div
+                                                          className={
+                                                            styles.storeResourceListLoadingIcon
+                                                          }
+                                                        >
+                                                          <Spinner size="small" />
+                                                        </div>
+                                                        <Text
+                                                          as="span"
+                                                          variant="bodySm"
+                                                          tone="subdued"
+                                                        >
+                                                          Loading collections…
+                                                        </Text>
+                                                      </div>
+                                                    ) : checkoutCollectionResources.length === 0 ? (
+                                                      <div
+                                                        className={styles.storeResourceListEmpty}
+                                                      >
+                                                        <div
+                                                          className={
+                                                            styles.storeResourceListEmptyIcon
+                                                          }
+                                                        >
+                                                          <Icon source={CollectionIcon} />
+                                                        </div>
+                                                        <Text
+                                                          as="p"
+                                                          variant="bodySm"
+                                                          tone="subdued"
+                                                        >
+                                                          {checkoutCollectionError ||
+                                                            (checkoutCollectionSearch
+                                                              ? 'No matches. Try a different search.'
+                                                              : 'No collections returned yet.')}
+                                                        </Text>
+                                                      </div>
+                                                    ) : (
+                                                      (() => {
+                                                        const selectedCollectionIds =
+                                                          productSourceCollections.map(c => c.id);
+                                                        const collectionsProgressiveWindow =
+                                                          buildProgressiveListWindow(
+                                                            checkoutCollectionResources,
+                                                            checkoutCollectionVisibleCount,
+                                                            { pinnedIds: selectedCollectionIds }
+                                                          );
+                                                        const visibleCheckoutCollections =
+                                                          collectionsProgressiveWindow.visibleItems;
+                                                        const shownCheckoutCollectionsCount =
+                                                          collectionsProgressiveWindow.shownCount;
+                                                        const checkoutCollectionsHasHiddenLoaded =
+                                                          collectionsProgressiveWindow.hasHiddenLoaded;
+                                                        const checkoutCollectionsCanFetchMore =
+                                                          Boolean(
+                                                            checkoutCollectionPageInfo?.hasNextPage
+                                                          );
+                                                        const checkoutCollectionsCanShowMore =
+                                                          checkoutCollectionsHasHiddenLoaded ||
+                                                          checkoutCollectionsCanFetchMore;
+                                                        const checkoutCollectionsCanCollapse =
+                                                          collectionsProgressiveWindow.canCollapse;
+                                                        const loadedCollectionIdSet = new Set(
+                                                          checkoutCollectionResources.map(r =>
+                                                            String(r?.id || '')
+                                                          )
+                                                        );
+                                                        const missingCheckoutCollections =
+                                                          productSourceCollections.filter(
+                                                            c =>
+                                                              c?.id &&
+                                                              !loadedCollectionIdSet.has(
+                                                                String(c.id)
+                                                              )
+                                                          );
+                                                        const renderCheckoutCollectionRow = (
+                                                          resource,
+                                                          rowKey
+                                                        ) => {
+                                                          const active =
+                                                            selectedCollectionIds.includes(
+                                                              resource.id
+                                                            );
+                                                          return (
+                                                            <button
+                                                              key={rowKey}
+                                                              type="button"
+                                                              className={`${styles.storeResourceItem} ${active ? styles.storeResourceItemSelected : ''}`}
+                                                              onClick={() =>
+                                                                updateCheckoutExperienceVariantConfig(
+                                                                  index,
+                                                                  current => {
+                                                                    const currentSections =
+                                                                      getNormalizedCheckoutExperienceConfig(
+                                                                        current
+                                                                      ).checkout_sections;
+                                                                    return {
+                                                                      ...current,
+                                                                      checkout_sections:
+                                                                        currentSections.map(
+                                                                          (item, itemIndex) => {
+                                                                            if (
+                                                                              itemIndex !==
+                                                                              sectionIndex
+                                                                            ) {
+                                                                              return item;
+                                                                            }
+                                                                            const existing =
+                                                                              normalizeCheckoutProductSourceCollections(
+                                                                                item?.props
+                                                                                  ?.product_source_collections
+                                                                              );
+                                                                            const isSelected =
+                                                                              existing.some(
+                                                                                row =>
+                                                                                  row.id ===
+                                                                                  resource.id
+                                                                              );
+                                                                            const nextCollections =
+                                                                              isSelected
+                                                                                ? existing.filter(
+                                                                                    row =>
+                                                                                      row.id !==
+                                                                                      resource.id
+                                                                                  )
+                                                                                : [
+                                                                                    ...existing,
+                                                                                    {
+                                                                                      id: resource.id,
+                                                                                      title:
+                                                                                        resource.title ||
+                                                                                        '',
+                                                                                      handle:
+                                                                                        resource.handle ||
+                                                                                        '',
+                                                                                    },
+                                                                                  ];
+                                                                            return {
+                                                                              ...item,
+                                                                              props: {
+                                                                                ...(item.props ||
+                                                                                  {}),
+                                                                                product_source_collections:
+                                                                                  nextCollections,
+                                                                              },
+                                                                            };
+                                                                          }
+                                                                        ),
+                                                                    };
+                                                                  }
+                                                                )
+                                                              }
+                                                            >
+                                                              <span
+                                                                className={
+                                                                  styles.storeResourceItemIcon
+                                                                }
+                                                              >
+                                                                <Icon source={CollectionIcon} />
+                                                              </span>
+                                                              <span
+                                                                className={
+                                                                  styles.storeResourceItemContent
+                                                                }
+                                                              >
+                                                                <span
+                                                                  className={
+                                                                    styles.storeResourceItemTitle
+                                                                  }
+                                                                >
+                                                                  {resource.title ||
+                                                                    'Untitled collection'}
+                                                                </span>
+                                                                {resource.handle ? (
+                                                                  <span
+                                                                    className={
+                                                                      styles.storeResourceItemHandle
+                                                                    }
+                                                                  >
+                                                                    /{resource.handle}
+                                                                  </span>
+                                                                ) : loadedCollectionIdSet.has(
+                                                                    String(resource.id)
+                                                                  ) ? null : (
+                                                                  <span
+                                                                    className={
+                                                                      styles.storeResourceItemHandle
+                                                                    }
+                                                                  >
+                                                                    Previously selected
+                                                                  </span>
+                                                                )}
+                                                              </span>
+                                                            </button>
+                                                          );
+                                                        };
+                                                        return (
+                                                          <>
+                                                            <div
+                                                              className={
+                                                                styles.storeResourceListMeta
+                                                              }
+                                                            >
+                                                              <Text
+                                                                as="span"
+                                                                variant="bodySm"
+                                                                tone="subdued"
+                                                              >
+                                                                Showing{' '}
+                                                                {shownCheckoutCollectionsCount} of{' '}
+                                                                {checkoutCollectionResources.length}{' '}
+                                                                loaded
+                                                              </Text>
+                                                              <InlineStack
+                                                                gap="200"
+                                                                wrap
+                                                                blockAlign="center"
+                                                              >
+                                                                {checkoutCollectionsCanFetchMore && (
+                                                                  <Badge tone="info" size="small">
+                                                                    More available
+                                                                  </Badge>
+                                                                )}
+                                                                {checkoutCollectionsCanCollapse && (
+                                                                  <Button
+                                                                    size="slim"
+                                                                    variant="plain"
+                                                                    onClick={() =>
+                                                                      setCheckoutCollectionVisibleCount(
+                                                                        PRICE_PRODUCT_MODAL_REVEAL_BATCH
+                                                                      )
+                                                                    }
+                                                                  >
+                                                                    Collapse
+                                                                  </Button>
+                                                                )}
+                                                              </InlineStack>
+                                                            </div>
+                                                            <div
+                                                              className={
+                                                                styles.storeResourceListScroll
+                                                              }
+                                                            >
+                                                              {visibleCheckoutCollections.map(
+                                                                resource =>
+                                                                  renderCheckoutCollectionRow(
+                                                                    resource,
+                                                                    resource.id
+                                                                  )
+                                                              )}
+                                                              {missingCheckoutCollections.map(c =>
+                                                                renderCheckoutCollectionRow(
+                                                                  {
+                                                                    id: c.id,
+                                                                    title:
+                                                                      c.title ||
+                                                                      String(c.id).replace(
+                                                                        /.*\//,
+                                                                        ''
+                                                                      ),
+                                                                    handle: c.handle || '',
+                                                                  },
+                                                                  `saved-${c.id}`
+                                                                )
+                                                              )}
+                                                            </div>
+                                                            {checkoutCollectionsCanShowMore && (
+                                                              <div
+                                                                className={
+                                                                  styles.storeResourceListFooter
+                                                                }
+                                                              >
+                                                                <Button
+                                                                  size="slim"
+                                                                  onClick={
+                                                                    handleLoadMoreCheckoutCollections
+                                                                  }
+                                                                  loading={
+                                                                    checkoutCollectionLoadingMore
+                                                                  }
+                                                                  disabled={
+                                                                    checkoutCollectionLoadingMore
+                                                                  }
+                                                                >
+                                                                  {checkoutCollectionsHasHiddenLoaded
+                                                                    ? `Show ${Math.min(
+                                                                        collectionsProgressiveWindow.nextRevealCount ||
+                                                                          PRICE_PRODUCT_MODAL_REVEAL_BATCH,
+                                                                        checkoutCollectionResources.length -
+                                                                          shownCheckoutCollectionsCount
+                                                                      )} more`
+                                                                    : `Show ${PRICE_PRODUCT_MODAL_REVEAL_BATCH} more`}
+                                                                </Button>
+                                                              </div>
+                                                            )}
+                                                          </>
+                                                        );
+                                                      })()
+                                                    )}
+                                                  </div>
+                                                ) : (
+                                                  <TextField
+                                                    label="Collection GIDs"
+                                                    multiline={4}
+                                                    value={productSourceCollections
+                                                      .map(row => row.id)
+                                                      .join('\n')}
+                                                    onChange={value => {
+                                                      const rawIds = String(value || '')
+                                                        .split(/[\n,]+/)
+                                                        .map(part => part.trim())
+                                                        .filter(Boolean);
+                                                      const nextCollections = rawIds.map(id => {
+                                                        if (id.startsWith('gid://')) {
+                                                          return { id, title: '', handle: '' };
+                                                        }
+                                                        const num = id.replace(/\D/g, '');
+                                                        const gid = num
+                                                          ? `gid://shopify/Collection/${num}`
+                                                          : id;
+                                                        return { id: gid, title: '', handle: '' };
+                                                      });
+                                                      updateCheckoutExperienceVariantConfig(
+                                                        index,
+                                                        current => {
+                                                          const currentSections =
+                                                            getNormalizedCheckoutExperienceConfig(
+                                                              current
+                                                            ).checkout_sections;
+                                                          return {
+                                                            ...current,
+                                                            checkout_sections: currentSections.map(
+                                                              (item, itemIndex) =>
+                                                                itemIndex === sectionIndex
+                                                                  ? {
+                                                                      ...item,
+                                                                      props: {
+                                                                        ...(item.props || {}),
+                                                                        product_source_collections:
+                                                                          nextCollections,
+                                                                      },
+                                                                    }
+                                                                  : item
+                                                            ),
+                                                          };
+                                                        }
+                                                      );
+                                                    }}
+                                                    helpText="Standalone or advanced setup: one Shopify collection GID per line (gid://shopify/Collection/…). You can paste numeric IDs; they are normalized automatically."
+                                                    autoComplete="off"
+                                                  />
+                                                )}
+                                              </BlockStack>
+                                            ) : null}
+                                            {productSourceMode === 'manual' &&
+                                            productItems.length > 0 ? (
+                                              <BlockStack gap="200">
+                                                {productItems.map((productItem, productIndex) => (
+                                                  <div
+                                                    key={
+                                                      productItem.id || `product-${productIndex}`
+                                                    }
+                                                    className={styles.checkoutProductEditorCard}
+                                                  >
+                                                    <div
+                                                      className={
+                                                        styles.checkoutProductEditorCardHead
+                                                      }
+                                                    >
+                                                      <Text
+                                                        as="span"
+                                                        variant="bodySm"
+                                                        fontWeight="semibold"
+                                                      >
+                                                        Product card {productIndex + 1}
+                                                      </Text>
+                                                      <Button
+                                                        size="micro"
+                                                        tone="critical"
+                                                        onClick={() =>
+                                                          updateCheckoutExperienceVariantConfig(
+                                                            index,
+                                                            current => {
+                                                              const currentSections =
+                                                                getNormalizedCheckoutExperienceConfig(
+                                                                  current
+                                                                ).checkout_sections;
+                                                              return {
+                                                                ...current,
+                                                                checkout_sections:
+                                                                  currentSections.map(
+                                                                    (item, itemIndex) => {
+                                                                      if (
+                                                                        itemIndex !== sectionIndex
+                                                                      ) {
+                                                                        return item;
+                                                                      }
+                                                                      return {
+                                                                        ...item,
+                                                                        props: {
+                                                                          ...(item.props || {}),
+                                                                          product_items:
+                                                                            normalizeCheckoutProductItems(
+                                                                              item?.props
+                                                                                ?.product_items
+                                                                            ).filter(
+                                                                              (
+                                                                                _,
+                                                                                currentProductIndex
+                                                                              ) =>
+                                                                                currentProductIndex !==
+                                                                                productIndex
+                                                                            ),
+                                                                        },
+                                                                      };
+                                                                    }
+                                                                  ),
+                                                              };
+                                                            }
+                                                          )
+                                                        }
+                                                      >
+                                                        Remove
+                                                      </Button>
+                                                    </div>
+                                                    <div
+                                                      className={styles.checkoutProductEditorGrid}
+                                                    >
+                                                      <div
+                                                        className={
+                                                          styles.checkoutProductEditorGridWide
+                                                        }
+                                                      >
+                                                        <TextField
+                                                          label="Image URL"
+                                                          value={productItem.image_url || ''}
+                                                          onChange={value =>
+                                                            updateCheckoutExperienceVariantConfig(
+                                                              index,
+                                                              current => {
+                                                                const currentSections =
+                                                                  getNormalizedCheckoutExperienceConfig(
+                                                                    current
+                                                                  ).checkout_sections;
+                                                                return {
+                                                                  ...current,
+                                                                  checkout_sections:
+                                                                    currentSections.map(
+                                                                      (item, itemIndex) => {
+                                                                        if (
+                                                                          itemIndex !== sectionIndex
+                                                                        ) {
+                                                                          return item;
+                                                                        }
+                                                                        const nextProducts =
+                                                                          normalizeCheckoutProductItems(
+                                                                            item?.props
+                                                                              ?.product_items
+                                                                          );
+                                                                        nextProducts[productIndex] =
+                                                                          {
+                                                                            ...nextProducts[
+                                                                              productIndex
+                                                                            ],
+                                                                            image_url: value,
+                                                                          };
+                                                                        return {
+                                                                          ...item,
+                                                                          props: {
+                                                                            ...(item.props || {}),
+                                                                            product_items:
+                                                                              nextProducts,
+                                                                          },
+                                                                        };
+                                                                      }
+                                                                    ),
+                                                                };
+                                                              }
+                                                            )
+                                                          }
+                                                          placeholder="https://cdn.example.com/product-image.jpg"
+                                                          autoComplete="off"
+                                                        />
+                                                      </div>
+                                                      <TextField
+                                                        label="Product title"
+                                                        value={productItem.title}
+                                                        onChange={value =>
+                                                          updateCheckoutExperienceVariantConfig(
+                                                            index,
+                                                            current => {
+                                                              const currentSections =
+                                                                getNormalizedCheckoutExperienceConfig(
+                                                                  current
+                                                                ).checkout_sections;
+                                                              return {
+                                                                ...current,
+                                                                checkout_sections:
+                                                                  currentSections.map(
+                                                                    (item, itemIndex) => {
+                                                                      if (
+                                                                        itemIndex !== sectionIndex
+                                                                      ) {
+                                                                        return item;
+                                                                      }
+                                                                      const nextProducts =
+                                                                        normalizeCheckoutProductItems(
+                                                                          item?.props?.product_items
+                                                                        );
+                                                                      nextProducts[productIndex] = {
+                                                                        ...nextProducts[
+                                                                          productIndex
+                                                                        ],
+                                                                        title: value,
+                                                                      };
+                                                                      return {
+                                                                        ...item,
+                                                                        props: {
+                                                                          ...(item.props || {}),
+                                                                          product_items:
+                                                                            nextProducts,
+                                                                        },
+                                                                      };
+                                                                    }
+                                                                  ),
+                                                              };
+                                                            }
+                                                          )
+                                                        }
+                                                        autoComplete="off"
+                                                      />
+                                                      <TextField
+                                                        label="Badge"
+                                                        value={productItem.badge_text}
+                                                        onChange={value =>
+                                                          updateCheckoutExperienceVariantConfig(
+                                                            index,
+                                                            current => {
+                                                              const currentSections =
+                                                                getNormalizedCheckoutExperienceConfig(
+                                                                  current
+                                                                ).checkout_sections;
+                                                              return {
+                                                                ...current,
+                                                                checkout_sections:
+                                                                  currentSections.map(
+                                                                    (item, itemIndex) => {
+                                                                      if (
+                                                                        itemIndex !== sectionIndex
+                                                                      ) {
+                                                                        return item;
+                                                                      }
+                                                                      const nextProducts =
+                                                                        normalizeCheckoutProductItems(
+                                                                          item?.props?.product_items
+                                                                        );
+                                                                      nextProducts[productIndex] = {
+                                                                        ...nextProducts[
+                                                                          productIndex
+                                                                        ],
+                                                                        badge_text: value,
+                                                                      };
+                                                                      return {
+                                                                        ...item,
+                                                                        props: {
+                                                                          ...(item.props || {}),
+                                                                          product_items:
+                                                                            nextProducts,
+                                                                        },
+                                                                      };
+                                                                    }
+                                                                  ),
+                                                              };
+                                                            }
+                                                          )
+                                                        }
+                                                        autoComplete="off"
+                                                      />
+                                                      <div
+                                                        className={
+                                                          styles.checkoutProductEditorGridWide
+                                                        }
+                                                      >
+                                                        <TextField
+                                                          label="Subtitle"
+                                                          value={productItem.subtitle}
+                                                          onChange={value =>
+                                                            updateCheckoutExperienceVariantConfig(
+                                                              index,
+                                                              current => {
+                                                                const currentSections =
+                                                                  getNormalizedCheckoutExperienceConfig(
+                                                                    current
+                                                                  ).checkout_sections;
+                                                                return {
+                                                                  ...current,
+                                                                  checkout_sections:
+                                                                    currentSections.map(
+                                                                      (item, itemIndex) => {
+                                                                        if (
+                                                                          itemIndex !== sectionIndex
+                                                                        ) {
+                                                                          return item;
+                                                                        }
+                                                                        const nextProducts =
+                                                                          normalizeCheckoutProductItems(
+                                                                            item?.props
+                                                                              ?.product_items
+                                                                          );
+                                                                        nextProducts[productIndex] =
+                                                                          {
+                                                                            ...nextProducts[
+                                                                              productIndex
+                                                                            ],
+                                                                            subtitle: value,
+                                                                          };
+                                                                        return {
+                                                                          ...item,
+                                                                          props: {
+                                                                            ...(item.props || {}),
+                                                                            product_items:
+                                                                              nextProducts,
+                                                                          },
+                                                                        };
+                                                                      }
+                                                                    ),
+                                                                };
+                                                              }
+                                                            )
+                                                          }
+                                                          autoComplete="off"
+                                                        />
+                                                      </div>
+                                                      <TextField
+                                                        label="Price"
+                                                        value={productItem.price}
+                                                        onChange={value =>
+                                                          updateCheckoutExperienceVariantConfig(
+                                                            index,
+                                                            current => {
+                                                              const currentSections =
+                                                                getNormalizedCheckoutExperienceConfig(
+                                                                  current
+                                                                ).checkout_sections;
+                                                              return {
+                                                                ...current,
+                                                                checkout_sections:
+                                                                  currentSections.map(
+                                                                    (item, itemIndex) => {
+                                                                      if (
+                                                                        itemIndex !== sectionIndex
+                                                                      ) {
+                                                                        return item;
+                                                                      }
+                                                                      const nextProducts =
+                                                                        normalizeCheckoutProductItems(
+                                                                          item?.props?.product_items
+                                                                        );
+                                                                      nextProducts[productIndex] = {
+                                                                        ...nextProducts[
+                                                                          productIndex
+                                                                        ],
+                                                                        price: value,
+                                                                      };
+                                                                      return {
+                                                                        ...item,
+                                                                        props: {
+                                                                          ...(item.props || {}),
+                                                                          product_items:
+                                                                            nextProducts,
+                                                                        },
+                                                                      };
+                                                                    }
+                                                                  ),
+                                                              };
+                                                            }
+                                                          )
+                                                        }
+                                                        autoComplete="off"
+                                                      />
+                                                      <TextField
+                                                        label="Compare at price"
+                                                        value={productItem.compare_at_price}
+                                                        onChange={value =>
+                                                          updateCheckoutExperienceVariantConfig(
+                                                            index,
+                                                            current => {
+                                                              const currentSections =
+                                                                getNormalizedCheckoutExperienceConfig(
+                                                                  current
+                                                                ).checkout_sections;
+                                                              return {
+                                                                ...current,
+                                                                checkout_sections:
+                                                                  currentSections.map(
+                                                                    (item, itemIndex) => {
+                                                                      if (
+                                                                        itemIndex !== sectionIndex
+                                                                      ) {
+                                                                        return item;
+                                                                      }
+                                                                      const nextProducts =
+                                                                        normalizeCheckoutProductItems(
+                                                                          item?.props?.product_items
+                                                                        );
+                                                                      nextProducts[productIndex] = {
+                                                                        ...nextProducts[
+                                                                          productIndex
+                                                                        ],
+                                                                        compare_at_price: value,
+                                                                      };
+                                                                      return {
+                                                                        ...item,
+                                                                        props: {
+                                                                          ...(item.props || {}),
+                                                                          product_items:
+                                                                            nextProducts,
+                                                                        },
+                                                                      };
+                                                                    }
+                                                                  ),
+                                                              };
+                                                            }
+                                                          )
+                                                        }
+                                                        autoComplete="off"
+                                                      />
+                                                    </div>
+                                                  </div>
+                                                ))}
+                                              </BlockStack>
+                                            ) : productSourceMode === 'manual' ? (
+                                              <div className={styles.checkoutBulletEmpty}>
+                                                Add one or more product cards to merchandise
+                                                products at checkout.
+                                              </div>
+                                            ) : null}
+                                            {productSourceMode === 'manual' ? (
+                                              <Button
+                                                size="slim"
+                                                onClick={() =>
+                                                  updateCheckoutExperienceVariantConfig(
+                                                    index,
+                                                    current => {
+                                                      const currentSections =
+                                                        getNormalizedCheckoutExperienceConfig(
+                                                          current
+                                                        ).checkout_sections;
+                                                      return {
+                                                        ...current,
+                                                        checkout_sections: currentSections.map(
+                                                          (item, itemIndex) => {
+                                                            if (itemIndex !== sectionIndex) {
+                                                              return item;
+                                                            }
+                                                            const nextProducts =
+                                                              normalizeCheckoutProductItems(
+                                                                item?.props?.product_items
+                                                              );
+                                                            return {
+                                                              ...item,
+                                                              props: {
+                                                                ...(item.props || {}),
+                                                                product_items: [
+                                                                  ...nextProducts,
+                                                                  createEmptyCheckoutProductItem(
+                                                                    nextProducts.length
+                                                                  ),
+                                                                ],
+                                                              },
+                                                            };
+                                                          }
+                                                        ),
+                                                      };
+                                                    }
+                                                  )
+                                                }
+                                              >
+                                                Add product card
+                                              </Button>
+                                            ) : null}
+                                          </div>
+                                        ) : null}
                                         <TextField
                                           label="Disclaimer"
                                           value={String(props.disclaimer || '')}
@@ -13057,173 +14657,39 @@ function TestWizard({
                     </BlockStack>
                   </BlockStack>
                 ) : checkoutPhase === 'payment_method' ? (
-                  <div className={styles.checkoutVariantBlock}>
-                    <div className={styles.checkoutMethodStudio}>
-                      <div className={styles.checkoutMethodGuide}>
-                        <span className={styles.checkoutMethodSummaryLabel}>Method strategy</span>
-                        <span className={styles.checkoutMethodGuideValue}>
-                          {phaseActionOptions.find(
-                            option => option.value === String(cfg.payment_action || 'hide')
-                          )?.label || 'Hide methods'}
-                        </span>
-                        <Text as="p" variant="bodySm" tone="subdued">
-                          Configure which payment methods are targeted and how the checkout layer
-                          should change them for this variant.
-                        </Text>
-                        <div className={styles.checkoutVariantChips}>
-                          <span className={styles.checkoutVariantChip}>
-                            {normalizeCheckoutListInput(cfg.payment_method_names).length} targets
-                          </span>
-                          <span className={styles.checkoutVariantChip}>
-                            Rename{' '}
-                            {String(cfg.payment_action || 'hide') === 'rename' ? 'enabled' : 'off'}
-                          </span>
-                        </div>
-                      </div>
-                      {paymentMethods ? (
-                        <div className={styles.checkoutMethodSummary}>
-                          <span className={styles.checkoutMethodSummaryLabel}>Target methods</span>
-                          <span className={styles.checkoutMethodSummaryValue}>
-                            {paymentMethods}
-                          </span>
-                        </div>
-                      ) : null}
-                      <div className={styles.checkoutMethodForm}>
-                        <FormLayout>
-                          <Select
-                            label={`${variant.name} payment action`}
-                            options={phaseActionOptions}
-                            value={String(cfg.payment_action || 'hide')}
-                            onChange={value =>
-                              updateCheckoutVariantConfig(index, { payment_action: value })
-                            }
-                          />
-                          <TextField
-                            label={`${variant.name} payment methods`}
-                            value={
-                              Array.isArray(cfg.payment_method_names)
-                                ? cfg.payment_method_names.join('\n')
-                                : String(cfg.payment_method_names || '')
-                            }
-                            onChange={value =>
-                              updateCheckoutVariantConfig(index, {
-                                payment_method_names: normalizeCheckoutListInput(value),
-                              })
-                            }
-                            placeholder={'One payment method per line\nCash on Delivery\nPayPal'}
-                            multiline={4}
-                            helpText="Use the checkout-facing method names you expect Shopify to expose."
-                            autoComplete="off"
-                          />
-                          <TextField
-                            label={`${variant.name} rename to`}
-                            value={String(cfg.payment_rename_to || '')}
-                            onChange={value =>
-                              updateCheckoutVariantConfig(index, { payment_rename_to: value })
-                            }
-                            disabled={String(cfg.payment_action || 'hide') !== 'rename'}
-                            placeholder="Optional shared rename target for matched methods"
-                            autoComplete="off"
-                          />
-                          <TextField
-                            label={`${variant.name} operator note`}
-                            value={String(cfg.checkout_message || '')}
-                            onChange={value =>
-                              updateCheckoutVariantConfig(index, { checkout_message: value })
-                            }
-                            placeholder="Explain what should change in checkout for this payment-method variant."
-                            multiline={2}
-                            autoComplete="off"
-                          />
-                        </FormLayout>
-                      </div>
-                    </div>
-                  </div>
+                  renderCheckoutMethodStudio({
+                    index,
+                    cfg,
+                    actionKey: 'payment_action',
+                    namesKey: 'payment_method_names',
+                    renameKey: 'payment_rename_to',
+                    summaryLabel: 'Payment strategy',
+                    description:
+                      'Configure which payment methods are targeted and how the checkout layer should change them for this variant.',
+                    emptyText:
+                      'No payment methods targeted yet. Add the customer-facing names Shopify exposes in checkout.',
+                    inputPlaceholder: 'e.g. PayPal',
+                    renamePlaceholder: 'Optional shared rename target for matched methods',
+                    notePlaceholder:
+                      'Explain what should change in checkout for this payment-method variant.',
+                  })
                 ) : (
-                  <div className={styles.checkoutVariantBlock}>
-                    <div className={styles.checkoutMethodStudio}>
-                      <div className={styles.checkoutMethodGuide}>
-                        <span className={styles.checkoutMethodSummaryLabel}>Method strategy</span>
-                        <span className={styles.checkoutMethodGuideValue}>
-                          {phaseActionOptions.find(
-                            option => option.value === String(cfg.delivery_action || 'hide')
-                          )?.label || 'Hide methods'}
-                        </span>
-                        <Text as="p" variant="bodySm" tone="subdued">
-                          Configure which delivery methods are targeted and how the checkout layer
-                          should adjust them for this variant.
-                        </Text>
-                        <div className={styles.checkoutVariantChips}>
-                          <span className={styles.checkoutVariantChip}>
-                            {normalizeCheckoutListInput(cfg.delivery_method_names).length} targets
-                          </span>
-                          <span className={styles.checkoutVariantChip}>
-                            Rename{' '}
-                            {String(cfg.delivery_action || 'hide') === 'rename' ? 'enabled' : 'off'}
-                          </span>
-                        </div>
-                      </div>
-                      {deliveryMethods ? (
-                        <div className={styles.checkoutMethodSummary}>
-                          <span className={styles.checkoutMethodSummaryLabel}>Target methods</span>
-                          <span className={styles.checkoutMethodSummaryValue}>
-                            {deliveryMethods}
-                          </span>
-                        </div>
-                      ) : null}
-                      <div className={styles.checkoutMethodForm}>
-                        <FormLayout>
-                          <Select
-                            label={`${variant.name} delivery action`}
-                            options={phaseActionOptions}
-                            value={String(cfg.delivery_action || 'hide')}
-                            onChange={value =>
-                              updateCheckoutVariantConfig(index, { delivery_action: value })
-                            }
-                          />
-                          <TextField
-                            label={`${variant.name} delivery methods`}
-                            value={
-                              Array.isArray(cfg.delivery_method_names)
-                                ? cfg.delivery_method_names.join('\n')
-                                : String(cfg.delivery_method_names || '')
-                            }
-                            onChange={value =>
-                              updateCheckoutVariantConfig(index, {
-                                delivery_method_names: normalizeCheckoutListInput(value),
-                              })
-                            }
-                            placeholder={
-                              'One delivery method per line\nStandard Shipping\nExpress Shipping'
-                            }
-                            multiline={4}
-                            helpText="Use the delivery option names or labels you want the customization layer to target."
-                            autoComplete="off"
-                          />
-                          <TextField
-                            label={`${variant.name} rename to`}
-                            value={String(cfg.delivery_rename_to || '')}
-                            onChange={value =>
-                              updateCheckoutVariantConfig(index, { delivery_rename_to: value })
-                            }
-                            disabled={String(cfg.delivery_action || 'hide') !== 'rename'}
-                            placeholder="Optional shared rename target for matched delivery methods"
-                            autoComplete="off"
-                          />
-                          <TextField
-                            label={`${variant.name} operator note`}
-                            value={String(cfg.checkout_message || '')}
-                            onChange={value =>
-                              updateCheckoutVariantConfig(index, { checkout_message: value })
-                            }
-                            placeholder="Explain what should change in checkout for this delivery-method variant."
-                            multiline={2}
-                            autoComplete="off"
-                          />
-                        </FormLayout>
-                      </div>
-                    </div>
-                  </div>
+                  renderCheckoutMethodStudio({
+                    index,
+                    cfg,
+                    actionKey: 'delivery_action',
+                    namesKey: 'delivery_method_names',
+                    renameKey: 'delivery_rename_to',
+                    summaryLabel: 'Delivery strategy',
+                    description:
+                      'Configure which delivery methods are targeted and how the checkout layer should adjust them for this variant.',
+                    emptyText:
+                      'No delivery methods targeted yet. Add the option labels customers see at checkout.',
+                    inputPlaceholder: 'e.g. Express Shipping',
+                    renamePlaceholder: 'Optional shared rename target for matched delivery methods',
+                    notePlaceholder:
+                      'Explain what should change in checkout for this delivery-method variant.',
+                  })
                 )}
               </div>
             </Card>
@@ -15548,10 +17014,19 @@ function TestWizard({
                   const experienceSections = getActionableCheckoutSections(cfg);
                   const primarySection = experienceSections[0] || null;
                   const primaryProps = primarySection?.props || {};
+                  const primaryProductItems = normalizeCheckoutProductItems(
+                    primaryProps.product_items
+                  );
+                  const renderablePrimaryProductItems = primaryProductItems.filter(
+                    hasRenderableCheckoutProductItem
+                  );
                   const experienceSummary = String(
                     primaryProps.message ||
                       primaryProps.title ||
                       primaryProps.badge_text ||
+                      (renderablePrimaryProductItems.length > 0
+                        ? `${renderablePrimaryProductItems.length} product card${renderablePrimaryProductItems.length === 1 ? '' : 's'}`
+                        : '') ||
                       primaryProps.disclaimer ||
                       ''
                   ).trim();
@@ -15606,6 +17081,15 @@ function TestWizard({
                       primaryProps.feature_bullets.length > 0 ? (
                         <p className={stepStyles.reviewVariantCardHint}>
                           Bullets: {primaryProps.feature_bullets.join(', ')}
+                        </p>
+                      ) : checkoutReviewPhase === 'experience' &&
+                        renderablePrimaryProductItems.length > 0 ? (
+                        <p className={stepStyles.reviewVariantCardHint}>
+                          Products:{' '}
+                          {renderablePrimaryProductItems
+                            .map(item => item.title)
+                            .filter(Boolean)
+                            .join(', ')}
                         </p>
                       ) : (
                         <p className={stepStyles.reviewVariantCardHint}>

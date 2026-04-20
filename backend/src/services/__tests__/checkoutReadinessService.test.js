@@ -368,4 +368,120 @@ describe('checkoutReadinessService', () => {
       readiness.checks.find(item => item.id === 'payment_method_customization_applied')?.ok
     ).toBe(false);
   });
+
+  it('blocks checkout experience readiness when collection-fed sections are configured without read_collections scope', async () => {
+    process.env.APP_URL = 'https://app.ripx.com';
+    setShopifyEnv();
+
+    const { buildTestCheckoutReadiness } = require('../checkoutReadinessService');
+    const readiness = await buildTestCheckoutReadiness({
+      test: {
+        id: 'test-checkout-collection-scope',
+        name: 'Checkout collection test',
+        type: 'checkout',
+        goal: { checkout_phase: 'experience' },
+        variants: [
+          { id: 'control', name: 'Control', config: {} },
+          {
+            id: 'variant-a',
+            name: 'Variant A',
+            config: {
+              checkout_sections: [
+                {
+                  type: 'product_list',
+                  enabled: true,
+                  props: {
+                    product_source_mode: 'collection',
+                    product_source_collections: [
+                      {
+                        id: 'gid://shopify/Collection/123',
+                        title: 'Summer',
+                        handle: 'summer',
+                      },
+                    ],
+                    product_source_limit: '2',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+      shopDomain: 'store.myshopify.com',
+      checkoutUiConfig: {
+        source: 'present',
+        contents: `
+          export const RIPX_CHECKOUT_ASSIGNMENT_URL = 'https://app.ripx.com/api/track/checkout-assignment';
+          export const RIPX_CHECKOUT_CONVERSION_URL = 'https://app.ripx.com/api/track/checkout-conversion';
+          export const RIPX_CHECKOUT_PRICE_SECRET = '';
+          export const RIPX_CHECKOUT_UI_TEST_ID = 'test-checkout-collection-scope';
+          export const RIPX_CHECKOUT_UI_SHOP_DOMAIN = 'store.myshopify.com';
+        `,
+      },
+    });
+
+    expect(readiness.summary.status).toBe('blocked');
+    expect(
+      readiness.checks.find(item => item.id === 'checkout_collection_scope_configured')?.ok
+    ).toBe(false);
+  });
+
+  it('passes collection scope check when read_collections is configured for collection-fed checkout', async () => {
+    process.env.APP_URL = 'https://app.ripx.com';
+    process.env.SHOPIFY_API_KEY = 'test-key';
+    process.env.SHOPIFY_API_SECRET = 'test-secret';
+    process.env.SHOPIFY_SCOPES = 'read_products,read_collections';
+
+    const { buildTestCheckoutReadiness } = require('../checkoutReadinessService');
+    const readiness = await buildTestCheckoutReadiness({
+      test: {
+        id: 'test-checkout-collection-ok',
+        name: 'Checkout collection test',
+        type: 'checkout',
+        goal: { checkout_phase: 'experience' },
+        variants: [
+          { id: 'control', name: 'Control', config: {} },
+          {
+            id: 'variant-a',
+            name: 'Variant A',
+            config: {
+              checkout_sections: [
+                {
+                  type: 'product_list',
+                  enabled: true,
+                  props: {
+                    product_source_mode: 'collection',
+                    product_source_collections: [
+                      {
+                        id: 'gid://shopify/Collection/123',
+                        title: 'Summer',
+                        handle: 'summer',
+                      },
+                    ],
+                    product_source_limit: '2',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+      shopDomain: 'store.myshopify.com',
+      checkoutUiConfig: {
+        source: 'present',
+        contents: `
+          export const RIPX_CHECKOUT_ASSIGNMENT_URL = 'https://app.ripx.com/api/track/checkout-assignment';
+          export const RIPX_CHECKOUT_CONVERSION_URL = 'https://app.ripx.com/api/track/checkout-conversion';
+          export const RIPX_CHECKOUT_PRICE_SECRET = '';
+          export const RIPX_CHECKOUT_UI_TEST_ID = 'test-checkout-collection-ok';
+          export const RIPX_CHECKOUT_UI_SHOP_DOMAIN = 'store.myshopify.com';
+        `,
+      },
+    });
+
+    expect(
+      readiness.checks.find(item => item.id === 'checkout_collection_scope_configured')?.ok
+    ).toBe(true);
+    expect(readiness.summary.status).toBe('ready');
+  });
 });

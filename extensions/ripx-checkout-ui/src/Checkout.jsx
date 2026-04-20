@@ -299,6 +299,113 @@ function parseCheckoutFeatureBullets(rawValue) {
     .filter(Boolean);
 }
 
+function parseCheckoutProductItems(rawValue) {
+  const rows = Array.isArray(rawValue) ? rawValue : [];
+  return rows
+    .map((item, index) => {
+      const source = item && typeof item === 'object' ? item : {};
+      const imageUrl = String(
+        source.image_url || source.image || source.product_image_url || ''
+      ).trim();
+      const title = String(source.title || source.product_title || '').trim();
+      const subtitle = String(source.subtitle || source.product_subtitle || '').trim();
+      const price = String(source.price || source.product_price || '').trim();
+      const compareAtPrice = String(
+        source.compare_at_price || source.product_compare_at_price || ''
+      ).trim();
+      const badgeText = String(source.badge_text || source.product_badge_text || '').trim();
+      if (!source || typeof source !== 'object') {
+        return null;
+      }
+      return {
+        id:
+          String(source.id || '')
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9_-]+/g, '-')
+            .replace(/^-+|-+$/g, '') || `product-${index + 1}`,
+        image_url: imageUrl,
+        title,
+        subtitle,
+        price,
+        compare_at_price: compareAtPrice,
+        badge_text: badgeText,
+      };
+    })
+    .filter(Boolean);
+}
+
+function hasRenderableCheckoutProductItem(item = {}) {
+  return Boolean(
+    item.image_url ||
+    item.title ||
+    item.subtitle ||
+    item.price ||
+    item.compare_at_price ||
+    item.badge_text
+  );
+}
+
+function getCartRelatedCheckoutProductItems(lines, limit = 3) {
+  const rows = Array.isArray(lines) ? lines : [];
+  const normalizedLimit = normalizeCheckoutProductSourceLimit(limit);
+  const seen = new Set();
+  const items = [];
+
+  for (const line of rows) {
+    const merchandise =
+      line?.merchandise && typeof line.merchandise === 'object' ? line.merchandise : {};
+    const rawId =
+      merchandise?.id ||
+      merchandise?.product?.id ||
+      line?.id ||
+      `${merchandise?.title || merchandise?.product?.title || 'cart-item'}-${items.length + 1}`;
+    const dedupeKey = String(rawId || '')
+      .trim()
+      .toLowerCase();
+    if (!dedupeKey || seen.has(dedupeKey)) {
+      continue;
+    }
+
+    const title = String(
+      merchandise?.product?.title || merchandise?.title || line?.title || ''
+    ).trim();
+    const variantTitle = String(
+      merchandise?.variantTitle || merchandise?.subtitle || line?.subtitle || ''
+    ).trim();
+    const imageUrl = String(
+      merchandise?.image?.url || merchandise?.product?.featuredImage?.url || ''
+    ).trim();
+    const quantity = Number.isFinite(Number(line?.quantity)) ? Number(line.quantity) : 0;
+    const totalAmount = String(
+      line?.cost?.totalAmount?.amount || line?.cost?.subtotalAmount?.amount || ''
+    ).trim();
+    const currencyCode = String(line?.cost?.totalAmount?.currencyCode || '').trim();
+
+    const item = {
+      id: dedupeKey,
+      image_url: imageUrl,
+      title,
+      subtitle: variantTitle || (quantity > 1 ? `Qty ${quantity}` : ''),
+      price: totalAmount ? `${totalAmount}${currencyCode ? ` ${currencyCode}` : ''}` : '',
+      compare_at_price: '',
+      badge_text: quantity > 1 ? `${quantity} in cart` : 'In cart',
+    };
+
+    if (!hasRenderableCheckoutProductItem(item)) {
+      continue;
+    }
+
+    seen.add(dedupeKey);
+    items.push(item);
+    if (items.length >= normalizedLimit) {
+      break;
+    }
+  }
+
+  return items;
+}
+
 function normalizeCheckoutSectionType(rawValue) {
   const value = String(rawValue || 'hero_notice')
     .trim()
@@ -309,6 +416,7 @@ function normalizeCheckoutSectionType(rawValue) {
     'guarantee_box',
     'shipping_promise',
     'offer_code_panel',
+    'product_list',
   ].includes(value)
     ? value
     : 'hero_notice';
@@ -319,6 +427,52 @@ function normalizeCheckoutCtaKind(rawValue) {
     .trim()
     .toLowerCase();
   return ['track', 'offer_code', 'none'].includes(value) ? value : 'track';
+}
+
+function normalizeCheckoutProductSourceMode(rawValue) {
+  const value = String(rawValue || 'manual')
+    .trim()
+    .toLowerCase();
+  return ['manual', 'cart_related', 'collection'].includes(value) ? value : 'manual';
+}
+
+function normalizeCheckoutProductSourceLimit(rawValue) {
+  const numeric = Number.parseInt(String(rawValue ?? '3').trim(), 10);
+  if (!Number.isFinite(numeric)) {
+    return 3;
+  }
+  return Math.min(6, Math.max(1, numeric));
+}
+
+function parseCheckoutProductSourceCollections(rawValue) {
+  const rows = Array.isArray(rawValue) ? rawValue : [];
+  return rows
+    .map(item => {
+      if (item && typeof item === 'object') {
+        const id = String(item.id || item.collection_id || '').trim();
+        if (!id) {
+          return null;
+        }
+        return {
+          id,
+          title: String(item.title || item.name || item.collection_title || '').trim(),
+          handle: String(item.handle || item.collection_handle || '').trim(),
+        };
+      }
+      const id = String(item || '').trim();
+      if (!id) {
+        return null;
+      }
+      return {
+        id,
+        title: '',
+        handle: '',
+      };
+    })
+    .filter(Boolean)
+    .filter(
+      (item, index, items) => items.findIndex(candidate => candidate.id === item.id) === index
+    );
 }
 
 function normalizeCheckoutSectionProps(rawSection = {}) {
@@ -338,6 +492,18 @@ function normalizeCheckoutSectionProps(rawSection = {}) {
     feature_bullets: parseCheckoutFeatureBullets(
       source.feature_bullets || source.checkout_feature_bullets
     ),
+    product_source_mode: normalizeCheckoutProductSourceMode(
+      source.product_source_mode || source.checkout_product_source_mode
+    ),
+    product_source_limit: normalizeCheckoutProductSourceLimit(
+      source.product_source_limit || source.checkout_product_source_limit
+    ),
+    product_source_collections: parseCheckoutProductSourceCollections(
+      source.product_source_collections ||
+        source.checkout_product_source_collections ||
+        source.product_source_collection_ids
+    ),
+    product_items: parseCheckoutProductItems(source.product_items || source.checkout_product_items),
   };
 }
 
@@ -352,7 +518,10 @@ function hasRenderableCheckoutSection(section = {}) {
     props.badge_text ||
     props.disclaimer ||
     props.cta_label ||
-    props.feature_bullets?.length
+    props.feature_bullets?.length ||
+    props.product_source_mode === 'cart_related' ||
+    (props.product_source_mode === 'collection' && props.product_source_collections?.length > 0) ||
+    props.product_items?.some(hasRenderableCheckoutProductItem)
   );
 }
 
@@ -788,16 +957,76 @@ function CheckoutExperiment() {
       const layout = normalizeCheckoutLayout(props.layout);
       const tone = normalizeCheckoutTone(props.tone);
       const ctaKind = normalizeCheckoutCtaKind(props.cta_kind);
+      const productSourceMode = normalizeCheckoutProductSourceMode(props.product_source_mode);
+      const productSourceLimit = normalizeCheckoutProductSourceLimit(props.product_source_limit);
+      const productSourceCollections = parseCheckoutProductSourceCollections(
+        props.product_source_collections
+      );
+      const productItems =
+        productSourceMode === 'cart_related'
+          ? getCartRelatedCheckoutProductItems(cartLines, productSourceLimit)
+          : parseCheckoutProductItems(props.product_items).filter(hasRenderableCheckoutProductItem);
       const isOfferSection =
         hasOfferConfig &&
         ((section && section.type === 'offer_code_panel') ||
           (primarySection && section?.id === primarySection.id) ||
           (!section && sectionIndex === 0));
       const children = [
+        section?.type === 'product_list' && productSourceMode === 'cart_related'
+          ? h(
+              's-text',
+              { key: 'product-source' },
+              `Product source: Cart-related (${productItems.length}/${productSourceLimit})`
+            )
+          : null,
+        section?.type === 'product_list' &&
+        productSourceMode === 'collection' &&
+        productSourceCollections.length > 0
+          ? h(
+              's-text',
+              { key: 'collection-source' },
+              `Product source: Collection (${productSourceCollections
+                .map(item => item.title || item.handle || item.id)
+                .filter(Boolean)
+                .slice(0, 2)
+                .join(', ')})`
+            )
+          : null,
         props.badge_text ? h('s-text', { key: 'badge' }, props.badge_text) : null,
         props.message ? h('s-text', { key: 'message' }, props.message) : null,
         ...parseCheckoutFeatureBullets(props.feature_bullets).map((item, bulletIndex) =>
           h('s-text', { key: `bullet-${bulletIndex}` }, `• ${item}`)
+        ),
+        ...productItems.map((item, productIndex) =>
+          h(
+            's-stack',
+            {
+              key: item.id || `product-${productIndex}`,
+              direction: 'block',
+              gap: 'extraTight',
+            },
+            item.image_url
+              ? h('s-image', {
+                  key: 'image',
+                  src: item.image_url,
+                  alt: item.title || 'Product image',
+                  aspectRatio: '1/1',
+                  borderRadius: 'base',
+                })
+              : null,
+            item.badge_text ? h('s-text', { key: 'badge' }, item.badge_text) : null,
+            item.title ? h('s-text', { key: 'title' }, item.title) : null,
+            item.subtitle ? h('s-text', { key: 'subtitle' }, item.subtitle) : null,
+            item.price || item.compare_at_price
+              ? h(
+                  's-text',
+                  { key: 'price' },
+                  [item.price, item.compare_at_price ? `Compare at ${item.compare_at_price}` : null]
+                    .filter(Boolean)
+                    .join(' • ')
+                )
+              : null
+          )
         ),
         props.disclaimer ? h('s-text', { key: 'disclaimer' }, props.disclaimer) : null,
         isOfferSection

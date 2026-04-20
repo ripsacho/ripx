@@ -560,6 +560,36 @@ async function buildCheckoutExperienceReadiness({
         : [];
       return sum + sections.filter(section => hasRenderableSection(section)).length;
     }, 0);
+    const needsCollectionProductScope = variants.some(variant => {
+      const sections = Array.isArray(variant?.config?.checkout_sections)
+        ? variant.config.checkout_sections
+        : [];
+      return sections.some(section => {
+        if (
+          String(section?.type || '')
+            .trim()
+            .toLowerCase() !== 'product_list'
+        ) {
+          return false;
+        }
+        if (section.enabled === false) {
+          return false;
+        }
+        const props = section?.props || {};
+        if (normalizeLower(props.product_source_mode) !== 'collection') {
+          return false;
+        }
+        const cols = Array.isArray(props.product_source_collections)
+          ? props.product_source_collections
+          : [];
+        return cols.some(col => String(col?.id || '').trim());
+      });
+    });
+    const configuredScopes = String(process.env.SHOPIFY_SCOPES || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+    const hasReadCollectionsScope = configuredScopes.includes('read_collections');
     const uiDiagnostics = buildCheckoutUiExtensionDiagnostics({
       test: normalizedTest,
       shopDomain,
@@ -582,6 +612,18 @@ async function buildCheckoutExperienceReadiness({
           ? `${totalRenderableSections} renderable checkout section(s) are saved across non-control variants.`
           : 'No renderable checkout sections are saved yet for this checkout experience test.'
       ),
+      ...(needsCollectionProductScope
+        ? [
+            buildCheck(
+              'checkout_collection_scope_configured',
+              hasReadCollectionsScope,
+              'error',
+              hasReadCollectionsScope
+                ? 'SHOPIFY_SCOPES includes read_collections for collection-fed checkout product lists.'
+                : 'Collection-fed checkout product lists require read_collections in SHOPIFY_SCOPES and shopify.app.toml; reinstall the app on the shop after updating scopes.'
+            ),
+          ]
+        : []),
       ...(uiDiagnostics.checklist || []),
     ];
     const summary = summarizeChecks(checklist, getTypeLabel('checkout'));

@@ -581,6 +581,117 @@ class ShopifyService {
   }
 
   /**
+   * Resolve product cards from one or more collections for checkout merchandising.
+   *
+   * @param {string} shopDomain - Shop domain
+   * @param {string} accessToken - Access token
+   * @param {string[]} collectionIds - Shopify collection GIDs
+   * @param {number} [first] - Max product cards to return
+   * @returns {Promise<Array<{id: string, image_url: string, title: string, subtitle: string, price: string, compare_at_price: string, badge_text: string}>>}
+   */
+  async listCollectionProducts(shopDomain, accessToken, collectionIds = [], first = 3) {
+    const ids = Array.isArray(collectionIds)
+      ? collectionIds.map(id => String(id || '').trim()).filter(Boolean)
+      : [];
+    if (!ids.length) {
+      return [];
+    }
+
+    const session = this.getSession(shopDomain, accessToken);
+    const client = new this.api.clients.Graphql({ session });
+    const limit = Math.min(Math.max(1, first), 6);
+    const productsFirst = Math.min(Math.max(limit * 2, 4), 12);
+    const query = `
+      query listCollectionProducts($ids: [ID!]!, $productsFirst: Int!) {
+        nodes(ids: $ids) {
+          ... on Collection {
+            id
+            title
+            handle
+            products(first: $productsFirst) {
+              edges {
+                node {
+                  id
+                  title
+                  handle
+                  featuredImage {
+                    url
+                  }
+                  variants(first: 1) {
+                    edges {
+                      node {
+                        title
+                        price
+                        compareAtPrice
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    try {
+      const response = await client.request(query, {
+        variables: {
+          ids,
+          productsFirst,
+        },
+      });
+      const collections = Array.isArray(response.data?.nodes) ? response.data.nodes : [];
+      const seen = new Set();
+      const items = [];
+
+      for (const collection of collections) {
+        if (!collection || typeof collection !== 'object') {
+          continue;
+        }
+        const collectionTitle = String(collection.title || '').trim();
+        const productEdges = Array.isArray(collection.products?.edges)
+          ? collection.products.edges
+          : [];
+        for (const edge of productEdges) {
+          const product = edge?.node;
+          const productId = String(product?.id || '').trim();
+          if (!productId || seen.has(productId)) {
+            continue;
+          }
+          const firstVariant = product?.variants?.edges?.[0]?.node || {};
+          const variantTitle = String(firstVariant.title || '').trim();
+          items.push({
+            id: productId,
+            image_url: String(product?.featuredImage?.url || '').trim(),
+            title: String(product?.title || '').trim(),
+            subtitle:
+              variantTitle && variantTitle.toLowerCase() !== 'default title'
+                ? variantTitle
+                : collectionTitle,
+            price: String(firstVariant.price || '').trim(),
+            compare_at_price: String(firstVariant.compareAtPrice || '').trim(),
+            badge_text: collectionTitle,
+          });
+          seen.add(productId);
+          if (items.length >= limit) {
+            return items;
+          }
+        }
+      }
+
+      return items;
+    } catch (error) {
+      logger.error('Error listing collection products', {
+        error: error.message,
+        shopDomain,
+        collectionIds: ids,
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Track order event (for conversion tracking)
    *
    * @param {Object} order - Order data from webhook

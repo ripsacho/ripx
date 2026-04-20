@@ -58,6 +58,11 @@ const {
   resolveVariantProviderConfig,
   resolveCarrierQuoteRates,
 } = require('../services/shippingQuoteProviderService');
+const {
+  normalizeCheckoutExperienceConfig,
+} = require('../services/checkoutExperienceConfigService');
+const shopifyService = require('../services/shopifyService');
+const { getShopSession } = require('../models/shopSession');
 const { query } = require('../utils/database');
 const {
   batchResolveJsonUtf8Bytes,
@@ -246,6 +251,81 @@ function withAssignmentSignature(variant, testId, userId, shopDomain) {
     assignment_sig: signature,
     assignment_ts: String(issuedAtMs),
     assignment_user: normalizedUserId,
+  };
+}
+
+async function enrichCheckoutAssignmentCollectionProducts(config = {}, shopDomain = '') {
+  const normalizedDomain =
+    normalizeDomain(shopDomain) ||
+    String(shopDomain || '')
+      .trim()
+      .toLowerCase();
+  if (!normalizedDomain) {
+    return config;
+  }
+
+  const normalizedConfig = normalizeCheckoutExperienceConfig(config);
+  const collectionSections = normalizedConfig.checkout_sections.filter(section => {
+    const props = section?.props || {};
+    return (
+      section?.type === 'product_list' &&
+      props.product_source_mode === 'collection' &&
+      Array.isArray(props.product_source_collections) &&
+      props.product_source_collections.length > 0
+    );
+  });
+
+  if (!collectionSections.length) {
+    return config;
+  }
+
+  const session = await getShopSession(normalizedDomain).catch(() => null);
+  const accessToken = String(session?.access_token || '').trim();
+  if (!accessToken) {
+    return config;
+  }
+
+  const checkoutSections = await Promise.all(
+    normalizedConfig.checkout_sections.map(async section => {
+      const props = section?.props || {};
+      if (
+        section?.type !== 'product_list' ||
+        props.product_source_mode !== 'collection' ||
+        !Array.isArray(props.product_source_collections) ||
+        props.product_source_collections.length === 0
+      ) {
+        return section;
+      }
+
+      try {
+        const productItems = await shopifyService.listCollectionProducts(
+          normalizedDomain,
+          accessToken,
+          props.product_source_collections.map(item => item.id),
+          props.product_source_limit
+        );
+        return {
+          ...section,
+          props: {
+            ...props,
+            product_items: productItems,
+          },
+        };
+      } catch (error) {
+        logger.warn('Could not enrich checkout collection products', {
+          shopDomain: normalizedDomain,
+          sectionId: section?.id || null,
+          error: error?.message || String(error),
+        });
+        return section;
+      }
+    })
+  );
+
+  return {
+    ...(config && typeof config === 'object' ? config : {}),
+    checkout_placement: normalizedConfig.checkout_placement,
+    checkout_sections: checkoutSections,
   };
 }
 
@@ -1355,6 +1435,10 @@ router.post(
     if (!variant) {
       return res.json({ success: true, assignment: null });
     }
+    variant = {
+      ...variant,
+      config: await enrichCheckoutAssignmentCollectionProducts(variant.config || {}, domain),
+    };
     const signedVariant = withAssignmentSignature(variant, testId, userId, domain);
     return res.json({
       success: true,

@@ -74,4 +74,106 @@ describe('checkoutSections utils', () => {
     expect(synced.checkout_layout).toBe('stacked');
     expect(synced.checkout_feature_bullets).toEqual(['Buyer protection']);
   });
+
+  it('keeps manual product cards on a product list section', () => {
+    const normalized = getNormalizedCheckoutExperienceConfig({
+      checkout_sections: [
+        {
+          id: 'checkout-picks',
+          type: 'product_list',
+          enabled: true,
+          props: {
+            title: 'Recommended for your order',
+            product_items: [
+              { title: 'Gift wrap', subtitle: 'Premium presentation', price: '$9' },
+              { title: 'Priority support', badge_text: 'Popular', compare_at_price: '$19' },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(normalized.checkout_sections[0]).toMatchObject({
+      type: 'product_list',
+      props: {
+        title: 'Recommended for your order',
+        product_items: [
+          { title: 'Gift wrap', subtitle: 'Premium presentation', price: '$9' },
+          { title: 'Priority support', badge_text: 'Popular', compare_at_price: '$19' },
+        ],
+      },
+    });
+  });
+
+  it('does not treat blank product cards as actionable checkout content', () => {
+    const actionable = getActionableCheckoutSections({
+      checkout_sections: [
+        {
+          id: 'checkout-picks',
+          type: 'product_list',
+          enabled: true,
+          props: {
+            title: '',
+            product_items: [{ id: 'product-1', title: '', subtitle: '', price: '' }],
+          },
+        },
+      ],
+    });
+
+    expect(actionable).toHaveLength(0);
+  });
+
+  it('treats cart-related product lists as actionable without manual cards', () => {
+    const normalized = getNormalizedCheckoutExperienceConfig({
+      checkout_sections: [
+        {
+          id: 'cart-picks',
+          type: 'product_list',
+          enabled: true,
+          props: {
+            product_source_mode: 'cart_related',
+            product_source_limit: '4',
+            product_items: [],
+          },
+        },
+      ],
+    });
+
+    expect(normalized.checkout_sections[0].props).toMatchObject({
+      product_source_mode: 'cart_related',
+      product_source_limit: 4,
+      product_items: [],
+    });
+    expect(getActionableCheckoutSections(normalized)).toHaveLength(1);
+  });
+
+  it('treats collection-fed product lists as actionable when collections are selected', () => {
+    const normalized = getNormalizedCheckoutExperienceConfig({
+      checkout_sections: [
+        {
+          id: 'collection-picks',
+          type: 'product_list',
+          enabled: true,
+          props: {
+            product_source_mode: 'collection',
+            product_source_limit: 3,
+            product_source_collections: [
+              { id: 'gid://shopify/Collection/123', title: 'Sale', handle: 'sale' },
+            ],
+            product_items: [],
+          },
+        },
+      ],
+    });
+
+    expect(normalized.checkout_sections[0].props).toMatchObject({
+      product_source_mode: 'collection',
+      product_source_limit: 3,
+      product_source_collections: [
+        { id: 'gid://shopify/Collection/123', title: 'Sale', handle: 'sale' },
+      ],
+      product_items: [],
+    });
+    expect(getActionableCheckoutSections(normalized)).toHaveLength(1);
+  });
 });

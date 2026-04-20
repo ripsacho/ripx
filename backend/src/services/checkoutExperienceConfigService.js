@@ -4,12 +4,18 @@ const SUPPORTED_CHECKOUT_SECTION_TYPES = Object.freeze([
   'guarantee_box',
   'shipping_promise',
   'offer_code_panel',
+  'product_list',
 ]);
 
 const SUPPORTED_CHECKOUT_PLACEMENTS = Object.freeze(['purchase.checkout.block.render']);
 const SUPPORTED_CHECKOUT_TONES = Object.freeze(['success', 'info', 'warning', 'critical']);
 const SUPPORTED_CHECKOUT_LAYOUTS = Object.freeze(['banner', 'stacked', 'compact']);
 const SUPPORTED_CHECKOUT_CTA_KINDS = Object.freeze(['track', 'offer_code', 'none']);
+const SUPPORTED_CHECKOUT_PRODUCT_SOURCE_MODES = Object.freeze([
+  'manual',
+  'cart_related',
+  'collection',
+]);
 const MAX_CHECKOUT_SECTIONS = 8;
 
 function normalizeCheckoutPhase(rawPhase) {
@@ -66,6 +72,52 @@ function normalizeCheckoutCtaKind(rawKind) {
   return SUPPORTED_CHECKOUT_CTA_KINDS.includes(kind) ? kind : 'track';
 }
 
+function normalizeCheckoutProductSourceMode(rawMode) {
+  const mode = String(rawMode || 'manual')
+    .trim()
+    .toLowerCase();
+  return SUPPORTED_CHECKOUT_PRODUCT_SOURCE_MODES.includes(mode) ? mode : 'manual';
+}
+
+function normalizeCheckoutProductSourceLimit(rawValue) {
+  const numeric = Number.parseInt(String(rawValue ?? '3').trim(), 10);
+  if (!Number.isFinite(numeric)) {
+    return 3;
+  }
+  return Math.min(6, Math.max(1, numeric));
+}
+
+function normalizeProductSourceCollections(rawValue) {
+  const rows = Array.isArray(rawValue) ? rawValue : [];
+  return rows
+    .map(item => {
+      if (item && typeof item === 'object') {
+        const id = String(item.id || item.collection_id || '').trim();
+        if (!id) {
+          return null;
+        }
+        return {
+          id,
+          title: String(item.title || item.name || item.collection_title || '').trim(),
+          handle: String(item.handle || item.collection_handle || '').trim(),
+        };
+      }
+      const id = String(item || '').trim();
+      if (!id) {
+        return null;
+      }
+      return {
+        id,
+        title: '',
+        handle: '',
+      };
+    })
+    .filter(Boolean)
+    .filter(
+      (item, index, items) => items.findIndex(candidate => candidate.id === item.id) === index
+    );
+}
+
 function normalizeFeatureBullets(rawValue) {
   if (Array.isArray(rawValue)) {
     return rawValue.map(item => String(item || '').trim()).filter(Boolean);
@@ -74,6 +126,53 @@ function normalizeFeatureBullets(rawValue) {
     .split(/[\n,]+/)
     .map(item => item.trim())
     .filter(Boolean);
+}
+
+function normalizeProductItems(rawValue) {
+  const rows = Array.isArray(rawValue) ? rawValue : [];
+  return rows
+    .map((item, index) => {
+      const source = item && typeof item === 'object' ? item : {};
+      const imageUrl = String(
+        source.image_url || source.image || source.product_image_url || ''
+      ).trim();
+      const title = String(source.title || source.product_title || '').trim();
+      const subtitle = String(source.subtitle || source.product_subtitle || '').trim();
+      const price = String(source.price || source.product_price || '').trim();
+      const compareAtPrice = String(
+        source.compare_at_price || source.product_compare_at_price || ''
+      ).trim();
+      const badgeText = String(source.badge_text || source.product_badge_text || '').trim();
+      if (!source || typeof source !== 'object') {
+        return null;
+      }
+      return {
+        id:
+          String(source.id || '')
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9_-]+/g, '-')
+            .replace(/^-+|-+$/g, '') || `product-${index + 1}`,
+        image_url: imageUrl,
+        title,
+        subtitle,
+        price,
+        compare_at_price: compareAtPrice,
+        badge_text: badgeText,
+      };
+    })
+    .filter(Boolean);
+}
+
+function hasRenderableProductItem(item = {}) {
+  return Boolean(
+    item.image_url ||
+    item.title ||
+    item.subtitle ||
+    item.price ||
+    item.compare_at_price ||
+    item.badge_text
+  );
 }
 
 function toSectionId(rawId, index, type) {
@@ -101,6 +200,20 @@ function normalizeSectionProps(rawSection = {}) {
     cta_kind: normalizeCheckoutCtaKind(propsSource.cta_kind || propsSource.checkout_cta_kind),
     feature_bullets: normalizeFeatureBullets(
       propsSource.feature_bullets || propsSource.checkout_feature_bullets
+    ),
+    product_source_mode: normalizeCheckoutProductSourceMode(
+      propsSource.product_source_mode || propsSource.checkout_product_source_mode
+    ),
+    product_source_limit: normalizeCheckoutProductSourceLimit(
+      propsSource.product_source_limit || propsSource.checkout_product_source_limit
+    ),
+    product_source_collections: normalizeProductSourceCollections(
+      propsSource.product_source_collections ||
+        propsSource.checkout_product_source_collections ||
+        propsSource.product_source_collection_ids
+    ),
+    product_items: normalizeProductItems(
+      propsSource.product_items || propsSource.checkout_product_items
     ),
   };
 }
@@ -212,7 +325,12 @@ function hasRenderableSection(section = {}) {
     props.badge_text ||
     props.disclaimer ||
     props.cta_label ||
-    (Array.isArray(props.feature_bullets) && props.feature_bullets.length > 0)
+    (Array.isArray(props.feature_bullets) && props.feature_bullets.length > 0) ||
+    props.product_source_mode === 'cart_related' ||
+    (props.product_source_mode === 'collection' &&
+      Array.isArray(props.product_source_collections) &&
+      props.product_source_collections.length > 0) ||
+    (Array.isArray(props.product_items) && props.product_items.some(hasRenderableProductItem))
   );
 }
 

@@ -33,6 +33,8 @@ npm run build         # production frontend build
 # - Offer tests use the checkout discount function path.
 ```
 
+Checkout experience tests that use **collection-fed** product lists need `read_collections` in `shopify.app.toml` and `SHOPIFY_SCOPES` (see `.env.example`). After any scope change, reinstall the app on the shop so access tokens include the new permission.
+
 Production deploy (host, SSH key, IP, and process manager) is environment-specific — keep those steps in your private runbook, not in the repo.
 
 ## Shipping Execution Checklist
