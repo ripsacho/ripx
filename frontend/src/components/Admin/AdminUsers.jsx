@@ -110,6 +110,9 @@ function UserDetailModalContent({
   roleSaving,
   roleOptions,
   styles,
+  userRecordId,
+  onResendApprovalEmail,
+  resendApprovalEmailLoading,
 }) {
   const [editingRole, setEditingRole] = React.useState(userDetail?.role ?? '');
   React.useEffect(() => {
@@ -265,6 +268,19 @@ function UserDetailModalContent({
       <section className={styles.adminUserModalSectionCard}>
         <h3 className={styles.adminUserModalSectionTitle}>Actions</h3>
         <div className={styles.adminUserModalActions}>
+          {isEmail &&
+            userDetail.status === 'accepted' &&
+            userRecordId &&
+            typeof onResendApprovalEmail === 'function' && (
+              <Button
+                variant="secondary"
+                size="slim"
+                onClick={() => onResendApprovalEmail(userRecordId)}
+                loading={resendApprovalEmailLoading}
+              >
+                Resend approval email
+              </Button>
+            )}
           {canExportUser && (
             <Button
               variant="secondary"
@@ -546,6 +562,21 @@ export default function AdminUsers() {
     },
   });
 
+  const resendAcceptanceMutation = useMutation({
+    mutationFn: async userId => {
+      await apiPost(`/admin/resend-acceptance-email/${userId}`);
+    },
+    onSuccess: () => {
+      setToast({ message: 'Approval email sent', type: 'success' });
+    },
+    onError: err => {
+      setToast({
+        message: err?.response?.data?.error || err?.message || 'Could not send approval email',
+        type: 'error',
+      });
+    },
+  });
+
   const pendingUsers = pendingData?.users ?? [];
   const users = listView === 'email' ? (standaloneData?.users ?? []) : (data?.users ?? []);
   const total = listView === 'email' ? (standaloneData?.total ?? 0) : (data?.total ?? 0);
@@ -657,6 +688,21 @@ export default function AdminUsers() {
                   }}
                 >
                   Set role
+                </Button>
+              )}
+              {u.status === 'accepted' && (
+                <Button
+                  size="slim"
+                  variant="plain"
+                  className={styles.adminBtnSecondary}
+                  accessibilityLabel={`Resend approval email to ${u.email || 'user'}`}
+                  onClick={() => resendAcceptanceMutation.mutate(u.id)}
+                  loading={
+                    resendAcceptanceMutation.isPending &&
+                    resendAcceptanceMutation.variables === u.id
+                  }
+                >
+                  Resend approval email
                 </Button>
               )}
             </div>
@@ -1072,6 +1118,12 @@ export default function AdminUsers() {
                   roleSaving={roleMutation.isPending}
                   roleOptions={roleOptionsForSetRole}
                   styles={styles}
+                  userRecordId={userDetail?.recordId ?? null}
+                  onResendApprovalEmail={id => resendAcceptanceMutation.mutate(id)}
+                  resendApprovalEmailLoading={
+                    resendAcceptanceMutation.isPending &&
+                    resendAcceptanceMutation.variables === userDetail?.recordId
+                  }
                 />
               ) : (
                 <div className={styles.adminUserModalBody}>

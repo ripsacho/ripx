@@ -263,6 +263,48 @@ router.post(
 );
 
 /**
+ * POST /api/admin/resend-acceptance-email/:id
+ * Resend the account-approval email to an accepted standalone user (e.g. first send failed or inbox issues).
+ */
+router.post(
+  '/resend-acceptance-email/:id',
+  asyncHandler(async (req, res) => {
+    const id = req.params.id;
+    if (!id || !validators.isValidUUID(id)) {
+      return res.status(400).json({ success: false, error: 'Invalid user ID' });
+    }
+    const user = await standaloneUser.getById(id);
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+    if (user.status !== 'accepted') {
+      return res.status(400).json({
+        success: false,
+        error: 'Approval email applies only to accepted accounts',
+      });
+    }
+    if (!user.email) {
+      return res.status(400).json({ success: false, error: 'User has no email address' });
+    }
+    const sent = await emailService.sendAcceptanceEmail(user.email);
+    if (!sent) {
+      return res.status(503).json({
+        success: false,
+        error:
+          'Could not send email. Check SMTP settings, mail process toggles, and the acceptance template.',
+      });
+    }
+    await auditLogService.logAdminAction(req, {
+      entityType: 'auth',
+      entityId: id,
+      action: 'resend_acceptance_email',
+      changes: { email: `${user.email.substring(0, 3)}***` },
+    });
+    return sendSuccess(res, HTTP_STATUS.OK, { message: 'Approval email sent' });
+  })
+);
+
+/**
  * POST /api/admin/revoke-email-sessions
  * Revoke all active email-session JWTs for a user by incrementing token_version.
  * Body: { user_id? , email? }. Audited.
@@ -435,6 +477,7 @@ router.get(
     }
     return sendSuccess(res, HTTP_STATUS.OK, {
       id: email,
+      recordId: user.id,
       shopDomain: null,
       email: user.email,
       profile: user.profile || {},

@@ -438,6 +438,15 @@ describe('API integration', () => {
       expect(res.body).toHaveProperty('error');
     });
 
+    it('POST /api/admin/resend-acceptance-email/:id returns 401 when no credentials', async () => {
+      const res = await request(app).post(
+        '/api/admin/resend-acceptance-email/00000000-0000-4000-8000-000000000001'
+      );
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
     it('POST /api/admin/support-tickets/:id/suggest-reply returns 401 when no credentials', async () => {
       const res = await request(app).post(
         '/api/admin/support-tickets/00000000-0000-4000-8000-000000000001/suggest-reply'
