@@ -3,6 +3,7 @@
  *
  * Sends transactional email via SMTP (e.g. AWS SES).
  * Configure via: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM.
+ * Optional: SMTP_REPLY_TO (default Reply-To when callers omit it).
  * If not configured, sendMail no-ops and returns true (stub mode).
  *
  * sendMail(options) returns Promise<boolean>: true if sent (or stubbed), false on failure.
@@ -14,6 +15,17 @@ const logger = require('../utils/logger');
 const mailProcessService = require('./mailProcessService');
 
 const FROM = process.env.SMTP_FROM || process.env.MAIL_FROM || 'abtesting-noreply@echologyx.com';
+
+/** Optional Reply-To applied when callers do not pass one (set SMTP_REPLY_TO in .env). */
+function getConfiguredReplyTo() {
+  const raw = String(process.env.SMTP_REPLY_TO || process.env.MAIL_REPLY_TO || '')
+    .trim()
+    .toLowerCase();
+  if (!raw || raw.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)) {
+    return undefined;
+  }
+  return raw;
+}
 
 const BRAND = {
   name: 'RipX',
@@ -87,6 +99,7 @@ async function sendMail(options) {
     });
     return true;
   }
+  const resolvedReplyTo = replyTo || getConfiguredReplyTo();
   const payload = {
     from: FROM,
     to,
@@ -100,7 +113,7 @@ async function sendMail(options) {
             .trim()
         : ''),
     html: html || undefined,
-    replyTo: replyTo || undefined,
+    replyTo: resolvedReplyTo || undefined,
   };
   for (let attempt = 1; attempt <= SMTP_MAX_RETRIES; attempt++) {
     try {
@@ -540,19 +553,27 @@ async function sendDomainAddedNotification(to, domain) {
 /**
  * One-off SMTP test from the admin panel (not tied to mail_process toggles).
  * @param {string} to - Recipient email
- * @returns {Promise<{ ok: boolean, smtpConfigured: boolean, messageId?: string|null, smtpHost?: string, error?: string, code?: string, responseHint?: string }>}
+ * @returns {Promise<{ ok: boolean, smtpConfigured: boolean, messageId?: string|null, smtpHost?: string, fromAddress?: string, replyTo?: string|null, error?: string, code?: string, responseHint?: string }>}
  */
 async function sendAdminTestEmail(to) {
   const normalized = String(to || '')
     .trim()
     .toLowerCase();
   if (!normalized || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized) || normalized.length > 254) {
-    return { ok: false, smtpConfigured: isConfigured(), error: 'Invalid email address' };
+    return {
+      ok: false,
+      smtpConfigured: isConfigured(),
+      fromAddress: FROM,
+      replyTo: getConfiguredReplyTo() || null,
+      error: 'Invalid email address',
+    };
   }
   if (!isConfigured()) {
     return {
       ok: false,
       smtpConfigured: false,
+      fromAddress: FROM,
+      replyTo: getConfiguredReplyTo() || null,
       error: 'SMTP is not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASS (see .env.example).',
     };
   }
@@ -561,6 +582,8 @@ async function sendAdminTestEmail(to) {
     return {
       ok: false,
       smtpConfigured: false,
+      fromAddress: FROM,
+      replyTo: getConfiguredReplyTo() || null,
       error: 'Could not initialize SMTP transport.',
     };
   }
@@ -575,12 +598,14 @@ async function sendAdminTestEmail(to) {
   });
   const text =
     'This is a test email from RipX.\n\nIf you received this, outbound SMTP is working for this address.\n\nSent from Admin → Email delivery → Send test email.';
+  const replyToAddr = getConfiguredReplyTo();
   const payload = {
     from: FROM,
     to: normalized,
     subject,
     text,
     html,
+    ...(replyToAddr ? { replyTo: replyToAddr } : {}),
   };
   try {
     const info = await transport.sendMail(payload);
@@ -593,6 +618,8 @@ async function sendAdminTestEmail(to) {
       smtpConfigured: true,
       messageId: info?.messageId || null,
       smtpHost: host,
+      fromAddress: FROM,
+      replyTo: replyToAddr || null,
     };
   } catch (err) {
     const responseHint = err.response ? String(err.response).slice(0, 400) : undefined;
@@ -609,6 +636,8 @@ async function sendAdminTestEmail(to) {
       code: err.code || null,
       responseHint,
       smtpHost: host,
+      fromAddress: FROM,
+      replyTo: replyToAddr || null,
     };
   }
 }

@@ -2865,6 +2865,8 @@ router.post(
       diagnostics: {
         smtpConfigured: result.smtpConfigured,
         smtpHost: result.smtpHost || null,
+        smtpFrom: result.fromAddress || emailService.FROM || null,
+        smtpReplyTo: result.replyTo ?? null,
         code: result.code || null,
         responseHint: result.responseHint || null,
       },

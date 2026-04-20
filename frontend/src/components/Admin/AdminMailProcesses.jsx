@@ -438,6 +438,22 @@ export default function AdminMailProcesses() {
                               </code>
                             </Text>
                           ) : null}
+                          {testSendResult.diagnostics?.smtpFrom ? (
+                            <Text as="p" variant="bodySm" tone="subdued">
+                              From (header):{' '}
+                              <code className={styles.testSendCode}>
+                                {testSendResult.diagnostics.smtpFrom}
+                              </code>
+                            </Text>
+                          ) : null}
+                          {testSendResult.diagnostics?.smtpReplyTo ? (
+                            <Text as="p" variant="bodySm" tone="subdued">
+                              Reply-To:{' '}
+                              <code className={styles.testSendCode}>
+                                {testSendResult.diagnostics.smtpReplyTo}
+                              </code>
+                            </Text>
+                          ) : null}
                         </BlockStack>
                         <div className={styles.testSendDisclosure}>
                           <Button
@@ -459,20 +475,36 @@ export default function AdminMailProcesses() {
                           >
                             <div className={styles.testSendCollapsibleInner}>
                               <Text as="p" variant="bodySm" tone="subdued">
-                                Microsoft 365 and similar systems may quarantine or drop mail that
-                                fails SPF/DKIM/DMARC, or when the recipient is on the{' '}
-                                <strong>same domain</strong> as the From address but the message
-                                arrives from an external path (typical for SES).
+                                RipX cannot see your inbox. After SES accepts the message, delivery
+                                depends on DNS auth (SPF/DKIM/DMARC) and the recipient server. Same
+                                company domain + external path (SES) is a frequent trigger in
+                                Microsoft 365.
                               </Text>
-                              <Text as="p" variant="bodySm" tone="subdued">
-                                If nothing appears in Outlook (including Junk): run a{' '}
-                                <strong>Message trace</strong> and review{' '}
-                                <strong>Quarantine</strong> in the Microsoft 365 admin center for
-                                this recipient and send time. In AWS SES, check sending statistics
-                                and the suppression list for bounces. Ensure SPF includes SES, DKIM
-                                is enabled for your domain in SES, and DMARC aligns with how you
-                                send.
-                              </Text>
+                              <BlockStack gap="200">
+                                <Text as="p" variant="bodySm" tone="subdued">
+                                  <strong>1. Microsoft 365</strong> — Exchange admin center → Mail
+                                  flow → Message trace. Search by recipient and time, or paste the
+                                  Message-ID above. Also open Review → Quarantine (messages can be
+                                  held there without appearing in Junk).
+                                </Text>
+                                <Text as="p" variant="bodySm" tone="subdued">
+                                  <strong>2. AWS SES</strong> — Same region as your SMTP host (e.g.
+                                  eu-west-2). Check account is not in sandbox (sandbox only delivers
+                                  to verified addresses). Sending statistics, and Suppression list
+                                  for the recipient address.
+                                </Text>
+                                <Text as="p" variant="bodySm" tone="subdued">
+                                  <strong>3. DNS</strong> — In SES: verified domain + Easy DKIM
+                                  enabled. Publish the CNAME records SES shows. SPF must include SES
+                                  for your region. Align DMARC with the From domain (start with
+                                  p=none in reporting mode if needed).
+                                </Text>
+                                <Text as="p" variant="bodySm" tone="subdued">
+                                  <strong>4. Sanity check</strong> — Send the test to a personal
+                                  Gmail address. If Gmail receives it but your company mailbox does
+                                  not, the issue is tenant policy/DNS for your domain, not RipX.
+                                </Text>
+                              </BlockStack>
                             </div>
                           </Collapsible>
                         </div>
@@ -491,6 +523,16 @@ export default function AdminMailProcesses() {
                               <dd>
                                 <code className={styles.testSendCode}>
                                   {testSendResult.diagnostics.smtpHost}
+                                </code>
+                              </dd>
+                            </>
+                          ) : null}
+                          {testSendResult.diagnostics.smtpFrom ? (
+                            <>
+                              <dt>From</dt>
+                              <dd>
+                                <code className={styles.testSendCode}>
+                                  {testSendResult.diagnostics.smtpFrom}
                                 </code>
                               </dd>
                             </>
