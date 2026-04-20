@@ -18,6 +18,7 @@ import {
   TextField,
   Spinner,
   Banner,
+  Collapsible,
 } from '@shopify/polaris';
 import { EditIcon, RefreshIcon } from '@shopify/polaris-icons';
 import { apiGet, apiPut, apiPost } from '../../services';
@@ -69,6 +70,7 @@ export default function AdminMailProcesses() {
   const [loadingDefault, setLoadingDefault] = useState(false);
   const [testEmail, setTestEmail] = useState('');
   const [testSendResult, setTestSendResult] = useState(null);
+  const [mailDeliveryTipsOpen, setMailDeliveryTipsOpen] = useState(false);
 
   const canSendTest = can(ADMIN_PERMISSIONS.MAIL_TEST_SEND);
 
@@ -105,6 +107,7 @@ export default function AdminMailProcesses() {
     onSuccess: body => {
       const ok = body.ok === true;
       setTestSendResult(body);
+      setMailDeliveryTipsOpen(false);
       if (ok) {
         setToast({
           message: body.messageId
@@ -120,6 +123,7 @@ export default function AdminMailProcesses() {
       }
     },
     onError: err => {
+      setMailDeliveryTipsOpen(false);
       const status = err?.response?.status;
       const data = err?.response?.data;
       const msg =
@@ -390,6 +394,7 @@ export default function AdminMailProcesses() {
                     onChange={v => {
                       setTestEmail(v);
                       setTestSendResult(null);
+                      setMailDeliveryTipsOpen(false);
                     }}
                     placeholder="you@example.com"
                     autoComplete="email"
@@ -412,34 +417,65 @@ export default function AdminMailProcesses() {
                     <Banner tone="success" title="SMTP server accepted the message">
                       <BlockStack gap="300">
                         <Text as="p" variant="bodySm">
-                          RipX successfully handed off to your mail provider (e.g. SES).{' '}
-                          <strong>Inbox delivery is a separate step:</strong> Microsoft 365 and
-                          others may quarantine or drop mail that fails SPF/DKIM/DMARC, or when the
-                          recipient is on the <strong>same domain</strong> as the From address but
-                          the message path is external (common when sending via SES).
+                          Your provider (e.g. Amazon SES) accepted the message from RipX. That is
+                          not the same as the message appearing in Outlook —{' '}
+                          <strong>inbox delivery happens after this step.</strong>
                         </Text>
-                        <Text as="p" variant="bodySm" tone="subdued">
-                          If Outlook shows nothing (not even Junk): run a{' '}
-                          <strong>Message trace</strong> and check <strong>Quarantine</strong> in
-                          the Microsoft 365 admin center for this recipient and time. In AWS, open
-                          SES → Sending / suppression and confirm the address is not bouncing.
-                          Ensure SPF includes SES, DKIM is enabled for your domain in SES, and DMARC
-                          aligns with how you send.
-                        </Text>
-                        {testSendResult.messageId ? (
-                          <Text as="p" variant="bodySm">
-                            Message-ID:{' '}
-                            <code className={styles.testSendCode}>{testSendResult.messageId}</code>
-                          </Text>
-                        ) : null}
-                        {testSendResult.diagnostics?.smtpHost ? (
-                          <Text as="p" variant="bodySm" tone="subdued">
-                            SMTP host:{' '}
-                            <code className={styles.testSendCode}>
-                              {testSendResult.diagnostics.smtpHost}
-                            </code>
-                          </Text>
-                        ) : null}
+                        <BlockStack gap="150">
+                          {testSendResult.messageId ? (
+                            <Text as="p" variant="bodySm">
+                              Message-ID:{' '}
+                              <code className={styles.testSendCode}>
+                                {testSendResult.messageId}
+                              </code>
+                            </Text>
+                          ) : null}
+                          {testSendResult.diagnostics?.smtpHost ? (
+                            <Text as="p" variant="bodySm" tone="subdued">
+                              SMTP host:{' '}
+                              <code className={styles.testSendCode}>
+                                {testSendResult.diagnostics.smtpHost}
+                              </code>
+                            </Text>
+                          ) : null}
+                        </BlockStack>
+                        <div className={styles.testSendDisclosure}>
+                          <Button
+                            variant="plain"
+                            disclosure={mailDeliveryTipsOpen ? 'up' : 'down'}
+                            onClick={() => setMailDeliveryTipsOpen(o => !o)}
+                            accessibilityLabel={
+                              mailDeliveryTipsOpen
+                                ? 'Hide delivery troubleshooting'
+                                : 'Show delivery troubleshooting'
+                            }
+                          >
+                            Not in inbox? Common causes and checks
+                          </Button>
+                          <Collapsible
+                            id="mail-delivery-tips"
+                            open={mailDeliveryTipsOpen}
+                            transition={{ duration: '200ms', timingFunction: 'ease-in-out' }}
+                          >
+                            <div className={styles.testSendCollapsibleInner}>
+                              <Text as="p" variant="bodySm" tone="subdued">
+                                Microsoft 365 and similar systems may quarantine or drop mail that
+                                fails SPF/DKIM/DMARC, or when the recipient is on the{' '}
+                                <strong>same domain</strong> as the From address but the message
+                                arrives from an external path (typical for SES).
+                              </Text>
+                              <Text as="p" variant="bodySm" tone="subdued">
+                                If nothing appears in Outlook (including Junk): run a{' '}
+                                <strong>Message trace</strong> and review{' '}
+                                <strong>Quarantine</strong> in the Microsoft 365 admin center for
+                                this recipient and send time. In AWS SES, check sending statistics
+                                and the suppression list for bounces. Ensure SPF includes SES, DKIM
+                                is enabled for your domain in SES, and DMARC aligns with how you
+                                send.
+                              </Text>
+                            </div>
+                          </Collapsible>
+                        </div>
                       </BlockStack>
                     </Banner>
                   ) : (
