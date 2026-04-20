@@ -49,7 +49,7 @@ Then deploy with your app extensions as usual:
 
 ```bash
 shopify app deploy
-shopify app deploy --config shopify.app.ripperx.toml
+# shopify app deploy --config shopify.app.xxxxx.toml
 ```
 
 ## Verify on the store
