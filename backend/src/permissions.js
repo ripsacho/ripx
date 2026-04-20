@@ -20,6 +20,8 @@ const PERMISSIONS = Object.freeze({
   USERS_SET_ROLE: 'admin:users:set_role',
   USERS_LOCK: 'admin:users:lock',
   USERS_EXPORT: 'admin:users:export',
+  // Email delivery – send test message to an arbitrary address (admin+ only)
+  MAIL_TEST_SEND: 'admin:mail:test_send',
   // Impersonation – high privilege
   IMPERSONATE: 'admin:impersonate',
   // Optional future: admin:audit:export, admin:domains:suspend, etc.
@@ -30,6 +32,10 @@ const PERMISSION_META = Object.freeze({
   [PERMISSIONS.ADMIN_VIEW]: { riskLevel: 'normal', description: 'Access admin panel' },
   [PERMISSIONS.USERS_LOCK]: { riskLevel: 'normal', description: 'Lock/unlock user accounts' },
   [PERMISSIONS.USERS_EXPORT]: { riskLevel: 'normal', description: 'Export user data (GDPR)' },
+  [PERMISSIONS.MAIL_TEST_SEND]: {
+    riskLevel: 'normal',
+    description: 'Send SMTP test email from admin Email delivery',
+  },
   [PERMISSIONS.USERS_SET_ROLE]: { riskLevel: 'high', description: 'Set platform role on a user' },
   [PERMISSIONS.IMPERSONATE]: { riskLevel: 'high', description: 'Issue impersonation JWT' },
 });
@@ -49,12 +55,14 @@ const ROLE_PERMISSIONS = Object.freeze({
     PERMISSIONS.USERS_SET_ROLE,
     PERMISSIONS.USERS_LOCK,
     PERMISSIONS.USERS_EXPORT,
+    PERMISSIONS.MAIL_TEST_SEND,
   ],
   [PLATFORM_ROLES.SUPERADMIN]: [
     PERMISSIONS.ADMIN_VIEW,
     PERMISSIONS.USERS_SET_ROLE,
     PERMISSIONS.USERS_LOCK,
     PERMISSIONS.USERS_EXPORT,
+    PERMISSIONS.MAIL_TEST_SEND,
     PERMISSIONS.IMPERSONATE,
   ],
 });
@@ -105,6 +113,7 @@ const ROUTE_PERMISSION_MAP = Object.freeze({
   'PUT /api/admin/users/:shopDomain/unlock': PERMISSIONS.USERS_LOCK,
   'GET /api/admin/users/export': PERMISSIONS.USERS_EXPORT,
   'GET /api/admin/users/:shopDomain/export': PERMISSIONS.USERS_EXPORT,
+  'POST /api/admin/mail-test-send': PERMISSIONS.MAIL_TEST_SEND,
 });
 
 module.exports = {

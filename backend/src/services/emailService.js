@@ -537,6 +537,82 @@ async function sendDomainAddedNotification(to, domain) {
   return sendMail({ to, subject: t.subject, text, html });
 }
 
+/**
+ * One-off SMTP test from the admin panel (not tied to mail_process toggles).
+ * @param {string} to - Recipient email
+ * @returns {Promise<{ ok: boolean, smtpConfigured: boolean, messageId?: string|null, smtpHost?: string, error?: string, code?: string, responseHint?: string }>}
+ */
+async function sendAdminTestEmail(to) {
+  const normalized = String(to || '')
+    .trim()
+    .toLowerCase();
+  if (!normalized || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized) || normalized.length > 254) {
+    return { ok: false, smtpConfigured: isConfigured(), error: 'Invalid email address' };
+  }
+  if (!isConfigured()) {
+    return {
+      ok: false,
+      smtpConfigured: false,
+      error: 'SMTP is not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASS (see .env.example).',
+    };
+  }
+  const transport = getTransporter();
+  if (!transport) {
+    return {
+      ok: false,
+      smtpConfigured: false,
+      error: 'Could not initialize SMTP transport.',
+    };
+  }
+  const host = process.env.SMTP_HOST || process.env.MAIL_HOST || '';
+  const subject = '[RipX] Email delivery test';
+  const innerHtml =
+    '<p><strong>This is a test email</strong></p>' +
+    '<p>If you received this message, outbound SMTP from your RipX server is working for this recipient.</p>' +
+    '<p class="muted">Sent from <strong>Admin → Email delivery → Send test email</strong>.</p>';
+  const html = wrapEmailLayout(subject, innerHtml, {
+    preheader: 'RipX SMTP connectivity test',
+  });
+  const text =
+    'This is a test email from RipX.\n\nIf you received this, outbound SMTP is working for this address.\n\nSent from Admin → Email delivery → Send test email.';
+  const payload = {
+    from: FROM,
+    to: normalized,
+    subject,
+    text,
+    html,
+  };
+  try {
+    const info = await transport.sendMail(payload);
+    logger.info('Admin test email sent', {
+      to: normalized.substring(0, 5) + '…',
+      messageId: info?.messageId,
+    });
+    return {
+      ok: true,
+      smtpConfigured: true,
+      messageId: info?.messageId || null,
+      smtpHost: host,
+    };
+  } catch (err) {
+    const responseHint = err.response ? String(err.response).slice(0, 400) : undefined;
+    logger.warn('Admin test email failed', {
+      to: normalized.substring(0, 5) + '…',
+      error: err.message,
+      code: err.code,
+      responseHint: responseHint ? responseHint.slice(0, 120) : undefined,
+    });
+    return {
+      ok: false,
+      smtpConfigured: true,
+      error: err.message || 'SMTP send failed',
+      code: err.code || null,
+      responseHint,
+      smtpHost: host,
+    };
+  }
+}
+
 module.exports = {
   isConfigured,
   verifyConnection,
@@ -548,5 +624,6 @@ module.exports = {
   sendAnnouncement,
   sendDomainApiKeyEmail,
   sendDomainAddedNotification,
+  sendAdminTestEmail,
   FROM,
 };

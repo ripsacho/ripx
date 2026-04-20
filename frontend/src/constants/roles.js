@@ -32,5 +32,6 @@ export const ADMIN_PERMISSIONS = Object.freeze({
   USERS_SET_ROLE: 'admin:users:set_role',
   USERS_LOCK: 'admin:users:lock',
   USERS_EXPORT: 'admin:users:export',
+  MAIL_TEST_SEND: 'admin:mail:test_send',
   IMPERSONATE: 'admin:impersonate',
 });

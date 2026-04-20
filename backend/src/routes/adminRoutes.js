@@ -17,6 +17,7 @@ const {
   getPermissionsForRole,
 } = require('../middleware/requireAdmin');
 const { sensitiveAdminLimiter } = require('../middleware/sensitiveAdminLimiter');
+const { mailTestSendLimiter } = require('../middleware/mailTestSendLimiter');
 const { PERMISSIONS } = require('../permissions');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const { sendSuccess } = require('../utils/response');
@@ -2827,6 +2828,47 @@ router.put(
       changes: { key, enabled: updated.enabled },
     });
     return sendSuccess(res, HTTP_STATUS.OK, { process: updated });
+  })
+);
+
+/**
+ * POST /api/admin/mail-test-send
+ * Body: { email }. Sends a one-off test message (not gated by mail_process toggles).
+ * Response always 200 with success: true wrapper; check payload.ok for SMTP outcome.
+ * Requires admin:mail:test_send (admin / superadmin; not collaborator).
+ */
+router.post(
+  '/mail-test-send',
+  mailTestSendLimiter,
+  requirePermission(PERMISSIONS.MAIL_TEST_SEND),
+  asyncHandler(async (req, res) => {
+    const raw = String(req.body?.email || '').trim();
+    if (!raw || !validators.isValidEmail(raw) || raw.length > 254) {
+      return res.status(400).json({ success: false, error: 'Valid email address is required' });
+    }
+    const result = await emailService.sendAdminTestEmail(raw);
+    await auditLogService.logAdminAction(req, {
+      entityType: 'mail_system',
+      entityId: 'test_send',
+      action: 'mail_test_send',
+      changes: {
+        ok: result.ok,
+        to_redacted: `${raw.substring(0, 3)}***`,
+        messageId: result.messageId || null,
+        error: result.error ? String(result.error).slice(0, 160) : null,
+      },
+    });
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      ok: result.ok,
+      messageId: result.messageId || null,
+      error: result.ok ? null : result.error || 'Send failed',
+      diagnostics: {
+        smtpConfigured: result.smtpConfigured,
+        smtpHost: result.smtpHost || null,
+        code: result.code || null,
+        responseHint: result.responseHint || null,
+      },
+    });
   })
 );
 

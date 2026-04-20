@@ -20,7 +20,9 @@ import {
   Banner,
 } from '@shopify/polaris';
 import { EditIcon, RefreshIcon } from '@shopify/polaris-icons';
-import { apiGet, apiPut } from '../../services';
+import { apiGet, apiPut, apiPost } from '../../services';
+import { useAdminMe } from '../../hooks';
+import { ADMIN_PERMISSIONS } from '../../constants/roles';
 import { PageShell } from '../Shared';
 import Toast from '../Toast/Toast';
 import AdminPageLayout from './AdminPageLayout';
@@ -55,6 +57,7 @@ const PLACEHOLDERS_BY_KEY = {
 };
 
 export default function AdminMailProcesses() {
+  const { can } = useAdminMe();
   const queryClient = useQueryClient();
   const [toast, setToast] = useState({ message: null, type: 'success' });
   const [editKey, setEditKey] = useState(null);
@@ -64,6 +67,10 @@ export default function AdminMailProcesses() {
   const [editorTab, setEditorTab] = useState(0);
   const [editError, setEditError] = useState(null);
   const [loadingDefault, setLoadingDefault] = useState(false);
+  const [testEmail, setTestEmail] = useState('');
+  const [testSendResult, setTestSendResult] = useState(null);
+
+  const canSendTest = can(ADMIN_PERMISSIONS.MAIL_TEST_SEND);
 
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['admin', 'mail-processes'],
@@ -87,6 +94,44 @@ export default function AdminMailProcesses() {
         message: err?.response?.data?.error || err?.message || 'Update failed',
         type: 'error',
       });
+    },
+  });
+
+  const mailTestMutation = useMutation({
+    mutationFn: async email => {
+      const res = await apiPost('/admin/mail-test-send', { email });
+      return res?.data ?? {};
+    },
+    onSuccess: body => {
+      const ok = body.ok === true;
+      setTestSendResult(body);
+      if (ok) {
+        setToast({
+          message: body.messageId
+            ? `Test email sent (Message-ID logged on server).`
+            : 'Test email sent.',
+          type: 'success',
+        });
+      } else {
+        setToast({
+          message: body.error || 'Test email was not sent. See details below.',
+          type: 'error',
+        });
+      }
+    },
+    onError: err => {
+      const status = err?.response?.status;
+      const data = err?.response?.data;
+      const msg =
+        data?.error ||
+        err?.message ||
+        (status === 429 ? 'Too many attempts. Try again later.' : 'Request failed');
+      setTestSendResult({
+        ok: false,
+        error: msg,
+        diagnostics: data?.diagnostics || null,
+      });
+      setToast({ message: msg, type: 'error' });
     },
   });
 
@@ -323,6 +368,116 @@ export default function AdminMailProcesses() {
         }}
       >
         <BlockStack gap="600">
+          {canSendTest && (
+            <section className={styles.testSendCard} aria-label="Send test email">
+              <div className={styles.testSendHeader}>
+                <Text as="h2" variant="headingMd">
+                  Send test email
+                </Text>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Delivers a short non-transactional message to verify SMTP and inbox delivery. Not
+                  affected by the “Paused” toggles below. Server logs include the outcome for
+                  support.
+                </Text>
+              </div>
+              <div className={styles.testSendRow}>
+                <div className={styles.testSendField}>
+                  <TextField
+                    label="Recipient"
+                    type="email"
+                    value={testEmail}
+                    onChange={v => {
+                      setTestEmail(v);
+                      setTestSendResult(null);
+                    }}
+                    placeholder="you@example.com"
+                    autoComplete="email"
+                  />
+                </div>
+                <div className={styles.testSendActions}>
+                  <Button
+                    variant="primary"
+                    loading={mailTestMutation.isPending}
+                    disabled={!testEmail.trim()}
+                    onClick={() => mailTestMutation.mutate(testEmail.trim())}
+                  >
+                    Send test
+                  </Button>
+                </div>
+              </div>
+              {testSendResult && (
+                <div className={styles.testSendOutcome}>
+                  {testSendResult.ok ? (
+                    <Banner tone="success" title="SMTP accepted the message">
+                      <p>
+                        Check the recipient inbox (and spam).{' '}
+                        {testSendResult.messageId ? (
+                          <>
+                            Message-ID:{' '}
+                            <code className={styles.testSendCode}>{testSendResult.messageId}</code>
+                          </>
+                        ) : null}
+                      </p>
+                      {testSendResult.diagnostics?.smtpHost ? (
+                        <p className={styles.testSendMeta}>
+                          Host:{' '}
+                          <code className={styles.testSendCode}>
+                            {testSendResult.diagnostics.smtpHost}
+                          </code>
+                        </p>
+                      ) : null}
+                    </Banner>
+                  ) : (
+                    <Banner tone="critical" title="Message was not delivered">
+                      <p>{testSendResult.error || 'Send failed'}</p>
+                      {testSendResult.diagnostics && (
+                        <dl className={styles.testSendDiag}>
+                          <dt>SMTP configured</dt>
+                          <dd>{testSendResult.diagnostics.smtpConfigured ? 'Yes' : 'No'}</dd>
+                          {testSendResult.diagnostics.smtpHost ? (
+                            <>
+                              <dt>SMTP host</dt>
+                              <dd>
+                                <code className={styles.testSendCode}>
+                                  {testSendResult.diagnostics.smtpHost}
+                                </code>
+                              </dd>
+                            </>
+                          ) : null}
+                          {testSendResult.diagnostics.code ? (
+                            <>
+                              <dt>Error code</dt>
+                              <dd>
+                                <code className={styles.testSendCode}>
+                                  {testSendResult.diagnostics.code}
+                                </code>
+                              </dd>
+                            </>
+                          ) : null}
+                          {testSendResult.diagnostics.responseHint ? (
+                            <>
+                              <dt>Server response (truncated)</dt>
+                              <dd>
+                                <pre className={styles.testSendPre}>
+                                  {testSendResult.diagnostics.responseHint}
+                                </pre>
+                              </dd>
+                            </>
+                          ) : null}
+                        </dl>
+                      )}
+                    </Banner>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+          {!canSendTest && (
+            <Banner tone="info">
+              Test email sending is limited to Admin and Superadmin roles. Ask a superadmin to grant
+              your account the Admin role, or use an admin API session.
+            </Banner>
+          )}
           {!isLoading && processes.length > 0 && (
             <div className={styles.summaryBar}>
               <div className={styles.summaryStats}>

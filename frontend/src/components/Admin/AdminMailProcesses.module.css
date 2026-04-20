@@ -84,6 +84,91 @@
   max-width: 48rem;
 }
 
+/* ========== Test send ========== */
+.testSendCard {
+  padding: 1.25rem 1.5rem;
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border-secondary, #e5e7eb);
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme='dark'] .testSendCard {
+  border-color: var(--border-secondary);
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.2);
+}
+
+.testSendHeader {
+  margin-bottom: 1rem;
+}
+
+.testSendHeader h2 {
+  margin: 0 0 0.35rem;
+}
+
+.testSendRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem;
+}
+
+.testSendField {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.testSendActions {
+  flex: 0 0 auto;
+}
+
+.testSendOutcome {
+  margin-top: 1rem;
+}
+
+.testSendMeta {
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary, #6b7280);
+}
+
+.testSendDiag {
+  margin: 0.75rem 0 0;
+  font-size: 0.8125rem;
+}
+
+.testSendDiag dt {
+  font-weight: 600;
+  margin-top: 0.5rem;
+  color: var(--text-secondary, #6b7280);
+}
+
+.testSendDiag dd {
+  margin: 0.15rem 0 0;
+}
+
+.testSendCode {
+  font-size: 0.75rem;
+  word-break: break-all;
+}
+
+.testSendPre {
+  margin: 0.25rem 0 0;
+  padding: 0.65rem 0.75rem;
+  background: var(--bg-secondary, #f3f4f6);
+  border-radius: 8px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 12rem;
+  overflow: auto;
+}
+
+[data-theme='dark'] .testSendPre {
+  background: rgba(255, 255, 255, 0.06);
+}
+
 /* ========== Processes card ========== */
 .processesCard {
   background: var(--bg-primary, #fff);
