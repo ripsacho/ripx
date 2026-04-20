@@ -154,6 +154,8 @@ git add .
 git commit -m "new fix"
 git push -u origin hotfix/<short-name>
 
+shopify app dev --reset
+
 cd ~/RipX
 git restore "frontend/dist/index.html" "frontend/dist/ripx-storefront.js"
 git clean -fd "frontend/dist/assets"
