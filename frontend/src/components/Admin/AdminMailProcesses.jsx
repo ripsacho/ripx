@@ -375,9 +375,10 @@ export default function AdminMailProcesses() {
                   Send test email
                 </Text>
                 <Text as="p" variant="bodySm" tone="subdued">
-                  Delivers a short non-transactional message to verify SMTP and inbox delivery. Not
-                  affected by the “Paused” toggles below. Server logs include the outcome for
-                  support.
+                  Sends a short test through your configured SMTP (e.g. Amazon SES). A green result
+                  means the <strong>SMTP server accepted</strong> the message from RipX — it does
+                  not guarantee the message reached the recipient inbox. Not affected by the
+                  “Paused” toggles below.
                 </Text>
               </div>
               <div className={styles.testSendRow}>
@@ -408,24 +409,38 @@ export default function AdminMailProcesses() {
               {testSendResult && (
                 <div className={styles.testSendOutcome}>
                   {testSendResult.ok ? (
-                    <Banner tone="success" title="SMTP accepted the message">
-                      <p>
-                        Check the recipient inbox (and spam).{' '}
+                    <Banner tone="success" title="SMTP server accepted the message">
+                      <BlockStack gap="300">
+                        <Text as="p" variant="bodySm">
+                          RipX successfully handed off to your mail provider (e.g. SES).{' '}
+                          <strong>Inbox delivery is a separate step:</strong> Microsoft 365 and
+                          others may quarantine or drop mail that fails SPF/DKIM/DMARC, or when the
+                          recipient is on the <strong>same domain</strong> as the From address but
+                          the message path is external (common when sending via SES).
+                        </Text>
+                        <Text as="p" variant="bodySm" tone="subdued">
+                          If Outlook shows nothing (not even Junk): run a{' '}
+                          <strong>Message trace</strong> and check <strong>Quarantine</strong> in
+                          the Microsoft 365 admin center for this recipient and time. In AWS, open
+                          SES → Sending / suppression and confirm the address is not bouncing.
+                          Ensure SPF includes SES, DKIM is enabled for your domain in SES, and DMARC
+                          aligns with how you send.
+                        </Text>
                         {testSendResult.messageId ? (
-                          <>
+                          <Text as="p" variant="bodySm">
                             Message-ID:{' '}
                             <code className={styles.testSendCode}>{testSendResult.messageId}</code>
-                          </>
+                          </Text>
                         ) : null}
-                      </p>
-                      {testSendResult.diagnostics?.smtpHost ? (
-                        <p className={styles.testSendMeta}>
-                          Host:{' '}
-                          <code className={styles.testSendCode}>
-                            {testSendResult.diagnostics.smtpHost}
-                          </code>
-                        </p>
-                      ) : null}
+                        {testSendResult.diagnostics?.smtpHost ? (
+                          <Text as="p" variant="bodySm" tone="subdued">
+                            SMTP host:{' '}
+                            <code className={styles.testSendCode}>
+                              {testSendResult.diagnostics.smtpHost}
+                            </code>
+                          </Text>
+                        ) : null}
+                      </BlockStack>
                     </Banner>
                   ) : (
                     <Banner tone="critical" title="Message was not delivered">
