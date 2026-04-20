@@ -369,9 +369,11 @@ describe('checkoutReadinessService', () => {
     ).toBe(false);
   });
 
-  it('blocks checkout experience readiness when collection-fed sections are configured without read_collections scope', async () => {
+  it('blocks checkout experience readiness when collection-fed sections are configured without read_products scope', async () => {
     process.env.APP_URL = 'https://app.ripx.com';
-    setShopifyEnv();
+    process.env.SHOPIFY_API_KEY = 'test-key';
+    process.env.SHOPIFY_API_SECRET = 'test-secret';
+    process.env.SHOPIFY_SCOPES = 'read_orders,read_content';
 
     const { buildTestCheckoutReadiness } = require('../checkoutReadinessService');
     const readiness = await buildTestCheckoutReadiness({
@@ -426,11 +428,11 @@ describe('checkoutReadinessService', () => {
     ).toBe(false);
   });
 
-  it('passes collection scope check when read_collections is configured for collection-fed checkout', async () => {
+  it('passes collection scope check when read_products is configured for collection-fed checkout', async () => {
     process.env.APP_URL = 'https://app.ripx.com';
     process.env.SHOPIFY_API_KEY = 'test-key';
     process.env.SHOPIFY_API_SECRET = 'test-secret';
-    process.env.SHOPIFY_SCOPES = 'read_products,read_collections';
+    process.env.SHOPIFY_SCOPES = 'read_products';
 
     const { buildTestCheckoutReadiness } = require('../checkoutReadinessService');
     const readiness = await buildTestCheckoutReadiness({

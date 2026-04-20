@@ -589,7 +589,7 @@ async function buildCheckoutExperienceReadiness({
       .split(',')
       .map(s => s.trim())
       .filter(Boolean);
-    const hasReadCollectionsScope = configuredScopes.includes('read_collections');
+    const hasReadProductsScope = configuredScopes.includes('read_products');
     const uiDiagnostics = buildCheckoutUiExtensionDiagnostics({
       test: normalizedTest,
       shopDomain,
@@ -616,11 +616,11 @@ async function buildCheckoutExperienceReadiness({
         ? [
             buildCheck(
               'checkout_collection_scope_configured',
-              hasReadCollectionsScope,
+              hasReadProductsScope,
               'error',
-              hasReadCollectionsScope
-                ? 'SHOPIFY_SCOPES includes read_collections for collection-fed checkout product lists.'
-                : 'Collection-fed checkout product lists require read_collections in SHOPIFY_SCOPES and shopify.app.toml; reinstall the app on the shop after updating scopes.'
+              hasReadProductsScope
+                ? 'SHOPIFY_SCOPES includes read_products for collection-fed checkout product lists (Admin API collections use this scope).'
+                : 'Collection-fed checkout product lists require read_products in SHOPIFY_SCOPES and shopify.app.toml; reinstall the app on the shop after updating scopes.'
             ),
           ]
         : []),
