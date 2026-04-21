@@ -84,7 +84,7 @@ function AppDomainLayout() {
   }, [domain, validDomain]);
 
   const {
-    data: storesData,
+    data: connectionData,
     isError,
     error,
     isLoading,
@@ -92,19 +92,20 @@ function AppDomainLayout() {
     isFetching,
     refetch,
   } = useQuery({
-    queryKey: ['account', 'stores', 'layout', domain],
-    queryFn: () => apiGet('/account/stores'),
+    queryKey: ['shopify', 'connection-gate', domain],
+    queryFn: async () => {
+      const res = await apiGet('/shopify/connection-status');
+      return res?.data?.data ?? res?.data ?? {};
+    },
     retry: false,
-    staleTime: 60 * 1000,
+    // For gate checks, prefer shop-auth truth source over account store list to avoid false negatives
+    // when a browser has an email token for a different user account.
+    staleTime: 5 * 60 * 1000,
     enabled: Boolean(validDomain && needsShopifySessionCheck && storeSynced),
   });
 
   const is401 = isError && error?.response?.status === 401;
-  const raw = storesData?.data?.data ?? storesData?.data;
-  const stores = raw?.stores ?? [];
-  const connected = stores.some(
-    s => (s.domain || '').toLowerCase() === (domain || '').toLowerCase()
-  );
+  const connected = Boolean(connectionData?.connected);
   const notConnected = needsShopifySessionCheck && isFetched && (is401 || isError || !connected);
 
   const openConnectPopup = useCallback(() => {

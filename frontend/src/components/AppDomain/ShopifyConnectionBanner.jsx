@@ -14,8 +14,10 @@ import { apiGet, getConnectUrl, redirectToAppUrl } from '../../services';
 import { ROUTES } from '../../constants';
 import { isShopifyStoreDomain, normalizeShopifyDomain } from '../../utils/shopifyAdmin';
 
-const CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-const CONNECTION_STATUS_STALE_MS = 2 * 60 * 1000; // consider fresh for 2 min
+/** When disconnected, poll so a completed OAuth in another tab clears the banner without full reload. */
+const RECHECK_WHEN_DISCONNECTED_MS = 90 * 1000;
+/** Healthy embeds: treat as fresh longer to avoid redundant auth traffic (connection-status mirrors shop auth). */
+const CONNECTION_STATUS_STALE_MS = 5 * 60 * 1000;
 
 function ShopifyConnectionBanner() {
   const { domain } = useParams();
@@ -35,8 +37,9 @@ function ShopifyConnectionBanner() {
     },
     retry: false,
     staleTime: CONNECTION_STATUS_STALE_MS,
-    refetchInterval: CHECK_INTERVAL_MS,
-    refetchIntervalInBackground: true,
+    // Poll only while the banner would show; when connected, rely on staleTime + refetchOnWindowFocus (default).
+    refetchInterval: query => (query.state.data?.connected ? false : RECHECK_WHEN_DISCONNECTED_MS),
+    refetchIntervalInBackground: false,
     enabled: Boolean(domain && isShopify),
   });
 
