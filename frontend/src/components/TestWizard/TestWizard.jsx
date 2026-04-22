@@ -212,6 +212,10 @@ function TestWizard({
     const normalized = value.map(item => normalizeTargetIdValue(item)).filter(Boolean);
     return normalized.length > 0 ? normalized : [];
   };
+  const normalizeTextValue = value => {
+    if (value === null || value === undefined) return '';
+    return String(value).trim();
+  };
 
   useEffect(() => {
     if (!variantDropdownOpen) return;
@@ -891,12 +895,16 @@ function TestWizard({
       >
         <span className="wizard-title-content">
           <Text variant="headingLg" as="span">
-            {formData.name?.trim() || initialData?.name?.trim() || 'Untitled Test'}
+            {normalizeTextValue(formData.name) ||
+              normalizeTextValue(initialData?.name) ||
+              'Untitled Test'}
           </Text>
-          {(formData.description?.trim() || initialData?.description?.trim()) && (
+          {(normalizeTextValue(formData.description) ||
+            normalizeTextValue(initialData?.description)) && (
             <Text variant="bodyMd" color="subdued" as="span" className="wizard-title-description">
               {' · '}
-              {formData.description?.trim() || initialData?.description?.trim()}
+              {normalizeTextValue(formData.description) ||
+                normalizeTextValue(initialData?.description)}
             </Text>
           )}
         </span>
@@ -2858,14 +2866,15 @@ function TestWizard({
     const form = formDataRef.current;
     const codes = variantCodesDataRef.current;
     const payload = buildPayload(form, codes);
-    const nameToUse = (payload.name?.trim() || initialData?.name?.trim()) ?? '';
+    const nameToUse =
+      normalizeTextValue(payload.name) || normalizeTextValue(initialData?.name) || '';
     if (!nameToUse) {
       setError('Test name is required.');
       return;
     }
     const payloadWithName = { ...payload, name: nameToUse.trim() };
-    if (!payload.name?.trim() && initialData?.name?.trim()) {
-      setFormData(prev => ({ ...prev, name: initialData.name.trim() }));
+    if (!normalizeTextValue(payload.name) && normalizeTextValue(initialData?.name)) {
+      setFormData(prev => ({ ...prev, name: normalizeTextValue(initialData?.name) }));
     }
 
     setLoading(true);
@@ -15156,8 +15165,8 @@ function TestWizard({
     const targetingParts = [
       (reviewSegments.page_rules || []).length > 0
         ? `${reviewSegments.page_rules.length} page rule(s)`
-        : reviewSegments.url_pattern?.trim()
-          ? `URL: ${reviewSegments.url_pattern}`
+        : normalizeTextValue(reviewSegments.url_pattern)
+          ? `URL: ${normalizeTextValue(reviewSegments.url_pattern)}`
           : 'All pages',
       (reviewSegments.device_rules || []).length > 0
         ? `${reviewSegments.device_rules.length} device rule(s)`
@@ -15380,13 +15389,15 @@ function TestWizard({
                   : 'Frequentist (p-values)'}
               </span>
             </div>
-            {(formData.goal?.conversion_url || initialData?.goal?.conversion_url)?.trim() && (
+            {normalizeTextValue(
+              formData.goal?.conversion_url || initialData?.goal?.conversion_url
+            ) && (
               <div className={stepStyles.reviewItem}>
                 <span className={stepStyles.reviewItemLabel}>Goal URL</span>
                 <span className={stepStyles.reviewItemValue}>
-                  {String(
+                  {normalizeTextValue(
                     formData.goal?.conversion_url || initialData?.goal?.conversion_url || ''
-                  ).trim()}
+                  )}
                 </span>
               </div>
             )}
@@ -16700,18 +16711,18 @@ function TestWizard({
                 Preview
               </Text>
               <Text as="p" variant="bodyMd">
-                {titleEditDraft.name?.trim() ||
-                  formData.name?.trim() ||
-                  initialData?.name?.trim() ||
+                {normalizeTextValue(titleEditDraft.name) ||
+                  normalizeTextValue(formData.name) ||
+                  normalizeTextValue(initialData?.name) ||
                   'Untitled Test'}
               </Text>
-              {(titleEditDraft.description?.trim() ||
-                formData.description?.trim() ||
-                initialData?.description?.trim()) && (
+              {(normalizeTextValue(titleEditDraft.description) ||
+                normalizeTextValue(formData.description) ||
+                normalizeTextValue(initialData?.description)) && (
                 <Text as="p" variant="bodySm" tone="subdued">
-                  {titleEditDraft.description?.trim() ||
-                    formData.description?.trim() ||
-                    initialData?.description?.trim()}
+                  {normalizeTextValue(titleEditDraft.description) ||
+                    normalizeTextValue(formData.description) ||
+                    normalizeTextValue(initialData?.description)}
                 </Text>
               )}
             </div>

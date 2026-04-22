@@ -16,7 +16,8 @@ cp .env.example .env
 npm run dev:db && npm run migrate
 # If the DB already had migrations applied before tracking: npm run migrate:mark-applied (once)
 npm run dev
-npm run shopify:dev   # or: shopify app dev --reset
+npm run shopify:dev:local:safe   # local/dev Partner app with env/client_id guard
+npm run shopify:deploy:production:safe   # production Partner app with env/client_id guard
 npm run build         # production frontend build
 # Checkout price function (Shopify Plus + network access): set APP_URL / secrets in .env, then:
 # npm run shopify:checkout-discount:prepare && shopify app deploy
@@ -31,6 +32,38 @@ npm run build         # production frontend build
 # Pricing method behavior:
 # - Price tests are now Direct Price Override only (matrix editor in Test Wizard).
 # - Offer tests use the checkout discount function path.
+```
+
+## Shopify Client IDs by environment
+
+RipX supports different Shopify app Client IDs for local and production.
+
+- `shopify.app.local.toml`: local/dev app config (use a dedicated dev Client ID)
+- `shopify.app.production.toml`: production app config
+- `shopify.app.toml`: default baseline (kept as production-oriented fallback)
+
+Recommended workflow:
+
+```bash
+# Local development against the dev app
+npm run shopify:dev:local:safe
+
+# Deploy to production app explicitly
+npm run shopify:deploy:production:safe
+```
+
+Important:
+
+- In each environment, keep `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `VITE_SHOPIFY_API_KEY`, and the active Shopify app config `client_id` aligned to the same app.
+- Do not share the same DB + same store between local and production installs if they use different apps; `shop_sessions` are keyed by `shop_domain` and can overwrite tokens.
+
+Guard commands (run standalone if needed):
+
+```bash
+npm run shopify:guard:local
+npm run shopify:guard:production
+# Custom env file example:
+node scripts/verify-shopify-config-match.js --config shopify.app.production.toml --env-file .env.production
 ```
 
 Checkout experience tests that use **collection-fed** product lists need **`read_products`** in `shopify.app.toml` and `SHOPIFY_SCOPES` (Shopify does not expose a separate `read_collections` OAuth scope; deploy fails if it is listed). After any scope change, reinstall the app on the shop so access tokens include the new permission.
