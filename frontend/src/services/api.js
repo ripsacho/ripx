@@ -839,13 +839,15 @@ export function apiRequest(method, endpoint, data = null, config = {}) {
   const url = `${API_BASE_URL}${endpoint}`;
 
   const emailToken = getEmailToken();
-  const allowedWithoutShopOrKey =
-    emailToken &&
-    (endpoint.startsWith('/admin/') ||
-      endpoint.startsWith('/me/') ||
-      endpoint.startsWith('/auth/start') ||
-      endpoint.startsWith('/account/stores') ||
-      endpoint.startsWith('/support/'));
+  const canUseEmailSessionForEndpoint =
+    endpoint.startsWith('/admin/') ||
+    endpoint.startsWith('/me/') ||
+    endpoint.startsWith('/auth/start') ||
+    endpoint.startsWith('/account/stores') ||
+    endpoint.startsWith('/support/') ||
+    endpoint.startsWith('/tests');
+  const needsShopContextWithEmailSession = endpoint.startsWith('/tests');
+  const allowedWithoutShopOrKey = emailToken && canUseEmailSessionForEndpoint;
   if (!shopDomain && !apiKey && !allowedWithoutShopOrKey) {
     throw new Error('Missing credentials. Open from Shopify Admin or set API key.');
   }
@@ -854,13 +856,7 @@ export function apiRequest(method, endpoint, data = null, config = {}) {
   const { params: configParams = {}, headers: configHeaders = {}, ...restConfig } = config;
 
   // Use email session for admin/me, auth/start, account/stores, and support (so Bearer token is sent when logged in)
-  const useEmailSession =
-    getEmailToken() &&
-    (endpoint.startsWith('/admin/') ||
-      endpoint.startsWith('/me/') ||
-      endpoint.startsWith('/auth/start') ||
-      endpoint.startsWith('/account/stores') ||
-      endpoint.startsWith('/support/'));
+  const useEmailSession = getEmailToken() && canUseEmailSessionForEndpoint;
 
   // When on /app/:domain, pass store so /account/stores returns correct currentStore.
   // Outside domain-scoped routes, avoid forcing a specific store context.
@@ -869,11 +865,15 @@ export function apiRequest(method, endpoint, data = null, config = {}) {
   const isOnAppDomainRoute = /^\/app\/[^/]+/.test(currentPath);
   const storeParam =
     endpoint === '/account/stores' && shopDomain && isOnAppDomainRoute ? { store: shopDomain } : {};
+  const emailSessionShopParam =
+    useEmailSession && shopDomain && isOnAppDomainRoute && needsShopContextWithEmailSession
+      ? { shop: shopDomain }
+      : {};
   const requestConfig = {
     method,
     url,
     params: useEmailSession
-      ? { ...storeParam, ...configParams }
+      ? { ...storeParam, ...emailSessionShopParam, ...configParams }
       : shopDomain
         ? { shop: shopDomain, ...configParams }
         : configParams,
