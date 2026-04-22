@@ -203,6 +203,15 @@ function TestWizard({
   const [codeEditorSubTab, setCodeEditorSubTab] = useState('css'); // 'css' | 'js' – IDE-style tab blend
   const [variantDropdownOpen, setVariantDropdownOpen] = useState(false);
   const variantDropdownRef = useRef(null);
+  const normalizeTargetIdValue = value => {
+    if (value === null || value === undefined) return '';
+    return String(value).trim();
+  };
+  const normalizeTargetIdList = value => {
+    if (!Array.isArray(value)) return null;
+    const normalized = value.map(item => normalizeTargetIdValue(item)).filter(Boolean);
+    return normalized.length > 0 ? normalized : [];
+  };
 
   useEffect(() => {
     if (!variantDropdownOpen) return;
@@ -1869,7 +1878,10 @@ function TestWizard({
       const isNewTest = nextTestId && nextTestId !== previousTestIdRef.current;
       const isSameTest = nextTestId && nextTestId === previousTestIdRef.current;
       const presets = ['/products/', '/collections/', '/cart', '^/$|^/index', ''];
-      const serverVariantCount = (initialData.variants || []).filter(Boolean).length;
+      const initialVariants = Array.isArray(initialData.variants)
+        ? initialData.variants
+        : DEFAULT_FORM_DATA.variants;
+      const serverVariantCount = initialVariants.filter(Boolean).length;
       const formVariantCount = (formData.variants || []).filter(Boolean).length;
       const serverHasMoreVariants = serverVariantCount > formVariantCount;
 
@@ -1894,8 +1906,8 @@ function TestWizard({
         description: initialData.description || '',
         type: initialData.type || DEFAULT_FORM_DATA.type,
         target_type: initialData.target_type || DEFAULT_FORM_DATA.target_type,
-        target_id: initialData.target_id || '',
-        target_ids: initialData.target_ids || null,
+        target_id: normalizeTargetIdValue(initialData.target_id),
+        target_ids: normalizeTargetIdList(initialData.target_ids),
         goal: {
           ...DEFAULT_FORM_DATA.goal,
           ...(initialData.goal || {}),
@@ -1903,7 +1915,7 @@ function TestWizard({
             ? [...initialData.goal.secondary]
             : [],
         },
-        variants: (initialData.variants || DEFAULT_FORM_DATA.variants).map((rawVariant, vIdx) => {
+        variants: initialVariants.map((rawVariant, vIdx) => {
           const variant = normalizeVariantPriceConfigShape(rawVariant);
           const config =
             variant.config && typeof variant.config === 'object' ? { ...variant.config } : {};
@@ -1941,7 +1953,7 @@ function TestWizard({
         })(),
         holdout_percent: initialData.holdout_percent ?? DEFAULT_FORM_DATA.holdout_percent,
         pricePerProduct:
-          (initialData.variants || []).some(
+          initialVariants.some(
             v =>
               v?.config?.byProduct &&
               typeof v.config.byProduct === 'object' &&
@@ -1977,7 +1989,9 @@ function TestWizard({
     if (mode !== 'edit') return;
     if (!initialData) return;
 
-    const serverVariants = (initialData.variants || []).filter(Boolean);
+    const serverVariants = Array.isArray(initialData.variants)
+      ? initialData.variants.filter(Boolean)
+      : [];
     const formVariants = (formData.variants || []).filter(Boolean);
     const variantCountMismatch = serverVariants.length !== formVariants.length;
 
@@ -5019,11 +5033,10 @@ function TestWizard({
                                               })()
                                             )}
                                           </div>
-                                          {(!formData.target_id || !formData.target_id.trim()) &&
+                                          {!normalizeTargetIdValue(formData.target_id) &&
                                             (!formData.target_ids ||
                                               formData.target_ids.length === 0) &&
-                                            (!initialData?.target_id ||
-                                              !initialData.target_id.trim()) &&
+                                            !normalizeTargetIdValue(initialData?.target_id) &&
                                             (!initialData?.target_ids ||
                                               initialData.target_ids.length === 0) && (
                                               <Text as="p" variant="bodySm" tone="critical">
