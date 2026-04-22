@@ -270,9 +270,17 @@ function UserPanel() {
     setOpeningDomain(domain);
     const isShopify = isShopifyStoreDomain(domain);
     const normalized = isShopify ? normalizeShopifyDomain(domain) : domain;
+    const isLinkedEmailShop =
+      useEmailDomains &&
+      isShopify &&
+      domains.some(d => normalizeShopifyDomain(d?.domain || '') === normalized);
     const key = accountKey || (domainKeys && (domainKeys[domain] || domainKeys[normalized]));
     try {
       if (isShopify) {
+        if (isLinkedEmailShop) {
+          openDomainApp(normalized);
+          return;
+        }
         // Pre-open popup in direct click gesture so browsers don't block later OAuth navigation.
         const preOpenedPopup = openCenteredPopup('about:blank');
         if (preOpenedPopup) {

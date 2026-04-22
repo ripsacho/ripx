@@ -17,6 +17,7 @@ import {
   getDomainKeys,
   hasEmailSession,
   apiGet,
+  apiMeGet,
   openCenteredPopup,
 } from '../../services';
 import { isShopifyStoreDomain, normalizeShopifyDomain } from '../../utils/shopifyAdmin';
@@ -61,6 +62,7 @@ function AppDomainLayout() {
     accountKey ||
     (domain && (domainKeys[domain] || domainKeys[normalizeShopifyDomain(domain)]));
   const isShopify = domain ? isShopifyStoreDomain(domain) : false;
+  const normalizedDomain = isShopify ? normalizeShopifyDomain(domain) : domain;
   const needsShopifySessionCheck = isShopify && !keyForDomain;
   const hasEmailAuth = hasEmailSession();
   const isAppSettingsRoute = Boolean(domain) && location.pathname === ROUTES.appSettings(domain);
@@ -104,9 +106,37 @@ function AppDomainLayout() {
     enabled: Boolean(validDomain && needsShopifySessionCheck && storeSynced),
   });
 
+  const {
+    data: linkedEmailStoreData,
+    isLoading: isLinkedEmailStoreLoading,
+    isFetched: isLinkedEmailStoreFetched,
+  } = useQuery({
+    queryKey: ['shopify', 'linked-email-store', normalizedDomain],
+    queryFn: async () => {
+      const res = await apiMeGet('/me/domains');
+      const payload = res?.data?.data ?? res?.data ?? {};
+      const domains = Array.isArray(payload?.domains) ? payload.domains : [];
+      return {
+        linked: domains.some(
+          entry =>
+            normalizeShopifyDomain(entry?.domain || '') === normalizeShopifyDomain(domain || '')
+        ),
+      };
+    },
+    retry: false,
+    staleTime: 60 * 1000,
+    enabled: Boolean(validDomain && needsShopifySessionCheck && hasEmailAuth),
+  });
+
   const is401 = isError && error?.response?.status === 401;
   const connected = Boolean(connectionData?.connected);
   const notConnected = needsShopifySessionCheck && isFetched && (is401 || isError || !connected);
+  const linkedEmailStore = hasEmailAuth && linkedEmailStoreData?.linked === true;
+  const waitingOnLinkedEmailStoreCheck =
+    hasEmailAuth &&
+    needsShopifySessionCheck &&
+    !isLinkedEmailStoreFetched &&
+    isLinkedEmailStoreLoading;
 
   const openConnectPopup = useCallback(() => {
     if (!domain) return;
@@ -237,7 +267,12 @@ function AppDomainLayout() {
   }
 
   if (needsShopifySessionCheck) {
-    if (!storeSynced || isLoading || (storeSynced && !isFetched)) {
+    if (
+      !storeSynced ||
+      isLoading ||
+      (storeSynced && !isFetched) ||
+      waitingOnLinkedEmailStoreCheck
+    ) {
       return (
         <>
           {storeSwitchToastEl}
@@ -245,7 +280,7 @@ function AppDomainLayout() {
         </>
       );
     }
-    if (notConnected && !allowDisconnectedSettingsView) {
+    if (notConnected && !allowDisconnectedSettingsView && !linkedEmailStore) {
       return (
         <>
           {storeSwitchToastEl}

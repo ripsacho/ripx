@@ -700,7 +700,9 @@ function DomainList() {
         const raw = res?.data?.data ?? res?.data;
         const domains = raw?.domains ?? [];
         const connected = domains.some(
-          d => (d.domain || '').toLowerCase() === (normalizedDomain || '').toLowerCase()
+          d =>
+            normalizeShopifyDomain(d?.domain || '') ===
+            normalizeShopifyDomain(normalizedDomain || '')
         );
         if (connected) {
           setCurrentStore(normalizedDomain);
@@ -741,7 +743,8 @@ function DomainList() {
       const raw = res?.data?.data ?? res?.data;
       const stores = raw?.stores ?? [];
       const connected = stores.some(
-        s => (s.domain || '').toLowerCase() === (normalizedDomain || '').toLowerCase()
+        s =>
+          normalizeShopifyDomain(s?.domain || '') === normalizeShopifyDomain(normalizedDomain || '')
       );
       if (connected) {
         setCurrentStore(normalizedDomain);
