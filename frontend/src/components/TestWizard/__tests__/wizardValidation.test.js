@@ -408,6 +408,34 @@ describe('wizardValidation', () => {
         expect(errors.some(e => e.includes('amount') && e.includes('valid number'))).toBe(true);
       });
 
+      it('blocks price test progression when direct price override is not installed on the shop', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            name: 'Price Test',
+            type: 'price',
+            goal: { metric: 'revenue' },
+            target_type: 'all-products',
+            variants: [
+              { name: 'Control', config: { priceMode: 'fixed', price: '' } },
+              { name: 'Variant A', config: { priceMode: 'percent', pricePercent: 10 } },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'price',
+          priceExecution: {
+            isShopify: true,
+            isStandalone: false,
+            directPriceOverrideReadiness: 'needs_install',
+          },
+        });
+        expect(errors).toContain(
+          'Price tests currently require Direct Price Override, but the RipX cart transform is not installed on this shop yet. Install/bind it before continuing.'
+        );
+      });
+
       it('returns error for price test when per-product override has invalid fixed price', () => {
         const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
           stepIds: stepIdsWithTemplate,
@@ -824,6 +852,37 @@ describe('wizardValidation', () => {
           showTemplateStep: true,
         });
         expect(errors.filter(e => e.includes('At least one test variant'))).toHaveLength(0);
+      });
+
+      it('blocks price test launch on review when direct price override is not deployed', () => {
+        const errors = getWizardStepErrors(reviewStepId, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId,
+          formData: {
+            name: 'Price Test',
+            type: 'price',
+            goal: { metric: 'revenue' },
+            target_type: 'all-products',
+            variants: [
+              { name: 'Control', allocation: 50, config: { priceMode: 'fixed', price: '' } },
+              {
+                name: 'Variant A',
+                allocation: 50,
+                config: { priceMode: 'percent', pricePercent: 10 },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          priceExecution: {
+            isShopify: true,
+            isStandalone: false,
+            directPriceOverrideReadiness: 'needs_deploy',
+          },
+        });
+        expect(errors).toContain(
+          'Price test launch is blocked because the RipX cart transform is not deployed for this shop yet.'
+        );
       });
 
       it('allows review when first variant has test pricing and later variant is control', () => {

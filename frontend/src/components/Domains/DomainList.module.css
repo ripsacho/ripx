@@ -1027,6 +1027,43 @@
   border-radius: 10px;
 }
 
+.shopifyInstallBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.22rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.shopifyInstallBadge_connected {
+  color: #0f766e;
+  background: rgba(20, 184, 166, 0.14);
+  border-color: rgba(13, 148, 136, 0.35);
+}
+
+.shopifyInstallBadge_needs_install {
+  color: #9a3412;
+  background: rgba(251, 146, 60, 0.16);
+  border-color: rgba(249, 115, 22, 0.4);
+}
+
+.shopifyInstallBadge_checking {
+  color: #1d4ed8;
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(37, 99, 235, 0.3);
+}
+
+.shopifyInstallBadge_unknown {
+  color: var(--text-secondary);
+  background: var(--surface-tertiary);
+  border-color: var(--border-secondary);
+}
+
 .domainActionsWrap .openDomainBtn,
 .domainActionsWrap .connectKeyHintBtn,
 .domainActionsWrap .removeDomainBtn {

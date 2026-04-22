@@ -335,6 +335,7 @@ function DomainList() {
         ) {
           queryClient.invalidateQueries({ queryKey: ['me', 'domains'] });
           queryClient.invalidateQueries({ queryKey: ['account', 'stores'] });
+          queryClient.invalidateQueries({ queryKey: ['domains', 'shopify-install-status'] });
         }
       } catch (_) {
         // Ignore malformed or cross-origin messages
@@ -436,6 +437,35 @@ function DomainList() {
   const isLoading = useEmailDomains ? meLoading : accountStoresLoading;
   const error = useEmailDomains ? meError : accountStoresError;
   const domains = React.useMemo(() => data?.domains ?? [], [data]);
+  const shopifyDomains = React.useMemo(() => {
+    const set = new Set();
+    (domains || []).forEach(d => {
+      const raw = typeof d === 'object' ? d?.domain : d;
+      if (!raw || !isShopifyStoreDomain(raw)) return;
+      set.add(normalizeShopifyDomain(raw));
+    });
+    return Array.from(set);
+  }, [domains]);
+  const { data: shopifyInstallStatus = {} } = useQuery({
+    queryKey: ['domains', 'shopify-install-status', shopifyDomains.join('|')],
+    queryFn: async () => {
+      const pairs = await Promise.all(
+        shopifyDomains.map(async shop => {
+          try {
+            const res = await apiGet('/shopify/connection-status', { shop });
+            const payload = res?.data?.data ?? res?.data ?? {};
+            return [shop, payload?.connected ? 'connected' : 'needs_install'];
+          } catch (err) {
+            if (err?.response?.status === 401) return [shop, 'needs_install'];
+            return [shop, 'unknown'];
+          }
+        })
+      );
+      return Object.fromEntries(pairs);
+    },
+    staleTime: 2 * 60 * 1000,
+    enabled: shopifyDomains.length > 0,
+  });
 
   // Smart resume: if Shopify connect session completed, open that store automatically.
   useEffect(() => {
@@ -457,6 +487,36 @@ function DomainList() {
       getUrlWithEmbedParams(ROUTES.appDashboard(session.shop), { shop: session.shop })
     );
   }, [useEmailDomains, domains]);
+
+  const getShopifyInstallState = domainValue => {
+    if (!isShopifyStoreDomain(domainValue)) return null;
+    const normalized = normalizeShopifyDomain(domainValue);
+    if (openingDomain === normalized) return 'checking';
+    return shopifyInstallStatus?.[normalized] || 'unknown';
+  };
+
+  const getShopifyInstallBadge = domainValue => {
+    const status = getShopifyInstallState(domainValue);
+    if (!status) return null;
+    const labels = {
+      connected: 'Connected',
+      needs_install: 'Needs install',
+      checking: 'Checking…',
+      unknown: 'Status unknown',
+    };
+    return (
+      <span
+        className={`${styles.shopifyInstallBadge} ${styles[`shopifyInstallBadge_${status}`]}`}
+        title={
+          status === 'needs_install'
+            ? 'RipX app is not installed or connected for this Shopify store'
+            : labels[status]
+        }
+      >
+        {labels[status]}
+      </span>
+    );
+  };
 
   // Seamless handoff: after generating install link, auto-continue to the connect page.
   useEffect(() => {
@@ -594,6 +654,29 @@ function DomainList() {
   };
 
   /**
+   * Build a signed install-link URL for a Shopify store.
+   * Returned URL points to /api/auth/install (instruction page) and is safe to copy/open in private mode.
+   */
+  const getInstallLinkForShop = async normalizedShop => {
+    const baseUrl = getApiBaseUrl();
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const installLinkUrl = `${baseUrl}/auth/install-link?shop=${encodeURIComponent(normalizedShop)}${origin ? `&callback_base=${encodeURIComponent(origin)}` : ''}`;
+    const token = getEmailToken();
+    const res = await fetch(installLinkUrl, {
+      credentials: 'include',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    const data = await res.json().catch(() => ({}));
+    const installUrl = data?.url ?? data?.data?.url;
+    return {
+      status: res.status,
+      ok: res.ok,
+      installUrl: typeof installUrl === 'string' ? installUrl : '',
+      error: data?.error || null,
+    };
+  };
+
+  /**
    * @param {string} normalizedDomain
    * @param {boolean} hasKey
    * @param {{ returnOAuthUrl?: boolean }} options - When true and we would redirect to Shopify OAuth, return { redirectUrl } instead so caller can show a user-gesture link (required in embedded Admin iframe).
@@ -607,6 +690,48 @@ function DomainList() {
         shop: normalizedDomain,
       });
       return;
+    }
+    if (isShopifyStoreDomain(normalizedDomain)) {
+      try {
+        const statusRes = await apiGet('/shopify/connection-status', { shop: normalizedDomain });
+        const statusData = statusRes?.data?.data ?? statusRes?.data ?? {};
+        if (statusData?.connected) {
+          setCurrentStore(normalizedDomain);
+          window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalizedDomain), {
+            shop: normalizedDomain,
+          });
+          return;
+        }
+      } catch (statusErr) {
+        if (statusErr?.response?.status === 401) {
+          try {
+            const install = await getInstallLinkForShop(normalizedDomain);
+            if (install.status === 401) {
+              if (returnOAuthUrl) return { signInRequired: true, shop: normalizedDomain };
+              setSignInRequiredShop(normalizedDomain);
+              return;
+            }
+            const origin = typeof window !== 'undefined' ? window.location.origin : '';
+            const fallbackUrl = `${origin}/api/auth?shop=${encodeURIComponent(normalizedDomain)}${origin ? `&callback_base=${encodeURIComponent(origin)}` : ''}`;
+            const nextUrl = install.installUrl || fallbackUrl;
+            if (returnOAuthUrl) {
+              return {
+                installRequired: true,
+                shop: normalizedDomain,
+                redirectUrl: nextUrl,
+              };
+            }
+            setStartOAuthNewTab({
+              url: nextUrl,
+              shop: normalizedDomain,
+              mode: 'install_required',
+            });
+            return;
+          } catch (_) {
+            // If install-link fetch fails, fall through to existing auth/start logic.
+          }
+        }
+      }
     }
     // Prevent 401 interceptor from redirecting so we can redirect with shop/reason from catch
     if (returnOAuthUrl && typeof window !== 'undefined') {
@@ -723,6 +848,8 @@ function DomainList() {
   const handleOpen = async domainRow => {
     const domain = typeof domainRow === 'object' ? domainRow?.domain : domainRow;
     if (!domain || openingDomain) return;
+    setStartOAuthNewTab(null);
+    setSignInRequiredShop(null);
     const isShopify = isShopifyStoreDomain(domain);
     const normalizedDomain = isShopify ? normalizeShopifyDomain(domain) : domain;
     if (isShopify) {
@@ -757,6 +884,8 @@ function DomainList() {
   const handleOpenApp = async domain => {
     const d = typeof domain === 'object' ? domain?.domain : domain;
     if (!d || openingDomain) return;
+    setStartOAuthNewTab(null);
+    setSignInRequiredShop(null);
     const isShopify = isShopifyStoreDomain(d);
     const normalized = isShopify ? normalizeShopifyDomain(d) : d;
     const key = getAccountApiKey() || getDomainKeys()[d] || getDomainKeys()[normalized];
@@ -1163,6 +1292,12 @@ function DomainList() {
     isShopifyStoreDomain(d?.domain) ? 'shopify' : d?.platform || 'standalone';
   const rows = useEmailDomains
     ? domains.map(d => {
+        const installState = getShopifyInstallState(d.domain);
+        const openLabel = isShopifyStoreDomain(d.domain)
+          ? installState === 'needs_install'
+            ? 'Install app'
+            : 'Open app'
+          : 'Open';
         const keyForDomain = accountKey || domainKeys[d.domain];
         return [
           d.domain,
@@ -1172,15 +1307,16 @@ function DomainList() {
           d.myRole || '—',
           <span key={`actions-${d.id}`} className={styles.domainActionsCell}>
             <div className={styles.domainActionsWrap}>
+              {getShopifyInstallBadge(d.domain)}
               {keyForDomain ? (
                 <button
                   type="button"
                   className={styles.openDomainBtn}
                   onClick={() => handleOpen(d)}
-                  aria-label={`Open ${d.domain}`}
+                  aria-label={`${openLabel} for ${d.domain}`}
                 >
                   <Icon source={ExternalIcon} />
-                  <span>Open</span>
+                  <span>{openLabel}</span>
                 </button>
               ) : (
                 <Tooltip content="Paste your API key to open this domain">
@@ -1212,31 +1348,39 @@ function DomainList() {
           </span>,
         ];
       })
-    : domains.map(d => [
-        d.domain,
-        displayPlatform(d),
-        <div key={`open-${d.domain}`} className={styles.domainActionsWrap}>
-          <button
-            type="button"
-            className={styles.openDomainBtn}
-            onClick={() => handleOpenApp(d.domain)}
-            aria-label={`Open app for ${d.domain}`}
-            disabled={!!openingDomain}
-          >
-            {openingDomain === (isShopifyStoreDomain(d) ? normalizeShopifyDomain(d) : d) ? (
-              <>
-                <Spinner size="small" accessibilityLabel="Connecting" />
-                <span>Connecting…</span>
-              </>
-            ) : (
-              <>
-                <Icon source={ExternalIcon} />
-                <span>Open app</span>
-              </>
-            )}
-          </button>
-        </div>,
-      ]);
+    : domains.map(d => {
+        const installState = getShopifyInstallState(d.domain);
+        const openLabel =
+          isShopifyStoreDomain(d.domain) && installState === 'needs_install'
+            ? 'Install app'
+            : 'Open app';
+        return [
+          d.domain,
+          displayPlatform(d),
+          <div key={`open-${d.domain}`} className={styles.domainActionsWrap}>
+            {getShopifyInstallBadge(d.domain)}
+            <button
+              type="button"
+              className={styles.openDomainBtn}
+              onClick={() => handleOpenApp(d.domain)}
+              aria-label={`${openLabel} for ${d.domain}`}
+              disabled={!!openingDomain}
+            >
+              {openingDomain === (isShopifyStoreDomain(d) ? normalizeShopifyDomain(d) : d) ? (
+                <>
+                  <Spinner size="small" accessibilityLabel="Opening" />
+                  <span>Opening…</span>
+                </>
+              ) : (
+                <>
+                  <Icon source={ExternalIcon} />
+                  <span>{openLabel}</span>
+                </>
+              )}
+            </button>
+          </div>,
+        ];
+      });
 
   const isEmpty = domains.length === 0 && !isLoading && !error;
   const emptyStateMarkup =
@@ -1377,13 +1521,28 @@ function DomainList() {
                 <div className={styles.bannerWrap}>
                   <Banner
                     tone="info"
-                    title="Connect this store"
+                    title={
+                      startOAuthNewTab.mode === 'install_required'
+                        ? 'App not installed for this store'
+                        : 'Connect this store'
+                    }
                     onDismiss={() => setStartOAuthNewTab(null)}
                   >
                     <p>
-                      To connect <strong>{startOAuthNewTab.shop}</strong>: click &quot;Continue to
-                      Shopify&quot; to open the connection flow in this window. Or copy the link to
-                      open in a private window.
+                      {startOAuthNewTab.mode === 'install_required' ? (
+                        <>
+                          <strong>{startOAuthNewTab.shop}</strong> is not installed (or is no longer
+                          connected). Click <strong>Install in Shopify</strong> to install/reconnect
+                          this exact store. You can also copy the link and open it in a private
+                          window.
+                        </>
+                      ) : (
+                        <>
+                          To connect <strong>{startOAuthNewTab.shop}</strong>: click &quot;Continue
+                          to Shopify&quot; to open the connection flow in this window. Or copy the
+                          link to open in a private window.
+                        </>
+                      )}
                     </p>
                     <p style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 12 }}>
                       <a
@@ -1392,7 +1551,9 @@ function DomainList() {
                         rel="noopener noreferrer"
                         className={styles.continueToShopifyButton}
                       >
-                        Continue to Shopify
+                        {startOAuthNewTab.mode === 'install_required'
+                          ? 'Install in Shopify'
+                          : 'Continue to Shopify'}
                       </a>
                       <Button
                         icon={ClipboardIcon}

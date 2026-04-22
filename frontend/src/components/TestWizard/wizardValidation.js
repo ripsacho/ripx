@@ -36,9 +36,15 @@ export function getWizardStepErrors(stepId, options) {
     selectedTemplate,
     cssValidationErrors = [],
     jsValidationErrors = [],
+    priceExecution = {},
   } = options;
 
   const errors = [];
+  const priceDirectOverrideReadiness = String(
+    priceExecution?.directPriceOverrideReadiness || ''
+  ).toLowerCase();
+  const shouldEnforcePriceDirectOverrideReadiness =
+    priceExecution?.isShopify === true && priceExecution?.isStandalone !== true;
 
   /** Returns true if config has a valid price/discount value for price test variants */
   function configHasPrice(cfg) {
@@ -589,6 +595,16 @@ export function getWizardStepErrors(stepId, options) {
           'At least one test variant (non-control) must have a price configured. Go to Traffic step → Variant configuration.'
         );
       }
+      if (
+        shouldEnforcePriceDirectOverrideReadiness &&
+        ['needs_install', 'needs_deploy'].includes(priceDirectOverrideReadiness)
+      ) {
+        errors.push(
+          priceDirectOverrideReadiness === 'needs_install'
+            ? 'Price tests currently require Direct Price Override, but the RipX cart transform is not installed on this shop yet. Install/bind it before continuing.'
+            : 'Price tests currently require Direct Price Override, but the RipX cart transform is not deployed for this shop yet. Deploy it before continuing.'
+        );
+      }
     }
     // Split-URL: non-empty url must be valid
     const isSplitUrl =
@@ -806,6 +822,16 @@ export function getWizardStepErrors(stepId, options) {
           });
         });
       });
+      if (
+        shouldEnforcePriceDirectOverrideReadiness &&
+        ['needs_install', 'needs_deploy'].includes(priceDirectOverrideReadiness)
+      ) {
+        errors.push(
+          priceDirectOverrideReadiness === 'needs_install'
+            ? 'Price test launch is blocked because the RipX cart transform is not installed on this shop yet.'
+            : 'Price test launch is blocked because the RipX cart transform is not deployed for this shop yet.'
+        );
+      }
     }
     const targetType = formData.target_type || initialData?.target_type;
     const pageRules = formData.segments?.page_rules || initialData?.segments?.page_rules || [];

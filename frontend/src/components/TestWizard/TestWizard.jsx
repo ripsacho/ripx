@@ -83,7 +83,7 @@ import {
   computeEffectivePrice as computeSimulationPrice,
   configUsesCompareAtBase,
 } from '../../utils/priceSimulation';
-import { ROUTES, STANDALONE_TEST_TYPE_IDS } from '../../constants';
+import { ROUTES } from '../../constants';
 import {
   TEST_TEMPLATES,
   TEST_TYPE_CATEGORIES,
@@ -96,7 +96,55 @@ import {
   canShowShippingExecution,
   shouldDisableShippingExecution,
 } from './reviewShippingExecution';
-import { getDefaultTestTypeState, normalizeTestTypeKey } from '../../utils/testTypeControls';
+import { DEFAULT_FORM_DATA } from './defaultFormData';
+import { useStickyProgressBar } from './hooks/useStickyProgressBar';
+import { useTestTypeControls } from './hooks/useTestTypeControls';
+import { useWizardSessionUiState } from './hooks/useWizardSessionUiState';
+import WizardStepIndicator from './WizardStepIndicator';
+import WizardTemplateStep from './steps/WizardTemplateStep';
+import VariantThemeModule from './variantModules/VariantThemeModule';
+import VariantUrlModule from './variantModules/VariantUrlModule';
+import {
+  CHECKOUT_CTA_KIND_OPTIONS,
+  CHECKOUT_LAYOUT_OPTIONS,
+  CHECKOUT_PHASE_OPTIONS,
+  CHECKOUT_PLACEMENT_OPTIONS,
+  CHECKOUT_PRODUCT_SOURCE_LIMIT_OPTIONS,
+  CHECKOUT_PRODUCT_SOURCE_OPTIONS,
+  CHECKOUT_SECTION_TYPE_OPTIONS,
+  CHECKOUT_TONE_OPTIONS,
+  HOMEPAGE_URL_PATTERN_SHOPIFY,
+  HOMEPAGE_URL_PATTERN_STANDALONE,
+  MATRIX_SEARCH_BADGE_MAX_CHARS,
+  PRICE_PRODUCT_MODAL_REVEAL_BATCH,
+  buildCheckoutCartRelatedPreviewItems,
+  buildCheckoutCollectionPreviewItems,
+  buildCheckoutSectionSmartPreset,
+  buildProgressiveListWindow,
+  createEmptyCheckoutProductItem,
+  getCheckoutPhaseDetails,
+  getCheckoutPhaseLabel,
+  getCheckoutSectionDetails,
+  hasRenderableCheckoutProductItem,
+  normalizeCheckoutProductItems,
+} from './wizardCheckoutConstants';
+import {
+  MAX_VISUAL_EDITOR_HISTORY,
+  buildGeneratedVisualRuleCode,
+  cloneVisualEditorRules,
+  createEmptyVisualEditorRule,
+  normalizeVisualEditorRule,
+} from './visualEditorRuleHelpers';
+import {
+  buildAutoOfferCodeName,
+  enforceDirectPriceOverrideOnConfig,
+  getSavedPriceConfigIndices,
+  hasSavedPriceConfigValue,
+  isOfferLikeTestType,
+  isPriceLikeTestType,
+  normalizeThemeConfig,
+  normalizeVariantPriceConfigShape,
+} from './wizardVariantConfigHelpers';
 import {
   createEmptyCheckoutSection,
   getActionableCheckoutSections,
@@ -109,1101 +157,6 @@ import {
   normalizeCheckoutProductSourceMode,
   syncLegacyCheckoutExperienceFields,
 } from '../../utils/checkoutSections';
-
-/** URL pattern for homepage on Shopify: root and /index */
-const HOMEPAGE_URL_PATTERN_SHOPIFY = '^/$|^/index';
-/** URL pattern for standalone sites: root, /index, /index.html, /index.php, /default.html (reliable across hosts) */
-const HOMEPAGE_URL_PATTERN_STANDALONE = '^/$|^/index(\\.html|\\.php)?$|^/default\\.html$';
-const MAX_VISUAL_EDITOR_HISTORY = 40;
-const VISUAL_EDITOR_POSITIONS = ['after', 'before', 'afterbegin', 'beforeend'];
-const VISUAL_EDITOR_MUTATION_TYPES = ['none', 'hide', 'show', 'set_text', 'set_attr', 'set_style'];
-const PRICE_PRODUCT_MODAL_REVEAL_BATCH = 10;
-const MATRIX_SEARCH_BADGE_MAX_CHARS = 26;
-const THEME_TEST_MODES = ['template_switch', 'section_variant', 'asset_flag', 'theme_redirect'];
-const CHECKOUT_PHASE_OPTIONS = [
-  { label: 'Experience block', value: 'experience' },
-  { label: 'Payment methods', value: 'payment_method' },
-  { label: 'Delivery methods', value: 'delivery_method' },
-];
-const CHECKOUT_LAYOUT_OPTIONS = [
-  { label: 'Banner', value: 'banner' },
-  { label: 'Stacked', value: 'stacked' },
-  { label: 'Compact', value: 'compact' },
-];
-const CHECKOUT_TONE_OPTIONS = [
-  { label: 'Success', value: 'success' },
-  { label: 'Info', value: 'info' },
-  { label: 'Warning', value: 'warning' },
-  { label: 'Critical', value: 'critical' },
-];
-const CHECKOUT_CTA_KIND_OPTIONS = [
-  { label: 'Track CTA', value: 'track' },
-  { label: 'Offer code button', value: 'offer_code' },
-  { label: 'No CTA', value: 'none' },
-];
-const CHECKOUT_PRODUCT_SOURCE_OPTIONS = [
-  { label: 'Manual cards', value: 'manual' },
-  { label: 'Cart-related', value: 'cart_related' },
-  { label: 'Collection-fed', value: 'collection' },
-];
-const CHECKOUT_PRODUCT_SOURCE_LIMIT_OPTIONS = [
-  { label: '1 card', value: '1' },
-  { label: '2 cards', value: '2' },
-  { label: '3 cards', value: '3' },
-  { label: '4 cards', value: '4' },
-  { label: '5 cards', value: '5' },
-  { label: '6 cards', value: '6' },
-];
-const CHECKOUT_SECTION_TYPE_OPTIONS = [
-  { label: 'Hero notice', value: 'hero_notice' },
-  { label: 'Trust box', value: 'trust_box' },
-  { label: 'Guarantee box', value: 'guarantee_box' },
-  { label: 'Shipping promise', value: 'shipping_promise' },
-  { label: 'Offer code panel', value: 'offer_code_panel' },
-  { label: 'Product list', value: 'product_list' },
-];
-const CHECKOUT_PLACEMENT_OPTIONS = [
-  { label: 'Checkout block', value: 'purchase.checkout.block.render' },
-];
-const CHECKOUT_PHASE_DETAILS = Object.freeze({
-  experience: {
-    eyebrow: 'Checkout UI extension',
-    title: 'Experience block',
-    description:
-      'Render reassurance, urgency, guarantees, and offer content directly inside the checkout block extension.',
-    surface: 'Fixed to checkout content rendering',
-  },
-  payment_method: {
-    eyebrow: 'Shopify customization',
-    title: 'Payment methods',
-    description: 'Experiment with hiding, renaming, or reordering payment options during checkout.',
-    surface: 'Targets the payment step only',
-  },
-  delivery_method: {
-    eyebrow: 'Shopify customization',
-    title: 'Delivery methods',
-    description:
-      'Experiment with hiding, renaming, or reordering delivery methods during checkout.',
-    surface: 'Targets the delivery step only',
-  },
-});
-const CHECKOUT_SECTION_DETAILS = Object.freeze({
-  hero_notice: {
-    label: 'Hero notice',
-    description: 'Primary reassurance or urgency message',
-  },
-  trust_box: {
-    label: 'Trust box',
-    description: 'Trust badges, benefits, and proof points',
-  },
-  guarantee_box: {
-    label: 'Guarantee box',
-    description: 'Guarantees, refund promises, and policy confidence',
-  },
-  shipping_promise: {
-    label: 'Shipping promise',
-    description: 'Shipping expectation or arrival messaging',
-  },
-  offer_code_panel: {
-    label: 'Offer code panel',
-    description: 'Promo or offer messaging with CTA support',
-  },
-  product_list: {
-    label: 'Product list',
-    description: 'Manual, cart-related, or collection-fed merchandising for checkout',
-  },
-});
-const DEFAULT_TEST_TYPE_STATE = Object.freeze(getDefaultTestTypeState());
-
-function getCheckoutPhaseLabel(rawValue) {
-  const phase = normalizeCheckoutPhase(rawValue);
-  return CHECKOUT_PHASE_OPTIONS.find(option => option.value === phase)?.label || 'Experience block';
-}
-
-function getCheckoutPhaseDetails(rawValue) {
-  const phase = normalizeCheckoutPhase(rawValue);
-  return CHECKOUT_PHASE_DETAILS[phase] || CHECKOUT_PHASE_DETAILS.experience;
-}
-
-function getCheckoutSectionDetails(rawValue) {
-  const type = String(rawValue || 'hero_notice')
-    .trim()
-    .toLowerCase();
-  return CHECKOUT_SECTION_DETAILS[type] || CHECKOUT_SECTION_DETAILS.hero_notice;
-}
-
-function buildCheckoutSectionSmartPreset(rawType) {
-  const type = String(rawType || 'hero_notice')
-    .trim()
-    .toLowerCase();
-  switch (type) {
-    case 'trust_box':
-      return {
-        title: 'Why customers complete checkout',
-        message:
-          'Reinforce trust with fast support, secure payment handling, and clear order protection.',
-        badge_text: 'Trusted by shoppers',
-        disclaimer: 'Support and policy details stay available after purchase.',
-        cta_label: 'Continue securely',
-        tone: 'info',
-        layout: 'stacked',
-        cta_kind: 'track',
-        feature_bullets: ['Secure payment flow', 'Fast support response', 'Transparent policies'],
-      };
-    case 'guarantee_box':
-      return {
-        title: 'Protected purchase guarantee',
-        message:
-          'Reduce hesitation with a direct reminder of your return, refund, or satisfaction promise.',
-        badge_text: 'Risk-free',
-        disclaimer: 'Terms apply based on your store policy.',
-        cta_label: 'Review guarantee',
-        tone: 'success',
-        layout: 'banner',
-        cta_kind: 'track',
-        feature_bullets: [
-          'Money-back coverage',
-          'Simple returns',
-          'Support if anything goes wrong',
-        ],
-      };
-    case 'shipping_promise':
-      return {
-        title: 'Shipping promise',
-        message: 'Set clear delivery expectations before the customer places the order.',
-        badge_text: 'Fast dispatch',
-        disclaimer: 'Delivery timing depends on carrier and destination.',
-        cta_label: 'View delivery info',
-        tone: 'info',
-        layout: 'compact',
-        cta_kind: 'track',
-        feature_bullets: ['Quick fulfillment', 'Tracking updates', 'Clear delivery expectations'],
-      };
-    case 'offer_code_panel':
-      return {
-        title: 'Complete checkout with your offer',
-        message:
-          'Surface the active offer at the final step so the shopper does not second-guess the value.',
-        badge_text: 'Checkout incentive',
-        disclaimer: 'Offer availability follows your test and store rules.',
-        cta_label: 'Apply offer',
-        tone: 'warning',
-        layout: 'banner',
-        cta_kind: 'offer_code',
-        feature_bullets: [
-          'Offer shown at the final step',
-          'One-click CTA tracking',
-          'Strong conversion reminder',
-        ],
-      };
-    case 'product_list':
-      return {
-        title: 'Complete your order with these picks',
-        message: 'Merchandise manual cards or auto-pull cart-related products inside checkout.',
-        badge_text: 'Recommended',
-        disclaimer: 'Product availability and pricing should match your live store configuration.',
-        cta_label: 'Review picks',
-        tone: 'info',
-        layout: 'stacked',
-        cta_kind: 'track',
-        feature_bullets: [
-          'Manual checkout merchandising',
-          'Cart-aware product highlights',
-          'Collection-fed product picks',
-        ],
-        product_source_mode: 'manual',
-        product_source_limit: 3,
-        product_source_collections: [],
-        product_items: [
-          {
-            id: 'product-1',
-            image_url: '',
-            title: 'Premium add-on',
-            subtitle: 'High-intent upsell for checkout',
-            price: '$29',
-            compare_at_price: '$39',
-            badge_text: 'Best seller',
-          },
-          {
-            id: 'product-2',
-            image_url: '',
-            title: 'Protection plan',
-            subtitle: 'Low-friction checkout companion',
-            price: '$9',
-            compare_at_price: '',
-            badge_text: 'Popular',
-          },
-        ],
-      };
-    case 'hero_notice':
-    default:
-      return {
-        title: 'Checkout with confidence',
-        message: 'Use a clear reassurance statement to reduce friction right before purchase.',
-        badge_text: 'Secure checkout',
-        disclaimer: 'Optional note for guarantees, timing, or policy details.',
-        cta_label: 'Continue securely',
-        tone: 'success',
-        layout: 'banner',
-        cta_kind: 'track',
-        feature_bullets: ['Secure payment', 'Fast support', 'Clear next step'],
-      };
-  }
-}
-
-function normalizeCheckoutProductItems(rawValue) {
-  const rows = Array.isArray(rawValue) ? rawValue : [];
-  return rows
-    .map((item, index) => {
-      const source = item && typeof item === 'object' ? item : {};
-      const imageUrl = String(
-        source.image_url || source.image || source.product_image_url || ''
-      ).trim();
-      const title = String(source.title || source.product_title || '').trim();
-      const subtitle = String(source.subtitle || source.product_subtitle || '').trim();
-      const price = String(source.price || source.product_price || '').trim();
-      const compareAtPrice = String(
-        source.compare_at_price || source.product_compare_at_price || ''
-      ).trim();
-      const badgeText = String(source.badge_text || source.product_badge_text || '').trim();
-      if (!source || typeof source !== 'object') {
-        return null;
-      }
-      return {
-        id:
-          String(source.id || '')
-            .trim()
-            .toLowerCase()
-            .replace(/[^a-z0-9_-]+/g, '-')
-            .replace(/^-+|-+$/g, '') || `product-${index + 1}`,
-        image_url: imageUrl,
-        title,
-        subtitle,
-        price,
-        compare_at_price: compareAtPrice,
-        badge_text: badgeText,
-      };
-    })
-    .filter(Boolean);
-}
-
-function hasRenderableCheckoutProductItem(item = {}) {
-  return Boolean(
-    item.image_url ||
-    item.title ||
-    item.subtitle ||
-    item.price ||
-    item.compare_at_price ||
-    item.badge_text
-  );
-}
-
-function createEmptyCheckoutProductItem(index = 0) {
-  return {
-    id: `product-${index + 1}`,
-    image_url: '',
-    title: '',
-    subtitle: '',
-    price: '',
-    compare_at_price: '',
-    badge_text: '',
-  };
-}
-
-function buildCheckoutCartRelatedPreviewItems(limit = 3) {
-  return Array.from({ length: Math.max(1, Number(limit) || 1) }, (_, index) => ({
-    id: `cart-related-preview-${index + 1}`,
-    image_url: '',
-    title: index === 0 ? 'Cart product highlight' : `Cart companion ${index + 1}`,
-    subtitle:
-      index === 0
-        ? 'Auto-filled from the shopper checkout cart'
-        : 'Shown dynamically from current cart lines',
-    price: index === 0 ? 'Runtime price' : '',
-    compare_at_price: '',
-    badge_text: index === 0 ? 'Cart-related' : 'Auto',
-  }));
-}
-
-function buildCheckoutCollectionPreviewItems(collections = [], limit = 3) {
-  const selectedCollections = normalizeCheckoutProductSourceCollections(collections);
-  const count = Math.max(1, Number(limit) || 1);
-  return Array.from({ length: count }, (_, index) => {
-    const sourceCollection =
-      selectedCollections[index % Math.max(1, selectedCollections.length)] ||
-      selectedCollections[0] ||
-      null;
-    const collectionLabel =
-      sourceCollection?.title || sourceCollection?.handle || `Collection ${index + 1}`;
-    return {
-      id: `collection-preview-${index + 1}`,
-      image_url: '',
-      title: index === 0 ? `${collectionLabel} pick` : `Featured from ${collectionLabel}`,
-      subtitle: 'Auto-filled from selected Shopify collection products',
-      price: 'Runtime price',
-      compare_at_price: '',
-      badge_text: collectionLabel,
-    };
-  });
-}
-
-function buildProgressiveListWindow(items, visibleCount, options = {}) {
-  const list = Array.isArray(items) ? items : [];
-  const batchSize = Math.max(1, Number(options.batchSize) || PRICE_PRODUCT_MODAL_REVEAL_BATCH);
-  const getId = typeof options.getId === 'function' ? options.getId : item => item?.id;
-  const pinnedIds = Array.isArray(options.pinnedIds) ? options.pinnedIds : [];
-  const normalizedVisibleCount = Math.max(0, Number(visibleCount) || 0);
-
-  const baseVisible = list.slice(0, normalizedVisibleCount);
-  const baseIds = new Set(baseVisible.map(item => String(getId(item) || '')));
-  const pinnedIdSet = new Set(pinnedIds.filter(Boolean).map(id => String(id)));
-  const pinnedExtras = pinnedIdSet.size
-    ? list.filter(item => {
-        const id = String(getId(item) || '');
-        return id && pinnedIdSet.has(id) && !baseIds.has(id);
-      })
-    : [];
-
-  const visibleItems = [...baseVisible, ...pinnedExtras];
-  const shownCount = visibleItems.length;
-  const hasHiddenLoaded = shownCount < list.length;
-  const canCollapse = shownCount > batchSize;
-  const nextRevealCount = Math.min(batchSize, Math.max(list.length - shownCount, 0));
-
-  return {
-    visibleItems,
-    shownCount,
-    hasHiddenLoaded,
-    canCollapse,
-    nextRevealCount,
-    totalLoaded: list.length,
-  };
-}
-
-function createEmptyVisualEditorRule() {
-  return {
-    selector: '',
-    css: '',
-    js: '',
-    position: 'after',
-    mutation_type: 'none',
-    mutation_text: '',
-    mutation_attribute: '',
-    mutation_attribute_value: '',
-    mutation_style: '',
-  };
-}
-
-function normalizeVisualEditorRule(rawRule) {
-  const base = createEmptyVisualEditorRule();
-  const rule = rawRule && typeof rawRule === 'object' ? rawRule : {};
-  const mutationType = String(rule.mutation_type || base.mutation_type)
-    .toLowerCase()
-    .trim();
-  return {
-    selector: String(rule.selector || '').trim(),
-    css: String(rule.css || '').trim(),
-    js: String(rule.js || '').trim(),
-    position: VISUAL_EDITOR_POSITIONS.includes(rule.position) ? rule.position : base.position,
-    mutation_type: VISUAL_EDITOR_MUTATION_TYPES.includes(mutationType)
-      ? mutationType
-      : base.mutation_type,
-    mutation_text:
-      rule.mutation_text === undefined || rule.mutation_text === null
-        ? base.mutation_text
-        : String(rule.mutation_text),
-    mutation_attribute: String(rule.mutation_attribute || '').trim(),
-    mutation_attribute_value:
-      rule.mutation_attribute_value === undefined || rule.mutation_attribute_value === null
-        ? base.mutation_attribute_value
-        : String(rule.mutation_attribute_value),
-    mutation_style: String(rule.mutation_style || '').trim(),
-  };
-}
-
-function cloneVisualEditorRules(rawRules) {
-  return Array.from({ length: 5 }, (_, i) => ({
-    ...normalizeVisualEditorRule((rawRules || [])[i]),
-  }));
-}
-
-function buildGeneratedVisualRuleCode(rule) {
-  const r = normalizeVisualEditorRule(rule);
-  const selector = r.selector || '/* selector required */';
-  const lines = [];
-  lines.push(`const el = document.querySelector(${JSON.stringify(selector)});`);
-  lines.push('if (el) {');
-  if (r.mutation_type === 'hide') {
-    lines.push("  el.style.setProperty('display', 'none', 'important');");
-  } else if (r.mutation_type === 'show') {
-    lines.push("  el.style.removeProperty('display');");
-    lines.push("  el.style.removeProperty('visibility');");
-    lines.push("  el.removeAttribute('hidden');");
-  } else if (r.mutation_type === 'set_text') {
-    lines.push(`  el.textContent = ${JSON.stringify(r.mutation_text || '')};`);
-  } else if (r.mutation_type === 'set_attr') {
-    const attrName = String(r.mutation_attribute || '').trim();
-    if (attrName) {
-      const attrValue = String(r.mutation_attribute_value || '');
-      if (attrValue) {
-        lines.push(`  el.setAttribute(${JSON.stringify(attrName)}, ${JSON.stringify(attrValue)});`);
-      } else {
-        lines.push(`  el.removeAttribute(${JSON.stringify(attrName)});`);
-      }
-    } else {
-      lines.push('  // Add an attribute name to generate set/remove attribute code.');
-    }
-  } else if (r.mutation_type === 'set_style') {
-    const styleLines = String(r.mutation_style || '')
-      .split(';')
-      .map(part => part.trim())
-      .filter(Boolean);
-    if (styleLines.length > 0) {
-      styleLines.forEach(decl => {
-        const colon = decl.indexOf(':');
-        if (colon > 0) {
-          const key = decl.slice(0, colon).trim();
-          const value = decl.slice(colon + 1).trim();
-          if (key && value) {
-            lines.push(`  el.style.setProperty(${JSON.stringify(key)}, ${JSON.stringify(value)});`);
-          }
-        }
-      });
-    } else {
-      lines.push('  // Add CSS declarations (e.g. color: #111; font-weight: 700;).');
-    }
-  } else {
-    lines.push('  // No quick mutation selected.');
-  }
-  lines.push('}');
-  if (r.css) {
-    lines.push('');
-    lines.push('/* CSS snippet */');
-    lines.push(r.css);
-  }
-  if (r.js) {
-    lines.push('');
-    lines.push('/* JS snippet */');
-    lines.push(r.js);
-  }
-  return lines.join('\n');
-}
-
-const DEFAULT_FORM_DATA = {
-  name: '',
-  description: '',
-  type: 'price',
-  target_type: '',
-  target_id: '',
-  pricePerProduct: false,
-  goal: {
-    type: 'conversion',
-    metric: 'revenue',
-    secondary: [],
-    significance_level: 0.95,
-    statistical_power: 0.8,
-    conversion_window_days: 30,
-    conversion_url: '',
-    analysis_method: 'frequentist',
-  },
-  variants: [
-    { name: 'Control', allocation: 50, config: {} },
-    { name: 'Variant A', allocation: 50, config: {} },
-  ],
-  segments: {
-    device: 'all',
-    customer: 'all',
-    countries: [],
-    excluded_product_ids: [],
-    traffic_source: 'all',
-    anti_flicker_mode: 'balanced',
-    url_pattern: '',
-    min_sessions: '',
-    page_rules: [],
-    device_rules: [],
-    audience_rules: [],
-    traffic_ramp_percent: '',
-    traffic_ramp_days: 7,
-    js_targeting: { enabled: false, code: '' },
-    visual_editor_rules: Array.from({ length: 5 }, () => createEmptyVisualEditorRule()),
-  },
-  holdout_percent: 0,
-  scheduled_start_at: '',
-  scheduled_stop_at: '',
-  auto_start: false,
-  auto_stop: false,
-  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-  guardrail_config: { enabled: false, minDropPercent: 10 },
-};
-
-function isPriceLikeTestType(typeValue) {
-  const t = String(typeValue || '')
-    .toLowerCase()
-    .trim();
-  return t === 'price' || t === 'pricing';
-}
-
-function isOfferLikeTestType(typeValue) {
-  const t = String(typeValue || '')
-    .toLowerCase()
-    .trim();
-  return t === 'offer';
-}
-
-function normalizeOfferCodeToken(rawValue, fallback = 'VARIANT') {
-  const token = String(rawValue || '')
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 20);
-  return token || String(fallback || 'VARIANT');
-}
-
-function buildOfferValueToken(config = {}) {
-  const discountType = String(config.discount_type || '')
-    .trim()
-    .toLowerCase();
-  if (discountType === 'free_shipping') {
-    return 'SHIP';
-  }
-  const rawValue = config.discount_value;
-  const numericValue =
-    rawValue !== null && rawValue !== undefined && rawValue !== '' ? Number(rawValue) : NaN;
-  const valueToken = Number.isFinite(numericValue)
-    ? String(numericValue).replace('.', '_')
-    : discountType === 'fixed'
-      ? 'FIXED'
-      : 'PCT';
-  if (discountType === 'fixed') {
-    return `${valueToken}OFF`;
-  }
-  return `${valueToken}PCT`;
-}
-
-function buildAutoOfferCodeName(testName, variantName, config = {}, index = 0) {
-  const testToken = normalizeOfferCodeToken(testName, 'TEST').slice(0, 14);
-  const variantToken = normalizeOfferCodeToken(variantName, `VAR${index + 1}`).slice(0, 14);
-  const offerToken = normalizeOfferCodeToken(buildOfferValueToken(config), 'OFFER').slice(0, 14);
-  return `RIPX-${testToken}-${variantToken}-${offerToken}`.slice(0, 48);
-}
-
-function hasSavedPriceConfigValue(cfg) {
-  if (!cfg || typeof cfg !== 'object') return false;
-  const mode = String(cfg.priceMode || 'fixed').toLowerCase();
-  if (mode === 'fixed') {
-    if (cfg.price !== null && cfg.price !== undefined && String(cfg.price).trim() !== '')
-      return true;
-  } else if (mode === 'amount') {
-    if (
-      cfg.priceDelta !== null &&
-      cfg.priceDelta !== undefined &&
-      String(cfg.priceDelta).trim() !== ''
-    )
-      return true;
-  } else if (mode === 'percent') {
-    if (
-      cfg.pricePercent !== null &&
-      cfg.pricePercent !== undefined &&
-      String(cfg.pricePercent).trim() !== ''
-    )
-      return true;
-  }
-  // Per-product / per-variant overrides can be fully valid even when base mode/value is blank.
-  if (cfg.byProduct && typeof cfg.byProduct === 'object' && Object.keys(cfg.byProduct).length > 0) {
-    return true;
-  }
-  if (cfg.byVariant && typeof cfg.byVariant === 'object' && Object.keys(cfg.byVariant).length > 0) {
-    return true;
-  }
-  return false;
-}
-
-function getSavedPriceConfigIndices(variants) {
-  if (!Array.isArray(variants)) return [];
-  const indices = [];
-  variants.forEach((variant, index) => {
-    if (hasSavedPriceConfigValue(variant?.config || {})) {
-      indices.push(index);
-    }
-  });
-  return indices;
-}
-
-function normalizeVariantPriceConfigShape(variant) {
-  if (!variant || typeof variant !== 'object') {
-    return variant;
-  }
-  const config = variant.config && typeof variant.config === 'object' ? { ...variant.config } : {};
-  const rootKeys = [
-    'priceMode',
-    'price',
-    'priceDelta',
-    'pricePercent',
-    'priceBase',
-    'priceApplicationMethod',
-    'nativeVariantId',
-    'roundTo',
-    'byProduct',
-    'byVariant',
-  ];
-  let changed = false;
-  rootKeys.forEach(key => {
-    if (config[key] === undefined && variant[key] !== undefined) {
-      config[key] = variant[key];
-      changed = true;
-    }
-  });
-  if (!changed && variant.config && typeof variant.config === 'object') {
-    return variant;
-  }
-  return { ...variant, config };
-}
-
-function enforceDirectPriceOverrideOnConfig(config) {
-  if (!config || typeof config !== 'object') {
-    return config;
-  }
-  const next = {
-    ...config,
-    priceApplicationMethod: 'direct_price_override',
-  };
-  if (next.byProduct && typeof next.byProduct === 'object') {
-    next.byProduct = Object.fromEntries(
-      Object.entries(next.byProduct).map(([productId, override]) => {
-        if (!override || typeof override !== 'object') return [productId, override];
-        const productOverride = {
-          ...override,
-          priceApplicationMethod: 'direct_price_override',
-        };
-        if (productOverride.byVariant && typeof productOverride.byVariant === 'object') {
-          productOverride.byVariant = Object.fromEntries(
-            Object.entries(productOverride.byVariant).map(([variantKey, variantOverride]) => {
-              if (!variantOverride || typeof variantOverride !== 'object') {
-                return [variantKey, variantOverride];
-              }
-              return [
-                variantKey,
-                {
-                  ...variantOverride,
-                  priceApplicationMethod: 'direct_price_override',
-                },
-              ];
-            })
-          );
-        }
-        return [productId, productOverride];
-      })
-    );
-  }
-  if (next.byVariant && typeof next.byVariant === 'object') {
-    next.byVariant = Object.fromEntries(
-      Object.entries(next.byVariant).map(([variantKey, variantOverride]) => {
-        if (!variantOverride || typeof variantOverride !== 'object') {
-          return [variantKey, variantOverride];
-        }
-        return [
-          variantKey,
-          {
-            ...variantOverride,
-            priceApplicationMethod: 'direct_price_override',
-          },
-        ];
-      })
-    );
-  }
-  return next;
-}
-
-function normalizeThemeMode(rawMode, fallbackMode = 'asset_flag') {
-  const mode = String(rawMode || fallbackMode)
-    .trim()
-    .toLowerCase();
-  return THEME_TEST_MODES.includes(mode) ? mode : fallbackMode;
-}
-
-function normalizeThemeConfig(config, fallbackMode = 'asset_flag') {
-  const source = config && typeof config === 'object' ? { ...config } : {};
-  const themeMode = normalizeThemeMode(source.themeMode || source.theme_mode, fallbackMode);
-  const themeTemplateHandle = String(
-    source.themeTemplateHandle || source.theme_template_handle || source.template || ''
-  ).trim();
-  const themeId = String(source.themeId || source.theme_id || '').trim();
-  const sectionId = String(source.sectionId || source.section_id || '').trim();
-  const bodyClass = String(source.bodyClass || source.body_class || '').trim();
-  const redirectUrl = String(
-    source.url || source.themeRedirectUrl || source.theme_redirect_url || ''
-  ).trim();
-
-  const next = {
-    ...source,
-    themeMode,
-  };
-
-  if (themeTemplateHandle) {
-    next.themeTemplateHandle = themeTemplateHandle;
-    next.template = themeTemplateHandle;
-  } else {
-    delete next.themeTemplateHandle;
-    delete next.theme_template_handle;
-    if (next.template !== undefined) {
-      next.template = '';
-    }
-  }
-
-  if (themeId) {
-    next.themeId = themeId;
-  } else {
-    delete next.themeId;
-    delete next.theme_id;
-  }
-
-  if (sectionId) {
-    next.sectionId = sectionId;
-  } else {
-    delete next.sectionId;
-    delete next.section_id;
-  }
-
-  if (bodyClass) {
-    next.bodyClass = bodyClass;
-  } else {
-    delete next.bodyClass;
-    delete next.body_class;
-  }
-
-  if (redirectUrl) {
-    next.url = redirectUrl;
-  } else if (next.url !== undefined) {
-    next.url = '';
-  }
-
-  delete next.theme_mode;
-  delete next.theme_template_handle;
-  delete next.themeRedirectUrl;
-  delete next.theme_redirect_url;
-
-  return next;
-}
-
-function _NativeVariantMappingAssistant({
-  shopDomain,
-  disabled,
-  currentValue,
-  required = false,
-  preferredProductId = null,
-  title = 'Mapping assistant',
-  description = 'Search Shopify products and pick the real variant RipX should add to cart when native pricing is needed.',
-  onSelect,
-  onClear,
-}) {
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [expandedProductId, setExpandedProductId] = useState(null);
-  const [visibleProductCount, setVisibleProductCount] = useState(PRICE_PRODUCT_MODAL_REVEAL_BATCH);
-  const normalizeProductIdForCompare = useCallback(value => {
-    const raw = String(value || '').trim();
-    if (!raw) return '';
-    const gidMatch = raw.match(/Product\/\s*(\d+)/i);
-    if (gidMatch) return gidMatch[1];
-    const numericMatch = raw.match(/\b(\d{6,})\b/);
-    if (numericMatch) return numericMatch[1];
-    return raw;
-  }, []);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search), 300);
-    return () => clearTimeout(timer);
-  }, [search]);
-
-  useEffect(() => {
-    if (disabled || !shopDomain) {
-      setProducts([]);
-      setError(null);
-      setVisibleProductCount(PRICE_PRODUCT_MODAL_REVEAL_BATCH);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    apiGet('/shopify/product-variants', {
-      shop: shopDomain,
-      query: debouncedSearch.trim(),
-      ...(preferredProductId ? { productId: preferredProductId } : {}),
-      first: 18,
-      variantsFirst: 25,
-    })
-      .then(res => {
-        const list = res.data?.products || [];
-        const emptyReason = res.data?.empty_reason || null;
-        setProducts(list);
-        setVisibleProductCount(PRICE_PRODUCT_MODAL_REVEAL_BATCH);
-        setError(list.length === 0 ? emptyReason : null);
-        if (list.length > 0) {
-          setExpandedProductId(prev => prev || list[0].id);
-        }
-      })
-      .catch(err => {
-        setProducts([]);
-        setVisibleProductCount(PRICE_PRODUCT_MODAL_REVEAL_BATCH);
-        setError(
-          err?.response?.data?.error ||
-            err?.message ||
-            'Could not load Shopify variants for mapping.'
-        );
-      })
-      .finally(() => setLoading(false));
-  }, [debouncedSearch, disabled, shopDomain, preferredProductId]);
-
-  const normalizeVariantIdForCompare = useCallback(value => {
-    const raw = String(value || '').trim();
-    if (!raw) return '';
-    const gidMatch = raw.match(/ProductVariant\/\s*(\d+)/i);
-    if (gidMatch) return gidMatch[1];
-    const numericMatch = raw.match(/\b(\d{6,})\b/);
-    if (numericMatch) return numericMatch[1];
-    return raw;
-  }, []);
-
-  const selectedVariantId = normalizeVariantIdForCompare(currentValue);
-  const selectedVariantMeta = useMemo(() => {
-    for (const product of products) {
-      for (const variant of product?.variants || []) {
-        if (normalizeVariantIdForCompare(variant.id) === selectedVariantId) {
-          return {
-            productTitle: product.title,
-            variantTitle: variant.displayName || variant.title,
-            price: variant.price,
-          };
-        }
-      }
-    }
-    return null;
-  }, [products, selectedVariantId, normalizeVariantIdForCompare]);
-  const filteredProducts = useMemo(
-    () =>
-      products.filter(product => {
-        if (!preferredProductId) return true;
-        return (
-          normalizeProductIdForCompare(product.id) ===
-          normalizeProductIdForCompare(preferredProductId)
-        );
-      }),
-    [products, preferredProductId, normalizeProductIdForCompare]
-  );
-  const selectedProductId = useMemo(() => {
-    if (!selectedVariantId) return null;
-    for (const product of filteredProducts) {
-      const hasSelectedVariant = (product?.variants || []).some(
-        variant => normalizeVariantIdForCompare(variant.id) === selectedVariantId
-      );
-      if (hasSelectedVariant) return product.id;
-    }
-    return null;
-  }, [filteredProducts, selectedVariantId, normalizeVariantIdForCompare]);
-  const productsProgressiveWindow = buildProgressiveListWindow(
-    filteredProducts,
-    visibleProductCount,
-    {
-      pinnedIds: [selectedProductId, expandedProductId],
-    }
-  );
-  const visibleProducts = productsProgressiveWindow.visibleItems;
-  const shownProductsCount = productsProgressiveWindow.shownCount;
-  const hasHiddenLoadedProducts = productsProgressiveWindow.hasHiddenLoaded;
-  const canCollapseProducts = productsProgressiveWindow.canCollapse;
-
-  if (disabled) {
-    return (
-      <Banner tone="info" title="Variant mapping assistant">
-        Connect a Shopify store to search real products and variants here. You can still paste a
-        variant ID manually.
-      </Banner>
-    );
-  }
-
-  return (
-    <div className={styles.nativeVariantAssistant}>
-      <div className={styles.nativeVariantAssistantSummary}>
-        <div>
-          <Text as="p" variant="bodySm" fontWeight="semibold">
-            {title}
-          </Text>
-          <Text as="p" variant="bodySm" tone="subdued">
-            {description}
-          </Text>
-        </div>
-        <InlineStack gap="200" wrap>
-          <Badge tone={selectedVariantId ? 'success' : required ? 'critical' : 'info'} size="small">
-            {selectedVariantId ? 'Mapped' : required ? 'Required' : 'Optional'}
-          </Badge>
-          {selectedVariantId && (
-            <Button size="slim" variant="plain" onClick={onClear}>
-              Clear mapping
-            </Button>
-          )}
-        </InlineStack>
-      </div>
-
-      {(selectedVariantMeta || selectedVariantId) && (
-        <div className={styles.nativeVariantSelectedCard}>
-          <Text as="p" variant="bodySm" fontWeight="semibold">
-            Current mapped variant
-          </Text>
-          <Text as="p" variant="bodySm" tone="subdued">
-            {selectedVariantMeta
-              ? `${selectedVariantMeta.productTitle} -> ${selectedVariantMeta.variantTitle}${selectedVariantMeta.price ? ` (${selectedVariantMeta.price})` : ''}`
-              : `Variant ID ${selectedVariantId}`}
-          </Text>
-        </div>
-      )}
-
-      <div className={styles.storeResourceList}>
-        <div className={styles.storeResourceListHeader}>
-          <div className={styles.storeResourceListSearch}>
-            <TextField
-              label="Search Shopify variants"
-              labelHidden
-              value={search}
-              onChange={setSearch}
-              placeholder="Search products or variants..."
-              autoComplete="off"
-              clearButton
-              onClearButtonClick={() => setSearch('')}
-            />
-          </div>
-          <span className={styles.storeResourceSelectedBadge}>
-            {filteredProducts.length} product{filteredProducts.length === 1 ? '' : 's'}
-          </span>
-        </div>
-
-        {loading ? (
-          <div className={styles.storeResourceListLoading}>
-            <div className={styles.storeResourceListLoadingIcon}>
-              <Spinner size="small" />
-            </div>
-            <Text as="span" variant="bodySm" tone="subdued">
-              Loading Shopify variants...
-            </Text>
-          </div>
-        ) : error ? (
-          <div className={styles.storeResourceListEmpty}>
-            <div className={styles.storeResourceListEmptyIcon}>
-              <Icon source={ProductIcon} />
-            </div>
-            <Text as="p" variant="bodySm" tone="subdued">
-              {error}
-            </Text>
-          </div>
-        ) : filteredProducts.length === 0 ? (
-          <div className={styles.storeResourceListEmpty}>
-            <div className={styles.storeResourceListEmptyIcon}>
-              <Icon source={ProductIcon} />
-            </div>
-            <Text as="p" variant="bodySm" tone="subdued">
-              {search ? 'No matching products or variants found.' : 'No products found yet.'}
-            </Text>
-          </div>
-        ) : (
-          <>
-            <div className={styles.storeResourceListMeta}>
-              <Text as="span" variant="bodySm" tone="subdued">
-                Showing {shownProductsCount} of {filteredProducts.length} loaded products
-              </Text>
-              {canCollapseProducts && (
-                <Button
-                  size="slim"
-                  variant="plain"
-                  onClick={() => setVisibleProductCount(PRICE_PRODUCT_MODAL_REVEAL_BATCH)}
-                >
-                  Collapse
-                </Button>
-              )}
-            </div>
-            <div className={styles.nativeVariantAssistantScroll}>
-              {visibleProducts.map(product => {
-                const isExpanded = expandedProductId === product.id;
-                return (
-                  <div key={product.id} className={styles.nativeVariantProductCard}>
-                    <button
-                      type="button"
-                      className={styles.nativeVariantProductHeader}
-                      onClick={() =>
-                        setExpandedProductId(prev => (prev === product.id ? null : product.id))
-                      }
-                    >
-                      <span className={styles.nativeVariantProductHeaderCopy}>
-                        <span className={styles.nativeVariantProductTitle}>{product.title}</span>
-                        <span className={styles.nativeVariantProductMeta}>
-                          {product.handle ? `/${product.handle}` : 'Product'} ·{' '}
-                          {(product.variants || []).length} variant
-                          {(product.variants || []).length === 1 ? '' : 's'}
-                        </span>
-                      </span>
-                      <Icon source={isExpanded ? ChevronDownIcon : ChevronRightIcon} />
-                    </button>
-                    <Collapsible open={isExpanded} id={`native-variant-product-${product.id}`}>
-                      <div className={styles.nativeVariantList}>
-                        {(product.variants || []).map(variant => {
-                          const normalizedId = normalizeVariantIdForCompare(variant.id);
-                          const selected = normalizedId === selectedVariantId;
-                          return (
-                            <button
-                              key={variant.id}
-                              type="button"
-                              className={`${styles.nativeVariantListItem} ${selected ? styles.nativeVariantListItemSelected : ''}`}
-                              onClick={() => onSelect(variant.id)}
-                            >
-                              <span className={styles.nativeVariantListCopy}>
-                                <span className={styles.nativeVariantListTitle}>
-                                  {variant.displayName || variant.title}
-                                </span>
-                                <span className={styles.nativeVariantListMeta}>
-                                  {variant.sku ? `SKU ${variant.sku}` : 'No SKU'}
-                                  {variant.price ? ` · ${variant.price}` : ''}
-                                  {variant.compareAtPrice
-                                    ? ` · compare-at ${variant.compareAtPrice}`
-                                    : ''}
-                                </span>
-                              </span>
-                              <Badge tone={selected ? 'success' : 'info'} size="small">
-                                {selected ? 'Selected' : 'Use variant'}
-                              </Badge>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </Collapsible>
-                  </div>
-                );
-              })}
-            </div>
-            {hasHiddenLoadedProducts && (
-              <div className={styles.storeResourceListFooter}>
-                <Button
-                  size="slim"
-                  onClick={() =>
-                    setVisibleProductCount(prev =>
-                      Math.min(prev + PRICE_PRODUCT_MODAL_REVEAL_BATCH, filteredProducts.length)
-                    )
-                  }
-                >
-                  {`Show ${Math.min(
-                    productsProgressiveWindow.nextRevealCount || PRICE_PRODUCT_MODAL_REVEAL_BATCH,
-                    filteredProducts.length - shownProductsCount
-                  )} more`}
-                </Button>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function TestWizard({
   mode = 'create',
   showTemplateStep = true,
@@ -1221,10 +174,10 @@ function TestWizard({
 }) {
   const [currentStep, setCurrentStep] = useState(initialStep);
   const [loading, setLoading] = useState(false);
-  const [progressBarStuck, setProgressBarStuck] = useState(false);
   const [titleEditOpen, setTitleEditOpen] = useState(false);
   const [titleEditDraft, setTitleEditDraft] = useState({ name: '', description: '' });
   const progressBarRef = useRef(null);
+  const progressBarStuck = useStickyProgressBar(progressBarRef);
   const [error, setError] = useState(null);
   const [selectedTemplate, setSelectedTemplate] = useState(initialTemplate);
   const [formData, setFormData] = useState(DEFAULT_FORM_DATA);
@@ -1514,53 +467,17 @@ function TestWizard({
   const isShopifyFromRoute = routeDomain && isShopifyStoreDomain(routeDomain);
   const isStandalone = !isShopifyFromRoute && isStandaloneMode();
   const canUseStoreProductPicker = !isStandalone && isShopifyFromRoute && Boolean(routeDomain);
-  const [testTypeControls, setTestTypeControls] = useState(DEFAULT_TEST_TYPE_STATE);
-  const getTemplateControl = useCallback(
-    templateKey => {
-      const normalized = normalizeTestTypeKey(templateKey);
-      if (!normalized) {
-        return { mode: 'enabled', message: '', hidden: false };
-      }
-      const control = testTypeControls[normalized] || { mode: 'enabled', message: '' };
-      return {
-        mode: control.mode || 'enabled',
-        message: control.message || '',
-        hidden: control.mode === 'hidden',
-      };
-    },
-    [testTypeControls]
-  );
-  const isTemplateTypeEnabled = useCallback(
-    templateKey => {
-      const control = getTemplateControl(templateKey);
-      return control.mode === 'enabled';
-    },
-    [getTemplateControl]
-  );
-  const isTemplateTypeHidden = useCallback(
-    templateKey => getTemplateControl(templateKey).hidden,
-    [getTemplateControl]
-  );
-  const getTemplateUnavailableReason = useCallback(
-    templateKey => {
-      if (isTemplateTypeEnabled(templateKey)) {
-        return '';
-      }
-      const control = getTemplateControl(templateKey);
-      return control.message || 'This test type is currently unavailable (under construction).';
-    },
-    [getTemplateControl, isTemplateTypeEnabled]
-  );
-  const contentTypesForStep = useMemo(() => {
-    const baseTypes = isStandalone
-      ? TEST_TYPE_CATEGORIES.content.types.filter(t => STANDALONE_TEST_TYPE_IDS.includes(t.key))
-      : TEST_TYPE_CATEGORIES.content.types;
-    return baseTypes.filter(type => !isTemplateTypeHidden(type.key));
-  }, [isStandalone, isTemplateTypeHidden]);
-  const profitTypesForStep = useMemo(
-    () => TEST_TYPE_CATEGORIES.profit.types.filter(type => !isTemplateTypeHidden(type.key)),
-    [isTemplateTypeHidden]
-  );
+  const {
+    getTemplateUnavailableReason,
+    isTemplateTypeEnabled,
+    contentTypesForStep,
+    profitTypesForStep,
+  } = useTestTypeControls({
+    isStandalone,
+    selectedTemplate,
+    setSelectedTemplate,
+    testTypeCategories: TEST_TYPE_CATEGORIES,
+  });
   const [customUrlModeActive, setCustomUrlModeActive] = useState(false);
   const [deviceAdvancedOpen, setDeviceAdvancedOpen] = useState(false);
   const [audienceAdvancedOpen, setAudienceAdvancedOpen] = useState(false);
@@ -1613,46 +530,6 @@ function TestWizard({
     endCursor: null,
   });
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await apiGet('/settings/test-type-controls');
-        const payload = res?.data?.data ?? res?.data;
-        const types = Array.isArray(payload?.types) ? payload.types : [];
-        const next = { ...DEFAULT_TEST_TYPE_STATE };
-        types.forEach(type => {
-          const typeKey = normalizeTestTypeKey(type?.key);
-          if (!typeKey || !(typeKey in next)) {
-            return;
-          }
-          next[typeKey] = {
-            mode:
-              String(type?.mode || 'enabled')
-                .trim()
-                .toLowerCase() || 'enabled',
-            message: String(type?.message || '').trim(),
-          };
-        });
-        if (!cancelled) {
-          setTestTypeControls(next);
-        }
-      } catch (_err) {
-        if (!cancelled) {
-          setTestTypeControls({ ...DEFAULT_TEST_TYPE_STATE });
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!selectedTemplate) return;
-    if (!isTemplateTypeHidden(selectedTemplate) && isTemplateTypeEnabled(selectedTemplate)) return;
-    setSelectedTemplate(null);
-  }, [selectedTemplate, isTemplateTypeEnabled, isTemplateTypeHidden]);
   const [priceModalVisibleCount, setPriceModalVisibleCount] = useState(
     PRICE_PRODUCT_MODAL_REVEAL_BATCH
   );
@@ -1694,12 +571,11 @@ function TestWizard({
   const [wizardCheckoutReadinessError, setWizardCheckoutReadinessError] = useState(null);
   const isCheckoutTestType =
     selectedTemplate === 'checkout' || String(formData.type || '').toLowerCase() === 'checkout';
-  const wizardUiStateKey = useMemo(
-    () => (mode === 'edit' && initialData?.id ? `ripx-test-wizard-ui:${initialData.id}` : null),
-    [mode, initialData?.id]
-  );
-  const pendingWizardUiStateRef = useRef(null);
-  const didRestoreWizardUiStateRef = useRef(false);
+  const { wizardUiStateKey, pendingWizardUiStateRef, didRestoreWizardUiStateRef } =
+    useWizardSessionUiState({
+      mode,
+      initialDataId: initialData?.id,
+    });
 
   const handleScopeSelect = useCallback((scope, tt, up, needsId) => {
     setIsDirty(true);
@@ -1758,31 +634,6 @@ function TestWizard({
   const createInitialDataAppliedRef = useRef(false);
   const validationSummaryRef = useRef(null);
 
-  useEffect(() => {
-    const el = progressBarRef.current;
-    if (!el) return;
-    const STICKY_TOP = 48;
-    const HYSTERESIS = 8; /* px gap to prevent rapid toggling */
-    let ticking = false;
-    let lastStuck = false;
-    const checkStuck = () => {
-      if (!ticking) {
-        requestAnimationFrame(() => {
-          const rect = el.getBoundingClientRect();
-          const top = rect.top;
-          const stuck = lastStuck ? top <= STICKY_TOP + HYSTERESIS : top <= STICKY_TOP;
-          lastStuck = stuck;
-          setProgressBarStuck(stuck);
-          ticking = false;
-        });
-        ticking = true;
-      }
-    };
-    checkStuck();
-    window.addEventListener('scroll', checkStuck, { passive: true });
-    return () => window.removeEventListener('scroll', checkStuck);
-  }, []);
-
   const steps = buildWizardSteps(showTemplateStep, mode);
   const stepIds = getStepIds(showTemplateStep);
   const reviewStepId = steps[steps.length - 1]?.id;
@@ -1819,18 +670,6 @@ function TestWizard({
     stepIds.targeting,
     steps,
   ]);
-
-  useEffect(() => {
-    pendingWizardUiStateRef.current = null;
-    didRestoreWizardUiStateRef.current = false;
-    if (!wizardUiStateKey || typeof window === 'undefined' || !window.sessionStorage) return;
-    try {
-      const raw = window.sessionStorage.getItem(wizardUiStateKey);
-      pendingWizardUiStateRef.current = raw ? JSON.parse(raw) : null;
-    } catch {
-      pendingWizardUiStateRef.current = null;
-    }
-  }, [wizardUiStateKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1981,7 +820,13 @@ function TestWizard({
     }
     pendingWizardUiStateRef.current = null;
     didRestoreWizardUiStateRef.current = true;
-  }, [wizardUiStateKey, formData?.variants, steps.length]);
+  }, [
+    wizardUiStateKey,
+    pendingWizardUiStateRef,
+    didRestoreWizardUiStateRef,
+    formData?.variants,
+    steps.length,
+  ]);
 
   useEffect(() => {
     if (
@@ -2004,7 +849,13 @@ function TestWizard({
     } catch (_error) {
       return;
     }
-  }, [wizardUiStateKey, currentStep, selectedVariantIndex, isInitialized]);
+  }, [
+    wizardUiStateKey,
+    didRestoreWizardUiStateRef,
+    currentStep,
+    selectedVariantIndex,
+    isInitialized,
+  ]);
 
   useEffect(() => {
     if (!onTitleRender) return;
@@ -4144,6 +2995,11 @@ function TestWizard({
       selectedTemplate,
       cssValidationErrors,
       jsValidationErrors,
+      priceExecution: {
+        isShopify: isShopifyFromRoute,
+        isStandalone,
+        directPriceOverrideReadiness,
+      },
     });
 
   const handleVariantCodeChange = (type, value, variantIndex) => {
@@ -4429,320 +3285,31 @@ function TestWizard({
   }, [currentStep, steps.length, hasStepErrors]);
 
   const renderStepIndicator = () => (
-    <div className="wizard-progress">
-      {displaySteps.map((step, index) => {
-        const isActive = currentStep === step.id;
-        const isCompleted = currentStep > step.id;
-        const isClickable = canNavigateSteps && (mode === 'edit' || step.id <= currentStep);
-
-        return (
-          <button
-            key={step.id}
-            type="button"
-            onClick={() => {
-              if (!isClickable) return;
-              setCurrentStep(step.id);
-            }}
-            className={`wizard-step-indicator ${
-              isActive ? 'active' : isCompleted ? 'completed' : ''
-            } ${isClickable ? 'clickable' : ''}`}
-            style={{ cursor: isClickable ? 'pointer' : 'default' }}
-            aria-current={isActive ? 'step' : undefined}
-            aria-label={
-              isActive
-                ? `Current step: ${step.title}`
-                : isCompleted
-                  ? `Completed: ${step.title}. Click to go back`
-                  : `Step ${index + 1}: ${step.title}`
-            }
-            disabled={!isClickable}
-          >
-            <div className="wizard-step-number">{isCompleted ? '✓' : index + 1}</div>
-            <Text
-              variant="bodySm"
-              as="p"
-              fontWeight={isActive ? 'semibold' : 'regular'}
-              className="wizard-step-label"
-            >
-              {step.title}
-            </Text>
-          </button>
-        );
-      })}
-    </div>
+    <WizardStepIndicator
+      displaySteps={displaySteps}
+      currentStep={currentStep}
+      canNavigateSteps={canNavigateSteps}
+      mode={mode}
+      setCurrentStep={setCurrentStep}
+    />
   );
 
   const renderTemplateSelection = () => (
-    <div className={stepStyles.templateStep}>
-      <div className={stepStyles.templateStepAccent} aria-hidden />
-      <div className={stepStyles.templateStepHeader}>
-        <div className={stepStyles.templateStepHeaderLeft}>
-          <span className={stepStyles.templateStepIcon}>
-            <Icon source={PageIcon} />
-          </span>
-          <div>
-            <h2 className={stepStyles.templateStepTitle}>Select a test type to begin</h2>
-            <p className={stepStyles.templateStepSubtitle}>
-              {selectedTemplate
-                ? `${TEST_TEMPLATES[selectedTemplate]?.name || selectedTemplate} selected — click Next to continue`
-                : 'Give your test a name, then choose a template below'}
-            </p>
-          </div>
-        </div>
-        <span className={stepStyles.templateStepBadge}>1 of {steps.length}</span>
-      </div>
-      <div className={stepStyles.templateStepContent}>
-        <div className={stepStyles.templateStepSections}>
-          <div className={stepStyles.templateNameSection}>
-            <div className={stepStyles.templateNameSectionHeader}>
-              <span className={stepStyles.templateNameSectionIcon} aria-hidden>
-                1
-              </span>
-              <div>
-                <h3 className={stepStyles.templateSectionLabel}>Test details</h3>
-                <p className={stepStyles.templateSectionHint}>
-                  Name and describe your test for easy identification
-                </p>
-              </div>
-            </div>
-            {selectedTemplate && TEST_TEMPLATES[selectedTemplate] && (
-              <div className={stepStyles.templateTestTypeHighlight} role="status">
-                <span className={stepStyles.templateTestTypeEmoji} aria-hidden>
-                  {TEST_TEMPLATES[selectedTemplate].icon}
-                </span>
-                <span className={stepStyles.templateTestTypeMeta}>
-                  <span className={stepStyles.templateTestTypeKicker}>Test type</span>
-                  <span className={stepStyles.templateTestTypeName}>
-                    {TEST_TEMPLATES[selectedTemplate].name}
-                  </span>
-                </span>
-              </div>
-            )}
-            <div className={stepStyles.templateNameSectionFields}>
-              <div className={stepStyles.templateNameField}>
-                <TextField
-                  label="Test name"
-                  value={formData.name}
-                  onChange={value => setFormData({ ...formData, name: value })}
-                  placeholder="e.g. Homepage CTA Test"
-                  requiredIndicator
-                  error={
-                    showTemplateStep &&
-                    currentStep === 1 &&
-                    (!formData.name || !formData.name.trim())
-                      ? 'Test name is required'
-                      : undefined
-                  }
-                  autoComplete="off"
-                />
-              </div>
-              <div className={stepStyles.templateDescField}>
-                <TextField
-                  label="Description"
-                  value={formData.description || ''}
-                  onChange={value => setFormData({ ...formData, description: value })}
-                  placeholder="e.g. Test which CTA drives more sign-ups"
-                  multiline={2}
-                  autoComplete="off"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className={stepStyles.templateCategorySection}>
-            <div className={stepStyles.templateCategoryHeader}>
-              <span className={stepStyles.templateCategoryStep}>2</span>
-              <div className={stepStyles.templateCategoryHeaderText}>
-                <h3 className={stepStyles.templateCategoryTitle}>
-                  {TEST_TYPE_CATEGORIES.content.title}
-                </h3>
-                <p className={stepStyles.templateCategorySubtitle}>
-                  {TEST_TYPE_CATEGORIES.content.description}
-                </p>
-              </div>
-              <TooltipWrapper
-                content={TEST_TYPE_CATEGORIES.content.description}
-                accessibilityLabel="Content tests info"
-              >
-                <span className={stepStyles.templateInfoIcon}>
-                  <Icon source={InfoIcon} />
-                </span>
-              </TooltipWrapper>
-            </div>
-
-            <div
-              className={`template-grid ${stepStyles.templateGrid} ${stepStyles.templateGridContent}`}
-            >
-              {contentTypesForStep.map(type => {
-                const isSelected = selectedTemplate === type.key;
-                const isUnavailable = !isTemplateTypeEnabled(type.key);
-                const unavailableReason = getTemplateUnavailableReason(type.key);
-                return (
-                  <div
-                    key={type.key}
-                    role="button"
-                    tabIndex={isUnavailable ? -1 : 0}
-                    className={`template-grid-item ${isUnavailable ? stepStyles.templateGridItemUnavailable : ''}`}
-                    onClick={e => {
-                      if (isUnavailable) return;
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleTemplateSelect(type.key);
-                    }}
-                    onKeyDown={e => {
-                      if (isUnavailable) return;
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        handleTemplateSelect(type.key);
-                      }
-                    }}
-                    aria-disabled={isUnavailable}
-                    aria-pressed={!isUnavailable && isSelected}
-                    aria-label={
-                      isUnavailable
-                        ? `${type.name} unavailable: ${unavailableReason}`
-                        : `Select ${type.name}: ${type.description}`
-                    }
-                  >
-                    <Card sectioned className={`template-card ${isSelected ? 'selected' : ''}`}>
-                      <div className={stepStyles.templateCardHeader}>
-                        <span className={stepStyles.templateCardBadgeSlot}>
-                          {isUnavailable ? (
-                            <span className={stepStyles.templateCardUnavailable}>Unavailable</span>
-                          ) : type.key === 'onsite-edit' ? (
-                            <span className={stepStyles.templateCardStarter}>Starter</span>
-                          ) : null}
-                        </span>
-                        {!isUnavailable && isSelected && (
-                          <div className="template-card-check">✓</div>
-                        )}
-                      </div>
-                      <div className={stepStyles.templateCardBody}>
-                        <div className={stepStyles.templateCardIcon}>{type.icon}</div>
-                        <div className={stepStyles.templateCardMeta}>
-                          <p className={stepStyles.templateCardTitle}>{type.name}</p>
-                          <div className={stepStyles.templateCardDivider} aria-hidden />
-                          <p className={stepStyles.templateCardDesc} title={type.description}>
-                            {type.description}
-                          </p>
-                          {isUnavailable && unavailableReason && (
-                            <p
-                              className={stepStyles.templateCardUnavailableReason}
-                              title={unavailableReason}
-                            >
-                              {unavailableReason}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </Card>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {!isStandalone && (
-            <div className={stepStyles.templateCategorySection}>
-              <div className={stepStyles.templateCategoryHeader}>
-                <span className={stepStyles.templateCategoryStep}>3</span>
-                <div className={stepStyles.templateCategoryHeaderText}>
-                  <h3 className={stepStyles.templateCategoryTitle}>
-                    {TEST_TYPE_CATEGORIES.profit.title}
-                  </h3>
-                  <p className={stepStyles.templateCategorySubtitle}>
-                    {TEST_TYPE_CATEGORIES.profit.description}
-                  </p>
-                </div>
-                <TooltipWrapper
-                  content={TEST_TYPE_CATEGORIES.profit.description}
-                  accessibilityLabel="Profit tests info"
-                >
-                  <span className={stepStyles.templateInfoIcon}>
-                    <Icon source={InfoIcon} />
-                  </span>
-                </TooltipWrapper>
-              </div>
-
-              <div
-                className={`template-grid ${stepStyles.templateGrid} ${stepStyles.templateGridProfit}`}
-              >
-                {profitTypesForStep.map(type => {
-                  const isSelected = selectedTemplate === type.key;
-                  const isUnavailable = !isTemplateTypeEnabled(type.key);
-                  const unavailableReason = getTemplateUnavailableReason(type.key);
-                  return (
-                    <div
-                      key={type.key}
-                      role="button"
-                      tabIndex={isUnavailable ? -1 : 0}
-                      className={`template-grid-item ${isUnavailable ? stepStyles.templateGridItemUnavailable : ''}`}
-                      onClick={e => {
-                        if (isUnavailable) return;
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleTemplateSelect(type.key);
-                      }}
-                      onKeyDown={e => {
-                        if (isUnavailable) return;
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          handleTemplateSelect(type.key);
-                        }
-                      }}
-                      aria-disabled={isUnavailable}
-                      aria-pressed={!isUnavailable && isSelected}
-                      aria-label={
-                        isUnavailable
-                          ? `${type.name} unavailable: ${unavailableReason}`
-                          : `Select ${type.name}: ${type.description}`
-                      }
-                    >
-                      <Card sectioned className={`template-card ${isSelected ? 'selected' : ''}`}>
-                        <div className={stepStyles.templateCardHeader}>
-                          <span className={stepStyles.templateCardBadgeSlot}>
-                            {isUnavailable ? (
-                              <span className={stepStyles.templateCardUnavailable}>
-                                Unavailable
-                              </span>
-                            ) : type.key === 'pricing' ? (
-                              <span className={stepStyles.templateCardRecommended}>
-                                Recommended
-                              </span>
-                            ) : null}
-                          </span>
-                          {!isUnavailable && isSelected && (
-                            <div className="template-card-check">✓</div>
-                          )}
-                        </div>
-                        <div className={stepStyles.templateCardBody}>
-                          <div className={stepStyles.templateCardIcon}>{type.icon}</div>
-                          <div className={stepStyles.templateCardMeta}>
-                            <p className={stepStyles.templateCardTitle}>{type.name}</p>
-                            <div className={stepStyles.templateCardDivider} aria-hidden />
-                            <p className={stepStyles.templateCardDesc} title={type.description}>
-                              {type.description}
-                            </p>
-                            {isUnavailable && unavailableReason && (
-                              <p
-                                className={stepStyles.templateCardUnavailableReason}
-                                title={unavailableReason}
-                              >
-                                {unavailableReason}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      </Card>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+    <WizardTemplateStep
+      stepsLength={steps.length}
+      selectedTemplate={selectedTemplate}
+      formData={formData}
+      setFormData={setFormData}
+      showTemplateStep={showTemplateStep}
+      currentStep={currentStep}
+      contentTypesForStep={contentTypesForStep}
+      profitTypesForStep={profitTypesForStep}
+      isTemplateTypeEnabled={isTemplateTypeEnabled}
+      getTemplateUnavailableReason={getTemplateUnavailableReason}
+      handleTemplateSelect={handleTemplateSelect}
+      isStandalone={isStandalone}
+      testTypeCategories={TEST_TYPE_CATEGORIES}
+    />
   );
 
   const renderVariants = () => {
@@ -9043,36 +7610,7 @@ function TestWizard({
       (formData.variants?.length === 0 || variantCodesData.length === formData.variants?.length));
 
   const renderVariantUrlModule = () => (
-    <BlockStack gap="400">
-      <Banner tone="info" title="Split URL test">
-        <Text as="p" variant="bodySm">
-          Visitors matching this test will be redirected to the variant URL. Use full same-origin
-          URLs (e.g. https://yoursite.com/pages/landing) for best results. Control can leave URL
-          empty to stay on the current page.
-        </Text>
-      </Banner>
-      <Text variant="bodyMd" color="subdued" as="p">
-        Set the URL for each variant. Visitors will be redirected to the assigned variant URL.
-      </Text>
-      {(formData.variants || []).map((variant, index) => (
-        <Card key={`url-${index}`} sectioned>
-          <FormLayout>
-            <TextField
-              label={variant.name}
-              value={variant.config?.url ?? ''}
-              onChange={value => {
-                const next = [...(formData.variants || [])];
-                next[index] = { ...next[index], config: { ...next[index].config, url: value } };
-                setFormData({ ...formData, variants: next });
-              }}
-              placeholder="https://yoursite.com/pages/variant-page"
-              helpText="Full URL for this variant"
-              autoComplete="off"
-            />
-          </FormLayout>
-        </Card>
-      ))}
-    </BlockStack>
+    <VariantUrlModule formData={formData} setFormData={setFormData} />
   );
 
   const PRICE_MODES = [
@@ -9084,15 +7622,39 @@ function TestWizard({
     { value: 'price', label: 'Selling price' },
     { value: 'compare_at', label: 'Compare-at price (list)' },
   ];
+  const directPriceOverrideSupportLevel = String(
+    checkoutDiagnostics?.support?.direct_price_override?.level || ''
+  )
+    .trim()
+    .toLowerCase();
   const cartTransformFunctionAvailable =
+    directPriceOverrideSupportLevel === 'available' ||
     checkoutDiagnostics?.infrastructure?.cart_transform_function_available === true;
-  const directPriceOverrideReadiness = cartTransformFunctionAvailable
-    ? 'ready'
-    : checkoutDiagnosticsLoading
-      ? 'checking'
-      : checkoutDiagnosticsError
-        ? 'unknown'
-        : 'needs_deploy';
+  const directPriceOverrideReadiness = checkoutDiagnosticsLoading
+    ? 'checking'
+    : directPriceOverrideSupportLevel === 'available'
+      ? 'ready'
+      : directPriceOverrideSupportLevel === 'needs_install'
+        ? 'needs_install'
+        : directPriceOverrideSupportLevel === 'needs_deploy'
+          ? 'needs_deploy'
+          : directPriceOverrideSupportLevel === 'unknown_install_state'
+            ? 'unknown'
+            : checkoutDiagnosticsError
+              ? 'unknown'
+              : checkoutDiagnostics?.infrastructure?.cart_transform_function_available === true
+                ? 'ready'
+                : 'needs_deploy';
+  const directPriceOverrideStatusMessage =
+    directPriceOverrideReadiness === 'ready'
+      ? 'Direct Price Override is available for this shop.'
+      : directPriceOverrideReadiness === 'needs_install'
+        ? 'RipX cart transform is deployed but not installed on this shop yet. Bind/install it before relying on live price tests.'
+        : directPriceOverrideReadiness === 'needs_deploy'
+          ? 'RipX cart transform is not deployed for this shop yet, so checkout/cart price changes will not run.'
+          : directPriceOverrideReadiness === 'checking'
+            ? 'RipX is still checking cart transform availability for this shop.'
+            : 'RipX could not fully verify cart transform install state for this shop.';
 
   const normalizePriceApplicationMethod = value => {
     const raw = String(value || '')
@@ -9228,9 +7790,11 @@ function TestWizard({
         warning:
           directPriceOverrideReadiness === 'needs_deploy'
             ? 'Deploy the RipX Cart Transform first. Shopify allows one Cart Transform per store.'
-            : impliesIncrease
-              ? 'Higher-price overrides can be ignored on some live shops. Manual Direct Price Override does not auto-fallback. Use Auto or switch this variant to Native Variant Price if needed.'
-              : null,
+            : directPriceOverrideReadiness === 'needs_install'
+              ? 'Install/bind the deployed RipX Cart Transform on this shop before relying on Direct Price Override.'
+              : impliesIncrease
+                ? 'Higher-price overrides can be ignored on some live shops. Manual Direct Price Override does not auto-fallback. Use Auto or switch this variant to Native Variant Price if needed.'
+                : null,
       };
     }
     return {
@@ -10722,6 +9286,27 @@ function TestWizard({
       <>
         <BlockStack gap="400">
           <div className={styles.priceStepRoot}>
+            {isShopifyFromRoute &&
+              !isStandalone &&
+              directPriceOverrideReadiness !== 'ready' &&
+              directPriceOverrideReadiness !== 'checking' &&
+              directPriceOverrideReadiness !== 'unknown' && (
+                <Banner tone="critical" title="Price test checkout execution is not ready">
+                  <Text as="p" variant="bodySm">
+                    {directPriceOverrideStatusMessage} Price tests in this wizard currently save as
+                    <strong> Direct Price Override</strong>, so cart and checkout price changes will
+                    not run until this is fixed.
+                  </Text>
+                </Banner>
+              )}
+            {isShopifyFromRoute && !isStandalone && directPriceOverrideReadiness === 'unknown' && (
+              <Banner tone="warning" title="Price test checkout execution could not be verified">
+                <Text as="p" variant="bodySm">
+                  {directPriceOverrideStatusMessage} Recheck Shopify function installation before
+                  launching this price test.
+                </Text>
+              </Banner>
+            )}
             <div className={styles.priceMetaCompactRow}>
               <div className={styles.priceMetaCompactItem}>
                 <Badge tone="success" size="small">
@@ -11010,11 +9595,13 @@ function TestWizard({
                               <span className={styles.priceAtAGlanceValue}>
                                 {directPriceOverrideReadiness === 'ready'
                                   ? 'Ready'
-                                  : directPriceOverrideReadiness === 'needs_deploy'
-                                    ? 'Not detected'
-                                    : directPriceOverrideReadiness === 'checking'
-                                      ? 'Checking'
-                                      : 'Unknown'}
+                                  : directPriceOverrideReadiness === 'needs_install'
+                                    ? 'Needs install'
+                                    : directPriceOverrideReadiness === 'needs_deploy'
+                                      ? 'Not deployed'
+                                      : directPriceOverrideReadiness === 'checking'
+                                        ? 'Checking'
+                                        : 'Unknown'}
                               </span>
                               <span className={styles.priceAtAGlanceHint}>
                                 Direct Price Override availability
@@ -14700,132 +13287,11 @@ function TestWizard({
   };
 
   const renderVariantThemeModule = () => (
-    <BlockStack gap="400">
-      <Banner tone="info" title="Theme test contract">
-        <Text as="p" variant="bodySm">
-          RipX applies theme variants deterministically by exposing normalized theme metadata on the
-          storefront (`data-ripx-*` attributes + `ripx:theme-variant` event). Configure
-          mode-specific fields below so each variant is explicit and production-safe.
-        </Text>
-      </Banner>
-      <Text variant="bodyMd" color="subdued" as="p">
-        Use <strong>Template switch</strong> for template-handle experiments,{' '}
-        <strong>Section variant</strong> for section-targeted rollouts, and{' '}
-        <strong>Asset flag</strong> when your theme code reads a body class/attribute switch. Use{' '}
-        <strong>Theme redirect</strong> for full-page or full-theme reroute experiments.
-      </Text>
-      {(formData.variants || []).map((variant, index) => (
-        <Card key={`theme-${index}`} sectioned>
-          <BlockStack gap="300">
-            <Text variant="headingSm" as="h4" fontWeight="semibold">
-              {variant.name}
-            </Text>
-            {(() => {
-              const fallbackMode =
-                selectedTemplate === 'template' ? 'template_switch' : 'asset_flag';
-              const cfg =
-                variant?.config && typeof variant.config === 'object' ? variant.config : {};
-              const mode = normalizeThemeMode(cfg.themeMode || cfg.theme_mode, fallbackMode);
-              const templateHandle = String(
-                cfg.themeTemplateHandle || cfg.theme_template_handle || cfg.template || ''
-              );
-              const themeId = String(cfg.themeId || cfg.theme_id || '');
-              const sectionId = String(cfg.sectionId || cfg.section_id || '');
-              const bodyClass = String(cfg.bodyClass || cfg.body_class || '');
-              const redirectUrl = String(
-                cfg.url || cfg.themeRedirectUrl || cfg.theme_redirect_url || ''
-              );
-              const requiresTemplateHandle = mode === 'template_switch';
-              const requiresSectionId = mode === 'section_variant';
-              const requiresRedirectUrl = mode === 'theme_redirect';
-
-              const updateThemeConfig = patch => {
-                const next = [...(formData.variants || [])];
-                const prevConfig =
-                  next[index]?.config && typeof next[index].config === 'object'
-                    ? next[index].config
-                    : {};
-                const mergedConfig = { ...prevConfig, ...patch };
-                next[index] = {
-                  ...next[index],
-                  config: normalizeThemeConfig(mergedConfig, fallbackMode),
-                };
-                setFormData({ ...formData, variants: next });
-              };
-
-              return (
-                <FormLayout>
-                  <Select
-                    label={`${variant.name} mode`}
-                    options={[
-                      { label: 'Template switch', value: 'template_switch' },
-                      { label: 'Section variant', value: 'section_variant' },
-                      { label: 'Asset flag', value: 'asset_flag' },
-                      { label: 'Theme redirect', value: 'theme_redirect' },
-                    ]}
-                    value={mode}
-                    onChange={value => updateThemeConfig({ themeMode: value })}
-                    helpText="Defines how storefront runtime should apply this variant."
-                  />
-                  {(requiresTemplateHandle || requiresSectionId) && (
-                    <TextField
-                      label={`${variant.name} template handle${requiresTemplateHandle ? '' : ' (optional)'}`}
-                      value={templateHandle}
-                      onChange={value =>
-                        updateThemeConfig({ themeTemplateHandle: value, template: value })
-                      }
-                      placeholder="e.g. product.alternate"
-                      helpText={
-                        requiresTemplateHandle
-                          ? 'Required for template-switch mode.'
-                          : 'Optional template context for section-level variants.'
-                      }
-                      autoComplete="off"
-                    />
-                  )}
-                  {requiresSectionId && (
-                    <TextField
-                      label={`${variant.name} section ID`}
-                      value={sectionId}
-                      onChange={value => updateThemeConfig({ sectionId: value })}
-                      placeholder="e.g. main-product or hero-banner"
-                      helpText="Required for section-variant mode."
-                      autoComplete="off"
-                    />
-                  )}
-                  {requiresRedirectUrl && (
-                    <TextField
-                      label={`${variant.name} redirect URL`}
-                      value={redirectUrl}
-                      onChange={value => updateThemeConfig({ url: value })}
-                      placeholder="/pages/redesign-v2 or https://example.com/pages/redesign-v2"
-                      helpText="Required for theme-redirect mode."
-                      autoComplete="off"
-                    />
-                  )}
-                  <TextField
-                    label={`${variant.name} body class (optional)`}
-                    value={bodyClass}
-                    onChange={value => updateThemeConfig({ bodyClass: value })}
-                    placeholder="e.g. ripx-theme-v2"
-                    helpText="Added to body so your theme assets can switch behavior safely."
-                    autoComplete="off"
-                  />
-                  <TextField
-                    label={`${variant.name} theme ID (optional)`}
-                    value={themeId}
-                    onChange={value => updateThemeConfig({ themeId: value })}
-                    placeholder="e.g. 123456789"
-                    helpText="Optional metadata when variants map across multiple themes."
-                    autoComplete="off"
-                  />
-                </FormLayout>
-              );
-            })()}
-          </BlockStack>
-        </Card>
-      ))}
-    </BlockStack>
+    <VariantThemeModule
+      formData={formData}
+      setFormData={setFormData}
+      selectedTemplate={selectedTemplate}
+    />
   );
 
   const renderConfigStepLoader = () => (
@@ -16955,46 +15421,73 @@ function TestWizard({
             Variants
           </div>
           {isPriceReview ? (
-            <div className={stepStyles.reviewVariantGrid}>
-              {reviewVariants.map((v, i) => {
-                const reviewPreview = getPricePreview(v?.config || {}, v?.name);
-                const reviewRuleValue = getPriceValueCell(v);
-                const reviewMethod = getResolvedPriceApplicationMethodSummary(v?.config || {});
-                return (
-                  <div key={i} className={stepStyles.reviewVariantCard}>
-                    <div className={stepStyles.reviewVariantCardHeader}>
-                      <div className={stepStyles.reviewVariantCardTitleRow}>
-                        <span
-                          className={stepStyles.reviewVariantChipColor}
-                          style={{ backgroundColor: getVariantColor(i) }}
-                        />
-                        <span className={stepStyles.reviewVariantCardTitle}>{v.name}</span>
+            <BlockStack gap="300">
+              {isShopifyFromRoute &&
+                !isStandalone &&
+                directPriceOverrideReadiness !== 'ready' &&
+                directPriceOverrideReadiness !== 'checking' &&
+                directPriceOverrideReadiness !== 'unknown' && (
+                  <Banner tone="critical" title="Price test launch is blocked">
+                    <Text as="p" variant="bodySm">
+                      {directPriceOverrideStatusMessage} Fix cart transform deployment/install state
+                      before creating or updating this price test, otherwise checkout prices will
+                      not apply.
+                    </Text>
+                  </Banner>
+                )}
+              {isShopifyFromRoute &&
+                !isStandalone &&
+                directPriceOverrideReadiness === 'unknown' && (
+                  <Banner tone="warning" title="Price test launch needs manual verification">
+                    <Text as="p" variant="bodySm">
+                      {directPriceOverrideStatusMessage} Confirm Shopify function installation
+                      before launching this test.
+                    </Text>
+                  </Banner>
+                )}
+              <div className={stepStyles.reviewVariantGrid}>
+                {reviewVariants.map((v, i) => {
+                  const reviewPreview = getPricePreview(v?.config || {}, v?.name);
+                  const reviewRuleValue = getPriceValueCell(v);
+                  const reviewMethod = getResolvedPriceApplicationMethodSummary(v?.config || {});
+                  return (
+                    <div key={i} className={stepStyles.reviewVariantCard}>
+                      <div className={stepStyles.reviewVariantCardHeader}>
+                        <div className={stepStyles.reviewVariantCardTitleRow}>
+                          <span
+                            className={stepStyles.reviewVariantChipColor}
+                            style={{ backgroundColor: getVariantColor(i) }}
+                          />
+                          <span className={stepStyles.reviewVariantCardTitle}>{v.name}</span>
+                        </div>
+                        <Badge tone="info">{v.allocation}% traffic</Badge>
                       </div>
-                      <Badge tone="info">{v.allocation}% traffic</Badge>
+                      <div className={stepStyles.reviewVariantMetrics}>
+                        <div className={stepStyles.reviewVariantMetric}>
+                          <span className={stepStyles.reviewVariantMetricLabel}>Rule</span>
+                          <span className={stepStyles.reviewVariantMetricValue}>
+                            {reviewRuleValue}
+                          </span>
+                        </div>
+                        <div className={stepStyles.reviewVariantMetric}>
+                          <span className={stepStyles.reviewVariantMetricLabel}>Display price</span>
+                          <span className={stepStyles.reviewVariantMetricValue}>
+                            {reviewPreview}
+                          </span>
+                        </div>
+                        <div className={stepStyles.reviewVariantMetric}>
+                          <span className={stepStyles.reviewVariantMetricLabel}>Checkout path</span>
+                          <span className={stepStyles.reviewVariantMetricValue}>
+                            {reviewMethod.label}
+                          </span>
+                        </div>
+                      </div>
+                      <p className={stepStyles.reviewVariantCardHint}>{reviewMethod.detail}</p>
                     </div>
-                    <div className={stepStyles.reviewVariantMetrics}>
-                      <div className={stepStyles.reviewVariantMetric}>
-                        <span className={stepStyles.reviewVariantMetricLabel}>Rule</span>
-                        <span className={stepStyles.reviewVariantMetricValue}>
-                          {reviewRuleValue}
-                        </span>
-                      </div>
-                      <div className={stepStyles.reviewVariantMetric}>
-                        <span className={stepStyles.reviewVariantMetricLabel}>Display price</span>
-                        <span className={stepStyles.reviewVariantMetricValue}>{reviewPreview}</span>
-                      </div>
-                      <div className={stepStyles.reviewVariantMetric}>
-                        <span className={stepStyles.reviewVariantMetricLabel}>Checkout path</span>
-                        <span className={stepStyles.reviewVariantMetricValue}>
-                          {reviewMethod.label}
-                        </span>
-                      </div>
-                    </div>
-                    <p className={stepStyles.reviewVariantCardHint}>{reviewMethod.detail}</p>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            </BlockStack>
           ) : isCheckoutReview ? (
             <BlockStack gap="300">
               <Banner tone="info" title="Checkout launch contract">
