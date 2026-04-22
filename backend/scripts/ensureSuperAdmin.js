@@ -104,16 +104,25 @@ async function ensureSuperAdmin() {
   }
 
   const user = await standaloneUser.getByEmail(email);
-  if (user) {
-    const { ensureAccountForUser } = standaloneUser;
-    const accountResult = await ensureAccountForUser(user.id);
-    if (accountResult) {
-      if (accountResult.apiKey) {
-        console.log('Account created; user can sign in and use the app.');
-      } else {
-        console.log('User already has an account.');
-      }
-    }
+  if (!user) {
+    throw new Error(`Failed to load super admin user ${email} after upsert.`);
+  }
+
+  const { ensureAccountForUser } = standaloneUser;
+  const accountResult = await ensureAccountForUser(user.id);
+  if (!accountResult?.accountId) {
+    throw new Error(`Failed to ensure account for super admin ${email}.`);
+  }
+
+  const userWithAccount = await standaloneUser.getByEmail(email);
+  if (!userWithAccount?.account_id) {
+    throw new Error(`Account link was not persisted for super admin ${email}.`);
+  }
+
+  if (accountResult.apiKey) {
+    console.log('Account created; user can sign in and use the app.');
+  } else {
+    console.log('User already has an account.');
   }
 
   console.log('Super admin bootstrap done. You can sign in with', email);

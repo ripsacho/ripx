@@ -449,6 +449,9 @@ function DomainList() {
   const { data: shopifyInstallStatus = {} } = useQuery({
     queryKey: ['domains', 'shopify-install-status', shopifyDomains.join('|')],
     queryFn: async () => {
+      if (useEmailDomains) {
+        return Object.fromEntries(shopifyDomains.map(shop => [shop, 'connected']));
+      }
       const pairs = await Promise.all(
         shopifyDomains.map(async shop => {
           try {
@@ -654,29 +657,6 @@ function DomainList() {
   };
 
   /**
-   * Build a signed install-link URL for a Shopify store.
-   * Returned URL points to /api/auth/install (instruction page) and is safe to copy/open in private mode.
-   */
-  const getInstallLinkForShop = async normalizedShop => {
-    const baseUrl = getApiBaseUrl();
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    const installLinkUrl = `${baseUrl}/auth/install-link?shop=${encodeURIComponent(normalizedShop)}${origin ? `&callback_base=${encodeURIComponent(origin)}` : ''}`;
-    const token = getEmailToken();
-    const res = await fetch(installLinkUrl, {
-      credentials: 'include',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    const data = await res.json().catch(() => ({}));
-    const installUrl = data?.url ?? data?.data?.url;
-    return {
-      status: res.status,
-      ok: res.ok,
-      installUrl: typeof installUrl === 'string' ? installUrl : '',
-      error: data?.error || null,
-    };
-  };
-
-  /**
    * @param {string} normalizedDomain
    * @param {boolean} hasKey
    * @param {{ returnOAuthUrl?: boolean }} options - When true and we would redirect to Shopify OAuth, return { redirectUrl } instead so caller can show a user-gesture link (required in embedded Admin iframe).
@@ -704,32 +684,8 @@ function DomainList() {
         }
       } catch (statusErr) {
         if (statusErr?.response?.status === 401) {
-          try {
-            const install = await getInstallLinkForShop(normalizedDomain);
-            if (install.status === 401) {
-              if (returnOAuthUrl) return { signInRequired: true, shop: normalizedDomain };
-              setSignInRequiredShop(normalizedDomain);
-              return;
-            }
-            const origin = typeof window !== 'undefined' ? window.location.origin : '';
-            const fallbackUrl = `${origin}/api/auth?shop=${encodeURIComponent(normalizedDomain)}${origin ? `&callback_base=${encodeURIComponent(origin)}` : ''}`;
-            const nextUrl = install.installUrl || fallbackUrl;
-            if (returnOAuthUrl) {
-              return {
-                installRequired: true,
-                shop: normalizedDomain,
-                redirectUrl: nextUrl,
-              };
-            }
-            setStartOAuthNewTab({
-              url: nextUrl,
-              shop: normalizedDomain,
-              mode: 'install_required',
-            });
-            return;
-          } catch (_) {
-            // If install-link fetch fails, fall through to existing auth/start logic.
-          }
+          // No live Shopify session for this tab yet. Keep going so account-linked store
+          // checks below can open the app directly instead of forcing OAuth immediately.
         }
       }
     }
