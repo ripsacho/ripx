@@ -3398,6 +3398,26 @@ function TestWizard({
       );
       return;
     }
+    const previewShopDomain =
+      routeDomain || getPreviewDomain() || getShopDomain() || initialData?.shop_domain || null;
+    if (previewShopDomain && isShopifyStoreDomain(previewShopDomain)) {
+      try {
+        const installRes = await apiGet('/settings/installation', {
+          domain: previewShopDomain,
+        });
+        const installData = unwrapData(installRes);
+        const scriptVerified = installData?.installation?.scriptVerified === true;
+        if (!scriptVerified) {
+          const scriptUrl = installData?.installation?.scriptUrl || null;
+          setError(
+            `Preview is blocked because RipX storefront runtime is not verified for ${previewShopDomain}. Enable the RipX app embed on the published theme, then retry.${scriptUrl ? ` Expected script: ${scriptUrl}` : ''}`
+          );
+          return;
+        }
+      } catch (_e) {
+        // Fail-open on diagnostics/network issues so preview remains usable.
+      }
+    }
     window.open(url, '_blank', 'noopener');
   };
 
