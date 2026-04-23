@@ -478,6 +478,8 @@ function TestWizard({
   const [placementSection, setPlacementSection] = useState('page'); // 'page' | 'device' | 'audience' | 'holdout' | 'advanced'
   const { domain: routeDomain } = useParams();
   const isShopifyFromRoute = routeDomain && isShopifyStoreDomain(routeDomain);
+  const scopedShopDomain =
+    isShopifyFromRoute && routeDomain ? String(routeDomain).trim().toLowerCase() : '';
   const isStandalone = !isShopifyFromRoute && isStandaloneMode();
   const canUseStoreProductPicker = !isStandalone && isShopifyFromRoute && Boolean(routeDomain);
   const {
@@ -705,7 +707,9 @@ function TestWizard({
       setCheckoutDiagnosticsLoading(true);
       setCheckoutDiagnosticsError(null);
       try {
-        const data = await apiGet('/settings/checkout-price-diagnostics');
+        const data = await apiGet('/settings/checkout-price-diagnostics', {
+          ...(scopedShopDomain ? { domain: scopedShopDomain } : {}),
+        });
         if (!cancelled) {
           setCheckoutDiagnostics(data || null);
         }
@@ -725,7 +729,7 @@ function TestWizard({
     return () => {
       cancelled = true;
     };
-  }, [isShopifyFromRoute, isStandalone, routeDomain]);
+  }, [isShopifyFromRoute, isStandalone, routeDomain, scopedShopDomain]);
 
   useEffect(() => {
     let cancelled = false;
@@ -741,7 +745,13 @@ function TestWizard({
     const loadCartTransformStatus = async () => {
       setCartTransformStatusLoading(true);
       try {
-        const data = await apiGet('/settings/cart-transform/status', { timeout: 15000 });
+        const data = await apiGet(
+          '/settings/cart-transform/status',
+          {
+            ...(scopedShopDomain ? { domain: scopedShopDomain } : {}),
+          },
+          { timeout: 15000 }
+        );
         if (!cancelled) {
           setCartTransformStatus(data || null);
         }
@@ -760,7 +770,7 @@ function TestWizard({
     return () => {
       cancelled = true;
     };
-  }, [isShopifyFromRoute, isStandalone, routeDomain]);
+  }, [isShopifyFromRoute, isStandalone, routeDomain, scopedShopDomain]);
 
   const directPriceOverrideSupportLevel = String(
     checkoutDiagnostics?.support?.direct_price_override?.level || ''
@@ -833,7 +843,9 @@ function TestWizard({
       setCheckoutExperienceDiagnosticsLoading(true);
       setCheckoutExperienceDiagnosticsError(null);
       try {
-        const data = await apiGet('/settings/checkout-experience-diagnostics');
+        const data = await apiGet('/settings/checkout-experience-diagnostics', {
+          ...(scopedShopDomain ? { domain: scopedShopDomain } : {}),
+        });
         if (!cancelled) {
           setCheckoutExperienceDiagnostics(data || null);
         }
@@ -855,7 +867,14 @@ function TestWizard({
     return () => {
       cancelled = true;
     };
-  }, [formData.type, isShopifyFromRoute, isStandalone, routeDomain, selectedTemplate]);
+  }, [
+    formData.type,
+    isShopifyFromRoute,
+    isStandalone,
+    routeDomain,
+    scopedShopDomain,
+    selectedTemplate,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
