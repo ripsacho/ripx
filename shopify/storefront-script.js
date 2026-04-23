@@ -1534,6 +1534,55 @@
 
   function applyRipxCartAttrsToFormData(formData, payload, preserveExisting) {
     if (!formData || !payload) return false;
+    function collectItemIndexes() {
+      var idxMap = {};
+      var idxList = [];
+      try {
+        if (typeof formData.forEach === 'function') {
+          formData.forEach(function (_value, key) {
+            var m = String(key || '').match(/^items\[(\d+)\]\[[^\]]+\]/);
+            if (!m) return;
+            var idx = m[1];
+            if (idxMap[idx]) return;
+            idxMap[idx] = true;
+            idxList.push(idx);
+          });
+        }
+      } catch (e) {}
+      return idxList;
+    }
+    function setItemProperty(index, propKey, value) {
+      if (value === undefined || value === null || String(value).trim() === '') return;
+      var itemKey = 'items[' + index + '][properties][' + propKey + ']';
+      if (
+        preserveExisting &&
+        typeof formData.get === 'function' &&
+        formData.get(itemKey) !== null &&
+        String(formData.get(itemKey)).trim() !== ''
+      ) {
+        return;
+      }
+      formData.set(itemKey, value);
+    }
+    function applyToItemIndexes() {
+      var indexes = collectItemIndexes();
+      if (!indexes.length) return false;
+      indexes.forEach(function (index) {
+        setItemProperty(index, '_ripx_price_test', payload._ripx_price_test);
+        setItemProperty(index, '_ripx_variant', payload._ripx_variant);
+        setItemProperty(index, '_ripx_shop', payload._ripx_shop);
+        setItemProperty(index, '_ripx_assignment_sig', payload._ripx_assignment_sig);
+        setItemProperty(index, '_ripx_assignment_ts', payload._ripx_assignment_ts);
+        setItemProperty(index, '_ripx_assignment_user', payload._ripx_assignment_user);
+        setItemProperty(index, '_ripx_target_unit', payload._ripx_target_unit);
+        setItemProperty(index, '_ripx_discount_unit', payload._ripx_discount_unit);
+        setItemProperty(index, '_ripx_price_method', payload._ripx_price_method);
+        setItemProperty(index, '_ripx_offer_discount_type', payload._ripx_offer_discount_type);
+        setItemProperty(index, '_ripx_offer_discount_value', payload._ripx_offer_discount_value);
+        setItemProperty(index, '_ripx_offer_code_name', payload._ripx_offer_code_name);
+      });
+      return true;
+    }
     setRipxAttrValueOnFormData(
       formData,
       'properties[_ripx_price_test]',
@@ -1606,6 +1655,7 @@
       payload._ripx_offer_code_name,
       preserveExisting
     );
+    applyToItemIndexes();
     return true;
   }
 
@@ -1620,6 +1670,54 @@
 
   function applyRipxCartAttrsToSearchParams(params, payload, preserveExisting) {
     if (!params || !payload) return false;
+    function collectItemIndexes() {
+      var idxMap = {};
+      var idxList = [];
+      try {
+        if (typeof params.forEach === 'function') {
+          params.forEach(function (_value, key) {
+            var m = String(key || '').match(/^items\[(\d+)\]\[[^\]]+\]/);
+            if (!m) return;
+            var idx = m[1];
+            if (idxMap[idx]) return;
+            idxMap[idx] = true;
+            idxList.push(idx);
+          });
+        }
+      } catch (e) {}
+      return idxList;
+    }
+    function setItemProperty(index, propKey, value) {
+      if (value === undefined || value === null || String(value).trim() === '') return;
+      var itemKey = 'items[' + index + '][properties][' + propKey + ']';
+      if (
+        preserveExisting &&
+        params.get(itemKey) != null &&
+        String(params.get(itemKey)).trim() !== ''
+      ) {
+        return;
+      }
+      params.set(itemKey, value);
+    }
+    function applyToItemIndexes() {
+      var indexes = collectItemIndexes();
+      if (!indexes.length) return false;
+      indexes.forEach(function (index) {
+        setItemProperty(index, '_ripx_price_test', payload._ripx_price_test);
+        setItemProperty(index, '_ripx_variant', payload._ripx_variant);
+        setItemProperty(index, '_ripx_shop', payload._ripx_shop);
+        setItemProperty(index, '_ripx_assignment_sig', payload._ripx_assignment_sig);
+        setItemProperty(index, '_ripx_assignment_ts', payload._ripx_assignment_ts);
+        setItemProperty(index, '_ripx_assignment_user', payload._ripx_assignment_user);
+        setItemProperty(index, '_ripx_target_unit', payload._ripx_target_unit);
+        setItemProperty(index, '_ripx_discount_unit', payload._ripx_discount_unit);
+        setItemProperty(index, '_ripx_price_method', payload._ripx_price_method);
+        setItemProperty(index, '_ripx_offer_discount_type', payload._ripx_offer_discount_type);
+        setItemProperty(index, '_ripx_offer_discount_value', payload._ripx_offer_discount_value);
+        setItemProperty(index, '_ripx_offer_code_name', payload._ripx_offer_code_name);
+      });
+      return true;
+    }
     setRipxAttrValueOnSearchParams(
       params,
       'properties[_ripx_price_test]',
@@ -1692,6 +1790,7 @@
       payload._ripx_offer_code_name,
       preserveExisting
     );
+    applyToItemIndexes();
     return true;
   }
 
