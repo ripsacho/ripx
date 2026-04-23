@@ -6417,6 +6417,21 @@
         if (PREVIEW_MODE && PREVIEW_TEST_ID) {
           getVariant(PREVIEW_TEST_ID).then(function (variant) {
             if (variant) {
+              var previewVariantIdForCart =
+                variant.variantId != null ? variant.variantId : variant.id;
+              if (
+                previewVariantIdForCart != null &&
+                String(previewVariantIdForCart).trim() !== ''
+              ) {
+                injectPriceTestCartAttributes(
+                  PREVIEW_TEST_ID,
+                  previewVariantIdForCart,
+                  getAssignmentProofFromVariant(variant),
+                  null
+                );
+              } else {
+                injectPreviewCartAttributesWhenConfigMissing(PREVIEW_TEST_ID, variant);
+              }
               applyCustomCode(PREVIEW_TEST_ID, variant);
               applyVisualEditorRules(PREVIEW_TEST_ID, variant);
             }
