@@ -339,6 +339,11 @@ apiClient.interceptors.response.use(
       const rawPath = typeof window !== 'undefined' ? window.location.pathname : '';
       const path = getEmbeddedAppRelativePathname(rawPath);
       const requestUrl = String(error.config?.url || '');
+      const isUiEventsRequest = requestUrl.includes('/ui-events');
+      // UI telemetry is best-effort; auth failures here must not log out or redirect.
+      if (isUiEventsRequest) {
+        return Promise.reject(error);
+      }
       const isAdminIdentityProbe = requestUrl.includes('/admin/me');
       // /admin/me is an identity/role probe used in shell nav and AdminGuard.
       // A 401 here should not force-login redirect from the global interceptor.
@@ -839,17 +844,29 @@ export function apiRequest(method, endpoint, data = null, config = {}) {
   const url = `${API_BASE_URL}${endpoint}`;
 
   const emailToken = getEmailToken();
+  const needsScopedShopForEmailSession =
+    endpoint.startsWith('/tests') ||
+    endpoint.startsWith('/dashboard/') ||
+    endpoint === '/dashboard/stats' ||
+    endpoint.startsWith('/settings') ||
+    endpoint.startsWith('/targeting-presets') ||
+    endpoint.startsWith('/promo-links');
   const canUseEmailSessionForEndpoint =
     endpoint.startsWith('/admin/') ||
     endpoint.startsWith('/me/') ||
     endpoint.startsWith('/auth/start') ||
     endpoint.startsWith('/account/stores') ||
     endpoint.startsWith('/support/') ||
-    endpoint.startsWith('/tests');
-  const needsShopContextWithEmailSession = endpoint.startsWith('/tests');
-  const allowedWithoutShopOrKey = emailToken && canUseEmailSessionForEndpoint;
+    needsScopedShopForEmailSession;
+  // Non-critical telemetry endpoint: never hard-fail UI when credentials are absent.
+  const allowAnonymousEndpoint = endpoint.startsWith('/ui-events');
+  const needsShopContextWithEmailSession = needsScopedShopForEmailSession;
+  const allowedWithoutShopOrKey =
+    allowAnonymousEndpoint || (emailToken && canUseEmailSessionForEndpoint);
   if (!shopDomain && !apiKey && !allowedWithoutShopOrKey) {
-    throw new Error('Missing credentials. Open from Shopify Admin or set API key.');
+    return Promise.reject(
+      new Error('Missing credentials. Open from Shopify Admin or set API key.')
+    );
   }
 
   // Extract params and headers from config to avoid conflicts

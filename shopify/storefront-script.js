@@ -462,35 +462,71 @@
   const URL_PARAMS = new URLSearchParams(window.location.search);
   // Shopify navigation drops query params; keep preview context sticky across clicks (PDP/collections/cart).
   const PREVIEW_STORAGE_KEY = '__ripx_preview_ctx_v1__';
+  const PREVIEW_WINDOW_NAME_PREFIX = '__ripx_preview_ctx_v1__:';
   const PREVIEW_STORAGE_MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
+  function normalizePreviewCtxObject(obj) {
+    if (!obj || typeof obj !== 'object') return null;
+    const persistedAtMs = Number(obj.persistedAtMs || 0);
+    if (
+      Number.isFinite(persistedAtMs) &&
+      persistedAtMs > 0 &&
+      Date.now() - persistedAtMs > PREVIEW_STORAGE_MAX_AGE_MS
+    ) {
+      return null;
+    }
+    return {
+      preview: obj.preview === true || obj.preview === '1',
+      testId: obj.testId ? String(obj.testId) : null,
+      variantId: obj.variantId ? String(obj.variantId) : null,
+      variantName: obj.variantName ? String(obj.variantName) : null,
+      tenantDomain: obj.tenantDomain ? String(obj.tenantDomain) : null,
+      persistedAtMs:
+        Number.isFinite(persistedAtMs) && persistedAtMs > 0 ? Math.round(persistedAtMs) : null,
+    };
+  }
   function readPersistedPreviewCtx() {
     try {
       const raw = window.sessionStorage && window.sessionStorage.getItem(PREVIEW_STORAGE_KEY);
       if (!raw) return null;
-      const obj = JSON.parse(raw);
-      if (!obj || typeof obj !== 'object') return null;
-      const persistedAtMs = Number(obj.persistedAtMs || 0);
-      if (
-        Number.isFinite(persistedAtMs) &&
-        persistedAtMs > 0 &&
-        Date.now() - persistedAtMs > PREVIEW_STORAGE_MAX_AGE_MS
-      ) {
+      const normalized = normalizePreviewCtxObject(JSON.parse(raw));
+      if (!normalized) {
         try {
           window.sessionStorage.removeItem(PREVIEW_STORAGE_KEY);
         } catch (eRemove) {}
         return null;
       }
-      return {
-        preview: obj.preview === true || obj.preview === '1',
-        testId: obj.testId ? String(obj.testId) : null,
-        variantId: obj.variantId ? String(obj.variantId) : null,
-        variantName: obj.variantName ? String(obj.variantName) : null,
-        persistedAtMs:
-          Number.isFinite(persistedAtMs) && persistedAtMs > 0 ? Math.round(persistedAtMs) : null,
-      };
+      return normalized;
     } catch (e) {
       return null;
     }
+  }
+  function readWindowNamePreviewCtx() {
+    try {
+      const raw = typeof window.name === 'string' ? window.name : '';
+      if (!raw || raw.indexOf(PREVIEW_WINDOW_NAME_PREFIX) !== 0) return null;
+      const normalized = normalizePreviewCtxObject(
+        JSON.parse(raw.slice(PREVIEW_WINDOW_NAME_PREFIX.length))
+      );
+      if (!normalized) {
+        try {
+          if (window.name.indexOf(PREVIEW_WINDOW_NAME_PREFIX) === 0) window.name = '';
+        } catch (eReset) {}
+        return null;
+      }
+      return normalized;
+    } catch (e) {
+      return null;
+    }
+  }
+  function clearWindowNamePreviewCtx() {
+    try {
+      if (
+        typeof window.name === 'string' &&
+        window.name.indexOf(PREVIEW_WINDOW_NAME_PREFIX) === 0
+      ) {
+        window.name = '';
+      }
+    } catch (e) {}
   }
   function writePersistedPreviewCtx(ctx) {
     try {
@@ -503,47 +539,65 @@
     } catch (e) {}
   }
   const persistedPreview = readPersistedPreviewCtx();
+  const windowNamePreview = readWindowNamePreviewCtx();
 
   const _urlPreview = URL_PARAMS.get('ab_preview') === '1';
   const _urlPreviewTest = URL_PARAMS.get('ab_preview_test');
   const _urlPreviewVariantId = URL_PARAMS.get('ab_preview_variant');
   const _urlPreviewVariantName = URL_PARAMS.get('ab_preview_variant_name');
+  const _urlPreviewTenantDomain = URL_PARAMS.get('ab_preview_domain');
 
   // Effective preview inputs: URL wins; otherwise use embedded config; otherwise use persisted session preview.
   const PREVIEW_TEST_ID =
     _urlPreviewTest ||
     (CONFIG.previewTestId && String(CONFIG.previewTestId)) ||
+    (windowNamePreview && windowNamePreview.preview ? windowNamePreview.testId : null) ||
     (persistedPreview && persistedPreview.preview ? persistedPreview.testId : null) ||
     null;
   const PREVIEW_VARIANT_ID =
     _urlPreviewVariantId ||
     (CONFIG.previewVariantId && String(CONFIG.previewVariantId)) ||
+    (windowNamePreview && windowNamePreview.preview ? windowNamePreview.variantId : null) ||
     (persistedPreview && persistedPreview.preview ? persistedPreview.variantId : null) ||
     null;
   const PREVIEW_VARIANT_NAME =
     _urlPreviewVariantName ||
     (CONFIG.previewVariantName && String(CONFIG.previewVariantName)) ||
+    (windowNamePreview && windowNamePreview.preview ? windowNamePreview.variantName : null) ||
     (persistedPreview && persistedPreview.preview ? persistedPreview.variantName : null) ||
+    null;
+  const PREVIEW_TENANT_DOMAIN =
+    _urlPreviewTenantDomain ||
+    (CONFIG.previewTenantDomain && String(CONFIG.previewTenantDomain)) ||
+    (windowNamePreview && windowNamePreview.preview ? windowNamePreview.tenantDomain : null) ||
+    (persistedPreview && persistedPreview.preview ? persistedPreview.tenantDomain : null) ||
     null;
 
   // True only when a concrete preview context is active (target test id or runtime preview flag).
   const PREVIEW_TEST_CONTEXT = !!PREVIEW_TEST_ID || !!(CONFIG.previewMode === true);
   const PREVIEW_MODE =
-    _urlPreview || PREVIEW_TEST_CONTEXT || !!(persistedPreview && persistedPreview.preview);
+    _urlPreview ||
+    PREVIEW_TEST_CONTEXT ||
+    !!(windowNamePreview && windowNamePreview.preview) ||
+    !!(persistedPreview && persistedPreview.preview);
   const STRICT_PREVIEW_TEST_MODE = PREVIEW_MODE && !!PREVIEW_TEST_ID;
 
   // Persist preview so Shopify password redirects / in-theme navigation keep test+variant.
   // ab_preview_test alone (without ab_preview=1) still enables preview; session must survive losing query params.
-  if (
-    (_urlPreview || _urlPreviewTest) &&
-    (_urlPreviewTest || _urlPreviewVariantId || _urlPreviewVariantName)
-  ) {
+  if (PREVIEW_MODE && (PREVIEW_TEST_ID || PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME)) {
     writePersistedPreviewCtx({
       preview: true,
-      testId: _urlPreviewTest || PREVIEW_TEST_ID || null,
-      variantId: _urlPreviewVariantId || PREVIEW_VARIANT_ID || null,
-      variantName: _urlPreviewVariantName || PREVIEW_VARIANT_NAME || null,
+      testId: PREVIEW_TEST_ID || null,
+      variantId: PREVIEW_VARIANT_ID || null,
+      variantName: PREVIEW_VARIANT_NAME || null,
+      tenantDomain: PREVIEW_TENANT_DOMAIN || null,
     });
+    if (
+      windowNamePreview &&
+      !(_urlPreview || _urlPreviewTest || _urlPreviewVariantId || _urlPreviewVariantName)
+    ) {
+      clearWindowNamePreviewCtx();
+    }
   }
 
   function whenConsent(cb) {
@@ -676,7 +730,7 @@
    * @param {URLSearchParams} params
    */
   function appendTrackTenantParams(params) {
-    var d = getShopDomain();
+    var d = PREVIEW_MODE && PREVIEW_TENANT_DOMAIN ? PREVIEW_TENANT_DOMAIN : getShopDomain();
     if (!d || !params) return params;
     var dom = String(d).toLowerCase();
     if (dom.indexOf('.myshopify.com') !== -1) {

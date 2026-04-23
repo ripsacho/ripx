@@ -11,11 +11,76 @@ export const PREVIEW_PARAMS = {
   TEST_ID: 'ab_preview_test',
   VARIANT_ID: 'ab_preview_variant',
   VARIANT_NAME: 'ab_preview_variant_name',
+  TENANT_DOMAIN: 'ab_preview_domain',
   VISUAL_EDITOR: 'ab_visual_editor',
   VISUAL_PICKER: 'ab_visual_picker',
 };
 
 const PREVIEW_VALUE = '1';
+const TEMP_PREVIEW_HOST_SUFFIXES = ['.trycloudflare.com', '.ngrok-free.app', '.ngrok.io'];
+const LEGACY_PREVIEW_BOOTSTRAP_PATHS = new Set(['/ripx-preview-test.html']);
+
+function normalizePreviewHostname(input) {
+  const raw = typeof input === 'string' ? input.trim() : '';
+  if (!raw) return '';
+  try {
+    const url =
+      raw.startsWith('http://') || raw.startsWith('https://')
+        ? new URL(raw)
+        : new URL(`https://${raw}`);
+    return String(url.hostname || '')
+      .trim()
+      .toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function isShopifyPreviewDomain(domain) {
+  const hostname = normalizePreviewHostname(domain);
+  return /\.myshopify\.com$/i.test(hostname);
+}
+
+function isAllowedOverrideForDomain(candidate, domain) {
+  if (!candidate) return false;
+  if (!isShopifyPreviewDomain(domain)) return true;
+  const candidateHost = normalizePreviewHostname(candidate);
+  const domainHost = normalizePreviewHostname(domain);
+  if (!candidateHost || !domainHost) return false;
+  return candidateHost === domainHost;
+}
+
+function isTemporaryPreviewHost(hostname) {
+  const host = typeof hostname === 'string' ? hostname.trim().toLowerCase() : '';
+  return !!host && TEMP_PREVIEW_HOST_SUFFIXES.some(suffix => host.endsWith(suffix));
+}
+
+function getCurrentTemporaryPreviewOrigin() {
+  if (typeof window === 'undefined' || !window.location?.origin || !window.location?.hostname) {
+    return null;
+  }
+  if (!isTemporaryPreviewHost(window.location.hostname)) return null;
+  try {
+    return new URL(window.location.origin);
+  } catch {
+    return null;
+  }
+}
+
+function hasLegacyPreviewBootstrapPath(input) {
+  const raw = typeof input === 'string' ? input.trim() : '';
+  if (!raw) return false;
+  try {
+    const url =
+      raw.startsWith('http://') || raw.startsWith('https://')
+        ? new URL(raw)
+        : new URL(`https://${raw}`);
+    const pathname = (url.pathname || '').trim().toLowerCase();
+    return LEGACY_PREVIEW_BOOTSTRAP_PATHS.has(pathname);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Normalize a base URL or domain for preview.
@@ -37,6 +102,15 @@ export function normalizePreviewBaseUrl(input) {
       raw.startsWith('http://') || raw.startsWith('https://')
         ? new URL(raw)
         : new URL(`https://${withoutProtocol}`);
+    const currentTemporaryOrigin = getCurrentTemporaryPreviewOrigin();
+    if (
+      currentTemporaryOrigin &&
+      isTemporaryPreviewHost(url.hostname) &&
+      url.hostname.toLowerCase() !== currentTemporaryOrigin.hostname.toLowerCase()
+    ) {
+      url.protocol = currentTemporaryOrigin.protocol;
+      url.host = currentTemporaryOrigin.host;
+    }
     url.search = '';
     url.hash = '';
     return url.toString().replace(/\/$/, '') || `${url.origin}/`;
@@ -54,6 +128,7 @@ export function normalizePreviewBaseUrl(input) {
  * @param {string} options.testId - Test UUID
  * @param {string} [options.variantId] - Variant id or fallback identifier
  * @param {string} [options.variantName] - Human-readable variant name
+ * @param {string} [options.tenantDomain] - Saved test domain used for preview API lookups
  * @param {boolean} [options.visualEditor=false] - Add ab_visual_editor=1 for visual editor iframe
  * @param {boolean} [options.visualPicker=false] - Add ab_visual_picker=1 for picker mode
  * @returns {string|null} Full preview URL or null if baseUrl/testId invalid
@@ -63,6 +138,7 @@ export function buildPreviewUrl({
   testId,
   variantId,
   variantName,
+  tenantDomain,
   visualEditor = false,
   visualPicker = false,
 }) {
@@ -79,9 +155,117 @@ export function buildPreviewUrl({
       url.searchParams.set(PREVIEW_PARAMS.VARIANT_ID, String(variantId).trim());
     if (variantName !== null && variantName !== undefined && String(variantName).trim())
       url.searchParams.set(PREVIEW_PARAMS.VARIANT_NAME, String(variantName).trim());
+    if (tenantDomain !== null && tenantDomain !== undefined && String(tenantDomain).trim()) {
+      url.searchParams.set(PREVIEW_PARAMS.TENANT_DOMAIN, String(tenantDomain).trim());
+    }
     if (visualEditor) url.searchParams.set(PREVIEW_PARAMS.VISUAL_EDITOR, PREVIEW_VALUE);
     if (visualPicker) url.searchParams.set(PREVIEW_PARAMS.VISUAL_PICKER, PREVIEW_VALUE);
     return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Build a preview-document URL that proxies the target page while preserving preview params.
+ * Useful for Shopify previews where the raw storefront page may not load the RipX runtime reliably.
+ *
+ * @param {Object} options
+ * @param {string} options.apiBaseUrl - API base URL (e.g. /api or https://host/api)
+ * @param {string} options.previewUrl - Full preview page URL built by buildPreviewUrl()
+ * @param {boolean} [options.visualEditor=false] - Add ab_visual_editor=1 to preview-document
+ * @returns {string|null}
+ */
+export function buildPreviewDocumentUrl({ apiBaseUrl, previewUrl, visualEditor = false }) {
+  const directPreviewUrl = typeof previewUrl === 'string' ? previewUrl.trim() : '';
+  if (!directPreviewUrl) return null;
+
+  const apiBase =
+    (typeof apiBaseUrl === 'string' ? apiBaseUrl.trim() : '').replace(/\/+$/, '') || '/api';
+  const previewDocPath = `${apiBase}/track/preview-document`;
+  const isRelative = typeof window !== 'undefined' && apiBase && !/^https?:\/\//i.test(apiBase);
+
+  try {
+    const previewDoc = isRelative
+      ? new URL(
+          previewDocPath,
+          typeof window !== 'undefined' && window.location?.origin
+            ? window.location.origin
+            : 'https://preview.invalid'
+        )
+      : /^https?:\/\//i.test(previewDocPath)
+        ? new URL(previewDocPath)
+        : new URL(previewDocPath, 'https://preview.invalid');
+    previewDoc.searchParams.set('url', directPreviewUrl);
+    if (visualEditor) {
+      previewDoc.searchParams.set(PREVIEW_PARAMS.VISUAL_EDITOR, PREVIEW_VALUE);
+    }
+
+    const directUrl = new URL(directPreviewUrl);
+    [
+      PREVIEW_PARAMS.PREVIEW,
+      PREVIEW_PARAMS.TEST_ID,
+      PREVIEW_PARAMS.VARIANT_ID,
+      PREVIEW_PARAMS.VARIANT_NAME,
+      PREVIEW_PARAMS.TENANT_DOMAIN,
+    ].forEach(key => {
+      const value = directUrl.searchParams.get(key);
+      if (value !== undefined && value !== null && value !== '') {
+        previewDoc.searchParams.set(key, value);
+      }
+    });
+    return previewDoc.toString();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Build a client-side preview launch URL that stores preview context in window.name
+ * before redirecting to the actual storefront URL. This helps Shopify password pages
+ * that drop deep-link query params before the storefront runtime initializes.
+ *
+ * @param {Object} options
+ * @param {string} options.apiBaseUrl - API base URL (e.g. /api or https://host/api)
+ * @param {string} options.previewUrl - Full preview page URL built by buildPreviewUrl()
+ * @returns {string|null}
+ */
+export function buildPreviewLaunchUrl({ apiBaseUrl, previewUrl }) {
+  const directPreviewUrl = typeof previewUrl === 'string' ? previewUrl.trim() : '';
+  if (!directPreviewUrl) return null;
+
+  const apiBase =
+    (typeof apiBaseUrl === 'string' ? apiBaseUrl.trim() : '').replace(/\/+$/, '') || '/api';
+  const launchPath = `${apiBase}/track/preview-launch`;
+  const isRelative = typeof window !== 'undefined' && apiBase && !/^https?:\/\//i.test(apiBase);
+
+  try {
+    const launchUrl = isRelative
+      ? new URL(
+          launchPath,
+          typeof window !== 'undefined' && window.location?.origin
+            ? window.location.origin
+            : 'https://preview.invalid'
+        )
+      : /^https?:\/\//i.test(launchPath)
+        ? new URL(launchPath)
+        : new URL(launchPath, 'https://preview.invalid');
+    launchUrl.searchParams.set('url', directPreviewUrl);
+
+    const directUrl = new URL(directPreviewUrl);
+    [
+      PREVIEW_PARAMS.PREVIEW,
+      PREVIEW_PARAMS.TEST_ID,
+      PREVIEW_PARAMS.VARIANT_ID,
+      PREVIEW_PARAMS.VARIANT_NAME,
+      PREVIEW_PARAMS.TENANT_DOMAIN,
+    ].forEach(key => {
+      const value = directUrl.searchParams.get(key);
+      if (value !== undefined && value !== null && value !== '') {
+        launchUrl.searchParams.set(key, value);
+      }
+    });
+    return launchUrl.toString();
   } catch {
     return null;
   }
@@ -99,7 +283,11 @@ export function buildPreviewUrl({
  */
 export function getDefaultPreviewBaseUrl({ overrideUrl, domain, path = '/' }) {
   const override = typeof overrideUrl === 'string' ? overrideUrl.trim() : '';
-  if (override) {
+  if (
+    override &&
+    !hasLegacyPreviewBootstrapPath(override) &&
+    isAllowedOverrideForDomain(override, domain)
+  ) {
     const normalized = normalizePreviewBaseUrl(override);
     if (normalized) return normalized;
   }
@@ -129,12 +317,20 @@ export function getDefaultPreviewBaseUrl({ overrideUrl, domain, path = '/' }) {
  */
 export function resolvePreviewBaseUrl({ variantUrl, overrideUrl, domain, path = '/' }) {
   const variant = typeof variantUrl === 'string' ? variantUrl.trim() : '';
-  if (variant) {
+  if (
+    variant &&
+    !hasLegacyPreviewBootstrapPath(variant) &&
+    isAllowedOverrideForDomain(variant, domain)
+  ) {
     const n = normalizePreviewBaseUrl(variant);
     if (n) return n;
   }
   const override = typeof overrideUrl === 'string' ? overrideUrl.trim() : '';
-  if (override) {
+  if (
+    override &&
+    !hasLegacyPreviewBootstrapPath(override) &&
+    isAllowedOverrideForDomain(override, domain)
+  ) {
     const n = normalizePreviewBaseUrl(override);
     if (n) return n;
   }

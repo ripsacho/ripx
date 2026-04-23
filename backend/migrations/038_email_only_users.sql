@@ -111,6 +111,7 @@ ALTER TABLE users DROP CONSTRAINT IF EXISTS users_auth_identifier_check;
 -- 6) Make email NOT NULL and keep the same partial unique index shape used in 037.
 --    Even with NOT NULL enforced, preserving the WHERE predicate keeps migration DDL
 --    idempotent/consistent across mixed environments and reruns.
+DROP INDEX IF EXISTS idx_users_email_lookup;
 DROP INDEX IF EXISTS idx_users_email_unique;
 ALTER TABLE users ALTER COLUMN email SET NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique

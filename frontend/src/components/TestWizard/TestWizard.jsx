@@ -72,8 +72,9 @@ import {
 import { isShopifyStoreDomain } from '../../utils/shopifyAdmin';
 import {
   buildPreviewUrl as buildPreviewUrlUtil,
+  buildPreviewDocumentUrl,
+  buildPreviewLaunchUrl,
   resolvePreviewBaseUrl,
-  PREVIEW_PARAMS,
 } from '../../utils/previewUrl';
 import { inferTemplateKeyFromVariants } from '../../utils/testType';
 import { getVariantColor, getVariantColorLight } from '../../utils/variantColors';
@@ -646,6 +647,7 @@ function TestWizard({
   const initialSnapshotPendingRef = useRef(false);
   const createInitialDataAppliedRef = useRef(false);
   const validationSummaryRef = useRef(null);
+  const shouldFocusValidationSummaryRef = useRef(false);
 
   const steps = buildWizardSteps(showTemplateStep, mode);
   const stepIds = getStepIds(showTemplateStep);
@@ -721,6 +723,40 @@ function TestWizard({
       cancelled = true;
     };
   }, [isShopifyFromRoute, isStandalone, routeDomain]);
+
+  const directPriceOverrideSupportLevel = String(
+    checkoutDiagnostics?.support?.direct_price_override?.level || ''
+  )
+    .trim()
+    .toLowerCase();
+  const cartTransformFunctionAvailable =
+    directPriceOverrideSupportLevel === 'available' ||
+    checkoutDiagnostics?.infrastructure?.cart_transform_function_available === true;
+  const directPriceOverrideReadiness = checkoutDiagnosticsLoading
+    ? 'checking'
+    : directPriceOverrideSupportLevel === 'available'
+      ? 'ready'
+      : directPriceOverrideSupportLevel === 'needs_install'
+        ? 'needs_install'
+        : directPriceOverrideSupportLevel === 'needs_deploy'
+          ? 'needs_deploy'
+          : directPriceOverrideSupportLevel === 'unknown_install_state'
+            ? 'unknown'
+            : checkoutDiagnosticsError
+              ? 'unknown'
+              : checkoutDiagnostics?.infrastructure?.cart_transform_function_available === true
+                ? 'ready'
+                : 'needs_deploy';
+  const directPriceOverrideStatusMessage =
+    directPriceOverrideReadiness === 'ready'
+      ? 'Direct Price Override is available for this shop.'
+      : directPriceOverrideReadiness === 'needs_install'
+        ? 'RipX cart transform is deployed but not installed on this shop yet. Bind/install it before relying on live price tests.'
+        : directPriceOverrideReadiness === 'needs_deploy'
+          ? 'RipX cart transform is not deployed for this shop yet, so checkout/cart price changes will not run.'
+          : directPriceOverrideReadiness === 'checking'
+            ? 'RipX is still checking cart transform availability for this shop.'
+            : 'RipX could not fully verify cart transform install state for this shop.';
 
   useEffect(() => {
     let cancelled = false;
@@ -2132,14 +2168,17 @@ function TestWizard({
     if (Array.isArray(data.segments?.audience_rules) && data.segments.audience_rules.length > 0) {
       normalizedSegments.audience_rules = data.segments.audience_rules;
     }
-    if (data.segments?.js_targeting?.enabled && data.segments.js_targeting.code?.trim()) {
+    if (
+      data.segments?.js_targeting?.enabled &&
+      normalizeTextValue(data.segments?.js_targeting?.code)
+    ) {
       normalizedSegments.js_targeting = {
         enabled: true,
-        code: data.segments.js_targeting.code.trim(),
+        code: normalizeTextValue(data.segments?.js_targeting?.code),
       };
     }
-    const veUrl = (data.segments?.visual_editor_preview_url ?? '').trim();
-    const veSel = (data.segments?.visual_editor_selector ?? '').trim();
+    const veUrl = normalizeTextValue(data.segments?.visual_editor_preview_url);
+    const veSel = normalizeTextValue(data.segments?.visual_editor_selector);
     if (veUrl) normalizedSegments.visual_editor_preview_url = veUrl;
     if (veSel) normalizedSegments.visual_editor_selector = veSel;
     const veRulesSource = Array.isArray(data.variants?.[0]?.config?.visual_editor_rules)
@@ -2229,7 +2268,7 @@ function TestWizard({
 
   // Map target type / url_pattern to the actual path for preview URL (homepage regex → /, etc.)
   const getPreviewPathForTarget = useCallback((urlPattern, targetType) => {
-    const p = (urlPattern ?? '').trim();
+    const p = normalizeTextValue(urlPattern);
     if (
       targetType === 'homepage' ||
       p === HOMEPAGE_URL_PATTERN_SHOPIFY ||
@@ -2283,10 +2322,10 @@ function TestWizard({
     }
     const pathForPreview = getFirstTargetPreviewPath();
     const domainForPreview =
-      initialData?.shop_domain || getPreviewDomain() || getShopDomain() || routeDomain;
+      routeDomain || getPreviewDomain() || getShopDomain() || initialData?.shop_domain;
     const resolved = resolvePreviewBaseUrl({
       variantUrl: null,
-      overrideUrl: (formData.segments?.visual_editor_preview_url ?? '').trim() || null,
+      overrideUrl: normalizeTextValue(formData.segments?.visual_editor_preview_url) || null,
       domain: domainForPreview || undefined,
       path: pathForPreview,
     });
@@ -2788,6 +2827,7 @@ function TestWizard({
   const handleNext = () => {
     const stepErrors = getStepErrors(currentStep);
     if (stepErrors.length > 0) {
+      shouldFocusValidationSummaryRef.current = true;
       setError(stepErrors[0]);
       return;
     }
@@ -2857,6 +2897,7 @@ function TestWizard({
     if (isReviewStep && !options.silent) {
       const stepErrors = getStepErrors(currentStep);
       if (stepErrors.length > 0) {
+        shouldFocusValidationSummaryRef.current = true;
         setError(stepErrors[0]);
         return;
       }
@@ -3072,24 +3113,38 @@ function TestWizard({
 
   const buildPreviewUrl = (variant, index) => {
     if (mode !== 'edit' || !initialData?.id) return null;
-    const domain = initialData?.shop_domain || getPreviewDomain() || getShopDomain();
+    const domain = routeDomain || getPreviewDomain() || getShopDomain() || initialData?.shop_domain;
+    const previewTenantDomain = normalizeTextValue(initialData?.shop_domain) || null;
     const pathForPreview = getFirstTargetPreviewPath();
     const baseUrl = resolvePreviewBaseUrl({
       variantUrl: variant?.config?.url,
-      overrideUrl: (formData.segments?.visual_editor_preview_url ?? '').trim() || null,
+      overrideUrl: normalizeTextValue(formData.segments?.visual_editor_preview_url) || null,
       domain: domain || undefined,
       path: pathForPreview,
     });
     if (!baseUrl) return null;
     const variantId = variant?.id || variant?.name || `variant-${index + 1}`;
     const variantName = variant?.name || `Variant ${index + 1}`;
-    return buildPreviewUrlUtil({
+    const directPreviewUrl = buildPreviewUrlUtil({
       baseUrl,
       testId: initialData.id,
       variantId,
       variantName,
+      tenantDomain: previewTenantDomain,
       visualEditor: false,
     });
+    if (!directPreviewUrl) {
+      return null;
+    }
+    if (!isShopifyStoreDomain(domain)) {
+      return directPreviewUrl;
+    }
+    return (
+      buildPreviewLaunchUrl({
+        apiBaseUrl: getApiBaseUrl(),
+        previewUrl: directPreviewUrl,
+      }) || directPreviewUrl
+    );
   };
 
   const handlePreviewVariant = async (variant, index) => {
@@ -3277,9 +3332,14 @@ function TestWizard({
   const hasStepErrors = currentStepErrors.length > 0;
 
   useEffect(() => {
-    if (hasStepErrors && validationSummaryRef.current) {
+    if (!hasStepErrors) {
+      shouldFocusValidationSummaryRef.current = false;
+      return;
+    }
+    if (shouldFocusValidationSummaryRef.current && validationSummaryRef.current) {
       validationSummaryRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       validationSummaryRef.current.focus({ preventScroll: true });
+      shouldFocusValidationSummaryRef.current = false;
     }
   }, [hasStepErrors, currentStep]);
 
@@ -5046,7 +5106,7 @@ function TestWizard({
                                             (!formData.target_ids ||
                                               formData.target_ids.length === 0) &&
                                             !normalizeTargetIdValue(initialData?.target_id) &&
-                                            (!initialData?.target_ids ||
+                                            (!Array.isArray(initialData?.target_ids) ||
                                               initialData.target_ids.length === 0) && (
                                               <Text as="p" variant="bodySm" tone="critical">
                                                 Select at least one{' '}
@@ -7570,7 +7630,7 @@ function TestWizard({
 
     const source =
       mode === 'edit' && initialData?.variants?.[0]?.config
-        ? initialData.variants[0].config
+        ? initialData?.variants?.[0]?.config
         : formData.variants?.[0]?.config;
     if (!source) return 'code';
     if ('url' in source) return 'url';
@@ -7644,39 +7704,6 @@ function TestWizard({
     { value: 'price', label: 'Selling price' },
     { value: 'compare_at', label: 'Compare-at price (list)' },
   ];
-  const directPriceOverrideSupportLevel = String(
-    checkoutDiagnostics?.support?.direct_price_override?.level || ''
-  )
-    .trim()
-    .toLowerCase();
-  const cartTransformFunctionAvailable =
-    directPriceOverrideSupportLevel === 'available' ||
-    checkoutDiagnostics?.infrastructure?.cart_transform_function_available === true;
-  const directPriceOverrideReadiness = checkoutDiagnosticsLoading
-    ? 'checking'
-    : directPriceOverrideSupportLevel === 'available'
-      ? 'ready'
-      : directPriceOverrideSupportLevel === 'needs_install'
-        ? 'needs_install'
-        : directPriceOverrideSupportLevel === 'needs_deploy'
-          ? 'needs_deploy'
-          : directPriceOverrideSupportLevel === 'unknown_install_state'
-            ? 'unknown'
-            : checkoutDiagnosticsError
-              ? 'unknown'
-              : checkoutDiagnostics?.infrastructure?.cart_transform_function_available === true
-                ? 'ready'
-                : 'needs_deploy';
-  const directPriceOverrideStatusMessage =
-    directPriceOverrideReadiness === 'ready'
-      ? 'Direct Price Override is available for this shop.'
-      : directPriceOverrideReadiness === 'needs_install'
-        ? 'RipX cart transform is deployed but not installed on this shop yet. Bind/install it before relying on live price tests.'
-        : directPriceOverrideReadiness === 'needs_deploy'
-          ? 'RipX cart transform is not deployed for this shop yet, so checkout/cart price changes will not run.'
-          : directPriceOverrideReadiness === 'checking'
-            ? 'RipX is still checking cart transform availability for this shop.'
-            : 'RipX could not fully verify cart transform install state for this shop.';
 
   const normalizePriceApplicationMethod = value => {
     const raw = String(value || '')
@@ -13488,8 +13515,8 @@ function TestWizard({
                               color="subdued"
                               style={{ marginTop: '0.25rem' }}
                             >
-                              {(formData.segments?.url_pattern ?? '').trim()
-                                ? formData.segments.url_pattern
+                              {normalizeTextValue(formData.segments?.url_pattern)
+                                ? normalizeTextValue(formData.segments?.url_pattern)
                                 : (formData.segments?.page_rules?.length ?? 0) > 0
                                   ? 'Page rules (from Targeting step)'
                                   : 'All pages'}
@@ -13512,10 +13539,10 @@ function TestWizard({
                             }}
                             placeholder={(() => {
                               const d =
-                                initialData?.shop_domain ||
+                                routeDomain ||
                                 getPreviewDomain() ||
                                 getShopDomain() ||
-                                routeDomain;
+                                initialData?.shop_domain;
                               const path = getFirstTargetPreviewPath();
                               const domainClean = d
                                 ? d
@@ -13536,11 +13563,10 @@ function TestWizard({
                             ).trim();
                             const hasOverride = veUrl.length > 0;
                             const domainForPreview =
-                              (initialData?.shop_domain &&
-                                String(initialData.shop_domain).trim()) ||
+                              routeDomain ||
                               getPreviewDomain() ||
                               getShopDomain() ||
-                              routeDomain;
+                              (initialData?.shop_domain && String(initialData.shop_domain).trim());
                             const pathForPreview = getFirstTargetPreviewPath();
                             const baseUrl = resolvePreviewBaseUrl({
                               variantUrl: null,
@@ -13555,6 +13581,8 @@ function TestWizard({
                             );
                             const previewVariant = variants[safeVisualIndex];
                             const testId = initialData?.id;
+                            const previewTenantDomain =
+                              normalizeTextValue(initialData?.shop_domain) || null;
                             const fullPreviewUrl =
                               baseUrl && testId
                                 ? buildPreviewUrlUtil({
@@ -13567,41 +13595,19 @@ function TestWizard({
                                     variantName:
                                       previewVariant?.name ||
                                       (previewVariant ? `Variant ${safeVisualIndex + 1}` : ''),
+                                    tenantDomain: previewTenantDomain,
                                     visualEditor: true,
                                   })
                                 : null;
                             const directPreviewUrl = fullPreviewUrl || baseUrl || '';
                             let iframeSrc = '';
                             if (directPreviewUrl) {
-                              const apiBase = (getApiBaseUrl() || '').replace(/\/+$/, '') || '/api';
-                              const previewDocPath = `${apiBase}/track/preview-document`;
-                              const isRelative =
-                                typeof window !== 'undefined' &&
-                                apiBase &&
-                                !/^https?:\/\//i.test(apiBase);
-                              const previewDoc = isRelative
-                                ? new URL(previewDocPath, window.location.origin)
-                                : new URL(previewDocPath);
-                              previewDoc.searchParams.set('url', directPreviewUrl);
-                              previewDoc.searchParams.set('ab_visual_editor', '1');
-                              if (fullPreviewUrl) {
-                                try {
-                                  const u = new URL(fullPreviewUrl);
-                                  [
-                                    PREVIEW_PARAMS.PREVIEW,
-                                    PREVIEW_PARAMS.TEST_ID,
-                                    PREVIEW_PARAMS.VARIANT_ID,
-                                    PREVIEW_PARAMS.VARIANT_NAME,
-                                  ].forEach(k => {
-                                    const v = u.searchParams.get(k);
-                                    if (v !== undefined && v !== null && v !== '')
-                                      previewDoc.searchParams.set(k, v);
-                                  });
-                                } catch (_) {
-                                  /* ignore */
-                                }
-                              }
-                              iframeSrc = previewDoc.toString();
+                              iframeSrc =
+                                buildPreviewDocumentUrl({
+                                  apiBaseUrl: getApiBaseUrl(),
+                                  previewUrl: fullPreviewUrl || directPreviewUrl,
+                                  visualEditor: true,
+                                }) || '';
                             }
                             const _previewWithoutTestId = Boolean(baseUrl && !testId);
                             if (!baseUrl) {
@@ -16615,8 +16621,11 @@ function TestWizard({
           onAction: () => {
             setFormData(prev => ({
               ...prev,
-              name: titleEditDraft.name?.trim() || prev.name,
-              description: titleEditDraft.description?.trim() ?? prev.description,
+              name: normalizeTextValue(titleEditDraft.name) || prev.name,
+              description:
+                titleEditDraft.description === null || titleEditDraft.description === undefined
+                  ? prev.description
+                  : normalizeTextValue(titleEditDraft.description),
             }));
             setIsDirty(true);
             setTitleEditOpen(false);

@@ -10,7 +10,12 @@ const logger = require('../utils/logger');
 const { ERROR_MESSAGES } = require('../constants');
 const { sendUnauthorized } = require('../utils/response');
 const { getShopSession } = require('../models/shopSession');
-const { getTenantByApiKey, getTenantByDomain, isShopifyDomain } = require('../models/tenant');
+const {
+  getTenantByApiKey,
+  getTenantByDomain,
+  isShopifyDomain,
+  normalizeDomain,
+} = require('../models/tenant');
 const {
   getAccountByApiKey,
   getTenantByAccountAndDomain,
@@ -342,6 +347,66 @@ async function tryEmailSessionToken(req) {
 }
 
 /**
+ * Resolve tenant/store context for email-session requests.
+ * Email auth identifies the user, but many routes still need req.shopDomain.
+ */
+async function attachEmailSessionStoreContext(req) {
+  if (!req?.email) {
+    return;
+  }
+
+  const email = String(req.email || '')
+    .trim()
+    .toLowerCase();
+  if (!email) {
+    return;
+  }
+
+  const user = await standaloneUser.getByEmail(email);
+  if (!user) {
+    return;
+  }
+
+  let accountId = user.account_id || null;
+  if (!accountId) {
+    const ensured = await standaloneUser.ensureAccountForUser(user.id);
+    accountId = ensured?.accountId || null;
+  }
+
+  if (accountId) {
+    req.accountId = accountId;
+  }
+
+  const requestedStoreRaw =
+    req.query?.store ||
+    req.headers['x-ripx-store'] ||
+    req.query?.shop ||
+    req.headers['x-shopify-shop-domain'];
+  const requestedStore = normalizeDomain(
+    requestedStoreRaw !== undefined && requestedStoreRaw !== null ? String(requestedStoreRaw) : ''
+  );
+
+  if (!accountId) {
+    return;
+  }
+
+  let tenant = null;
+  if (requestedStore) {
+    tenant = await getTenantByAccountAndDomain(accountId, requestedStore);
+  }
+  if (!tenant) {
+    tenant = await getFirstTenantForAccount(accountId);
+  }
+  if (!tenant) {
+    return;
+  }
+
+  req.shopDomain = tenant.domain;
+  req.platform = tenant.platform;
+  req.tenantId = tenant.id;
+}
+
+/**
  * Multi-platform auth: impersonation JWT first, then Shopify, then API key.
  * Sync paths: caller invokes next() once. Async paths: awaited so req is set before next().
  */
@@ -350,6 +415,7 @@ async function authenticate(req, res, next) {
     return next();
   }
   if (await tryEmailSessionToken(req)) {
+    await attachEmailSessionStoreContext(req);
     return next();
   }
 
@@ -394,6 +460,7 @@ async function optionalAuthenticate(req, res, next) {
     return next();
   }
   if (await tryEmailSessionToken(req)) {
+    await attachEmailSessionStoreContext(req);
     return next();
   }
 

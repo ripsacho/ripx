@@ -27,8 +27,10 @@ BEGIN
   END IF;
 END $$;
 
--- 3) Email partial unique index (always)
-CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(LOWER(TRIM(email))) WHERE email IS NOT NULL;
+-- 3) Email lookup index only (do NOT enforce uniqueness yet).
+--    standalone_users can contain duplicate normalized emails, and 037 migrates rows by original id.
+--    Uniqueness is enforced in 038 after duplicate merge.
+CREATE INDEX IF NOT EXISTS idx_users_email_lookup ON users(LOWER(TRIM(email))) WHERE email IS NOT NULL;
 
 -- 4) CHECK constraints for data integrity
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_auth_type_check;
@@ -91,6 +93,6 @@ ALTER TABLE user_domain_access ADD CONSTRAINT user_domain_access_user_id_fkey
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
 
 COMMENT ON COLUMN users.auth_type IS 'shopify = identified by shop_domain; standalone = identified by email';
-COMMENT ON COLUMN users.email IS 'Required when auth_type=standalone; stored lowercase; unique via idx_users_email_unique';
+COMMENT ON COLUMN users.email IS 'Required when auth_type=standalone; stored lowercase; uniqueness enforced in 038 after dedupe.';
 COMMENT ON COLUMN users.account_id IS 'Links to accounts (API key); both types can have one';
 COMMENT ON COLUMN users.status IS 'Standalone: pending|accepted|rejected. Shopify: active|locked|suspended.';

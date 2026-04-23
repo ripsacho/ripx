@@ -166,7 +166,7 @@ const apiDocsRoutes = require('./routes/apiDocsRoutes');
 const { errorHandler } = require('./middleware/errorHandler');
 const { asyncHandler } = require('./middleware/asyncHandler');
 const { requestIdMiddleware } = require('./middleware/requestId');
-const { authenticate, authenticateShopify } = require('./middleware/auth');
+const { authenticate, authenticateShopify, optionalAuthenticate } = require('./middleware/auth');
 const { RATE_LIMIT, HTTP_STATUS, KV_KEYS } = require('./constants');
 
 const app = express();
@@ -760,7 +760,16 @@ app.use('/api/profile', authenticate, profileRoutes);
 app.use('/api/settings', authenticate, settingsRoutes);
 app.use('/api/targeting-presets', authenticate, targetingPresetRoutes);
 app.use('/api/notifications', authenticate, notificationRoutes);
-app.use('/api/ui-events', authenticate, uiEventsRoutes);
+// Dev UX: allow anonymous top-bar telemetry so missing shop/api key does not create noisy 401 logs.
+// Keep production strict by default. Override with RIPX_UI_EVENTS_ALLOW_ANON=true when needed.
+const allowAnonymousUiEvents =
+  String(process.env.RIPX_UI_EVENTS_ALLOW_ANON || '').toLowerCase() === 'true' ||
+  process.env.NODE_ENV === 'development';
+app.use(
+  '/api/ui-events',
+  allowAnonymousUiEvents ? optionalAuthenticate : authenticate,
+  uiEventsRoutes
+);
 app.use('/api/support', supportRoutes); // Ticket submit (public) + My tickets (authenticated)
 app.use('/api/admin', adminRoutes); // Admin panel (requireAdmin inside router)
 

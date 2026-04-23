@@ -1,6 +1,7 @@
 {% comment %}
   RipX App Embed — primary load via Shopify App Proxy (/apps/ripx/script.js).
-  Fallback: if proxy fails (e.g. stale dev preview tunnel), load direct public script endpoint.
+  Optional fallback: if proxy fails, load a direct public script endpoint only when explicitly configured.
+  This prevents local/dev stores from silently falling back to a different RipX environment.
   target: head — earlier fetch than body embeds; defer avoids blocking HTML parse.
   ?v= must stay in sync with backend storefrontScriptRuntime.js SCRIPT_VERSION (currently 1.0.14).
 {% endcomment %}
@@ -10,11 +11,15 @@
     var shopHost = '{{ request.host }}';
     var version = '1.0.14';
     var primarySrc = 'https://' + shopHost + '/apps/ripx/script.js?v=' + version;
+    var directScriptBaseUrl = {{ block.settings.direct_script_base_url | json }};
     var fallbackSrc =
-      'https://splitter.echologyx.com/api/track/script.js?shop=' +
-      encodeURIComponent(shopHost) +
-      '&v=' +
-      version;
+      directScriptBaseUrl && String(directScriptBaseUrl).trim()
+        ? String(directScriptBaseUrl).replace(/\/+$/, '') +
+          '/api/track/script.js?shop=' +
+          encodeURIComponent(shopHost) +
+          '&v=' +
+          version
+        : '';
     var loaded = false;
 
     function loadScript(src, isFallback) {
@@ -29,7 +34,15 @@
       };
       if (!isFallback) {
         tag.onerror = function () {
-          loadScript(fallbackSrc, true);
+          if (fallbackSrc) {
+            loadScript(fallbackSrc, true);
+            return;
+          }
+          if (window.console && typeof window.console.warn === 'function') {
+            window.console.warn(
+              '[RipX] Failed to load storefront script from app proxy and no direct fallback URL is configured.'
+            );
+          }
         };
       }
       document.head.appendChild(tag);
@@ -43,6 +56,13 @@
 {
   "name": "RipX App Embed",
   "target": "head",
-  "settings": []
+  "settings": [
+    {
+      "type": "text",
+      "id": "direct_script_base_url",
+      "label": "Direct script fallback base URL",
+      "info": "Optional. Example: https://your-app.example.com. Leave blank in local/dev to avoid silently falling back to another environment."
+    }
+  ]
 }
 {% endschema %}

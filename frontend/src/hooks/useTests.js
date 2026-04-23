@@ -41,6 +41,8 @@ export function useTests(options = {}) {
     queryKey: testsListQueryKey(shop),
     queryFn: fetchTests,
     staleTime: 30 * 1000, // 30 seconds
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
     ...options,
   });
 }

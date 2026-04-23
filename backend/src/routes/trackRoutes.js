@@ -701,6 +701,81 @@ function isPrivateOrUnsafeHost(hostname) {
   return false;
 }
 
+function escapeHtmlAttr(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/**
+ * GET /api/track/preview-launch
+ * Client-side redirect that seeds preview context in window.name before navigating to the storefront.
+ * This helps password-protected Shopify dev stores where the password page strips preview query params.
+ */
+router.get(
+  '/preview-launch',
+  asyncHandler(async (req, res) => {
+    const rawUrl = (req.query.url || '').toString().trim();
+    if (!rawUrl) {
+      return res.status(400).type('text/plain').send('Missing preview URL');
+    }
+
+    let parsed;
+    try {
+      parsed = new URL(rawUrl);
+    } catch {
+      return res.status(400).type('text/plain').send('Invalid preview URL');
+    }
+
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return res.status(400).type('text/plain').send('Invalid preview URL');
+    }
+
+    const hostname = parsed.hostname || parsed.host || '';
+    if (isPrivateOrUnsafeHost(hostname)) {
+      logger.warn('Preview launch: rejected private or unsafe host', { hostname });
+      return res.status(400).type('text/plain').send('Invalid preview URL');
+    }
+
+    const previewCtx = {
+      preview: req.query.ab_preview === '1' || !!req.query.ab_preview_test,
+      testId: req.query.ab_preview_test ? String(req.query.ab_preview_test) : null,
+      variantId: req.query.ab_preview_variant ? String(req.query.ab_preview_variant) : null,
+      variantName: req.query.ab_preview_variant_name
+        ? String(req.query.ab_preview_variant_name)
+        : null,
+      tenantDomain: req.query.ab_preview_domain ? String(req.query.ab_preview_domain) : null,
+      persistedAtMs: Date.now(),
+    };
+
+    const targetUrl = parsed.toString();
+    const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Launching Preview...</title>
+    <meta http-equiv="refresh" content="0;url=${escapeHtmlAttr(targetUrl)}">
+  </head>
+  <body>
+    <p>Launching preview...</p>
+    <script>
+      (function () {
+        try {
+          window.name = "__ripx_preview_ctx_v1__:" + JSON.stringify(${JSON.stringify(previewCtx)});
+        } catch (e) {}
+        window.location.replace(${JSON.stringify(targetUrl)});
+      })();
+    </script>
+  </body>
+</html>`;
+    res.set('Cache-Control', 'no-store');
+    res.type('html').send(html);
+  })
+);
+
 /**
  * GET /api/track/preview-document
  * Proxies a store page and injects the RipX storefront script so element selection works in the iframe.

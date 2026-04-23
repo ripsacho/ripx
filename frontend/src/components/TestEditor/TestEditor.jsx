@@ -21,8 +21,20 @@ import {
 } from '@shopify/polaris';
 import { ArrowLeftIcon } from '@shopify/polaris-icons';
 import { PageShell } from '../Shared';
-import { apiGet, apiPut, unwrapData, getShopDomain, getPreviewDomain } from '../../services';
-import { buildPreviewUrl, resolvePreviewBaseUrl } from '../../utils/previewUrl';
+import {
+  apiGet,
+  apiPut,
+  unwrapData,
+  getShopDomain,
+  getPreviewDomain,
+  getApiBaseUrl,
+} from '../../services';
+import {
+  buildPreviewUrl,
+  buildPreviewDocumentUrl,
+  resolvePreviewBaseUrl,
+} from '../../utils/previewUrl';
+import { isShopifyStoreDomain } from '../../utils/shopifyAdmin';
 import { useAppRoutes } from '../../hooks';
 import Toast from '../Toast/Toast';
 import styles from './TestEditor.module.css';
@@ -140,13 +152,28 @@ export default function TestEditor() {
   });
   const previewIframeSrc =
     effectiveBaseUrl && id && currentVariant
-      ? buildPreviewUrl({
-          baseUrl: effectiveBaseUrl,
-          testId: id,
-          variantId: currentVariant.id || currentVariant.name || `variant-${safeIndex + 1}`,
-          variantName: currentVariant.name || `Variant ${safeIndex + 1}`,
-          visualEditor: false,
-        }) || ''
+      ? (() => {
+          const directPreviewUrl =
+            buildPreviewUrl({
+              baseUrl: effectiveBaseUrl,
+              testId: id,
+              variantId: currentVariant.id || currentVariant.name || `variant-${safeIndex + 1}`,
+              variantName: currentVariant.name || `Variant ${safeIndex + 1}`,
+              tenantDomain: test?.shop_domain || null,
+              visualEditor: false,
+            }) || '';
+          const effectiveDomain = test?.shop_domain || getPreviewDomain() || getShopDomain() || '';
+          if (!isShopifyStoreDomain(effectiveDomain)) {
+            return directPreviewUrl;
+          }
+          return (
+            buildPreviewDocumentUrl({
+              apiBaseUrl: getApiBaseUrl(),
+              previewUrl: directPreviewUrl,
+              visualEditor: false,
+            }) || directPreviewUrl
+          );
+        })()
       : '';
 
   useEffect(() => {
