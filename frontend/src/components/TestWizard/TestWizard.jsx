@@ -3373,10 +3373,16 @@ function TestWizard({
       return directPreviewUrl;
     }
     return (
+      buildPreviewDocumentUrl({
+        apiBaseUrl: getApiBaseUrl(),
+        previewUrl: directPreviewUrl,
+        visualEditor: false,
+      }) ||
       buildPreviewLaunchUrl({
         apiBaseUrl: getApiBaseUrl(),
         previewUrl: directPreviewUrl,
-      }) || directPreviewUrl
+      }) ||
+      directPreviewUrl
     );
   };
 
