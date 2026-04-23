@@ -97,11 +97,22 @@ async function authenticateShopify(req, res, next) {
     if (hasEmailSession) {
       await attachEmailSessionStoreContext(req);
       if (!req.shopDomain) {
+        const requestedTenant = requestedShop ? await getTenantByDomain(requestedShop) : null;
         logger.warn('Authentication failed: Email user has no access to requested Shopify store', {
           requestedShop: requestedShop || null,
           path: req.path,
           actor: req.email || null,
         });
+        if (requestedShop && !requestedTenant) {
+          return sendShopifyConnectionError(res, {
+            status: 401,
+            error: 'Shop not authenticated',
+            code: 'SHOP_NOT_AUTHENTICATED',
+            shop: requestedShop || null,
+            state: 'needs_install',
+            action: 'install',
+          });
+        }
         return sendShopifyConnectionError(res, {
           status: 403,
           error: 'Store access denied for this user',

@@ -1975,7 +1975,7 @@
               params.set('id', nativeSwapState.mappedVariantId);
             }
           }
-          applyRipxCartAttrsToSearchParams(params, payload, true);
+          applyRipxCartAttrsToSearchParams(params, effectivePayload, true);
           return {
             changed: true,
             body: params.toString(),

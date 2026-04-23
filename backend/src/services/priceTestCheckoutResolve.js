@@ -453,27 +453,44 @@ function getEffectivePriceConfig(cfg, productId, currentVariantId) {
   if (!cfg || typeof cfg !== 'object') {
     return cfg;
   }
+  const merged = {};
+  for (const k of Object.keys(cfg)) {
+    if (k !== 'byProduct' && k !== 'byVariant') {
+      merged[k] = cfg[k];
+    }
+  }
+
+  const rootByVariant = cfg.byVariant;
+  if (rootByVariant && typeof rootByVariant === 'object') {
+    const vkey = toVariantIdKey(currentVariantId);
+    const rootVariantOverride = vkey
+      ? rootByVariant[vkey] ||
+        rootByVariant[currentVariantId] ||
+        rootByVariant[`gid://shopify/ProductVariant/${vkey}`]
+      : null;
+    if (rootVariantOverride && typeof rootVariantOverride === 'object') {
+      for (const key of Object.keys(rootVariantOverride)) {
+        merged[key] = rootVariantOverride[key];
+      }
+    }
+  }
+
   const byProduct = cfg.byProduct;
   if (!byProduct || typeof byProduct !== 'object') {
-    return cfg;
+    return normalizeMergedPriceConfig(cfg, merged);
   }
   const pid = toNumericProductId(productId);
   const gid = pid ? `gid://shopify/Product/${pid}` : '';
   const override = byProduct[productId] || byProduct[pid] || (gid ? byProduct[gid] : null);
   if (!override || typeof override !== 'object') {
-    return cfg;
-  }
-  const merged = {};
-  for (const k of Object.keys(cfg)) {
-    if (k !== 'byProduct') {
-      merged[k] = cfg[k];
-    }
+    return normalizeMergedPriceConfig(cfg, merged);
   }
   for (const j of Object.keys(override)) {
     if (j !== 'byVariant') {
       merged[j] = override[j];
     }
   }
+
   const byVariant = override.byVariant;
   if (
     currentVariantId !== undefined &&

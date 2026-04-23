@@ -464,6 +464,50 @@ describe('authenticateShopify email access enforcement', () => {
     );
   });
 
+  it('returns needs_install when requested Shopify store has no tenant yet', async () => {
+    const req = makeReq({ query: { shop: 'new-store.myshopify.com' } });
+    const res = makeRes();
+    const next = jest.fn();
+
+    mockVerify.mockReturnValue({
+      ripxtype: 'email_session',
+      email: 'user@example.com',
+      token_version: 0,
+    });
+    mockGetByEmail.mockResolvedValueOnce({
+      id: 'user-1',
+      email: 'user@example.com',
+      token_version: 0,
+      account_id: null,
+    });
+    mockGetByEmail.mockResolvedValueOnce({
+      id: 'user-1',
+      email: 'user@example.com',
+      token_version: 0,
+      account_id: null,
+    });
+    mockEnsureAccountForUser.mockResolvedValue({ accountId: null });
+    mockGetTenantByDomain.mockResolvedValue(null);
+
+    await authenticateShopify(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: false,
+        code: 'SHOP_NOT_AUTHENTICATED',
+      })
+    );
+    expect(res.json.mock.calls[0][0]?.connection).toEqual(
+      expect.objectContaining({
+        connected: false,
+        state: 'needs_install',
+        action: 'install',
+      })
+    );
+  });
+
   it('allows email session user with access and resolves Shopify token', async () => {
     const req = makeReq({ query: { shop: 'splitter-plus.myshopify.com' } });
     const res = makeRes();

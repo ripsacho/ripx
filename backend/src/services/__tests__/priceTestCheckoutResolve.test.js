@@ -342,6 +342,38 @@ describe('priceTestCheckoutResolve', () => {
     expect(parseFloat(r.discountDecimal, 10)).toBeCloseTo(5, 2);
   });
 
+  it('applies root byVariant override when product override is absent', () => {
+    const test = {
+      ...baseTest,
+      variants: [
+        {
+          id: 'var-b',
+          name: 'Variant B',
+          config: {
+            priceMode: 'fixed',
+            price: 24.99,
+            byVariant: {
+              222: {
+                priceMode: 'fixed',
+                price: 14.99,
+              },
+            },
+          },
+        },
+      ],
+    };
+    const r = resolvePriceTestLineDiscount({
+      test,
+      assignmentVariantId: 'var-b',
+      productId: '111',
+      variantId: 'gid://shopify/ProductVariant/222',
+      linePresentmentTotal: 24.99,
+      quantity: 1,
+    });
+    expect(r.applies).toBe(true);
+    expect(parseFloat(r.discountDecimal, 10)).toBeCloseTo(10, 2);
+  });
+
   it('resolveCheckoutPriceBatchForDomain caches getTestById per test_id', async () => {
     const testUuid = '550e8400-e29b-41d4-a716-446655440000';
     const testRow = {
