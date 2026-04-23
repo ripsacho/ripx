@@ -2095,6 +2095,90 @@ function TestWizard({
     return rounded;
   };
 
+  const hasPriceSignalValue = value =>
+    value !== null && value !== undefined && !(typeof value === 'string' && value.trim() === '');
+
+  const sanitizePriceConfigOverrides = rawConfig => {
+    if (!rawConfig || typeof rawConfig !== 'object') {
+      return rawConfig;
+    }
+    const config = { ...rawConfig };
+
+    if (config.byVariant && typeof config.byVariant === 'object') {
+      const nextRootByVariant = {};
+      Object.entries(config.byVariant).forEach(([variantId, variantOverride]) => {
+        if (!variantOverride || typeof variantOverride !== 'object') return;
+        const row = { ...variantOverride };
+        const rowHasSignal =
+          hasPriceSignalValue(row.price) ||
+          hasPriceSignalValue(row.compareAtPrice) ||
+          hasPriceSignalValue(row.priceDelta) ||
+          hasPriceSignalValue(row.pricePercent);
+        if (rowHasSignal) {
+          nextRootByVariant[variantId] = row;
+        }
+      });
+      if (Object.keys(nextRootByVariant).length > 0) {
+        config.byVariant = nextRootByVariant;
+      } else {
+        delete config.byVariant;
+      }
+    }
+
+    if (config.byProduct && typeof config.byProduct === 'object') {
+      const nextByProduct = {};
+      Object.entries(config.byProduct).forEach(([productId, productOverride]) => {
+        if (!productOverride || typeof productOverride !== 'object') return;
+        const productEntry = { ...productOverride };
+        const rawByVariant =
+          productEntry.byVariant && typeof productEntry.byVariant === 'object'
+            ? productEntry.byVariant
+            : null;
+        if (rawByVariant) {
+          const nextByVariant = {};
+          Object.entries(rawByVariant).forEach(([variantId, variantOverride]) => {
+            if (!variantOverride || typeof variantOverride !== 'object') return;
+            const row = { ...variantOverride };
+            const rowHasSignal =
+              hasPriceSignalValue(row.price) ||
+              hasPriceSignalValue(row.compareAtPrice) ||
+              hasPriceSignalValue(row.priceDelta) ||
+              hasPriceSignalValue(row.pricePercent);
+            if (rowHasSignal) {
+              nextByVariant[variantId] = row;
+            }
+          });
+          if (Object.keys(nextByVariant).length > 0) {
+            productEntry.byVariant = nextByVariant;
+          } else {
+            delete productEntry.byVariant;
+          }
+        }
+
+        const productHasSignal =
+          hasPriceSignalValue(productEntry.price) ||
+          hasPriceSignalValue(productEntry.compareAtPrice) ||
+          hasPriceSignalValue(productEntry.priceDelta) ||
+          hasPriceSignalValue(productEntry.pricePercent) ||
+          (productEntry.byVariant &&
+            typeof productEntry.byVariant === 'object' &&
+            Object.keys(productEntry.byVariant).length > 0);
+
+        if (productHasSignal) {
+          nextByProduct[productId] = productEntry;
+        }
+      });
+
+      if (Object.keys(nextByProduct).length > 0) {
+        config.byProduct = nextByProduct;
+      } else {
+        delete config.byProduct;
+      }
+    }
+
+    return config;
+  };
+
   const buildPayload = (data = formData, codes = variantCodesData) => {
     const variants = (data?.variants || []).map(v => normalizeVariantPriceConfigShape(v));
     const codesList = Array.isArray(codes) ? codes : [];
@@ -2220,7 +2304,9 @@ function TestWizard({
         allocation: Number(v.allocation) || 0,
       };
       if (isPriceLikeTest) {
-        nextVariant.config = enforceDirectPriceOverrideOnConfig(nextVariant.config || {});
+        nextVariant.config = enforceDirectPriceOverrideOnConfig(
+          sanitizePriceConfigOverrides(nextVariant.config || {})
+        );
       } else if (isThemeFamilyTest) {
         const fallbackThemeMode = templateKey === 'template' ? 'template_switch' : 'asset_flag';
         nextVariant.config = normalizeThemeConfig(nextVariant.config || {}, fallbackThemeMode);
@@ -8885,10 +8971,35 @@ function TestWizard({
                                     else productEntry.compareAtPrice = value;
                                   }
                                 }
-                                byProduct[productId] = productEntry;
+                                if (
+                                  productEntry.byVariant &&
+                                  typeof productEntry.byVariant === 'object' &&
+                                  Object.keys(productEntry.byVariant).length === 0
+                                ) {
+                                  delete productEntry.byVariant;
+                                }
+                                const productHasSignal =
+                                  hasPriceSignalValue(productEntry.price) ||
+                                  hasPriceSignalValue(productEntry.compareAtPrice) ||
+                                  hasPriceSignalValue(productEntry.priceDelta) ||
+                                  hasPriceSignalValue(productEntry.pricePercent) ||
+                                  (productEntry.byVariant &&
+                                    typeof productEntry.byVariant === 'object' &&
+                                    Object.keys(productEntry.byVariant).length > 0);
+                                if (productHasSignal) {
+                                  byProduct[productId] = productEntry;
+                                } else {
+                                  delete byProduct[productId];
+                                }
+                                const nextConfig = { ...c };
+                                if (Object.keys(byProduct).length > 0) {
+                                  nextConfig.byProduct = byProduct;
+                                } else {
+                                  delete nextConfig.byProduct;
+                                }
                                 next[index] = {
                                   ...next[index],
-                                  config: { ...c, byProduct },
+                                  config: nextConfig,
                                 };
                                 return { ...prev, variants: next };
                               });
@@ -9469,20 +9580,6 @@ function TestWizard({
                               if (checked) {
                                 if (!config.byProduct || typeof config.byProduct !== 'object')
                                   config.byProduct = {};
-                                const seedProductIds = isProductTargetScope
-                                  ? priceTargetProductIds
-                                  : [];
-                                seedProductIds.forEach(pid => {
-                                  if (!config.byProduct[pid])
-                                    config.byProduct[pid] = {
-                                      priceMode: config.priceMode || 'fixed',
-                                      price: config.price,
-                                      priceDelta: config.priceDelta,
-                                      pricePercent: config.pricePercent,
-                                      priceBase: config.priceBase || 'price',
-                                      nativeVariantId: config.nativeVariantId || null,
-                                    };
-                                });
                               } else if (config.byProduct && typeof config.byProduct === 'object') {
                                 delete config.byProduct;
                               }

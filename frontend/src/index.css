@@ -3570,9 +3570,18 @@ div[class*="Polaris-Modal"][class*="Dialog"]:has([data-template-editor]) {
   width: 100vw !important;
   height: 100vh !important;
   z-index: 1090 !important;
-  background: rgba(6, 182, 212, 0.06) !important;
-  backdrop-filter: blur(8px) saturate(1.1);
-  -webkit-backdrop-filter: blur(8px) saturate(1.1);
+  /* Transparent fullscreen dim layer behind modals */
+  background: rgba(2, 6, 23, 0.24) !important;
+  backdrop-filter: blur(6px) saturate(1.04);
+  -webkit-backdrop-filter: blur(6px) saturate(1.04);
+}
+
+[data-theme='dark'] [class*="Polaris-Backdrop"],
+[data-theme='dark'] [class*="Polaris-Modal"][class*="Backdrop"],
+[data-theme='dark'] [class*="Modal"][class*="Backdrop"] {
+  background: rgba(2, 6, 23, 0.4) !important;
+  backdrop-filter: blur(7px) saturate(1.06);
+  -webkit-backdrop-filter: blur(7px) saturate(1.06);
 }
 
 /* Modal dialog panel - card style matching project (notificationPopover, cards) */
