@@ -138,7 +138,6 @@ import {
 } from './visualEditorRuleHelpers';
 import {
   buildAutoOfferCodeName,
-  enforceDirectPriceOverrideOnConfig,
   getSavedPriceConfigIndices,
   hasSavedPriceConfigValue,
   isOfferLikeTestType,
@@ -575,6 +574,8 @@ function TestWizard({
   const [checkoutDiagnostics, setCheckoutDiagnostics] = useState(null);
   const [checkoutDiagnosticsLoading, setCheckoutDiagnosticsLoading] = useState(false);
   const [checkoutDiagnosticsError, setCheckoutDiagnosticsError] = useState(null);
+  const [cartTransformStatus, setCartTransformStatus] = useState(null);
+  const [cartTransformStatusLoading, setCartTransformStatusLoading] = useState(false);
   const [checkoutExperienceDiagnostics, setCheckoutExperienceDiagnostics] = useState(null);
   const [_checkoutExperienceDiagnosticsLoading, setCheckoutExperienceDiagnosticsLoading] =
     useState(false);
@@ -693,6 +694,8 @@ function TestWizard({
       setCheckoutDiagnostics(null);
       setCheckoutDiagnosticsError(null);
       setCheckoutDiagnosticsLoading(false);
+      setCartTransformStatus(null);
+      setCartTransformStatusLoading(false);
       return () => {
         cancelled = true;
       };
@@ -724,39 +727,93 @@ function TestWizard({
     };
   }, [isShopifyFromRoute, isStandalone, routeDomain]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!isShopifyFromRoute || isStandalone) {
+      setCartTransformStatus(null);
+      setCartTransformStatusLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const loadCartTransformStatus = async () => {
+      setCartTransformStatusLoading(true);
+      try {
+        const data = await apiGet('/settings/cart-transform/status', { timeout: 15000 });
+        if (!cancelled) {
+          setCartTransformStatus(data || null);
+        }
+      } catch (_e) {
+        if (!cancelled) {
+          setCartTransformStatus(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setCartTransformStatusLoading(false);
+        }
+      }
+    };
+
+    loadCartTransformStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [isShopifyFromRoute, isStandalone, routeDomain]);
+
   const directPriceOverrideSupportLevel = String(
     checkoutDiagnostics?.support?.direct_price_override?.level || ''
   )
     .trim()
     .toLowerCase();
+  const cartTransformInstalledForShop = cartTransformStatus?.installedForRipxFunction === true;
+  const cartTransformFunctionDetectedFromStatus = Boolean(cartTransformStatus?.function?.id);
+  const cartTransformInstallCheckStatus = String(cartTransformStatus?.installCheck?.status || '')
+    .trim()
+    .toLowerCase();
+  const cartTransformInstallStateUnknownFromStatus =
+    cartTransformFunctionDetectedFromStatus && cartTransformInstallCheckStatus === 'scope_missing';
   const cartTransformFunctionAvailable =
+    cartTransformFunctionDetectedFromStatus ||
     directPriceOverrideSupportLevel === 'available' ||
     checkoutDiagnostics?.infrastructure?.cart_transform_function_available === true;
-  const directPriceOverrideReadiness = checkoutDiagnosticsLoading
-    ? 'checking'
-    : directPriceOverrideSupportLevel === 'available'
-      ? 'ready'
-      : directPriceOverrideSupportLevel === 'needs_install'
-        ? 'needs_install'
-        : directPriceOverrideSupportLevel === 'needs_deploy'
-          ? 'needs_deploy'
-          : directPriceOverrideSupportLevel === 'unknown_install_state'
-            ? 'unknown'
-            : checkoutDiagnosticsError
-              ? 'unknown'
-              : checkoutDiagnostics?.infrastructure?.cart_transform_function_available === true
-                ? 'ready'
-                : 'needs_deploy';
+  const directPriceOverrideReadiness =
+    checkoutDiagnosticsLoading && cartTransformStatusLoading
+      ? 'checking'
+      : cartTransformInstalledForShop || directPriceOverrideSupportLevel === 'available'
+        ? 'ready'
+        : cartTransformInstallStateUnknownFromStatus
+          ? 'unknown'
+          : cartTransformFunctionDetectedFromStatus
+            ? 'needs_install'
+            : directPriceOverrideSupportLevel === 'needs_install'
+              ? 'needs_install'
+              : directPriceOverrideSupportLevel === 'needs_deploy'
+                ? 'needs_deploy'
+                : directPriceOverrideSupportLevel === 'unknown_install_state'
+                  ? 'unknown'
+                  : checkoutDiagnosticsError
+                    ? 'unknown'
+                    : checkoutDiagnostics?.infrastructure?.cart_transform_function_available ===
+                        true
+                      ? 'ready'
+                      : 'needs_deploy';
   const directPriceOverrideStatusMessage =
     directPriceOverrideReadiness === 'ready'
       ? 'Direct Price Override is available for this shop.'
       : directPriceOverrideReadiness === 'needs_install'
         ? 'RipX cart transform is deployed but not installed on this shop yet. Bind/install it before relying on live price tests.'
         : directPriceOverrideReadiness === 'needs_deploy'
-          ? 'RipX cart transform is not deployed for this shop yet, so checkout/cart price changes will not run.'
+          ? 'RipX cart transform is not detected for this shop yet, so checkout/cart direct price overrides will not run.'
           : directPriceOverrideReadiness === 'checking'
             ? 'RipX is still checking cart transform availability for this shop.'
             : 'RipX could not fully verify cart transform install state for this shop.';
+  const shouldUseDirectPriceOverrideExecution =
+    isShopifyFromRoute && !isStandalone && directPriceOverrideReadiness === 'ready';
+  const priceCheckoutExecutionMode = shouldUseDirectPriceOverrideExecution
+    ? 'direct_price_override'
+    : 'auto';
 
   useEffect(() => {
     let cancelled = false;
@@ -2179,6 +2236,68 @@ function TestWizard({
     return config;
   };
 
+  const applyPriceExecutionModeToConfig = (rawConfig, executionMode) => {
+    if (!rawConfig || typeof rawConfig !== 'object') {
+      return rawConfig;
+    }
+    const normalizedMode = String(executionMode || '')
+      .trim()
+      .toLowerCase();
+    const modeToWrite =
+      normalizedMode === 'direct_price_override' ? 'direct_price_override' : 'auto';
+    const config = { ...rawConfig, priceApplicationMethod: modeToWrite };
+
+    if (config.byProduct && typeof config.byProduct === 'object') {
+      config.byProduct = Object.fromEntries(
+        Object.entries(config.byProduct).map(([productId, productOverride]) => {
+          if (!productOverride || typeof productOverride !== 'object') {
+            return [productId, productOverride];
+          }
+          const productEntry = {
+            ...productOverride,
+            priceApplicationMethod: modeToWrite,
+          };
+          if (productEntry.byVariant && typeof productEntry.byVariant === 'object') {
+            productEntry.byVariant = Object.fromEntries(
+              Object.entries(productEntry.byVariant).map(([variantId, variantOverride]) => {
+                if (!variantOverride || typeof variantOverride !== 'object') {
+                  return [variantId, variantOverride];
+                }
+                return [
+                  variantId,
+                  {
+                    ...variantOverride,
+                    priceApplicationMethod: modeToWrite,
+                  },
+                ];
+              })
+            );
+          }
+          return [productId, productEntry];
+        })
+      );
+    }
+
+    if (config.byVariant && typeof config.byVariant === 'object') {
+      config.byVariant = Object.fromEntries(
+        Object.entries(config.byVariant).map(([variantId, variantOverride]) => {
+          if (!variantOverride || typeof variantOverride !== 'object') {
+            return [variantId, variantOverride];
+          }
+          return [
+            variantId,
+            {
+              ...variantOverride,
+              priceApplicationMethod: modeToWrite,
+            },
+          ];
+        })
+      );
+    }
+
+    return config;
+  };
+
   const buildPayload = (data = formData, codes = variantCodesData) => {
     const variants = (data?.variants || []).map(v => normalizeVariantPriceConfigShape(v));
     const codesList = Array.isArray(codes) ? codes : [];
@@ -2304,8 +2423,9 @@ function TestWizard({
         allocation: Number(v.allocation) || 0,
       };
       if (isPriceLikeTest) {
-        nextVariant.config = enforceDirectPriceOverrideOnConfig(
-          sanitizePriceConfigOverrides(nextVariant.config || {})
+        nextVariant.config = applyPriceExecutionModeToConfig(
+          sanitizePriceConfigOverrides(nextVariant.config || {}),
+          priceCheckoutExecutionMode
         );
       } else if (isThemeFamilyTest) {
         const fallbackThemeMode = templateKey === 'template' ? 'template_switch' : 'asset_flag';
@@ -8260,7 +8380,11 @@ function TestWizard({
                   <span className={styles.priceEditorIntroLabel}>
                     Checkout method
                     <TooltipWrapper
-                      content="Price tests in this editor always use Direct Price on cart and checkout."
+                      content={
+                        shouldUseDirectPriceOverrideExecution
+                          ? 'Price tests use Direct Price on cart and checkout for this shop.'
+                          : 'Cart transform is not ready, so checkout method falls back to Auto (discount/native) for this shop.'
+                      }
                       accessibilityLabel="Checkout method help"
                       preferredPosition="above"
                     >
@@ -8269,7 +8393,9 @@ function TestWizard({
                       </span>
                     </TooltipWrapper>
                   </span>
-                  <span className={styles.priceEditorIntroValue}>Direct Price</span>
+                  <span className={styles.priceEditorIntroValue}>
+                    {shouldUseDirectPriceOverrideExecution ? 'Direct Price' : 'Auto'}
+                  </span>
                   <span className={styles.priceEditorIntroHint}>Locked in this step</span>
                 </div>
                 <div
@@ -9453,11 +9579,11 @@ function TestWizard({
               directPriceOverrideReadiness !== 'ready' &&
               directPriceOverrideReadiness !== 'checking' &&
               directPriceOverrideReadiness !== 'unknown' && (
-                <Banner tone="critical" title="Price test checkout execution is not ready">
+                <Banner tone="warning" title="Direct Price Override is not ready on this shop">
                   <Text as="p" variant="bodySm">
-                    {directPriceOverrideStatusMessage} Price tests in this wizard currently save as
-                    <strong> Direct Price Override</strong>, so cart and checkout price changes will
-                    not run until this is fixed.
+                    {directPriceOverrideStatusMessage} This wizard now saves checkout method as
+                    <strong> Auto</strong> until cart transform is ready, so price tests can still
+                    run through discount/native paths.
                   </Text>
                 </Banner>
               )}
@@ -9472,9 +9598,15 @@ function TestWizard({
             <div className={styles.priceMetaCompactRow}>
               <div className={styles.priceMetaCompactItem}>
                 <Badge tone="success" size="small">
-                  Direct Price mode
+                  {shouldUseDirectPriceOverrideExecution ? 'Direct Price mode' : 'Auto mode'}
                 </Badge>
-                <TooltipWrapper content="This step is streamlined: all variants use Direct Price on cart and checkout.">
+                <TooltipWrapper
+                  content={
+                    shouldUseDirectPriceOverrideExecution
+                      ? 'This step is streamlined: all variants use Direct Price on cart and checkout.'
+                      : 'Cart transform is not ready for this shop. RipX will use Auto checkout method until Direct Price Override becomes available.'
+                  }
+                >
                   <span className={styles.priceMetaCompactInfoIcon} aria-hidden>
                     <Icon source={InfoIcon} />
                   </span>
@@ -15556,11 +15688,10 @@ function TestWizard({
                 directPriceOverrideReadiness !== 'ready' &&
                 directPriceOverrideReadiness !== 'checking' &&
                 directPriceOverrideReadiness !== 'unknown' && (
-                  <Banner tone="critical" title="Price test launch is blocked">
+                  <Banner tone="warning" title="Direct Price Override is unavailable on this shop">
                     <Text as="p" variant="bodySm">
-                      {directPriceOverrideStatusMessage} Fix cart transform deployment/install state
-                      before creating or updating this price test, otherwise checkout prices will
-                      not apply.
+                      {directPriceOverrideStatusMessage} This test will save with checkout method
+                      <strong> Auto</strong> (discount/native path) until cart transform is ready.
                     </Text>
                   </Banner>
                 )}
