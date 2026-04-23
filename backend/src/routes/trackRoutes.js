@@ -739,14 +739,27 @@ router.get(
       return res.status(400).type('text/plain').send('Invalid preview URL');
     }
 
+    // Backward-compatible preview context recovery:
+    // if launcher query misses ab_preview_* params, recover them from the target URL itself.
+    const targetPreview = parsed.searchParams || new URLSearchParams();
+    const previewFlag =
+      req.query.ab_preview === '1' ||
+      targetPreview.get('ab_preview') === '1' ||
+      !!req.query.ab_preview_test;
+    const previewTestId = req.query.ab_preview_test || targetPreview.get('ab_preview_test') || null;
+    const previewVariantId =
+      req.query.ab_preview_variant || targetPreview.get('ab_preview_variant') || null;
+    const previewVariantName =
+      req.query.ab_preview_variant_name || targetPreview.get('ab_preview_variant_name') || null;
+    const previewTenantDomain =
+      req.query.ab_preview_domain || targetPreview.get('ab_preview_domain') || null;
+
     const previewCtx = {
-      preview: req.query.ab_preview === '1' || !!req.query.ab_preview_test,
-      testId: req.query.ab_preview_test ? String(req.query.ab_preview_test) : null,
-      variantId: req.query.ab_preview_variant ? String(req.query.ab_preview_variant) : null,
-      variantName: req.query.ab_preview_variant_name
-        ? String(req.query.ab_preview_variant_name)
-        : null,
-      tenantDomain: req.query.ab_preview_domain ? String(req.query.ab_preview_domain) : null,
+      preview: previewFlag,
+      testId: previewTestId ? String(previewTestId) : null,
+      variantId: previewVariantId ? String(previewVariantId) : null,
+      variantName: previewVariantName ? String(previewVariantName) : null,
+      tenantDomain: previewTenantDomain ? String(previewTenantDomain) : null,
       persistedAtMs: Date.now(),
     };
 

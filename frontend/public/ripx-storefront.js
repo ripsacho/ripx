@@ -602,7 +602,11 @@
 
   function whenConsent(cb) {
     // Preview QA must run without waiting for marketing consent (otherwise RipX never mounts).
-    if (hasConsent() || (PREVIEW_TEST_ID && (PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME))) {
+    if (
+      hasConsent() ||
+      PREVIEW_TEST_CONTEXT ||
+      (PREVIEW_TEST_ID && (PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME))
+    ) {
       cb();
       return;
     }
@@ -6419,6 +6423,13 @@
             if (variant) {
               var previewVariantIdForCart =
                 variant.variantId != null ? variant.variantId : variant.id;
+              if (
+                (previewVariantIdForCart == null ||
+                  String(previewVariantIdForCart).trim() === '') &&
+                (PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME)
+              ) {
+                previewVariantIdForCart = PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME;
+              }
               if (
                 previewVariantIdForCart != null &&
                 String(previewVariantIdForCart).trim() !== ''
