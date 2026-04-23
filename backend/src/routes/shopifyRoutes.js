@@ -10,6 +10,7 @@ const { asyncHandler } = require('../middleware/asyncHandler');
 const shopifyService = require('../services/shopifyService');
 const logger = require('../utils/logger');
 const { SCRIPT_VERSION } = require('../utils/storefrontScriptRuntime');
+const validators = require('../utils/validators');
 
 async function checkAppProxyStatus(shopDomain) {
   const url = `https://${shopDomain}/apps/ripx/script.js?v=${SCRIPT_VERSION}`;
@@ -307,7 +308,12 @@ router.get(
 router.get(
   '/setup/status',
   asyncHandler(async (req, res) => {
-    const shopDomain = req.shopDomain;
+    const requestedDomain = String(req.query.domain || '')
+      .trim()
+      .toLowerCase();
+    const shopDomain = validators.isValidShopDomain(requestedDomain)
+      ? requestedDomain
+      : req.shopDomain;
 
     const appUrl = process.env.APP_URL || null;
     const proxyTargetUrl = appUrl ? `${appUrl}/api/proxy` : null;

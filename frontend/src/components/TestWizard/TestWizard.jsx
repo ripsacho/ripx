@@ -180,6 +180,8 @@ function TestWizard({
   const progressBarRef = useRef(null);
   const progressBarStuck = useStickyProgressBar(progressBarRef);
   const [error, setError] = useState(null);
+  const [previewRuntimeAssist, setPreviewRuntimeAssist] = useState(null);
+  const [previewRuntimeAssistToast, setPreviewRuntimeAssistToast] = useState(null);
   const [selectedTemplate, setSelectedTemplate] = useState(initialTemplate);
   const [formData, setFormData] = useState(DEFAULT_FORM_DATA);
   const isShippingTargetingMode = selectedTemplate === 'shipping' || formData.type === 'shipping';
@@ -568,6 +570,9 @@ function TestWizard({
   const [priceMatrixProductsById, setPriceMatrixProductsById] = useState({});
   const [priceMatrixLoadingById, setPriceMatrixLoadingById] = useState({});
   const [priceMatrixErrorById, setPriceMatrixErrorById] = useState({});
+  const priceMatrixProductsByIdRef = useRef({});
+  const priceMatrixErrorByIdRef = useRef({});
+  const priceMatrixFetchInFlightRef = useRef({});
   const [priceMatrixBulkMode, setPriceMatrixBulkMode] = useState('amount');
   const [priceMatrixBulkValue, setPriceMatrixBulkValue] = useState('');
   const [priceMatrixBulkSummary, setPriceMatrixBulkSummary] = useState(null);
@@ -1616,6 +1621,14 @@ function TestWizard({
   ]);
 
   useEffect(() => {
+    priceMatrixProductsByIdRef.current = priceMatrixProductsById || {};
+  }, [priceMatrixProductsById]);
+
+  useEffect(() => {
+    priceMatrixErrorByIdRef.current = priceMatrixErrorById || {};
+  }, [priceMatrixErrorById]);
+
+  useEffect(() => {
     if (!canFetchAllProductsMatrix) {
       setAllProductsMatrixProducts([]);
       setAllProductsMatrixVisibleCount(PRICE_PRODUCT_MODAL_REVEAL_BATCH);
@@ -1741,11 +1754,13 @@ function TestWizard({
     let cancelled = false;
     matrixProductIdsForFetching.forEach(productId => {
       if (!productId) return;
-      const existingMatrixProduct = priceMatrixProductsById[productId];
+      const existingMatrixProduct = priceMatrixProductsByIdRef.current[productId];
       const hasLoadedVariants =
         Array.isArray(existingMatrixProduct?.variants) && existingMatrixProduct.variants.length > 0;
-      const hasMatrixFetchError = Boolean(priceMatrixErrorById[productId]);
-      if (hasLoadedVariants || hasMatrixFetchError || priceMatrixLoadingById[productId]) return;
+      const hasMatrixFetchError = Boolean(priceMatrixErrorByIdRef.current[productId]);
+      const inFlight = Boolean(priceMatrixFetchInFlightRef.current[productId]);
+      if (hasLoadedVariants || hasMatrixFetchError || inFlight) return;
+      priceMatrixFetchInFlightRef.current[productId] = true;
       setPriceMatrixLoadingById(prev => ({ ...prev, [productId]: true }));
       setPriceMatrixErrorById(prev => ({ ...prev, [productId]: null }));
       apiGet(
@@ -1805,6 +1820,7 @@ function TestWizard({
           }));
         })
         .finally(() => {
+          priceMatrixFetchInFlightRef.current[productId] = false;
           if (cancelled) return;
           setPriceMatrixLoadingById(prev => ({ ...prev, [productId]: false }));
         });
@@ -1818,9 +1834,6 @@ function TestWizard({
     isStandalone,
     isShopifyFromRoute,
     routeDomain,
-    priceMatrixProductsById,
-    priceMatrixLoadingById,
-    priceMatrixErrorById,
     priceProductMetaById,
   ]);
 
@@ -3398,15 +3411,39 @@ function TestWizard({
       );
       return;
     }
+    const buildPreviewRuntimeBootstrapSnippet = runtimeScriptUrl => {
+      const safeScriptUrl = String(runtimeScriptUrl || '')
+        .trim()
+        .replace(/'/g, "\\'");
+      if (!safeScriptUrl) return '';
+      return [
+        '(() => {',
+        "  const s = document.createElement('script');",
+        `  s.src = '${safeScriptUrl}';`,
+        '  s.defer = true;',
+        '  document.head.appendChild(s);',
+        '})();',
+      ].join('\n');
+    };
+    setPreviewRuntimeAssist(null);
     const previewShopDomain =
       routeDomain || getPreviewDomain() || getShopDomain() || initialData?.shop_domain || null;
     if (previewShopDomain && isShopifyStoreDomain(previewShopDomain)) {
       try {
-        const setupRes = await apiGet('/shopify/setup/status');
+        const setupRes = await apiGet('/shopify/setup/status', {
+          domain: previewShopDomain,
+        });
         const setupData = unwrapData(setupRes);
         const embedDetected = setupData?.embedStatus?.detected === true;
         const setupScriptUrl = setupData?.proxyStatus?.url || null;
         if (!embedDetected) {
+          const fallbackScriptUrl =
+            setupScriptUrl || `https://${previewShopDomain}/apps/ripx/script.js`;
+          setPreviewRuntimeAssist({
+            shopDomain: previewShopDomain,
+            scriptUrl: fallbackScriptUrl,
+            snippet: buildPreviewRuntimeBootstrapSnippet(fallbackScriptUrl),
+          });
           setError(
             `Preview is blocked because RipX app embed is not detected on ${previewShopDomain}. Enable RipX app embed on the published theme, then retry.${setupScriptUrl ? ` Runtime URL: ${setupScriptUrl}` : ''}`
           );
@@ -3421,6 +3458,13 @@ function TestWizard({
           const scriptVerified = installData?.installation?.scriptVerified === true;
           if (!scriptVerified) {
             const scriptUrl = installData?.installation?.scriptUrl || null;
+            const fallbackScriptUrl =
+              scriptUrl || `https://${previewShopDomain}/apps/ripx/script.js`;
+            setPreviewRuntimeAssist({
+              shopDomain: previewShopDomain,
+              scriptUrl: fallbackScriptUrl,
+              snippet: buildPreviewRuntimeBootstrapSnippet(fallbackScriptUrl),
+            });
             setError(
               `Preview is blocked because RipX storefront runtime is not verified for ${previewShopDomain}. Enable the RipX app embed on the published theme, then retry.${scriptUrl ? ` Expected script: ${scriptUrl}` : ''}`
             );
@@ -16418,6 +16462,14 @@ function TestWizard({
           duration={2200}
         />
       )}
+      {previewRuntimeAssistToast && (
+        <Toast
+          message={previewRuntimeAssistToast.message}
+          type={previewRuntimeAssistToast.type || 'success'}
+          onClose={() => setPreviewRuntimeAssistToast(null)}
+          duration={2600}
+        />
+      )}
       {antiFlickerToast && (
         <Toast
           message={antiFlickerToast.message}
@@ -16454,6 +16506,45 @@ function TestWizard({
             </div>
 
             <div className="wizard-step">
+              {previewRuntimeAssist && (
+                <Banner
+                  tone="warning"
+                  title={`Preview runtime missing on ${previewRuntimeAssist.shopDomain || 'store'}`}
+                  onDismiss={() => setPreviewRuntimeAssist(null)}
+                >
+                  <BlockStack gap="200">
+                    <Text as="p" variant="bodySm">
+                      Temporary QA workaround: open preview page, run this snippet in browser
+                      console once, then re-test cart/checkout pricing.
+                    </Text>
+                    <pre className={styles.previewRuntimeSnippet}>
+                      {previewRuntimeAssist.snippet || ''}
+                    </pre>
+                    <InlineStack gap="200">
+                      <Button
+                        size="slim"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(previewRuntimeAssist.snippet || '');
+                            setPreviewRuntimeAssistToast({
+                              message: 'Preview runtime bootstrap snippet copied.',
+                              type: 'success',
+                            });
+                          } catch (_copyErr) {
+                            setPreviewRuntimeAssistToast({
+                              message:
+                                'Could not copy snippet automatically. Copy it manually from the panel.',
+                              type: 'critical',
+                            });
+                          }
+                        }}
+                      >
+                        Copy snippet
+                      </Button>
+                    </InlineStack>
+                  </BlockStack>
+                </Banner>
+              )}
               {hasStepErrors && (
                 <div
                   ref={validationSummaryRef}
