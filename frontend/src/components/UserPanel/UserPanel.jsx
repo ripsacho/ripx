@@ -285,6 +285,12 @@ function UserPanel() {
         if (alreadyConnected) {
           return;
         }
+        if (useEmailDomains) {
+          // Home/UserPanel flow should stay in-app. Let AppDomainLayout gate connection
+          // instead of forcing an immediate auth redirect that lands on login.
+          openDomainApp(normalized);
+          return;
+        }
         try {
           const origin = typeof window !== 'undefined' ? window.location.origin : '';
           try {
