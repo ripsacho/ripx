@@ -332,5 +332,8 @@ async function servePreviewBootstrap(req, res) {
 
 router.get('/preview-bootstrap', asyncHandler(servePreviewBootstrap));
 router.get('/preview-bootstrap/preview-bootstrap', asyncHandler(servePreviewBootstrap));
+// App proxy base sometimes includes /script.js; Shopify then rewrites to /script.js/preview-bootstrap.
+router.get('/script.js/preview-bootstrap', asyncHandler(servePreviewBootstrap));
+router.get('/script.js/script.js/preview-bootstrap', asyncHandler(servePreviewBootstrap));
 
 module.exports = router;
