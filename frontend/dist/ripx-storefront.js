@@ -793,6 +793,8 @@
   var _ripxCartFormObserverInstalled = false;
   var _ripxCartFormObserverTimer = null;
   var _ripxCartAddInterceptorsInstalled = false;
+  var _ripxCartPropsRepairInFlight = null;
+  var _ripxCartPropsRepairLastAt = 0;
   var _ripxCartNativeState = {
     cart: null,
     fetchedAt: 0,
@@ -1534,6 +1536,55 @@
 
   function applyRipxCartAttrsToFormData(formData, payload, preserveExisting) {
     if (!formData || !payload) return false;
+    function collectItemIndexes() {
+      var idxMap = {};
+      var idxList = [];
+      try {
+        if (typeof formData.forEach === 'function') {
+          formData.forEach(function (_value, key) {
+            var m = String(key || '').match(/^items\[(\d+)\]\[[^\]]+\]/);
+            if (!m) return;
+            var idx = m[1];
+            if (idxMap[idx]) return;
+            idxMap[idx] = true;
+            idxList.push(idx);
+          });
+        }
+      } catch (e) {}
+      return idxList;
+    }
+    function setItemProperty(index, propKey, value) {
+      if (value === undefined || value === null || String(value).trim() === '') return;
+      var itemKey = 'items[' + index + '][properties][' + propKey + ']';
+      if (
+        preserveExisting &&
+        typeof formData.get === 'function' &&
+        formData.get(itemKey) !== null &&
+        String(formData.get(itemKey)).trim() !== ''
+      ) {
+        return;
+      }
+      formData.set(itemKey, value);
+    }
+    function applyToItemIndexes() {
+      var indexes = collectItemIndexes();
+      if (!indexes.length) return false;
+      indexes.forEach(function (index) {
+        setItemProperty(index, '_ripx_price_test', payload._ripx_price_test);
+        setItemProperty(index, '_ripx_variant', payload._ripx_variant);
+        setItemProperty(index, '_ripx_shop', payload._ripx_shop);
+        setItemProperty(index, '_ripx_assignment_sig', payload._ripx_assignment_sig);
+        setItemProperty(index, '_ripx_assignment_ts', payload._ripx_assignment_ts);
+        setItemProperty(index, '_ripx_assignment_user', payload._ripx_assignment_user);
+        setItemProperty(index, '_ripx_target_unit', payload._ripx_target_unit);
+        setItemProperty(index, '_ripx_discount_unit', payload._ripx_discount_unit);
+        setItemProperty(index, '_ripx_price_method', payload._ripx_price_method);
+        setItemProperty(index, '_ripx_offer_discount_type', payload._ripx_offer_discount_type);
+        setItemProperty(index, '_ripx_offer_discount_value', payload._ripx_offer_discount_value);
+        setItemProperty(index, '_ripx_offer_code_name', payload._ripx_offer_code_name);
+      });
+      return true;
+    }
     setRipxAttrValueOnFormData(
       formData,
       'properties[_ripx_price_test]',
@@ -1606,6 +1657,7 @@
       payload._ripx_offer_code_name,
       preserveExisting
     );
+    applyToItemIndexes();
     return true;
   }
 
@@ -1620,6 +1672,54 @@
 
   function applyRipxCartAttrsToSearchParams(params, payload, preserveExisting) {
     if (!params || !payload) return false;
+    function collectItemIndexes() {
+      var idxMap = {};
+      var idxList = [];
+      try {
+        if (typeof params.forEach === 'function') {
+          params.forEach(function (_value, key) {
+            var m = String(key || '').match(/^items\[(\d+)\]\[[^\]]+\]/);
+            if (!m) return;
+            var idx = m[1];
+            if (idxMap[idx]) return;
+            idxMap[idx] = true;
+            idxList.push(idx);
+          });
+        }
+      } catch (e) {}
+      return idxList;
+    }
+    function setItemProperty(index, propKey, value) {
+      if (value === undefined || value === null || String(value).trim() === '') return;
+      var itemKey = 'items[' + index + '][properties][' + propKey + ']';
+      if (
+        preserveExisting &&
+        params.get(itemKey) != null &&
+        String(params.get(itemKey)).trim() !== ''
+      ) {
+        return;
+      }
+      params.set(itemKey, value);
+    }
+    function applyToItemIndexes() {
+      var indexes = collectItemIndexes();
+      if (!indexes.length) return false;
+      indexes.forEach(function (index) {
+        setItemProperty(index, '_ripx_price_test', payload._ripx_price_test);
+        setItemProperty(index, '_ripx_variant', payload._ripx_variant);
+        setItemProperty(index, '_ripx_shop', payload._ripx_shop);
+        setItemProperty(index, '_ripx_assignment_sig', payload._ripx_assignment_sig);
+        setItemProperty(index, '_ripx_assignment_ts', payload._ripx_assignment_ts);
+        setItemProperty(index, '_ripx_assignment_user', payload._ripx_assignment_user);
+        setItemProperty(index, '_ripx_target_unit', payload._ripx_target_unit);
+        setItemProperty(index, '_ripx_discount_unit', payload._ripx_discount_unit);
+        setItemProperty(index, '_ripx_price_method', payload._ripx_price_method);
+        setItemProperty(index, '_ripx_offer_discount_type', payload._ripx_offer_discount_type);
+        setItemProperty(index, '_ripx_offer_discount_value', payload._ripx_offer_discount_value);
+        setItemProperty(index, '_ripx_offer_code_name', payload._ripx_offer_code_name);
+      });
+      return true;
+    }
     setRipxAttrValueOnSearchParams(
       params,
       'properties[_ripx_price_test]',
@@ -1692,6 +1792,7 @@
       payload._ripx_offer_code_name,
       preserveExisting
     );
+    applyToItemIndexes();
     return true;
   }
 
@@ -1996,6 +2097,114 @@
     return { changed: false, body: body };
   }
 
+  function getRipxLinePropertiesPayload(state) {
+    var src = state || _ripxCartAttributeState;
+    if (!src || !src._ripx_price_test || !src._ripx_variant) return null;
+    var out = {};
+    function put(key) {
+      if (!src[key]) return;
+      var v = String(src[key]).trim();
+      if (!v) return;
+      out[key] = v;
+    }
+    put('_ripx_price_test');
+    put('_ripx_variant');
+    put('_ripx_shop');
+    put('_ripx_assignment_sig');
+    put('_ripx_assignment_ts');
+    put('_ripx_assignment_user');
+    put('_ripx_target_unit');
+    put('_ripx_discount_unit');
+    put('_ripx_price_method');
+    put('_ripx_offer_discount_type');
+    put('_ripx_offer_discount_value');
+    put('_ripx_offer_code_name');
+    return out._ripx_price_test && out._ripx_variant ? out : null;
+  }
+
+  function linePropertiesNeedRipxRepair(line, desiredProps) {
+    if (!line || !desiredProps) return false;
+    var current = line.properties && typeof line.properties === 'object' ? line.properties : {};
+    var keys = Object.keys(desiredProps);
+    for (var i = 0; i < keys.length; i++) {
+      var key = keys[i];
+      if (!key) continue;
+      if (current[key] == null || String(current[key]).trim() === '') return true;
+    }
+    return false;
+  }
+
+  function findRipxRepairLineIndex(cartState, desiredProps) {
+    if (!cartState || !Array.isArray(cartState.items) || !cartState.items.length) return -1;
+    var preferredVariant = normalizeCartVariantId(
+      (_ripxCartAttributeState && _ripxCartAttributeState.__ripx_native_variant_id) ||
+        (_ripxCartAttributeState && _ripxCartAttributeState.__ripx_source_variant_id) ||
+        ''
+    );
+    for (var i = cartState.items.length - 1; i >= 0; i--) {
+      var item = cartState.items[i];
+      if (!linePropertiesNeedRipxRepair(item, desiredProps)) continue;
+      if (!preferredVariant) return i;
+      if (normalizeCartVariantId(item && item.variant_id) === preferredVariant) return i;
+    }
+    return -1;
+  }
+
+  function maybeRepairRipxCartLineProperties(reason) {
+    var desiredProps = getRipxLinePropertiesPayload(_ripxCartAttributeState);
+    if (!desiredProps || !_ripxNativeFetch) return Promise.resolve(false);
+    if (_ripxCartPropsRepairInFlight) return _ripxCartPropsRepairInFlight;
+    var now = Date.now();
+    if (now - _ripxCartPropsRepairLastAt < 300) return Promise.resolve(false);
+    _ripxCartPropsRepairLastAt = now;
+    _ripxCartPropsRepairInFlight = _ripxNativeFetch('/cart.js', {
+      method: 'GET',
+      credentials: 'same-origin',
+      headers: { accept: 'application/json' },
+    })
+      .then(function (response) {
+        if (!response || !response.ok) return null;
+        return response.json().catch(function () {
+          return null;
+        });
+      })
+      .then(function (cartState) {
+        var lineIndex = findRipxRepairLineIndex(cartState, desiredProps);
+        if (lineIndex < 0) return false;
+        var item = cartState.items[lineIndex] || {};
+        var mergedProps = Object.assign({}, item.properties || {}, desiredProps);
+        var requestBody = JSON.stringify({
+          line: lineIndex + 1,
+          quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1,
+          properties: mergedProps,
+        });
+        return _ripxNativeFetch('/cart/change.js', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'content-type': 'application/json', accept: 'application/json' },
+          body: requestBody,
+        })
+          .then(function (res) {
+            if (!res || !res.ok) return false;
+            if (DEBUG) {
+              debugLog('cart props repaired:', reason || 'unknown', 'line', lineIndex + 1);
+            }
+            scheduleRipxCartNativeStateRefreshBurst();
+            return true;
+          })
+          .catch(function () {
+            return false;
+          });
+      })
+      .catch(function () {
+        return false;
+      })
+      .finally(function () {
+        _ripxCartPropsRepairInFlight = null;
+      });
+    return _ripxCartPropsRepairInFlight;
+  }
+
   function installRipxCartAddInterceptors() {
     if (_ripxCartAddInterceptorsInstalled) return;
     _ripxCartAddInterceptorsInstalled = true;
@@ -2073,7 +2282,10 @@
                         );
                       }
                       return nativeFetch(input, asyncInit).then(function (response) {
-                        if (response && response.ok) scheduleRipxCartNativeStateRefreshBurst();
+                        if (response && response.ok) {
+                          scheduleRipxCartNativeStateRefreshBurst();
+                          maybeRepairRipxCartLineProperties('fetch-stream');
+                        }
                         return response;
                       });
                     })
@@ -2102,7 +2314,10 @@
                 );
               }
               return nativeFetch(input, nextInit).then(function (response) {
-                if (response && response.ok) scheduleRipxCartNativeStateRefreshBurst();
+                if (response && response.ok) {
+                  scheduleRipxCartNativeStateRefreshBurst();
+                  maybeRepairRipxCartLineProperties('fetch');
+                }
                 return response;
               });
             }
@@ -2144,6 +2359,7 @@
                 function () {
                   if (self.status >= 200 && self.status < 300) {
                     scheduleRipxCartNativeStateRefreshBurst();
+                    maybeRepairRipxCartLineProperties('xhr');
                   }
                 },
                 { once: true }
@@ -6110,6 +6326,446 @@
     });
   }
 
+  function installPreviewDebugFloatingPanel() {
+    if (!PREVIEW_MODE) return;
+    if (typeof document === 'undefined') return;
+    if (document.getElementById('ripx-preview-debug-fab')) return;
+    if (!document.body) return;
+    var PANEL_STATE_KEY = '__ripx_preview_debug_panel_state_v1__';
+
+    function readPanelState() {
+      try {
+        if (!window.sessionStorage) return {};
+        var raw = window.sessionStorage.getItem(PANEL_STATE_KEY);
+        if (!raw) return {};
+        var parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function writePanelState(next) {
+      try {
+        if (!window.sessionStorage) return;
+        window.sessionStorage.setItem(PANEL_STATE_KEY, JSON.stringify(next || {}));
+      } catch (e) {}
+    }
+
+    var fab = document.createElement('button');
+    fab.id = 'ripx-preview-debug-fab';
+    fab.type = 'button';
+    fab.textContent = 'RipX QA';
+    fab.style.position = 'fixed';
+    fab.style.right = '16px';
+    fab.style.bottom = '16px';
+    fab.style.zIndex = '2147483646';
+    fab.style.border = '1px solid rgba(255,255,255,0.35)';
+    fab.style.background = 'linear-gradient(135deg, #0f172a 0%, #1f2937 100%)';
+    fab.style.color = '#ffffff';
+    fab.style.borderRadius = '999px';
+    fab.style.padding = '9px 14px';
+    fab.style.fontSize = '12px';
+    fab.style.fontWeight = '600';
+    fab.style.letterSpacing = '0.2px';
+    fab.style.cursor = 'pointer';
+    fab.style.boxShadow = '0 8px 22px rgba(2,6,23,0.4)';
+
+    var panel = document.createElement('div');
+    panel.id = 'ripx-preview-debug-panel';
+    panel.style.position = 'fixed';
+    panel.style.right = '16px';
+    panel.style.bottom = '58px';
+    panel.style.width = '420px';
+    panel.style.maxWidth = 'calc(100vw - 24px)';
+    panel.style.maxHeight = '68vh';
+    panel.style.overflow = 'auto';
+    panel.style.zIndex = '2147483646';
+    panel.style.background = '#ffffff';
+    panel.style.color = '#0f172a';
+    panel.style.border = '1px solid rgba(15,23,42,0.14)';
+    panel.style.borderRadius = '14px';
+    panel.style.boxShadow = '0 18px 40px rgba(15,23,42,0.24)';
+    panel.style.padding = '12px';
+    panel.style.display = 'none';
+    panel.style.backdropFilter = 'blur(4px)';
+
+    var header = document.createElement('div');
+    header.style.display = 'flex';
+    header.style.justifyContent = 'space-between';
+    header.style.alignItems = 'center';
+    header.style.gap = '10px';
+    header.style.marginBottom = '10px';
+
+    var titleWrap = document.createElement('div');
+    var title = document.createElement('div');
+    title.style.fontWeight = '700';
+    title.style.fontSize = '14px';
+    title.textContent = 'RipX Preview Console';
+    var subtitle = document.createElement('div');
+    subtitle.style.fontSize = '11px';
+    subtitle.style.color = '#475569';
+    subtitle.textContent = 'Preview diagnostics for bucketing, attributes, and cart';
+    titleWrap.appendChild(title);
+    titleWrap.appendChild(subtitle);
+
+    var closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.textContent = '✕';
+    closeBtn.style.border = '1px solid rgba(15,23,42,0.15)';
+    closeBtn.style.background = '#fff';
+    closeBtn.style.color = '#0f172a';
+    closeBtn.style.borderRadius = '8px';
+    closeBtn.style.padding = '4px 8px';
+    closeBtn.style.fontSize = '12px';
+    closeBtn.style.cursor = 'pointer';
+
+    header.appendChild(titleWrap);
+    header.appendChild(closeBtn);
+
+    var badges = document.createElement('div');
+    badges.style.display = 'flex';
+    badges.style.gap = '6px';
+    badges.style.flexWrap = 'wrap';
+    badges.style.marginBottom = '10px';
+
+    function makeBadge(label, tone) {
+      var b = document.createElement('span');
+      b.textContent = label;
+      b.style.display = 'inline-flex';
+      b.style.alignItems = 'center';
+      b.style.padding = '3px 8px';
+      b.style.borderRadius = '999px';
+      b.style.fontSize = '11px';
+      b.style.fontWeight = '600';
+      b.style.border = '1px solid rgba(15,23,42,0.12)';
+      if (tone === 'success') {
+        b.style.background = 'rgba(22,163,74,0.12)';
+        b.style.color = '#166534';
+      } else if (tone === 'warning') {
+        b.style.background = 'rgba(245,158,11,0.15)';
+        b.style.color = '#92400e';
+      } else {
+        b.style.background = 'rgba(14,165,233,0.12)';
+        b.style.color = '#0c4a6e';
+      }
+      return b;
+    }
+
+    var details = document.createElement('pre');
+    details.style.margin = '0';
+    details.style.padding = '10px';
+    details.style.borderRadius = '8px';
+    details.style.background = '#f8fafc';
+    details.style.border = '1px solid rgba(15,23,42,0.1)';
+    details.style.fontSize = '11px';
+    details.style.whiteSpace = 'pre-wrap';
+    details.style.wordBreak = 'break-word';
+
+    var cartDetails = document.createElement('pre');
+    cartDetails.style.margin = '0';
+    cartDetails.style.padding = '10px';
+    cartDetails.style.borderRadius = '8px';
+    cartDetails.style.background = '#f8fafc';
+    cartDetails.style.border = '1px solid rgba(15,23,42,0.1)';
+    cartDetails.style.fontSize = '11px';
+    cartDetails.style.whiteSpace = 'pre-wrap';
+    cartDetails.style.wordBreak = 'break-word';
+    cartDetails.textContent = 'Run "Check cart props" to inspect current /cart.js line properties.';
+
+    var healthDetails = document.createElement('pre');
+    healthDetails.style.margin = '0';
+    healthDetails.style.padding = '10px';
+    healthDetails.style.borderRadius = '8px';
+    healthDetails.style.background = '#f8fafc';
+    healthDetails.style.border = '1px solid rgba(15,23,42,0.1)';
+    healthDetails.style.fontSize = '11px';
+    healthDetails.style.whiteSpace = 'pre-wrap';
+    healthDetails.style.wordBreak = 'break-word';
+    healthDetails.textContent = 'Run "Preview health" to fetch one-shot readiness diagnostics.';
+
+    function makeSection(titleText, bodyNode) {
+      var wrap = document.createElement('div');
+      wrap.style.marginBottom = '10px';
+      var t = document.createElement('div');
+      t.textContent = titleText;
+      t.style.fontSize = '12px';
+      t.style.fontWeight = '600';
+      t.style.marginBottom = '6px';
+      t.style.color = '#334155';
+      wrap.appendChild(t);
+      wrap.appendChild(bodyNode);
+      return wrap;
+    }
+
+    var snippet = document.createElement('pre');
+    snippet.style.margin = '0';
+    snippet.style.padding = '8px';
+    snippet.style.borderRadius = '8px';
+    snippet.style.background = '#f8fafc';
+    snippet.style.border = '1px solid rgba(15,23,42,0.1)';
+    snippet.style.fontSize = '11px';
+    snippet.style.whiteSpace = 'pre-wrap';
+    snippet.style.wordBreak = 'break-word';
+    snippet.textContent = [
+      'window.RipX?.debugStatus?.()',
+      'window.__RIPX_PRICE_TEST_CTX__',
+      "fetch('/cart.js').then(r=>r.json()).then(c=>console.log(c.items?.map(i=>({title:i.title,variant_id:i.variant_id,properties:i.properties}))))",
+    ].join('\n');
+
+    var actions = document.createElement('div');
+    actions.style.display = 'flex';
+    actions.style.gap = '8px';
+    actions.style.marginTop = '8px';
+    actions.style.flexWrap = 'wrap';
+
+    var refreshBtn = document.createElement('button');
+    refreshBtn.type = 'button';
+    refreshBtn.textContent = 'Refresh';
+    refreshBtn.style.border = '1px solid rgba(15,23,42,0.2)';
+    refreshBtn.style.background = '#fff';
+    refreshBtn.style.borderRadius = '6px';
+    refreshBtn.style.padding = '6px 8px';
+    refreshBtn.style.fontSize = '12px';
+    refreshBtn.style.cursor = 'pointer';
+
+    var copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.textContent = 'Copy checks';
+    copyBtn.style.border = '1px solid rgba(15,23,42,0.2)';
+    copyBtn.style.background = '#fff';
+    copyBtn.style.borderRadius = '6px';
+    copyBtn.style.padding = '6px 8px';
+    copyBtn.style.fontSize = '12px';
+    copyBtn.style.cursor = 'pointer';
+
+    var runAllBtn = document.createElement('button');
+    runAllBtn.type = 'button';
+    runAllBtn.textContent = 'Run all checks';
+    runAllBtn.style.border = '1px solid rgba(15,23,42,0.2)';
+    runAllBtn.style.background = '#0f172a';
+    runAllBtn.style.color = '#fff';
+    runAllBtn.style.borderRadius = '6px';
+    runAllBtn.style.padding = '6px 10px';
+    runAllBtn.style.fontSize = '12px';
+    runAllBtn.style.cursor = 'pointer';
+
+    var runHealthBtn = document.createElement('button');
+    runHealthBtn.type = 'button';
+    runHealthBtn.textContent = 'Preview health';
+    runHealthBtn.style.border = '1px solid rgba(15,23,42,0.2)';
+    runHealthBtn.style.background = '#fff';
+    runHealthBtn.style.borderRadius = '6px';
+    runHealthBtn.style.padding = '6px 8px';
+    runHealthBtn.style.fontSize = '12px';
+    runHealthBtn.style.cursor = 'pointer';
+
+    var runDebugBtn = document.createElement('button');
+    runDebugBtn.type = 'button';
+    runDebugBtn.textContent = 'Run debugStatus';
+    runDebugBtn.style.border = '1px solid rgba(15,23,42,0.2)';
+    runDebugBtn.style.background = '#fff';
+    runDebugBtn.style.borderRadius = '6px';
+    runDebugBtn.style.padding = '6px 8px';
+    runDebugBtn.style.fontSize = '12px';
+    runDebugBtn.style.cursor = 'pointer';
+
+    var runCartBtn = document.createElement('button');
+    runCartBtn.type = 'button';
+    runCartBtn.textContent = 'Check cart props';
+    runCartBtn.style.border = '1px solid rgba(15,23,42,0.2)';
+    runCartBtn.style.background = '#fff';
+    runCartBtn.style.borderRadius = '6px';
+    runCartBtn.style.padding = '6px 8px';
+    runCartBtn.style.fontSize = '12px';
+    runCartBtn.style.cursor = 'pointer';
+
+    function renderBadges() {
+      badges.innerHTML = '';
+      var hasCtx = !!(window.__RIPX_PRICE_TEST_CTX__ && window.__RIPX_PRICE_TEST_CTX__.testId);
+      var hasAttrs = !!(_ripxCartAttributeState && _ripxCartAttributeState._ripx_price_test);
+      var hasVariant = !!(PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME);
+      badges.appendChild(
+        makeBadge(hasCtx ? 'Context: ready' : 'Context: missing', hasCtx ? 'success' : 'warning')
+      );
+      badges.appendChild(
+        makeBadge(
+          hasAttrs ? 'Cart attrs: ready' : 'Cart attrs: pending',
+          hasAttrs ? 'success' : 'warning'
+        )
+      );
+      badges.appendChild(
+        makeBadge(
+          hasVariant ? 'Variant: selected' : 'Variant: unknown',
+          hasVariant ? 'info' : 'warning'
+        )
+      );
+    }
+
+    function refreshDetails() {
+      var ctx = window.__RIPX_PRICE_TEST_CTX__ || null;
+      var attr = _ripxCartAttributeState
+        ? {
+            priceTest: _ripxCartAttributeState._ripx_price_test || null,
+            variant: _ripxCartAttributeState._ripx_variant || null,
+            shop: _ripxCartAttributeState._ripx_shop || null,
+            priceMethod: _ripxCartAttributeState._ripx_price_method || null,
+          }
+        : null;
+      var payload = {
+        version: SCRIPT_VERSION,
+        previewMode: PREVIEW_MODE,
+        testId: PREVIEW_TEST_ID || null,
+        variantId: PREVIEW_VARIANT_ID || null,
+        variantName: PREVIEW_VARIANT_NAME || null,
+        context: ctx,
+        cartAttrs: attr,
+      };
+      renderBadges();
+      details.textContent = JSON.stringify(payload, null, 2);
+    }
+
+    function runPreviewHealthCheck() {
+      if (!CONFIG.apiUrl) {
+        healthDetails.textContent = 'preview-health unavailable: apiUrl missing in runtime config.';
+        return;
+      }
+      if (!PREVIEW_TEST_ID) {
+        healthDetails.textContent = 'preview-health unavailable: ab_preview_test is missing.';
+        return;
+      }
+      healthDetails.textContent = 'Running preview-health...';
+      var hp = new URLSearchParams();
+      hp.set('test_id', String(PREVIEW_TEST_ID));
+      appendTrackTenantParams(hp);
+      if (PREVIEW_VARIANT_ID) hp.set('variant_id', String(PREVIEW_VARIANT_ID));
+      if (PREVIEW_VARIANT_NAME) hp.set('variant_name', String(PREVIEW_VARIANT_NAME));
+      var uid = getUserId();
+      if (uid) hp.set('user_id', String(uid));
+      fetchWithTimeout(
+        CONFIG.apiUrl + '/track/preview-health?' + hp.toString(),
+        { method: 'GET' },
+        8000
+      )
+        .then(function (r) {
+          return r.ok ? r.json() : Promise.resolve({ success: false, status: r.status });
+        })
+        .then(function (out) {
+          var summary = {
+            success: !!out.success,
+            score: out && out.health ? out.health.score : null,
+            level: out && out.health ? out.health.level : null,
+            preview: out && out.preview ? out.preview : null,
+            checks: out && out.health ? out.health.checks || [] : [],
+            error: out && out.error ? out.error : null,
+          };
+          healthDetails.textContent = JSON.stringify(summary, null, 2);
+        })
+        .catch(function (err) {
+          healthDetails.textContent =
+            'preview-health failed: ' + (err && (err.message || String(err)));
+        });
+    }
+
+    refreshBtn.addEventListener('click', refreshDetails);
+    copyBtn.addEventListener('click', function () {
+      var txt = snippet.textContent || '';
+      if (!navigator || !navigator.clipboard || !navigator.clipboard.writeText) return;
+      navigator.clipboard.writeText(txt).catch(function () {});
+    });
+    runDebugBtn.addEventListener('click', function () {
+      if (!window.RipX || typeof window.RipX.debugStatus !== 'function') return;
+      details.textContent = 'Running debugStatus...';
+      renderBadges();
+      window.RipX.debugStatus()
+        .then(function (out) {
+          var summary = {
+            version: out && out.version ? out.version : SCRIPT_VERSION,
+            preview: out && out.preview ? out.preview : null,
+            requestedTestId: out ? out.requestedTestId : null,
+            variant:
+              out && out.variant
+                ? {
+                    id: out.variant.variantId || out.variant.id || null,
+                    name: out.variant.variantName || out.variant.name || null,
+                  }
+                : null,
+            cartAttrs: out && out.diagnostics ? out.diagnostics.cartAttributeState || null : null,
+            network: out && out.network ? out.network : null,
+          };
+          renderBadges();
+          details.textContent = JSON.stringify(summary, null, 2);
+        })
+        .catch(function (err) {
+          details.textContent = 'debugStatus failed: ' + (err && (err.message || String(err)));
+        });
+    });
+    runCartBtn.addEventListener('click', function () {
+      cartDetails.textContent = 'Checking /cart.js ...';
+      fetch('/cart.js', { method: 'GET' })
+        .then(function (r) {
+          return r.ok ? r.json() : null;
+        })
+        .then(function (cart) {
+          if (!cart || !Array.isArray(cart.items)) {
+            cartDetails.textContent = 'cart.js unavailable or empty.';
+            return;
+          }
+          var rows = cart.items.map(function (item) {
+            return {
+              title: item && item.title ? item.title : null,
+              variant_id: item ? item.variant_id : null,
+              properties: item && item.properties ? item.properties : {},
+            };
+          });
+          cartDetails.textContent = JSON.stringify({ items: rows }, null, 2);
+        })
+        .catch(function (err) {
+          cartDetails.textContent =
+            'cart.js check failed: ' + (err && (err.message || String(err)));
+        });
+    });
+    runAllBtn.addEventListener('click', function () {
+      runPreviewHealthCheck();
+      runDebugBtn.click();
+      runCartBtn.click();
+    });
+    runHealthBtn.addEventListener('click', runPreviewHealthCheck);
+    fab.addEventListener('click', function () {
+      var open = panel.style.display === 'block';
+      panel.style.display = open ? 'none' : 'block';
+      writePanelState({ open: !open });
+      if (!open) runAllBtn.click();
+    });
+    closeBtn.addEventListener('click', function () {
+      panel.style.display = 'none';
+      writePanelState({ open: false });
+    });
+
+    panel.appendChild(header);
+    panel.appendChild(badges);
+    panel.appendChild(makeSection('Preview health', healthDetails));
+    panel.appendChild(makeSection('Preview state', details));
+    panel.appendChild(makeSection('Cart line properties', cartDetails));
+    panel.appendChild(makeSection('Quick checks', snippet));
+    actions.appendChild(refreshBtn);
+    actions.appendChild(copyBtn);
+    actions.appendChild(runAllBtn);
+    actions.appendChild(runHealthBtn);
+    actions.appendChild(runDebugBtn);
+    actions.appendChild(runCartBtn);
+    panel.appendChild(actions);
+    document.body.appendChild(panel);
+    document.body.appendChild(fab);
+    var persisted = readPanelState();
+    if (persisted && persisted.open) {
+      panel.style.display = 'block';
+      runAllBtn.click();
+    } else {
+      refreshDetails();
+    }
+  }
+
   /**
    * Initialize on page load
    */
@@ -6118,6 +6774,7 @@
       initVisualPicker();
     }
     function run() {
+      installPreviewDebugFloatingPanel();
       if (PREVIEW_MODE && PREVIEW_TEST_ID && (PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME)) {
         injectPriceTestCartAttributes(
           PREVIEW_TEST_ID,

@@ -31,20 +31,7 @@ export default function OAuthSuccess() {
     typeof window !== 'undefined' &&
     typeof window.name === 'string' &&
     window.name.trim() === CONNECT_POPUP_WINDOW_NAME;
-  const hasPopupFlowMarker = (() => {
-    if (typeof window === 'undefined' || !shop) return false;
-    try {
-      const raw = window.localStorage.getItem(`${SHOPIFY_CONNECT_POPUP_ACTIVE_KEY_PREFIX}:${shop}`);
-      if (!raw) return false;
-      const ts = Number(raw);
-      if (!Number.isFinite(ts)) return false;
-      // Treat recent markers as popup flow (handles browsers that strip opener/window.name).
-      return Date.now() - ts <= 30 * 60 * 1000;
-    } catch {
-      return false;
-    }
-  })();
-  const isPopupFlowWindow = isOpenedInNewTab || isConnectPopupWindow || hasPopupFlowMarker;
+  const isPopupFlowWindow = isOpenedInNewTab || isConnectPopupWindow;
 
   useEffect(() => {
     if (!shop) {
@@ -82,16 +69,6 @@ export default function OAuthSuccess() {
       return () => window.clearTimeout(closeTimer);
     } else if (!isPopupFlowWindow) {
       const timer = window.setTimeout(() => {
-        // Some browsers strip opener/window name during OAuth hops; if this tab is still closable,
-        // prefer closing over in-popup dashboard navigation.
-        try {
-          window.close();
-        } catch {
-          // ignore close errors
-        }
-        if (window.closed) {
-          return;
-        }
         const targetPath = isDiscountLaunch ? ROUTES.appSettings(shop) : ROUTES.appDashboard(shop);
         const nextParams = new URLSearchParams();
         if (isDiscountLaunch) {

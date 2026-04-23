@@ -641,17 +641,25 @@ function DomainList() {
    */
   const openAppAfterVerify = async (normalizedDomain, hasKey, options = {}) => {
     const returnOAuthUrl = !!options.returnOAuthUrl;
+    const preferredPopup = options.popupWindow || null;
+    const openOAuthPopup = oauthUrl => {
+      if (preferredPopup && !preferredPopup.closed) {
+        try {
+          preferredPopup.location.href = oauthUrl;
+          preferredPopup.focus();
+          return true;
+        } catch (_) {
+          // ignore popup navigation errors; fallback to opening a new popup
+        }
+      }
+      const popup = openCenteredPopup(oauthUrl);
+      if (popup) return true;
+      const newTab = window.open(oauthUrl, '_blank', 'noopener,noreferrer');
+      if (newTab) return true;
+      redirectToAppUrl(oauthUrl);
+      return false;
+    };
     if (hasKey) {
-      setCurrentStore(normalizedDomain);
-      window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalizedDomain), {
-        shop: normalizedDomain,
-      });
-      return;
-    }
-    // For standard "Open A/B tests" flows with email auth, route into /app/:shop first and let
-    // AppDomainLayout handle connect/install gating. This avoids brittle first-hop install links
-    // that can occasionally fail/expire and send users to an error page.
-    if (!returnOAuthUrl && hasEmailSession && isShopifyStoreDomain(normalizedDomain)) {
       setCurrentStore(normalizedDomain);
       window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalizedDomain), {
         shop: normalizedDomain,
@@ -662,6 +670,13 @@ function DomainList() {
       try {
         const connectionStatus = await fetchShopifyConnectionStatus(normalizedDomain);
         if (connectionStatus?.connected) {
+          if (preferredPopup && !preferredPopup.closed) {
+            try {
+              preferredPopup.close();
+            } catch (_) {
+              // ignore popup close errors
+            }
+          }
           setCurrentStore(normalizedDomain);
           window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalizedDomain), {
             shop: normalizedDomain,
@@ -690,15 +705,22 @@ function DomainList() {
         const url = startRes?.data?.redirectUrl ?? unwrapData(startRes)?.redirectUrl;
         if (url && typeof url === 'string') {
           if (returnOAuthUrl) return { redirectUrl: url };
-          redirectToAppUrl(url);
+          openOAuthPopup(url);
           return;
         }
         // No OAuth URL from API (e.g. 401 or error). Don't redirect — let caller show "Sign in required" and open Connect in new tab.
         if (returnOAuthUrl) {
+          if (preferredPopup && !preferredPopup.closed) {
+            try {
+              preferredPopup.close();
+            } catch (_) {
+              // ignore popup close errors
+            }
+          }
           return { signInRequired: true, shop: normalizedDomain };
         }
         const fallbackUrl = `${origin}/api/auth?shop=${encodeURIComponent(normalizedDomain)}${origin ? `&callback_base=${encodeURIComponent(origin)}` : ''}`;
-        redirectToAppUrl(fallbackUrl);
+        openOAuthPopup(fallbackUrl);
         return;
       }
       const origin = typeof window !== 'undefined' ? window.location.origin : '';
@@ -710,17 +732,24 @@ function DomainList() {
         const url = startRes?.data?.redirectUrl ?? unwrapData(startRes)?.redirectUrl;
         if (url && typeof url === 'string') {
           if (returnOAuthUrl) return { redirectUrl: url };
-          redirectToAppUrl(url);
+          openOAuthPopup(url);
           return;
         }
       } catch (_) {
         /* /auth/start failed (e.g. 401). Don't return fallback /api/auth — it would send user to login when they click. Send to Connect first. */
       }
       if (returnOAuthUrl) {
+        if (preferredPopup && !preferredPopup.closed) {
+          try {
+            preferredPopup.close();
+          } catch (_) {
+            // ignore popup close errors
+          }
+        }
         return { signInRequired: true, shop: normalizedDomain };
       }
       const fallbackUrl = `${origin}/api/auth?shop=${encodeURIComponent(normalizedDomain)}${origin ? `&callback_base=${encodeURIComponent(origin)}` : ''}`;
-      redirectToAppUrl(fallbackUrl);
+      openOAuthPopup(fallbackUrl);
     } catch (err) {
       if (err?.response?.status === 401 && returnOAuthUrl) {
         return { signInRequired: true, shop: normalizedDomain };
@@ -753,6 +782,7 @@ function DomainList() {
     const normalizedDomain = isShopify ? normalizeShopifyDomain(domain) : domain;
     if (isShopify) {
       setOpeningDomain(normalizedDomain);
+      const gesturePopup = openCenteredPopup('about:blank');
       const key =
         getAccountApiKey() || getDomainKeys()[domain] || getDomainKeys()[normalizedDomain];
       if (key) {
@@ -763,7 +793,7 @@ function DomainList() {
         }
       }
       try {
-        await openAppAfterVerify(normalizedDomain, false);
+        await openAppAfterVerify(normalizedDomain, false, { popupWindow: gesturePopup });
       } finally {
         setOpeningDomain(null);
       }
@@ -802,6 +832,7 @@ function DomainList() {
     }
     if (isShopify) {
       setOpeningDomain(normalized);
+      const gesturePopup = openCenteredPopup('about:blank');
       try {
         if (key) {
           try {
@@ -810,7 +841,7 @@ function DomainList() {
             // ignore localStorage errors
           }
         }
-        await openAppAfterVerify(normalized, false);
+        await openAppAfterVerify(normalized, false, { popupWindow: gesturePopup });
       } finally {
         setOpeningDomain(null);
       }

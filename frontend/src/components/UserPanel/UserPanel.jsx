@@ -31,7 +31,7 @@ import {
   getConnectUrl,
   getUrlWithEmbedParams,
   getNavigateToWithEmbed,
-  redirectToAppUrl,
+  openCenteredPopup,
   fetchShopifyConnectionStatus,
 } from '../../services';
 import { isShopifyStoreDomain, normalizeShopifyDomain } from '../../utils/shopifyAdmin';
@@ -189,23 +189,61 @@ function UserPanel() {
     [openingDomain, shopifyInstallStatus]
   );
 
-  const openShopifyConnectPopup = useCallback((url, shop) => {
-    const normalized = normalizeShopifyDomain(shop || '');
-    const existingPopup = connectPopupRef.current;
-    if (existingPopup && !existingPopup.closed) {
-      try {
-        existingPopup.close();
-      } catch {
-        // ignore popup close errors
-      } finally {
-        connectPopupRef.current = null;
+  const openShopifyConnectPopup = useCallback(
+    (url, shop, preferredPopup = null) => {
+      const normalized = normalizeShopifyDomain(shop || '');
+      const existingPopup = preferredPopup || connectPopupRef.current;
+      if (existingPopup && !existingPopup.closed) {
+        try {
+          existingPopup.location.href = url;
+          existingPopup.focus();
+          connectPopupRef.current = existingPopup;
+          if (normalized) {
+            setPendingShopifyConnect(normalized);
+            try {
+              if (typeof window !== 'undefined') {
+                window.localStorage.setItem(
+                  `${SHOPIFY_CONNECT_POPUP_ACTIVE_KEY_PREFIX}:${normalized}`,
+                  String(Date.now())
+                );
+              }
+            } catch {
+              // ignore storage errors
+            }
+          }
+          return true;
+        } catch {
+          // ignore popup navigation errors; fallback to opening a new popup
+        }
       }
-    }
-    setPendingShopifyConnect(null);
-    // Use same-tab handoff to avoid persistent blank/login popups.
-    redirectToAppUrl(url);
-    return true;
-  }, []);
+      const popup = openCenteredPopup(url);
+      if (popup) {
+        connectPopupRef.current = popup;
+        if (normalized) {
+          setPendingShopifyConnect(normalized);
+          try {
+            if (typeof window !== 'undefined') {
+              window.localStorage.setItem(
+                `${SHOPIFY_CONNECT_POPUP_ACTIVE_KEY_PREFIX}:${normalized}`,
+                String(Date.now())
+              );
+            }
+          } catch {
+            // ignore storage errors
+          }
+        }
+        return true;
+      }
+      // Browser blocked popup/new-tab. Fallback to in-app connection gate instead
+      // of redirecting main tab to an auth page.
+      setPendingShopifyConnect(null);
+      if (normalized) {
+        openDomainApp(normalized);
+      }
+      return false;
+    },
+    [openDomainApp]
+  );
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -274,6 +312,10 @@ function UserPanel() {
     const key = accountKey || (domainKeys && (domainKeys[domain] || domainKeys[normalized]));
     try {
       if (isShopify) {
+        const gesturePopup = openCenteredPopup('about:blank');
+        if (gesturePopup) {
+          connectPopupRef.current = gesturePopup;
+        }
         if (key) {
           try {
             window.localStorage.setItem(STORAGE_KEYS.API_KEY, key);
@@ -283,12 +325,13 @@ function UserPanel() {
         }
         const alreadyConnected = await verifyConnectedAndOpen(normalized);
         if (alreadyConnected) {
-          return;
-        }
-        if (useEmailDomains) {
-          // Home/UserPanel flow should stay in-app. Let AppDomainLayout gate connection
-          // instead of forcing an immediate auth redirect that lands on login.
-          openDomainApp(normalized);
+          if (gesturePopup && !gesturePopup.closed) {
+            try {
+              gesturePopup.close();
+            } catch {
+              // ignore popup close errors
+            }
+          }
           return;
         }
         try {
@@ -300,22 +343,29 @@ function UserPanel() {
             });
             const url = unwrapData(startRes)?.redirectUrl;
             if (url) {
-              openShopifyConnectPopup(url, normalized);
+              openShopifyConnectPopup(url, normalized, gesturePopup);
               return;
             }
           } catch {
             /* fallback to same-origin OAuth (cookie may be set) */
           }
           const fallbackUrl = `${origin}/api/auth?shop=${encodeURIComponent(normalized)}${origin ? `&callback_base=${encodeURIComponent(origin)}` : ''}`;
-          openShopifyConnectPopup(fallbackUrl, normalized);
+          openShopifyConnectPopup(fallbackUrl, normalized, gesturePopup);
         } catch (err) {
           if (err?.response?.status === 401) {
             const connectUrl = getConnectUrl({
               shop: normalized,
               reason: ROUTES.CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect',
             });
-            openShopifyConnectPopup(connectUrl, normalized);
+            openShopifyConnectPopup(connectUrl, normalized, gesturePopup);
           } else {
+            if (gesturePopup && !gesturePopup.closed) {
+              try {
+                gesturePopup.close();
+              } catch {
+                // ignore popup close errors
+              }
+            }
             if (isEmbeddedInIframe()) {
               window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalized), {
                 shop: normalized,
