@@ -68,6 +68,7 @@ import {
   apiPost,
   isStandaloneMode,
   getApiBaseUrl,
+  unwrapData,
 } from '../../services';
 import { isShopifyStoreDomain } from '../../utils/shopifyAdmin';
 import {
@@ -707,9 +708,10 @@ function TestWizard({
       setCheckoutDiagnosticsLoading(true);
       setCheckoutDiagnosticsError(null);
       try {
-        const data = await apiGet('/settings/checkout-price-diagnostics', {
+        const res = await apiGet('/settings/checkout-price-diagnostics', {
           ...(scopedShopDomain ? { domain: scopedShopDomain } : {}),
         });
+        const data = unwrapData(res);
         if (!cancelled) {
           setCheckoutDiagnostics(data || null);
         }
@@ -745,13 +747,14 @@ function TestWizard({
     const loadCartTransformStatus = async () => {
       setCartTransformStatusLoading(true);
       try {
-        const data = await apiGet(
+        const res = await apiGet(
           '/settings/cart-transform/status',
           {
             ...(scopedShopDomain ? { domain: scopedShopDomain } : {}),
           },
           { timeout: 15000 }
         );
+        const data = unwrapData(res);
         if (!cancelled) {
           setCartTransformStatus(data || null);
         }
@@ -843,9 +846,10 @@ function TestWizard({
       setCheckoutExperienceDiagnosticsLoading(true);
       setCheckoutExperienceDiagnosticsError(null);
       try {
-        const data = await apiGet('/settings/checkout-experience-diagnostics', {
+        const res = await apiGet('/settings/checkout-experience-diagnostics', {
           ...(scopedShopDomain ? { domain: scopedShopDomain } : {}),
         });
+        const data = unwrapData(res);
         if (!cancelled) {
           setCheckoutExperienceDiagnostics(data || null);
         }
