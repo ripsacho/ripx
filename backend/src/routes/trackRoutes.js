@@ -716,7 +716,7 @@ function escapeHtmlAttr(value) {
  */
 router.get(
   '/preview-launch',
-  asyncHandler(async (req, res) => {
+  asyncHandler((req, res) => {
     const rawUrl = (req.query.url || '').toString().trim();
     if (!rawUrl) {
       return res.status(400).type('text/plain').send('Missing preview URL');

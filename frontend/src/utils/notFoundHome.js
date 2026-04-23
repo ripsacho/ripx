@@ -10,15 +10,26 @@
  */
 import { ROUTES } from '../constants';
 
+function toAppRelativePath(pathname) {
+  return String(pathname || '').replace(/^\/store\/[^/]+\/apps\/[^/]+/i, '');
+}
+
 function getDomainFromPathname(pathname) {
-  const m = (pathname || '').match(/^\/app\/([^/]+)/);
-  return m ? decodeURIComponent(m[1]) : null;
+  const relativePath = toAppRelativePath(pathname);
+  const m = relativePath.match(/^\/app\/([^/]+)/);
+  if (!m) return null;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return m[1];
+  }
 }
 
 export function getNotFoundHome(domain, pathname) {
-  const pathDomain = getDomainFromPathname(pathname);
+  const relativePath = toAppRelativePath(pathname);
+  const pathDomain = getDomainFromPathname(relativePath);
   const effectiveDomain = pathDomain || domain;
-  const isAppDomain = /^\/app\/[^/]+/.test(pathname || '');
+  const isAppDomain = /^\/app\/[^/]+/.test(relativePath);
   const useAppHome = effectiveDomain && isAppDomain;
   return {
     homePath: useAppHome ? ROUTES.appDashboard(effectiveDomain) : ROUTES.USER_PANEL,

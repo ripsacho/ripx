@@ -70,6 +70,13 @@ router.get(
     res.json({
       connected: true,
       shop: req.shopDomain,
+      connection: {
+        connected: true,
+        shop: req.shopDomain,
+        state: 'connected',
+        action: 'none',
+        message: 'Store is connected',
+      },
     });
   })
 );

@@ -16,9 +16,9 @@ import {
   getAccountApiKey,
   getDomainKeys,
   hasEmailSession,
-  apiGet,
-  apiMeGet,
   openCenteredPopup,
+  fetchShopifyConnectionStatus,
+  getShopifyConnectionErrorMeta,
 } from '../../services';
 import { isShopifyStoreDomain, normalizeShopifyDomain } from '../../utils/shopifyAdmin';
 import { RouteLoading } from '../LoadingSkeleton/RouteLoading';
@@ -52,6 +52,7 @@ function AppDomainLayout() {
   const [connectPopupBlocked, setConnectPopupBlocked] = useState(false);
   const [connectStatusMessage, setConnectStatusMessage] = useState('');
   const [connectRequested, setConnectRequested] = useState(false);
+  const connectionRetryAttemptsRef = useRef(0);
 
   const validDomain = domain && isValidDomainParam(domain);
   const apiKey = getApiKey();
@@ -62,7 +63,6 @@ function AppDomainLayout() {
     accountKey ||
     (domain && (domainKeys[domain] || domainKeys[normalizeShopifyDomain(domain)]));
   const isShopify = domain ? isShopifyStoreDomain(domain) : false;
-  const normalizedDomain = isShopify ? normalizeShopifyDomain(domain) : domain;
   const needsShopifySessionCheck = isShopify && !keyForDomain;
   const hasEmailAuth = hasEmailSession();
   const isAppSettingsRoute = Boolean(domain) && location.pathname === ROUTES.appSettings(domain);
@@ -96,8 +96,8 @@ function AppDomainLayout() {
   } = useQuery({
     queryKey: ['shopify', 'connection-gate', domain],
     queryFn: async () => {
-      const res = await apiGet('/shopify/connection-status');
-      return res?.data?.data ?? res?.data ?? {};
+      const result = await fetchShopifyConnectionStatus(domain || '');
+      return result?.raw ?? {};
     },
     retry: false,
     // For gate checks, prefer shop-auth truth source over account store list to avoid false negatives
@@ -106,37 +106,22 @@ function AppDomainLayout() {
     enabled: Boolean(validDomain && needsShopifySessionCheck && storeSynced),
   });
 
-  const {
-    data: linkedEmailStoreData,
-    isLoading: isLinkedEmailStoreLoading,
-    isFetched: isLinkedEmailStoreFetched,
-  } = useQuery({
-    queryKey: ['shopify', 'linked-email-store', normalizedDomain],
-    queryFn: async () => {
-      const res = await apiMeGet('/me/domains');
-      const payload = res?.data?.data ?? res?.data ?? {};
-      const domains = Array.isArray(payload?.domains) ? payload.domains : [];
-      return {
-        linked: domains.some(
-          entry =>
-            normalizeShopifyDomain(entry?.domain || '') === normalizeShopifyDomain(domain || '')
-        ),
-      };
-    },
-    retry: false,
-    staleTime: 60 * 1000,
-    enabled: Boolean(validDomain && needsShopifySessionCheck && hasEmailAuth),
-  });
-
-  const is401 = isError && error?.response?.status === 401;
+  const connectionErrorMeta = isError ? getShopifyConnectionErrorMeta(error) : null;
+  const isNeedsInstall = connectionErrorMeta?.state === 'needs_install';
+  const isAccountRestricted = connectionErrorMeta?.state === 'restricted';
+  const needsEmailStoreLink = hasEmailAuth && connectionErrorMeta?.state === 'needs_link';
   const connected = Boolean(connectionData?.connected);
-  const notConnected = needsShopifySessionCheck && isFetched && (is401 || isError || !connected);
-  const linkedEmailStore = hasEmailAuth && linkedEmailStoreData?.linked === true;
-  const waitingOnLinkedEmailStoreCheck =
-    hasEmailAuth &&
+  const connectionCheckFailed =
     needsShopifySessionCheck &&
-    !isLinkedEmailStoreFetched &&
-    isLinkedEmailStoreLoading;
+    isFetched &&
+    isError &&
+    !isNeedsInstall &&
+    !needsEmailStoreLink &&
+    !isAccountRestricted;
+  const notConnected =
+    needsShopifySessionCheck &&
+    isFetched &&
+    (isNeedsInstall || (connectionData?.connected !== undefined && !connected));
 
   const openConnectPopup = useCallback(() => {
     if (!domain) return;
@@ -202,8 +187,29 @@ function AppDomainLayout() {
       setConnectStatusMessage('');
       setConnectPopupBlocked(false);
       setConnectPopupOpen(false);
+      setConnectRequested(false);
     }
   }, [connected]);
+
+  useEffect(() => {
+    if (!connectionCheckFailed) {
+      connectionRetryAttemptsRef.current = 0;
+    }
+  }, [connectionCheckFailed]);
+
+  useEffect(() => {
+    if (!connectionCheckFailed || isFetching) {
+      return undefined;
+    }
+    if (connectionRetryAttemptsRef.current >= 2) {
+      return undefined;
+    }
+    connectionRetryAttemptsRef.current += 1;
+    const timer = window.setTimeout(() => {
+      refetch();
+    }, 1400);
+    return () => window.clearTimeout(timer);
+  }, [connectionCheckFailed, isFetching, refetch]);
 
   useEffect(() => {
     if (!validDomain || !domain) return;
@@ -267,12 +273,7 @@ function AppDomainLayout() {
   }
 
   if (needsShopifySessionCheck) {
-    if (
-      !storeSynced ||
-      isLoading ||
-      (storeSynced && !isFetched) ||
-      waitingOnLinkedEmailStoreCheck
-    ) {
+    if (!storeSynced || isLoading || (storeSynced && !isFetched)) {
       return (
         <>
           {storeSwitchToastEl}
@@ -280,7 +281,20 @@ function AppDomainLayout() {
         </>
       );
     }
-    if (notConnected && !allowDisconnectedSettingsView && !linkedEmailStore) {
+    const shouldShowConnectGate =
+      !allowDisconnectedSettingsView &&
+      (notConnected || needsEmailStoreLink || connectionCheckFailed || isAccountRestricted);
+    if (shouldShowConnectGate) {
+      const derivedStatusMessage = needsEmailStoreLink
+        ? connectionErrorMeta?.message ||
+          'This store is installed, but it is not linked to your account yet.'
+        : isAccountRestricted
+          ? connectionErrorMeta?.message ||
+            'This account is restricted for the selected store. Contact support to restore access.'
+          : connectionCheckFailed
+            ? connectionErrorMeta?.message ||
+              'We could not verify connection right now. Retry, or use Connect to re-sync.'
+            : connectStatusMessage;
       return (
         <>
           {storeSwitchToastEl}
@@ -289,7 +303,8 @@ function AppDomainLayout() {
             onConnect={openConnectPopup}
             connecting={connectPopupOpen || (connectRequested && isFetching)}
             popupBlocked={connectPopupBlocked}
-            statusMessage={connectStatusMessage}
+            statusMessage={derivedStatusMessage}
+            requiresLink={needsEmailStoreLink}
           />
         </>
       );

@@ -1738,6 +1738,10 @@ function TestWizard({
     isStandalone,
     isShopifyFromRoute,
     routeDomain,
+    priceMatrixProductsById,
+    priceMatrixLoadingById,
+    priceMatrixErrorById,
+    priceProductMetaById,
   ]);
 
   useEffect(() => {
@@ -8361,7 +8365,6 @@ function TestWizard({
                         onClick={() => {
                           if (!matrixBulkValueValid) return;
                           const applicableProductIds = [];
-                          let applicableRowCount = 0;
                           matrixTableProductIds.forEach(productId => {
                             const matrixProduct = priceMatrixProductsById[productId];
                             const variantsForProduct = Array.isArray(matrixProduct?.variants)
@@ -8374,7 +8377,6 @@ function TestWizard({
                             }).length;
                             if (countForProduct > 0) {
                               applicableProductIds.push(productId);
-                              applicableRowCount += countForProduct;
                             }
                           });
                           if (applicableProductIds.length === 0) {
@@ -8526,7 +8528,7 @@ function TestWizard({
                           const productOver =
                             (variant.config?.byProduct && variant.config.byProduct[productId]) ||
                             {};
-                          const productHasOverrides =
+                          const _productHasOverrides =
                             productOver &&
                             typeof productOver === 'object' &&
                             Object.keys(productOver).length > 0;
@@ -8547,7 +8549,7 @@ function TestWizard({
                               },
                             }));
                           };
-                          const undoLastProductAction = () => {
+                          const _undoLastProductAction = () => {
                             if (!undoSnapshot) return;
                             setFormData(prev => {
                               const next = [...(prev.variants || [])];
@@ -8581,7 +8583,7 @@ function TestWizard({
                               type: 'success',
                             });
                           };
-                          const applyBulkToSingleProduct = () => {
+                          const _applyBulkToSingleProduct = () => {
                             if (!matrixBulkValueValid) return;
                             const variantsForProduct = Array.isArray(matrixProduct?.variants)
                               ? matrixProduct.variants
@@ -8630,7 +8632,7 @@ function TestWizard({
                               type: 'success',
                             });
                           };
-                          const clearSingleProductOverrides = () => {
+                          const _clearSingleProductOverrides = () => {
                             setFormData(prev => {
                               const next = [...(prev.variants || [])];
                               const c = next[index]?.config || {};
@@ -8654,7 +8656,7 @@ function TestWizard({
                               type: 'success',
                             });
                           };
-                          const clearSingleProductFieldOverrides = field => {
+                          const _clearSingleProductFieldOverrides = field => {
                             setFormData(prev => {
                               const next = [...(prev.variants || [])];
                               const c = next[index]?.config || {};
@@ -8796,13 +8798,13 @@ function TestWizard({
                               isPlaceholderRow,
                             };
                           });
-                          const productEditedRows = productRowStates.filter(
+                          const _productEditedRows = productRowStates.filter(
                             rowState => rowState.rowHasChanges
                           ).length;
-                          const productEditedActualRows = productRowStates.filter(
+                          const _productEditedActualRows = productRowStates.filter(
                             rowState => rowState.hasActualChange
                           ).length;
-                          const productEditedSellingRows = productRowStates.filter(
+                          const _productEditedSellingRows = productRowStates.filter(
                             rowState => rowState.hasSellingChange
                           ).length;
                           return productRowStates.map((rowState, rowIndex) => {

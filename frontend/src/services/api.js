@@ -369,6 +369,11 @@ apiClient.interceptors.response.use(
       if (requestUrl.includes('/shopify/connection-status')) {
         return Promise.reject(error);
       }
+      // Targeting presets can 401 on stale/scoped auth edge-cases; avoid global redirect loop.
+      // Let page-level query state handle and render recoverable UI instead.
+      if (requestUrl.includes('/targeting-presets')) {
+        return Promise.reject(error);
+      }
       const shopDomain = getShopDomain();
       const apiKey = getApiKey();
       const emailToken = getEmailToken();
@@ -851,12 +856,12 @@ export function apiRequest(method, endpoint, data = null, config = {}) {
     endpoint === '/dashboard/stats' ||
     endpoint.startsWith('/settings') ||
     endpoint.startsWith('/targeting-presets') ||
-    endpoint.startsWith('/promo-links') ||
-    endpoint === '/admin/me';
+    endpoint.startsWith('/promo-links');
   const canUseEmailSessionForEndpoint =
     endpoint.startsWith('/admin/') ||
     endpoint.startsWith('/me/') ||
     endpoint.startsWith('/auth/start') ||
+    endpoint.startsWith('/shopify/connection-status') ||
     endpoint.startsWith('/account/stores') ||
     endpoint.startsWith('/support/') ||
     needsScopedShopForEmailSession;
@@ -884,8 +889,9 @@ export function apiRequest(method, endpoint, data = null, config = {}) {
   const isOnAppDomainRoute = /^\/app\/[^/]+/.test(currentPath);
   const storeParam =
     endpoint === '/account/stores' && shopDomain && isOnAppDomainRoute ? { store: shopDomain } : {};
-  const emailSessionShopParam =
-    useEmailSession && shopDomain && needsShopContextWithEmailSession ? { shop: shopDomain } : {};
+  const shouldAttachShopForEmailSession =
+    useEmailSession && shopDomain && (needsShopContextWithEmailSession || isOnAppDomainRoute);
+  const emailSessionShopParam = shouldAttachShopForEmailSession ? { shop: shopDomain } : {};
   const requestConfig = {
     method,
     url,

@@ -35,6 +35,5 @@ test-results
 # Misc
 .husky
 .github
-Dockerfile
 docker-compose*.yml
 

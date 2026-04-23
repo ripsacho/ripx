@@ -10,7 +10,12 @@ import React from 'react';
 import { useParams } from 'react-router-dom';
 import { Banner } from '@shopify/polaris';
 import { useQuery } from '@tanstack/react-query';
-import { apiGet, getConnectUrl, redirectToAppUrl } from '../../services';
+import {
+  fetchShopifyConnectionStatus,
+  getConnectUrl,
+  redirectToAppUrl,
+  getShopifyConnectionErrorMeta,
+} from '../../services';
 import { ROUTES } from '../../constants';
 import { isShopifyStoreDomain, normalizeShopifyDomain } from '../../utils/shopifyAdmin';
 
@@ -31,10 +36,7 @@ function ShopifyConnectionBanner() {
     refetch: _refetch,
   } = useQuery({
     queryKey: ['shopify', 'connection-status', domain],
-    queryFn: async () => {
-      const res = await apiGet('/shopify/connection-status');
-      return res.data;
-    },
+    queryFn: () => fetchShopifyConnectionStatus(domain || ''),
     retry: false,
     staleTime: CONNECTION_STATUS_STALE_MS,
     // Poll only while the banner would show; when connected, rely on staleTime + refetchOnWindowFocus (default).
@@ -53,6 +55,15 @@ function ShopifyConnectionBanner() {
     reason: ROUTES.CONNECT_REASON?.SIGN_IN_TO_CONNECT || 'sign_in_to_connect',
   });
   const statusCode = error?.response?.status;
+  const errorMeta = isError ? getShopifyConnectionErrorMeta(error) : null;
+  const actionLabel =
+    errorMeta?.state === 'needs_install'
+      ? 'Install in Shopify'
+      : errorMeta?.state === 'needs_link'
+        ? 'Link store'
+        : errorMeta?.state === 'restricted'
+          ? 'Review access'
+          : 'Connect store';
 
   const handleConnect = () => {
     redirectToAppUrl(connectUrl);
@@ -63,13 +74,20 @@ function ShopifyConnectionBanner() {
       title="Store not connected"
       tone="warning"
       action={{
-        content: 'Connect store',
+        content: actionLabel,
         onAction: handleConnect,
       }}
     >
       <p>
-        This Shopify store ({domain}) is not connected to RipX or the connection is invalid.
-        {statusCode === 401 && ' Sign in and connect this store to load data and use the app.'}
+        {errorMeta?.message
+          ? errorMeta.message
+          : errorMeta?.state === 'needs_link'
+            ? `This Shopify store (${domain}) is installed but not linked to your RipX account.`
+            : errorMeta?.state === 'restricted'
+              ? `This Shopify store (${domain}) is connected, but your account access is restricted.`
+              : `This Shopify store (${domain}) is not connected to RipX or the connection is invalid.`}
+        {statusCode === 401 &&
+          ' Sign in and install/connect this store to load data and use the app.'}
         {isError &&
           !statusCode &&
           ' Store data could not be loaded. Connect the store to continue.'}

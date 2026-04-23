@@ -42,6 +42,20 @@ describe('getNotFoundHome', () => {
     });
   });
 
+  it('derives app domain from embedded app paths', () => {
+    expect(getNotFoundHome(null, '/store/acme/apps/ripx/app/foo')).toEqual({
+      homePath: '/app/foo',
+      homeLabel: 'Back to dashboard',
+    });
+  });
+
+  it('handles malformed encoded domains safely', () => {
+    expect(getNotFoundHome(null, '/app/%E0%A4%A/missing')).toEqual({
+      homePath: '/app/%25E0%25A4%25A',
+      homeLabel: 'Back to dashboard',
+    });
+  });
+
   it('returns user panel when pathname is not app-scoped and domain is missing', () => {
     expect(getNotFoundHome(null, '/profile')).toEqual({
       homePath: '/',

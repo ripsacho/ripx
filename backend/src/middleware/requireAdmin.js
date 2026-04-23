@@ -13,6 +13,7 @@
 
 const { authenticate } = require('./auth');
 const { getRoleAndStatus } = require('../models/user');
+const { normalizeDomain } = require('../models/tenant');
 const { sendUnauthorized } = require('../utils/response');
 const { isPlatformAdmin, PLATFORM_ROLES } = require('../constants');
 const { getPermissionsForRole, hasPermission, isValidPermission } = require('../permissions');
@@ -61,6 +62,16 @@ function getClientIp(req) {
   return req.ip || req.socket?.remoteAddress || '';
 }
 
+function getRequestedStore(req) {
+  const raw =
+    req.query?.shop ||
+    req.query?.store ||
+    req.query?.domain ||
+    req.headers['x-ripx-store'] ||
+    req.headers['x-shopify-shop-domain'];
+  return normalizeDomain(raw !== undefined && raw !== null ? String(raw) : '');
+}
+
 function requireAdmin(req, res, next) {
   const allowlist = getAdminIpAllowlist();
   if (allowlist) {
@@ -97,9 +108,12 @@ function requireAdmin(req, res, next) {
     const shopDomain = req.shopDomain;
     const email = req.email ? String(req.email).trim().toLowerCase() : null;
     const normalizedShop = shopDomain ? shopDomain.toLowerCase().trim() : null;
+    const requestedStore = getRequestedStore(req);
+    const allowShopIdentity =
+      !!normalizedShop && (!email || (requestedStore && requestedStore === normalizedShop));
 
     // Local / dev: env list of admin shop domains (no DB role required)
-    if (normalizedShop) {
+    if (allowShopIdentity) {
       const envAdmins = getEnvAdminDomains();
       if (envAdmins.length > 0 && envAdmins.includes(normalizedShop)) {
         req.adminId = shopDomain;
@@ -108,18 +122,35 @@ function requireAdmin(req, res, next) {
       }
     }
 
-    const adminIdentity = shopDomain || email;
-    if (!adminIdentity) {
+    const adminIdentityCandidates = [];
+    if (email) {
+      adminIdentityCandidates.push(email);
+    }
+    if (allowShopIdentity && !adminIdentityCandidates.includes(normalizedShop)) {
+      adminIdentityCandidates.push(normalizedShop);
+    }
+
+    if (adminIdentityCandidates.length === 0) {
       return sendUnauthorized(res, 'Admin access requires shop/email identity or admin API key');
     }
 
     try {
-      const user = await getRoleAndStatus(adminIdentity);
-      if (!user || !isPlatformAdmin(user.role)) {
+      let matchedIdentity = null;
+      let matchedUser = null;
+      for (const candidate of adminIdentityCandidates) {
+        const user = await getRoleAndStatus(candidate);
+        if (user && isPlatformAdmin(user.role)) {
+          matchedIdentity = candidate;
+          matchedUser = user;
+          break;
+        }
+      }
+
+      if (!matchedUser) {
         const allowDevBypass =
           process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_ADMIN_BYPASS === 'true';
         if (allowDevBypass) {
-          req.adminId = adminIdentity;
+          req.adminId = adminIdentityCandidates[0];
           req.adminRole = PLATFORM_ROLES.ADMIN;
           return next();
         }
@@ -127,11 +158,11 @@ function requireAdmin(req, res, next) {
       }
       // Shopify users use status 'active'; email/standalone users use 'accepted'. Both are allowed for admin.
       const allowedStatuses = ['active', 'accepted'];
-      if (!user.status || !allowedStatuses.includes(user.status)) {
+      if (!matchedUser.status || !allowedStatuses.includes(matchedUser.status)) {
         return res.status(403).json({ success: false, error: 'Account is locked or suspended' });
       }
-      req.adminId = adminIdentity;
-      req.adminRole = (user.role || PLATFORM_ROLES.ADMIN).toLowerCase();
+      req.adminId = matchedIdentity || adminIdentityCandidates[0];
+      req.adminRole = (matchedUser.role || PLATFORM_ROLES.ADMIN).toLowerCase();
       next();
     } catch (e) {
       next(e);

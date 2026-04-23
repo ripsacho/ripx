@@ -6,11 +6,17 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { apiGet, getShopDomain } from '../services';
+import { apiGet, getEmbeddedAppRelativePathname, getShopDomain } from '../services';
 import { isPlatformAdmin, isSuperadmin } from '../constants/roles';
 
 export function useAdminMe(options = {}) {
-  const scopedShop = getShopDomain() || '_';
+  const scopedShop = (() => {
+    if (typeof window === 'undefined') return '_';
+    const relativePath = getEmbeddedAppRelativePathname(window.location.pathname);
+    const isAppDomainRoute = /^\/app\/[^/]+/.test(relativePath);
+    if (!isAppDomainRoute) return '_';
+    return getShopDomain() || '_';
+  })();
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['admin', 'me', scopedShop],
     queryFn: async () => {

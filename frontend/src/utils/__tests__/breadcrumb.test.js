@@ -23,6 +23,14 @@ describe('getAppDomainFromPath', () => {
   it('decodes encoded domain', () => {
     expect(getAppDomainFromPath('/app/foo%2Bbar.com')).toBe('foo+bar.com');
   });
+
+  it('returns raw segment when domain decode fails', () => {
+    expect(getAppDomainFromPath('/app/%E0%A4%A')).toBe('%E0%A4%A');
+  });
+
+  it('extracts domain from embedded app paths', () => {
+    expect(getAppDomainFromPath('/store/acme/apps/ripx/app/store.com/tests')).toBe('store.com');
+  });
 });
 
 describe('getBreadcrumb', () => {

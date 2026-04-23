@@ -28,6 +28,8 @@ import {
   logout,
   clearAuthStorage,
   resetRedirectingToLogin,
+  fetchShopifyConnectionStatus,
+  getShopifyConnectionErrorMeta,
 } from '../../services';
 import { ROUTES } from '../../constants';
 import { useAdminMe } from '../../hooks';
@@ -81,8 +83,11 @@ function TopBar({
   const { data: adminMeData, isAdmin, isLoading, role } = useAdminMe();
   const showAdminEntry = Boolean(!isLoading && isAdmin && role);
   const userEmail =
-    adminMeData?.adminId && String(adminMeData.adminId).includes('@') ? adminMeData.adminId : null;
-  const shopDomain = adminMeData?.shopDomain || (!userEmail && adminMeData?.adminId) || null;
+    adminMeData?.email ||
+    (adminMeData?.adminId && String(adminMeData.adminId).includes('@')
+      ? adminMeData.adminId
+      : null);
+  const shopDomain = adminMeData?.shopDomain || null;
   const [userMenuActive, setUserMenuActive] = useState(false);
   const [helpPopoverActive, setHelpPopoverActive] = useState(false);
   const [notificationsActive, setNotificationsActive] = useState(false);
@@ -102,7 +107,9 @@ function TopBar({
   const docsPath = ROUTES.DOCS;
   const supportPath = ROUTES.SUPPORT;
   const appDomain = getAppDomainFromPath(location.pathname);
-  const activeStoreLabel = appDomain || shopDomain || null;
+  const activeStoreLabel = appDomain || null;
+  const identityLabel = activeStoreLabel || userEmail || shopDomain || null;
+  const identityTitle = activeStoreLabel ? 'Store' : userEmail ? 'Signed in as' : 'Account';
   const settingsPath = appDomain ? ROUTES.appSettings(appDomain) : ROUTES.SETTINGS;
 
   const isShopifyStore = Boolean(appDomain && isShopifyStoreDomain(appDomain));
@@ -112,10 +119,7 @@ function TopBar({
     isError: connectionError,
   } = useQuery({
     queryKey: ['shopify', 'connection-status', appDomain],
-    queryFn: async () => {
-      const res = await apiGet('/shopify/connection-status');
-      return res.data;
-    },
+    queryFn: () => fetchShopifyConnectionStatus(appDomain || ''),
     retry: false,
     staleTime: 2 * 60 * 1000,
     enabled: isShopifyStore,
@@ -123,7 +127,28 @@ function TopBar({
   const shopifyConnected = connectionFetched && !connectionError && connectionData?.connected;
   const shopifyNotConnected =
     isShopifyStore && connectionFetched && (connectionError || !connectionData?.connected);
+  const connectionErrorMeta = connectionError
+    ? getShopifyConnectionErrorMeta(connectionError)
+    : null;
+  const connectionState =
+    connectionErrorMeta?.state || (shopifyConnected ? 'connected' : 'unknown');
   const shopifyStoreHandle = isShopifyStore && appDomain ? getShopifyStoreHandle(appDomain) : '';
+  const connectionLabel =
+    connectionState === 'needs_install'
+      ? `${shopifyStoreHandle} needs app install`
+      : connectionState === 'needs_link'
+        ? `${shopifyStoreHandle} isn't linked`
+        : connectionState === 'restricted'
+          ? `${shopifyStoreHandle} access is restricted`
+          : `${shopifyStoreHandle} isn't linked`;
+  const connectActionLabel =
+    connectionState === 'needs_install'
+      ? 'Install in Shopify'
+      : connectionState === 'needs_link'
+        ? 'Link with Shopify'
+        : connectionState === 'restricted'
+          ? 'Review access'
+          : 'Connect to Shopify';
   const handleConnectStore = useCallback(() => {
     if (!appDomain) return;
     const url = getConnectUrl({
@@ -586,14 +611,11 @@ function TopBar({
           <Popover
             active={userMenuActive}
             activator={
-              <Tooltip
-                content={userEmail || activeStoreLabel || 'Account menu'}
-                preferredPosition="below"
-              >
+              <Tooltip content={identityLabel || 'Account menu'} preferredPosition="below">
                 <button
                   type="button"
                   onClick={toggleUserMenu}
-                  aria-label={userEmail ? `Account: ${userEmail}` : 'User menu'}
+                  aria-label={identityLabel ? `Account: ${identityLabel}` : 'User menu'}
                   aria-expanded={userMenuActive}
                   aria-haspopup="true"
                   className={`${styles.userMenuTrigger} ${styles.iconBtn} ${userMenuActive ? styles.active : ''}`}
@@ -601,16 +623,15 @@ function TopBar({
                   <span className={styles.userMenuTriggerIconWrap}>
                     <Icon source={ProfileIcon} />
                   </span>
-                  {(userEmail || activeStoreLabel) && (
-                    <span
-                      className={styles.userMenuTriggerLabel}
-                      title={userEmail || activeStoreLabel}
-                    >
-                      {userEmail
-                        ? userEmail.length > 28
-                          ? `${userEmail.slice(0, 12)}…${userEmail.slice(-10)}`
-                          : userEmail
-                        : activeStoreLabel}
+                  {identityLabel && (
+                    <span className={styles.userMenuTriggerLabel} title={identityLabel}>
+                      {activeStoreLabel
+                        ? activeStoreLabel
+                        : userEmail
+                          ? userEmail.length > 28
+                            ? `${userEmail.slice(0, 12)}…${userEmail.slice(-10)}`
+                            : userEmail
+                          : shopDomain}
                     </span>
                   )}
                   <span className={styles.userMenuTriggerChevron} aria-hidden>
@@ -624,12 +645,12 @@ function TopBar({
             preferredPosition="below"
           >
             <div className={styles.menuList} role="menu">
-              {(userEmail || activeStoreLabel) && (
+              {identityLabel && (
                 <div className={styles.userMenuHeader}>
                   <Text as="span" variant="bodySm" tone="subdued">
-                    {userEmail ? 'Signed in as' : 'Store'}
+                    {identityTitle}
                   </Text>
-                  <span className={styles.userEmail}>{userEmail || activeStoreLabel}</span>
+                  <span className={styles.userEmail}>{identityLabel}</span>
                 </div>
               )}
               {/* Shopify store only: connection status */}
@@ -666,7 +687,7 @@ function TopBar({
                         <span className={styles.userMenuNotConnectedIcon} aria-hidden>
                           <Icon source={LinkIcon} />
                         </span>
-                        {shopifyStoreHandle} isn&apos;t linked
+                        {connectionLabel}
                       </span>
                       <button
                         type="button"
@@ -678,7 +699,7 @@ function TopBar({
                         className={styles.userMenuConnectBtn}
                         aria-label={`Connect ${shopifyStoreHandle} to Shopify`}
                       >
-                        Connect to Shopify
+                        {connectActionLabel}
                       </button>
                     </div>
                   ) : null}

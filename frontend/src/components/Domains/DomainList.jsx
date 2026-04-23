@@ -129,6 +129,7 @@ import { PageShell, LegalFooter } from '../Shared';
 import { useSearchParams } from 'react-router-dom';
 import { ROUTES, STORAGE_KEYS } from '../../constants';
 import styles from './DomainList.module.css';
+import { useShopifyInstallStatus } from '../../hooks';
 import {
   apiMeGet,
   apiMePost,
@@ -148,6 +149,7 @@ import {
   getConnectUrl,
   getUrlWithEmbedParams,
   openCenteredPopup,
+  fetchShopifyConnectionStatus,
 } from '../../services';
 import { isShopifyStoreDomain, normalizeShopifyDomain } from '../../utils/shopifyAdmin';
 
@@ -437,38 +439,7 @@ function DomainList() {
   const isLoading = useEmailDomains ? meLoading : accountStoresLoading;
   const error = useEmailDomains ? meError : accountStoresError;
   const domains = React.useMemo(() => data?.domains ?? [], [data]);
-  const shopifyDomains = React.useMemo(() => {
-    const set = new Set();
-    (domains || []).forEach(d => {
-      const raw = typeof d === 'object' ? d?.domain : d;
-      if (!raw || !isShopifyStoreDomain(raw)) return;
-      set.add(normalizeShopifyDomain(raw));
-    });
-    return Array.from(set);
-  }, [domains]);
-  const { data: shopifyInstallStatus = {} } = useQuery({
-    queryKey: ['domains', 'shopify-install-status', shopifyDomains.join('|')],
-    queryFn: async () => {
-      if (useEmailDomains) {
-        return Object.fromEntries(shopifyDomains.map(shop => [shop, 'connected']));
-      }
-      const pairs = await Promise.all(
-        shopifyDomains.map(async shop => {
-          try {
-            const res = await apiGet('/shopify/connection-status', { shop });
-            const payload = res?.data?.data ?? res?.data ?? {};
-            return [shop, payload?.connected ? 'connected' : 'needs_install'];
-          } catch (err) {
-            if (err?.response?.status === 401) return [shop, 'needs_install'];
-            return [shop, 'unknown'];
-          }
-        })
-      );
-      return Object.fromEntries(pairs);
-    },
-    staleTime: 2 * 60 * 1000,
-    enabled: shopifyDomains.length > 0,
-  });
+  const { statusByShop: shopifyInstallStatus } = useShopifyInstallStatus(domains, 'domains-list');
 
   // Smart resume: if Shopify connect session completed, open that store automatically.
   useEffect(() => {
@@ -504,6 +475,8 @@ function DomainList() {
     const labels = {
       connected: 'Connected',
       needs_install: 'Needs install',
+      needs_link: 'Needs link',
+      restricted: 'Restricted',
       checking: 'Checking…',
       unknown: 'Status unknown',
     };
@@ -513,7 +486,11 @@ function DomainList() {
         title={
           status === 'needs_install'
             ? 'RipX app is not installed or connected for this Shopify store'
-            : labels[status]
+            : status === 'needs_link'
+              ? 'RipX app is installed but this store is not linked to your account yet'
+              : status === 'restricted'
+                ? 'This store is connected but your account access is currently restricted'
+                : labels[status]
         }
       >
         {labels[status]}
@@ -673,9 +650,8 @@ function DomainList() {
     }
     if (isShopifyStoreDomain(normalizedDomain)) {
       try {
-        const statusRes = await apiGet('/shopify/connection-status', { shop: normalizedDomain });
-        const statusData = statusRes?.data?.data ?? statusRes?.data ?? {};
-        if (statusData?.connected) {
+        const connectionStatus = await fetchShopifyConnectionStatus(normalizedDomain);
+        if (connectionStatus?.connected) {
           setCurrentStore(normalizedDomain);
           window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalizedDomain), {
             shop: normalizedDomain,
@@ -696,21 +672,6 @@ function DomainList() {
     const hasEmailSession = !!getEmailToken();
     try {
       if (hasEmailSession) {
-        const res = await apiGet('/me/domains');
-        const raw = res?.data?.data ?? res?.data;
-        const domains = raw?.domains ?? [];
-        const connected = domains.some(
-          d =>
-            normalizeShopifyDomain(d?.domain || '') ===
-            normalizeShopifyDomain(normalizedDomain || '')
-        );
-        if (connected) {
-          setCurrentStore(normalizedDomain);
-          window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalizedDomain), {
-            shop: normalizedDomain,
-          });
-          return;
-        }
         const origin = typeof window !== 'undefined' ? window.location.origin : '';
         const startRes = await apiGet('/auth/start', {
           shop: normalizedDomain,
@@ -738,48 +699,33 @@ function DomainList() {
         }
         return;
       }
-
-      const res = await apiGet('/account/stores');
-      const raw = res?.data?.data ?? res?.data;
-      const stores = raw?.stores ?? [];
-      const connected = stores.some(
-        s =>
-          normalizeShopifyDomain(s?.domain || '') === normalizeShopifyDomain(normalizedDomain || '')
-      );
-      if (connected) {
-        setCurrentStore(normalizedDomain);
-        window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalizedDomain), {
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      try {
+        const startRes = await apiGet('/auth/start', {
           shop: normalizedDomain,
+          callback_base: origin || undefined,
         });
-      } else {
-        const origin = typeof window !== 'undefined' ? window.location.origin : '';
-        try {
-          const startRes = await apiGet('/auth/start', {
-            shop: normalizedDomain,
-            callback_base: origin || undefined,
-          });
-          const url = startRes?.data?.redirectUrl ?? unwrapData(startRes)?.redirectUrl;
-          if (url && typeof url === 'string') {
-            if (returnOAuthUrl) return { redirectUrl: url };
-            const popup = openCenteredPopup(url);
-            if (!popup) {
-              if (isEmbeddedInIframe()) window.open(url, '_blank', 'noopener,noreferrer');
-              else window.top.location.href = url;
-            }
-            return;
+        const url = startRes?.data?.redirectUrl ?? unwrapData(startRes)?.redirectUrl;
+        if (url && typeof url === 'string') {
+          if (returnOAuthUrl) return { redirectUrl: url };
+          const popup = openCenteredPopup(url);
+          if (!popup) {
+            if (isEmbeddedInIframe()) window.open(url, '_blank', 'noopener,noreferrer');
+            else window.top.location.href = url;
           }
-        } catch (_) {
-          /* /auth/start failed (e.g. 401). Don't return fallback /api/auth — it would send user to login when they click. Send to Connect first. */
+          return;
         }
-        if (returnOAuthUrl) {
-          return { signInRequired: true, shop: normalizedDomain };
-        }
-        const fallbackUrl = `${origin}/api/auth?shop=${encodeURIComponent(normalizedDomain)}${origin ? `&callback_base=${encodeURIComponent(origin)}` : ''}`;
-        const popup = openCenteredPopup(fallbackUrl);
-        if (!popup) {
-          if (isEmbeddedInIframe()) window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
-          else window.top.location.href = fallbackUrl;
-        }
+      } catch (_) {
+        /* /auth/start failed (e.g. 401). Don't return fallback /api/auth — it would send user to login when they click. Send to Connect first. */
+      }
+      if (returnOAuthUrl) {
+        return { signInRequired: true, shop: normalizedDomain };
+      }
+      const fallbackUrl = `${origin}/api/auth?shop=${encodeURIComponent(normalizedDomain)}${origin ? `&callback_base=${encodeURIComponent(origin)}` : ''}`;
+      const popup = openCenteredPopup(fallbackUrl);
+      if (!popup) {
+        if (isEmbeddedInIframe()) window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
+        else window.top.location.href = fallbackUrl;
       }
     } catch (err) {
       if (err?.response?.status === 401 && returnOAuthUrl) {
@@ -1255,7 +1201,11 @@ function DomainList() {
         const openLabel = isShopifyStoreDomain(d.domain)
           ? installState === 'needs_install'
             ? 'Install app'
-            : 'Open app'
+            : installState === 'needs_link'
+              ? 'Link app'
+              : installState === 'restricted'
+                ? 'Review access'
+                : 'Open app'
           : 'Open';
         const keyForDomain = accountKey || domainKeys[d.domain];
         return [
@@ -1312,7 +1262,11 @@ function DomainList() {
         const openLabel =
           isShopifyStoreDomain(d.domain) && installState === 'needs_install'
             ? 'Install app'
-            : 'Open app';
+            : isShopifyStoreDomain(d.domain) && installState === 'needs_link'
+              ? 'Link app'
+              : isShopifyStoreDomain(d.domain) && installState === 'restricted'
+                ? 'Review access'
+                : 'Open app';
         return [
           d.domain,
           displayPlatform(d),

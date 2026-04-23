@@ -179,7 +179,7 @@ describe('storefront script cart/add interceptors', () => {
     expect(hooks.previewTestId).toBe(null);
   });
 
-  it('runs selected-product shipping tests on cart surfaces and injects signed cart state', async () => {
+  it('runs selected-product shipping tests on cart surfaces and injects signed cart state', () => {
     const cartRoot = createCartRoot(['gid://shopify/Product/200']);
     const { hooks } = bootStorefrontScriptHarness({
       pathname: '/cart',

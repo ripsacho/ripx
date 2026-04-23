@@ -23,6 +23,7 @@ export default function ConnectStoreGate({
   connecting = false,
   popupBlocked = false,
   statusMessage = '',
+  requiresLink = false,
 }) {
   const normalized = normalizeShopifyDomain(domain || '');
   const connectUrl = getShopifyConnectUrl(domain);
@@ -42,15 +43,28 @@ export default function ConnectStoreGate({
           <Card>
             <BlockStack gap="400">
               <Text as="h1" variant="headingLg">
-                Connect this store
+                {requiresLink ? 'Link this store' : 'Connect this store'}
               </Text>
               <Text as="p" tone="subdued">
-                <strong>{normalized || domain}</strong> isn’t connected to RipX yet. Connect with
-                Shopify to run A/B tests for this store.
+                {requiresLink ? (
+                  <>
+                    <strong>{normalized || domain}</strong> is installed but not linked to your
+                    account. Continue with Shopify to link it and access this store.
+                  </>
+                ) : (
+                  <>
+                    <strong>{normalized || domain}</strong> isn’t connected to RipX yet. Connect
+                    with Shopify to run A/B tests for this store.
+                  </>
+                )}
               </Text>
               <InlineStack gap="300" blockAlign="start">
                 <Button variant="primary" size="large" onClick={handleConnect} loading={connecting}>
-                  {connecting ? 'Connecting…' : 'Connect with Shopify'}
+                  {connecting
+                    ? 'Connecting…'
+                    : requiresLink
+                      ? 'Link with Shopify'
+                      : 'Connect with Shopify'}
                 </Button>
                 <Button
                   variant="plain"

@@ -89,7 +89,23 @@ router.get(
     let role = null;
     let status = 'active';
     const normalizedEmail = req.email ? String(req.email).trim().toLowerCase() : null;
-    const adminIdentity = req.shopDomain || normalizedEmail;
+    const normalizedShopDomain = req.shopDomain
+      ? String(req.shopDomain).trim().toLowerCase()
+      : null;
+    const requestedShop = normalizeDomain(
+      req.query?.shop ||
+        req.query?.store ||
+        req.query?.domain ||
+        req.headers['x-ripx-store'] ||
+        req.headers['x-shopify-shop-domain'] ||
+        ''
+    );
+    const effectiveShopDomain =
+      normalizedShopDomain &&
+      ((!normalizedEmail && !requestedShop) ||
+        (requestedShop && requestedShop === normalizedShopDomain))
+        ? normalizedShopDomain
+        : null;
     if (req.authType === 'email' && req.email) {
       const adminEmails = (process.env.RIPX_ADMIN_EMAIL || '')
         .split(',')
@@ -99,22 +115,29 @@ router.get(
         role = 'admin';
       }
     }
-    if (!role && adminIdentity) {
-      const user = await getRoleAndStatus(adminIdentity);
+    // Email-authenticated users should resolve role by email first (stable identity on non-store pages).
+    if (!role && normalizedEmail) {
+      const user = await getRoleAndStatus(normalizedEmail);
       status = user?.status ?? 'active';
       role = user?.role ?? null;
-      if (!role && req.shopDomain) {
+    }
+    // Fallback to scoped shop identity when available (e.g. /app/:domain context).
+    if (!role && effectiveShopDomain) {
+      const user = await getRoleAndStatus(effectiveShopDomain);
+      status = user?.status ?? status;
+      role = user?.role ?? null;
+      if (!role) {
         const envAdmins = getEnvAdminDomains();
-        const normalized = (req.shopDomain || '').toLowerCase().trim();
-        if (envAdmins.length > 0 && envAdmins.includes(normalized)) {
+        if (envAdmins.length > 0 && envAdmins.includes(effectiveShopDomain)) {
           role = 'admin';
         }
       }
     }
     const permissions = getPermissionsForRole(role);
     return sendSuccess(res, HTTP_STATUS.OK, {
-      adminId: req.shopDomain || normalizedEmail,
-      shopDomain: req.shopDomain || null,
+      adminId: normalizedEmail || req.shopDomain || null,
+      email: normalizedEmail || null,
+      shopDomain: effectiveShopDomain,
       role,
       status,
       permissions: role ? permissions : [],

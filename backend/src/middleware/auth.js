@@ -22,8 +22,40 @@ const {
   getFirstTenantForAccount,
 } = require('../models/account');
 const standaloneUser = require('../models/standaloneUser');
+const userDomainAccess = require('../models/userDomainAccess');
 const { getRoleAndStatus } = require('../models/user');
 const { isUserStatusBlocked } = require('../constants');
+const { query } = require('../utils/database');
+const EMAIL_SESSION_COOKIE = 'ripx_email_session';
+
+function getRequestedStore(req) {
+  const raw =
+    req.query?.shop ||
+    req.query?.store ||
+    req.query?.domain ||
+    req.headers['x-ripx-store'] ||
+    req.headers['x-shopify-shop-domain'];
+  return normalizeDomain(raw !== undefined && raw !== null ? String(raw) : '');
+}
+
+function sendShopifyConnectionError(
+  res,
+  { status = 401, error, code, shop = null, state = 'unknown', action = 'retry' }
+) {
+  const message = String(error || 'Could not verify Shopify connection');
+  return res.status(status).json({
+    success: false,
+    error: message,
+    code: code || 'SHOPIFY_CONNECTION_ERROR',
+    connection: {
+      connected: false,
+      shop: shop || null,
+      state,
+      action,
+      message,
+    },
+  });
+}
 
 /**
  * Verify HMAC signature for Shopify requests
@@ -57,15 +89,61 @@ function verifyHMAC(data, hmacHeader) {
  */
 async function authenticateShopify(req, res, next) {
   try {
-    // Get shop domain from query or headers
-    const shop = req.query.shop || req.headers['x-shopify-shop-domain'];
+    // Get requested shop domain from query or headers.
+    const requestedShop = getRequestedStore(req);
+
+    // If caller has an email session, resolve and enforce store access before loading Shopify token.
+    const hasEmailSession = await tryEmailSessionToken(req);
+    if (hasEmailSession) {
+      await attachEmailSessionStoreContext(req);
+      if (!req.shopDomain) {
+        logger.warn('Authentication failed: Email user has no access to requested Shopify store', {
+          requestedShop: requestedShop || null,
+          path: req.path,
+          actor: req.email || null,
+        });
+        return sendShopifyConnectionError(res, {
+          status: 403,
+          error: 'Store access denied for this user',
+          code: 'STORE_ACCESS_DENIED',
+          shop: requestedShop || null,
+          state: 'needs_link',
+          action: 'link',
+        });
+      }
+      if (requestedShop && req.shopDomain !== requestedShop) {
+        logger.warn('Authentication failed: Requested Shopify store mismatch for email user', {
+          requestedShop,
+          resolvedShop: req.shopDomain,
+          path: req.path,
+          actor: req.email || null,
+        });
+        return sendShopifyConnectionError(res, {
+          status: 403,
+          error: 'Requested store is not available for this user',
+          code: 'STORE_ACCESS_DENIED',
+          shop: requestedShop || null,
+          state: 'needs_link',
+          action: 'link',
+        });
+      }
+    }
+
+    const shop = req.shopDomain || requestedShop;
 
     if (!shop) {
       logger.warn('Authentication failed: Shop domain required', {
         path: req.path,
         method: req.method,
       });
-      return sendUnauthorized(res, 'Shop domain required');
+      return sendShopifyConnectionError(res, {
+        status: 401,
+        error: 'Shop domain required',
+        code: 'SHOP_REQUIRED',
+        shop: null,
+        state: 'no_shop',
+        action: 'select_store',
+      });
     }
 
     // Validate shop domain format and normalize (Shopify domains are lowercase)
@@ -74,7 +152,14 @@ async function authenticateShopify(req, res, next) {
         shop,
         path: req.path,
       });
-      return sendUnauthorized(res, 'Invalid shop domain');
+      return sendShopifyConnectionError(res, {
+        status: 400,
+        error: 'Invalid shop domain',
+        code: 'INVALID_SHOP_DOMAIN',
+        shop,
+        state: 'invalid_shop',
+        action: 'verify_store',
+      });
     }
     const normalizedShop = shop.trim().toLowerCase();
 
@@ -114,7 +199,14 @@ async function authenticateShopify(req, res, next) {
         shop: normalizedShop,
         path: req.path,
       });
-      return sendUnauthorized(res, 'Shop not authenticated');
+      return sendShopifyConnectionError(res, {
+        status: 401,
+        error: 'Shop not authenticated',
+        code: 'SHOP_NOT_AUTHENTICATED',
+        shop: normalizedShop,
+        state: 'needs_install',
+        action: 'install',
+      });
     }
 
     // Require tenant to be linked to an email user for app UI (shop-authenticated) routes.
@@ -125,11 +217,13 @@ async function authenticateShopify(req, res, next) {
         shop: normalizedShop,
         path: req.path,
       });
-      return res.status(403).json({
-        success: false,
+      return sendShopifyConnectionError(res, {
+        status: 403,
         error: 'This store is not linked to a user. Sign in and connect this store to continue.',
         code: 'STORE_NOT_LINKED',
         shop: normalizedShop,
+        state: 'needs_link',
+        action: 'link',
       });
     }
 
@@ -140,9 +234,14 @@ async function authenticateShopify(req, res, next) {
         status: userStatus?.status,
         path: req.path,
       });
-      return res
-        .status(403)
-        .json({ success: false, error: 'Account is locked or suspended. Contact support.' });
+      return sendShopifyConnectionError(res, {
+        status: 403,
+        error: 'Account is locked or suspended. Contact support.',
+        code: 'ACCOUNT_RESTRICTED',
+        shop: normalizedShop,
+        state: 'restricted',
+        action: 'contact_support',
+      });
     }
 
     next();
@@ -224,7 +323,7 @@ async function authenticateApiKey(req, res, next) {
     }
 
     req.accountId = account.id;
-    const storeHeader = req.headers['x-ripx-store'] || req.query.store;
+    const storeHeader = getRequestedStore(req);
 
     if (storeHeader) {
       const storeTenant = await getTenantByAccountAndDomain(account.id, storeHeader);
@@ -233,20 +332,15 @@ async function authenticateApiKey(req, res, next) {
         req.platform = storeTenant.platform;
         req.tenantId = storeTenant.id;
       } else {
-        const first = await getFirstTenantForAccount(account.id);
-        if (!first) {
-          logger.warn('API key auth: store not in account and no fallback tenant', {
-            store: storeHeader,
-            path: req.path,
-          });
-          return sendUnauthorized(
-            res,
-            'Store not found in account. Add the store or omit X-RipX-Store.'
-          );
-        }
-        req.shopDomain = first.domain;
-        req.platform = first.platform;
-        req.tenantId = first.id;
+        logger.warn('API key auth: explicit store not found in account', {
+          store: String(storeHeader || ''),
+          accountId: account.id,
+          path: req.path,
+        });
+        return sendUnauthorized(
+          res,
+          'Store not found in account. Check X-RipX-Store (or shop/store query) and try again.'
+        );
       }
     } else {
       const first = await getFirstTenantForAccount(account.id);
@@ -273,9 +367,11 @@ async function authenticateApiKey(req, res, next) {
         status: userStatus?.status,
         path: req.path,
       });
-      return res
-        .status(403)
-        .json({ success: false, error: 'Account is locked or suspended. Contact support.' });
+      return res.status(403).json({
+        success: false,
+        error: 'Account is locked or suspended. Contact support.',
+        code: 'ACCOUNT_RESTRICTED',
+      });
     }
 
     next();
@@ -314,7 +410,9 @@ function tryImpersonationToken(req) {
  */
 async function tryEmailSessionToken(req) {
   const authHeader = req.headers.authorization;
-  const token = authHeader && authHeader.replace(/^Bearer\s+/i, '').trim();
+  const bearerToken = authHeader && authHeader.replace(/^Bearer\s+/i, '').trim();
+  const cookieToken = req.cookies?.[EMAIL_SESSION_COOKIE] || '';
+  const token = bearerToken || cookieToken;
   if (!token || !process.env.JWT_SECRET) {
     return false;
   }
@@ -377,29 +475,44 @@ async function attachEmailSessionStoreContext(req) {
     req.accountId = accountId;
   }
 
-  const requestedStoreRaw =
-    req.query?.store ||
-    req.headers['x-ripx-store'] ||
-    req.query?.domain ||
-    req.query?.shop ||
-    req.headers['x-shopify-shop-domain'];
-  const requestedStore = normalizeDomain(
-    requestedStoreRaw !== undefined && requestedStoreRaw !== null ? String(requestedStoreRaw) : ''
-  );
-
-  if (!accountId) {
-    return;
-  }
+  const requestedStore = getRequestedStore(req);
 
   let tenant = null;
   if (requestedStore) {
-    tenant = await getTenantByAccountAndDomain(accountId, requestedStore);
+    if (accountId) {
+      tenant = await getTenantByAccountAndDomain(accountId, requestedStore);
+    }
+    if (!tenant) {
+      const candidate = await getTenantByDomain(requestedStore);
+      if (candidate?.id) {
+        const hasAccess = await userDomainAccess.hasAccess(user.id, candidate.id, accountId);
+        if (hasAccess) {
+          tenant = candidate;
+        }
+      }
+    }
     // Do not silently fall back to a different tenant when a specific store was requested.
     if (!tenant) {
       return;
     }
   } else {
-    tenant = await getFirstTenantForAccount(accountId);
+    if (accountId) {
+      tenant = await getFirstTenantForAccount(accountId);
+    }
+    if (!tenant) {
+      const tenantIds = await userDomainAccess.getTenantIdsForUser(user.id, accountId);
+      if (tenantIds.length > 0) {
+        const fallbackResult = await query(
+          `SELECT id, account_id, platform, domain
+           FROM tenants
+           WHERE id = ANY($1::uuid[])
+           ORDER BY created_at ASC
+           LIMIT 1`,
+          [tenantIds]
+        );
+        tenant = fallbackResult.rows[0] || null;
+      }
+    }
   }
   if (!tenant) {
     return;
@@ -423,7 +536,7 @@ async function authenticate(req, res, next) {
     return next();
   }
 
-  const shop = req.query.shop || req.headers['x-shopify-shop-domain'];
+  const shop = getRequestedStore(req);
   const apiKey =
     req.headers['x-ripx-api-key'] ||
     req.headers['x-ripx-apikey'] ||
@@ -468,7 +581,7 @@ async function optionalAuthenticate(req, res, next) {
     return next();
   }
 
-  const shop = req.query.shop || req.headers['x-shopify-shop-domain'];
+  const shop = getRequestedStore(req);
   const apiKey =
     req.headers['x-ripx-api-key'] ||
     req.headers['x-ripx-apikey'] ||
@@ -478,10 +591,13 @@ async function optionalAuthenticate(req, res, next) {
     try {
       const normalizedShop = shop.trim().toLowerCase();
       const tenant = await getTenantByDomain(normalizedShop);
-      req.shopDomain = normalizedShop;
-      if (tenant) {
-        req.tenantId = tenant.id;
+      if (!tenant || !tenant.id || tenant.account_id === null) {
+        return next();
       }
+      req.shopDomain = normalizedShop;
+      req.tenantId = tenant.id;
+      req.accountId = tenant.account_id || null;
+      req.platform = tenant.platform;
       return next();
     } catch (_) {
       return next();
@@ -494,14 +610,32 @@ async function optionalAuthenticate(req, res, next) {
       if (tenant) {
         req.shopDomain = tenant.domain;
         req.tenantId = tenant.id;
+        req.accountId = tenant.account_id || null;
+        req.platform = tenant.platform;
         return next();
       }
       const accountResult = await getAccountByApiKey(trimmedKey);
-      if (accountResult?.account) {
-        const first = await getFirstTenantForAccount(accountResult.account.id);
-        if (first) {
-          req.shopDomain = first.domain;
-          req.tenantId = first.id;
+      if (accountResult?.id) {
+        req.accountId = accountResult.id;
+        const requestedStore = getRequestedStore(req);
+        let scopedTenant = null;
+        if (requestedStore) {
+          scopedTenant = await getTenantByAccountAndDomain(accountResult.id, requestedStore);
+          if (!scopedTenant) {
+            logger.warn('Optional auth: explicit store not found for account API key', {
+              store: String(requestedStore || ''),
+              accountId: accountResult.id,
+              path: req.path,
+            });
+            return next();
+          }
+        } else {
+          scopedTenant = await getFirstTenantForAccount(accountResult.id);
+        }
+        if (scopedTenant) {
+          req.shopDomain = scopedTenant.domain;
+          req.tenantId = scopedTenant.id;
+          req.platform = scopedTenant.platform;
         }
         return next();
       }

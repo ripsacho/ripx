@@ -32,9 +32,10 @@ import {
   getUrlWithEmbedParams,
   getNavigateToWithEmbed,
   openCenteredPopup,
+  fetchShopifyConnectionStatus,
 } from '../../services';
 import { isShopifyStoreDomain, normalizeShopifyDomain } from '../../utils/shopifyAdmin';
-import { useAdminMe } from '../../hooks';
+import { useAdminMe, useShopifyInstallStatus } from '../../hooks';
 import { OAUTH_SUCCESS_MESSAGE_TYPE } from '../Connect/OAuthSuccess';
 import styles from './UserPanel.module.css';
 
@@ -97,7 +98,11 @@ function UserPanel() {
 
   const isLoading = meLoading || domainsLoading;
   const error = domainsError;
-  const domains = domainsData?.domains ?? [];
+  const domains = React.useMemo(
+    () => (Array.isArray(domainsData?.domains) ? domainsData.domains : []),
+    [domainsData]
+  );
+  const { statusByShop: shopifyInstallStatus } = useShopifyInstallStatus(domains, 'user-panel');
   const greeting = getTimeGreeting();
   const userEmail = !meError && (meData?.email || meData?.user?.email);
   const domainCount = domains.length;
@@ -134,9 +139,8 @@ function UserPanel() {
       }
       connectVerifyLockRef.current = true;
       try {
-        setCurrentStore(normalized);
-        const res = await apiGet('/shopify/connection-status');
-        const connected = !!res?.data?.connected;
+        const status = await fetchShopifyConnectionStatus(normalized);
+        const connected = Boolean(status?.connected);
         if (connected) {
           setPendingShopifyConnect(null);
           try {
@@ -163,6 +167,16 @@ function UserPanel() {
       }
     },
     [openDomainApp]
+  );
+
+  const getShopifyInstallState = useCallback(
+    domainValue => {
+      if (!isShopifyStoreDomain(domainValue)) return null;
+      const normalized = normalizeShopifyDomain(domainValue);
+      if (openingDomain === domainValue || openingDomain === normalized) return 'checking';
+      return shopifyInstallStatus?.[normalized] || 'unknown';
+    },
+    [openingDomain, shopifyInstallStatus]
   );
 
   const openShopifyConnectPopup = useCallback((url, shop) => {
@@ -270,17 +284,9 @@ function UserPanel() {
     setOpeningDomain(domain);
     const isShopify = isShopifyStoreDomain(domain);
     const normalized = isShopify ? normalizeShopifyDomain(domain) : domain;
-    const isLinkedEmailShop =
-      useEmailDomains &&
-      isShopify &&
-      domains.some(d => normalizeShopifyDomain(d?.domain || '') === normalized);
     const key = accountKey || (domainKeys && (domainKeys[domain] || domainKeys[normalized]));
     try {
       if (isShopify) {
-        if (isLinkedEmailShop) {
-          openDomainApp(normalized);
-          return;
-        }
         // Pre-open popup in direct click gesture so browsers don't block later OAuth navigation.
         const preOpenedPopup = openCenteredPopup('about:blank');
         if (preOpenedPopup) {
@@ -293,12 +299,17 @@ function UserPanel() {
             // ignore localStorage errors
           }
         }
-        setCurrentStore(normalized);
         const alreadyConnected = await verifyConnectedAndOpen(normalized);
         if (alreadyConnected) {
+          try {
+            if (preOpenedPopup && !preOpenedPopup.closed) {
+              preOpenedPopup.close();
+            }
+          } catch {
+            // ignore popup close errors
+          }
           return;
         }
-        setCurrentStore(normalized);
         try {
           const origin = typeof window !== 'undefined' ? window.location.origin : '';
           try {
@@ -530,9 +541,34 @@ function UserPanel() {
                       : typeof d === 'object' && d?.platform
                         ? d.platform
                         : 'standalone';
+                    const installState = isShopifyStoreDomain(domain)
+                      ? getShopifyInstallState(domain)
+                      : null;
                     const keyForDomain = accountKey || (domainKeys && domainKeys[domain]);
                     const isShopify = isShopifyStoreDomain(domain);
                     const canOpen = !!keyForDomain || isShopify;
+                    const statusLabel = isShopify
+                      ? installState === 'connected'
+                        ? 'Connected'
+                        : installState === 'needs_install'
+                          ? 'Needs install'
+                          : installState === 'needs_link'
+                            ? 'Needs link'
+                            : installState === 'restricted'
+                              ? 'Restricted'
+                              : installState === 'checking'
+                                ? 'Checking…'
+                                : 'Status unknown'
+                      : canOpen
+                        ? 'Connected'
+                        : 'Connect with API key';
+                    const statusClass = isShopify
+                      ? installState === 'connected'
+                        ? styles.domainTileStatusConnected
+                        : styles.domainTileStatusDisconnected
+                      : canOpen
+                        ? styles.domainTileStatusConnected
+                        : styles.domainTileStatusDisconnected;
                     return (
                       <div
                         key={domain}
@@ -550,15 +586,7 @@ function UserPanel() {
                                 <span className={styles.domainTileBadge}>{platform}</span>
                               )}
                             </div>
-                            <span
-                              className={
-                                canOpen
-                                  ? styles.domainTileStatusConnected
-                                  : styles.domainTileStatusDisconnected
-                              }
-                            >
-                              {canOpen ? 'Connected' : 'Connect with API key'}
-                            </span>
+                            <span className={statusClass}>{statusLabel}</span>
                             <div className={styles.domainTileActions}>
                               {canOpen ? (
                                 <Button
@@ -570,7 +598,15 @@ function UserPanel() {
                                   loading={openingDomain === domain}
                                   disabled={!!openingDomain}
                                 >
-                                  {openingDomain === domain ? 'Connecting…' : 'Open A/B tests'}
+                                  {openingDomain === domain
+                                    ? 'Connecting…'
+                                    : isShopify && installState === 'needs_install'
+                                      ? 'Install app'
+                                      : isShopify && installState === 'needs_link'
+                                        ? 'Link app'
+                                        : isShopify && installState === 'restricted'
+                                          ? 'Review access'
+                                          : 'Open A/B tests'}
                                 </Button>
                               ) : (
                                 <Button

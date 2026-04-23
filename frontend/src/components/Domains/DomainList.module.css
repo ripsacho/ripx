@@ -1052,6 +1052,18 @@
   border-color: rgba(249, 115, 22, 0.4);
 }
 
+.shopifyInstallBadge_needs_link {
+  color: #6d28d9;
+  background: rgba(167, 139, 250, 0.18);
+  border-color: rgba(139, 92, 246, 0.42);
+}
+
+.shopifyInstallBadge_restricted {
+  color: #9f1239;
+  background: rgba(244, 63, 94, 0.14);
+  border-color: rgba(225, 29, 72, 0.36);
+}
+
 .shopifyInstallBadge_checking {
   color: #1d4ed8;
   background: rgba(59, 130, 246, 0.12);
