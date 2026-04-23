@@ -850,7 +850,8 @@ export function apiRequest(method, endpoint, data = null, config = {}) {
     endpoint === '/dashboard/stats' ||
     endpoint.startsWith('/settings') ||
     endpoint.startsWith('/targeting-presets') ||
-    endpoint.startsWith('/promo-links');
+    endpoint.startsWith('/promo-links') ||
+    endpoint === '/admin/me';
   const canUseEmailSessionForEndpoint =
     endpoint.startsWith('/admin/') ||
     endpoint.startsWith('/me/') ||

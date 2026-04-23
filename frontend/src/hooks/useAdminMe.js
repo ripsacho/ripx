@@ -6,12 +6,13 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { apiGet } from '../services';
+import { apiGet, getShopDomain } from '../services';
 import { isPlatformAdmin, isSuperadmin } from '../constants/roles';
 
 export function useAdminMe(options = {}) {
+  const scopedShop = getShopDomain() || '_';
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['admin', 'me'],
+    queryKey: ['admin', 'me', scopedShop],
     queryFn: async () => {
       const res = await apiGet('/admin/me');
       return res.data?.data ?? res.data;

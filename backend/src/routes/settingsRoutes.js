@@ -342,14 +342,20 @@ function normalizeAbsoluteHttpUrl(value) {
 }
 
 async function resolveRequestedShopDomain(req) {
-  const shopDomain = String(req.shopDomain || req.query.domain || '')
+  const requestedDomain = String(req.query.domain || '')
     .trim()
     .toLowerCase()
     .replace(/^https?:\/\//, '')
     .split('/')[0];
+  const authScopedDomain = String(req.shopDomain || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .split('/')[0];
+  const preferredDomain = requestedDomain || authScopedDomain;
 
-  if (req.authType !== 'email' || !req.email || (shopDomain && !shopDomain.includes('@'))) {
-    return shopDomain;
+  if (req.authType !== 'email' || !req.email) {
+    return preferredDomain;
   }
 
   const user = await userModel.getByEmail(req.email);
@@ -367,8 +373,14 @@ async function resolveRequestedShopDomain(req) {
     [tenantIds]
   );
   const allowedDomains = tenantsResult.rows.map(row => String(row.domain || '').toLowerCase());
-  if (shopDomain && allowedDomains.includes(shopDomain)) {
-    return shopDomain;
+  if (requestedDomain && allowedDomains.includes(requestedDomain)) {
+    return requestedDomain;
+  }
+  if (authScopedDomain && allowedDomains.includes(authScopedDomain)) {
+    return authScopedDomain;
+  }
+  if (preferredDomain && !allowedDomains.includes(preferredDomain)) {
+    return '';
   }
   return String(tenantsResult.rows[0]?.domain || '')
     .trim()
