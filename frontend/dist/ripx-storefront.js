@@ -602,7 +602,12 @@
 
   function whenConsent(cb) {
     // Preview QA must run without waiting for marketing consent (otherwise RipX never mounts).
-    if (hasConsent() || (PREVIEW_TEST_ID && (PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME))) {
+    if (
+      hasConsent() ||
+      PREVIEW_MODE ||
+      PREVIEW_TEST_CONTEXT ||
+      (PREVIEW_TEST_ID && (PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME))
+    ) {
       cb();
       return;
     }
@@ -2686,6 +2691,12 @@
       }
     }
     _ripxCartAttributeState = nextState;
+    if (PREVIEW_MODE && testId != null && variantId != null) {
+      window.__RIPX_PRICE_TEST_CTX__ = {
+        testId: String(testId),
+        variantId: String(variantId),
+      };
+    }
     if (_ripxCartAttributeState && _ripxCartAttributeState._ripx_target_unit) {
       rememberRipxTargetUnitForProducts(
         targetProductIds,
@@ -6107,6 +6118,15 @@
       initVisualPicker();
     }
     function run() {
+      if (PREVIEW_MODE && PREVIEW_TEST_ID && (PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME)) {
+        injectPriceTestCartAttributes(
+          PREVIEW_TEST_ID,
+          PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME,
+          null,
+          null
+        );
+      }
+
       if (
         window.location.pathname.includes('/thank_you') ||
         window.location.pathname.includes('/orders/')
@@ -6117,15 +6137,6 @@
       if (!CONFIG.apiUrl) {
         console.warn('AB Test Tracker: apiUrl not configured');
         return;
-      }
-
-      if (PREVIEW_MODE && PREVIEW_TEST_ID && (PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME)) {
-        injectPriceTestCartAttributes(
-          PREVIEW_TEST_ID,
-          PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME,
-          null,
-          null
-        );
       }
 
       const activeTests = CONFIG.activeTests || [];
@@ -6417,6 +6428,28 @@
         if (PREVIEW_MODE && PREVIEW_TEST_ID) {
           getVariant(PREVIEW_TEST_ID).then(function (variant) {
             if (variant) {
+              var previewVariantIdForCart =
+                variant.variantId != null ? variant.variantId : variant.id;
+              if (
+                (previewVariantIdForCart == null ||
+                  String(previewVariantIdForCart).trim() === '') &&
+                (PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME)
+              ) {
+                previewVariantIdForCart = PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME;
+              }
+              if (
+                previewVariantIdForCart != null &&
+                String(previewVariantIdForCart).trim() !== ''
+              ) {
+                injectPriceTestCartAttributes(
+                  PREVIEW_TEST_ID,
+                  previewVariantIdForCart,
+                  getAssignmentProofFromVariant(variant),
+                  null
+                );
+              } else {
+                injectPreviewCartAttributesWhenConfigMissing(PREVIEW_TEST_ID, variant);
+              }
               applyCustomCode(PREVIEW_TEST_ID, variant);
               applyVisualEditorRules(PREVIEW_TEST_ID, variant);
             }

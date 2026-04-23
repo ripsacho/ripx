@@ -8485,8 +8485,7 @@ function TestWizard({
                     </Text>
                     <Text as="p" variant="bodySm" tone="subdued">
                       Edit product rows and SKU rows in one place. &quot;New selling&quot; is the
-                      applied price override; &quot;New actual&quot; is an optional list-price
-                      reference.
+                      applied price override.
                     </Text>
                   </div>
                   {!isProductTargetScope && (
@@ -8747,10 +8746,7 @@ function TestWizard({
                         <tr>
                           <th>Product</th>
                           <th>Variant</th>
-                          <th>Current actual</th>
                           <th>Current selling</th>
-                          <th>Actual change</th>
-                          <th>New actual</th>
                           <th>Selling change</th>
                           <th>New selling</th>
                         </tr>
@@ -8976,21 +8972,9 @@ function TestWizard({
                               typeof productOver.byVariant === 'object'
                                 ? productOver.byVariant[variantKey] || {}
                                 : {};
-                            const explicitNewActualValue =
-                              variantOver?.compareAtPrice ??
-                              (!variantKey ? productOver?.compareAtPrice : null) ??
-                              null;
                             const explicitNewSellingValue =
                               variantOver?.price ?? (!variantKey ? productOver?.price : null) ?? '';
                             const currentSelling = getMatrixCurrentSellingPrice(productVariant);
-                            const currentActual = getMatrixCurrentActualPrice(productVariant);
-                            const newActualValue =
-                              explicitNewActualValue !== null &&
-                              Number.isFinite(Number(explicitNewActualValue))
-                                ? String(explicitNewActualValue)
-                                : Number.isFinite(currentActual)
-                                  ? String(currentActual)
-                                  : '';
                             const newSellingValue =
                               explicitNewSellingValue !== null &&
                               explicitNewSellingValue !== '' &&
@@ -8999,35 +8983,23 @@ function TestWizard({
                                 : Number.isFinite(currentSelling)
                                   ? String(currentSelling)
                                   : '';
-                            const parsedNewActual =
-                              explicitNewActualValue !== null &&
-                              Number.isFinite(Number(explicitNewActualValue))
-                                ? Number(explicitNewActualValue)
-                                : null;
                             const parsedNewSelling =
                               explicitNewSellingValue !== null &&
                               explicitNewSellingValue !== '' &&
                               Number.isFinite(Number(explicitNewSellingValue))
                                 ? Number(explicitNewSellingValue)
                                 : null;
-                            const hasActualChange =
-                              parsedNewActual !== null &&
-                              (!Number.isFinite(currentActual) ||
-                                Math.abs(parsedNewActual - currentActual) >= 0.001);
                             const hasSellingChange =
                               parsedNewSelling !== null &&
                               (!Number.isFinite(currentSelling) ||
                                 Math.abs(parsedNewSelling - currentSelling) >= 0.001);
-                            const rowHasChanges = hasActualChange || hasSellingChange;
+                            const rowHasChanges = hasSellingChange;
                             const isPlaceholderRow = productVariant?._matrixPlaceholder === true;
                             return {
                               productVariant,
                               variantKey,
-                              newActualValue,
                               newSellingValue,
-                              currentActual,
                               currentSelling,
-                              hasActualChange,
                               hasSellingChange,
                               rowHasChanges,
                               isPlaceholderRow,
@@ -9036,9 +9008,6 @@ function TestWizard({
                           const _productEditedRows = productRowStates.filter(
                             rowState => rowState.rowHasChanges
                           ).length;
-                          const _productEditedActualRows = productRowStates.filter(
-                            rowState => rowState.hasActualChange
-                          ).length;
                           const _productEditedSellingRows = productRowStates.filter(
                             rowState => rowState.hasSellingChange
                           ).length;
@@ -9046,11 +9015,8 @@ function TestWizard({
                             const {
                               productVariant,
                               variantKey,
-                              newActualValue,
                               newSellingValue,
-                              currentActual,
                               currentSelling,
-                              hasActualChange,
                               hasSellingChange,
                               rowHasChanges,
                               isPlaceholderRow,
@@ -9061,12 +9027,7 @@ function TestWizard({
                               '-';
                             const variantLabel =
                               productVariant?.displayName || productVariant?.title || '';
-                            const newActualNumeric = parseMatrixPriceNumber(newActualValue);
                             const newSellingNumeric = parseMatrixPriceNumber(newSellingValue);
-                            const actualDelta =
-                              Number.isFinite(currentActual) && Number.isFinite(newActualNumeric)
-                                ? Math.round((newActualNumeric - currentActual) * 100) / 100
-                                : null;
                             const sellingDelta =
                               Number.isFinite(currentSelling) && Number.isFinite(newSellingNumeric)
                                 ? Math.round((newSellingNumeric - currentSelling) * 100) / 100
@@ -9229,70 +9190,9 @@ function TestWizard({
                                   </div>
                                 </td>
                                 <td>
-                                  {Number.isFinite(currentActual)
-                                    ? `$${currentActual.toFixed(2)}`
-                                    : '-'}
-                                </td>
-                                <td>
                                   {Number.isFinite(currentSelling)
                                     ? `$${currentSelling.toFixed(2)}`
                                     : '-'}
-                                </td>
-                                <td
-                                  className={hasActualChange ? styles.priceMatrixChangedCell : ''}
-                                >
-                                  <TextField
-                                    label="Actual change"
-                                    labelHidden
-                                    type="number"
-                                    value={formatMatrixInputNumber(actualDelta)}
-                                    onChange={val => {
-                                      if (isPlaceholderRow) return;
-                                      const parsedDelta =
-                                        val === '' ? null : Number.parseFloat(val);
-                                      if (parsedDelta === null) {
-                                        updateRowOverride('compareAtPrice', null);
-                                        return;
-                                      }
-                                      if (
-                                        !Number.isFinite(parsedDelta) ||
-                                        !Number.isFinite(currentActual)
-                                      ) {
-                                        return;
-                                      }
-                                      const nextValue = Math.max(
-                                        0,
-                                        Math.round((currentActual + parsedDelta) * 100) / 100
-                                      );
-                                      updateRowOverride('compareAtPrice', nextValue);
-                                    }}
-                                    placeholder="+/-"
-                                    prefix="$"
-                                    autoComplete="off"
-                                    disabled={isPlaceholderRow}
-                                  />
-                                </td>
-                                <td
-                                  className={hasActualChange ? styles.priceMatrixChangedCell : ''}
-                                >
-                                  <TextField
-                                    label="New actual"
-                                    labelHidden
-                                    type="number"
-                                    value={newActualValue === null ? '' : String(newActualValue)}
-                                    onChange={val => {
-                                      if (isPlaceholderRow) return;
-                                      const parsed = val === '' ? null : Number.parseFloat(val);
-                                      updateRowOverride(
-                                        'compareAtPrice',
-                                        parsed === null || Number.isFinite(parsed) ? parsed : null
-                                      );
-                                    }}
-                                    placeholder="Optional"
-                                    prefix="$"
-                                    autoComplete="off"
-                                    disabled={isPlaceholderRow}
-                                  />
                                 </td>
                                 <td
                                   className={

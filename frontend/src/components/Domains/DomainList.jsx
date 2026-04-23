@@ -680,11 +680,7 @@ function DomainList() {
         const url = startRes?.data?.redirectUrl ?? unwrapData(startRes)?.redirectUrl;
         if (url && typeof url === 'string') {
           if (returnOAuthUrl) return { redirectUrl: url };
-          const popup = openCenteredPopup(url);
-          if (!popup) {
-            if (isEmbeddedInIframe()) window.open(url, '_blank', 'noopener,noreferrer');
-            else window.top.location.href = url;
-          }
+          redirectToAppUrl(url);
           return;
         }
         // No OAuth URL from API (e.g. 401 or error). Don't redirect — let caller show "Sign in required" and open Connect in new tab.
@@ -692,11 +688,7 @@ function DomainList() {
           return { signInRequired: true, shop: normalizedDomain };
         }
         const fallbackUrl = `${origin}/api/auth?shop=${encodeURIComponent(normalizedDomain)}${origin ? `&callback_base=${encodeURIComponent(origin)}` : ''}`;
-        const popup = openCenteredPopup(fallbackUrl);
-        if (!popup) {
-          if (isEmbeddedInIframe()) window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
-          else window.top.location.href = fallbackUrl;
-        }
+        redirectToAppUrl(fallbackUrl);
         return;
       }
       const origin = typeof window !== 'undefined' ? window.location.origin : '';
@@ -708,11 +700,7 @@ function DomainList() {
         const url = startRes?.data?.redirectUrl ?? unwrapData(startRes)?.redirectUrl;
         if (url && typeof url === 'string') {
           if (returnOAuthUrl) return { redirectUrl: url };
-          const popup = openCenteredPopup(url);
-          if (!popup) {
-            if (isEmbeddedInIframe()) window.open(url, '_blank', 'noopener,noreferrer');
-            else window.top.location.href = url;
-          }
+          redirectToAppUrl(url);
           return;
         }
       } catch (_) {
@@ -722,11 +710,7 @@ function DomainList() {
         return { signInRequired: true, shop: normalizedDomain };
       }
       const fallbackUrl = `${origin}/api/auth?shop=${encodeURIComponent(normalizedDomain)}${origin ? `&callback_base=${encodeURIComponent(origin)}` : ''}`;
-      const popup = openCenteredPopup(fallbackUrl);
-      if (!popup) {
-        if (isEmbeddedInIframe()) window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
-        else window.top.location.href = fallbackUrl;
-      }
+      redirectToAppUrl(fallbackUrl);
     } catch (err) {
       if (err?.response?.status === 401 && returnOAuthUrl) {
         return { signInRequired: true, shop: normalizedDomain };
