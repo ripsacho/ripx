@@ -3402,20 +3402,33 @@ function TestWizard({
       routeDomain || getPreviewDomain() || getShopDomain() || initialData?.shop_domain || null;
     if (previewShopDomain && isShopifyStoreDomain(previewShopDomain)) {
       try {
-        const installRes = await apiGet('/settings/installation', {
-          domain: previewShopDomain,
-        });
-        const installData = unwrapData(installRes);
-        const scriptVerified = installData?.installation?.scriptVerified === true;
-        if (!scriptVerified) {
-          const scriptUrl = installData?.installation?.scriptUrl || null;
+        const setupRes = await apiGet('/shopify/setup/status');
+        const setupData = unwrapData(setupRes);
+        const embedDetected = setupData?.embedStatus?.detected === true;
+        const setupScriptUrl = setupData?.proxyStatus?.url || null;
+        if (!embedDetected) {
           setError(
-            `Preview is blocked because RipX storefront runtime is not verified for ${previewShopDomain}. Enable the RipX app embed on the published theme, then retry.${scriptUrl ? ` Expected script: ${scriptUrl}` : ''}`
+            `Preview is blocked because RipX app embed is not detected on ${previewShopDomain}. Enable RipX app embed on the published theme, then retry.${setupScriptUrl ? ` Runtime URL: ${setupScriptUrl}` : ''}`
           );
           return;
         }
-      } catch (_e) {
-        // Fail-open on diagnostics/network issues so preview remains usable.
+      } catch (_setupErr) {
+        try {
+          const installRes = await apiGet('/settings/installation', {
+            domain: previewShopDomain,
+          });
+          const installData = unwrapData(installRes);
+          const scriptVerified = installData?.installation?.scriptVerified === true;
+          if (!scriptVerified) {
+            const scriptUrl = installData?.installation?.scriptUrl || null;
+            setError(
+              `Preview is blocked because RipX storefront runtime is not verified for ${previewShopDomain}. Enable the RipX app embed on the published theme, then retry.${scriptUrl ? ` Expected script: ${scriptUrl}` : ''}`
+            );
+            return;
+          }
+        } catch (_installErr) {
+          // Fail-open on diagnostics/network issues so preview remains usable.
+        }
       }
     }
     window.open(url, '_blank', 'noopener');
