@@ -648,6 +648,16 @@ function DomainList() {
       });
       return;
     }
+    // For standard "Open A/B tests" flows with email auth, route into /app/:shop first and let
+    // AppDomainLayout handle connect/install gating. This avoids brittle first-hop install links
+    // that can occasionally fail/expire and send users to an error page.
+    if (!returnOAuthUrl && hasEmailSession && isShopifyStoreDomain(normalizedDomain)) {
+      setCurrentStore(normalizedDomain);
+      window.location.href = getUrlWithEmbedParams(ROUTES.appDashboard(normalizedDomain), {
+        shop: normalizedDomain,
+      });
+      return;
+    }
     if (isShopifyStoreDomain(normalizedDomain)) {
       try {
         const connectionStatus = await fetchShopifyConnectionStatus(normalizedDomain);
