@@ -180,9 +180,6 @@ function TestWizard({
   const progressBarRef = useRef(null);
   const progressBarStuck = useStickyProgressBar(progressBarRef);
   const [error, setError] = useState(null);
-  const [previewRuntimeAssist, setPreviewRuntimeAssist] = useState(null);
-  const [previewRuntimeAssistTargetUrl, setPreviewRuntimeAssistTargetUrl] = useState('');
-  const [previewRuntimeAssistToast, setPreviewRuntimeAssistToast] = useState(null);
   const [selectedTemplate, setSelectedTemplate] = useState(initialTemplate);
   const [formData, setFormData] = useState(DEFAULT_FORM_DATA);
   const isShippingTargetingMode = selectedTemplate === 'shipping' || formData.type === 'shipping';
@@ -3412,162 +3409,8 @@ function TestWizard({
       );
       return;
     }
-    setPreviewRuntimeAssistTargetUrl(url);
-    const buildPreviewRuntimeBootstrapSnippet = runtimeScriptUrl => {
-      const safeScriptUrl = String(runtimeScriptUrl || '')
-        .trim()
-        .replace(/'/g, "\\'");
-      if (!safeScriptUrl) return '';
-      return [
-        '(() => {',
-        "  const s = document.createElement('script');",
-        `  s.src = '${safeScriptUrl}';`,
-        '  s.defer = true;',
-        '  document.head.appendChild(s);',
-        '})();',
-      ].join('\n');
-    };
-    setPreviewRuntimeAssist(null);
-    const previewShopDomain =
-      routeDomain || getPreviewDomain() || getShopDomain() || initialData?.shop_domain || null;
-    if (previewShopDomain && isShopifyStoreDomain(previewShopDomain)) {
-      try {
-        const setupRes = await apiGet('/shopify/setup/status', {
-          domain: previewShopDomain,
-        });
-        const setupData = unwrapData(setupRes);
-        const embedDetected = setupData?.embedStatus?.detected === true;
-        const setupScriptUrl = setupData?.proxyStatus?.url || null;
-        if (!embedDetected) {
-          const fallbackScriptUrl =
-            setupScriptUrl || `https://${previewShopDomain}/apps/ripx/script.js`;
-          const assistPayload = {
-            shopDomain: previewShopDomain,
-            scriptUrl: fallbackScriptUrl,
-            snippet: buildPreviewRuntimeBootstrapSnippet(fallbackScriptUrl),
-          };
-          setPreviewRuntimeAssist(assistPayload);
-          setPreviewRuntimeAssistToast({
-            message:
-              'Preview opened with runtime warning. Use the snippet panel if prices do not apply.',
-            type: 'warning',
-          });
-          openPreviewRuntimeHelper(assistPayload, url);
-        }
-      } catch (_setupErr) {
-        try {
-          const installRes = await apiGet('/settings/installation', {
-            domain: previewShopDomain,
-          });
-          const installData = unwrapData(installRes);
-          const scriptVerified = installData?.installation?.scriptVerified === true;
-          if (!scriptVerified) {
-            const scriptUrl = installData?.installation?.scriptUrl || null;
-            const fallbackScriptUrl =
-              scriptUrl || `https://${previewShopDomain}/apps/ripx/script.js`;
-            const assistPayload = {
-              shopDomain: previewShopDomain,
-              scriptUrl: fallbackScriptUrl,
-              snippet: buildPreviewRuntimeBootstrapSnippet(fallbackScriptUrl),
-            };
-            setPreviewRuntimeAssist(assistPayload);
-            setPreviewRuntimeAssistToast({
-              message:
-                'Preview opened with runtime warning. Use the snippet panel if prices do not apply.',
-              type: 'warning',
-            });
-            openPreviewRuntimeHelper(assistPayload, url);
-          }
-        } catch (_installErr) {
-          // Fail-open on diagnostics/network issues so preview remains usable.
-        }
-      }
-    }
     window.open(url, '_blank', 'noopener');
   };
-
-  function openPreviewRuntimeHelper(assistOverride = null, targetUrlOverride = '') {
-    const assist = assistOverride || previewRuntimeAssist;
-    const targetUrl = targetUrlOverride || previewRuntimeAssistTargetUrl;
-    if (!assist?.snippet || !targetUrl) {
-      setPreviewRuntimeAssistToast({
-        message: 'Preview helper is missing runtime snippet or target URL.',
-        type: 'critical',
-      });
-      return;
-    }
-    const helperWindow = window.open('', '_blank', 'width=900,height=760');
-    if (!helperWindow) {
-      setPreviewRuntimeAssistToast({
-        message: 'Popup blocked. Allow popups to open the preview helper.',
-        type: 'critical',
-      });
-      return;
-    }
-    const escapedSnippet = JSON.stringify(assist.snippet || '');
-    const escapedTargetUrl = JSON.stringify(targetUrl);
-    const escapedShopDomain = JSON.stringify(assist.shopDomain || 'store');
-    helperWindow.document.write(`<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>RipX Preview Helper</title>
-    <style>
-      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background: #f6f6f7; color: #111827; }
-      .wrap { max-width: 860px; margin: 0 auto; padding: 24px; }
-      .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
-      h1 { font-size: 20px; margin: 0 0 8px; }
-      p { margin: 0 0 10px; line-height: 1.5; }
-      pre { margin: 0; padding: 12px; border-radius: 8px; background: #f9fafb; border: 1px solid #e5e7eb; white-space: pre-wrap; word-break: break-word; font-size: 12px; }
-      .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
-      button, a.btn { border: 1px solid #d1d5db; border-radius: 8px; background: #fff; color: #111827; padding: 8px 12px; font-size: 13px; text-decoration: none; cursor: pointer; }
-      button.primary, a.btn.primary { background: #111827; color: #fff; border-color: #111827; }
-      .tiny { color: #6b7280; font-size: 12px; }
-      #status { font-size: 13px; margin-top: 8px; color: #047857; min-height: 18px; }
-    </style>
-  </head>
-  <body>
-    <div class="wrap">
-      <div class="card">
-        <h1>RipX Preview Helper</h1>
-        <p>Store: <strong id="shop"></strong></p>
-        <p>1) Open the preview page. 2) Paste/run the snippet once in browser console. 3) Re-test cart and checkout.</p>
-      </div>
-      <div class="card">
-        <p><strong>Runtime bootstrap snippet</strong></p>
-        <pre id="snippet"></pre>
-        <div class="actions">
-          <button id="copySnippet" class="primary">Copy snippet</button>
-          <a id="openPreview" class="btn" target="_blank" rel="noopener noreferrer">Open preview link</a>
-        </div>
-        <div id="status" aria-live="polite"></div>
-      </div>
-      <div class="tiny">Temporary QA helper until RipX app embed is active on the published theme.</div>
-    </div>
-    <script>
-      (function () {
-        var snippet = ${escapedSnippet};
-        var targetUrl = ${escapedTargetUrl};
-        var shop = ${escapedShopDomain};
-        document.getElementById('shop').textContent = shop;
-        document.getElementById('snippet').textContent = snippet;
-        document.getElementById('openPreview').href = targetUrl;
-        var statusEl = document.getElementById('status');
-        document.getElementById('copySnippet').addEventListener('click', async function () {
-          try {
-            await navigator.clipboard.writeText(snippet);
-            statusEl.textContent = 'Snippet copied.';
-          } catch (_e) {
-            statusEl.textContent = 'Copy failed. Select and copy snippet manually.';
-          }
-        });
-      })();
-    </script>
-  </body>
-</html>`);
-    helperWindow.document.close();
-  }
 
   const handleExecuteShippingFromReview = useCallback(
     async (apply, variantIndex = null) => {
@@ -16553,14 +16396,6 @@ function TestWizard({
           duration={2200}
         />
       )}
-      {previewRuntimeAssistToast && (
-        <Toast
-          message={previewRuntimeAssistToast.message}
-          type={previewRuntimeAssistToast.type || 'success'}
-          onClose={() => setPreviewRuntimeAssistToast(null)}
-          duration={2600}
-        />
-      )}
       {antiFlickerToast && (
         <Toast
           message={antiFlickerToast.message}
@@ -16597,48 +16432,6 @@ function TestWizard({
             </div>
 
             <div className="wizard-step">
-              {previewRuntimeAssist && (
-                <Banner
-                  tone="warning"
-                  title={`Preview runtime missing on ${previewRuntimeAssist.shopDomain || 'store'}`}
-                  onDismiss={() => setPreviewRuntimeAssist(null)}
-                >
-                  <BlockStack gap="200">
-                    <Text as="p" variant="bodySm">
-                      Temporary QA workaround: open preview page, run this snippet in browser
-                      console once, then re-test cart/checkout pricing.
-                    </Text>
-                    <pre className={styles.previewRuntimeSnippet}>
-                      {previewRuntimeAssist.snippet || ''}
-                    </pre>
-                    <InlineStack gap="200">
-                      <Button
-                        size="slim"
-                        onClick={async () => {
-                          try {
-                            await navigator.clipboard.writeText(previewRuntimeAssist.snippet || '');
-                            setPreviewRuntimeAssistToast({
-                              message: 'Preview runtime bootstrap snippet copied.',
-                              type: 'success',
-                            });
-                          } catch (_copyErr) {
-                            setPreviewRuntimeAssistToast({
-                              message:
-                                'Could not copy snippet automatically. Copy it manually from the panel.',
-                              type: 'critical',
-                            });
-                          }
-                        }}
-                      >
-                        Copy snippet
-                      </Button>
-                      <Button size="slim" onClick={openPreviewRuntimeHelper}>
-                        Open preview helper
-                      </Button>
-                    </InlineStack>
-                  </BlockStack>
-                </Banner>
-              )}
               {hasStepErrors && (
                 <div
                   ref={validationSummaryRef}

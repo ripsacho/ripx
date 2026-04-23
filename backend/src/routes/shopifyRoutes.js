@@ -39,6 +39,8 @@ async function checkEmbedStatus(shopDomain) {
   const status = {
     url,
     detected: false,
+    confidence: 'low',
+    passwordProtected: false,
     statusCode: null,
     error: null,
   };
@@ -52,7 +54,15 @@ async function checkEmbedStatus(shopDomain) {
     }
 
     const html = await response.text();
-    status.detected = html.includes('/apps/ripx/script.js');
+    const lowerHtml = String(html || '').toLowerCase();
+    const passwordMarkers = [
+      'this store is password protected',
+      '/password',
+      'enter store password',
+    ];
+    status.passwordProtected = passwordMarkers.some(marker => lowerHtml.includes(marker));
+    status.detected = lowerHtml.includes('/apps/ripx/script.js');
+    status.confidence = status.passwordProtected ? 'low' : 'high';
   } catch (error) {
     status.error = error.message;
   }

@@ -770,16 +770,27 @@ router.get(
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Launching Preview...</title>
-    <meta http-equiv="refresh" content="0;url=${escapeHtmlAttr(targetUrl)}">
   </head>
   <body>
     <p>Launching preview...</p>
+    <noscript>
+      <p>JavaScript is required for preview bootstrap. Continue manually:</p>
+      <p><a href="${escapeHtmlAttr(targetUrl)}">Open preview</a></p>
+    </noscript>
     <script>
       (function () {
         try {
           window.name = "__ripx_preview_ctx_v1__:" + JSON.stringify(${JSON.stringify(previewCtx)});
         } catch (e) {}
-        window.location.replace(${JSON.stringify(targetUrl)});
+        var target = ${JSON.stringify(targetUrl)};
+        // Deterministic bootstrap: seed window.name first, then redirect.
+        setTimeout(function () {
+          try {
+            window.location.replace(target);
+          } catch (_e) {
+            window.location.href = target;
+          }
+        }, 0);
       })();
     </script>
   </body>
@@ -1758,6 +1769,147 @@ router.get(
     return res.json({
       success: true,
       test: mapTestToStorefrontPayload(testRow),
+    });
+  })
+);
+
+/**
+ * GET /api/track/preview-health
+ * One-shot preview diagnostics for wizard/runtime UX.
+ * Query: test_id, shop_domain|site, optional variant_id, variant_name, user_id
+ */
+router.get(
+  '/preview-health',
+  asyncHandler(async (req, res) => {
+    const { test_id, variant_id, variant_name, shop_domain, site, user_id } = req.query;
+    const domain = await resolveTenantDomain(shop_domain, site);
+    if (!test_id || !domain) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameters: test_id and shop_domain or site',
+      });
+    }
+    if (!validators.isValidUUID(String(test_id))) {
+      return res.status(400).json({ success: false, error: 'Invalid test_id format' });
+    }
+    const tenantPreview = await getTenantByDomain(domain);
+    if (tenantPreview && isTenantSuspendedOrBlocked(tenantPreview)) {
+      return res.status(403).json({ success: false, error: 'Access suspended. Contact support.' });
+    }
+
+    const checks = [];
+    const addCheck = (id, ok, message) =>
+      checks.push({
+        id,
+        ok: Boolean(ok),
+        message: String(message || ''),
+      });
+
+    const test = await getTestById(String(test_id), domain);
+    addCheck(
+      'test_found',
+      Boolean(test),
+      test
+        ? 'Preview test exists for this shop domain.'
+        : 'Preview test was not found for this shop.'
+    );
+    if (!test) {
+      return res.status(404).json({
+        success: false,
+        error: 'Test not found',
+        health: {
+          score: 0,
+          level: 'error',
+          checks,
+        },
+      });
+    }
+
+    const variants = Array.isArray(test.variants) ? test.variants : [];
+    const variantFromQuery = findVariantForPreviewQuery(variants, { variant_id, variant_name });
+    const variant =
+      variantFromQuery ||
+      variants.find((item, index) => {
+        if (!item) {return false;}
+        if (index === 0) {return true;}
+        const label = String(item.name || '')
+          .trim()
+          .toLowerCase();
+        return label === 'control' || label.startsWith('control ');
+      }) ||
+      variants[0] ||
+      null;
+
+    addCheck(
+      'variant_resolved',
+      Boolean(variant),
+      variant
+        ? 'Preview variant resolved from query or control fallback.'
+        : 'Preview variant could not be resolved.'
+    );
+
+    const storefrontShape = mapTestToStorefrontPayload(test);
+    addCheck(
+      'storefront_shape_ready',
+      Boolean(storefrontShape && storefrontShape.id),
+      storefrontShape && storefrontShape.id
+        ? 'Storefront fallback test shape can be generated.'
+        : 'Storefront fallback test shape is incomplete.'
+    );
+
+    const rawConfig = variant?.config && typeof variant.config === 'object' ? variant.config : {};
+    const config = normalizePreviewVariantConfig(rawConfig);
+    if (variant?.code && config.code === undefined) {
+      config.code = variant.code;
+    }
+    addCheck(
+      'variant_config_present',
+      Object.keys(config || {}).length > 0,
+      Object.keys(config || {}).length > 0
+        ? 'Preview variant has normalized config.'
+        : 'Preview variant config is empty (rendering may be limited).'
+    );
+
+    const previewUserId = user_id !== undefined && user_id !== null ? String(user_id).trim() : '';
+    const signedPreviewVariant = withAssignmentSignature(
+      {
+        variantId: variant?.id || null,
+        variantName: variant?.name || null,
+        config,
+      },
+      String(test_id).trim(),
+      previewUserId,
+      domain
+    );
+    const hasSignedAssignment =
+      Boolean(signedPreviewVariant?.assignment_sig) &&
+      Boolean(signedPreviewVariant?.assignment_ts) &&
+      Boolean(signedPreviewVariant?.assignment_user);
+    addCheck(
+      'assignment_signature',
+      hasSignedAssignment,
+      hasSignedAssignment
+        ? 'Preview variant includes assignment signature fields.'
+        : 'Preview variant does not include assignment signature fields.'
+    );
+
+    const okCount = checks.filter(item => item.ok).length;
+    const score = Math.round((okCount / Math.max(1, checks.length)) * 100);
+    const level = score >= 80 ? 'ready' : score >= 50 ? 'warning' : 'error';
+
+    return res.json({
+      success: true,
+      health: {
+        score,
+        level,
+        checks,
+      },
+      preview: {
+        shopDomain: domain,
+        testId: String(test_id).trim(),
+        variantId: variant?.id || null,
+        variantName: variant?.name || null,
+      },
     });
   })
 );
