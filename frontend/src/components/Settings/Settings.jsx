@@ -2068,7 +2068,8 @@ function Settings() {
     [setupComplete, configuredIntegrationCount, targetingPresets]
   );
   const activeTabMeta = TAB_CONFIG[selectedTab] || null;
-  const currentStoreLabel = String(installation?.domain || '').trim() || 'Not detected';
+  const currentStoreLabel =
+    String(appSettingsDomain || installation?.domain || '').trim() || 'Not detected';
   const tabSummaries = useMemo(
     () => ({
       installation: setupComplete

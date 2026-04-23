@@ -380,6 +380,7 @@ async function attachEmailSessionStoreContext(req) {
   const requestedStoreRaw =
     req.query?.store ||
     req.headers['x-ripx-store'] ||
+    req.query?.domain ||
     req.query?.shop ||
     req.headers['x-shopify-shop-domain'];
   const requestedStore = normalizeDomain(
@@ -393,8 +394,11 @@ async function attachEmailSessionStoreContext(req) {
   let tenant = null;
   if (requestedStore) {
     tenant = await getTenantByAccountAndDomain(accountId, requestedStore);
-  }
-  if (!tenant) {
+    // Do not silently fall back to a different tenant when a specific store was requested.
+    if (!tenant) {
+      return;
+    }
+  } else {
     tenant = await getFirstTenantForAccount(accountId);
   }
   if (!tenant) {

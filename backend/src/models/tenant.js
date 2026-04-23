@@ -39,7 +39,7 @@ function normalizeDomain(domain) {
     .toLowerCase()
     .trim()
     .replace(/^https?:\/\//, '')
-    .split('/')[0];
+    .split(/[/?#]/)[0];
 }
 
 /**

@@ -133,7 +133,7 @@ async function addStoreToAccount(accountId, domain, platform = 'standalone') {
     .toLowerCase()
     .trim()
     .replace(/^https?:\/\//, '')
-    .split('/')[0];
+    .split(/[/?#]/)[0];
 
   if (!normalized) {
     throw new Error('Invalid domain');
@@ -174,7 +174,7 @@ async function getTenantByAccountAndDomain(accountId, domain) {
     .toLowerCase()
     .trim()
     .replace(/^https?:\/\//, '')
-    .split('/')[0];
+    .split(/[/?#]/)[0];
 
   const sql = `
     SELECT * FROM tenants

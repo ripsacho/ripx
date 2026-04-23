@@ -102,6 +102,7 @@ function TopBar({
   const docsPath = ROUTES.DOCS;
   const supportPath = ROUTES.SUPPORT;
   const appDomain = getAppDomainFromPath(location.pathname);
+  const activeStoreLabel = appDomain || shopDomain || null;
   const settingsPath = appDomain ? ROUTES.appSettings(appDomain) : ROUTES.SETTINGS;
 
   const isShopifyStore = Boolean(appDomain && isShopifyStoreDomain(appDomain));
@@ -586,7 +587,7 @@ function TopBar({
             active={userMenuActive}
             activator={
               <Tooltip
-                content={userEmail || shopDomain || 'Account menu'}
+                content={userEmail || activeStoreLabel || 'Account menu'}
                 preferredPosition="below"
               >
                 <button
@@ -600,13 +601,16 @@ function TopBar({
                   <span className={styles.userMenuTriggerIconWrap}>
                     <Icon source={ProfileIcon} />
                   </span>
-                  {(userEmail || shopDomain) && (
-                    <span className={styles.userMenuTriggerLabel} title={userEmail || shopDomain}>
+                  {(userEmail || activeStoreLabel) && (
+                    <span
+                      className={styles.userMenuTriggerLabel}
+                      title={userEmail || activeStoreLabel}
+                    >
                       {userEmail
                         ? userEmail.length > 28
                           ? `${userEmail.slice(0, 12)}…${userEmail.slice(-10)}`
                           : userEmail
-                        : shopDomain}
+                        : activeStoreLabel}
                     </span>
                   )}
                   <span className={styles.userMenuTriggerChevron} aria-hidden>
@@ -620,12 +624,12 @@ function TopBar({
             preferredPosition="below"
           >
             <div className={styles.menuList} role="menu">
-              {(userEmail || shopDomain) && (
+              {(userEmail || activeStoreLabel) && (
                 <div className={styles.userMenuHeader}>
                   <Text as="span" variant="bodySm" tone="subdued">
                     {userEmail ? 'Signed in as' : 'Store'}
                   </Text>
-                  <span className={styles.userEmail}>{userEmail || shopDomain}</span>
+                  <span className={styles.userEmail}>{userEmail || activeStoreLabel}</span>
                 </div>
               )}
               {/* Shopify store only: connection status */}

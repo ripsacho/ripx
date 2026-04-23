@@ -481,7 +481,8 @@ function getAppCred(key) {
  */
 export function getShopDomain() {
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
-  const pathMatch = pathname.match(/^\/app\/([^/]+)/);
+  const relativePath = getEmbeddedAppRelativePathname(pathname);
+  const pathMatch = relativePath.match(/^\/app\/([^/]+)/);
   let domainFromPath = null;
   if (pathMatch) {
     try {
@@ -884,9 +885,7 @@ export function apiRequest(method, endpoint, data = null, config = {}) {
   const storeParam =
     endpoint === '/account/stores' && shopDomain && isOnAppDomainRoute ? { store: shopDomain } : {};
   const emailSessionShopParam =
-    useEmailSession && shopDomain && isOnAppDomainRoute && needsShopContextWithEmailSession
-      ? { shop: shopDomain }
-      : {};
+    useEmailSession && shopDomain && needsShopContextWithEmailSession ? { shop: shopDomain } : {};
   const requestConfig = {
     method,
     url,

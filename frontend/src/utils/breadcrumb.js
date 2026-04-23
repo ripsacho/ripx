@@ -11,7 +11,8 @@ import { ROUTES } from '../constants';
  * @returns {string|null}
  */
 export function getAppDomainFromPath(pathname) {
-  const m = (pathname || '').match(/^\/app\/([^/]+)/);
+  const normalizedPath = String(pathname || '').replace(/^\/store\/[^/]+\/apps\/[^/]+/i, '');
+  const m = normalizedPath.match(/^\/app\/([^/]+)/);
   return m ? decodeURIComponent(m[1]) : null;
 }
 
