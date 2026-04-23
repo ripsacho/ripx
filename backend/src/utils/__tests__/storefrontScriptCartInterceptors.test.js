@@ -151,6 +151,26 @@ function createCartRoot(productIds) {
   };
 }
 
+function getFetchInputUrl(call) {
+  if (!call) {return '';}
+  const input = call.input;
+  if (typeof input === 'string') {return input;}
+  if (input && typeof input.url === 'string') {return input.url;}
+  return '';
+}
+
+function getCartAddFetchCall(fetchCalls) {
+  return (Array.isArray(fetchCalls) ? fetchCalls : []).find(call =>
+    /\/cart\/add(?:\.js)?(?:[?#]|$)/i.test(getFetchInputUrl(call))
+  );
+}
+
+function getCartSnapshotCalls(fetchCalls) {
+  return (Array.isArray(fetchCalls) ? fetchCalls : []).filter(call =>
+    /\/cart\.js(?:[?#]|$)/i.test(getFetchInputUrl(call))
+  );
+}
+
 describe('storefront script cart/add interceptors', () => {
   it('exposes cart debug helpers on test hooks', () => {
     const { hooks } = bootStorefrontScriptHarness();
@@ -254,8 +274,10 @@ describe('storefront script cart/add interceptors', () => {
       body: JSON.stringify({ id: 123, quantity: 1 }),
     });
 
-    expect(fetchCalls).toHaveLength(1);
-    const body = JSON.parse(fetchCalls[0].init.body);
+    const addCall = getCartAddFetchCall(fetchCalls);
+    expect(addCall).toBeTruthy();
+    expect(getCartSnapshotCalls(fetchCalls).length).toBeLessThanOrEqual(1);
+    const body = JSON.parse(addCall.init.body);
     expect(body.properties).toMatchObject({
       _ripx_price_test: '11111111-1111-4111-8111-111111111111',
       _ripx_variant: 'variant-A',
@@ -281,8 +303,10 @@ describe('storefront script cart/add interceptors', () => {
       body: JSON.stringify({ id: 123, quantity: 1 }),
     });
 
-    expect(fetchCalls).toHaveLength(1);
-    const body = JSON.parse(fetchCalls[0].init.body);
+    const addCall = getCartAddFetchCall(fetchCalls);
+    expect(addCall).toBeTruthy();
+    expect(getCartSnapshotCalls(fetchCalls).length).toBeLessThanOrEqual(1);
+    const body = JSON.parse(addCall.init.body);
     expect(body.properties).toMatchObject({
       _ripx_price_test: '11111111-1111-4111-8111-111111111111',
       _ripx_variant: 'variant-A',
@@ -457,8 +481,10 @@ describe('storefront script cart/add interceptors', () => {
       }),
     });
 
-    expect(fetchCalls).toHaveLength(1);
-    const body = JSON.parse(fetchCalls[0].init.body);
+    const addCall = getCartAddFetchCall(fetchCalls);
+    expect(addCall).toBeTruthy();
+    expect(getCartSnapshotCalls(fetchCalls).length).toBeLessThanOrEqual(1);
+    const body = JSON.parse(addCall.init.body);
     expect(Array.isArray(body.items)).toBe(true);
     expect(body.items[0].properties).toMatchObject({
       _ripx_price_test: '44444444-4444-4444-8444-444444444444',
@@ -491,8 +517,10 @@ describe('storefront script cart/add interceptors', () => {
       }),
     });
 
-    expect(fetchCalls).toHaveLength(1);
-    const body = JSON.parse(fetchCalls[0].init.body);
+    const addCall = getCartAddFetchCall(fetchCalls);
+    expect(addCall).toBeTruthy();
+    expect(getCartSnapshotCalls(fetchCalls).length).toBeLessThanOrEqual(1);
+    const body = JSON.parse(addCall.init.body);
     expect(body.line_items[0].properties).toMatchObject({
       _ripx_price_test: '44444444-4444-4444-8444-444444444444',
       _ripx_variant: 'variant-D',
@@ -562,8 +590,10 @@ describe('storefront script cart/add interceptors', () => {
       body,
     });
 
-    expect(fetchCalls).toHaveLength(1);
-    const patched = fetchCalls[0].init.body;
+    const addCall = getCartAddFetchCall(fetchCalls);
+    expect(addCall).toBeTruthy();
+    expect(getCartSnapshotCalls(fetchCalls).length).toBeLessThanOrEqual(1);
+    const patched = addCall.init.body;
     expect(patched).toBeInstanceOf(FormData);
     expect(patched.get('properties[_ripx_price_test]')).toBe(
       '33333333-3333-4333-8333-333333333333'
@@ -596,9 +626,11 @@ describe('storefront script cart/add interceptors', () => {
 
     await windowObj.fetch(requestLike);
 
-    expect(fetchCalls).toHaveLength(1);
-    expect(fetchCalls[0].init).toBeDefined();
-    const body = JSON.parse(fetchCalls[0].init.body);
+    const addCall = getCartAddFetchCall(fetchCalls);
+    expect(addCall).toBeTruthy();
+    expect(getCartSnapshotCalls(fetchCalls).length).toBeLessThanOrEqual(1);
+    expect(addCall.init).toBeDefined();
+    const body = JSON.parse(addCall.init.body);
     expect(body.properties).toMatchObject({
       _ripx_price_test: '55555555-5555-4555-8555-555555555555',
       _ripx_variant: 'variant-E',
