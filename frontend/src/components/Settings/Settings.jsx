@@ -2253,7 +2253,11 @@ function Settings() {
     runFullCheckoutVerification,
     ensureCheckoutDiscount,
   ]);
-  const cartTransformInstalled = checkoutDiag?.infrastructure?.cart_transform_installed === true;
+  const cartTransformDetectedInInventory =
+    shopifyFnInventory?.readiness?.cart_transform_for_direct_price === true;
+  const cartTransformInstalled =
+    checkoutDiag?.infrastructure?.cart_transform_installed === true &&
+    cartTransformDetectedInInventory;
   const installationActionRows = useMemo(() => {
     if (!installation || installation.platform !== 'shopify') return [];
     return [
@@ -3963,13 +3967,17 @@ function Settings() {
                                     )}
                                     {checkoutCartTransformEnsureResult && (
                                       <Banner
-                                        tone="success"
+                                        tone={
+                                          checkoutCartTransformEnsureResult.assumedInstalled
+                                            ? 'warning'
+                                            : 'success'
+                                        }
                                         onDismiss={() => setCheckoutCartTransformEnsureResult(null)}
                                       >
                                         {checkoutCartTransformEnsureResult.created
                                           ? 'RipX cart transform installed successfully.'
                                           : checkoutCartTransformEnsureResult.assumedInstalled
-                                            ? 'RipX cart transform reported as already installed (install state assumed because verification scope is limited).'
+                                            ? 'RipX cart transform reported as already installed, but this is not verified (limited Shopify scope). Run diagnostics and inventory checks before relying on Direct Price Override.'
                                             : 'RipX cart transform already exists for this shop.'}{' '}
                                         {checkoutCartTransformEnsureResult.installCheckStatus
                                           ? `Install check: ${checkoutCartTransformEnsureResult.installCheckStatus}.`
