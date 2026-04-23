@@ -206,4 +206,131 @@ router.get('/script.js', asyncHandler(serveScript));
 // Double path when Partner Dashboard Proxy URL incorrectly includes /script.js
 router.get('/script.js/script.js', asyncHandler(serveScript));
 
+async function servePreviewBootstrap(req, res) {
+  const shop = req.query.shop || req.query.shop_domain;
+  if (!shop) {
+    return res.status(400).type('text/plain').send('Missing shop domain');
+  }
+  if (!isValidShopDomain(shop)) {
+    return res.status(400).type('text/plain').send('Invalid shop domain');
+  }
+  const normalizedShop = normalizeDomain(shop) || String(shop).trim().toLowerCase();
+
+  const blockListMessage = await getBlockListMessage(normalizedShop);
+  if (blockListMessage !== null) {
+    return res
+      .status(403)
+      .type('text/plain')
+      .send(blockListMessage || 'Access blocked.');
+  }
+
+  const maintenanceValue = await getMaintenanceMode();
+  if (isMaintenanceActiveForDomain(normalizedShop, maintenanceValue)) {
+    return res.status(503).type('text/plain').send(ERROR_MESSAGES.MAINTENANCE);
+  }
+
+  const tenant = await getTenantByDomain(normalizedShop);
+  if (tenant && isTenantSuspendedOrBlocked(tenant)) {
+    return res.status(403).type('text/plain').send('Access suspended. Contact support.');
+  }
+
+  const hasSignature = Boolean(req.query.signature);
+  const isProduction = process.env.NODE_ENV === 'production';
+  const skipVerify = !isProduction && process.env.RIPX_APP_PROXY_SKIP_VERIFY === 'true';
+  if (skipVerify) {
+    logger.warn('App proxy signature verification skipped (RIPX_APP_PROXY_SKIP_VERIFY=true)', {
+      shop: normalizedShop,
+      route: 'preview-bootstrap',
+    });
+  }
+  if (!hasSignature && isProduction) {
+    return res.status(401).type('text/plain').send('Unauthorized');
+  }
+  if (hasSignature && !skipVerify) {
+    const queryFromRaw = getQueryFromRequest(req);
+    let verified = verifyAppProxySignature(queryFromRaw);
+    if (!verified && Object.keys(req.query).length > 0) {
+      verified = verifyAppProxySignature(req.query);
+    }
+    if (!verified) {
+      logger.warn('App proxy signature verification failed (preview-bootstrap)', {
+        shop: normalizedShop,
+      });
+      return res.status(401).type('text/plain').send('Unauthorized');
+    }
+  }
+
+  const rawUrl = String(req.query.url || '').trim();
+  if (!rawUrl) {
+    return res.status(400).type('text/plain').send('Missing url parameter');
+  }
+
+  let parsedTarget;
+  try {
+    parsedTarget = new URL(rawUrl);
+  } catch (_e) {
+    return res.status(400).type('text/plain').send('Invalid url parameter');
+  }
+  if (parsedTarget.protocol !== 'https:' && parsedTarget.protocol !== 'http:') {
+    return res.status(400).type('text/plain').send('Invalid target protocol');
+  }
+  if (
+    String(parsedTarget.hostname || '')
+      .trim()
+      .toLowerCase() !== normalizedShop
+  ) {
+    return res.status(400).type('text/plain').send('Target must match shop domain');
+  }
+
+  const targetUrl = parsedTarget.toString();
+  const scriptUrl = `https://${normalizedShop}/apps/ripx/script.js?v=${SCRIPT_VERSION}`;
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RipX preview bootstrap</title>
+    <meta http-equiv="refresh" content="3;url=${targetUrl}">
+  </head>
+  <body>
+    <p>Preparing RipX preview...</p>
+    <noscript>
+      <p>JavaScript required. Continue manually:</p>
+      <p><a href="${targetUrl}">Open preview</a></p>
+    </noscript>
+    <script>
+      (function () {
+        var target = ${JSON.stringify(targetUrl)};
+        var done = false;
+        function go() {
+          if (done) return;
+          done = true;
+          try {
+            window.location.replace(target);
+          } catch (_e) {
+            window.location.href = target;
+          }
+        }
+        var s = document.createElement('script');
+        s.src = ${JSON.stringify(scriptUrl)};
+        s.defer = true;
+        s.onload = function () { setTimeout(go, 30); };
+        s.onerror = function () { setTimeout(go, 120); };
+        (document.head || document.documentElement).appendChild(s);
+        setTimeout(go, 1500);
+      })();
+    </script>
+  </body>
+</html>`;
+  res.set('Cache-Control', 'no-store');
+  res.set(
+    'Content-Security-Policy',
+    "default-src 'self' https:; script-src 'self' https: 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; base-uri 'none'"
+  );
+  return res.type('html').send(html);
+}
+
+router.get('/preview-bootstrap', asyncHandler(servePreviewBootstrap));
+router.get('/preview-bootstrap/preview-bootstrap', asyncHandler(servePreviewBootstrap));
+
 module.exports = router;

@@ -764,26 +764,29 @@ router.get(
     };
 
     const targetUrl = parsed.toString();
+    const previewLaunchTarget = /\.myshopify\.com$/i.test(parsed.hostname || '')
+      ? `https://${parsed.hostname}/apps/ripx/preview-bootstrap?url=${encodeURIComponent(targetUrl)}`
+      : targetUrl;
     const html = `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Launching Preview...</title>
-    <meta http-equiv="refresh" content="1;url=${escapeHtmlAttr(targetUrl)}">
+    <meta http-equiv="refresh" content="1;url=${escapeHtmlAttr(previewLaunchTarget)}">
   </head>
   <body>
     <p>Launching preview...</p>
     <noscript>
       <p>JavaScript is required for preview bootstrap. Continue manually:</p>
-      <p><a href="${escapeHtmlAttr(targetUrl)}">Open preview</a></p>
+      <p><a href="${escapeHtmlAttr(previewLaunchTarget)}">Open preview</a></p>
     </noscript>
     <script>
       (function () {
         try {
           window.name = "__ripx_preview_ctx_v1__:" + JSON.stringify(${JSON.stringify(previewCtx)});
         } catch (e) {}
-        var target = ${JSON.stringify(targetUrl)};
+        var target = ${JSON.stringify(previewLaunchTarget)};
         // Deterministic bootstrap: seed window.name first, then redirect.
         setTimeout(function () {
           try {
