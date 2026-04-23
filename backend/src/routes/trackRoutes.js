@@ -770,6 +770,7 @@ router.get(
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Launching Preview...</title>
+    <meta http-equiv="refresh" content="1;url=${escapeHtmlAttr(targetUrl)}">
   </head>
   <body>
     <p>Launching preview...</p>
@@ -796,6 +797,12 @@ router.get(
   </body>
 </html>`;
     res.set('Cache-Control', 'no-store');
+    // This page intentionally uses a tiny inline script to persist preview context in window.name
+    // before redirecting. Allow inline script only for this single launcher response.
+    res.set(
+      'Content-Security-Policy',
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"
+    );
     res.type('html').send(html);
   })
 );
@@ -1830,8 +1837,12 @@ router.get(
     const variant =
       variantFromQuery ||
       variants.find((item, index) => {
-        if (!item) {return false;}
-        if (index === 0) {return true;}
+        if (!item) {
+          return false;
+        }
+        if (index === 0) {
+          return true;
+        }
         const label = String(item.name || '')
           .trim()
           .toLowerCase();
