@@ -108,15 +108,13 @@ UPDATE users SET email = LOWER(TRIM(email)) WHERE email IS NOT NULL;
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_auth_type_check;
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_auth_identifier_check;
 
--- 6) Make email NOT NULL and keep the same partial unique index shape used in 037.
---    Even with NOT NULL enforced, preserving the WHERE predicate keeps migration DDL
---    idempotent/consistent across mixed environments and reruns.
+-- 6) Make email NOT NULL and enforce uniqueness on normalized email.
+--    Since email is NOT NULL at this point, the unique index should be non-partial.
 DROP INDEX IF EXISTS idx_users_email_lookup;
 DROP INDEX IF EXISTS idx_users_email_unique;
 ALTER TABLE users ALTER COLUMN email SET NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique
-  ON users(LOWER(TRIM(email)))
-  WHERE email IS NOT NULL;
+  ON users(LOWER(TRIM(email)));
 -- Keep status constraint (valid for email-only: pending|accepted|rejected|active|locked|suspended)
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_status_check;
 ALTER TABLE users ADD CONSTRAINT users_status_check CHECK (

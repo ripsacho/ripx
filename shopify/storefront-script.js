@@ -614,6 +614,22 @@
     window.ripx_consent_callback = cb;
   }
 
+  /**
+   * Seed cart attributes as early as possible in preview mode.
+   * This avoids races where add-to-cart fires before the main init flow finishes.
+   */
+  function seedPreviewCartAttributesEarly() {
+    if (!PREVIEW_MODE || !PREVIEW_TEST_ID) return;
+    var earlyVariantId = PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME;
+    if (!earlyVariantId) return;
+    try {
+      injectPriceTestCartAttributes(PREVIEW_TEST_ID, earlyVariantId, null, null);
+    } catch (eSeed) {
+      if (DEBUG) debugLog('preview early cart-attr seed failed:', eSeed && eSeed.message);
+    }
+  }
+  seedPreviewCartAttributesEarly();
+
   const VISUAL_PICKER_MODE = URL_PARAMS.get('ab_visual_picker') === '1';
   const AB_VISUAL_EDITOR =
     URL_PARAMS.get('ab_visual_editor') === '1' || !!(CONFIG.visualEditor === true);
