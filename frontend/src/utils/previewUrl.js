@@ -272,6 +272,27 @@ export function buildPreviewLaunchUrl({ apiBaseUrl, previewUrl }) {
 }
 
 /**
+ * Build a Shopify App Proxy bootstrap URL so the storefront script is guaranteed
+ * to load before redirecting to the final preview page.
+ *
+ * @param {Object} options
+ * @param {string} options.previewUrl - Full preview page URL built by buildPreviewUrl()
+ * @returns {string|null}
+ */
+export function buildShopifyPreviewBootstrapUrl({ previewUrl }) {
+  const directPreviewUrl = typeof previewUrl === 'string' ? previewUrl.trim() : '';
+  if (!directPreviewUrl) return null;
+  try {
+    const directUrl = new URL(directPreviewUrl);
+    const host = String(directUrl.hostname || '').trim();
+    if (!host || !/\.myshopify\.com$/i.test(host)) return null;
+    return `https://${host}/apps/ripx/preview-bootstrap?url=${encodeURIComponent(directPreviewUrl)}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Resolve default base URL for preview from domain(s) and optional override.
  * Order: override URL (if valid) > domain as https://domain/
  *

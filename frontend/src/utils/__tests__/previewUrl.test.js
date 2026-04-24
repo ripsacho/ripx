@@ -2,6 +2,7 @@ import {
   PREVIEW_PARAMS,
   buildPreviewDocumentUrl,
   buildPreviewLaunchUrl,
+  buildShopifyPreviewBootstrapUrl,
   buildPreviewUrl,
 } from '../previewUrl';
 
@@ -80,5 +81,30 @@ describe('previewUrl', () => {
       '1d1f39c4-4083-44f4-b046-1c341b88cc29'
     );
     expect(url.searchParams.get(PREVIEW_PARAMS.TENANT_DOMAIN)).toBe('echologyx.com');
+  });
+
+  it('builds Shopify preview-bootstrap URL for myshopify preview', () => {
+    const previewUrl = buildPreviewUrl({
+      baseUrl: 'https://makripon.myshopify.com/products/test-product',
+      testId: '1d1f39c4-4083-44f4-b046-1c341b88cc29',
+      variantId: 'variant-a',
+      variantName: 'Variant A',
+      tenantDomain: 'echologyx.com',
+    });
+    const result = buildShopifyPreviewBootstrapUrl({ previewUrl });
+    const url = new URL(result);
+    expect(url.origin).toBe('https://makripon.myshopify.com');
+    expect(url.pathname).toBe('/apps/ripx/preview-bootstrap');
+    expect(url.searchParams.get('url')).toBe(previewUrl);
+  });
+
+  it('returns null for non-Shopify preview-bootstrap host', () => {
+    const previewUrl = buildPreviewUrl({
+      baseUrl: 'https://example.com/products/test-product',
+      testId: '1d1f39c4-4083-44f4-b046-1c341b88cc29',
+      variantId: 'variant-a',
+      variantName: 'Variant A',
+    });
+    expect(buildShopifyPreviewBootstrapUrl({ previewUrl })).toBeNull();
   });
 });
