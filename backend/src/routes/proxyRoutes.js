@@ -221,7 +221,7 @@ async function servePreviewBootstrap(req, res) {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>RipX preview bootstrap</title>
-    <meta http-equiv="refresh" content="4;url=${targetUrl}">
+    <meta http-equiv="refresh" content="15;url=${targetUrl}">
     <script src="${loaderUrl}" defer crossorigin="anonymous"></script>
   </head>
   <body>
@@ -358,10 +358,16 @@ async function servePreviewBootstrapLoader(req, res) {
   var appProxyScriptUrl = ${JSON.stringify(appProxyScriptUrl)};
   var directScriptUrl = ${JSON.stringify(directScriptUrl)};
   var redirected = false;
+  var mounted = false;
+  var fallbackTimer = null;
   function goHard() {
-    if (redirected) return;
+    if (redirected || mounted) return;
     redirected = true;
     try { window.location.replace(target); } catch (_e) { window.location.href = target; }
+  }
+  function armFallback(ms) {
+    if (fallbackTimer) clearTimeout(fallbackTimer);
+    fallbackTimer = setTimeout(goHard, ms);
   }
   function injectScriptTag(html) {
     var tags =
@@ -373,6 +379,11 @@ async function servePreviewBootstrapLoader(req, res) {
   }
   function mount(html) {
     if (!html || typeof html !== 'string') return goHard();
+    mounted = true;
+    if (fallbackTimer) {
+      clearTimeout(fallbackTimer);
+      fallbackTimer = null;
+    }
     var next = injectScriptTag(html);
     try {
       var u = new URL(target, window.location.origin);
@@ -393,7 +404,8 @@ async function servePreviewBootstrapLoader(req, res) {
     })
     .then(mount)
     .catch(goHard);
-  setTimeout(goHard, 3500);
+  // Keep fallback generous; fetching full storefront HTML can exceed a few seconds.
+  armFallback(15000);
 })();`;
   res.set('Cache-Control', 'no-store');
   res.set('Content-Type', 'application/javascript; charset=utf-8');
