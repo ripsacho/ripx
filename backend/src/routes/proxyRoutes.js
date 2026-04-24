@@ -212,13 +212,17 @@ async function servePreviewBootstrap(req, res) {
     return;
   }
   const { normalizedShop, targetUrl } = validated;
-  const appProxyScriptUrl = `https://${normalizedShop}/apps/ripx/script.js?v=${SCRIPT_VERSION}`;
+  const previewScriptBust = Date.now();
+  const appProxyScriptUrl =
+    `https://${normalizedShop}/apps/ripx/script.js?v=${SCRIPT_VERSION}` +
+    `&ripx_preview_bust=${previewScriptBust}`;
   const appBaseUrl = String(
     process.env.APP_URL || `${req.protocol || 'https'}://${req.get('host') || ''}`
   ).replace(/\/+$/, '');
   const directScriptUrl =
     `${appBaseUrl}/api/track/script.js?shop=${encodeURIComponent(normalizedShop)}` +
-    `&v=${encodeURIComponent(SCRIPT_VERSION)}`;
+    `&v=${encodeURIComponent(SCRIPT_VERSION)}` +
+    `&ripx_preview_bust=${previewScriptBust}`;
   const loaderUrl = `https://${normalizedShop}/apps/ripx/preview-bootstrap-loader.js?url=${encodeURIComponent(
     targetUrl
   )}`;
@@ -261,8 +265,27 @@ async function servePreviewBootstrap(req, res) {
           if (!htmlText || typeof htmlText !== 'string') return goHard();
           mounted = true;
           try {
+            var tu = new URL(target, window.location.origin);
+            var previewCtx = {
+              preview: tu.searchParams.get('ab_preview') === '1',
+              testId: tu.searchParams.get('ab_preview_test') || null,
+              variantId: tu.searchParams.get('ab_preview_variant') || null,
+              variantName: tu.searchParams.get('ab_preview_variant_name') || null,
+              tenantDomain: tu.searchParams.get('ab_preview_domain') || null,
+              persistedAtMs: Date.now(),
+            };
+            if (previewCtx.preview || previewCtx.testId || previewCtx.variantId || previewCtx.variantName) {
+              try {
+                window.sessionStorage.setItem('__ripx_preview_ctx_v1__', JSON.stringify(previewCtx));
+              } catch (_se) {}
+              try {
+                window.name = '__ripx_preview_ctx_v1__:' + JSON.stringify(previewCtx);
+              } catch (_ne) {}
+            }
+          } catch (_seedErr) {}
+          try {
             var u = new URL(target, window.location.origin);
-            history.replaceState(null, '', u.pathname + u.search + u.hash);
+            history.replaceState(null, '', u.pathname + u.hash);
           } catch (_e) {}
           try {
             document.open();
@@ -400,13 +423,17 @@ async function servePreviewBootstrapLoader(req, res) {
     return;
   }
   const { normalizedShop, targetUrl } = validated;
-  const appProxyScriptUrl = `https://${normalizedShop}/apps/ripx/script.js?v=${SCRIPT_VERSION}`;
+  const previewScriptBust = Date.now();
+  const appProxyScriptUrl =
+    `https://${normalizedShop}/apps/ripx/script.js?v=${SCRIPT_VERSION}` +
+    `&ripx_preview_bust=${previewScriptBust}`;
   const appBaseUrl = String(
     process.env.APP_URL || `${req.protocol || 'https'}://${req.get('host') || ''}`
   ).replace(/\/+$/, '');
   const directScriptUrl =
     `${appBaseUrl}/api/track/script.js?shop=${encodeURIComponent(normalizedShop)}` +
-    `&v=${encodeURIComponent(SCRIPT_VERSION)}`;
+    `&v=${encodeURIComponent(SCRIPT_VERSION)}` +
+    `&ripx_preview_bust=${previewScriptBust}`;
   const js = `(function () {
   var target = ${JSON.stringify(targetUrl)};
   var appProxyScriptUrl = ${JSON.stringify(appProxyScriptUrl)};
@@ -440,8 +467,27 @@ async function servePreviewBootstrapLoader(req, res) {
     }
     var next = injectScriptTag(html);
     try {
+      var tu = new URL(target, window.location.origin);
+      var previewCtx = {
+        preview: tu.searchParams.get('ab_preview') === '1',
+        testId: tu.searchParams.get('ab_preview_test') || null,
+        variantId: tu.searchParams.get('ab_preview_variant') || null,
+        variantName: tu.searchParams.get('ab_preview_variant_name') || null,
+        tenantDomain: tu.searchParams.get('ab_preview_domain') || null,
+        persistedAtMs: Date.now(),
+      };
+      if (previewCtx.preview || previewCtx.testId || previewCtx.variantId || previewCtx.variantName) {
+        try {
+          window.sessionStorage.setItem('__ripx_preview_ctx_v1__', JSON.stringify(previewCtx));
+        } catch (_se) {}
+        try {
+          window.name = '__ripx_preview_ctx_v1__:' + JSON.stringify(previewCtx);
+        } catch (_ne) {}
+      }
+    } catch (_seedErr) {}
+    try {
       var u = new URL(target, window.location.origin);
-      history.replaceState(null, '', u.pathname + u.search + u.hash);
+      history.replaceState(null, '', u.pathname + u.hash);
     } catch (_e) {}
     try {
       document.open();
