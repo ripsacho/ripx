@@ -663,6 +663,10 @@ function sendPreviewFallback(res) {
     .status(200)
     .set('Content-Type', 'text/html; charset=utf-8')
     .set('Cache-Control', 'no-store')
+    .set(
+      'Content-Security-Policy',
+      "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'"
+    )
     .send(PREVIEW_FALLBACK_HTML);
 }
 

@@ -45,6 +45,7 @@ import { PageShell } from '../Shared';
 import { CONTENT_GAP, ROUTES, APP_META, STORAGE_KEYS } from '../../constants';
 import styles from './Settings.module.css';
 import { apiGet, apiPut, apiPost, apiDelete, isStandaloneMode, unwrapData } from '../../services';
+import { buildPreviewUrl, ensureShopifyPreviewBootstrapUrl } from '../../utils/previewUrl';
 import {
   getCheckoutExperienceTestInventory,
   summarizeCheckoutExperienceInventory,
@@ -1567,14 +1568,14 @@ function Settings() {
     const testId = String(previewProbeTestId || '').trim();
     const variant = String(previewProbeVariant || '').trim();
     if (!shopDomain || !testId || !variant) return '';
-    const base = `https://${shopDomain}/`;
-    const params = new URLSearchParams({
-      ab_preview: '1',
-      ab_preview_test: testId,
-      ab_preview_variant: variant,
-      ab_preview_variant_name: variant,
+    const directPreviewUrl = buildPreviewUrl({
+      baseUrl: `https://${shopDomain}/`,
+      testId,
+      variantId: variant,
+      variantName: variant,
+      tenantDomain: shopDomain,
     });
-    return `${base}?${params.toString()}`;
+    return ensureShopifyPreviewBootstrapUrl(directPreviewUrl);
   }, [installation?.domain, previewProbeTestId, previewProbeVariant]);
 
   const shopifyAdminDiscountsUrl = useMemo(() => {

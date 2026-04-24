@@ -451,6 +451,7 @@ const apiLimiter = rateLimit({
       orig.startsWith('/api/live') ||
       orig.startsWith('/api/ready') ||
       orig.startsWith('/api/track') ||
+      orig.startsWith('/api/proxy') ||
       orig.startsWith('/api/webhooks') ||
       orig.startsWith('/api/admin') ||
       orig.startsWith('/api/auth') ||
