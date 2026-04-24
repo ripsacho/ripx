@@ -12,7 +12,7 @@ const fs = require('fs');
 const path = require('path');
 // Load .env from project root (one level up from backend)
 require('dotenv').config({ path: path.join(__dirname, '../../.env') });
-const { query } = require('../src/utils/database');
+const { query, closeDatabase } = require('../src/utils/database');
 const PGVECTOR_MIGRATION_FILE = '050_pgvector_support_kb.sql';
 
 const SCHEMA_MIGRATIONS_TABLE = `
@@ -98,12 +98,23 @@ async function runMigrations() {
 
 // Run if called directly
 if (require.main === module) {
-  runMigrations()
-    .then(() => process.exit(0))
-    .catch(error => {
+  (async () => {
+    let exitCode = 0;
+    try {
+      await runMigrations();
+    } catch (error) {
       console.error('Migration failed:', error);
-      process.exit(1);
-    });
+      exitCode = 1;
+    } finally {
+      try {
+        await closeDatabase();
+      } catch (closeError) {
+        console.error('Failed to close database connections:', closeError);
+        exitCode = 1;
+      }
+      process.exit(exitCode);
+    }
+  })();
 }
 
 module.exports = { runMigrations };

@@ -293,6 +293,23 @@ export function buildShopifyPreviewBootstrapUrl({ previewUrl }) {
 }
 
 /**
+ * Whether a preview URL points to a Shopify store host.
+ *
+ * @param {string} previewUrl
+ * @returns {boolean}
+ */
+export function isShopifyPreviewUrl(previewUrl) {
+  const directPreviewUrl = typeof previewUrl === 'string' ? previewUrl.trim() : '';
+  if (!directPreviewUrl) return false;
+  try {
+    const host = String(new URL(directPreviewUrl).hostname || '').trim();
+    return /\.myshopify\.com$/i.test(host);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Resolve default base URL for preview from domain(s) and optional override.
  * Order: override URL (if valid) > domain as https://domain/
  *

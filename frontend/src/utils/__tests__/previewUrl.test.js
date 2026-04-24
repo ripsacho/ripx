@@ -4,6 +4,7 @@ import {
   buildPreviewLaunchUrl,
   buildShopifyPreviewBootstrapUrl,
   buildPreviewUrl,
+  isShopifyPreviewUrl,
 } from '../previewUrl';
 
 describe('previewUrl', () => {
@@ -106,5 +107,14 @@ describe('previewUrl', () => {
       variantName: 'Variant A',
     });
     expect(buildShopifyPreviewBootstrapUrl({ previewUrl })).toBeNull();
+  });
+
+  it('detects Shopify preview URL host', () => {
+    expect(
+      isShopifyPreviewUrl(
+        'https://makripon.myshopify.com/products/test?ab_preview=1&ab_preview_test=test-id'
+      )
+    ).toBe(true);
+    expect(isShopifyPreviewUrl('https://example.com/products/test')).toBe(false);
   });
 });

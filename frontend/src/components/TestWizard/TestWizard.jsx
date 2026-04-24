@@ -76,6 +76,7 @@ import {
   buildPreviewDocumentUrl,
   buildPreviewLaunchUrl,
   buildShopifyPreviewBootstrapUrl,
+  isShopifyPreviewUrl,
   resolvePreviewBaseUrl,
 } from '../../utils/previewUrl';
 import { inferTemplateKeyFromVariants } from '../../utils/testType';
@@ -3381,7 +3382,7 @@ function TestWizard({
     if (!directPreviewUrl) {
       return null;
     }
-    if (!isShopifyStoreDomain(domain)) {
+    if (!isShopifyPreviewUrl(directPreviewUrl)) {
       return directPreviewUrl;
     }
     const bootstrapPreviewUrl = buildShopifyPreviewBootstrapUrl({
