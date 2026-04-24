@@ -208,7 +208,9 @@ router.get('/script.js/script.js', asyncHandler(serveScript));
 
 async function servePreviewBootstrap(req, res) {
   const validated = await validatePreviewBootstrapRequest(req, res, 'preview-bootstrap');
-  if (!validated) {return;}
+  if (!validated) {
+    return;
+  }
   const { normalizedShop, targetUrl } = validated;
   const loaderUrl = `https://${normalizedShop}/apps/ripx/preview-bootstrap-loader.js?url=${encodeURIComponent(
     targetUrl
@@ -340,12 +342,21 @@ async function validatePreviewBootstrapRequest(req, res, routeName) {
 
 async function servePreviewBootstrapLoader(req, res) {
   const validated = await validatePreviewBootstrapRequest(req, res, 'preview-bootstrap-loader');
-  if (!validated) {return;}
+  if (!validated) {
+    return;
+  }
   const { normalizedShop, targetUrl } = validated;
-  const scriptUrl = `https://${normalizedShop}/apps/ripx/script.js?v=${SCRIPT_VERSION}`;
+  const appProxyScriptUrl = `https://${normalizedShop}/apps/ripx/script.js?v=${SCRIPT_VERSION}`;
+  const appBaseUrl = String(
+    process.env.APP_URL || `${req.protocol || 'https'}://${req.get('host') || ''}`
+  ).replace(/\/+$/, '');
+  const directScriptUrl =
+    `${appBaseUrl}/api/track/script.js?shop=${encodeURIComponent(normalizedShop)}` +
+    `&v=${encodeURIComponent(SCRIPT_VERSION)}`;
   const js = `(function () {
   var target = ${JSON.stringify(targetUrl)};
-  var scriptUrl = ${JSON.stringify(scriptUrl)};
+  var appProxyScriptUrl = ${JSON.stringify(appProxyScriptUrl)};
+  var directScriptUrl = ${JSON.stringify(directScriptUrl)};
   var redirected = false;
   function goHard() {
     if (redirected) return;
@@ -353,10 +364,12 @@ async function servePreviewBootstrapLoader(req, res) {
     try { window.location.replace(target); } catch (_e) { window.location.href = target; }
   }
   function injectScriptTag(html) {
-    var tag = '<script src="' + scriptUrl + '" defer crossorigin="anonymous"><' + '/script>';
-    if (/<\\/head>/i.test(html)) return html.replace(/<\\/head>/i, tag + '</head>');
-    if (/<body[^>]*>/i.test(html)) return html.replace(/<body[^>]*>/i, '$&' + tag);
-    return '<!doctype html><html><head>' + tag + '</head><body>' + html + '</body></html>';
+    var tags =
+      '<script src="' + appProxyScriptUrl + '" defer crossorigin="anonymous"><' + '/script>' +
+      '<script src="' + directScriptUrl + '" defer crossorigin="anonymous"><' + '/script>';
+    if (/<\\/head>/i.test(html)) return html.replace(/<\\/head>/i, tags + '</head>');
+    if (/<body[^>]*>/i.test(html)) return html.replace(/<body[^>]*>/i, '$&' + tags);
+    return '<!doctype html><html><head>' + tags + '</head><body>' + html + '</body></html>';
   }
   function mount(html) {
     if (!html || typeof html !== 'string') return goHard();
