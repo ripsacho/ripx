@@ -310,6 +310,28 @@ export function isShopifyPreviewUrl(previewUrl) {
 }
 
 /**
+ * Ensure preview opens through Shopify bootstrap route.
+ * Useful as a final safeguard right before window.open.
+ *
+ * @param {string} previewUrl
+ * @returns {string}
+ */
+export function ensureShopifyPreviewBootstrapUrl(previewUrl) {
+  const directPreviewUrl = typeof previewUrl === 'string' ? previewUrl.trim() : '';
+  if (!directPreviewUrl) return '';
+  try {
+    const parsed = new URL(directPreviewUrl);
+    const host = String(parsed.hostname || '').trim();
+    if (!host || !/\.myshopify\.com$/i.test(host)) return directPreviewUrl;
+    const p = String(parsed.pathname || '').toLowerCase();
+    if (p.indexOf('/apps/ripx/preview-bootstrap') === 0) return parsed.toString();
+    return `https://${host}/apps/ripx/preview-bootstrap?url=${encodeURIComponent(parsed.toString())}`;
+  } catch {
+    return directPreviewUrl;
+  }
+}
+
+/**
  * Resolve default base URL for preview from domain(s) and optional override.
  * Order: override URL (if valid) > domain as https://domain/
  *

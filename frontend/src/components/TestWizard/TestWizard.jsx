@@ -76,6 +76,7 @@ import {
   buildPreviewDocumentUrl,
   buildPreviewLaunchUrl,
   buildShopifyPreviewBootstrapUrl,
+  ensureShopifyPreviewBootstrapUrl,
   isShopifyPreviewUrl,
   resolvePreviewBaseUrl,
 } from '../../utils/previewUrl';
@@ -3382,21 +3383,20 @@ function TestWizard({
     if (!directPreviewUrl) {
       return null;
     }
-    if (!isShopifyPreviewUrl(directPreviewUrl)) {
-      return directPreviewUrl;
-    }
-    const bootstrapPreviewUrl = buildShopifyPreviewBootstrapUrl({
-      previewUrl: directPreviewUrl,
-    });
-    if (bootstrapPreviewUrl) {
-      return bootstrapPreviewUrl;
-    }
-    return (
-      buildPreviewLaunchUrl({
-        apiBaseUrl: getApiBaseUrl(),
+    let finalPreviewUrl = directPreviewUrl;
+    if (isShopifyPreviewUrl(directPreviewUrl)) {
+      const bootstrapPreviewUrl = buildShopifyPreviewBootstrapUrl({
         previewUrl: directPreviewUrl,
-      }) || directPreviewUrl
-    );
+      });
+      finalPreviewUrl =
+        bootstrapPreviewUrl ||
+        buildPreviewLaunchUrl({
+          apiBaseUrl: getApiBaseUrl(),
+          previewUrl: directPreviewUrl,
+        }) ||
+        directPreviewUrl;
+    }
+    return ensureShopifyPreviewBootstrapUrl(finalPreviewUrl);
   };
 
   const handlePreviewVariant = async (variant, index) => {
@@ -3417,7 +3417,8 @@ function TestWizard({
       );
       return;
     }
-    window.open(url, '_blank', 'noopener');
+    const finalUrl = ensureShopifyPreviewBootstrapUrl(url);
+    window.open(finalUrl, '_blank', 'noopener');
   };
 
   const handleExecuteShippingFromReview = useCallback(
@@ -8001,12 +8002,6 @@ function TestWizard({
 
   const getMatrixCurrentSellingPrice = productVariant =>
     parseMatrixPriceNumber(productVariant?.price);
-
-  const getMatrixCurrentActualPrice = productVariant => {
-    const compareAt = parseMatrixPriceNumber(productVariant?.compareAtPrice);
-    if (compareAt !== null) return compareAt;
-    return getMatrixCurrentSellingPrice(productVariant);
-  };
 
   const priceConfigImpliesIncrease = cfg => {
     if (!cfg || typeof cfg !== 'object') return false;
