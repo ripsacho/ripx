@@ -229,7 +229,7 @@ async function servePreviewBootstrap(req, res) {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>RipX preview bootstrap</title>
     <meta http-equiv="refresh" content="15;url=${targetUrl}">
-    <script src="${loaderUrl}" defer crossorigin="anonymous"></script>
+    <script src="${loaderUrl}" crossorigin="anonymous"></script>
   </head>
   <body>
     <p>Preparing RipX preview...</p>
@@ -251,8 +251,8 @@ async function servePreviewBootstrap(req, res) {
         }
         function injectScriptTag(htmlText) {
           var tags =
-            '<script src="' + appProxyScriptUrl + '" defer crossorigin="anonymous"><' + '/script>' +
-            '<script src="' + directScriptUrl + '" defer crossorigin="anonymous"><' + '/script>';
+            '<script src="' + appProxyScriptUrl + '" crossorigin="anonymous"><' + '/script>' +
+            '<script src="' + directScriptUrl + '" crossorigin="anonymous"><' + '/script>';
           if (/<\\/head>/i.test(htmlText)) return htmlText.replace(/<\\/head>/i, tags + '</head>');
           if (/<body[^>]*>/i.test(htmlText)) return htmlText.replace(/<body[^>]*>/i, '$&' + tags);
           return '<!doctype html><html><head>' + tags + '</head><body>' + htmlText + '</body></html>';
@@ -425,8 +425,8 @@ async function servePreviewBootstrapLoader(req, res) {
   }
   function injectScriptTag(html) {
     var tags =
-      '<script src="' + appProxyScriptUrl + '" defer crossorigin="anonymous"><' + '/script>' +
-      '<script src="' + directScriptUrl + '" defer crossorigin="anonymous"><' + '/script>';
+      '<script src="' + appProxyScriptUrl + '" crossorigin="anonymous"><' + '/script>' +
+      '<script src="' + directScriptUrl + '" crossorigin="anonymous"><' + '/script>';
     if (/<\\/head>/i.test(html)) return html.replace(/<\\/head>/i, tags + '</head>');
     if (/<body[^>]*>/i.test(html)) return html.replace(/<body[^>]*>/i, '$&' + tags);
     return '<!doctype html><html><head>' + tags + '</head><body>' + html + '</body></html>';
