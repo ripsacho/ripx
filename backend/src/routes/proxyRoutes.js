@@ -212,6 +212,13 @@ async function servePreviewBootstrap(req, res) {
     return;
   }
   const { normalizedShop, targetUrl } = validated;
+  const appProxyScriptUrl = `https://${normalizedShop}/apps/ripx/script.js?v=${SCRIPT_VERSION}`;
+  const appBaseUrl = String(
+    process.env.APP_URL || `${req.protocol || 'https'}://${req.get('host') || ''}`
+  ).replace(/\/+$/, '');
+  const directScriptUrl =
+    `${appBaseUrl}/api/track/script.js?shop=${encodeURIComponent(normalizedShop)}` +
+    `&v=${encodeURIComponent(SCRIPT_VERSION)}`;
   const loaderUrl = `https://${normalizedShop}/apps/ripx/preview-bootstrap-loader.js?url=${encodeURIComponent(
     targetUrl
   )}`;
@@ -230,12 +237,59 @@ async function servePreviewBootstrap(req, res) {
       <p>JavaScript required. Continue manually:</p>
       <p><a href="${targetUrl}">Open preview</a></p>
     </noscript>
+    <script>
+      (function () {
+        var target = ${JSON.stringify(targetUrl)};
+        var appProxyScriptUrl = ${JSON.stringify(appProxyScriptUrl)};
+        var directScriptUrl = ${JSON.stringify(directScriptUrl)};
+        var mounted = false;
+        var redirected = false;
+        function goHard() {
+          if (redirected || mounted) return;
+          redirected = true;
+          try { window.location.replace(target); } catch (_e) { window.location.href = target; }
+        }
+        function injectScriptTag(htmlText) {
+          var tags =
+            '<script src="' + appProxyScriptUrl + '" defer crossorigin="anonymous"><' + '/script>' +
+            '<script src="' + directScriptUrl + '" defer crossorigin="anonymous"><' + '/script>';
+          if (/<\\/head>/i.test(htmlText)) return htmlText.replace(/<\\/head>/i, tags + '</head>');
+          if (/<body[^>]*>/i.test(htmlText)) return htmlText.replace(/<body[^>]*>/i, '$&' + tags);
+          return '<!doctype html><html><head>' + tags + '</head><body>' + htmlText + '</body></html>';
+        }
+        function mount(htmlText) {
+          if (!htmlText || typeof htmlText !== 'string') return goHard();
+          mounted = true;
+          try {
+            var u = new URL(target, window.location.origin);
+            history.replaceState(null, '', u.pathname + u.search + u.hash);
+          } catch (_e) {}
+          try {
+            document.open();
+            document.write(injectScriptTag(htmlText));
+            document.close();
+          } catch (_e) {
+            goHard();
+          }
+        }
+        fetch(target, { method: 'GET', credentials: 'include', redirect: 'follow' })
+          .then(function (r) {
+            if (!r || !r.ok) throw new Error('target_fetch_failed');
+            return r.text();
+          })
+          .then(mount)
+          .catch(function () {
+            // keep external loader tag as secondary fallback path
+          });
+        setTimeout(goHard, 15000);
+      })();
+    </script>
   </body>
 </html>`;
   res.set('Cache-Control', 'no-store');
   res.set(
     'Content-Security-Policy',
-    "default-src 'self' https:; script-src 'self' https:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; base-uri 'none'"
+    "default-src 'self' https:; script-src 'self' https: 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; base-uri 'none'"
   );
   return res.type('html').send(html);
 }
