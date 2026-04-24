@@ -349,46 +349,55 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
     ];
 
 app.use(
-  cors({
-    origin: (origin, callback) => {
-      const isProduction = process.env.NODE_ENV === 'production';
+  cors((req, callback) => {
+    const origin = req.headers.origin;
+    const isProduction = process.env.NODE_ENV === 'production';
+    const routePath = String(req.originalUrl || req.path || '');
+    const isPublicStorefrontRoute =
+      routePath.startsWith('/api/track') || routePath.startsWith('/api/proxy');
 
-      // In development, allow any origin (Shopify dev tunnel + LAN) and requests with no origin (curl, etc.).
-      if (!isProduction) {
-        return callback(null, true);
-      }
+    const baseOptions = {
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      allowedHeaders: [
+        'Content-Type',
+        'Authorization',
+        'X-Shopify-Shop-Domain',
+        'X-Shopify-Hmac-Sha256',
+        'X-RipX-API-Key',
+        'X-RipX-ApiKey',
+        'X-RipX-Store',
+        'X-Request-ID',
+      ],
+      credentials: !isPublicStorefrontRoute,
+    };
 
-      // In production, allow requests with no Origin (e.g. direct navigation to / or /favicon.ico; browser often omits Origin for document requests).
-      if (!origin) {
-        return callback(null, true);
-      }
+    // In development, allow any origin (Shopify dev tunnel + LAN) and requests with no origin.
+    if (!isProduction) {
+      return callback(null, { ...baseOptions, origin: true });
+    }
 
-      if (allowedOrigins.indexOf(origin) !== -1) {
-        return callback(null, true);
-      }
-      // Allow Shopify Admin / store origins (browser sends exact origin, not *.myshopify.com)
-      if (
-        origin === 'https://admin.shopify.com' ||
-        (origin.startsWith('https://') && origin.endsWith('.myshopify.com'))
-      ) {
-        return callback(null, true);
-      }
+    // In production, allow requests with no Origin (document navigation, curl, etc.).
+    if (!origin) {
+      return callback(null, { ...baseOptions, origin: true });
+    }
 
-      logger.warn('CORS blocked origin', { origin, allowedOrigins });
-      return callback(new Error('Not allowed by CORS'));
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'X-Shopify-Shop-Domain',
-      'X-Shopify-Hmac-Sha256',
-      'X-RipX-API-Key',
-      'X-RipX-ApiKey',
-      'X-RipX-Store',
-      'X-Request-ID',
-    ],
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      return callback(null, { ...baseOptions, origin: true });
+    }
+    // Allow Shopify Admin / myshopify storefront origins.
+    if (
+      origin === 'https://admin.shopify.com' ||
+      (origin.startsWith('https://') && origin.endsWith('.myshopify.com'))
+    ) {
+      return callback(null, { ...baseOptions, origin: true });
+    }
+    // Allow custom storefront domains for public storefront endpoints only.
+    if (isPublicStorefrontRoute && origin.startsWith('https://')) {
+      return callback(null, { ...baseOptions, origin: true });
+    }
+
+    logger.warn('CORS blocked origin', { origin, allowedOrigins, routePath });
+    return callback(new Error('Not allowed by CORS'));
   })
 );
 

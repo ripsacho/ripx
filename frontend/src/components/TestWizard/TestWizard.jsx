@@ -574,6 +574,7 @@ function TestWizard({
   const priceMatrixProductsByIdRef = useRef({});
   const priceMatrixErrorByIdRef = useRef({});
   const priceMatrixFetchInFlightRef = useRef({});
+  const priceProductMetaByIdRef = useRef({});
   const [priceMatrixBulkMode, setPriceMatrixBulkMode] = useState('amount');
   const [priceMatrixBulkValue, setPriceMatrixBulkValue] = useState('');
   const [priceMatrixBulkSummary, setPriceMatrixBulkSummary] = useState(null);
@@ -1630,6 +1631,10 @@ function TestWizard({
   }, [priceMatrixErrorById]);
 
   useEffect(() => {
+    priceProductMetaByIdRef.current = priceProductMetaById || {};
+  }, [priceProductMetaById]);
+
+  useEffect(() => {
     if (!canFetchAllProductsMatrix) {
       setAllProductsMatrixProducts([]);
       setAllProductsMatrixVisibleCount(PRICE_PRODUCT_MODAL_REVEAL_BATCH);
@@ -1752,7 +1757,6 @@ function TestWizard({
     ) {
       return;
     }
-    let cancelled = false;
     matrixProductIdsForFetching.forEach(productId => {
       if (!productId) return;
       const existingMatrixProduct = priceMatrixProductsByIdRef.current[productId];
@@ -1761,6 +1765,10 @@ function TestWizard({
       const hasMatrixFetchError = Boolean(priceMatrixErrorByIdRef.current[productId]);
       const inFlight = Boolean(priceMatrixFetchInFlightRef.current[productId]);
       if (hasLoadedVariants || hasMatrixFetchError || inFlight) return;
+      const productIdRaw = String(productId || '').trim();
+      const normalizedQueryProductId = /^\d+$/.test(productIdRaw)
+        ? `gid://shopify/Product/${productIdRaw}`
+        : productIdRaw;
       priceMatrixFetchInFlightRef.current[productId] = true;
       setPriceMatrixLoadingById(prev => ({ ...prev, [productId]: true }));
       setPriceMatrixErrorById(prev => ({ ...prev, [productId]: null }));
@@ -1768,7 +1776,7 @@ function TestWizard({
         '/shopify/product-variants',
         {
           shop: routeDomain,
-          productId,
+          productId: normalizedQueryProductId,
           first: 1,
           variantsFirst: 100,
         },
@@ -1777,14 +1785,15 @@ function TestWizard({
         }
       )
         .then(res => {
-          if (cancelled) return;
+          const metaById = priceProductMetaByIdRef.current || {};
+          const meta = metaById[productId] || {};
           const product = Array.isArray(res.data?.products) ? res.data.products[0] : null;
           const normalized = product
             ? {
                 id: product.id || productId,
-                title: product.title || priceProductMetaById[productId]?.title || String(productId),
+                title: product.title || meta.title || String(productId),
                 handle: product.handle || '',
-                imageUrl: priceProductMetaById[productId]?.imageUrl || null,
+                imageUrl: meta.imageUrl || null,
                 variants: Array.isArray(product.variants) ? product.variants : [],
               }
             : null;
@@ -1792,9 +1801,9 @@ function TestWizard({
             ...prev,
             [productId]: normalized || {
               id: productId,
-              title: priceProductMetaById[productId]?.title || String(productId),
-              handle: priceProductMetaById[productId]?.handle || '',
-              imageUrl: priceProductMetaById[productId]?.imageUrl || null,
+              title: meta.title || String(productId),
+              handle: meta.handle || '',
+              imageUrl: meta.imageUrl || null,
               variants: [],
             },
           }));
@@ -1811,7 +1820,6 @@ function TestWizard({
           }
         })
         .catch(err => {
-          if (cancelled) return;
           setPriceMatrixErrorById(prev => ({
             ...prev,
             [productId]:
@@ -1822,20 +1830,15 @@ function TestWizard({
         })
         .finally(() => {
           priceMatrixFetchInFlightRef.current[productId] = false;
-          if (cancelled) return;
           setPriceMatrixLoadingById(prev => ({ ...prev, [productId]: false }));
         });
     });
-    return () => {
-      cancelled = true;
-    };
   }, [
     formData.pricePerProduct,
     matrixProductIdsForFetching,
     isStandalone,
     isShopifyFromRoute,
     routeDomain,
-    priceProductMetaById,
   ]);
 
   useEffect(() => {
