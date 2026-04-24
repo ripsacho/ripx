@@ -574,6 +574,7 @@ function TestWizard({
   const priceMatrixProductsByIdRef = useRef({});
   const priceMatrixErrorByIdRef = useRef({});
   const priceMatrixFetchInFlightRef = useRef({});
+  const priceMatrixLoadStartedAtRef = useRef({});
   const priceProductMetaByIdRef = useRef({});
   const [priceMatrixBulkMode, setPriceMatrixBulkMode] = useState('amount');
   const [priceMatrixBulkValue, setPriceMatrixBulkValue] = useState('');
@@ -1770,6 +1771,7 @@ function TestWizard({
         ? `gid://shopify/Product/${productIdRaw}`
         : productIdRaw;
       priceMatrixFetchInFlightRef.current[productId] = true;
+      priceMatrixLoadStartedAtRef.current[productId] = Date.now();
       setPriceMatrixLoadingById(prev => ({ ...prev, [productId]: true }));
       setPriceMatrixErrorById(prev => ({ ...prev, [productId]: null }));
       apiGet(
@@ -1830,6 +1832,7 @@ function TestWizard({
         })
         .finally(() => {
           priceMatrixFetchInFlightRef.current[productId] = false;
+          delete priceMatrixLoadStartedAtRef.current[productId];
           setPriceMatrixLoadingById(prev => ({ ...prev, [productId]: false }));
         });
     });
@@ -1840,6 +1843,48 @@ function TestWizard({
     isShopifyFromRoute,
     routeDomain,
   ]);
+
+  useEffect(() => {
+    if (!formData.pricePerProduct || matrixProductIdsForFetching.length === 0) return undefined;
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+      let needsLoadingPatch = false;
+      const loadingPatch = {};
+      let needsErrorPatch = false;
+      const errorPatch = {};
+      matrixProductIdsForFetching.forEach(productId => {
+        if (!productId || !priceMatrixLoadingById[productId]) return;
+        const startedAt = Number(priceMatrixLoadStartedAtRef.current[productId] || now);
+        const elapsedMs = now - startedAt;
+        const inFlight = Boolean(priceMatrixFetchInFlightRef.current[productId]);
+        const hasLoadedVariants =
+          Array.isArray(priceMatrixProductsByIdRef.current[productId]?.variants) &&
+          priceMatrixProductsByIdRef.current[productId].variants.length > 0;
+        // Auto-heal stale loading rows so the table never stays blocked indefinitely.
+        if (
+          (elapsedMs > 25000 && !hasLoadedVariants) ||
+          (elapsedMs > 6000 && !inFlight && !hasLoadedVariants)
+        ) {
+          priceMatrixFetchInFlightRef.current[productId] = false;
+          delete priceMatrixLoadStartedAtRef.current[productId];
+          loadingPatch[productId] = false;
+          needsLoadingPatch = true;
+          if (!priceMatrixErrorByIdRef.current[productId]) {
+            errorPatch[productId] =
+              'Variant loading timed out. Re-open this step or click Save and retry.';
+            needsErrorPatch = true;
+          }
+        }
+      });
+      if (needsLoadingPatch) {
+        setPriceMatrixLoadingById(prev => ({ ...prev, ...loadingPatch }));
+      }
+      if (needsErrorPatch) {
+        setPriceMatrixErrorById(prev => ({ ...prev, ...errorPatch }));
+      }
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [formData.pricePerProduct, matrixProductIdsForFetching, priceMatrixLoadingById]);
 
   useEffect(() => {
     if (!isShippingTargetingMode) {
