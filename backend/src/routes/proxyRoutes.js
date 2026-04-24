@@ -255,6 +255,30 @@ async function servePreviewBootstrap(req, res) {
         }
         function injectScriptTag(htmlText) {
           var tags =
+            '<script>(function(){' +
+            'var attempts=0;' +
+            'function hasRipx(){return !!(window.RipX&&window.RipX.version);}' +
+            'function injectOnce(src){' +
+              'if(!src) return;' +
+              'try{' +
+                'var exists=Array.prototype.slice.call(document.scripts||[]).some(function(s){return s&&s.src&&s.src.indexOf(src)===0;});' +
+                'if(exists) return;' +
+              '}catch(_e){}' +
+              'var t=document.createElement("script");' +
+              't.src=src;' +
+              't.async=false;' +
+              't.crossOrigin="anonymous";' +
+              '(document.head||document.documentElement||document.body).appendChild(t);' +
+            '}' +
+            'function ensure(){' +
+              'if(hasRipx()) return;' +
+              'attempts+=1;' +
+              'injectOnce(appProxyScriptUrl);' +
+              'injectOnce(directScriptUrl);' +
+              'if(!hasRipx()&&attempts<10){setTimeout(ensure,1500);}' +
+            '}' +
+            'ensure();' +
+            '})();<' + '/script>' +
             '<script src="' + appProxyScriptUrl + '" crossorigin="anonymous"><' + '/script>' +
             '<script src="' + directScriptUrl + '" crossorigin="anonymous"><' + '/script>';
           if (/<\\/head>/i.test(htmlText)) return htmlText.replace(/<\\/head>/i, tags + '</head>');
@@ -452,6 +476,30 @@ async function servePreviewBootstrapLoader(req, res) {
   }
   function injectScriptTag(html) {
     var tags =
+      '<script>(function(){' +
+      'var attempts=0;' +
+      'function hasRipx(){return !!(window.RipX&&window.RipX.version);}' +
+      'function injectOnce(src){' +
+        'if(!src) return;' +
+        'try{' +
+          'var exists=Array.prototype.slice.call(document.scripts||[]).some(function(s){return s&&s.src&&s.src.indexOf(src)===0;});' +
+          'if(exists) return;' +
+        '}catch(_e){}' +
+        'var t=document.createElement("script");' +
+        't.src=src;' +
+        't.async=false;' +
+        't.crossOrigin="anonymous";' +
+        '(document.head||document.documentElement||document.body).appendChild(t);' +
+      '}' +
+      'function ensure(){' +
+        'if(hasRipx()) return;' +
+        'attempts+=1;' +
+        'injectOnce(appProxyScriptUrl);' +
+        'injectOnce(directScriptUrl);' +
+        'if(!hasRipx()&&attempts<10){setTimeout(ensure,1500);}' +
+      '}' +
+      'ensure();' +
+      '})();<' + '/script>' +
       '<script src="' + appProxyScriptUrl + '" crossorigin="anonymous"><' + '/script>' +
       '<script src="' + directScriptUrl + '" crossorigin="anonymous"><' + '/script>';
     if (/<\\/head>/i.test(html)) return html.replace(/<\\/head>/i, tags + '</head>');
