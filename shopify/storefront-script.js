@@ -628,6 +628,43 @@
       if (DEBUG) debugLog('preview early cart-attr seed failed:', eSeed && eSeed.message);
     }
   }
+  function withPreviewQueryParams(urlValue) {
+    var raw = urlValue ? String(urlValue).trim() : '';
+    if (!raw) return '';
+    try {
+      var parsed = new URL(raw, window.location.origin);
+      if (PREVIEW_MODE) parsed.searchParams.set('ab_preview', '1');
+      if (PREVIEW_TEST_ID) parsed.searchParams.set('ab_preview_test', String(PREVIEW_TEST_ID));
+      if (PREVIEW_VARIANT_ID)
+        parsed.searchParams.set('ab_preview_variant', String(PREVIEW_VARIANT_ID));
+      if (PREVIEW_VARIANT_NAME) {
+        parsed.searchParams.set('ab_preview_variant_name', String(PREVIEW_VARIANT_NAME));
+      }
+      if (PREVIEW_TENANT_DOMAIN)
+        parsed.searchParams.set('ab_preview_domain', String(PREVIEW_TENANT_DOMAIN));
+      return parsed.toString();
+    } catch (_e) {
+      return raw;
+    }
+  }
+  function toPreviewBootstrapUrl(urlValue) {
+    var withCtx = withPreviewQueryParams(urlValue || window.location.href);
+    if (!withCtx) return '';
+    try {
+      var parsed = new URL(withCtx, window.location.origin);
+      if (!/\.myshopify\.com$/i.test(String(parsed.hostname || ''))) return parsed.toString();
+      var p = String(parsed.pathname || '').toLowerCase();
+      if (p.indexOf('/apps/ripx/preview-bootstrap') === 0) return parsed.toString();
+      return (
+        'https://' +
+        parsed.hostname +
+        '/apps/ripx/preview-bootstrap?url=' +
+        encodeURIComponent(parsed.toString())
+      );
+    } catch (_e) {
+      return withCtx;
+    }
+  }
   seedPreviewCartAttributesEarly();
 
   const VISUAL_PICKER_MODE = URL_PARAMS.get('ab_visual_picker') === '1';
@@ -2763,21 +2800,26 @@
     forms.forEach(function (form) {
       if (!form) return;
       if (!formMatchesTargetProductIds(form, targetProductIds)) return;
-      function setProperty(propKey, value) {
+      function setHiddenInputByName(inputName, value) {
+        if (!inputName) return;
         if (value === undefined || value === null || String(value).trim() === '') return;
-        var fullName = 'properties[' + propKey + ']';
         var inputs = form.querySelectorAll('input[type="hidden"]');
         for (var hi = 0; hi < inputs.length; hi++) {
-          if (inputs[hi].name === fullName) {
+          if (inputs[hi].name === inputName) {
             inputs[hi].value = value;
             return;
           }
         }
         var input = document.createElement('input');
         input.type = 'hidden';
-        input.name = fullName;
+        input.name = inputName;
         input.value = value;
         form.appendChild(input);
+      }
+      function setProperty(propKey, value) {
+        if (value === undefined || value === null || String(value).trim() === '') return;
+        var fullName = 'properties[' + propKey + ']';
+        setHiddenInputByName(fullName, value);
       }
       setProperty(keyTest, valueTest);
       setProperty(keyVariant, valueVariant);
@@ -2825,6 +2867,19 @@
           variantIdInput.value = swapState.mappedVariantId;
           if (variantIdInput.setAttribute) {
             variantIdInput.setAttribute('data-ripx-native-variant', swapState.mappedVariantId);
+          }
+        }
+      }
+      if (PREVIEW_MODE) {
+        var rawAction = (form.getAttribute && form.getAttribute('action')) || '';
+        var resolvedAction = '';
+        try {
+          resolvedAction = rawAction ? new URL(rawAction, window.location.origin).toString() : '';
+        } catch (_eAction) {}
+        if (!resolvedAction || isCartAddPath(resolvedAction)) {
+          var returnTo = toPreviewBootstrapUrl(window.location.href);
+          if (returnTo) {
+            setHiddenInputByName('return_to', returnTo);
           }
         }
       }
