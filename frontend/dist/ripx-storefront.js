@@ -614,6 +614,22 @@
     window.ripx_consent_callback = cb;
   }
 
+  /**
+   * Seed cart attributes as early as possible in preview mode.
+   * This avoids races where add-to-cart fires before the main init flow finishes.
+   */
+  function seedPreviewCartAttributesEarly() {
+    if (!PREVIEW_MODE || !PREVIEW_TEST_ID) return;
+    var earlyVariantId = PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME;
+    if (!earlyVariantId) return;
+    try {
+      injectPriceTestCartAttributes(PREVIEW_TEST_ID, earlyVariantId, null, null);
+    } catch (eSeed) {
+      if (DEBUG) debugLog('preview early cart-attr seed failed:', eSeed && eSeed.message);
+    }
+  }
+  seedPreviewCartAttributesEarly();
+
   const VISUAL_PICKER_MODE = URL_PARAMS.get('ab_visual_picker') === '1';
   const AB_VISUAL_EDITOR =
     URL_PARAMS.get('ab_visual_editor') === '1' || !!(CONFIG.visualEditor === true);
@@ -795,6 +811,7 @@
   var _ripxCartAddInterceptorsInstalled = false;
   var _ripxCartPropsRepairInFlight = null;
   var _ripxCartPropsRepairLastAt = 0;
+  var _ripxCartPropsRepairTimers = [];
   var _ripxCartNativeState = {
     cart: null,
     fetchedAt: 0,
@@ -2205,6 +2222,21 @@
     return _ripxCartPropsRepairInFlight;
   }
 
+  function scheduleRipxCartPropsRepairBurst(reason) {
+    maybeRepairRipxCartLineProperties(reason || 'immediate');
+    var delays = [120, 420, 1100];
+    for (var i = 0; i < delays.length; i++) {
+      (function (delayMs) {
+        var timer = setTimeout(function () {
+          var idx = _ripxCartPropsRepairTimers.indexOf(timer);
+          if (idx >= 0) _ripxCartPropsRepairTimers.splice(idx, 1);
+          maybeRepairRipxCartLineProperties((reason || 'burst') + '-t' + String(delayMs));
+        }, delayMs);
+        _ripxCartPropsRepairTimers.push(timer);
+      })(delays[i]);
+    }
+  }
+
   function installRipxCartAddInterceptors() {
     if (_ripxCartAddInterceptorsInstalled) return;
     _ripxCartAddInterceptorsInstalled = true;
@@ -2284,7 +2316,7 @@
                       return nativeFetch(input, asyncInit).then(function (response) {
                         if (response && response.ok) {
                           scheduleRipxCartNativeStateRefreshBurst();
-                          maybeRepairRipxCartLineProperties('fetch-stream');
+                          scheduleRipxCartPropsRepairBurst('fetch-stream');
                         }
                         return response;
                       });
@@ -2316,7 +2348,7 @@
               return nativeFetch(input, nextInit).then(function (response) {
                 if (response && response.ok) {
                   scheduleRipxCartNativeStateRefreshBurst();
-                  maybeRepairRipxCartLineProperties('fetch');
+                  scheduleRipxCartPropsRepairBurst('fetch');
                 }
                 return response;
               });
@@ -2359,7 +2391,7 @@
                 function () {
                   if (self.status >= 200 && self.status < 300) {
                     scheduleRipxCartNativeStateRefreshBurst();
-                    maybeRepairRipxCartLineProperties('xhr');
+                    scheduleRipxCartPropsRepairBurst('xhr');
                   }
                 },
                 { once: true }

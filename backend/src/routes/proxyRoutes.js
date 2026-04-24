@@ -207,31 +207,68 @@ router.get('/script.js', asyncHandler(serveScript));
 router.get('/script.js/script.js', asyncHandler(serveScript));
 
 async function servePreviewBootstrap(req, res) {
+  const validated = await validatePreviewBootstrapRequest(req, res, 'preview-bootstrap');
+  if (!validated) {return;}
+  const { normalizedShop, targetUrl } = validated;
+  const loaderUrl = `https://${normalizedShop}/apps/ripx/preview-bootstrap-loader.js?url=${encodeURIComponent(
+    targetUrl
+  )}`;
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RipX preview bootstrap</title>
+    <meta http-equiv="refresh" content="4;url=${targetUrl}">
+    <script src="${loaderUrl}" defer crossorigin="anonymous"></script>
+  </head>
+  <body>
+    <p>Preparing RipX preview...</p>
+    <noscript>
+      <p>JavaScript required. Continue manually:</p>
+      <p><a href="${targetUrl}">Open preview</a></p>
+    </noscript>
+  </body>
+</html>`;
+  res.set('Cache-Control', 'no-store');
+  res.set(
+    'Content-Security-Policy',
+    "default-src 'self' https:; script-src 'self' https:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; base-uri 'none'"
+  );
+  return res.type('html').send(html);
+}
+
+async function validatePreviewBootstrapRequest(req, res, routeName) {
   const shop = req.query.shop || req.query.shop_domain;
   if (!shop) {
-    return res.status(400).type('text/plain').send('Missing shop domain');
+    res.status(400).type('text/plain').send('Missing shop domain');
+    return null;
   }
   if (!isValidShopDomain(shop)) {
-    return res.status(400).type('text/plain').send('Invalid shop domain');
+    res.status(400).type('text/plain').send('Invalid shop domain');
+    return null;
   }
   const normalizedShop = normalizeDomain(shop) || String(shop).trim().toLowerCase();
 
   const blockListMessage = await getBlockListMessage(normalizedShop);
   if (blockListMessage !== null) {
-    return res
+    res
       .status(403)
       .type('text/plain')
       .send(blockListMessage || 'Access blocked.');
+    return null;
   }
 
   const maintenanceValue = await getMaintenanceMode();
   if (isMaintenanceActiveForDomain(normalizedShop, maintenanceValue)) {
-    return res.status(503).type('text/plain').send(ERROR_MESSAGES.MAINTENANCE);
+    res.status(503).type('text/plain').send(ERROR_MESSAGES.MAINTENANCE);
+    return null;
   }
 
   const tenant = await getTenantByDomain(normalizedShop);
   if (tenant && isTenantSuspendedOrBlocked(tenant)) {
-    return res.status(403).type('text/plain').send('Access suspended. Contact support.');
+    res.status(403).type('text/plain').send('Access suspended. Contact support.');
+    return null;
   }
 
   const hasSignature = Boolean(req.query.signature);
@@ -240,11 +277,12 @@ async function servePreviewBootstrap(req, res) {
   if (skipVerify) {
     logger.warn('App proxy signature verification skipped (RIPX_APP_PROXY_SKIP_VERIFY=true)', {
       shop: normalizedShop,
-      route: 'preview-bootstrap',
+      route: routeName,
     });
   }
   if (!hasSignature && isProduction) {
-    return res.status(401).type('text/plain').send('Unauthorized');
+    res.status(401).type('text/plain').send('Unauthorized');
+    return null;
   }
   if (hasSignature && !skipVerify) {
     const queryFromRaw = getQueryFromRequest(req);
@@ -253,81 +291,100 @@ async function servePreviewBootstrap(req, res) {
       verified = verifyAppProxySignature(req.query);
     }
     if (!verified) {
-      logger.warn('App proxy signature verification failed (preview-bootstrap)', {
+      logger.warn(`App proxy signature verification failed (${routeName})`, {
         shop: normalizedShop,
       });
-      return res.status(401).type('text/plain').send('Unauthorized');
+      res.status(401).type('text/plain').send('Unauthorized');
+      return null;
     }
   }
 
   const rawUrl = String(req.query.url || '').trim();
   if (!rawUrl) {
-    return res.status(400).type('text/plain').send('Missing url parameter');
+    res.status(400).type('text/plain').send('Missing url parameter');
+    return null;
   }
 
   let parsedTarget;
   try {
     parsedTarget = new URL(rawUrl);
   } catch (_e) {
-    return res.status(400).type('text/plain').send('Invalid url parameter');
+    res.status(400).type('text/plain').send('Invalid url parameter');
+    return null;
   }
   if (parsedTarget.protocol !== 'https:' && parsedTarget.protocol !== 'http:') {
-    return res.status(400).type('text/plain').send('Invalid target protocol');
+    res.status(400).type('text/plain').send('Invalid target protocol');
+    return null;
   }
   if (
     String(parsedTarget.hostname || '')
       .trim()
       .toLowerCase() !== normalizedShop
   ) {
-    return res.status(400).type('text/plain').send('Target must match shop domain');
+    res.status(400).type('text/plain').send('Target must match shop domain');
+    return null;
   }
 
-  const targetUrl = parsedTarget.toString();
+  // Guard against recursive bootstrap chaining.
+  const targetPath = String(parsedTarget.pathname || '').toLowerCase();
+  if (targetPath.indexOf('/apps/ripx/preview-bootstrap') === 0) {
+    res.status(400).type('text/plain').send('Invalid target path');
+    return null;
+  }
+
+  return {
+    normalizedShop,
+    targetUrl: parsedTarget.toString(),
+  };
+}
+
+async function servePreviewBootstrapLoader(req, res) {
+  const validated = await validatePreviewBootstrapRequest(req, res, 'preview-bootstrap-loader');
+  if (!validated) {return;}
+  const { normalizedShop, targetUrl } = validated;
   const scriptUrl = `https://${normalizedShop}/apps/ripx/script.js?v=${SCRIPT_VERSION}`;
-  const html = `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>RipX preview bootstrap</title>
-    <meta http-equiv="refresh" content="3;url=${targetUrl}">
-  </head>
-  <body>
-    <p>Preparing RipX preview...</p>
-    <noscript>
-      <p>JavaScript required. Continue manually:</p>
-      <p><a href="${targetUrl}">Open preview</a></p>
-    </noscript>
-    <script>
-      (function () {
-        var target = ${JSON.stringify(targetUrl)};
-        var done = false;
-        function go() {
-          if (done) return;
-          done = true;
-          try {
-            window.location.replace(target);
-          } catch (_e) {
-            window.location.href = target;
-          }
-        }
-        var s = document.createElement('script');
-        s.src = ${JSON.stringify(scriptUrl)};
-        s.defer = true;
-        s.onload = function () { setTimeout(go, 30); };
-        s.onerror = function () { setTimeout(go, 120); };
-        (document.head || document.documentElement).appendChild(s);
-        setTimeout(go, 1500);
-      })();
-    </script>
-  </body>
-</html>`;
+  const js = `(function () {
+  var target = ${JSON.stringify(targetUrl)};
+  var scriptUrl = ${JSON.stringify(scriptUrl)};
+  var redirected = false;
+  function goHard() {
+    if (redirected) return;
+    redirected = true;
+    try { window.location.replace(target); } catch (_e) { window.location.href = target; }
+  }
+  function injectScriptTag(html) {
+    var tag = '<script src="' + scriptUrl + '" defer crossorigin="anonymous"><' + '/script>';
+    if (/<\\/head>/i.test(html)) return html.replace(/<\\/head>/i, tag + '</head>');
+    if (/<body[^>]*>/i.test(html)) return html.replace(/<body[^>]*>/i, '$&' + tag);
+    return '<!doctype html><html><head>' + tag + '</head><body>' + html + '</body></html>';
+  }
+  function mount(html) {
+    if (!html || typeof html !== 'string') return goHard();
+    var next = injectScriptTag(html);
+    try {
+      var u = new URL(target, window.location.origin);
+      history.replaceState(null, '', u.pathname + u.search + u.hash);
+    } catch (_e) {}
+    try {
+      document.open();
+      document.write(next);
+      document.close();
+    } catch (_e) {
+      goHard();
+    }
+  }
+  fetch(target, { method: 'GET', credentials: 'include', redirect: 'follow' })
+    .then(function (r) {
+      if (!r || !r.ok) throw new Error('target_fetch_failed');
+      return r.text();
+    })
+    .then(mount)
+    .catch(goHard);
+  setTimeout(goHard, 3500);
+})();`;
   res.set('Cache-Control', 'no-store');
-  res.set(
-    'Content-Security-Policy',
-    "default-src 'self' https:; script-src 'self' https: 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; base-uri 'none'"
-  );
-  return res.type('html').send(html);
+  res.set('Content-Type', 'application/javascript; charset=utf-8');
+  return res.send(js);
 }
 
 router.get('/preview-bootstrap', asyncHandler(servePreviewBootstrap));
@@ -335,5 +392,11 @@ router.get('/preview-bootstrap/preview-bootstrap', asyncHandler(servePreviewBoot
 // App proxy base sometimes includes /script.js; Shopify then rewrites to /script.js/preview-bootstrap.
 router.get('/script.js/preview-bootstrap', asyncHandler(servePreviewBootstrap));
 router.get('/script.js/script.js/preview-bootstrap', asyncHandler(servePreviewBootstrap));
+router.get('/preview-bootstrap-loader.js', asyncHandler(servePreviewBootstrapLoader));
+router.get('/script.js/preview-bootstrap-loader.js', asyncHandler(servePreviewBootstrapLoader));
+router.get(
+  '/script.js/script.js/preview-bootstrap-loader.js',
+  asyncHandler(servePreviewBootstrapLoader)
+);
 
 module.exports = router;
