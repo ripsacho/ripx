@@ -244,9 +244,22 @@ async function servePreviewBootstrap(req, res) {
         var directScriptUrl = ${JSON.stringify(directScriptUrl)};
         var mounted = false;
         var redirected = false;
+        var retryCount = 0;
+        try {
+          var retryParams = new URLSearchParams(window.location.search || '');
+          retryCount = Number(retryParams.get('ripx_retry') || '0') || 0;
+        } catch (_eRetry) {}
         function goHard() {
           if (redirected || mounted) return;
           redirected = true;
+          if (retryCount < 2) {
+            try {
+              var selfUrl = new URL(window.location.href);
+              selfUrl.searchParams.set('ripx_retry', String(retryCount + 1));
+              window.location.replace(selfUrl.toString());
+              return;
+            } catch (_eSelf) {}
+          }
           try { window.location.replace(target); } catch (_e) { window.location.href = target; }
         }
         function injectScriptTag(htmlText) {
@@ -486,9 +499,22 @@ async function servePreviewBootstrapLoader(req, res) {
   var redirected = false;
   var mounted = false;
   var fallbackTimer = null;
+  var retryCount = 0;
+  try {
+    var retryParams = new URLSearchParams(window.location.search || '');
+    retryCount = Number(retryParams.get('ripx_retry') || '0') || 0;
+  } catch (_eRetry) {}
   function goHard() {
     if (redirected || mounted) return;
     redirected = true;
+    if (retryCount < 2) {
+      try {
+        var selfUrl = new URL(window.location.href);
+        selfUrl.searchParams.set('ripx_retry', String(retryCount + 1));
+        window.location.replace(selfUrl.toString());
+        return;
+      } catch (_eSelf) {}
+    }
     try { window.location.replace(target); } catch (_e) { window.location.href = target; }
   }
   function armFallback(ms) {
