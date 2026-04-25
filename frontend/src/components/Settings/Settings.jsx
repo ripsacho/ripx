@@ -2141,7 +2141,11 @@ function Settings() {
   const isFocusedInstallationMode =
     isAppSettings && isGuidedSetupMode && activeTabId === 'installation';
   const showInstallationSupportCards =
-    (!isFocusedInstallationMode && !showAllAppSections) || installation?.platform !== 'shopify';
+    !installation ||
+    installationLoading ||
+    installationError ||
+    installation.platform !== 'shopify';
+  const showShopifyFunctionInventoryCard = false;
 
   const densityHelp = 'Comfortable adds more spacing. Compact shows more on screen.';
   const generalSectionSummary = useMemo(() => {
@@ -3559,93 +3563,32 @@ function Settings() {
                                         )}
                                       </InlineStack>
                                     </div>
-                                    {(checkoutDiag || checkoutExperienceDiag || installation) && (
-                                      <div className={styles.checkoutReadinessSection}>
-                                        <div className={styles.checkoutReadinessHeader}>
-                                          <Text variant="headingSm" as="h3">
-                                            Checkout launch surfaces
-                                          </Text>
-                                          <Text as="p" variant="bodySm" tone="subdued">
-                                            Track checkout experience, offers, and shipping
-                                            separately instead of relying on one generic setup
-                                            status.
-                                          </Text>
-                                        </div>
-                                        <div className={styles.checkoutReadinessList}>
-                                          {checkoutExperienceReadiness.map(item => (
-                                            <div
-                                              key={item.id}
-                                              className={styles.checkoutReadinessRow}
-                                            >
-                                              <div className={styles.checkoutReadinessRowMain}>
-                                                <div className={styles.checkoutReadinessCardHeader}>
-                                                  <Text
-                                                    as="span"
-                                                    variant="bodySm"
-                                                    fontWeight="semibold"
-                                                  >
-                                                    {item.title}
-                                                  </Text>
-                                                  <Badge tone={item.tone}>{item.status}</Badge>
-                                                </div>
-                                                <Text as="p" variant="bodySm">
-                                                  {item.summary}
-                                                </Text>
-                                              </div>
-                                              <div className={styles.checkoutReadinessRowText}>
-                                                <Text as="p" variant="bodySm" tone="subdued">
-                                                  {item.nextAction}
-                                                </Text>
-                                              </div>
+                                    <details className={styles.installAdvancedDisclosure}>
+                                      <summary className={styles.installAdvancedDisclosureSummary}>
+                                        <span>
+                                          View detailed readiness, deployment, and health checks
+                                        </span>
+                                        <span className={styles.installAdvancedDisclosureMeta}>
+                                          Optional
+                                        </span>
+                                      </summary>
+                                      <BlockStack gap="400">
+                                        {(checkoutDiag ||
+                                          checkoutExperienceDiag ||
+                                          installation) && (
+                                          <div className={styles.checkoutReadinessSection}>
+                                            <div className={styles.checkoutReadinessHeader}>
+                                              <Text variant="headingSm" as="h3">
+                                                Checkout launch surfaces
+                                              </Text>
+                                              <Text as="p" variant="bodySm" tone="subdued">
+                                                Track checkout experience, offers, and shipping
+                                                separately instead of relying on one generic setup
+                                                status.
+                                              </Text>
                                             </div>
-                                          ))}
-                                        </div>
-                                        {checkoutExperienceDiagError && (
-                                          <Text as="p" variant="bodySm" tone="critical">
-                                            {checkoutExperienceDiagError}
-                                          </Text>
-                                        )}
-                                      </div>
-                                    )}
-                                    {isAppSettings && (
-                                      <div className={styles.checkoutReadinessSection}>
-                                        <div className={styles.checkoutReadinessHeader}>
-                                          <Text variant="headingSm" as="h3">
-                                            Checkout customization deployment
-                                          </Text>
-                                          <Text as="p" variant="bodySm" tone="subdued">
-                                            Deploy saved payment-method and delivery-method tests
-                                            here. Dry run previews the Shopify action; Apply creates
-                                            or updates the customization and RipX metafield.
-                                          </Text>
-                                        </div>
-                                        <InlineStack gap="200" wrap>
-                                          <Button
-                                            size="slim"
-                                            onClick={fetchCheckoutCustomizationTests}
-                                            loading={checkoutCustomizationTestsLoading}
-                                          >
-                                            Refresh checkout tests
-                                          </Button>
-                                        </InlineStack>
-                                        {checkoutCustomizationTestsError && (
-                                          <Text as="p" variant="bodySm" tone="critical">
-                                            {checkoutCustomizationTestsError}
-                                          </Text>
-                                        )}
-                                        <div className={styles.checkoutReadinessSection}>
-                                          <div className={styles.checkoutReadinessHeader}>
-                                            <Text variant="headingSm" as="h4">
-                                              Checkout experience inventory
-                                            </Text>
-                                            <Text as="p" variant="bodySm" tone="subdued">
-                                              Review saved experience-phase tests and how many
-                                              renderable checkout sections are already configured.
-                                            </Text>
-                                          </div>
-                                          {checkoutExperienceInventory.length > 0 ? (
                                             <div className={styles.checkoutReadinessList}>
-                                              {checkoutExperienceInventory.map(item => (
+                                              {checkoutExperienceReadiness.map(item => (
                                                 <div
                                                   key={item.id}
                                                   className={styles.checkoutReadinessRow}
@@ -3659,65 +3602,273 @@ function Settings() {
                                                         variant="bodySm"
                                                         fontWeight="semibold"
                                                       >
-                                                        {item.name}
+                                                        {item.title}
                                                       </Text>
-                                                      <InlineStack gap="200" wrap>
-                                                        <Badge tone="info">Experience</Badge>
-                                                        <Badge
-                                                          tone={
-                                                            item.totalRenderableSections > 0
-                                                              ? 'success'
-                                                              : 'warning'
-                                                          }
-                                                        >
-                                                          {item.totalRenderableSections} section
-                                                          {item.totalRenderableSections === 1
-                                                            ? ''
-                                                            : 's'}
-                                                        </Badge>
-                                                      </InlineStack>
+                                                      <Badge tone={item.tone}>{item.status}</Badge>
                                                     </div>
                                                     <Text as="p" variant="bodySm">
-                                                      {item.actionableVariants > 0
-                                                        ? `${item.actionableVariants} treatment variant${item.actionableVariants === 1 ? '' : 's'} contain ${item.totalRenderableSections} renderable section${item.totalRenderableSections === 1 ? '' : 's'}.`
-                                                        : 'No treatment variants contain renderable checkout sections yet.'}
+                                                      {item.summary}
                                                     </Text>
                                                   </div>
                                                   <div className={styles.checkoutReadinessRowText}>
                                                     <Text as="p" variant="bodySm" tone="subdued">
-                                                      Status: {item.status}. Section types:{' '}
-                                                      {item.sectionTypeLabels.length > 0
-                                                        ? item.sectionTypeLabels.join(', ')
-                                                        : 'Not configured yet'}
-                                                      .
+                                                      {item.nextAction}
                                                     </Text>
-                                                    <div
-                                                      className={styles.checkoutReadinessRowActions}
-                                                    >
-                                                      <Button size="slim" url={item.detailPath}>
-                                                        Open test
-                                                      </Button>
-                                                    </div>
                                                   </div>
                                                 </div>
                                               ))}
                                             </div>
-                                          ) : (
-                                            !checkoutCustomizationTestsLoading && (
-                                              <Text as="p" variant="bodySm" tone="subdued">
-                                                No saved experience-phase checkout tests yet. Create
-                                                one in Checkout Tests to start building
-                                                section-based checkout content.
+                                            {checkoutExperienceDiagError && (
+                                              <Text as="p" variant="bodySm" tone="critical">
+                                                {checkoutExperienceDiagError}
                                               </Text>
-                                            )
-                                          )}
-                                        </div>
-                                        {deployableCheckoutCustomizationTests.length > 0 ? (
-                                          <div className={styles.checkoutReadinessList}>
-                                            {deployableCheckoutCustomizationTests.map(item => {
-                                              const isRunning =
-                                                checkoutCustomizationAction?.testId === item.id;
-                                              return (
+                                            )}
+                                          </div>
+                                        )}
+                                        {isAppSettings && (
+                                          <div className={styles.checkoutReadinessSection}>
+                                            <div className={styles.checkoutReadinessHeader}>
+                                              <Text variant="headingSm" as="h3">
+                                                Checkout customization deployment
+                                              </Text>
+                                              <Text as="p" variant="bodySm" tone="subdued">
+                                                Deploy saved payment-method and delivery-method
+                                                tests here. Dry run previews the Shopify action;
+                                                Apply creates or updates the customization and RipX
+                                                metafield.
+                                              </Text>
+                                            </div>
+                                            <InlineStack gap="200" wrap>
+                                              <Button
+                                                size="slim"
+                                                onClick={fetchCheckoutCustomizationTests}
+                                                loading={checkoutCustomizationTestsLoading}
+                                              >
+                                                Refresh checkout tests
+                                              </Button>
+                                            </InlineStack>
+                                            {checkoutCustomizationTestsError && (
+                                              <Text as="p" variant="bodySm" tone="critical">
+                                                {checkoutCustomizationTestsError}
+                                              </Text>
+                                            )}
+                                            <div className={styles.checkoutReadinessSection}>
+                                              <div className={styles.checkoutReadinessHeader}>
+                                                <Text variant="headingSm" as="h4">
+                                                  Checkout experience inventory
+                                                </Text>
+                                                <Text as="p" variant="bodySm" tone="subdued">
+                                                  Review saved experience-phase tests and how many
+                                                  renderable checkout sections are already
+                                                  configured.
+                                                </Text>
+                                              </div>
+                                              {checkoutExperienceInventory.length > 0 ? (
+                                                <div className={styles.checkoutReadinessList}>
+                                                  {checkoutExperienceInventory.map(item => (
+                                                    <div
+                                                      key={item.id}
+                                                      className={styles.checkoutReadinessRow}
+                                                    >
+                                                      <div
+                                                        className={styles.checkoutReadinessRowMain}
+                                                      >
+                                                        <div
+                                                          className={
+                                                            styles.checkoutReadinessCardHeader
+                                                          }
+                                                        >
+                                                          <Text
+                                                            as="span"
+                                                            variant="bodySm"
+                                                            fontWeight="semibold"
+                                                          >
+                                                            {item.name}
+                                                          </Text>
+                                                          <InlineStack gap="200" wrap>
+                                                            <Badge tone="info">Experience</Badge>
+                                                            <Badge
+                                                              tone={
+                                                                item.totalRenderableSections > 0
+                                                                  ? 'success'
+                                                                  : 'warning'
+                                                              }
+                                                            >
+                                                              {item.totalRenderableSections} section
+                                                              {item.totalRenderableSections === 1
+                                                                ? ''
+                                                                : 's'}
+                                                            </Badge>
+                                                          </InlineStack>
+                                                        </div>
+                                                        <Text as="p" variant="bodySm">
+                                                          {item.actionableVariants > 0
+                                                            ? `${item.actionableVariants} treatment variant${item.actionableVariants === 1 ? '' : 's'} contain ${item.totalRenderableSections} renderable section${item.totalRenderableSections === 1 ? '' : 's'}.`
+                                                            : 'No treatment variants contain renderable checkout sections yet.'}
+                                                        </Text>
+                                                      </div>
+                                                      <div
+                                                        className={styles.checkoutReadinessRowText}
+                                                      >
+                                                        <Text
+                                                          as="p"
+                                                          variant="bodySm"
+                                                          tone="subdued"
+                                                        >
+                                                          Status: {item.status}. Section types:{' '}
+                                                          {item.sectionTypeLabels.length > 0
+                                                            ? item.sectionTypeLabels.join(', ')
+                                                            : 'Not configured yet'}
+                                                          .
+                                                        </Text>
+                                                        <div
+                                                          className={
+                                                            styles.checkoutReadinessRowActions
+                                                          }
+                                                        >
+                                                          <Button size="slim" url={item.detailPath}>
+                                                            Open test
+                                                          </Button>
+                                                        </div>
+                                                      </div>
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              ) : (
+                                                !checkoutCustomizationTestsLoading && (
+                                                  <Text as="p" variant="bodySm" tone="subdued">
+                                                    No saved experience-phase checkout tests yet.
+                                                    Create one in Checkout Tests to start building
+                                                    section-based checkout content.
+                                                  </Text>
+                                                )
+                                              )}
+                                            </div>
+                                            {deployableCheckoutCustomizationTests.length > 0 ? (
+                                              <div className={styles.checkoutReadinessList}>
+                                                {deployableCheckoutCustomizationTests.map(item => {
+                                                  const isRunning =
+                                                    checkoutCustomizationAction?.testId === item.id;
+                                                  return (
+                                                    <div
+                                                      key={item.id}
+                                                      className={styles.checkoutReadinessRow}
+                                                    >
+                                                      <div
+                                                        className={styles.checkoutReadinessRowMain}
+                                                      >
+                                                        <div
+                                                          className={
+                                                            styles.checkoutReadinessCardHeader
+                                                          }
+                                                        >
+                                                          <Text
+                                                            as="span"
+                                                            variant="bodySm"
+                                                            fontWeight="semibold"
+                                                          >
+                                                            {item.name}
+                                                          </Text>
+                                                          <Badge tone="info">
+                                                            {item.phaseLabel}
+                                                          </Badge>
+                                                        </div>
+                                                        <Text as="p" variant="bodySm">
+                                                          {item.actionableVariants > 0
+                                                            ? `${item.actionableVariants} treatment variant${item.actionableVariants === 1 ? '' : 's'} configured for ${item.phaseLabel.toLowerCase()}.`
+                                                            : `No actionable ${item.phaseLabel.toLowerCase()} variants are configured yet.`}
+                                                        </Text>
+                                                      </div>
+                                                      <div
+                                                        className={styles.checkoutReadinessRowText}
+                                                      >
+                                                        <Text
+                                                          as="p"
+                                                          variant="bodySm"
+                                                          tone="subdued"
+                                                        >
+                                                          Status: {item.status}. Open the test to
+                                                          edit targeting or variant config before
+                                                          applying if needed.
+                                                        </Text>
+                                                        <div
+                                                          className={
+                                                            styles.checkoutReadinessRowActions
+                                                          }
+                                                        >
+                                                          <Button
+                                                            size="slim"
+                                                            onClick={() =>
+                                                              handleEnsureCheckoutCustomizationFromSettings(
+                                                                item.id,
+                                                                false
+                                                              )
+                                                            }
+                                                            disabled={Boolean(
+                                                              checkoutCustomizationAction
+                                                            )}
+                                                            loading={
+                                                              isRunning &&
+                                                              checkoutCustomizationAction?.mode ===
+                                                                'dry_run'
+                                                            }
+                                                          >
+                                                            Dry run
+                                                          </Button>
+                                                          <Button
+                                                            size="slim"
+                                                            variant="primary"
+                                                            onClick={() =>
+                                                              handleEnsureCheckoutCustomizationFromSettings(
+                                                                item.id,
+                                                                true
+                                                              )
+                                                            }
+                                                            disabled={Boolean(
+                                                              checkoutCustomizationAction
+                                                            )}
+                                                            loading={
+                                                              isRunning &&
+                                                              checkoutCustomizationAction?.mode ===
+                                                                'apply'
+                                                            }
+                                                          >
+                                                            Apply
+                                                          </Button>
+                                                          <Button size="slim" url={item.detailPath}>
+                                                            Open test
+                                                          </Button>
+                                                        </div>
+                                                      </div>
+                                                    </div>
+                                                  );
+                                                })}
+                                              </div>
+                                            ) : (
+                                              !checkoutCustomizationTestsLoading && (
+                                                <Text as="p" variant="bodySm" tone="subdued">
+                                                  No saved payment-method or delivery-method
+                                                  checkout tests are available yet. Create one in
+                                                  Checkout Tests, save it, then return here to
+                                                  deploy.
+                                                </Text>
+                                              )
+                                            )}
+                                          </div>
+                                        )}
+                                        {(checkoutDiag || installation) && (
+                                          <div className={styles.checkoutReadinessSection}>
+                                            <div className={styles.checkoutReadinessHeader}>
+                                              <Text variant="headingSm" as="h3">
+                                                Price & Offer readiness
+                                              </Text>
+                                              <Text as="p" variant="bodySm" tone="subdued">
+                                                Verify the direct pricing path (Price tests) and
+                                                promo path (Offer tests) before launch.
+                                              </Text>
+                                            </div>
+                                            <div className={styles.checkoutReadinessList}>
+                                              {priceMethodReadiness.map(item => (
                                                 <div
                                                   key={item.id}
                                                   className={styles.checkoutReadinessRow}
@@ -3731,208 +3882,111 @@ function Settings() {
                                                         variant="bodySm"
                                                         fontWeight="semibold"
                                                       >
-                                                        {item.name}
+                                                        {item.title}
                                                       </Text>
-                                                      <Badge tone="info">{item.phaseLabel}</Badge>
+                                                      <Badge tone={item.tone}>{item.status}</Badge>
                                                     </div>
                                                     <Text as="p" variant="bodySm">
-                                                      {item.actionableVariants > 0
-                                                        ? `${item.actionableVariants} treatment variant${item.actionableVariants === 1 ? '' : 's'} configured for ${item.phaseLabel.toLowerCase()}.`
-                                                        : `No actionable ${item.phaseLabel.toLowerCase()} variants are configured yet.`}
+                                                      {item.summary}
                                                     </Text>
                                                   </div>
                                                   <div className={styles.checkoutReadinessRowText}>
                                                     <Text as="p" variant="bodySm" tone="subdued">
-                                                      Status: {item.status}. Open the test to edit
-                                                      targeting or variant config before applying if
-                                                      needed.
+                                                      {item.nextAction}
                                                     </Text>
-                                                    <div
-                                                      className={styles.checkoutReadinessRowActions}
-                                                    >
-                                                      <Button
-                                                        size="slim"
-                                                        onClick={() =>
-                                                          handleEnsureCheckoutCustomizationFromSettings(
-                                                            item.id,
-                                                            false
-                                                          )
-                                                        }
-                                                        disabled={Boolean(
-                                                          checkoutCustomizationAction
-                                                        )}
-                                                        loading={
-                                                          isRunning &&
-                                                          checkoutCustomizationAction?.mode ===
-                                                            'dry_run'
-                                                        }
-                                                      >
-                                                        Dry run
-                                                      </Button>
-                                                      <Button
-                                                        size="slim"
-                                                        variant="primary"
-                                                        onClick={() =>
-                                                          handleEnsureCheckoutCustomizationFromSettings(
-                                                            item.id,
-                                                            true
-                                                          )
-                                                        }
-                                                        disabled={Boolean(
-                                                          checkoutCustomizationAction
-                                                        )}
-                                                        loading={
-                                                          isRunning &&
-                                                          checkoutCustomizationAction?.mode ===
-                                                            'apply'
-                                                        }
-                                                      >
-                                                        Apply
-                                                      </Button>
-                                                      <Button size="slim" url={item.detailPath}>
-                                                        Open test
-                                                      </Button>
-                                                    </div>
                                                   </div>
                                                 </div>
-                                              );
-                                            })}
+                                              ))}
+                                            </div>
                                           </div>
-                                        ) : (
-                                          !checkoutCustomizationTestsLoading && (
-                                            <Text as="p" variant="bodySm" tone="subdued">
-                                              No saved payment-method or delivery-method checkout
-                                              tests are available yet. Create one in Checkout Tests,
-                                              save it, then return here to deploy.
-                                            </Text>
-                                          )
                                         )}
-                                      </div>
-                                    )}
-                                    {(checkoutDiag || installation) && (
-                                      <div className={styles.checkoutReadinessSection}>
-                                        <div className={styles.checkoutReadinessHeader}>
-                                          <Text variant="headingSm" as="h3">
-                                            Price & Offer readiness
-                                          </Text>
-                                          <Text as="p" variant="bodySm" tone="subdued">
-                                            Verify the direct pricing path (Price tests) and promo
-                                            path (Offer tests) before launch.
-                                          </Text>
-                                        </div>
-                                        <div className={styles.checkoutReadinessList}>
-                                          {priceMethodReadiness.map(item => (
-                                            <div
-                                              key={item.id}
-                                              className={styles.checkoutReadinessRow}
-                                            >
-                                              <div className={styles.checkoutReadinessRowMain}>
-                                                <div className={styles.checkoutReadinessCardHeader}>
-                                                  <Text
-                                                    as="span"
-                                                    variant="bodySm"
-                                                    fontWeight="semibold"
-                                                  >
-                                                    {item.title}
-                                                  </Text>
-                                                  <Badge tone={item.tone}>{item.status}</Badge>
-                                                </div>
-                                                <Text as="p" variant="bodySm">
-                                                  {item.summary}
+                                        {(checkoutDiag || installation) && (
+                                          <div className={styles.checkoutDiagHealthSummary}>
+                                            <div className={styles.checkoutDiagHealthHeader}>
+                                              <div>
+                                                <Text variant="headingSm" as="h3">
+                                                  Store health summary
                                                 </Text>
-                                              </div>
-                                              <div className={styles.checkoutReadinessRowText}>
                                                 <Text as="p" variant="bodySm" tone="subdued">
-                                                  {item.nextAction}
+                                                  {checkoutHealthSnapshot.failedRequired.length > 0
+                                                    ? 'Review blockers first, then expand the check list only if you need detail.'
+                                                    : 'All required checks are passing. Advisories are optional improvements.'}
                                                 </Text>
                                               </div>
+                                              <div className={styles.checkoutHealthStatGrid}>
+                                                <div className={styles.checkoutHealthStat}>
+                                                  <span className={styles.checkoutHealthStatLabel}>
+                                                    Passing
+                                                  </span>
+                                                  <span className={styles.checkoutHealthStatValue}>
+                                                    {checkoutHealthSnapshot.passedRequired}/
+                                                    {checkoutHealthSnapshot.requiredTotal}
+                                                  </span>
+                                                </div>
+                                                <div className={styles.checkoutHealthStat}>
+                                                  <span className={styles.checkoutHealthStatLabel}>
+                                                    Blockers
+                                                  </span>
+                                                  <span className={styles.checkoutHealthStatValue}>
+                                                    {checkoutHealthSnapshot.failedRequired.length}
+                                                  </span>
+                                                </div>
+                                                <div className={styles.checkoutHealthStat}>
+                                                  <span className={styles.checkoutHealthStatLabel}>
+                                                    Advisories
+                                                  </span>
+                                                  <span className={styles.checkoutHealthStatValue}>
+                                                    {checkoutHealthSnapshot.advisoryCount}
+                                                  </span>
+                                                </div>
+                                              </div>
                                             </div>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    )}
-                                    {(checkoutDiag || installation) && (
-                                      <div className={styles.checkoutDiagHealthSummary}>
-                                        <div className={styles.checkoutDiagHealthHeader}>
-                                          <div>
-                                            <Text variant="headingSm" as="h3">
-                                              Store health summary
-                                            </Text>
-                                            <Text as="p" variant="bodySm" tone="subdued">
-                                              {checkoutHealthSnapshot.failedRequired.length > 0
-                                                ? 'Review blockers first, then expand the check list only if you need detail.'
-                                                : 'All required checks are passing. Advisories are optional improvements.'}
-                                            </Text>
-                                          </div>
-                                          <div className={styles.checkoutHealthStatGrid}>
-                                            <div className={styles.checkoutHealthStat}>
-                                              <span className={styles.checkoutHealthStatLabel}>
-                                                Passing
-                                              </span>
-                                              <span className={styles.checkoutHealthStatValue}>
-                                                {checkoutHealthSnapshot.passedRequired}/
-                                                {checkoutHealthSnapshot.requiredTotal}
-                                              </span>
-                                            </div>
-                                            <div className={styles.checkoutHealthStat}>
-                                              <span className={styles.checkoutHealthStatLabel}>
-                                                Blockers
-                                              </span>
-                                              <span className={styles.checkoutHealthStatValue}>
-                                                {checkoutHealthSnapshot.failedRequired.length}
-                                              </span>
-                                            </div>
-                                            <div className={styles.checkoutHealthStat}>
-                                              <span className={styles.checkoutHealthStatLabel}>
-                                                Advisories
-                                              </span>
-                                              <span className={styles.checkoutHealthStatValue}>
-                                                {checkoutHealthSnapshot.advisoryCount}
-                                              </span>
-                                            </div>
-                                          </div>
-                                        </div>
-                                        <details className={styles.checkoutDiagDetails}>
-                                          <summary className={styles.checkoutDiagDetailsSummary}>
-                                            Review individual checks ({storeHealth.checks.length})
-                                          </summary>
-                                          <BlockStack
-                                            gap="150"
-                                            className={styles.checkoutDiagDetailsList}
-                                          >
-                                            {storeHealth.checks.map(item => (
-                                              <div
-                                                key={item.key}
-                                                className={styles.checkoutDiagCheckRow}
+                                            <details className={styles.checkoutDiagDetails}>
+                                              <summary
+                                                className={styles.checkoutDiagDetailsSummary}
                                               >
-                                                <Badge
-                                                  tone={
-                                                    item.ok
-                                                      ? 'success'
-                                                      : item.required === false
-                                                        ? 'attention'
-                                                        : 'critical'
-                                                  }
-                                                >
-                                                  {item.ok
-                                                    ? 'OK'
-                                                    : item.required === false
-                                                      ? 'Advisory'
-                                                      : 'Fail'}
-                                                </Badge>
-                                                <Text
-                                                  as="span"
-                                                  variant="bodySm"
-                                                  className={styles.checkoutDiagCheckMessage}
-                                                >
-                                                  {item.message}
-                                                </Text>
-                                              </div>
-                                            ))}
-                                          </BlockStack>
-                                        </details>
-                                      </div>
-                                    )}
+                                                Review individual checks (
+                                                {storeHealth.checks.length})
+                                              </summary>
+                                              <BlockStack
+                                                gap="150"
+                                                className={styles.checkoutDiagDetailsList}
+                                              >
+                                                {storeHealth.checks.map(item => (
+                                                  <div
+                                                    key={item.key}
+                                                    className={styles.checkoutDiagCheckRow}
+                                                  >
+                                                    <Badge
+                                                      tone={
+                                                        item.ok
+                                                          ? 'success'
+                                                          : item.required === false
+                                                            ? 'attention'
+                                                            : 'critical'
+                                                      }
+                                                    >
+                                                      {item.ok
+                                                        ? 'OK'
+                                                        : item.required === false
+                                                          ? 'Advisory'
+                                                          : 'Fail'}
+                                                    </Badge>
+                                                    <Text
+                                                      as="span"
+                                                      variant="bodySm"
+                                                      className={styles.checkoutDiagCheckMessage}
+                                                    >
+                                                      {item.message}
+                                                    </Text>
+                                                  </div>
+                                                ))}
+                                              </BlockStack>
+                                            </details>
+                                          </div>
+                                        )}
+                                      </BlockStack>
+                                    </details>
 
                                     {checkoutDiagLoading && (
                                       <InlineStack gap="200" blockAlign="center">
@@ -4430,7 +4484,8 @@ function Settings() {
                               </Card>
                             )}
 
-                          {installation &&
+                          {showShopifyFunctionInventoryCard &&
+                            installation &&
                             installation.platform === 'shopify' &&
                             !installationLoading &&
                             !installationError && (

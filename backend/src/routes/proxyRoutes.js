@@ -273,6 +273,16 @@ async function servePreviewBootstrap(req, res) {
         function injectScriptTag(htmlText) {
           var tags =
             '<script>(function(){' +
+            'try{' +
+              'window.__RIPX_BOOTSTRAP_OK__={' +
+                'ok:true,' +
+                'mountedAt:Date.now(),' +
+                'href:String(window.location.href||""),' +
+                'source:"preview-bootstrap"' +
+              '};' +
+            '}catch(_e){}' +
+            '})();<' + '/script>' +
+            '<script>(function(){' +
             'if(window.__RIPX_PREVIEW_NAV_GUARD__) return; window.__RIPX_PREVIEW_NAV_GUARD__=true;' +
             'function readCtx(){try{var raw=window.sessionStorage&&window.sessionStorage.getItem("__ripx_preview_ctx_v1__");return raw?JSON.parse(raw):null;}catch(_e){return null;}}' +
             'function withPreview(u){var ctx=readCtx();if(!ctx)return u;' +
@@ -308,6 +318,7 @@ async function servePreviewBootstrap(req, res) {
             'var attempts=0;' +
             'var appSrc=' + JSON.stringify(appProxyScriptUrl) + ';' +
             'var directSrc=' + JSON.stringify(directScriptUrl) + ';' +
+            'function hasBootstrap(){return !!(window.__RIPX_BOOTSTRAP_OK__&&window.__RIPX_BOOTSTRAP_OK__.ok);}' +
             'function hasRipx(){return !!(window.RipX&&window.RipX.version);}' +
             'function injectOnce(src){' +
               'if(!src) return;' +
@@ -321,11 +332,23 @@ async function servePreviewBootstrap(req, res) {
               '(document.head||document.documentElement||document.body).appendChild(t);' +
             '}' +
             'function ensure(){' +
-              'if(hasRipx()) return;' +
+              'if(hasRipx()) {' +
+                'try{' +
+                  'window.__RIPX_BOOTSTRAP_OK__=window.__RIPX_BOOTSTRAP_OK__||{};' +
+                  'window.__RIPX_BOOTSTRAP_OK__.runtimeReadyAt=Date.now();' +
+                '}catch(_eReady){}' +
+                'return;' +
+              '}' +
               'attempts+=1;' +
               'injectOnce(appSrc);' +
               'injectOnce(directSrc);' +
-              'if(!hasRipx()&&attempts<10){setTimeout(ensure,1500);}' +
+              'if(!hasRipx()&&attempts<20){setTimeout(ensure,1000);}' +
+              'else if(!hasRipx()&&hasBootstrap()){' +
+                'try{' +
+                  'window.__RIPX_BOOTSTRAP_OK__=window.__RIPX_BOOTSTRAP_OK__||{};' +
+                  'window.__RIPX_BOOTSTRAP_OK__.runtimeMissingAt=Date.now();' +
+                '}catch(_eMiss){}' +
+              '}' +
             '}' +
             'ensure();' +
             '})();<' + '/script>' +
@@ -561,6 +584,16 @@ async function servePreviewBootstrapLoader(req, res) {
   function injectScriptTag(html) {
     var tags =
       '<script>(function(){' +
+      'try{' +
+        'window.__RIPX_BOOTSTRAP_OK__={' +
+          'ok:true,' +
+          'mountedAt:Date.now(),' +
+          'href:String(window.location.href||""),' +
+          'source:"preview-bootstrap-loader"' +
+        '};' +
+      '}catch(_e){}' +
+      '})();<' + '/script>' +
+      '<script>(function(){' +
       'if(window.__RIPX_PREVIEW_NAV_GUARD__) return; window.__RIPX_PREVIEW_NAV_GUARD__=true;' +
       'function readCtx(){try{var raw=window.sessionStorage&&window.sessionStorage.getItem("__ripx_preview_ctx_v1__");return raw?JSON.parse(raw):null;}catch(_e){return null;}}' +
       'function withPreview(u){var ctx=readCtx();if(!ctx)return u;' +
@@ -596,6 +629,7 @@ async function servePreviewBootstrapLoader(req, res) {
       'var attempts=0;' +
       'var appSrc=' + JSON.stringify(appProxyScriptUrl) + ';' +
       'var directSrc=' + JSON.stringify(directScriptUrl) + ';' +
+      'function hasBootstrap(){return !!(window.__RIPX_BOOTSTRAP_OK__&&window.__RIPX_BOOTSTRAP_OK__.ok);}' +
       'function hasRipx(){return !!(window.RipX&&window.RipX.version);}' +
       'function injectOnce(src){' +
         'if(!src) return;' +
@@ -609,11 +643,23 @@ async function servePreviewBootstrapLoader(req, res) {
         '(document.head||document.documentElement||document.body).appendChild(t);' +
       '}' +
       'function ensure(){' +
-        'if(hasRipx()) return;' +
+        'if(hasRipx()) {' +
+          'try{' +
+            'window.__RIPX_BOOTSTRAP_OK__=window.__RIPX_BOOTSTRAP_OK__||{};' +
+            'window.__RIPX_BOOTSTRAP_OK__.runtimeReadyAt=Date.now();' +
+          '}catch(_eReady){}' +
+          'return;' +
+        '}' +
         'attempts+=1;' +
         'injectOnce(appSrc);' +
         'injectOnce(directSrc);' +
-        'if(!hasRipx()&&attempts<10){setTimeout(ensure,1500);}' +
+        'if(!hasRipx()&&attempts<20){setTimeout(ensure,1000);}' +
+        'else if(!hasRipx()&&hasBootstrap()){' +
+          'try{' +
+            'window.__RIPX_BOOTSTRAP_OK__=window.__RIPX_BOOTSTRAP_OK__||{};' +
+            'window.__RIPX_BOOTSTRAP_OK__.runtimeMissingAt=Date.now();' +
+          '}catch(_eMiss){}' +
+        '}' +
       '}' +
       'ensure();' +
       '})();<' + '/script>' +
