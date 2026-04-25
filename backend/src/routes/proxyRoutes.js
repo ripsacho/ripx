@@ -260,6 +260,14 @@ async function servePreviewBootstrap(req, res) {
               return;
             } catch (_eSelf) {}
           }
+          try {
+            var targetUrl = new URL(target, window.location.origin);
+            var isPreviewTarget =
+              targetUrl.searchParams.get('ab_preview') === '1' ||
+              !!targetUrl.searchParams.get('ab_preview_test') ||
+              !!targetUrl.searchParams.get('ab_preview_variant');
+            if (isPreviewTarget) return;
+          } catch (_eCheck) {}
           try { window.location.replace(target); } catch (_e) { window.location.href = target; }
         }
         function injectScriptTag(htmlText) {
@@ -287,6 +295,12 @@ async function servePreviewBootstrap(req, res) {
               'var t=e.target; if(!t||!t.closest) return; var a=t.closest("a[href]"); if(!a) return;' +
               'var target=(a.getAttribute("target")||"").toLowerCase(); if(target&&target!=="_self") return;' +
               'var next=toBootstrapHref(a.href); if(!next) return;' +
+              'e.preventDefault(); window.location.assign(next);' +
+            '}catch(_e){}} , true);' +
+            'document.addEventListener("submit",function(e){try{' +
+              'if(!e||e.defaultPrevented) return;' +
+              'var f=e.target; if(!f||!f.action) return;' +
+              'var next=toBootstrapHref(f.action||window.location.href); if(!next) return;' +
               'e.preventDefault(); window.location.assign(next);' +
             '}catch(_e){}} , true);' +
             '})();<' + '/script>' +
@@ -360,10 +374,8 @@ async function servePreviewBootstrap(req, res) {
               } catch (_ne) {}
             }
           } catch (_seedErr) {}
-          try {
-            var u = new URL(target, window.location.origin);
-            history.replaceState(null, '', u.pathname + u.search + u.hash);
-          } catch (_e) {}
+          // Keep bootstrap URL to preserve deterministic script injection across navigation.
+          // Avoid replacing history with raw storefront URL, which can drop out of preview mode.
           try {
             document.open();
             document.write(injectScriptTag(htmlText));
@@ -532,6 +544,14 @@ async function servePreviewBootstrapLoader(req, res) {
         return;
       } catch (_eSelf) {}
     }
+    try {
+      var targetUrl = new URL(target, window.location.origin);
+      var isPreviewTarget =
+        targetUrl.searchParams.get('ab_preview') === '1' ||
+        !!targetUrl.searchParams.get('ab_preview_test') ||
+        !!targetUrl.searchParams.get('ab_preview_variant');
+      if (isPreviewTarget) return;
+    } catch (_eCheck) {}
     try { window.location.replace(target); } catch (_e) { window.location.href = target; }
   }
   function armFallback(ms) {
@@ -563,6 +583,12 @@ async function servePreviewBootstrapLoader(req, res) {
         'var t=e.target; if(!t||!t.closest) return; var a=t.closest("a[href]"); if(!a) return;' +
         'var target=(a.getAttribute("target")||"").toLowerCase(); if(target&&target!=="_self") return;' +
         'var next=toBootstrapHref(a.href); if(!next) return;' +
+        'e.preventDefault(); window.location.assign(next);' +
+      '}catch(_e){}} , true);' +
+      'document.addEventListener("submit",function(e){try{' +
+        'if(!e||e.defaultPrevented) return;' +
+        'var f=e.target; if(!f||!f.action) return;' +
+        'var next=toBootstrapHref(f.action||window.location.href); if(!next) return;' +
         'e.preventDefault(); window.location.assign(next);' +
       '}catch(_e){}} , true);' +
       '})();<' + '/script>' +
@@ -641,10 +667,8 @@ async function servePreviewBootstrapLoader(req, res) {
         } catch (_ne) {}
       }
     } catch (_seedErr) {}
-    try {
-      var u = new URL(target, window.location.origin);
-      history.replaceState(null, '', u.pathname + u.search + u.hash);
-    } catch (_e) {}
+    // Keep bootstrap URL to preserve deterministic script injection across navigation.
+    // Avoid replacing history with raw storefront URL, which can drop out of preview mode.
     try {
       document.open();
       document.write(next);

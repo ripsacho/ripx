@@ -241,6 +241,10 @@ function PromoLinksWrapper() {
 
 /** Auth check status: we validate session once before showing protected app content to avoid flash of app then redirect. */
 const AUTH_CHECK = { IDLE: 'idle', LOADING: 'loading', DONE: 'done' };
+const OAUTH_SUCCESS_MESSAGE_TYPE = 'ripx-store-connected';
+const CONNECT_POPUP_WINDOW_NAME = 'ripx-shopify-connect';
+const SHOPIFY_CONNECT_POPUP_CLOSE_SIGNAL_KEY_PREFIX = 'ripx-shopify-connect-close';
+const SHOPIFY_CONNECT_POPUP_ACTIVE_KEY_PREFIX = 'ripx-shopify-connect-popup-active';
 
 function AppContent() {
   const location = useLocation();
@@ -362,6 +366,59 @@ function AppContent() {
   const connectToken = searchParams.get('connect_token');
   const pathname = location.pathname;
   const currentRouteDomain = getAppDomainFromPath(pathname);
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const isConnectPopupWindow =
+      typeof window.name === 'string' && window.name.trim() === CONNECT_POPUP_WINDOW_NAME;
+    const connectedShop = String(currentRouteDomain || '')
+      .trim()
+      .toLowerCase();
+    if (!isConnectPopupWindow || !isShopifyStoreDomain(connectedShop)) {
+      return undefined;
+    }
+    if (!pathname.includes(`/app/${connectedShop}`)) {
+      return undefined;
+    }
+
+    const payload = {
+      type: OAUTH_SUCCESS_MESSAGE_TYPE,
+      shop: connectedShop,
+    };
+    const closeSignalKey = `${SHOPIFY_CONNECT_POPUP_CLOSE_SIGNAL_KEY_PREFIX}:${connectedShop}`;
+    const popupActiveKey = `${SHOPIFY_CONNECT_POPUP_ACTIVE_KEY_PREFIX}:${connectedShop}`;
+
+    try {
+      window.localStorage.setItem(closeSignalKey, String(Date.now()));
+      window.localStorage.removeItem(popupActiveKey);
+    } catch {
+      // Ignore storage failures; window.close below is the primary path.
+    }
+    try {
+      if (window.opener) {
+        window.opener.postMessage(payload, window.location.origin);
+      }
+    } catch {
+      // The opener may be cross-origin or unavailable.
+    }
+    try {
+      if (window.opener) {
+        window.opener.postMessage(payload, 'https://admin.shopify.com');
+      }
+    } catch {
+      // Ignore cross-origin postMessage failures.
+    }
+
+    const closeTimer = window.setTimeout(() => {
+      window.close();
+    }, 600);
+    const fallbackTimer = window.setTimeout(() => {
+      window.close();
+    }, 2500);
+    return () => {
+      window.clearTimeout(closeTimer);
+      window.clearTimeout(fallbackTimer);
+    };
+  }, [currentRouteDomain, pathname]);
   const isDiscountUiPath = /\/discounts(\/|$)/i.test(pathname);
   const hostParam = String(searchParams.get('host') || '')
     .trim()
