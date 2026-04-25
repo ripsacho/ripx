@@ -7517,11 +7517,31 @@
     } catch (e) {}
   }
 
+  function initSafely() {
+    try {
+      init();
+    } catch (eInit) {
+      try {
+        if (typeof console !== 'undefined' && console.error) {
+          console.error('[RipX] init failed', eInit);
+        }
+      } catch (_eLog) {}
+      // Retry once in case theme DOM/APIs were not ready yet.
+      try {
+        setTimeout(function () {
+          try {
+            init();
+          } catch (_eRetry) {}
+        }, 50);
+      } catch (_eTimer) {}
+    }
+  }
+
   // Initialize when DOM is ready
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', initSafely);
   } else {
-    init();
+    initSafely();
   }
 
   // Element selection / visual editor: only when ab_visual_editor=1 AND in iframe. Never runs on live site.

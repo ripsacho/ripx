@@ -3,13 +3,13 @@
   Optional fallback: if proxy fails, load a direct public script endpoint only when explicitly configured.
   This prevents local/dev stores from silently falling back to a different RipX environment.
   target: head — earlier fetch than body embeds; defer avoids blocking HTML parse.
-  ?v= must stay in sync with backend storefrontScriptRuntime.js SCRIPT_VERSION (currently 1.0.28).
+  ?v= must stay in sync with backend storefrontScriptRuntime.js SCRIPT_VERSION (currently 1.0.30).
 {% endcomment %}
 
 <script>
   (function () {
     var shopHost = '{{ request.host }}';
-    var version = '1.0.28';
+    var version = '1.0.30';
     var primarySrc = 'https://' + shopHost + '/apps/ripx/script.js?v=' + version;
     var directScriptBaseUrl = {{ block.settings.direct_script_base_url | json }};
     var fallbackSrc =
@@ -38,6 +38,43 @@
         return parsed;
       } catch (_e) {
         return null;
+      }
+    }
+
+    function buildPreviewUrlFromCtx(urlValue) {
+      try {
+        var parsed = new URL(urlValue, window.location.origin);
+        var ctx = readPreviewCtx();
+        if (!ctx) return parsed.toString();
+        if (ctx.preview === true || ctx.preview === '1') parsed.searchParams.set('ab_preview', '1');
+        if (ctx.testId) parsed.searchParams.set('ab_preview_test', String(ctx.testId));
+        if (ctx.variantId) parsed.searchParams.set('ab_preview_variant', String(ctx.variantId));
+        if (ctx.variantName) parsed.searchParams.set('ab_preview_variant_name', String(ctx.variantName));
+        if (ctx.tenantDomain) parsed.searchParams.set('ab_preview_domain', String(ctx.tenantDomain));
+        return parsed.toString();
+      } catch (_e) {
+        return String(urlValue || '');
+      }
+    }
+
+    function redirectToPreviewBootstrapIfNeeded() {
+      try {
+        if (hasRipx()) return false;
+        var ctx = readPreviewCtx();
+        if (!ctx || !(ctx.preview || ctx.testId || ctx.variantId || ctx.variantName)) return false;
+        var path = String(window.location.pathname || '').toLowerCase();
+        if (path.indexOf('/apps/ripx/preview-bootstrap') === 0) return false;
+        var previewTarget = buildPreviewUrlFromCtx(window.location.href);
+        if (!previewTarget) return false;
+        var next =
+          'https://' +
+          shopHost +
+          '/apps/ripx/preview-bootstrap?url=' +
+          encodeURIComponent(previewTarget);
+        window.location.replace(next);
+        return true;
+      } catch (_e) {
+        return false;
       }
     }
 
@@ -102,6 +139,7 @@
       if (fallbackSrc) appendScript(withPreviewBust(fallbackSrc), true);
       if (attemptCount >= maxAttempts) {
         stopEnsure();
+        if (redirectToPreviewBootstrapIfNeeded()) return;
         if (window.console && typeof window.console.warn === 'function') {
           window.console.warn(
             '[RipX] Storefront script did not initialize after retries. Check app embed status and proxy route.'
