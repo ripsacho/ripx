@@ -223,9 +223,6 @@ async function servePreviewBootstrap(req, res) {
     `${appBaseUrl}/api/track/script.js?shop=${encodeURIComponent(normalizedShop)}` +
     `&v=${encodeURIComponent(SCRIPT_VERSION)}` +
     `&ripx_preview_bust=${previewScriptBust}`;
-  const loaderUrl = `https://${normalizedShop}/apps/ripx/preview-bootstrap-loader.js?url=${encodeURIComponent(
-    targetUrl
-  )}`;
   const html = `<!doctype html>
 <html lang="en">
   <head>
@@ -233,7 +230,6 @@ async function servePreviewBootstrap(req, res) {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>RipX preview bootstrap</title>
     <meta http-equiv="refresh" content="15;url=${targetUrl}">
-    <script src="${loaderUrl}"></script>
   </head>
   <body>
     <p>Preparing RipX preview...</p>
@@ -352,9 +348,7 @@ async function servePreviewBootstrap(req, res) {
             return r.text();
           })
           .then(mount)
-          .catch(function () {
-            // keep external loader tag as secondary fallback path
-          });
+          .catch(goHard);
         setTimeout(goHard, 15000);
       })();
     </script>
