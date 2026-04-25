@@ -20,35 +20,101 @@
           '&v=' +
           version
         : '';
-    var loaded = false;
+    var maxAttempts = 10;
+    var attemptCount = 0;
+    var ensureTimer = null;
 
-    function loadScript(src, isFallback) {
-      if (loaded) return;
+    function hasRipx() {
+      return !!(window.RipX && window.RipX.version);
+    }
+
+    function readPreviewCtx() {
+      try {
+        if (!window.sessionStorage) return null;
+        var raw = window.sessionStorage.getItem('__ripx_preview_ctx_v1__');
+        if (!raw) return null;
+        var parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return null;
+        return parsed;
+      } catch (_e) {
+        return null;
+      }
+    }
+
+    function withPreviewBust(src) {
+      if (!src) return '';
+      try {
+        var parsed = new URL(src, window.location.origin);
+        var ctx = readPreviewCtx();
+        if (ctx && (ctx.preview || ctx.testId || ctx.variantId || ctx.variantName)) {
+          parsed.searchParams.set('ripx_preview_bust', String(Date.now()));
+        }
+        return parsed.toString();
+      } catch (_e) {
+        return src;
+      }
+    }
+
+    function hasScriptTagFor(src) {
+      if (!src) return false;
+      var normalized = String(src).split('?')[0];
+      try {
+        return Array.prototype.slice.call(document.scripts || []).some(function (s) {
+          var current = String((s && s.src) || '').split('?')[0];
+          return !!current && current === normalized;
+        });
+      } catch (_e) {
+        return false;
+      }
+    }
+
+    function appendScript(src, isFallback) {
+      if (!src || hasScriptTagFor(src)) return;
       var tag = document.createElement('script');
       tag.src = src;
       tag.defer = true;
       tag.setAttribute('fetchpriority', 'high');
-      tag.crossOrigin = 'anonymous';
       tag.onload = function () {
-        loaded = true;
+        if (hasRipx()) stopEnsure();
       };
-      if (!isFallback) {
-        tag.onerror = function () {
-          if (fallbackSrc) {
-            loadScript(fallbackSrc, true);
-            return;
-          }
-          if (window.console && typeof window.console.warn === 'function') {
-            window.console.warn(
-              '[RipX] Failed to load storefront script from app proxy and no direct fallback URL is configured.'
-            );
-          }
-        };
-      }
-      document.head.appendChild(tag);
+      tag.onerror = function () {
+        if (!isFallback && fallbackSrc) {
+          appendScript(withPreviewBust(fallbackSrc), true);
+        }
+      };
+      (document.head || document.documentElement || document.body).appendChild(tag);
     }
 
-    loadScript(primarySrc, false);
+    function stopEnsure() {
+      if (ensureTimer) {
+        clearInterval(ensureTimer);
+        ensureTimer = null;
+      }
+    }
+
+    function ensureLoaded() {
+      if (hasRipx()) {
+        stopEnsure();
+        return;
+      }
+      attemptCount += 1;
+      appendScript(withPreviewBust(primarySrc), false);
+      if (fallbackSrc) appendScript(withPreviewBust(fallbackSrc), true);
+      if (attemptCount >= maxAttempts) {
+        stopEnsure();
+        if (window.console && typeof window.console.warn === 'function') {
+          window.console.warn(
+            '[RipX] Storefront script did not initialize after retries. Check app embed status and proxy route.'
+          );
+        }
+      }
+    }
+
+    ensureLoaded();
+    ensureTimer = setInterval(ensureLoaded, 1500);
+    window.addEventListener('pageshow', function () {
+      if (!hasRipx()) ensureLoaded();
+    });
   })();
 </script>
 
