@@ -256,7 +256,35 @@ async function servePreviewBootstrap(req, res) {
         function injectScriptTag(htmlText) {
           var tags =
             '<script>(function(){' +
+            'if(window.__RIPX_PREVIEW_NAV_GUARD__) return; window.__RIPX_PREVIEW_NAV_GUARD__=true;' +
+            'function readCtx(){try{var raw=window.sessionStorage&&window.sessionStorage.getItem("__ripx_preview_ctx_v1__");return raw?JSON.parse(raw):null;}catch(_e){return null;}}' +
+            'function withPreview(u){var ctx=readCtx();if(!ctx)return u;' +
+              'if(ctx.preview===true||ctx.preview==="1") u.searchParams.set("ab_preview","1");' +
+              'if(ctx.testId) u.searchParams.set("ab_preview_test",String(ctx.testId));' +
+              'if(ctx.variantId) u.searchParams.set("ab_preview_variant",String(ctx.variantId));' +
+              'if(ctx.variantName) u.searchParams.set("ab_preview_variant_name",String(ctx.variantName));' +
+              'if(ctx.tenantDomain) u.searchParams.set("ab_preview_domain",String(ctx.tenantDomain));' +
+              'return u;}' +
+            'function toBootstrapHref(href){try{' +
+              'var u=new URL(href,window.location.origin);' +
+              'if(String(u.hostname||"").toLowerCase()!==String(window.location.hostname||"").toLowerCase()) return "";' +
+              'if(/^\\/apps\\/ripx\\/preview-bootstrap/i.test(String(u.pathname||""))) return "";' +
+              'u=withPreview(u);' +
+              'return "https://"+window.location.hostname+"/apps/ripx/preview-bootstrap?url="+encodeURIComponent(u.toString());' +
+            '}catch(_e){return "";}}' +
+            'document.addEventListener("click",function(e){try{' +
+              'if(!e||e.defaultPrevented) return;' +
+              'if(e.metaKey||e.ctrlKey||e.shiftKey||e.altKey) return;' +
+              'var t=e.target; if(!t||!t.closest) return; var a=t.closest("a[href]"); if(!a) return;' +
+              'var target=(a.getAttribute("target")||"").toLowerCase(); if(target&&target!=="_self") return;' +
+              'var next=toBootstrapHref(a.href); if(!next) return;' +
+              'e.preventDefault(); window.location.assign(next);' +
+            '}catch(_e){}} , true);' +
+            '})();<' + '/script>' +
+            '<script>(function(){' +
             'var attempts=0;' +
+            'var appSrc=' + JSON.stringify(appProxyScriptUrl) + ';' +
+            'var directSrc=' + JSON.stringify(directScriptUrl) + ';' +
             'function hasRipx(){return !!(window.RipX&&window.RipX.version);}' +
             'function injectOnce(src){' +
               'if(!src) return;' +
@@ -273,8 +301,8 @@ async function servePreviewBootstrap(req, res) {
             'function ensure(){' +
               'if(hasRipx()) return;' +
               'attempts+=1;' +
-              'injectOnce(appProxyScriptUrl);' +
-              'injectOnce(directScriptUrl);' +
+              'injectOnce(appSrc);' +
+              'injectOnce(directSrc);' +
               'if(!hasRipx()&&attempts<10){setTimeout(ensure,1500);}' +
             '}' +
             'ensure();' +
@@ -477,7 +505,35 @@ async function servePreviewBootstrapLoader(req, res) {
   function injectScriptTag(html) {
     var tags =
       '<script>(function(){' +
+      'if(window.__RIPX_PREVIEW_NAV_GUARD__) return; window.__RIPX_PREVIEW_NAV_GUARD__=true;' +
+      'function readCtx(){try{var raw=window.sessionStorage&&window.sessionStorage.getItem("__ripx_preview_ctx_v1__");return raw?JSON.parse(raw):null;}catch(_e){return null;}}' +
+      'function withPreview(u){var ctx=readCtx();if(!ctx)return u;' +
+        'if(ctx.preview===true||ctx.preview==="1") u.searchParams.set("ab_preview","1");' +
+        'if(ctx.testId) u.searchParams.set("ab_preview_test",String(ctx.testId));' +
+        'if(ctx.variantId) u.searchParams.set("ab_preview_variant",String(ctx.variantId));' +
+        'if(ctx.variantName) u.searchParams.set("ab_preview_variant_name",String(ctx.variantName));' +
+        'if(ctx.tenantDomain) u.searchParams.set("ab_preview_domain",String(ctx.tenantDomain));' +
+        'return u;}' +
+      'function toBootstrapHref(href){try{' +
+        'var u=new URL(href,window.location.origin);' +
+        'if(String(u.hostname||"").toLowerCase()!==String(window.location.hostname||"").toLowerCase()) return "";' +
+        'if(/^\\/apps\\/ripx\\/preview-bootstrap/i.test(String(u.pathname||""))) return "";' +
+        'u=withPreview(u);' +
+        'return "https://"+window.location.hostname+"/apps/ripx/preview-bootstrap?url="+encodeURIComponent(u.toString());' +
+      '}catch(_e){return "";}}' +
+      'document.addEventListener("click",function(e){try{' +
+        'if(!e||e.defaultPrevented) return;' +
+        'if(e.metaKey||e.ctrlKey||e.shiftKey||e.altKey) return;' +
+        'var t=e.target; if(!t||!t.closest) return; var a=t.closest("a[href]"); if(!a) return;' +
+        'var target=(a.getAttribute("target")||"").toLowerCase(); if(target&&target!=="_self") return;' +
+        'var next=toBootstrapHref(a.href); if(!next) return;' +
+        'e.preventDefault(); window.location.assign(next);' +
+      '}catch(_e){}} , true);' +
+      '})();<' + '/script>' +
+      '<script>(function(){' +
       'var attempts=0;' +
+      'var appSrc=' + JSON.stringify(appProxyScriptUrl) + ';' +
+      'var directSrc=' + JSON.stringify(directScriptUrl) + ';' +
       'function hasRipx(){return !!(window.RipX&&window.RipX.version);}' +
       'function injectOnce(src){' +
         'if(!src) return;' +
@@ -494,8 +550,8 @@ async function servePreviewBootstrapLoader(req, res) {
       'function ensure(){' +
         'if(hasRipx()) return;' +
         'attempts+=1;' +
-        'injectOnce(appProxyScriptUrl);' +
-        'injectOnce(directScriptUrl);' +
+        'injectOnce(appSrc);' +
+        'injectOnce(directSrc);' +
         'if(!hasRipx()&&attempts<10){setTimeout(ensure,1500);}' +
       '}' +
       'ensure();' +

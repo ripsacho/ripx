@@ -203,6 +203,14 @@ npm run shopify:cart-transform:prepare
 npm run shopify:payment-customization:prepare
 npm run shopify:delivery-customization:prepare
 shopify app deploy
+
+
+cd ~/RipX
+git pull
+NODE_OPTIONS=--max-old-space-size=4096 npm run build --prefix frontend
+npm run migrate
+shopify app deploy --config shopify.app.production.toml
+pm2 restart ripx --update-env
 ```
 
 Then open PR `hotfix/<short-name>` -> `main`.

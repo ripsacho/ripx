@@ -29,11 +29,18 @@
 (function () {
   'use strict';
 
-  // Prevent double execution if snippet is accidentally included twice
+  // Prevent double execution if snippet is accidentally included twice.
+  // Use a stale-loading escape hatch so a previously crashed boot can recover.
+  var nowMs = Date.now();
+  var loadingAt = Number(window.__RIPX_LOADING_AT__ || 0);
   if (window.__RIPX_LOADED__) {
     return;
   }
-  window.__RIPX_LOADED__ = true;
+  if (window.__RIPX_LOADING__ && loadingAt > 0 && nowMs - loadingAt < 15000) {
+    return;
+  }
+  window.__RIPX_LOADING__ = true;
+  window.__RIPX_LOADING_AT__ = nowMs;
 
   // Configuration
   const DEFAULT_CONFIG = {
@@ -7832,4 +7839,7 @@
     };
   }
   debugLog('init', 'v' + SCRIPT_VERSION);
+  window.__RIPX_LOADED__ = true;
+  window.__RIPX_LOADING__ = false;
+  window.__RIPX_LOADING_AT__ = 0;
 })();
