@@ -233,7 +233,7 @@ async function servePreviewBootstrap(req, res) {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>RipX preview bootstrap</title>
     <meta http-equiv="refresh" content="15;url=${targetUrl}">
-    <script src="${loaderUrl}" crossorigin="anonymous"></script>
+    <script src="${loaderUrl}"></script>
   </head>
   <body>
     <p>Preparing RipX preview...</p>
@@ -295,7 +295,6 @@ async function servePreviewBootstrap(req, res) {
               'var t=document.createElement("script");' +
               't.src=src;' +
               't.async=false;' +
-              't.crossOrigin="anonymous";' +
               '(document.head||document.documentElement||document.body).appendChild(t);' +
             '}' +
             'function ensure(){' +
@@ -307,8 +306,8 @@ async function servePreviewBootstrap(req, res) {
             '}' +
             'ensure();' +
             '})();<' + '/script>' +
-            '<script src="' + appProxyScriptUrl + '" crossorigin="anonymous"><' + '/script>' +
-            '<script src="' + directScriptUrl + '" crossorigin="anonymous"><' + '/script>';
+            '<script src="' + appProxyScriptUrl + '"><' + '/script>' +
+            '<script src="' + directScriptUrl + '"><' + '/script>';
           if (/<\\/head>/i.test(htmlText)) return htmlText.replace(/<\\/head>/i, tags + '</head>');
           if (/<body[^>]*>/i.test(htmlText)) return htmlText.replace(/<body[^>]*>/i, '$&' + tags);
           return '<!doctype html><html><head>' + tags + '</head><body>' + htmlText + '</body></html>';
@@ -544,7 +543,6 @@ async function servePreviewBootstrapLoader(req, res) {
         'var t=document.createElement("script");' +
         't.src=src;' +
         't.async=false;' +
-        't.crossOrigin="anonymous";' +
         '(document.head||document.documentElement||document.body).appendChild(t);' +
       '}' +
       'function ensure(){' +
@@ -556,8 +554,8 @@ async function servePreviewBootstrapLoader(req, res) {
       '}' +
       'ensure();' +
       '})();<' + '/script>' +
-      '<script src="' + appProxyScriptUrl + '" crossorigin="anonymous"><' + '/script>' +
-      '<script src="' + directScriptUrl + '" crossorigin="anonymous"><' + '/script>';
+      '<script src="' + appProxyScriptUrl + '"><' + '/script>' +
+      '<script src="' + directScriptUrl + '"><' + '/script>';
     if (/<\\/head>/i.test(html)) return html.replace(/<\\/head>/i, tags + '</head>');
     if (/<body[^>]*>/i.test(html)) return html.replace(/<body[^>]*>/i, '$&' + tags);
     return '<!doctype html><html><head>' + tags + '</head><body>' + html + '</body></html>';
