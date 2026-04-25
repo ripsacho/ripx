@@ -2579,6 +2579,12 @@ function TestWizard({
   // Resolve the first selected target to a concrete path (e.g. /products/handle) for preview. Auto-targets first from list.
   const getFirstTargetPreviewPath = useCallback(() => {
     const targetType = formData.target_type || initialData?.target_type;
+    const normalizedTargetType = String(targetType || '')
+      .trim()
+      .toLowerCase()
+      .replace(/_/g, '-');
+    const currentTestType = formData.type || initialData?.type || selectedTemplate;
+    const isPriceScope = isPriceLikeTestType(currentTestType);
     const urlPattern = formData.segments?.url_pattern ?? '';
     const firstId =
       formData.target_id ||
@@ -2586,6 +2592,16 @@ function TestWizard({
         ? formData.target_ids[0]
         : null);
     const resources = storeResources || [];
+    if (isPriceScope && normalizedTargetType === 'all-products') {
+      const matrixProductWithHandle = (allProductsMatrixProducts || []).find(p => p?.handle);
+      if (matrixProductWithHandle?.handle) {
+        return `/products/${encodeURIComponent(matrixProductWithHandle.handle)}`;
+      }
+      const metaWithHandle = Object.values(priceProductMetaById || {}).find(meta => meta?.handle);
+      if (metaWithHandle?.handle) {
+        return `/products/${encodeURIComponent(metaWithHandle.handle)}`;
+      }
+    }
     if (targetType === 'product' && resources.length > 0) {
       const r = firstId ? resources.find(res => res.id === firstId) : resources[0];
       if (r?.handle) return `/products/${encodeURIComponent(r.handle)}`;
@@ -2604,8 +2620,13 @@ function TestWizard({
     formData.target_id,
     formData.target_ids,
     formData.segments?.url_pattern,
+    formData.type,
     storeResources,
+    allProductsMatrixProducts,
+    priceProductMetaById,
     initialData?.target_type,
+    initialData?.type,
+    selectedTemplate,
     getPreviewPathForTarget,
   ]);
 
