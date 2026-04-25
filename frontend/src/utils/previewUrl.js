@@ -286,7 +286,7 @@ export function buildShopifyPreviewBootstrapUrl({ previewUrl }) {
     const directUrl = new URL(directPreviewUrl);
     const host = String(directUrl.hostname || '').trim();
     if (!host || !/\.myshopify\.com$/i.test(host)) return null;
-    return `https://${host}/apps/ripx/preview-bootstrap?url=${encodeURIComponent(directPreviewUrl)}`;
+    return `https://${host}/apps/ripx/preview-bootstrap-v2?url=${encodeURIComponent(directPreviewUrl)}`;
   } catch {
     return null;
   }
@@ -324,8 +324,12 @@ export function ensureShopifyPreviewBootstrapUrl(previewUrl) {
     const host = String(parsed.hostname || '').trim();
     if (!host || !/\.myshopify\.com$/i.test(host)) return directPreviewUrl;
     const p = String(parsed.pathname || '').toLowerCase();
-    if (p.indexOf('/apps/ripx/preview-bootstrap') === 0) return parsed.toString();
-    return `https://${host}/apps/ripx/preview-bootstrap?url=${encodeURIComponent(parsed.toString())}`;
+    if (
+      p.indexOf('/apps/ripx/preview-bootstrap') === 0 ||
+      p.indexOf('/apps/ripx/preview-bootstrap-v2') === 0
+    )
+      return parsed.toString();
+    return `https://${host}/apps/ripx/preview-bootstrap-v2?url=${encodeURIComponent(parsed.toString())}`;
   } catch {
     return directPreviewUrl;
   }

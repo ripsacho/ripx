@@ -96,7 +96,7 @@ describe('previewUrl', () => {
     const result = buildShopifyPreviewBootstrapUrl({ previewUrl });
     const url = new URL(result);
     expect(url.origin).toBe('https://makripon.myshopify.com');
-    expect(url.pathname).toBe('/apps/ripx/preview-bootstrap');
+    expect(url.pathname).toBe('/apps/ripx/preview-bootstrap-v2');
     expect(url.searchParams.get('url')).toBe(previewUrl);
   });
 
@@ -124,13 +124,13 @@ describe('previewUrl', () => {
     const ensured = ensureShopifyPreviewBootstrapUrl(direct);
     const url = new URL(ensured);
     expect(url.origin).toBe('https://makripon.myshopify.com');
-    expect(url.pathname).toBe('/apps/ripx/preview-bootstrap');
+    expect(url.pathname).toBe('/apps/ripx/preview-bootstrap-v2');
     expect(url.searchParams.get('url')).toBe(direct);
   });
 
   it('does not re-wrap existing bootstrap URL', () => {
     const bootstrap =
-      'https://makripon.myshopify.com/apps/ripx/preview-bootstrap?url=https%3A%2F%2Fmakripon.myshopify.com%2Fproducts%2Ftest';
+      'https://makripon.myshopify.com/apps/ripx/preview-bootstrap-v2?url=https%3A%2F%2Fmakripon.myshopify.com%2Fproducts%2Ftest';
     expect(ensureShopifyPreviewBootstrapUrl(bootstrap)).toBe(bootstrap);
   });
 });

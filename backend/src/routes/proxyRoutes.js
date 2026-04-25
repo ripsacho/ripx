@@ -229,13 +229,11 @@ async function servePreviewBootstrap(req, res) {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>RipX preview bootstrap</title>
-    <meta http-equiv="refresh" content="15;url=${targetUrl}">
   </head>
   <body>
     <p>Preparing RipX preview...</p>
     <noscript>
-      <p>JavaScript required. Continue manually:</p>
-      <p><a href="${targetUrl}">Open preview</a></p>
+      <p>JavaScript is required to open a RipX preview.</p>
     </noscript>
     <script>
       (function () {
@@ -295,9 +293,9 @@ async function servePreviewBootstrap(req, res) {
             'function toBootstrapHref(href){try{' +
               'var u=new URL(href,window.location.origin);' +
               'if(String(u.hostname||"").toLowerCase()!==String(window.location.hostname||"").toLowerCase()) return "";' +
-              'if(/^\\/apps\\/ripx\\/preview-bootstrap/i.test(String(u.pathname||""))) return "";' +
+              'if(/^\\/apps\\/ripx\\/preview-bootstrap(?:-v2)?/i.test(String(u.pathname||""))) return "";' +
               'u=withPreview(u);' +
-              'return "https://"+window.location.hostname+"/apps/ripx/preview-bootstrap?url="+encodeURIComponent(u.toString());' +
+              'return "https://"+window.location.hostname+"/apps/ripx/preview-bootstrap-v2?url="+encodeURIComponent(u.toString());' +
             '}catch(_e){return "";}}' +
             'document.addEventListener("click",function(e){try{' +
               'if(!e||e.defaultPrevented) return;' +
@@ -317,7 +315,7 @@ async function servePreviewBootstrap(req, res) {
               'var ctx=readCtx(); if(!ctx||!(ctx.preview||ctx.testId||ctx.variantId||ctx.variantName)) return;' +
               'if(window.RipX&&window.RipX.version) return;' +
               'var path=String(window.location.pathname||"").toLowerCase();' +
-              'if(path.indexOf("/apps/ripx/preview-bootstrap")===0) return;' +
+              'if(path.indexOf("/apps/ripx/preview-bootstrap")===0||path.indexOf("/apps/ripx/preview-bootstrap-v2")===0) return;' +
               'var next=toBootstrapHref(window.location.href); if(!next) return;' +
               'window.location.replace(next);' +
             '}catch(_e){}} , 1500);' +
@@ -524,7 +522,10 @@ async function validatePreviewBootstrapRequest(req, res, routeName) {
 
   // Guard against recursive bootstrap chaining.
   const targetPath = String(parsedTarget.pathname || '').toLowerCase();
-  if (targetPath.indexOf('/apps/ripx/preview-bootstrap') === 0) {
+  if (
+    targetPath.indexOf('/apps/ripx/preview-bootstrap') === 0 ||
+    targetPath.indexOf('/apps/ripx/preview-bootstrap-v2') === 0
+  ) {
     res.status(400).type('text/plain').send('Invalid target path');
     return null;
   }
@@ -614,9 +615,9 @@ async function servePreviewBootstrapLoader(req, res) {
       'function toBootstrapHref(href){try{' +
         'var u=new URL(href,window.location.origin);' +
         'if(String(u.hostname||"").toLowerCase()!==String(window.location.hostname||"").toLowerCase()) return "";' +
-        'if(/^\\/apps\\/ripx\\/preview-bootstrap/i.test(String(u.pathname||""))) return "";' +
+        'if(/^\\/apps\\/ripx\\/preview-bootstrap(?:-v2)?/i.test(String(u.pathname||""))) return "";' +
         'u=withPreview(u);' +
-        'return "https://"+window.location.hostname+"/apps/ripx/preview-bootstrap?url="+encodeURIComponent(u.toString());' +
+        'return "https://"+window.location.hostname+"/apps/ripx/preview-bootstrap-v2?url="+encodeURIComponent(u.toString());' +
       '}catch(_e){return "";}}' +
       'document.addEventListener("click",function(e){try{' +
         'if(!e||e.defaultPrevented) return;' +
@@ -636,7 +637,7 @@ async function servePreviewBootstrapLoader(req, res) {
         'var ctx=readCtx(); if(!ctx||!(ctx.preview||ctx.testId||ctx.variantId||ctx.variantName)) return;' +
         'if(window.RipX&&window.RipX.version) return;' +
         'var path=String(window.location.pathname||"").toLowerCase();' +
-        'if(path.indexOf("/apps/ripx/preview-bootstrap")===0) return;' +
+        'if(path.indexOf("/apps/ripx/preview-bootstrap")===0||path.indexOf("/apps/ripx/preview-bootstrap-v2")===0) return;' +
         'var next=toBootstrapHref(window.location.href); if(!next) return;' +
         'window.location.replace(next);' +
       '}catch(_e){}} , 1500);' +
@@ -755,14 +756,24 @@ async function servePreviewBootstrapLoader(req, res) {
 }
 
 router.get('/preview-bootstrap', asyncHandler(servePreviewBootstrap));
+router.get('/preview-bootstrap-v2', asyncHandler(servePreviewBootstrap));
 router.get('/preview-bootstrap/preview-bootstrap', asyncHandler(servePreviewBootstrap));
+router.get('/preview-bootstrap-v2/preview-bootstrap-v2', asyncHandler(servePreviewBootstrap));
 // App proxy base sometimes includes /script.js; Shopify then rewrites to /script.js/preview-bootstrap.
 router.get('/script.js/preview-bootstrap', asyncHandler(servePreviewBootstrap));
+router.get('/script.js/preview-bootstrap-v2', asyncHandler(servePreviewBootstrap));
 router.get('/script.js/script.js/preview-bootstrap', asyncHandler(servePreviewBootstrap));
+router.get('/script.js/script.js/preview-bootstrap-v2', asyncHandler(servePreviewBootstrap));
 router.get('/preview-bootstrap-loader.js', asyncHandler(servePreviewBootstrapLoader));
+router.get('/preview-bootstrap-v2-loader.js', asyncHandler(servePreviewBootstrapLoader));
 router.get('/script.js/preview-bootstrap-loader.js', asyncHandler(servePreviewBootstrapLoader));
+router.get('/script.js/preview-bootstrap-v2-loader.js', asyncHandler(servePreviewBootstrapLoader));
 router.get(
   '/script.js/script.js/preview-bootstrap-loader.js',
+  asyncHandler(servePreviewBootstrapLoader)
+);
+router.get(
+  '/script.js/script.js/preview-bootstrap-v2-loader.js',
   asyncHandler(servePreviewBootstrapLoader)
 );
 

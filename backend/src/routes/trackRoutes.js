@@ -769,7 +769,7 @@ router.get(
 
     const targetUrl = parsed.toString();
     const previewLaunchTarget = /\.myshopify\.com$/i.test(parsed.hostname || '')
-      ? `https://${parsed.hostname}/apps/ripx/preview-bootstrap?url=${encodeURIComponent(targetUrl)}`
+      ? `https://${parsed.hostname}/apps/ripx/preview-bootstrap-v2?url=${encodeURIComponent(targetUrl)}`
       : targetUrl;
     const html = `<!doctype html>
 <html lang="en">
@@ -777,7 +777,6 @@ router.get(
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Launching Preview...</title>
-    <meta http-equiv="refresh" content="1;url=${escapeHtmlAttr(previewLaunchTarget)}">
   </head>
   <body>
     <p>Launching preview...</p>

@@ -3,13 +3,21 @@
   Optional fallback: if proxy fails, load a direct public script endpoint only when explicitly configured.
   This prevents local/dev stores from silently falling back to a different RipX environment.
   target: head — earlier fetch than body embeds; defer avoids blocking HTML parse.
-  ?v= must stay in sync with backend storefrontScriptRuntime.js SCRIPT_VERSION (currently 1.0.30).
+  ?v= must stay in sync with backend storefrontScriptRuntime.js SCRIPT_VERSION (currently 1.0.31).
 {% endcomment %}
+
+<script id="ripx-app-embed-config" type="application/json">
+  {
+    "shopHost": {{ request.host | json }},
+    "version": "1.0.31",
+    "directScriptBaseUrl": {{ block.settings.direct_script_base_url | json }}
+  }
+</script>
 
 <script>
   (function () {
     var shopHost = '{{ request.host }}';
-    var version = '1.0.30';
+    var version = '1.0.31';
     var primarySrc = 'https://' + shopHost + '/apps/ripx/script.js?v=' + version;
     var directScriptBaseUrl = {{ block.settings.direct_script_base_url | json }};
     var fallbackSrc =
@@ -41,6 +49,31 @@
       }
     }
 
+    function seedPreviewCtxFromUrl() {
+      try {
+        if (!window.sessionStorage || !window.location || !window.location.search) return null;
+        var params = new URLSearchParams(window.location.search || '');
+        var previewFlag = params.get('ab_preview') === '1';
+        var testId = params.get('ab_preview_test') || null;
+        var variantId = params.get('ab_preview_variant') || null;
+        var variantName = params.get('ab_preview_variant_name') || null;
+        var tenantDomain = params.get('ab_preview_domain') || null;
+        if (!(previewFlag || testId || variantId || variantName)) return null;
+        var ctx = {
+          preview: previewFlag,
+          testId: testId,
+          variantId: variantId,
+          variantName: variantName,
+          tenantDomain: tenantDomain,
+          persistedAtMs: Date.now(),
+        };
+        window.sessionStorage.setItem('__ripx_preview_ctx_v1__', JSON.stringify(ctx));
+        return ctx;
+      } catch (_e) {
+        return null;
+      }
+    }
+
     function buildPreviewUrlFromCtx(urlValue) {
       try {
         var parsed = new URL(urlValue, window.location.origin);
@@ -64,12 +97,13 @@
         if (!ctx || !(ctx.preview || ctx.testId || ctx.variantId || ctx.variantName)) return false;
         var path = String(window.location.pathname || '').toLowerCase();
         if (path.indexOf('/apps/ripx/preview-bootstrap') === 0) return false;
+        if (path.indexOf('/apps/ripx/preview-bootstrap-v2') === 0) return false;
         var previewTarget = buildPreviewUrlFromCtx(window.location.href);
         if (!previewTarget) return false;
         var next =
           'https://' +
           shopHost +
-          '/apps/ripx/preview-bootstrap?url=' +
+          '/apps/ripx/preview-bootstrap-v2?url=' +
           encodeURIComponent(previewTarget);
         window.location.replace(next);
         return true;
@@ -148,6 +182,7 @@
       }
     }
 
+    seedPreviewCtxFromUrl();
     ensureLoaded();
     ensureTimer = setInterval(ensureLoaded, 1500);
     window.addEventListener('pageshow', function () {
@@ -160,6 +195,7 @@
 {
   "name": "RipX App Embed",
   "target": "head",
+  "javascript": "ripx-app-embed-loader.js",
   "settings": [
     {
       "type": "text",

@@ -670,11 +670,15 @@
       var parsed = new URL(withCtx, window.location.origin);
       if (!/\.myshopify\.com$/i.test(String(parsed.hostname || ''))) return parsed.toString();
       var p = String(parsed.pathname || '').toLowerCase();
-      if (p.indexOf('/apps/ripx/preview-bootstrap') === 0) return parsed.toString();
+      if (
+        p.indexOf('/apps/ripx/preview-bootstrap') === 0 ||
+        p.indexOf('/apps/ripx/preview-bootstrap-v2') === 0
+      )
+        return parsed.toString();
       return (
         'https://' +
         parsed.hostname +
-        '/apps/ripx/preview-bootstrap?url=' +
+        '/apps/ripx/preview-bootstrap-v2?url=' +
         encodeURIComponent(parsed.toString())
       );
     } catch (_e) {
@@ -3341,15 +3345,45 @@
    */
   function getEffectivePriceConfig(cfg, productId, currentVariantId) {
     if (!cfg || typeof cfg !== 'object') return cfg;
+    var merged = {};
+    for (var baseKey in cfg) {
+      if (
+        baseKey !== 'byProduct' &&
+        baseKey !== 'byVariant' &&
+        Object.prototype.hasOwnProperty.call(cfg, baseKey)
+      ) {
+        merged[baseKey] = cfg[baseKey];
+      }
+    }
+
+    var rootByVariant = cfg.byVariant;
+    if (
+      currentVariantId != null &&
+      currentVariantId !== '' &&
+      rootByVariant &&
+      typeof rootByVariant === 'object'
+    ) {
+      var rootVkey = toVariantIdKey(currentVariantId);
+      var rootVariantOverride = rootVkey
+        ? rootByVariant[rootVkey] ||
+          rootByVariant[currentVariantId] ||
+          rootByVariant['gid://shopify/ProductVariant/' + rootVkey]
+        : null;
+      if (rootVariantOverride && typeof rootVariantOverride === 'object') {
+        for (var rootVariantKey in rootVariantOverride) {
+          if (Object.prototype.hasOwnProperty.call(rootVariantOverride, rootVariantKey)) {
+            merged[rootVariantKey] = rootVariantOverride[rootVariantKey];
+          }
+        }
+      }
+    }
+
     var byProduct = cfg.byProduct;
-    if (!byProduct || typeof byProduct !== 'object') return cfg;
+    if (!byProduct || typeof byProduct !== 'object') return normalizeMergedPriceConfig(cfg, merged);
     var pid = toNumericProductId(productId);
     var gid = pid ? 'gid://shopify/Product/' + pid : '';
     var override = byProduct[productId] || byProduct[pid] || (gid ? byProduct[gid] : null);
-    if (!override || typeof override !== 'object') return cfg;
-    var merged = {};
-    for (var k in cfg)
-      if (k !== 'byProduct' && Object.prototype.hasOwnProperty.call(cfg, k)) merged[k] = cfg[k];
+    if (!override || typeof override !== 'object') return normalizeMergedPriceConfig(cfg, merged);
     for (var j in override)
       if (j !== 'byVariant' && Object.prototype.hasOwnProperty.call(override, j))
         merged[j] = override[j];
