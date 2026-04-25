@@ -81,6 +81,21 @@ describe('inferTemplateKeyFromVariants', () => {
     expect(inferTemplateKeyFromVariants([{ config: { price: 10 } }], 'pricing')).toBe('pricing');
   });
 
+  it('does not misclassify price tests with preview URLs as split-url', () => {
+    expect(
+      inferTemplateKeyFromVariants(
+        [{ config: { url: 'https://shop.myshopify.com/products/a' } }],
+        'price'
+      )
+    ).toBe('price');
+    expect(
+      inferTemplateKeyFromVariants(
+        [{ config: { url: 'https://shop.myshopify.com/products/a', priceDelta: -10 } }],
+        'pricing'
+      )
+    ).toBe('pricing');
+  });
+
   it('returns onsite-edit when config has code', () => {
     expect(inferTemplateKeyFromVariants([{ config: { code: 'div { }' } }])).toBe('onsite-edit');
   });

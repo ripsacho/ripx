@@ -61,7 +61,9 @@ export function getVariantCount(test) {
 export function inferTemplateKeyFromVariants(variants = [], testType = '') {
   const type = (testType || '').toLowerCase();
 
-  // Trust type first for shipping/offer/checkout/combination (prevents wrong inference from config pollution)
+  // Trust explicit commerce/runtime types before config keys. Price variants may carry
+  // config.url as a preview/base URL; that must not reclassify them as split-url tests.
+  if (type === 'price' || type === 'pricing') return type === 'pricing' ? 'pricing' : 'price';
   if (type === 'shipping') return 'shipping';
   if (type === 'offer') return 'offer';
   if (type === 'checkout') return 'checkout';
@@ -112,7 +114,6 @@ export function inferTemplateKeyFromVariants(variants = [], testType = '') {
     if ('price' in c) return type === 'pricing' ? 'pricing' : 'price';
     if ('code' in c) return 'onsite-edit';
   }
-  if (type === 'price' || type === 'pricing') return type === 'pricing' ? 'pricing' : 'price';
   if (type === 'offer') return 'offer';
   if (type === 'checkout') return 'checkout';
   if (type === 'content') return 'theme';
@@ -151,7 +152,14 @@ export function getCheckoutPhaseDisplay(test, options = {}) {
 export function getTestTypeDisplay(test) {
   const type = (test.type || '').toLowerCase();
 
-  // Always trust type for shipping/offer/checkout/combination (overrides wrong goal.template_key from pollution)
+  // Always trust explicit commerce/runtime types (overrides wrong goal.template_key/config pollution).
+  // Price configs can include `url` for preview/base URL and should never display as Split URL.
+  if (type === 'price' || type === 'pricing') {
+    return {
+      label: type === 'pricing' ? TEST_TYPE_LABELS.pricing : TEST_TYPE_LABELS.price,
+      icon: type === 'pricing' ? TEST_TYPE_ICONS.pricing : TEST_TYPE_ICONS.price,
+    };
+  }
   if (type === 'shipping')
     return { label: TEST_TYPE_LABELS.shipping, icon: TEST_TYPE_ICONS.shipping };
   if (type === 'offer') return { label: TEST_TYPE_LABELS.offer, icon: TEST_TYPE_ICONS.offer };

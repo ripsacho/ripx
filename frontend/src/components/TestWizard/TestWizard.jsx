@@ -216,6 +216,11 @@ function TestWizard({
     const normalized = value.map(item => normalizeTargetIdValue(item)).filter(Boolean);
     return normalized.length > 0 ? normalized : [];
   };
+  const normalizeTargetTypeValue = value => {
+    const raw = normalizeTargetIdValue(value);
+    if (!raw) return raw;
+    return raw.toLowerCase() === 'all_products' ? 'all-products' : raw;
+  };
   const normalizeTextValue = value => {
     if (value === null || value === undefined) return '';
     return String(value).trim();
@@ -1060,7 +1065,7 @@ function TestWizard({
       .catch(() => setTargetingPresets([]));
   }, []);
 
-  const targetTypeForResources = formData.target_type;
+  const targetTypeForResources = normalizeTargetTypeValue(formData.target_type);
   const [storeResourceSearchDebounced, setStoreResourceSearchDebounced] = useState('');
   useEffect(() => {
     const t = setTimeout(() => setStoreResourceSearchDebounced(storeResourceSearch), 400);
@@ -2483,8 +2488,16 @@ function TestWizard({
         .filter(Boolean);
     }
 
+    const normalizedDataType = String(data.type || '').toLowerCase();
+    const priceTemplateFromType =
+      normalizedDataType === 'price' || normalizedDataType === 'pricing'
+        ? normalizedDataType === 'pricing'
+          ? 'pricing'
+          : 'price'
+        : null;
     const templateKey =
       selectedTemplate ||
+      priceTemplateFromType ||
       data.goal?.template_key ||
       inferTemplateKeyFromVariants(data.variants, data.type);
     const isPriceLikeTest =
@@ -2524,6 +2537,7 @@ function TestWizard({
 
     return {
       ...dataForApi,
+      target_type: normalizeTargetTypeValue(data.target_type),
       goal,
       holdout_percent: holdoutPercent,
       segments: normalizedSegments,
@@ -2578,7 +2592,7 @@ function TestWizard({
 
   // Resolve the first selected target to a concrete path (e.g. /products/handle) for preview. Auto-targets first from list.
   const getFirstTargetPreviewPath = useCallback(() => {
-    const targetType = formData.target_type || initialData?.target_type;
+    const targetType = normalizeTargetTypeValue(formData.target_type || initialData?.target_type);
     const normalizedTargetType = String(targetType || '')
       .trim()
       .toLowerCase()
@@ -3432,9 +3446,14 @@ function TestWizard({
     const domain = routeDomain || getPreviewDomain() || getShopDomain() || initialData?.shop_domain;
     const previewTenantDomain = normalizeTextValue(initialData?.shop_domain) || null;
     const pathForPreview = getFirstTargetPreviewPath();
+    const isPricePreview = isPriceLikeTestType(
+      formData.type || initialData?.type || selectedTemplate
+    );
     const baseUrl = resolvePreviewBaseUrl({
-      variantUrl: variant?.config?.url,
-      overrideUrl: normalizeTextValue(formData.segments?.visual_editor_preview_url) || null,
+      variantUrl: isPricePreview ? null : variant?.config?.url,
+      overrideUrl: isPricePreview
+        ? null
+        : normalizeTextValue(formData.segments?.visual_editor_preview_url) || null,
       domain: domain || undefined,
       path: pathForPreview,
     });
