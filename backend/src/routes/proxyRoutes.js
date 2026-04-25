@@ -313,6 +313,14 @@ async function servePreviewBootstrap(req, res) {
               'var next=toBootstrapHref(f.action||window.location.href); if(!next) return;' +
               'e.preventDefault(); window.location.assign(next);' +
             '}catch(_e){}} , true);' +
+            'setInterval(function(){try{' +
+              'var ctx=readCtx(); if(!ctx||!(ctx.preview||ctx.testId||ctx.variantId||ctx.variantName)) return;' +
+              'if(window.RipX&&window.RipX.version) return;' +
+              'var path=String(window.location.pathname||"").toLowerCase();' +
+              'if(path.indexOf("/apps/ripx/preview-bootstrap")===0) return;' +
+              'var next=toBootstrapHref(window.location.href); if(!next) return;' +
+              'window.location.replace(next);' +
+            '}catch(_e){}} , 1500);' +
             '})();<' + '/script>' +
             '<script>(function(){' +
             'var attempts=0;' +
@@ -624,6 +632,14 @@ async function servePreviewBootstrapLoader(req, res) {
         'var next=toBootstrapHref(f.action||window.location.href); if(!next) return;' +
         'e.preventDefault(); window.location.assign(next);' +
       '}catch(_e){}} , true);' +
+      'setInterval(function(){try{' +
+        'var ctx=readCtx(); if(!ctx||!(ctx.preview||ctx.testId||ctx.variantId||ctx.variantName)) return;' +
+        'if(window.RipX&&window.RipX.version) return;' +
+        'var path=String(window.location.pathname||"").toLowerCase();' +
+        'if(path.indexOf("/apps/ripx/preview-bootstrap")===0) return;' +
+        'var next=toBootstrapHref(window.location.href); if(!next) return;' +
+        'window.location.replace(next);' +
+      '}catch(_e){}} , 1500);' +
       '})();<' + '/script>' +
       '<script>(function(){' +
       'var attempts=0;' +
