@@ -40,6 +40,26 @@ function inferTemplateKey(variants = [], testType = '') {
 
   const config = getEffectiveConfig(variants);
 
+  if (type === 'price' || type === 'pricing') {
+    const hasShippingShape =
+      config &&
+      typeof config === 'object' &&
+      ('rate' in config ||
+        'strategy' in config ||
+        'shipping_strategy' in config ||
+        'threshold_amount' in config ||
+        'free_shipping_threshold' in config ||
+        'percent_off' in config ||
+        'profile_id' in config);
+    const hasOfferShape =
+      config &&
+      typeof config === 'object' &&
+      ('discount_type' in config || 'discount_value' in config);
+    if (!hasShippingShape && !hasOfferShape) {
+      return type === 'pricing' ? 'pricing' : 'price';
+    }
+  }
+
   if (config && typeof config === 'object') {
     if ('url' in config) {
       return 'split-url';
@@ -116,7 +136,9 @@ function enrichGoalWithTemplateKey(test) {
   const type = (test.type || '').toLowerCase();
   const existingKey = (test.goal.template_key || '').toLowerCase().replace(/\s+/g, '-');
 
-  // Fix wrong template_key: shipping/offer/checkout type must override polluted template_key
+  // Fix wrong template_key: authoritative runtime types must override polluted template_key.
+  // Price configs can legitimately contain config.url as a preview/base URL; that must not
+  // turn the test into split-url after TestWizard save/load cycles.
   const typeAuthority = ['shipping', 'offer', 'checkout'];
   if (typeAuthority.includes(type)) {
     return {
@@ -128,6 +150,16 @@ function enrichGoalWithTemplateKey(test) {
   // Infer from config: overrides polluted template_key when config clearly indicates shipping/offer
   const inferred = inferTemplateKey(test.variants || [], test.type);
   if (inferred && typeAuthority.includes(inferred)) {
+    return {
+      ...test,
+      goal: { ...test.goal, template_key: inferred },
+    };
+  }
+
+  if (
+    (type === 'price' || type === 'pricing') &&
+    (inferred === 'price' || inferred === 'pricing')
+  ) {
     return {
       ...test,
       goal: { ...test.goal, template_key: inferred },

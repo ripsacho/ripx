@@ -485,6 +485,36 @@ describe('wizardValidation', () => {
         expect(errors.some(e => e.includes('valid URL'))).toBe(true);
       });
 
+      it('treats polluted split-url template keys as price when form type is price', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'price',
+            goal: { template_key: 'split-url' },
+            target_type: 'all-products',
+            variants: [
+              { name: 'Control', config: { priceMode: 'fixed', price: '' } },
+              {
+                name: 'Variant A',
+                config: {
+                  url: 'http://[invalid',
+                  priceMode: 'percent',
+                  pricePercent: 10,
+                },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: null,
+        });
+        expect(errors.some(e => e.includes('valid URL'))).toBe(false);
+        expect(errors).not.toContain(
+          'At least one test variant (non-control) must have a price configured. Go to Traffic step → Variant configuration to set prices.'
+        );
+      });
+
       it('returns no error for split-URL variant with valid URL', () => {
         const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
           stepIds: stepIdsWithTemplate,

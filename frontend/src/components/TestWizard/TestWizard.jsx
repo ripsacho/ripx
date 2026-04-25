@@ -4030,9 +4030,13 @@ function TestWizard({
         </BlockStack>
       );
     }
-    const currentTemplateKey = String(
-      selectedTemplate || formData.goal?.template_key || formData.type || ''
-    ).toLowerCase();
+    const currentTypeKey = String(formData.type || '').toLowerCase();
+    const currentTemplateKey =
+      currentTypeKey === 'price' || currentTypeKey === 'pricing'
+        ? currentTypeKey
+        : String(
+            selectedTemplate || formData.goal?.template_key || currentTypeKey || ''
+          ).toLowerCase();
     const antiFlickerRecommendedMode = ['content', 'offer', 'theme', 'split-url'].includes(
       currentTemplateKey
     )

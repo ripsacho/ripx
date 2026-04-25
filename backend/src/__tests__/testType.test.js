@@ -30,6 +30,12 @@ describe('inferTemplateKey', () => {
     expect(inferTemplateKey(variants, 'price')).toBe('price');
   });
 
+  it('does not classify price tests with preview URLs as split-url', () => {
+    const variants = [{ config: { url: 'https://shop.myshopify.com/products/a' } }];
+    expect(inferTemplateKey(variants, 'price')).toBe('price');
+    expect(inferTemplateKey(variants, 'pricing')).toBe('pricing');
+  });
+
   it('returns theme when type is content and config is empty', () => {
     const variants = [{ config: {} }];
     expect(inferTemplateKey(variants, 'content')).toBe('theme');
@@ -76,6 +82,16 @@ describe('enrichGoalWithTemplateKey', () => {
     };
     const result = enrichGoalWithTemplateKey(test);
     expect(result.goal.template_key).toBe('shipping');
+  });
+
+  it('repairs polluted split-url template_key for price tests', () => {
+    const test = {
+      goal: { type: 'conversion', template_key: 'split-url' },
+      variants: [{ config: { url: 'https://shop.myshopify.com/products/a' } }],
+      type: 'price',
+    };
+    const result = enrichGoalWithTemplateKey(test);
+    expect(result.goal.template_key).toBe('price');
   });
 
   it('adds template_key when missing and inferable', () => {

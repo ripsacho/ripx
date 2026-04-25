@@ -46,6 +46,17 @@ export function getWizardStepErrors(stepId, options) {
   const shouldEnforcePriceDirectOverrideReadiness =
     priceExecution?.isShopify === true && priceExecution?.isStandalone !== true;
 
+  function resolveTemplateKey() {
+    const explicitType = String(formData.type || initialData?.type || '')
+      .trim()
+      .toLowerCase();
+    if (explicitType === 'price' || explicitType === 'pricing') return explicitType;
+    if (['shipping', 'offer', 'checkout', 'theme'].includes(explicitType)) return explicitType;
+    return String(selectedTemplate || formData.goal?.template_key || explicitType || '')
+      .trim()
+      .toLowerCase();
+  }
+
   /** Returns true if config has a valid price/discount value for price test variants */
   function configHasPrice(cfg) {
     if (!cfg || typeof cfg !== 'object') return false;
@@ -404,11 +415,7 @@ export function getWizardStepErrors(stepId, options) {
 
   // Targeting step
   if (stepId === stepIds.targeting) {
-    const templateKeyTargeting = String(
-      selectedTemplate || formData.goal?.template_key || formData.type || ''
-    )
-      .trim()
-      .toLowerCase();
+    const templateKeyTargeting = resolveTemplateKey();
     const isCommerceTargetingTest = ['price', 'pricing', 'offer', 'shipping'].includes(
       templateKeyTargeting
     );
@@ -493,7 +500,7 @@ export function getWizardStepErrors(stepId, options) {
       );
     }
     // Price test on Traffic: validate only numeric ranges when user has entered values (no blocking "must have price" here)
-    const templateKey = selectedTemplate || formData.goal?.template_key || formData.type || '';
+    const templateKey = resolveTemplateKey();
     const isPriceTestTraffic =
       templateKey === 'price' ||
       templateKey === 'pricing' ||
@@ -536,7 +543,7 @@ export function getWizardStepErrors(stepId, options) {
     if (jsValidationErrors.length > 0) {
       errors.push('Fix JavaScript syntax errors before continuing.');
     }
-    const templateKeyCode = selectedTemplate || formData.goal?.template_key || formData.type || '';
+    const templateKeyCode = resolveTemplateKey();
     const isPriceTest =
       templateKeyCode === 'price' ||
       templateKeyCode === 'pricing' ||
@@ -607,9 +614,7 @@ export function getWizardStepErrors(stepId, options) {
       }
     }
     // Split-URL: non-empty url must be valid
-    const isSplitUrl =
-      selectedTemplate === 'split-url' ||
-      (formData.variants || []).some(v => 'url' in (v?.config || {}));
+    const isSplitUrl = templateKeyCode === 'split-url';
     if (isSplitUrl && Array.isArray(formData.variants)) {
       formData.variants.forEach((v, i) => {
         const url = (v?.config?.url ?? '').toString().trim();
@@ -703,11 +708,7 @@ export function getWizardStepErrors(stepId, options) {
       }
     }
 
-    const templateKeyTheme = String(
-      selectedTemplate || formData.goal?.template_key || formData.type || ''
-    )
-      .trim()
-      .toLowerCase();
+    const templateKeyTheme = resolveTemplateKey();
     const isThemeTest =
       templateKeyTheme === 'theme' || templateKeyTheme === 'template' || formData.type === 'theme';
     if (isThemeTest && Array.isArray(formData.variants)) {
@@ -777,8 +778,7 @@ export function getWizardStepErrors(stepId, options) {
       errors.push(`Traffic allocation must equal 100%. Current: ${totalAllocation.toFixed(1)}%.`);
     }
     // Price test: same variant price validation on review + at least one non-control with price
-    const templateKeyReview =
-      formData.type || formData.goal?.template_key || selectedTemplate || '';
+    const templateKeyReview = resolveTemplateKey();
     const isPriceTestReview =
       templateKeyReview === 'price' ||
       templateKeyReview === 'pricing' ||
@@ -851,11 +851,8 @@ export function getWizardStepErrors(stepId, options) {
       errors.push('Target ID is required for the selected scope in the Targeting step.');
     }
     const isCommerceReview =
-      ['price', 'pricing', 'offer', 'shipping'].includes(
-        String(selectedTemplate || formData.goal?.template_key || formData.type || '')
-          .trim()
-          .toLowerCase()
-      ) && String(targetType || '').toLowerCase() === 'product';
+      ['price', 'pricing', 'offer', 'shipping'].includes(resolveTemplateKey()) &&
+      String(targetType || '').toLowerCase() === 'product';
     if (isCommerceReview) {
       const selectedProductIds = normalizeProductIdList([
         ...(Array.isArray(formData.target_ids) ? formData.target_ids : []),
@@ -874,13 +871,10 @@ export function getWizardStepErrors(stepId, options) {
       }
     }
     // Split-URL URL format
-    const reviewTemplateKey = String(
-      selectedTemplate || formData.goal?.template_key || formData.type || ''
-    )
-      .trim()
-      .toLowerCase();
+    const reviewTemplateKey = resolveTemplateKey();
     const isThemeLikeReview = reviewTemplateKey === 'theme' || reviewTemplateKey === 'template';
     const isSplitUrlReview =
+      reviewTemplateKey === 'split-url' &&
       !isThemeLikeReview &&
       (formData.variants || []).some(v => (v?.config?.url ?? '').toString().trim());
     if (isSplitUrlReview && Array.isArray(formData.variants)) {
@@ -975,11 +969,7 @@ export function getWizardStepErrors(stepId, options) {
       }
     }
 
-    const templateKeyThemeReview = String(
-      selectedTemplate || formData.goal?.template_key || formData.type || ''
-    )
-      .trim()
-      .toLowerCase();
+    const templateKeyThemeReview = resolveTemplateKey();
     const isThemeReview =
       templateKeyThemeReview === 'theme' ||
       templateKeyThemeReview === 'template' ||
