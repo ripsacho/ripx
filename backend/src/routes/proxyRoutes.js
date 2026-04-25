@@ -332,7 +332,7 @@ async function servePreviewBootstrap(req, res) {
           } catch (_seedErr) {}
           try {
             var u = new URL(target, window.location.origin);
-            history.replaceState(null, '', u.pathname + u.hash);
+            history.replaceState(null, '', u.pathname + u.search + u.hash);
           } catch (_e) {}
           try {
             document.open();
@@ -583,7 +583,7 @@ async function servePreviewBootstrapLoader(req, res) {
     } catch (_seedErr) {}
     try {
       var u = new URL(target, window.location.origin);
-      history.replaceState(null, '', u.pathname + u.hash);
+      history.replaceState(null, '', u.pathname + u.search + u.hash);
     } catch (_e) {}
     try {
       document.open();
