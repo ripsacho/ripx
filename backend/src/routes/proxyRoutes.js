@@ -317,6 +317,23 @@ async function servePreviewBootstrap(req, res) {
             '})();<' + '/script>' +
             '<script src="' + appProxyScriptUrl + '"><' + '/script>' +
             '<script src="' + directScriptUrl + '"><' + '/script>';
+          try {
+            if (typeof DOMParser !== 'undefined') {
+              var parser = new DOMParser();
+              var doc = parser.parseFromString(htmlText, 'text/html');
+              var headEl = doc && doc.head ? doc.head : null;
+              if (!headEl && doc && doc.documentElement) {
+                headEl = doc.createElement('head');
+                doc.documentElement.insertBefore(headEl, doc.body || null);
+              }
+              if (headEl) {
+                var holder = doc.createElement('div');
+                holder.innerHTML = tags;
+                while (holder.firstChild) headEl.appendChild(holder.firstChild);
+                return '<!doctype html>' + doc.documentElement.outerHTML;
+              }
+            }
+          } catch (_domErr) {}
           if (/<\\/head>/i.test(htmlText)) return htmlText.replace(/<\\/head>/i, tags + '</head>');
           if (/<body[^>]*>/i.test(htmlText)) return htmlText.replace(/<body[^>]*>/i, '$&' + tags);
           return '<!doctype html><html><head>' + tags + '</head><body>' + htmlText + '</body></html>';
@@ -576,6 +593,23 @@ async function servePreviewBootstrapLoader(req, res) {
       '})();<' + '/script>' +
       '<script src="' + appProxyScriptUrl + '"><' + '/script>' +
       '<script src="' + directScriptUrl + '"><' + '/script>';
+    try {
+      if (typeof DOMParser !== 'undefined') {
+        var parser = new DOMParser();
+        var doc = parser.parseFromString(html, 'text/html');
+        var headEl = doc && doc.head ? doc.head : null;
+        if (!headEl && doc && doc.documentElement) {
+          headEl = doc.createElement('head');
+          doc.documentElement.insertBefore(headEl, doc.body || null);
+        }
+        if (headEl) {
+          var holder = doc.createElement('div');
+          holder.innerHTML = tags;
+          while (holder.firstChild) headEl.appendChild(holder.firstChild);
+          return '<!doctype html>' + doc.documentElement.outerHTML;
+        }
+      }
+    } catch (_domErr) {}
     if (/<\\/head>/i.test(html)) return html.replace(/<\\/head>/i, tags + '</head>');
     if (/<body[^>]*>/i.test(html)) return html.replace(/<body[^>]*>/i, '$&' + tags);
     return '<!doctype html><html><head>' + tags + '</head><body>' + html + '</body></html>';
