@@ -41,6 +41,26 @@ import styles from './UserPanel.module.css';
 
 const SHOPIFY_CONNECT_POPUP_CLOSE_SIGNAL_KEY_PREFIX = 'ripx-shopify-connect-close';
 const SHOPIFY_CONNECT_POPUP_ACTIVE_KEY_PREFIX = 'ripx-shopify-connect-popup-active';
+const SHOPIFY_CONNECT_POPUP_SESSION_KEY = 'ripx-shopify-connect-popup-session';
+const CONNECT_POPUP_WINDOW_NAME = 'ripx-shopify-connect';
+
+function markShopifyConnectPopupWindow(popupWindow, shop) {
+  if (!popupWindow || popupWindow.closed || !shop) return;
+  try {
+    popupWindow.name = CONNECT_POPUP_WINDOW_NAME;
+  } catch {
+    // ignore popup naming errors
+  }
+  try {
+    popupWindow.sessionStorage.setItem(SHOPIFY_CONNECT_POPUP_SESSION_KEY, shop);
+    popupWindow.sessionStorage.setItem(
+      `${SHOPIFY_CONNECT_POPUP_SESSION_KEY}:${shop}`,
+      String(Date.now())
+    );
+  } catch {
+    // Cross-origin popups cannot be marked after navigation; window.name remains the fallback.
+  }
+}
 
 function getTimeGreeting() {
   const h = new Date().getHours();
@@ -195,6 +215,7 @@ function UserPanel() {
       const existingPopup = preferredPopup || connectPopupRef.current;
       if (existingPopup && !existingPopup.closed) {
         try {
+          markShopifyConnectPopupWindow(existingPopup, normalized);
           existingPopup.location.href = url;
           existingPopup.focus();
           connectPopupRef.current = existingPopup;
@@ -219,6 +240,7 @@ function UserPanel() {
       const popup = openCenteredPopup(url);
       if (popup) {
         connectPopupRef.current = popup;
+        markShopifyConnectPopupWindow(popup, normalized);
         if (normalized) {
           setPendingShopifyConnect(normalized);
           try {
@@ -314,6 +336,7 @@ function UserPanel() {
       if (isShopify) {
         const gesturePopup = openCenteredPopup('about:blank');
         if (gesturePopup) {
+          markShopifyConnectPopupWindow(gesturePopup, normalized);
           connectPopupRef.current = gesturePopup;
         }
         if (key) {

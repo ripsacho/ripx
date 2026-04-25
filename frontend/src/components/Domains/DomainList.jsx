@@ -157,6 +157,26 @@ import { isShopifyStoreDomain, normalizeShopifyDomain } from '../../utils/shopif
 const OAUTH_SUCCESS_MESSAGE_TYPE = 'ripx-store-connected';
 const ADD_DOMAIN_DRAFT_KEY = 'ripx_add_domain_draft_v1';
 const SHOPIFY_CONNECT_SESSION_KEY = 'ripx_shopify_connect_session_v1';
+const SHOPIFY_CONNECT_POPUP_SESSION_KEY = 'ripx-shopify-connect-popup-session';
+const CONNECT_POPUP_WINDOW_NAME = 'ripx-shopify-connect';
+
+function markShopifyConnectPopupWindow(popupWindow, shop) {
+  if (!popupWindow || popupWindow.closed || !shop) return;
+  try {
+    popupWindow.name = CONNECT_POPUP_WINDOW_NAME;
+  } catch {
+    // ignore popup naming errors
+  }
+  try {
+    popupWindow.sessionStorage.setItem(SHOPIFY_CONNECT_POPUP_SESSION_KEY, shop);
+    popupWindow.sessionStorage.setItem(
+      `${SHOPIFY_CONNECT_POPUP_SESSION_KEY}:${shop}`,
+      String(Date.now())
+    );
+  } catch {
+    // Cross-origin popups cannot be marked after navigation; window.name remains the fallback.
+  }
+}
 
 /** True only for Shopify OAuth authorize URLs; prevents using our Connect or /api/auth URL as "Continue to Shopify" target */
 function isShopifyOAuthUrl(url) {
@@ -645,6 +665,7 @@ function DomainList() {
     const openOAuthPopup = oauthUrl => {
       if (preferredPopup && !preferredPopup.closed) {
         try {
+          markShopifyConnectPopupWindow(preferredPopup, normalizedDomain);
           preferredPopup.location.href = oauthUrl;
           preferredPopup.focus();
           return true;
@@ -783,6 +804,7 @@ function DomainList() {
     if (isShopify) {
       setOpeningDomain(normalizedDomain);
       const gesturePopup = openCenteredPopup('about:blank');
+      markShopifyConnectPopupWindow(gesturePopup, normalizedDomain);
       const key =
         getAccountApiKey() || getDomainKeys()[domain] || getDomainKeys()[normalizedDomain];
       if (key) {
@@ -833,6 +855,7 @@ function DomainList() {
     if (isShopify) {
       setOpeningDomain(normalized);
       const gesturePopup = openCenteredPopup('about:blank');
+      markShopifyConnectPopupWindow(gesturePopup, normalized);
       try {
         if (key) {
           try {

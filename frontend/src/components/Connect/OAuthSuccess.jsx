@@ -16,6 +16,7 @@ export const OAUTH_SUCCESS_MESSAGE_TYPE = 'ripx-store-connected';
 const CONNECT_POPUP_WINDOW_NAME = 'ripx-shopify-connect';
 const SHOPIFY_CONNECT_POPUP_CLOSE_SIGNAL_KEY_PREFIX = 'ripx-shopify-connect-close';
 const SHOPIFY_CONNECT_POPUP_ACTIVE_KEY_PREFIX = 'ripx-shopify-connect-popup-active';
+const SHOPIFY_CONNECT_POPUP_SESSION_KEY = 'ripx-shopify-connect-popup-session';
 
 export default function OAuthSuccess() {
   const [searchParams] = useSearchParams();
@@ -31,7 +32,24 @@ export default function OAuthSuccess() {
     typeof window !== 'undefined' &&
     typeof window.name === 'string' &&
     window.name.trim() === CONNECT_POPUP_WINDOW_NAME;
-  const isPopupFlowWindow = isOpenedInNewTab || isConnectPopupWindow;
+  const isMarkedConnectPopup =
+    typeof window !== 'undefined' &&
+    (() => {
+      try {
+        const popupShop = String(
+          window.sessionStorage.getItem(SHOPIFY_CONNECT_POPUP_SESSION_KEY) || ''
+        )
+          .trim()
+          .toLowerCase();
+        if (popupShop && popupShop === shop) return true;
+        const raw = window.sessionStorage.getItem(`${SHOPIFY_CONNECT_POPUP_SESSION_KEY}:${shop}`);
+        const ts = Number(raw);
+        return Number.isFinite(ts) && Date.now() - ts <= 30 * 60 * 1000;
+      } catch {
+        return false;
+      }
+    })();
+  const isPopupFlowWindow = isOpenedInNewTab || isConnectPopupWindow || isMarkedConnectPopup;
 
   useEffect(() => {
     if (!shop) {
@@ -106,6 +124,8 @@ export default function OAuthSuccess() {
       try {
         window.localStorage.removeItem(closeSignalKey);
         window.localStorage.removeItem(popupActiveKey);
+        window.sessionStorage.removeItem(SHOPIFY_CONNECT_POPUP_SESSION_KEY);
+        window.sessionStorage.removeItem(`${SHOPIFY_CONNECT_POPUP_SESSION_KEY}:${shop}`);
       } catch {
         // ignore storage errors
       }

@@ -245,6 +245,7 @@ const OAUTH_SUCCESS_MESSAGE_TYPE = 'ripx-store-connected';
 const CONNECT_POPUP_WINDOW_NAME = 'ripx-shopify-connect';
 const SHOPIFY_CONNECT_POPUP_CLOSE_SIGNAL_KEY_PREFIX = 'ripx-shopify-connect-close';
 const SHOPIFY_CONNECT_POPUP_ACTIVE_KEY_PREFIX = 'ripx-shopify-connect-popup-active';
+const SHOPIFY_CONNECT_POPUP_SESSION_KEY = 'ripx-shopify-connect-popup-session';
 
 function AppContent() {
   const location = useLocation();
@@ -373,7 +374,45 @@ function AppContent() {
     const connectedShop = String(currentRouteDomain || '')
       .trim()
       .toLowerCase();
-    if (!isConnectPopupWindow || !isShopifyStoreDomain(connectedShop)) {
+    const popupSessionShop = (() => {
+      try {
+        return String(window.sessionStorage.getItem(SHOPIFY_CONNECT_POPUP_SESSION_KEY) || '')
+          .trim()
+          .toLowerCase();
+      } catch {
+        return '';
+      }
+    })();
+    const hasPopupSessionMarker =
+      popupSessionShop === connectedShop ||
+      (() => {
+        try {
+          const raw = window.sessionStorage.getItem(
+            `${SHOPIFY_CONNECT_POPUP_SESSION_KEY}:${connectedShop}`
+          );
+          const ts = Number(raw);
+          return Number.isFinite(ts) && Date.now() - ts <= 30 * 60 * 1000;
+        } catch {
+          return false;
+        }
+      })();
+    const hasActivePopupMarker = (() => {
+      try {
+        const raw = window.localStorage.getItem(
+          `${SHOPIFY_CONNECT_POPUP_ACTIVE_KEY_PREFIX}:${connectedShop}`
+        );
+        const ts = Number(raw);
+        return Number.isFinite(ts) && Date.now() - ts <= 30 * 60 * 1000;
+      } catch {
+        return false;
+      }
+    })();
+    const isScriptOpenedChild = Boolean(window.opener);
+    const shouldCloseAsPopup =
+      isConnectPopupWindow ||
+      hasPopupSessionMarker ||
+      (isScriptOpenedChild && hasActivePopupMarker);
+    if (!shouldCloseAsPopup || !isShopifyStoreDomain(connectedShop)) {
       return undefined;
     }
     if (!pathname.includes(`/app/${connectedShop}`)) {
@@ -390,6 +429,8 @@ function AppContent() {
     try {
       window.localStorage.setItem(closeSignalKey, String(Date.now()));
       window.localStorage.removeItem(popupActiveKey);
+      window.sessionStorage.removeItem(SHOPIFY_CONNECT_POPUP_SESSION_KEY);
+      window.sessionStorage.removeItem(`${SHOPIFY_CONNECT_POPUP_SESSION_KEY}:${connectedShop}`);
     } catch {
       // Ignore storage failures; window.close below is the primary path.
     }

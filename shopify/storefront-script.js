@@ -7215,6 +7215,8 @@
                   upsertOfferCodeNotice(test, variant);
                 }
                 if (matched) {
+                  var previewFocusTest =
+                    PREVIEW_MODE && String(test.id) === String(PREVIEW_TEST_ID);
                   if (
                     variant &&
                     variant.config &&
@@ -7223,6 +7225,8 @@
                     applyThemeVariantWithRetry(test, variant);
                   }
                   if (
+                    !previewFocusTest &&
+                    !testTypeIsPrice(test) &&
                     variant.config &&
                     typeof variant.config.url === 'string' &&
                     variant.config.url.trim()
@@ -7244,8 +7248,6 @@
                       if (DEBUG) debugLog('Split-URL invalid URL', rawUrl);
                     }
                   }
-                  var previewFocusTest =
-                    PREVIEW_MODE && String(test.id) === String(PREVIEW_TEST_ID);
                   if (!previewFocusTest) {
                     applyCustomCode(test.id, variant);
                   }
