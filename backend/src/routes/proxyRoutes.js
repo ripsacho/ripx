@@ -437,11 +437,13 @@ async function servePreviewBootstrap(req, res) {
               if (headEl) {
                 var holder = doc.createElement('div');
                 holder.innerHTML = tags;
-                while (holder.firstChild) headEl.appendChild(holder.firstChild);
+                var anchor = headEl.firstChild || null;
+                while (holder.firstChild) headEl.insertBefore(holder.firstChild, anchor);
                 return '<!doctype html>' + doc.documentElement.outerHTML;
               }
             }
           } catch (_domErr) {}
+          if (/<head[^>]*>/i.test(htmlText)) return htmlText.replace(/<head[^>]*>/i, '$&' + tags);
           if (/<\\/head>/i.test(htmlText)) return htmlText.replace(/<\\/head>/i, tags + '</head>');
           if (/<body[^>]*>/i.test(htmlText)) return htmlText.replace(/<body[^>]*>/i, '$&' + tags);
           return '<!doctype html><html><head>' + tags + '</head><body>' + htmlText + '</body></html>';
@@ -807,11 +809,13 @@ async function servePreviewBootstrapLoader(req, res) {
         if (headEl) {
           var holder = doc.createElement('div');
           holder.innerHTML = tags;
-          while (holder.firstChild) headEl.appendChild(holder.firstChild);
+          var anchor = headEl.firstChild || null;
+          while (holder.firstChild) headEl.insertBefore(holder.firstChild, anchor);
           return '<!doctype html>' + doc.documentElement.outerHTML;
         }
       }
     } catch (_domErr) {}
+    if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, '$&' + tags);
     if (/<\\/head>/i.test(html)) return html.replace(/<\\/head>/i, tags + '</head>');
     if (/<body[^>]*>/i.test(html)) return html.replace(/<body[^>]*>/i, '$&' + tags);
     return '<!doctype html><html><head>' + tags + '</head><body>' + html + '</body></html>';

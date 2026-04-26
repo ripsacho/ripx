@@ -2205,9 +2205,7 @@ function Settings() {
         title: 'Storefront script',
         tone: installation.scriptVerified ? 'success' : 'warning',
         status: installation.scriptVerified ? 'Detected' : 'Needs check',
-        summary: installation.scriptVerified
-          ? 'RipX script is loading on the storefront.'
-          : 'Verify the storefront script/snippet is present and loading.',
+        summary: installation.scriptVerified ? 'Loading on storefront.' : 'Verify script install.',
         actionLabel: 'Check',
         onAction: () => runCheckoutDiagnostics(),
         loading: checkoutDiagLoading,
@@ -2221,8 +2219,8 @@ function Settings() {
         tone: storeHealth.ready ? 'success' : 'warning',
         status: storeHealth.ready ? 'Passing' : `${storeHealth.failed.length} issue(s)`,
         summary: storeHealth.ready
-          ? 'Core installation checks are aligned for this store.'
-          : storeHealth.failed[0]?.message || 'Run checks to see the current blocker.',
+          ? 'Required checks pass.'
+          : storeHealth.failed[0]?.message || 'Run checks.',
         actionLabel: 'Run',
         onAction: () => runFullCheckoutVerification(),
         loading: checkoutFullVerifyRunning,
@@ -2237,9 +2235,7 @@ function Settings() {
         title: 'Offer checkout path',
         tone: checkoutDiscountAttached ? 'success' : 'warning',
         status: checkoutDiscountAttached ? 'Ready' : 'Needs install',
-        summary: checkoutDiscountAttached
-          ? 'Discount function is attached for Offer campaigns.'
-          : 'Attach the RipX automatic discount so Shopify can execute the offer checkout path.',
+        summary: checkoutDiscountAttached ? 'Offer path attached.' : 'Attach automatic discount.',
         actionLabel: 'Install',
         onAction: () => ensureCheckoutDiscount(),
         loading: checkoutDiscountEnsuring,
@@ -2271,9 +2267,7 @@ function Settings() {
         title: 'Direct price override',
         tone: cartTransformInstalled ? 'success' : 'warning',
         status: cartTransformInstalled ? 'Installed' : 'Needs install',
-        summary: cartTransformInstalled
-          ? 'Cart Transform is installed and ready for matrix-based Price tests.'
-          : 'Install or verify the RipX cart transform for direct price override at cart and checkout.',
+        summary: cartTransformInstalled ? 'Price override ready.' : 'Install cart transform.',
         actionLabel: 'Install',
         onAction: () => ensureCartTransform(),
         loading: checkoutCartTransformEnsuring,
@@ -2285,8 +2279,8 @@ function Settings() {
         tone: checkoutDiag?.summary?.overall_ok ? 'success' : 'attention',
         status: checkoutDiag?.summary?.overall_ok ? 'Passing' : 'Needs review',
         summary: checkoutDiag?.summary?.overall_ok
-          ? 'Diagnostics passed for the current app URL and resolver configuration.'
-          : 'Run diagnostics after changing URLs, scopes, secrets, or installed functions.',
+          ? 'Diagnostics passed.'
+          : 'Run after URL/scope changes.',
         actionLabel: 'Run',
         onAction: () => runCheckoutDiagnostics(),
         loading: checkoutDiagLoading,
@@ -2299,9 +2293,7 @@ function Settings() {
         title: 'Discount list check',
         tone: checkoutDiscountListCheck?.inList ? 'success' : 'attention',
         status: checkoutDiscountListCheck?.inList ? 'Found in Shopify' : 'Not checked',
-        summary: checkoutDiscountListCheck?.inList
-          ? 'RipX discount is present in the Shopify automatic discount list.'
-          : 'Confirm the attached discount is visible in Shopify after installation.',
+        summary: checkoutDiscountListCheck?.inList ? 'Discount found.' : 'Confirm in Shopify.',
         actionLabel: 'Check',
         onAction: () => runCheckoutDiscountListCheck(),
         loading: checkoutDiscountListCheckLoading,
@@ -2351,9 +2343,9 @@ function Settings() {
                         <p className={styles.settingsShellSubtitle}>
                           {isAppSettings
                             ? isFocusedInstallationMode || isInstallationSectionActive
-                              ? 'Installation hub surfaces launch blockers first and keeps secondary setup details behind focused actions.'
-                              : 'Setup, checkout, defaults, integrations, targeting presets, and appearance for this shop.'
-                            : 'Theme and appearance. Open the app from Home for tests and installation.'}
+                              ? 'Install, verify, launch.'
+                              : 'Store setup and defaults.'
+                            : 'Theme and appearance.'}
                         </p>
                         {isAppSettings && (
                           <Tooltip content={appSettingsSubtitleHelp}>
@@ -2369,7 +2361,7 @@ function Settings() {
                       </div>
                     </div>
                   </div>
-                  {isAppSettings && !isFocusedInstallationMode && (
+                  {isAppSettings && !isFocusedInstallationMode && !isInstallationSectionActive && (
                     <div className={styles.settingsShellBadges}>
                       <Badge tone={setupComplete ? 'success' : 'attention'}>
                         {setupComplete ? 'Setup ready' : 'Setup pending'}
@@ -2388,7 +2380,7 @@ function Settings() {
                   )}
                 </div>
 
-                {isAppSettings && !isFocusedInstallationMode && (
+                {isAppSettings && !isFocusedInstallationMode && !isInstallationSectionActive && (
                   <div
                     className={styles.settingsMetricsGrid}
                     role="region"
@@ -2490,59 +2482,66 @@ function Settings() {
                     </div>
                   </div>
                 )}
-                {isAppSettings && showAllAppSections && !isFocusedInstallationMode && (
-                  <div className={styles.settingsShellQuickNav}>
-                    <Text as="span" variant="bodySm" className={styles.settingsShellQuickNavLabel}>
-                      Jump to
-                    </Text>
-                    <div className={styles.settingsShellQuickNavScroll}>
-                      <div className={styles.settingsShellQuickNavTrack}>
-                        {appSettingsSectionIndex.map(section => (
-                          <button
-                            key={section.id}
-                            type="button"
-                            className={`${styles.settingsShellQuickNavChip} ${
-                              activeAppSectionId === section.id
-                                ? styles.settingsShellQuickNavChipActive
-                                : ''
-                            }`}
-                            onClick={() => scrollToAppSection(section.id)}
-                            aria-current={activeAppSectionId === section.id ? 'true' : undefined}
-                          >
-                            <span className={styles.settingsShellQuickNavChipMain}>
-                              <span className={styles.settingsShellQuickNavChipLabel}>
-                                {section.label}
+                {isAppSettings &&
+                  showAllAppSections &&
+                  !isFocusedInstallationMode &&
+                  !isInstallationSectionActive && (
+                    <div className={styles.settingsShellQuickNav}>
+                      <Text
+                        as="span"
+                        variant="bodySm"
+                        className={styles.settingsShellQuickNavLabel}
+                      >
+                        Jump to
+                      </Text>
+                      <div className={styles.settingsShellQuickNavScroll}>
+                        <div className={styles.settingsShellQuickNavTrack}>
+                          {appSettingsSectionIndex.map(section => (
+                            <button
+                              key={section.id}
+                              type="button"
+                              className={`${styles.settingsShellQuickNavChip} ${
+                                activeAppSectionId === section.id
+                                  ? styles.settingsShellQuickNavChipActive
+                                  : ''
+                              }`}
+                              onClick={() => scrollToAppSection(section.id)}
+                              aria-current={activeAppSectionId === section.id ? 'true' : undefined}
+                            >
+                              <span className={styles.settingsShellQuickNavChipMain}>
+                                <span className={styles.settingsShellQuickNavChipLabel}>
+                                  {section.label}
+                                </span>
+                                <span className={styles.settingsShellQuickNavChipMeta}>
+                                  <span
+                                    className={`${styles.settingsShellQuickNavChipDot} ${
+                                      section.status === 'ok'
+                                        ? styles.settingsShellQuickNavChipDotOk
+                                        : section.status === 'warn'
+                                          ? styles.settingsShellQuickNavChipDotWarn
+                                          : styles.settingsShellQuickNavChipDotNeutral
+                                    }`}
+                                    aria-hidden="true"
+                                  />
+                                  {section.status === 'ok'
+                                    ? section.id === 'installation'
+                                      ? 'Ready'
+                                      : section.id === 'integrations'
+                                        ? 'Connected'
+                                        : section.id === 'presets'
+                                          ? 'Saved'
+                                          : 'Available'
+                                    : section.status === 'warn'
+                                      ? 'Needs focus'
+                                      : 'Available'}
+                                </span>
                               </span>
-                              <span className={styles.settingsShellQuickNavChipMeta}>
-                                <span
-                                  className={`${styles.settingsShellQuickNavChipDot} ${
-                                    section.status === 'ok'
-                                      ? styles.settingsShellQuickNavChipDotOk
-                                      : section.status === 'warn'
-                                        ? styles.settingsShellQuickNavChipDotWarn
-                                        : styles.settingsShellQuickNavChipDotNeutral
-                                  }`}
-                                  aria-hidden="true"
-                                />
-                                {section.status === 'ok'
-                                  ? section.id === 'installation'
-                                    ? 'Ready'
-                                    : section.id === 'integrations'
-                                      ? 'Connected'
-                                      : section.id === 'presets'
-                                        ? 'Saved'
-                                        : 'Available'
-                                  : section.status === 'warn'
-                                    ? 'Needs focus'
-                                    : 'Available'}
-                              </span>
-                            </span>
-                          </button>
-                        ))}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
               </div>
               {isAppSettings && !isFocusedInstallationMode && !isInstallationSectionActive && (
                 <div
@@ -2552,11 +2551,10 @@ function Settings() {
                 >
                   <div className={styles.settingsCommandBarMeta}>
                     <Text as="p" variant="headingSm">
-                      Setup workflow
+                      Setup
                     </Text>
                     <Text as="p" variant="bodySm" tone="subdued">
-                      Use Installation for setup, verification, and checkout readiness. Use the
-                      other sections for advanced configuration.
+                      Finish install first. Advanced settings can wait.
                     </Text>
                   </div>
                   <InlineStack
@@ -2572,10 +2570,10 @@ function Settings() {
                       Go to Installation
                     </Button>
                     <Button size="slim" onClick={() => runCheckoutDiagnostics()}>
-                      Run checkout diagnostics
+                      Run diagnostics
                     </Button>
                     <Button size="slim" onClick={() => runCheckoutExperienceDiagnostics()}>
-                      Sync checkout UI status
+                      Sync checkout UI
                     </Button>
                   </InlineStack>
                 </div>
@@ -2604,29 +2602,25 @@ function Settings() {
                   onDismiss={() => setSettingsLoadError(false)}
                   action={{ content: 'Retry', onAction: () => fetchSettings() }}
                 >
-                  Couldn&apos;t load app settings. Check your connection and try again. You can
-                  still use Installation, Integrations, and other tabs.
+                  Couldn&apos;t load app settings. Retry when your connection is stable.
                 </Banner>
               )}
               {isGuidedSetupMode && (
                 <Banner
                   tone="info"
-                  title="Focused installation mode"
+                  title="Installation mode"
                   action={{ content: 'Exit guided mode', onAction: clearGuidedSetupMode }}
                 >
-                  <p>
-                    Only the Installation section is shown in this mode so you can finish setup
-                    faster. Exit focused mode to access the other settings sections.
-                  </p>
+                  <p>Only install actions are shown. Exit to edit other settings.</p>
                 </Banner>
               )}
               {isAppSettings &&
                 !setupComplete &&
                 !isGuidedSetupMode &&
                 !isInstallationSectionActive && (
-                  <Banner tone="warning" title="Finish setup first for best results">
+                  <Banner tone="warning" title="Finish setup first">
                     <p>
-                      Complete the Installation hub before editing advanced settings.{' '}
+                      Complete Installation before advanced settings.{' '}
                       <Link to={installationHubPath} className={styles.installDocLink}>
                         Go to Installation
                       </Link>
@@ -2641,7 +2635,7 @@ function Settings() {
               className={styles.settingsBody}
               aria-label={isAppSettings ? 'App settings content' : 'Account settings content'}
             >
-              {!showAllAppSections && (
+              {!showAllAppSections && !isInstallationSectionActive && (
                 <div className={styles.settingsTabStickyWrap}>
                   <nav
                     className={`${styles.settingsTabBar} ${styles.settingsTopNav}`}
@@ -2817,7 +2811,7 @@ function Settings() {
                         isAppSettings ? 'App settings sections' : 'Account settings panel'
                       }
                     >
-                      {!isFocusedInstallationMode && (
+                      {!isFocusedInstallationMode && !isInstallationSectionActive && (
                         <div
                           className={`${styles.settingsContextStrip} ${
                             !showAllAppSections && isAppSettings && activeTabId === 'installation'
@@ -2939,12 +2933,10 @@ function Settings() {
                                   <div className={styles.installHubHeader}>
                                     <div className={styles.installHubHeaderContent}>
                                       <Text variant="headingMd" as="h2">
-                                        Smart setup hub
+                                        Setup checklist
                                       </Text>
                                       <Text as="p" variant="bodySm" tone="subdued">
-                                        Work top to bottom: first confirm the store is ready, then
-                                        enable only the checkout pieces you still need. Deeper
-                                        details stay behind the row actions.
+                                        Check status, run actions, open details only when needed.
                                       </Text>
                                     </div>
                                     <InlineStack gap="200" wrap blockAlign="center">
@@ -2961,11 +2953,7 @@ function Settings() {
                                     <div className={styles.installHubSection}>
                                       <div className={styles.installHubSectionHeader}>
                                         <Text variant="headingSm" as="h3">
-                                          1. Verify store
-                                        </Text>
-                                        <Text as="p" variant="bodySm" tone="subdued">
-                                          Confirm the blockers first before installing anything
-                                          else.
+                                          Verify
                                         </Text>
                                       </div>
                                       <BlockStack gap="200">
@@ -2982,9 +2970,6 @@ function Settings() {
                                                 </Text>
                                                 <Badge tone={item.tone}>{item.status}</Badge>
                                               </div>
-                                              <Text as="p" variant="bodySm" tone="subdued">
-                                                {item.summary}
-                                              </Text>
                                             </div>
                                             <div className={styles.installHubRowActions}>
                                               <Button
@@ -3012,10 +2997,7 @@ function Settings() {
                                     <div className={styles.installHubSection}>
                                       <div className={styles.installHubSectionHeader}>
                                         <Text variant="headingSm" as="h3">
-                                          2. Enable checkout path
-                                        </Text>
-                                        <Text as="p" variant="bodySm" tone="subdued">
-                                          Turn on only the missing checkout pieces for this store.
+                                          Enable
                                         </Text>
                                       </div>
                                       <BlockStack gap="200">
@@ -3032,9 +3014,6 @@ function Settings() {
                                                 </Text>
                                                 <Badge tone={item.tone}>{item.status}</Badge>
                                               </div>
-                                              <Text as="p" variant="bodySm" tone="subdued">
-                                                {item.summary}
-                                              </Text>
                                             </div>
                                             <div className={styles.installHubRowActions}>
                                               <Button
@@ -3381,12 +3360,10 @@ function Settings() {
                                       </div>
                                       <div className={styles.sectionHeaderContent}>
                                         <Text variant="headingMd" as="h2">
-                                          Checkout price test health
+                                          Checkout health
                                         </Text>
                                         <Text as="p" variant="bodySm" tone="subdued">
-                                          Confirms your discount function and API can align checkout
-                                          with price tests. Run checks after changing app URLs,
-                                          secrets, or extensions.
+                                          Price and offer checkout status.
                                         </Text>
                                       </div>
                                     </div>
@@ -3565,9 +3542,7 @@ function Settings() {
                                     </div>
                                     <details className={styles.installAdvancedDisclosure}>
                                       <summary className={styles.installAdvancedDisclosureSummary}>
-                                        <span>
-                                          View detailed readiness, deployment, and health checks
-                                        </span>
+                                        <span>Advanced checks</span>
                                         <span className={styles.installAdvancedDisclosureMeta}>
                                           Optional
                                         </span>
@@ -5780,7 +5755,7 @@ function Settings() {
         <Modal.Section>
           <BlockStack gap="300" data-modal="settings-install-detail">
             <Text as="p" variant="bodySm" tone="subdued">
-              Copy, verify, or share installation details without leaving the main setup hub.
+              Copy script details and fallback install steps.
             </Text>
             {installation?.scriptUrl && (
               <BlockStack gap="150">
@@ -5843,7 +5818,7 @@ function Settings() {
                     <InlineStack gap="200" blockAlign="center" wrap>
                       <Badge tone="attention">{installation.instructions.altMethod}</Badge>
                       <Text as="span" variant="bodySm" tone="subdued">
-                        Use this when the default snippet path does not fit the theme setup.
+                        Fallback only.
                       </Text>
                     </InlineStack>
                     {installation.instructions.altSnippet && (
@@ -5967,7 +5942,7 @@ function Settings() {
         <Modal.Section>
           <BlockStack gap="300" data-modal="settings-install-detail">
             <Text as="p" variant="bodySm" tone="subdued">
-              Power tools for verification, preview probing, and Shopify function inventory.
+              Diagnostics, preview probe, and function inventory.
             </Text>
             <InlineStack gap="200" wrap>
               <Button onClick={runFullCheckoutVerification} loading={checkoutFullVerifyRunning}>
