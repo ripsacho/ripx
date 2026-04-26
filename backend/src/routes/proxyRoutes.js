@@ -418,6 +418,11 @@ async function servePreviewBootstrap(req, res) {
             if (typeof DOMParser !== 'undefined') {
               var parser = new DOMParser();
               var doc = parser.parseFromString(htmlText, 'text/html');
+              try {
+                Array.prototype.slice.call(doc.querySelectorAll('script')).forEach(function (scriptEl) {
+                  if (scriptEl && scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+                });
+              } catch (_stripScriptsErr) {}
               var headEl = doc && doc.head ? doc.head : null;
               if (!headEl && doc && doc.documentElement) {
                 headEl = doc.createElement('head');
@@ -432,6 +437,7 @@ async function servePreviewBootstrap(req, res) {
               }
             }
           } catch (_domErr) {}
+          htmlText = String(htmlText || '').replace(/<script\\b[^<]*(?:(?!<\\/script>)<[^<]*)*<\\/script>/gi, '');
           if (/<head[^>]*>/i.test(htmlText)) return htmlText.replace(/<head[^>]*>/i, '$&' + tags);
           if (/<\\/head>/i.test(htmlText)) return htmlText.replace(/<\\/head>/i, tags + '</head>');
           if (/<body[^>]*>/i.test(htmlText)) return htmlText.replace(/<body[^>]*>/i, '$&' + tags);
@@ -779,6 +785,11 @@ async function servePreviewBootstrapLoader(req, res) {
       if (typeof DOMParser !== 'undefined') {
         var parser = new DOMParser();
         var doc = parser.parseFromString(html, 'text/html');
+        try {
+          Array.prototype.slice.call(doc.querySelectorAll('script')).forEach(function (scriptEl) {
+            if (scriptEl && scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+          });
+        } catch (_stripScriptsErr) {}
         var headEl = doc && doc.head ? doc.head : null;
         if (!headEl && doc && doc.documentElement) {
           headEl = doc.createElement('head');
@@ -793,6 +804,7 @@ async function servePreviewBootstrapLoader(req, res) {
         }
       }
     } catch (_domErr) {}
+    html = String(html || '').replace(/<script\\b[^<]*(?:(?!<\\/script>)<[^<]*)*<\\/script>/gi, '');
     if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, '$&' + tags);
     if (/<\\/head>/i.test(html)) return html.replace(/<\\/head>/i, tags + '</head>');
     if (/<body[^>]*>/i.test(html)) return html.replace(/<body[^>]*>/i, '$&' + tags);
