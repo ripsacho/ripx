@@ -376,7 +376,7 @@ function createPricePreviewBootstrapHandlers({ validatePreviewBootstrapRequest, 
     res.set('Cache-Control', 'no-store');
     res.set(
       'Content-Security-Policy',
-      "default-src 'self' https:; script-src 'self' https: 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; frame-src 'self' https:; connect-src 'self' https:; base-uri 'none'"
+      "default-src 'self' https:; script-src 'self' https: 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; frame-src 'self' https:; connect-src 'self' https:; base-uri 'self'"
     );
     return res.type('html').send(buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }));
   }

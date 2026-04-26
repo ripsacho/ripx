@@ -2322,12 +2322,18 @@
         (_ripxCartAttributeState && _ripxCartAttributeState.__ripx_source_variant_id) ||
         ''
     );
+    var fallbackIndex = -1;
     for (var i = cartState.items.length - 1; i >= 0; i--) {
       var item = cartState.items[i];
       if (!linePropertiesNeedRipxRepair(item, desiredProps)) continue;
       if (!preferredVariant) return i;
       if (normalizeCartVariantId(item && item.variant_id) === preferredVariant) return i;
+      if (fallbackIndex < 0) fallbackIndex = i;
     }
+    // In price preview, the product page is mounted through an app-proxy document and some
+    // themes submit the cart line before all variant metadata is available. Repair the newest
+    // missing-property line rather than leaving preview cart attributes empty.
+    if (PRICE_PREVIEW_FRAME) return fallbackIndex;
     return -1;
   }
 
@@ -2351,7 +2357,12 @@
       })
       .then(function (cartState) {
         var lineIndex = findRipxRepairLineIndex(cartState, desiredProps);
-        if (lineIndex < 0) return false;
+        if (lineIndex < 0) {
+          if (DEBUG) {
+            debugLog('cart props repair skipped:', reason || 'unknown', 'no matching line');
+          }
+          return false;
+        }
         var item = cartState.items[lineIndex] || {};
         var mergedProps = Object.assign({}, item.properties || {}, desiredProps);
         var requestBody = JSON.stringify({
@@ -2366,7 +2377,16 @@
           body: requestBody,
         })
           .then(function (res) {
-            if (!res || !res.ok) return false;
+            if (!res || !res.ok) {
+              if (DEBUG) {
+                debugLog(
+                  'cart props repair failed:',
+                  reason || 'unknown',
+                  res && res.status ? res.status : 'no-response'
+                );
+              }
+              return false;
+            }
             if (DEBUG) {
               debugLog('cart props repaired:', reason || 'unknown', 'line', lineIndex + 1);
             }
@@ -2388,7 +2408,7 @@
 
   function scheduleRipxCartPropsRepairBurst(reason) {
     maybeRepairRipxCartLineProperties(reason || 'immediate');
-    var delays = [120, 420, 1100];
+    var delays = PRICE_PREVIEW_FRAME ? [120, 420, 1100, 2200, 4200] : [120, 420, 1100];
     for (var i = 0; i < delays.length; i++) {
       (function (delayMs) {
         var timer = setTimeout(function () {
