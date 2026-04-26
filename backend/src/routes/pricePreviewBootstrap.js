@@ -208,6 +208,13 @@ function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }) {
             try {
               var next = new URL(href, target);
               if (String(next.hostname || '').toLowerCase() !== String(window.location.hostname || '').toLowerCase()) return;
+              var nextPath = String(next.pathname || '').replace(/\\/+$/, '').toLowerCase() || '/';
+              var cartToggle = anchor.closest(
+                '[data-cart-drawer], [data-cart-toggle], [data-drawer-trigger], [aria-controls*="Cart"], [aria-controls*="cart"], cart-drawer, #cart-icon-bubble, .header__icon--cart'
+              );
+              // Cart drawer triggers often use href="/cart" as a no-JS fallback. Let the
+              // theme handler own those clicks; intercepting them causes an instant cart-page redirect.
+              if (nextPath === '/cart' || cartToggle) return;
               event.preventDefault();
               window.location.assign(buildPriceBootstrapUrl(next.toString()));
             } catch (_e) {}
