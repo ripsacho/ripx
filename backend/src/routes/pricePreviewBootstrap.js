@@ -8,8 +8,8 @@
  * Design goals:
  * - Do not rewrite Shopify's full HTML with document.write.
  * - Keep the browser on an app-proxy bootstrap URL while previewing.
- * - Load the product page in a same-origin iframe and inject only the RipX runtime there.
- * - Re-inject after iframe navigation so preview survives cart/page transitions.
+ * - Fetch and mount the product page in this controlled app-proxy document.
+ * - Inject RipX before theme scripts so add-to-cart forms are patched early.
  */
 
 function buildPreviewContextScript(targetUrl) {
@@ -51,17 +51,8 @@ function persistPreviewCtx(targetWindow) {
 `;
 }
 
-function escapeHtmlAttribute(value) {
-  return String(value || '')
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
 function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }) {
   const previewContextScript = buildPreviewContextScript(targetUrl);
-  const escapedTargetUrl = escapeHtmlAttribute(targetUrl);
 
   return `<!doctype html>
 <html lang="en">
@@ -74,13 +65,6 @@ function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }) {
         margin: 0;
         min-height: 100%;
         background: #f6f6f7;
-      }
-      .ripx-price-preview-frame {
-        border: 0;
-        display: block;
-        height: 100vh;
-        width: 100vw;
-        background: #fff;
       }
       .ripx-price-preview-bar {
         align-items: center;
@@ -120,15 +104,9 @@ function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }) {
     </style>
   </head>
   <body>
-    <iframe
-      class="ripx-price-preview-frame"
-      id="ripx-price-preview-frame"
-      src="${escapedTargetUrl}"
-      title="RipX price preview"
-    ></iframe>
     <div class="ripx-price-preview-bar" id="ripx-price-preview-bar">
       <span class="ripx-price-preview-dot" id="ripx-price-preview-dot"></span>
-      <span id="ripx-price-preview-status">Preparing price preview...</span>
+      <span id="ripx-price-preview-status">Loading price preview...</span>
       <button type="button" id="ripx-price-preview-retry">Retry</button>
       <button type="button" id="ripx-price-preview-open">Open product</button>
     </div>
@@ -136,52 +114,66 @@ function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }) {
       (function () {
         var target = ${JSON.stringify(targetUrl)};
         var appProxyScriptUrl = ${JSON.stringify(appProxyScriptUrl)};
-        var frame = document.getElementById('ripx-price-preview-frame');
         var statusEl = document.getElementById('ripx-price-preview-status');
         var dotEl = document.getElementById('ripx-price-preview-dot');
         var retryButton = document.getElementById('ripx-price-preview-retry');
         var openButton = document.getElementById('ripx-price-preview-open');
         var injectionAttempt = 0;
+        var mounted = false;
+        var lastError = null;
 
         ${previewContextScript}
 
+        function ensureStatusBar() {
+          if (statusEl && document.documentElement.contains(statusEl)) return;
+          if (!document.body) return;
+          var style = document.getElementById('ripx-price-preview-style');
+          if (!style) {
+            style = document.createElement('style');
+            style.id = 'ripx-price-preview-style';
+            style.textContent =
+              '.ripx-price-preview-bar{align-items:center;background:rgba(17,24,39,.92);border-radius:999px;bottom:14px;box-shadow:0 10px 30px rgba(0,0,0,.22);color:#fff;display:flex;font:12px/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;gap:10px;left:50%;max-width:calc(100vw - 28px);padding:8px 12px;position:fixed;transform:translateX(-50%);z-index:2147483647}.ripx-price-preview-dot{background:#f59e0b;border-radius:999px;height:8px;width:8px}.ripx-price-preview-dot.ready{background:#22c55e}.ripx-price-preview-bar button{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);border-radius:999px;color:#fff;cursor:pointer;font:inherit;padding:4px 9px}';
+            (document.head || document.documentElement).appendChild(style);
+          }
+          var bar = document.getElementById('ripx-price-preview-bar');
+          if (!bar) {
+            bar = document.createElement('div');
+            bar.className = 'ripx-price-preview-bar';
+            bar.id = 'ripx-price-preview-bar';
+            bar.innerHTML =
+              '<span class="ripx-price-preview-dot" id="ripx-price-preview-dot"></span>' +
+              '<span id="ripx-price-preview-status">Loading price preview...</span>' +
+              '<button type="button" id="ripx-price-preview-retry">Retry</button>' +
+              '<button type="button" id="ripx-price-preview-open">Open product</button>';
+            document.body.appendChild(bar);
+          }
+          statusEl = document.getElementById('ripx-price-preview-status');
+          dotEl = document.getElementById('ripx-price-preview-dot');
+          retryButton = document.getElementById('ripx-price-preview-retry');
+          openButton = document.getElementById('ripx-price-preview-open');
+          if (retryButton) retryButton.onclick = reloadPreview;
+          if (openButton) {
+            openButton.onclick = function () {
+              try { window.open(target, '_blank', 'noopener'); } catch (_e) {}
+            };
+          }
+        }
+
         function setStatus(message, ready) {
+          ensureStatusBar();
           if (statusEl) statusEl.textContent = message;
           if (dotEl) dotEl.className = 'ripx-price-preview-dot' + (ready ? ' ready' : '');
         }
 
-        function frameWindow() {
-          return frame && frame.contentWindow ? frame.contentWindow : null;
-        }
-
-        function frameDocument() {
-          try {
-            var win = frameWindow();
-            return win && win.document ? win.document : null;
-          } catch (_e) {
-            return null;
-          }
-        }
-
-        function sameOriginFrameReady() {
-          var doc = frameDocument();
-          return !!(doc && (doc.head || doc.documentElement || doc.body));
-        }
-
         function hasRipxRuntime() {
           try {
-            var win = frameWindow();
-            return !!(win && win.RipX && win.RipX.version);
+            return !!(window.RipX && window.RipX.version);
           } catch (_e) {
             return false;
           }
         }
 
         function mirrorRuntimeForConsole() {
-          try {
-            var win = frameWindow();
-            if (win && win.RipX) window.RipX = win.RipX;
-          } catch (_e) {}
           try {
             window.__RIPX_BOOTSTRAP_OK__ = {
               ok: true,
@@ -193,31 +185,48 @@ function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }) {
           } catch (_e2) {}
         }
 
+        function buildPriceBootstrapUrl(urlValue) {
+          try {
+            var parsed = new URL(urlValue || target, window.location.origin);
+            if (String(parsed.hostname || '').toLowerCase() !== String(window.location.hostname || '').toLowerCase()) {
+              return parsed.toString();
+            }
+            var path = String(parsed.pathname || '').toLowerCase();
+            if (path.indexOf('/apps/ripx/price-preview-bootstrap-v1') === 0) return parsed.toString();
+            return 'https://' + parsed.hostname + '/apps/ripx/price-preview-bootstrap-v1?url=' + encodeURIComponent(parsed.toString());
+          } catch (_e) {
+            return target;
+          }
+        }
+
+        function installNavigationGuard() {
+          document.addEventListener('click', function (event) {
+            var anchor = event.target && event.target.closest ? event.target.closest('a[href]') : null;
+            if (!anchor) return;
+            var href = anchor.getAttribute('href') || '';
+            if (!href || href.indexOf('#') === 0 || /^mailto:|^tel:|^javascript:/i.test(href)) return;
+            try {
+              var next = new URL(href, target);
+              if (String(next.hostname || '').toLowerCase() !== String(window.location.hostname || '').toLowerCase()) return;
+              event.preventDefault();
+              window.location.assign(buildPriceBootstrapUrl(next.toString()));
+            } catch (_e) {}
+          }, true);
+        }
+
         function buildDebugStatus() {
-          var win = frameWindow();
-          var doc = frameDocument();
           var scripts = [];
-          var frameHref = null;
-          var ripxVersion = null;
           try {
-            scripts = doc
-              ? Array.prototype.slice.call(doc.scripts || []).map(function (script) {
-                  return script && script.src ? script.src : '';
-                }).filter(Boolean)
-              : [];
+            scripts = Array.prototype.slice.call(document.scripts || []).map(function (script) {
+              return script && script.src ? script.src : '';
+            }).filter(Boolean);
           } catch (_eScripts) {}
-          try {
-            frameHref = win && win.location ? String(win.location.href || '') : null;
-          } catch (_eFrameHref) {}
-          try {
-            ripxVersion = win && win.RipX ? win.RipX.version || null : null;
-          } catch (_eRipxVersion) {}
           return {
             href: String(window.location.href || ''),
             target: target,
-            frameHref: frameHref,
-            frameReady: sameOriginFrameReady(),
-            ripxVersion: ripxVersion,
+            mounted: mounted,
+            ripxVersion: window.RipX ? window.RipX.version || null : null,
+            lastError: lastError,
             previewCtx: (function () {
               try { return window.sessionStorage.getItem('__ripx_preview_ctx_v1__'); } catch (_e) { return null; }
             })(),
@@ -229,19 +238,23 @@ function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }) {
 
         window.RipXPricePreview = {
           debugStatus: buildDebugStatus,
-          retry: reloadFrame
+          retry: reloadPreview
         };
 
-        function injectRipxRuntime() {
-          injectionAttempt += 1;
-          persistPreviewCtx(frameWindow());
+        function appendScriptFromParsed(scriptEl) {
+          var nextScript = document.createElement('script');
+          try {
+            Array.prototype.slice.call(scriptEl.attributes || []).forEach(function (attr) {
+              nextScript.setAttribute(attr.name, attr.value);
+            });
+          } catch (_eAttrs) {}
+          if (!nextScript.src) nextScript.text = scriptEl.textContent || '';
+          (document.head || document.body || document.documentElement).appendChild(nextScript);
+        }
 
-          var doc = frameDocument();
-          if (!sameOriginFrameReady()) {
-            setStatus('Waiting for product frame...', false);
-            if (injectionAttempt < 60) setTimeout(injectRipxRuntime, 500);
-            return;
-          }
+        function injectRipxRuntimeThenScripts(scriptNodes) {
+          injectionAttempt += 1;
+          persistPreviewCtx(window);
 
           if (hasRipxRuntime()) {
             mirrorRuntimeForConsole();
@@ -250,36 +263,82 @@ function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }) {
           }
 
           try {
-            var win = frameWindow();
-            if (win) win.__RIPX_PRICE_PREVIEW_FRAME__ = true;
-            var existing = Array.prototype.slice.call(doc.scripts || []).some(function (script) {
+            window.__RIPX_PRICE_PREVIEW_FRAME__ = true;
+            var existing = Array.prototype.slice.call(document.scripts || []).some(function (script) {
               return script && script.src && script.src.indexOf('/apps/ripx/script.js') !== -1;
             });
             if (!existing) {
-              var script = doc.createElement('script');
+              var script = document.createElement('script');
               script.src = appProxyScriptUrl + '&price_preview_frame=1';
               script.async = false;
-              (doc.head || doc.documentElement || doc.body).appendChild(script);
+              script.onload = function () {
+                mirrorRuntimeForConsole();
+                setStatus('RipX price preview ready', true);
+                try {
+                  (scriptNodes || []).forEach(appendScriptFromParsed);
+                } catch (_eScriptsAfterRipx) {}
+              };
+              script.onerror = function () {
+                lastError = 'ripx_script_failed';
+                setStatus('RipX runtime failed to load', false);
+              };
+              (document.head || document.documentElement || document.body).appendChild(script);
             }
           } catch (_injectErr) {
-            setStatus('Could not inject RipX yet; retrying...', false);
-          }
-
-          if (injectionAttempt < 60) {
-            setTimeout(injectRipxRuntime, 500);
-          } else if (!hasRipxRuntime()) {
-            setStatus('RipX runtime did not load in the product frame', false);
+            lastError = _injectErr && _injectErr.message ? _injectErr.message : 'inject_failed';
+            setStatus('Could not inject RipX runtime', false);
           }
         }
 
-        function reloadFrame() {
+        function mountFetchedDocument(htmlText) {
+          if (!htmlText || typeof htmlText !== 'string') throw new Error('empty_html');
+          if (typeof DOMParser === 'undefined') throw new Error('domparser_missing');
+
+          var parsed = new DOMParser().parseFromString(htmlText, 'text/html');
+          var scriptNodes = Array.prototype.slice.call(parsed.querySelectorAll('script'));
+          scriptNodes.forEach(function (scriptEl) {
+            if (scriptEl && scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+          });
+
+          var base = parsed.createElement('base');
+          try {
+            var baseUrl = new URL(target);
+            base.href = baseUrl.origin + '/';
+          } catch (_eBase) {
+            base.href = '/';
+          }
+          (parsed.head || parsed.documentElement).insertBefore(base, (parsed.head || parsed.documentElement).firstChild);
+
+          var importedRoot = document.importNode(parsed.documentElement, true);
+          document.replaceChild(importedRoot, document.documentElement);
+          mounted = true;
+          persistPreviewCtx(window);
+          installNavigationGuard();
+          injectRipxRuntimeThenScripts(scriptNodes);
+        }
+
+        function loadPreview() {
           injectionAttempt = 0;
-          persistPreviewCtx(frameWindow());
-          if (frame) frame.src = target;
-          setStatus('Reloading price preview...', false);
+          lastError = null;
+          persistPreviewCtx(window);
+          setStatus('Loading product preview...', false);
+          fetch(target, { method: 'GET', credentials: 'include', redirect: 'follow' })
+            .then(function (response) {
+              if (!response || !response.ok) throw new Error('target_fetch_failed_' + (response && response.status ? response.status : 'unknown'));
+              return response.text();
+            })
+            .then(mountFetchedDocument)
+            .catch(function (err) {
+              lastError = err && err.message ? err.message : 'target_fetch_failed';
+              setStatus('Could not load product preview', false);
+            });
         }
 
-        if (retryButton) retryButton.onclick = reloadFrame;
+        function reloadPreview() {
+          window.location.replace(buildPriceBootstrapUrl(target));
+        }
+
+        if (retryButton) retryButton.onclick = reloadPreview;
         if (openButton) {
           openButton.onclick = function () {
             try { window.open(target, '_blank', 'noopener'); } catch (_e) {}
@@ -287,13 +346,8 @@ function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }) {
         }
 
         persistPreviewCtx(null);
-        if (frame) {
-          frame.addEventListener('load', function () {
-            injectionAttempt = 0;
-            setTimeout(injectRipxRuntime, 50);
-          });
-        }
-        injectRipxRuntime();
+        window.__RIPX_PRICE_PREVIEW_FRAME__ = true;
+        loadPreview();
       })();
     </script>
   </body>
@@ -304,12 +358,14 @@ function createPricePreviewBootstrapHandlers({ validatePreviewBootstrapRequest, 
   /**
    * Main isolated price-preview route.
    *
-   * The generic preview bootstrap rewrites full Shopify HTML. This route avoids that
-   * by leaving Shopify's page inside a same-origin iframe and injecting RipX there.
+   * The generic preview bootstrap is shared by all test types. This price-only route
+   * mounts the product document directly and injects RipX before theme scripts.
    */
   async function servePricePreviewBootstrap(req, res) {
     const validated = await validatePreviewBootstrapRequest(req, res, 'price-preview-bootstrap');
-    if (!validated) {return;}
+    if (!validated) {
+      return;
+    }
 
     const { normalizedShop, targetUrl } = validated;
     const previewScriptBust = Date.now();

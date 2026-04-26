@@ -207,8 +207,7 @@ shopify app deploy
 
 
 cd ~/RipX
-git restore "frontend/dist/index.html" "frontend/dist/ripx-storefront.js"
-git clean -fd "frontend/dist/assets"
+git stash push -u -m "server local changes before pull"
 git pull
 NODE_OPTIONS=--max-old-space-size=4096 npm run build --prefix frontend
 npm run migrate
