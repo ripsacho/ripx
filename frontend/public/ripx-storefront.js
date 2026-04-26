@@ -664,6 +664,18 @@
     }
   }
   const PRICE_PREVIEW_FRAME = !!window.__RIPX_PRICE_PREVIEW_FRAME__;
+  function getPricePreviewTargetPath() {
+    if (!PRICE_PREVIEW_FRAME) return '';
+    try {
+      var rawTarget = URL_PARAMS.get('url') || '';
+      if (!rawTarget) return '';
+      var parsedTarget = new URL(rawTarget, window.location.origin);
+      return parsedTarget.pathname + parsedTarget.search;
+    } catch (_e) {
+      return '';
+    }
+  }
+  const PRICE_PREVIEW_TARGET_PATH = getPricePreviewTargetPath();
   function toPreviewBootstrapUrl(urlValue) {
     var withCtx = withPreviewQueryParams(urlValue || window.location.href);
     if (!withCtx) return '';
@@ -2131,6 +2143,10 @@
         }
       }
     }
+    function applyPricePreviewSectionsUrlToObject(obj) {
+      if (!PRICE_PREVIEW_TARGET_PATH || !obj || typeof obj !== 'object') return;
+      obj.sections_url = PRICE_PREVIEW_TARGET_PATH;
+    }
     var effectivePayload = payload;
     var nativeSwapState = getRipxNativeVariantSwapState(effectivePayload);
     if (!effectivePayload._ripx_target_unit || !effectivePayload._ripx_discount_unit) {
@@ -2167,6 +2183,8 @@
           body.set('id', nativeSwapState.mappedVariantId);
         }
       }
+      if (PRICE_PREVIEW_TARGET_PATH && body.set)
+        body.set('sections_url', PRICE_PREVIEW_TARGET_PATH);
       applyRipxCartAttrsToFormData(body, effectivePayload, true);
       return { changed: true, body: body };
     }
@@ -2177,6 +2195,7 @@
           body.set('id', nativeSwapState.mappedVariantId);
         }
       }
+      if (PRICE_PREVIEW_TARGET_PATH) body.set('sections_url', PRICE_PREVIEW_TARGET_PATH);
       applyRipxCartAttrsToSearchParams(body, effectivePayload, true);
       return { changed: true, body: body };
     }
@@ -2190,6 +2209,7 @@
           var obj = JSON.parse(trimmed || '{}');
           if (obj && typeof obj === 'object') {
             applyNativeVariantSwapToObject(obj, nativeSwapState);
+            applyPricePreviewSectionsUrlToObject(obj);
             function mergedRipxProps(existing) {
               var nextProps = Object.assign({}, existing || {});
               function setPropIfMissing(key, value) {
