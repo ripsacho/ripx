@@ -216,13 +216,6 @@ async function servePreviewBootstrap(req, res) {
   const appProxyScriptUrl =
     `https://${normalizedShop}/apps/ripx/script.js?v=${SCRIPT_VERSION}` +
     `&ripx_preview_bust=${previewScriptBust}`;
-  const appBaseUrl = String(
-    process.env.APP_URL || `${req.protocol || 'https'}://${req.get('host') || ''}`
-  ).replace(/\/+$/, '');
-  const directScriptUrl =
-    `${appBaseUrl}/api/track/script.js?shop=${encodeURIComponent(normalizedShop)}` +
-    `&v=${encodeURIComponent(SCRIPT_VERSION)}` +
-    `&ripx_preview_bust=${previewScriptBust}`;
   const html = `<!doctype html>
 <html lang="en">
   <head>
@@ -239,7 +232,6 @@ async function servePreviewBootstrap(req, res) {
       (function () {
         var target = ${JSON.stringify(targetUrl)};
         var appProxyScriptUrl = ${JSON.stringify(appProxyScriptUrl)};
-        var directScriptUrl = ${JSON.stringify(directScriptUrl)};
         var mounted = false;
         var redirected = false;
         var retryCount = 0;
@@ -343,14 +335,15 @@ async function servePreviewBootstrap(req, res) {
             'function toBootstrapHref(href){try{' +
               'var u=new URL(href,window.location.origin);' +
               'if(String(u.hostname||"").toLowerCase()!==String(window.location.hostname||"").toLowerCase()) return "";' +
-              'if(/^\\/apps\\/ripx\\/preview-bootstrap(?:-v2)?/i.test(String(u.pathname||""))) return "";' +
+              'var upath=String(u.pathname||"").toLowerCase();' +
+              'if(upath.indexOf("/apps/ripx/preview-bootstrap")===0||upath.indexOf("/apps/ripx/preview-bootstrap-v2")===0) return "";' +
               'u=withPreview(u);' +
               'return "https://"+window.location.hostname+"/apps/ripx/preview-bootstrap-v2?url="+encodeURIComponent(u.toString());' +
             '}catch(_e){return "";}}' +
-            'function isCartAddHref(href){try{var p=String(new URL(href,window.location.origin).pathname||"").replace(/\\/+$/,"");return /\\/cart\\/add(?:\\.js)?$/i.test(p);}catch(_e){return false;}}' +
+            'function isCartAddHref(href){try{var p=String(new URL(href,window.location.origin).pathname||"").toLowerCase().replace(/\\/+$/,"");return p.slice(-9)==="/cart/add"||p.slice(-12)==="/cart/add.js";}catch(_e){return false;}}' +
             'function setHidden(form,name,value){try{if(!form||!name||!value)return;var input=form.querySelector("input[name=\\""+name+"\\"]");if(!input){input=document.createElement("input");input.type="hidden";input.name=name;form.appendChild(input);}input.value=value;}catch(_e){}}' +
             'function toReturnToValue(href){try{var u=new URL(href,window.location.origin);if(String(u.hostname||"").toLowerCase()===String(window.location.hostname||"").toLowerCase())return u.pathname+u.search+u.hash;return href;}catch(_e){return href||"";}}' +
-            'function getCurrentBootstrapReturnHref(){try{var u=new URL(window.location.href);if(/^\\/apps\\/ripx\\/preview-bootstrap(?:-v2)?/i.test(String(u.pathname||"")))return toReturnToValue(u.toString());var next=toBootstrapHref(u.toString());return next?toReturnToValue(next):"";}catch(_e){return "";}}' +
+            'function getCurrentBootstrapReturnHref(){try{var u=new URL(window.location.href);var upath=String(u.pathname||"").toLowerCase();if(upath.indexOf("/apps/ripx/preview-bootstrap")===0||upath.indexOf("/apps/ripx/preview-bootstrap-v2")===0)return toReturnToValue(u.toString());var next=toBootstrapHref(u.toString());return next?toReturnToValue(next):"";}catch(_e){return "";}}' +
             'function preserveCartAddPreviewReturn(form){try{var next=getCurrentBootstrapReturnHref();if(next)setHidden(form,"return_to",next);}catch(_e){}}' +
             'function installPreviewNavMethodGuards(){try{if(window.__RIPX_PREVIEW_NAV_METHOD_GUARDS__)return;window.__RIPX_PREVIEW_NAV_METHOD_GUARDS__=true;' +
               'var hp=history&&history.pushState;var hr=history&&history.replaceState;' +
@@ -388,7 +381,6 @@ async function servePreviewBootstrap(req, res) {
             '<script>(function(){' +
             'var attempts=0;' +
             'var appSrc=' + JSON.stringify(appProxyScriptUrl) + ';' +
-            'var directSrc=' + JSON.stringify(directScriptUrl) + ';' +
             'function hasBootstrap(){return !!(window.__RIPX_BOOTSTRAP_OK__&&window.__RIPX_BOOTSTRAP_OK__.ok);}' +
             'function hasRipx(){return !!(window.RipX&&window.RipX.version);}' +
             'function injectOnce(src){' +
@@ -412,7 +404,6 @@ async function servePreviewBootstrap(req, res) {
               '}' +
               'attempts+=1;' +
               'injectOnce(appSrc);' +
-              'injectOnce(directSrc);' +
               'if(!hasRipx()&&attempts<20){setTimeout(ensure,1000);}' +
               'else if(!hasRipx()&&hasBootstrap()){' +
                 'try{' +
@@ -422,9 +413,7 @@ async function servePreviewBootstrap(req, res) {
               '}' +
             '}' +
             'ensure();' +
-            '})();<' + '/script>' +
-            '<script src="' + appProxyScriptUrl + '"><' + '/script>' +
-            '<script src="' + directScriptUrl + '"><' + '/script>';
+            '})();<' + '/script>';
           try {
             if (typeof DOMParser !== 'undefined') {
               var parser = new DOMParser();
@@ -596,17 +585,9 @@ async function servePreviewBootstrapLoader(req, res) {
   const appProxyScriptUrl =
     `https://${normalizedShop}/apps/ripx/script.js?v=${SCRIPT_VERSION}` +
     `&ripx_preview_bust=${previewScriptBust}`;
-  const appBaseUrl = String(
-    process.env.APP_URL || `${req.protocol || 'https'}://${req.get('host') || ''}`
-  ).replace(/\/+$/, '');
-  const directScriptUrl =
-    `${appBaseUrl}/api/track/script.js?shop=${encodeURIComponent(normalizedShop)}` +
-    `&v=${encodeURIComponent(SCRIPT_VERSION)}` +
-    `&ripx_preview_bust=${previewScriptBust}`;
   const js = `(function () {
   var target = ${JSON.stringify(targetUrl)};
   var appProxyScriptUrl = ${JSON.stringify(appProxyScriptUrl)};
-  var directScriptUrl = ${JSON.stringify(directScriptUrl)};
   var redirected = false;
   var mounted = false;
   var fallbackTimer = null;
@@ -715,14 +696,15 @@ async function servePreviewBootstrapLoader(req, res) {
       'function toBootstrapHref(href){try{' +
         'var u=new URL(href,window.location.origin);' +
         'if(String(u.hostname||"").toLowerCase()!==String(window.location.hostname||"").toLowerCase()) return "";' +
-        'if(/^\\/apps\\/ripx\\/preview-bootstrap(?:-v2)?/i.test(String(u.pathname||""))) return "";' +
+        'var upath=String(u.pathname||"").toLowerCase();' +
+        'if(upath.indexOf("/apps/ripx/preview-bootstrap")===0||upath.indexOf("/apps/ripx/preview-bootstrap-v2")===0) return "";' +
         'u=withPreview(u);' +
         'return "https://"+window.location.hostname+"/apps/ripx/preview-bootstrap-v2?url="+encodeURIComponent(u.toString());' +
       '}catch(_e){return "";}}' +
-      'function isCartAddHref(href){try{var p=String(new URL(href,window.location.origin).pathname||"").replace(/\\/+$/,"");return /\\/cart\\/add(?:\\.js)?$/i.test(p);}catch(_e){return false;}}' +
+      'function isCartAddHref(href){try{var p=String(new URL(href,window.location.origin).pathname||"").toLowerCase().replace(/\\/+$/,"");return p.slice(-9)==="/cart/add"||p.slice(-12)==="/cart/add.js";}catch(_e){return false;}}' +
       'function setHidden(form,name,value){try{if(!form||!name||!value)return;var input=form.querySelector("input[name=\\""+name+"\\"]");if(!input){input=document.createElement("input");input.type="hidden";input.name=name;form.appendChild(input);}input.value=value;}catch(_e){}}' +
       'function toReturnToValue(href){try{var u=new URL(href,window.location.origin);if(String(u.hostname||"").toLowerCase()===String(window.location.hostname||"").toLowerCase())return u.pathname+u.search+u.hash;return href;}catch(_e){return href||"";}}' +
-      'function getCurrentBootstrapReturnHref(){try{var u=new URL(window.location.href);if(/^\\/apps\\/ripx\\/preview-bootstrap(?:-v2)?/i.test(String(u.pathname||"")))return toReturnToValue(u.toString());var next=toBootstrapHref(u.toString());return next?toReturnToValue(next):"";}catch(_e){return "";}}' +
+      'function getCurrentBootstrapReturnHref(){try{var u=new URL(window.location.href);var upath=String(u.pathname||"").toLowerCase();if(upath.indexOf("/apps/ripx/preview-bootstrap")===0||upath.indexOf("/apps/ripx/preview-bootstrap-v2")===0)return toReturnToValue(u.toString());var next=toBootstrapHref(u.toString());return next?toReturnToValue(next):"";}catch(_e){return "";}}' +
       'function preserveCartAddPreviewReturn(form){try{var next=getCurrentBootstrapReturnHref();if(next)setHidden(form,"return_to",next);}catch(_e){}}' +
       'function installPreviewNavMethodGuards(){try{if(window.__RIPX_PREVIEW_NAV_METHOD_GUARDS__)return;window.__RIPX_PREVIEW_NAV_METHOD_GUARDS__=true;' +
         'var hp=history&&history.pushState;var hr=history&&history.replaceState;' +
@@ -760,7 +742,6 @@ async function servePreviewBootstrapLoader(req, res) {
       '<script>(function(){' +
       'var attempts=0;' +
       'var appSrc=' + JSON.stringify(appProxyScriptUrl) + ';' +
-      'var directSrc=' + JSON.stringify(directScriptUrl) + ';' +
       'function hasBootstrap(){return !!(window.__RIPX_BOOTSTRAP_OK__&&window.__RIPX_BOOTSTRAP_OK__.ok);}' +
       'function hasRipx(){return !!(window.RipX&&window.RipX.version);}' +
       'function injectOnce(src){' +
@@ -784,7 +765,6 @@ async function servePreviewBootstrapLoader(req, res) {
         '}' +
         'attempts+=1;' +
         'injectOnce(appSrc);' +
-        'injectOnce(directSrc);' +
         'if(!hasRipx()&&attempts<20){setTimeout(ensure,1000);}' +
         'else if(!hasRipx()&&hasBootstrap()){' +
           'try{' +
@@ -794,9 +774,7 @@ async function servePreviewBootstrapLoader(req, res) {
         '}' +
       '}' +
       'ensure();' +
-      '})();<' + '/script>' +
-      '<script src="' + appProxyScriptUrl + '"><' + '/script>' +
-      '<script src="' + directScriptUrl + '"><' + '/script>';
+      '})();<' + '/script>';
     try {
       if (typeof DOMParser !== 'undefined') {
         var parser = new DOMParser();
