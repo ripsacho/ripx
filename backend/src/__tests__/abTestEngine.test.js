@@ -121,6 +121,20 @@ describe('ABTestEngine.isUserEligible', () => {
     ).toBe(true);
   });
 
+  it('treats legacy all target_type as all-products for price tests', () => {
+    const test = {
+      type: 'price',
+      target_type: 'all',
+      segments: { url_pattern: '/products/' },
+    };
+    expect(
+      ABTestEngine.isUserEligible(test, {
+        current_url: 'https://shop.example.com/collections/snowboards',
+        current_pathname: '/collections/snowboards',
+      })
+    ).toBe(true);
+  });
+
   it('still enforces url_pattern for non-price tests', () => {
     const test = {
       type: 'content',

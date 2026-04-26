@@ -29,11 +29,18 @@
 (function () {
   'use strict';
 
-  // Prevent double execution if snippet is accidentally included twice
+  // Prevent double execution if snippet is accidentally included twice.
+  // Use a stale-loading escape hatch so a previously crashed boot can recover.
+  var nowMs = Date.now();
+  var loadingAt = Number(window.__RIPX_LOADING_AT__ || 0);
   if (window.__RIPX_LOADED__) {
     return;
   }
-  window.__RIPX_LOADED__ = true;
+  if (window.__RIPX_LOADING__ && loadingAt > 0 && nowMs - loadingAt < 15000) {
+    return;
+  }
+  window.__RIPX_LOADING__ = true;
+  window.__RIPX_LOADING_AT__ = nowMs;
 
   // Configuration
   const DEFAULT_CONFIG = {
@@ -464,6 +471,7 @@
   const PREVIEW_STORAGE_KEY = '__ripx_preview_ctx_v1__';
   const PREVIEW_WINDOW_NAME_PREFIX = '__ripx_preview_ctx_v1__:';
   const PREVIEW_STORAGE_MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
+  const PREVIEW_VARIANT_CACHE_MAX_AGE_MS = 30 * 60 * 1000; // 30 minutes
   function normalizePreviewCtxObject(obj) {
     if (!obj || typeof obj !== 'object') return null;
     const persistedAtMs = Number(obj.persistedAtMs || 0);
@@ -547,30 +555,38 @@
   const _urlPreviewVariantName = URL_PARAMS.get('ab_preview_variant_name');
   const _urlPreviewTenantDomain = URL_PARAMS.get('ab_preview_domain');
 
-  // Effective preview inputs: URL wins; otherwise use embedded config; otherwise use persisted session preview.
+  const HAS_URL_PREVIEW_CTX = !!(
+    _urlPreview ||
+    _urlPreviewTest ||
+    _urlPreviewVariantId ||
+    _urlPreviewVariantName ||
+    _urlPreviewTenantDomain
+  );
+
+  // Effective preview inputs: URL wins; then embedded config; then persisted session; then window.name.
   const PREVIEW_TEST_ID =
     _urlPreviewTest ||
     (CONFIG.previewTestId && String(CONFIG.previewTestId)) ||
-    (windowNamePreview && windowNamePreview.preview ? windowNamePreview.testId : null) ||
     (persistedPreview && persistedPreview.preview ? persistedPreview.testId : null) ||
+    (windowNamePreview && windowNamePreview.preview ? windowNamePreview.testId : null) ||
     null;
   const PREVIEW_VARIANT_ID =
     _urlPreviewVariantId ||
     (CONFIG.previewVariantId && String(CONFIG.previewVariantId)) ||
-    (windowNamePreview && windowNamePreview.preview ? windowNamePreview.variantId : null) ||
     (persistedPreview && persistedPreview.preview ? persistedPreview.variantId : null) ||
+    (windowNamePreview && windowNamePreview.preview ? windowNamePreview.variantId : null) ||
     null;
   const PREVIEW_VARIANT_NAME =
     _urlPreviewVariantName ||
     (CONFIG.previewVariantName && String(CONFIG.previewVariantName)) ||
-    (windowNamePreview && windowNamePreview.preview ? windowNamePreview.variantName : null) ||
     (persistedPreview && persistedPreview.preview ? persistedPreview.variantName : null) ||
+    (windowNamePreview && windowNamePreview.preview ? windowNamePreview.variantName : null) ||
     null;
   const PREVIEW_TENANT_DOMAIN =
     _urlPreviewTenantDomain ||
     (CONFIG.previewTenantDomain && String(CONFIG.previewTenantDomain)) ||
-    (windowNamePreview && windowNamePreview.preview ? windowNamePreview.tenantDomain : null) ||
     (persistedPreview && persistedPreview.preview ? persistedPreview.tenantDomain : null) ||
+    (windowNamePreview && windowNamePreview.preview ? windowNamePreview.tenantDomain : null) ||
     null;
 
   // True only when a concrete preview context is active (target test id or runtime preview flag).
@@ -594,7 +610,7 @@
     });
     if (
       windowNamePreview &&
-      !(_urlPreview || _urlPreviewTest || _urlPreviewVariantId || _urlPreviewVariantName)
+      (HAS_URL_PREVIEW_CTX || (persistedPreview && persistedPreview.preview))
     ) {
       clearWindowNamePreviewCtx();
     }
@@ -627,6 +643,74 @@
     } catch (eSeed) {
       if (DEBUG) debugLog('preview early cart-attr seed failed:', eSeed && eSeed.message);
     }
+  }
+  function withPreviewQueryParams(urlValue) {
+    var raw = urlValue ? String(urlValue).trim() : '';
+    if (!raw) return '';
+    try {
+      var parsed = new URL(raw, window.location.origin);
+      if (PREVIEW_MODE) parsed.searchParams.set('ab_preview', '1');
+      if (PREVIEW_TEST_ID) parsed.searchParams.set('ab_preview_test', String(PREVIEW_TEST_ID));
+      if (PREVIEW_VARIANT_ID)
+        parsed.searchParams.set('ab_preview_variant', String(PREVIEW_VARIANT_ID));
+      if (PREVIEW_VARIANT_NAME) {
+        parsed.searchParams.set('ab_preview_variant_name', String(PREVIEW_VARIANT_NAME));
+      }
+      if (PREVIEW_TENANT_DOMAIN)
+        parsed.searchParams.set('ab_preview_domain', String(PREVIEW_TENANT_DOMAIN));
+      return parsed.toString();
+    } catch (_e) {
+      return raw;
+    }
+  }
+  function toPreviewBootstrapUrl(urlValue) {
+    var withCtx = withPreviewQueryParams(urlValue || window.location.href);
+    if (!withCtx) return '';
+    try {
+      var parsed = new URL(withCtx, window.location.origin);
+      if (!/\.myshopify\.com$/i.test(String(parsed.hostname || ''))) return parsed.toString();
+      var p = String(parsed.pathname || '').toLowerCase();
+      if (
+        p.indexOf('/apps/ripx/preview-bootstrap') === 0 ||
+        p.indexOf('/apps/ripx/preview-bootstrap-v2') === 0
+      )
+        return parsed.toString();
+      return (
+        'https://' +
+        parsed.hostname +
+        '/apps/ripx/preview-bootstrap-v2?url=' +
+        encodeURIComponent(parsed.toString())
+      );
+    } catch (_e) {
+      return withCtx;
+    }
+  }
+  function toShopifyReturnToPath(urlValue) {
+    var raw = urlValue ? String(urlValue).trim() : '';
+    if (!raw) return '';
+    try {
+      var parsed = new URL(raw, window.location.origin);
+      if (
+        String(parsed.hostname || '').toLowerCase() ===
+        String(window.location.hostname || '').toLowerCase()
+      ) {
+        return parsed.pathname + parsed.search + parsed.hash;
+      }
+      return raw;
+    } catch (_e) {
+      return raw;
+    }
+  }
+  function schedulePreviewBootstrapReloadAfterCartAdd(reason) {
+    if (!PREVIEW_MODE) return;
+    setTimeout(function () {
+      try {
+        var next = toPreviewBootstrapUrl(window.location.href);
+        if (!next) return;
+        if (DEBUG) debugLog('preview cart-add bootstrap reload:', reason || 'cart-add', next);
+        window.location.replace(next);
+      } catch (_e) {}
+    }, 25);
   }
   seedPreviewCartAttributesEarly();
 
@@ -800,6 +884,68 @@
   /** Single in-flight GET /track/preview per page (main loop + visual preview + reapply share it). */
   var _previewVariantInflight = null;
   var _previewVariantInflightKey = '';
+  var _previewVariantCacheByTestId = {};
+  var _ripxInitStarted = false;
+  var _ripxPreviewStabilityTimer = null;
+  function getPreviewVariantCacheStorageKey(testId) {
+    return 'ripx_preview_variant_cache_' + String(testId || '');
+  }
+  function writePreviewVariantCache(testId, variant) {
+    if (!variant || !variant.config || typeof variant.config !== 'object') return;
+    var key = String(testId || '');
+    if (!key) return;
+    var payload = { variant: variant, persistedAtMs: Date.now() };
+    _previewVariantCacheByTestId[key] = payload;
+    try {
+      if (window.sessionStorage) {
+        window.sessionStorage.setItem(
+          getPreviewVariantCacheStorageKey(key),
+          JSON.stringify(payload)
+        );
+      }
+    } catch (_) {}
+  }
+  function readPreviewVariantCache(testId) {
+    var key = String(testId || '');
+    if (!key) return null;
+    var inMemory = _previewVariantCacheByTestId[key];
+    if (
+      inMemory &&
+      inMemory.variant &&
+      inMemory.persistedAtMs &&
+      Date.now() - Number(inMemory.persistedAtMs) <= PREVIEW_VARIANT_CACHE_MAX_AGE_MS
+    ) {
+      return inMemory.variant;
+    }
+    if (inMemory) delete _previewVariantCacheByTestId[key];
+    try {
+      if (window.sessionStorage) {
+        var raw = window.sessionStorage.getItem(getPreviewVariantCacheStorageKey(key));
+        if (raw) {
+          var parsed = JSON.parse(raw);
+          if (parsed && parsed.variant && parsed.persistedAtMs) {
+            if (Date.now() - Number(parsed.persistedAtMs) <= PREVIEW_VARIANT_CACHE_MAX_AGE_MS) {
+              if (
+                parsed.variant &&
+                parsed.variant.config &&
+                typeof parsed.variant.config === 'object'
+              ) {
+                _previewVariantCacheByTestId[key] = parsed;
+                return parsed.variant;
+              }
+            } else {
+              window.sessionStorage.removeItem(getPreviewVariantCacheStorageKey(key));
+            }
+          } else if (parsed && parsed.config && typeof parsed.config === 'object') {
+            // Backward compatibility with old cache shape (raw variant object).
+            writePreviewVariantCache(key, parsed);
+            return parsed;
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
   /** Latest line-attribute payload to apply on theme AJAX cart/add requests. */
   var _ripxCartAttributeState = null;
   var _ripxCartFormTargetProductIds = null;
@@ -1010,6 +1156,13 @@
           isPreview: true,
         });
       }
+      var cachedPreviewVariant = readPreviewVariantCache(testId);
+      if (cachedPreviewVariant) {
+        return normalizeVariantForStorefront({
+          ...cachedPreviewVariant,
+          isPreview: true,
+        });
+      }
 
       if (DEBUG) {
         debugLog(
@@ -1178,12 +1331,17 @@
 
       if (response.ok) {
         const data = await response.json();
-        return normalizeVariantForStorefront(data.variant);
+        var normalized = normalizeVariantForStorefront(data.variant);
+        if (normalized && normalized.config && typeof normalized.config === 'object') {
+          writePreviewVariantCache(testId, normalized);
+        }
+        return normalized;
       }
     } catch (error) {
       console.error('Error getting preview variant:', error);
     }
-
+    var cached = readPreviewVariantCache(testId);
+    if (cached) return cached;
     return null;
   }
 
@@ -2317,6 +2475,7 @@
                         if (response && response.ok) {
                           scheduleRipxCartNativeStateRefreshBurst();
                           scheduleRipxCartPropsRepairBurst('fetch-stream');
+                          schedulePreviewBootstrapReloadAfterCartAdd('fetch-stream');
                         }
                         return response;
                       });
@@ -2349,6 +2508,7 @@
                 if (response && response.ok) {
                   scheduleRipxCartNativeStateRefreshBurst();
                   scheduleRipxCartPropsRepairBurst('fetch');
+                  schedulePreviewBootstrapReloadAfterCartAdd('fetch');
                 }
                 return response;
               });
@@ -2392,6 +2552,7 @@
                   if (self.status >= 200 && self.status < 300) {
                     scheduleRipxCartNativeStateRefreshBurst();
                     scheduleRipxCartPropsRepairBurst('xhr');
+                    schedulePreviewBootstrapReloadAfterCartAdd('xhr');
                   }
                 },
                 { once: true }
@@ -2763,21 +2924,26 @@
     forms.forEach(function (form) {
       if (!form) return;
       if (!formMatchesTargetProductIds(form, targetProductIds)) return;
-      function setProperty(propKey, value) {
+      function setHiddenInputByName(inputName, value) {
+        if (!inputName) return;
         if (value === undefined || value === null || String(value).trim() === '') return;
-        var fullName = 'properties[' + propKey + ']';
         var inputs = form.querySelectorAll('input[type="hidden"]');
         for (var hi = 0; hi < inputs.length; hi++) {
-          if (inputs[hi].name === fullName) {
+          if (inputs[hi].name === inputName) {
             inputs[hi].value = value;
             return;
           }
         }
         var input = document.createElement('input');
         input.type = 'hidden';
-        input.name = fullName;
+        input.name = inputName;
         input.value = value;
         form.appendChild(input);
+      }
+      function setProperty(propKey, value) {
+        if (value === undefined || value === null || String(value).trim() === '') return;
+        var fullName = 'properties[' + propKey + ']';
+        setHiddenInputByName(fullName, value);
       }
       setProperty(keyTest, valueTest);
       setProperty(keyVariant, valueVariant);
@@ -2825,6 +2991,19 @@
           variantIdInput.value = swapState.mappedVariantId;
           if (variantIdInput.setAttribute) {
             variantIdInput.setAttribute('data-ripx-native-variant', swapState.mappedVariantId);
+          }
+        }
+      }
+      if (PREVIEW_MODE) {
+        var rawAction = (form.getAttribute && form.getAttribute('action')) || '';
+        var resolvedAction = '';
+        try {
+          resolvedAction = rawAction ? new URL(rawAction, window.location.origin).toString() : '';
+        } catch (_eAction) {}
+        if (!resolvedAction || isCartAddPath(resolvedAction)) {
+          var returnTo = toPreviewBootstrapUrl(window.location.href);
+          if (returnTo) {
+            setHiddenInputByName('return_to', toShopifyReturnToPath(returnTo));
           }
         }
       }
@@ -3196,15 +3375,45 @@
    */
   function getEffectivePriceConfig(cfg, productId, currentVariantId) {
     if (!cfg || typeof cfg !== 'object') return cfg;
+    var merged = {};
+    for (var baseKey in cfg) {
+      if (
+        baseKey !== 'byProduct' &&
+        baseKey !== 'byVariant' &&
+        Object.prototype.hasOwnProperty.call(cfg, baseKey)
+      ) {
+        merged[baseKey] = cfg[baseKey];
+      }
+    }
+
+    var rootByVariant = cfg.byVariant;
+    if (
+      currentVariantId != null &&
+      currentVariantId !== '' &&
+      rootByVariant &&
+      typeof rootByVariant === 'object'
+    ) {
+      var rootVkey = toVariantIdKey(currentVariantId);
+      var rootVariantOverride = rootVkey
+        ? rootByVariant[rootVkey] ||
+          rootByVariant[currentVariantId] ||
+          rootByVariant['gid://shopify/ProductVariant/' + rootVkey]
+        : null;
+      if (rootVariantOverride && typeof rootVariantOverride === 'object') {
+        for (var rootVariantKey in rootVariantOverride) {
+          if (Object.prototype.hasOwnProperty.call(rootVariantOverride, rootVariantKey)) {
+            merged[rootVariantKey] = rootVariantOverride[rootVariantKey];
+          }
+        }
+      }
+    }
+
     var byProduct = cfg.byProduct;
-    if (!byProduct || typeof byProduct !== 'object') return cfg;
+    if (!byProduct || typeof byProduct !== 'object') return normalizeMergedPriceConfig(cfg, merged);
     var pid = toNumericProductId(productId);
     var gid = pid ? 'gid://shopify/Product/' + pid : '';
     var override = byProduct[productId] || byProduct[pid] || (gid ? byProduct[gid] : null);
-    if (!override || typeof override !== 'object') return cfg;
-    var merged = {};
-    for (var k in cfg)
-      if (k !== 'byProduct' && Object.prototype.hasOwnProperty.call(cfg, k)) merged[k] = cfg[k];
+    if (!override || typeof override !== 'object') return normalizeMergedPriceConfig(cfg, merged);
     for (var j in override)
       if (j !== 'byVariant' && Object.prototype.hasOwnProperty.call(override, j))
         merged[j] = override[j];
@@ -4349,6 +4558,54 @@
     if (shouldDisableCartUiPricePaint()) return;
     if (shouldPreferNativeCartRendering() || shouldBlockCartFallbackPaint()) return;
     schedulePaintAllProductsGlobalPrices(testId, variant, 'cart');
+  }
+
+  function hasByProductOverrides(config) {
+    return !!(
+      config &&
+      config.byProduct &&
+      typeof config.byProduct === 'object' &&
+      Object.keys(config.byProduct).length > 0
+    );
+  }
+
+  var _ripxAllProductsCartResolveInFlight = {};
+  function applyPriceTestToCartAllProductsByCartState(testId, variant) {
+    if (!variant || !variant.config || !_ripxNativeFetch) return;
+    var key =
+      String(testId || '') +
+      '::' +
+      String((variant && (variant.variantId != null ? variant.variantId : variant.id)) || '');
+    if (_ripxAllProductsCartResolveInFlight[key]) return;
+    _ripxAllProductsCartResolveInFlight[key] = true;
+    _ripxNativeFetch('/cart.js', {
+      method: 'GET',
+      credentials: 'same-origin',
+      headers: { accept: 'application/json' },
+    })
+      .then(function (response) {
+        if (!response || !response.ok) return null;
+        return response.json().catch(function () {
+          return null;
+        });
+      })
+      .then(function (cartState) {
+        if (!cartState || !Array.isArray(cartState.items) || !cartState.items.length) return;
+        var seen = {};
+        var targetIds = [];
+        cartState.items.forEach(function (item) {
+          var pid = toNumericProductId(item && item.product_id);
+          if (!pid || seen[pid]) return;
+          seen[pid] = true;
+          targetIds.push('gid://shopify/Product/' + pid);
+        });
+        if (!targetIds.length) return;
+        applyPriceTestToCart(testId, variant, targetIds);
+      })
+      .catch(function () {})
+      .finally(function () {
+        delete _ripxAllProductsCartResolveInFlight[key];
+      });
   }
 
   var _ripxThemeClassByTest = {};
@@ -6802,6 +7059,8 @@
    * Initialize on page load
    */
   function init() {
+    if (_ripxInitStarted) return;
+    _ripxInitStarted = true;
     if (VISUAL_PICKER_EMBED) {
       initVisualPicker();
     }
@@ -6986,6 +7245,8 @@
                   upsertOfferCodeNotice(test, variant);
                 }
                 if (matched) {
+                  var previewFocusTest =
+                    PREVIEW_MODE && String(test.id) === String(PREVIEW_TEST_ID);
                   if (
                     variant &&
                     variant.config &&
@@ -6994,6 +7255,8 @@
                     applyThemeVariantWithRetry(test, variant);
                   }
                   if (
+                    !previewFocusTest &&
+                    !testTypeIsPrice(test) &&
                     variant.config &&
                     typeof variant.config.url === 'string' &&
                     variant.config.url.trim()
@@ -7015,8 +7278,6 @@
                       if (DEBUG) debugLog('Split-URL invalid URL', rawUrl);
                     }
                   }
-                  var previewFocusTest =
-                    PREVIEW_MODE && String(test.id) === String(PREVIEW_TEST_ID);
                   if (!previewFocusTest) {
                     applyCustomCode(test.id, variant);
                   }
@@ -7098,7 +7359,11 @@
                       if (cartTids.length) {
                         applyPriceTestToCart(test.id, variant, cartTids);
                       } else if (shouldRunAllProductsCartFallback()) {
-                        applyPriceTestToCartAllProductsFallback(test.id, variant);
+                        if (hasByProductOverrides(variant.config)) {
+                          applyPriceTestToCartAllProductsByCartState(test.id, variant);
+                        } else {
+                          applyPriceTestToCartAllProductsFallback(test.id, variant);
+                        }
                       }
                     }
                   }
@@ -7212,7 +7477,11 @@
                 if (cartTids.length) {
                   applyPriceTestToCart(test.id, variant, cartTids);
                 } else if (shouldRunAllProductsCartFallback()) {
-                  applyPriceTestToCartAllProductsFallback(test.id, variant);
+                  if (hasByProductOverrides(variant.config)) {
+                    applyPriceTestToCartAllProductsByCartState(test.id, variant);
+                  } else {
+                    applyPriceTestToCartAllProductsFallback(test.id, variant);
+                  }
                 }
               }
             });
@@ -7254,6 +7523,41 @@
             } catch (e) {}
           }
         );
+        if (PREVIEW_MODE && PREVIEW_TEST_ID) {
+          // Preview-only stabilization: themes often redraw cart/prices after async updates.
+          if (_ripxPreviewStabilityTimer) {
+            clearInterval(_ripxPreviewStabilityTimer);
+            _ripxPreviewStabilityTimer = null;
+          }
+          var previewStabilityTicks = 0;
+          _ripxPreviewStabilityTimer = setInterval(function () {
+            previewStabilityTicks += 1;
+            try {
+              reapplyPriceTestsOnly();
+              applyRipxStateToCartForms(_ripxCartFormTargetProductIds);
+              scheduleRipxCartNativeStateRefreshBurst();
+              if (typeof maybeRepairRipxCartLineProperties === 'function') {
+                maybeRepairRipxCartLineProperties('preview-watchdog');
+              }
+            } catch (_e) {}
+            if (previewStabilityTicks >= 90) {
+              clearInterval(_ripxPreviewStabilityTimer);
+              _ripxPreviewStabilityTimer = null;
+            }
+          }, 2000);
+          try {
+            window.addEventListener(
+              'beforeunload',
+              function () {
+                if (_ripxPreviewStabilityTimer) {
+                  clearInterval(_ripxPreviewStabilityTimer);
+                  _ripxPreviewStabilityTimer = null;
+                }
+              },
+              { once: true }
+            );
+          } catch (_eUnload) {}
+        }
         if (window.RipX) {
           window.RipX.reapplyPriceTests = reapplyPriceTestsOnly;
           window.RipX.reapplyCartFormRipxProps = function () {
@@ -7279,11 +7583,31 @@
     } catch (e) {}
   }
 
+  function initSafely() {
+    try {
+      init();
+    } catch (eInit) {
+      try {
+        if (typeof console !== 'undefined' && console.error) {
+          console.error('[RipX] init failed', eInit);
+        }
+      } catch (_eLog) {}
+      // Retry once in case theme DOM/APIs were not ready yet.
+      try {
+        setTimeout(function () {
+          try {
+            init();
+          } catch (_eRetry) {}
+        }, 50);
+      } catch (_eTimer) {}
+    }
+  }
+
   // Initialize when DOM is ready
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', initSafely);
   } else {
-    init();
+    initSafely();
   }
 
   // Element selection / visual editor: only when ab_visual_editor=1 AND in iframe. Never runs on live site.
@@ -7601,4 +7925,7 @@
     };
   }
   debugLog('init', 'v' + SCRIPT_VERSION);
+  window.__RIPX_LOADED__ = true;
+  window.__RIPX_LOADING__ = false;
+  window.__RIPX_LOADING_AT__ = 0;
 })();

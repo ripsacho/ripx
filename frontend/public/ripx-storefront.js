@@ -685,6 +685,33 @@
       return withCtx;
     }
   }
+  function toShopifyReturnToPath(urlValue) {
+    var raw = urlValue ? String(urlValue).trim() : '';
+    if (!raw) return '';
+    try {
+      var parsed = new URL(raw, window.location.origin);
+      if (
+        String(parsed.hostname || '').toLowerCase() ===
+        String(window.location.hostname || '').toLowerCase()
+      ) {
+        return parsed.pathname + parsed.search + parsed.hash;
+      }
+      return raw;
+    } catch (_e) {
+      return raw;
+    }
+  }
+  function schedulePreviewBootstrapReloadAfterCartAdd(reason) {
+    if (!PREVIEW_MODE) return;
+    setTimeout(function () {
+      try {
+        var next = toPreviewBootstrapUrl(window.location.href);
+        if (!next) return;
+        if (DEBUG) debugLog('preview cart-add bootstrap reload:', reason || 'cart-add', next);
+        window.location.replace(next);
+      } catch (_e) {}
+    }, 25);
+  }
   seedPreviewCartAttributesEarly();
 
   const VISUAL_PICKER_MODE = URL_PARAMS.get('ab_visual_picker') === '1';
@@ -2448,6 +2475,7 @@
                         if (response && response.ok) {
                           scheduleRipxCartNativeStateRefreshBurst();
                           scheduleRipxCartPropsRepairBurst('fetch-stream');
+                          schedulePreviewBootstrapReloadAfterCartAdd('fetch-stream');
                         }
                         return response;
                       });
@@ -2480,6 +2508,7 @@
                 if (response && response.ok) {
                   scheduleRipxCartNativeStateRefreshBurst();
                   scheduleRipxCartPropsRepairBurst('fetch');
+                  schedulePreviewBootstrapReloadAfterCartAdd('fetch');
                 }
                 return response;
               });
@@ -2523,6 +2552,7 @@
                   if (self.status >= 200 && self.status < 300) {
                     scheduleRipxCartNativeStateRefreshBurst();
                     scheduleRipxCartPropsRepairBurst('xhr');
+                    schedulePreviewBootstrapReloadAfterCartAdd('xhr');
                   }
                 },
                 { once: true }
@@ -2973,7 +3003,7 @@
         if (!resolvedAction || isCartAddPath(resolvedAction)) {
           var returnTo = toPreviewBootstrapUrl(window.location.href);
           if (returnTo) {
-            setHiddenInputByName('return_to', returnTo);
+            setHiddenInputByName('return_to', toShopifyReturnToPath(returnTo));
           }
         }
       }

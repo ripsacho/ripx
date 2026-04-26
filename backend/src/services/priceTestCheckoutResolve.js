@@ -299,7 +299,13 @@ function isCheckoutSupportedPriceTargetType(targetType) {
   const tt = String(targetType || '')
     .toLowerCase()
     .trim();
-  return tt === 'product' || tt === 'all-products' || tt === 'all_products' || tt === 'collection';
+  return (
+    tt === 'product' ||
+    tt === 'all' ||
+    tt === 'all-products' ||
+    tt === 'all_products' ||
+    tt === 'collection'
+  );
 }
 
 function parseRoundTo(roundTo) {
@@ -746,7 +752,9 @@ function resolvePriceTestLineDiscount({
   if (!isPriceTestActiveForCheckout(test)) {
     return finish({ applies: false, reason: 'test_not_running' });
   }
-  const tt = String(test.target_type || '').toLowerCase();
+  const tt = String(test.target_type || '')
+    .toLowerCase()
+    .trim();
   if (!isCheckoutSupportedPriceTargetType(tt)) {
     return finish({ applies: false, reason: 'unsupported_target_type' });
   }

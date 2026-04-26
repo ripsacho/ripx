@@ -219,7 +219,19 @@ function TestWizard({
   const normalizeTargetTypeValue = value => {
     const raw = normalizeTargetIdValue(value);
     if (!raw) return raw;
-    return raw.toLowerCase() === 'all_products' ? 'all-products' : raw;
+    const normalized = raw.toLowerCase();
+    if (normalized === 'all_products') return 'all-products';
+    return raw;
+  };
+  const normalizePriceTargetTypeValue = (value, typeValue) => {
+    const target = normalizeTargetTypeValue(value);
+    const type = String(typeValue || '')
+      .trim()
+      .toLowerCase();
+    if ((type === 'price' || type === 'pricing') && (!target || target === 'all')) {
+      return 'all-products';
+    }
+    return target;
   };
   const normalizeTextValue = value => {
     if (value === null || value === undefined) return '';
@@ -560,6 +572,7 @@ function TestWizard({
   const [priceModalError, setPriceModalError] = useState(null);
   const [priceProductModalSelectionMode, setPriceProductModalSelectionMode] = useState('include');
   const [priceProductMetaById, setPriceProductMetaById] = useState({});
+  const [pricePreviewProduct, setPricePreviewProduct] = useState(null);
   const [allProductsMatrixProducts, setAllProductsMatrixProducts] = useState([]);
   const [allProductsMatrixLoading, setAllProductsMatrixLoading] = useState(false);
   const [allProductsMatrixLoadingMore, setAllProductsMatrixLoadingMore] = useState(false);
@@ -1418,6 +1431,91 @@ function TestWizard({
       return next;
     });
   }, [allProductsMatrixProducts]);
+
+  useEffect(() => {
+    const currentTestType = formData.type || initialData?.type || selectedTemplate;
+    const targetType = normalizePriceTargetTypeValue(
+      formData.target_type || initialData?.target_type,
+      currentTestType
+    );
+    const normalizedTargetType = String(targetType || '')
+      .trim()
+      .toLowerCase()
+      .replace(/_/g, '-');
+    const shouldFetchPreviewProduct =
+      isPriceLikeTestType(currentTestType) &&
+      normalizedTargetType === 'all-products' &&
+      !isStandalone &&
+      isShopifyFromRoute &&
+      Boolean(routeDomain);
+
+    if (!shouldFetchPreviewProduct) {
+      setPricePreviewProduct(null);
+      return;
+    }
+
+    let cancelled = false;
+    apiGet('/shopify/store-resources?type=product&first=1', { shop: routeDomain })
+      .then(res => {
+        if (cancelled) return;
+        const product = Array.isArray(res.data?.resources)
+          ? res.data.resources.find(p => p?.handle)
+          : null;
+        setPricePreviewProduct(product || null);
+        if (product?.id) {
+          setPriceProductMetaById(prev => ({
+            ...prev,
+            [product.id]: {
+              title: product.title || product.name,
+              handle: product.handle || '',
+              imageUrl: product.imageUrl || product.image_url || null,
+            },
+          }));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setPricePreviewProduct(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    formData.target_type,
+    formData.type,
+    initialData?.target_type,
+    initialData?.type,
+    selectedTemplate,
+    isStandalone,
+    isShopifyFromRoute,
+    routeDomain,
+  ]);
+
+  const fetchFirstPricePreviewProduct = useCallback(async () => {
+    if (isStandalone || !isShopifyFromRoute || !routeDomain) return null;
+    try {
+      const res = await apiGet('/shopify/store-resources?type=product&first=1', {
+        shop: routeDomain,
+      });
+      const product = Array.isArray(res.data?.resources)
+        ? res.data.resources.find(p => p?.handle)
+        : null;
+      if (product?.id) {
+        setPricePreviewProduct(product);
+        setPriceProductMetaById(prev => ({
+          ...prev,
+          [product.id]: {
+            title: product.title || product.name,
+            handle: product.handle || '',
+            imageUrl: product.imageUrl || product.image_url || null,
+          },
+        }));
+      }
+      return product || null;
+    } catch {
+      return null;
+    }
+  }, [isStandalone, isShopifyFromRoute, routeDomain]);
 
   useEffect(() => {
     if (!priceProductModalOpen || isStandalone || !isShopifyFromRoute || !routeDomain) return;
@@ -2496,8 +2594,8 @@ function TestWizard({
           : 'price'
         : null;
     const templateKey =
-      selectedTemplate ||
       priceTemplateFromType ||
+      selectedTemplate ||
       data.goal?.template_key ||
       inferTemplateKeyFromVariants(data.variants, data.type);
     const isPriceLikeTest =
@@ -2537,7 +2635,7 @@ function TestWizard({
 
     return {
       ...dataForApi,
-      target_type: normalizeTargetTypeValue(data.target_type),
+      target_type: normalizePriceTargetTypeValue(data.target_type, data.type || templateKey),
       goal,
       holdout_percent: holdoutPercent,
       segments: normalizedSegments,
@@ -2591,58 +2689,69 @@ function TestWizard({
   }, []);
 
   // Resolve the first selected target to a concrete path (e.g. /products/handle) for preview. Auto-targets first from list.
-  const getFirstTargetPreviewPath = useCallback(() => {
-    const targetType = normalizeTargetTypeValue(formData.target_type || initialData?.target_type);
-    const normalizedTargetType = String(targetType || '')
-      .trim()
-      .toLowerCase()
-      .replace(/_/g, '-');
-    const currentTestType = formData.type || initialData?.type || selectedTemplate;
-    const isPriceScope = isPriceLikeTestType(currentTestType);
-    const urlPattern = formData.segments?.url_pattern ?? '';
-    const firstId =
-      formData.target_id ||
-      (Array.isArray(formData.target_ids) && formData.target_ids.length > 0
-        ? formData.target_ids[0]
-        : null);
-    const resources = storeResources || [];
-    if (isPriceScope && normalizedTargetType === 'all-products') {
-      const matrixProductWithHandle = (allProductsMatrixProducts || []).find(p => p?.handle);
-      if (matrixProductWithHandle?.handle) {
-        return `/products/${encodeURIComponent(matrixProductWithHandle.handle)}`;
+  const getFirstTargetPreviewPath = useCallback(
+    (previewProductOverride = null) => {
+      const targetType = normalizePriceTargetTypeValue(
+        formData.target_type || initialData?.target_type,
+        formData.type || initialData?.type || selectedTemplate
+      );
+      const normalizedTargetType = String(targetType || '')
+        .trim()
+        .toLowerCase()
+        .replace(/_/g, '-');
+      const currentTestType = formData.type || initialData?.type || selectedTemplate;
+      const isPriceScope = isPriceLikeTestType(currentTestType);
+      const urlPattern = formData.segments?.url_pattern ?? '';
+      const firstId =
+        formData.target_id ||
+        (Array.isArray(formData.target_ids) && formData.target_ids.length > 0
+          ? formData.target_ids[0]
+          : null);
+      const resources = storeResources || [];
+      if (isPriceScope && normalizedTargetType === 'all-products') {
+        const previewProduct = previewProductOverride || pricePreviewProduct;
+        if (previewProduct?.handle) {
+          return `/products/${encodeURIComponent(previewProduct.handle)}`;
+        }
+        const matrixProductWithHandle = (allProductsMatrixProducts || []).find(p => p?.handle);
+        if (matrixProductWithHandle?.handle) {
+          return `/products/${encodeURIComponent(matrixProductWithHandle.handle)}`;
+        }
+        const metaWithHandle = Object.values(priceProductMetaById || {}).find(meta => meta?.handle);
+        if (metaWithHandle?.handle) {
+          return `/products/${encodeURIComponent(metaWithHandle.handle)}`;
+        }
       }
-      const metaWithHandle = Object.values(priceProductMetaById || {}).find(meta => meta?.handle);
-      if (metaWithHandle?.handle) {
-        return `/products/${encodeURIComponent(metaWithHandle.handle)}`;
+      if (targetType === 'product' && resources.length > 0) {
+        const r = firstId ? resources.find(res => res.id === firstId) : resources[0];
+        if (r?.handle) return `/products/${encodeURIComponent(r.handle)}`;
       }
-    }
-    if (targetType === 'product' && resources.length > 0) {
-      const r = firstId ? resources.find(res => res.id === firstId) : resources[0];
-      if (r?.handle) return `/products/${encodeURIComponent(r.handle)}`;
-    }
-    if (targetType === 'collection' && resources.length > 0) {
-      const r = firstId ? resources.find(res => res.id === firstId) : resources[0];
-      if (r?.handle) return `/collections/${encodeURIComponent(r.handle)}`;
-    }
-    if (targetType === 'page' && resources.length > 0) {
-      const r = firstId ? resources.find(res => res.id === firstId) : resources[0];
-      if (r?.handle) return `/pages/${encodeURIComponent(r.handle)}`;
-    }
-    return getPreviewPathForTarget(urlPattern, targetType);
-  }, [
-    formData.target_type,
-    formData.target_id,
-    formData.target_ids,
-    formData.segments?.url_pattern,
-    formData.type,
-    storeResources,
-    allProductsMatrixProducts,
-    priceProductMetaById,
-    initialData?.target_type,
-    initialData?.type,
-    selectedTemplate,
-    getPreviewPathForTarget,
-  ]);
+      if (targetType === 'collection' && resources.length > 0) {
+        const r = firstId ? resources.find(res => res.id === firstId) : resources[0];
+        if (r?.handle) return `/collections/${encodeURIComponent(r.handle)}`;
+      }
+      if (targetType === 'page' && resources.length > 0) {
+        const r = firstId ? resources.find(res => res.id === firstId) : resources[0];
+        if (r?.handle) return `/pages/${encodeURIComponent(r.handle)}`;
+      }
+      return getPreviewPathForTarget(urlPattern, targetType);
+    },
+    [
+      formData.target_type,
+      formData.target_id,
+      formData.target_ids,
+      formData.segments?.url_pattern,
+      formData.type,
+      storeResources,
+      pricePreviewProduct,
+      allProductsMatrixProducts,
+      priceProductMetaById,
+      initialData?.target_type,
+      initialData?.type,
+      selectedTemplate,
+      getPreviewPathForTarget,
+    ]
+  );
 
   // Set visual preview loading when opening visual editor or when preview URL changes
   useEffect(() => {
@@ -3441,14 +3550,29 @@ function TestWizard({
     }
   };
 
-  const buildPreviewUrl = (variant, index) => {
+  const buildPreviewUrl = (variant, index, options = {}) => {
     if (mode !== 'edit' || !initialData?.id) return null;
     const domain = routeDomain || getPreviewDomain() || getShopDomain() || initialData?.shop_domain;
     const previewTenantDomain = normalizeTextValue(initialData?.shop_domain) || null;
-    const pathForPreview = getFirstTargetPreviewPath();
+    const pathForPreview = getFirstTargetPreviewPath(options.pricePreviewProduct || null);
     const isPricePreview = isPriceLikeTestType(
       formData.type || initialData?.type || selectedTemplate
     );
+    const targetTypeForPreview = normalizePriceTargetTypeValue(
+      formData.target_type || initialData?.target_type,
+      formData.type || initialData?.type || selectedTemplate
+    );
+    const normalizedTargetTypeForPreview = String(targetTypeForPreview || '')
+      .trim()
+      .toLowerCase()
+      .replace(/_/g, '-');
+    if (
+      isPricePreview &&
+      normalizedTargetTypeForPreview === 'all-products' &&
+      !String(pathForPreview || '').startsWith('/products/')
+    ) {
+      return null;
+    }
     const baseUrl = resolvePreviewBaseUrl({
       variantUrl: isPricePreview ? null : variant?.config?.url,
       overrideUrl: isPricePreview
@@ -3496,12 +3620,31 @@ function TestWizard({
         return;
       }
     }
-    const url = buildPreviewUrl(variant, index);
+    let pricePreviewProductOverride = null;
+    const targetType = normalizePriceTargetTypeValue(
+      formData.target_type || initialData?.target_type,
+      formData.type || initialData?.type || selectedTemplate
+    );
+    const normalizedTargetType = String(targetType || '')
+      .trim()
+      .toLowerCase()
+      .replace(/_/g, '-');
+    const isAllProductsPricePreview =
+      isPriceLikeTestType(formData.type || initialData?.type || selectedTemplate) &&
+      normalizedTargetType === 'all-products';
+    if (isAllProductsPricePreview && !pricePreviewProduct?.handle) {
+      pricePreviewProductOverride = await fetchFirstPricePreviewProduct();
+    }
+    const url = buildPreviewUrl(variant, index, {
+      pricePreviewProduct: pricePreviewProductOverride,
+    });
     if (!url) {
       setError(
-        isStandalone
-          ? 'Add a site domain for this test (or a variant URL) to preview. You can set it in test settings or when connecting your site.'
-          : 'Missing shop domain. Open the app from Shopify Admin to preview.'
+        isAllProductsPricePreview
+          ? 'Could not load a product page for all-products price preview. Refresh products or reconnect Shopify, then try again.'
+          : isStandalone
+            ? 'Add a site domain for this test (or a variant URL) to preview. You can set it in test settings or when connecting your site.'
+            : 'Missing shop domain. Open the app from Shopify Admin to preview.'
       );
       return;
     }
@@ -13828,9 +13971,12 @@ function TestWizard({
                               getShopDomain() ||
                               (initialData?.shop_domain && String(initialData.shop_domain).trim());
                             const pathForPreview = getFirstTargetPreviewPath();
+                            const isPriceVisualPreview = isPriceLikeTestType(
+                              formData.type || initialData?.type || selectedTemplate
+                            );
                             const baseUrl = resolvePreviewBaseUrl({
                               variantUrl: null,
-                              overrideUrl: hasOverride ? veUrl : null,
+                              overrideUrl: isPriceVisualPreview ? null : hasOverride ? veUrl : null,
                               domain: domainForPreview || undefined,
                               path: pathForPreview,
                             });

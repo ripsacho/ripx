@@ -247,9 +247,59 @@ async function servePreviewBootstrap(req, res) {
           var retryParams = new URLSearchParams(window.location.search || '');
           retryCount = Number(retryParams.get('ripx_retry') || '0') || 0;
         } catch (_eRetry) {}
+        function seedPreviewCtx() {
+          try {
+            var tu = new URL(target, window.location.origin);
+            var previewCtx = {
+              preview: tu.searchParams.get('ab_preview') === '1',
+              testId: tu.searchParams.get('ab_preview_test') || null,
+              variantId: tu.searchParams.get('ab_preview_variant') || null,
+              variantName: tu.searchParams.get('ab_preview_variant_name') || null,
+              tenantDomain: tu.searchParams.get('ab_preview_domain') || null,
+              persistedAtMs: Date.now(),
+            };
+            if (previewCtx.preview || previewCtx.testId || previewCtx.variantId || previewCtx.variantName) {
+              try {
+                window.sessionStorage.setItem('__ripx_preview_ctx_v1__', JSON.stringify(previewCtx));
+              } catch (_se) {}
+              try {
+                window.name = '__ripx_preview_ctx_v1__:' + JSON.stringify(previewCtx);
+              } catch (_ne) {}
+            }
+          } catch (_seedErr) {}
+        }
+        function showFallback() {
+          try {
+            var body = document.body || document.documentElement;
+            if (!body) return;
+            body.innerHTML = '';
+            var wrap = document.createElement('main');
+            wrap.style.cssText = 'font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;max-width:560px;margin:12vh auto;padding:24px;border:1px solid #ddd;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.08);';
+            var title = document.createElement('h1');
+            title.textContent = 'RipX preview needs another try';
+            title.style.cssText = 'font-size:22px;margin:0 0 10px;';
+            var text = document.createElement('p');
+            text.textContent = 'The storefront page did not finish loading through the preview bootstrap. Your preview context was saved, so retrying usually restores the price test runtime.';
+            text.style.cssText = 'line-height:1.5;color:#555;margin:0 0 18px;';
+            var retry = document.createElement('button');
+            retry.textContent = 'Retry preview';
+            retry.style.cssText = 'padding:10px 14px;border:0;border-radius:9px;background:#111827;color:white;margin-right:10px;cursor:pointer;';
+            retry.onclick = function () { window.location.reload(); };
+            var open = document.createElement('button');
+            open.textContent = 'Open product anyway';
+            open.style.cssText = 'padding:10px 14px;border:1px solid #ccc;border-radius:9px;background:white;cursor:pointer;';
+            open.onclick = function () { try { window.location.replace(target); } catch (_e) { window.location.href = target; } };
+            wrap.appendChild(title);
+            wrap.appendChild(text);
+            wrap.appendChild(retry);
+            wrap.appendChild(open);
+            body.appendChild(wrap);
+          } catch (_e) {}
+        }
         function goHard() {
           if (redirected || mounted) return;
           redirected = true;
+          seedPreviewCtx();
           if (retryCount < 2) {
             try {
               var selfUrl = new URL(window.location.href);
@@ -264,7 +314,7 @@ async function servePreviewBootstrap(req, res) {
               targetUrl.searchParams.get('ab_preview') === '1' ||
               !!targetUrl.searchParams.get('ab_preview_test') ||
               !!targetUrl.searchParams.get('ab_preview_variant');
-            if (isPreviewTarget) return;
+            if (isPreviewTarget) return showFallback();
           } catch (_eCheck) {}
           try { window.location.replace(target); } catch (_e) { window.location.href = target; }
         }
@@ -297,6 +347,20 @@ async function servePreviewBootstrap(req, res) {
               'u=withPreview(u);' +
               'return "https://"+window.location.hostname+"/apps/ripx/preview-bootstrap-v2?url="+encodeURIComponent(u.toString());' +
             '}catch(_e){return "";}}' +
+            'function isCartAddHref(href){try{var p=String(new URL(href,window.location.origin).pathname||"").replace(/\\/+$/,"");return /\\/cart\\/add(?:\\.js)?$/i.test(p);}catch(_e){return false;}}' +
+            'function setHidden(form,name,value){try{if(!form||!name||!value)return;var input=form.querySelector("input[name=\\""+name+"\\"]");if(!input){input=document.createElement("input");input.type="hidden";input.name=name;form.appendChild(input);}input.value=value;}catch(_e){}}' +
+            'function toReturnToValue(href){try{var u=new URL(href,window.location.origin);if(String(u.hostname||"").toLowerCase()===String(window.location.hostname||"").toLowerCase())return u.pathname+u.search+u.hash;return href;}catch(_e){return href||"";}}' +
+            'function getCurrentBootstrapReturnHref(){try{var u=new URL(window.location.href);if(/^\\/apps\\/ripx\\/preview-bootstrap(?:-v2)?/i.test(String(u.pathname||"")))return toReturnToValue(u.toString());var next=toBootstrapHref(u.toString());return next?toReturnToValue(next):"";}catch(_e){return "";}}' +
+            'function preserveCartAddPreviewReturn(form){try{var next=getCurrentBootstrapReturnHref();if(next)setHidden(form,"return_to",next);}catch(_e){}}' +
+            'function installPreviewNavMethodGuards(){try{if(window.__RIPX_PREVIEW_NAV_METHOD_GUARDS__)return;window.__RIPX_PREVIEW_NAV_METHOD_GUARDS__=true;' +
+              'var hp=history&&history.pushState;var hr=history&&history.replaceState;' +
+              'function wrapHistory(fn){return function(state,title,url){try{if(url){var next=toBootstrapHref(url);if(next)url=next;}}catch(_e){}return fn.apply(this,[state,title,url]);};}' +
+              'if(hp)history.pushState=wrapHistory(hp);if(hr)history.replaceState=wrapHistory(hr);' +
+              'try{var fs=HTMLFormElement&&HTMLFormElement.prototype&&HTMLFormElement.prototype.submit;if(fs){HTMLFormElement.prototype.submit=function(){try{if(isCartAddHref(this.action||window.location.href))preserveCartAddPreviewReturn(this);}catch(_e){}return fs.apply(this,arguments);};}}catch(_eForm){}' +
+              'try{var la=window.location&&window.location.assign&&window.location.assign.bind(window.location);if(la)window.location.assign=function(href){var next=toBootstrapHref(href);return la(next||href);};}catch(_eAssign){}' +
+              'try{var lr=window.location&&window.location.replace&&window.location.replace.bind(window.location);if(lr)window.location.replace=function(href){var next=toBootstrapHref(href);return lr(next||href);};}catch(_eReplace){}' +
+            '}catch(_e){}}' +
+            'installPreviewNavMethodGuards();' +
             'document.addEventListener("click",function(e){try{' +
               'if(!e||e.defaultPrevented) return;' +
               'if(e.metaKey||e.ctrlKey||e.shiftKey||e.altKey) return;' +
@@ -308,6 +372,7 @@ async function servePreviewBootstrap(req, res) {
             'document.addEventListener("submit",function(e){try{' +
               'if(!e||e.defaultPrevented) return;' +
               'var f=e.target; if(!f||!f.action) return;' +
+              'if(isCartAddHref(f.action||window.location.href)){preserveCartAddPreviewReturn(f);return;}' +
               'var next=toBootstrapHref(f.action||window.location.href); if(!next) return;' +
               'e.preventDefault(); window.location.assign(next);' +
             '}catch(_e){}} , true);' +
@@ -384,25 +449,7 @@ async function servePreviewBootstrap(req, res) {
         function mount(htmlText) {
           if (!htmlText || typeof htmlText !== 'string') return goHard();
           mounted = true;
-          try {
-            var tu = new URL(target, window.location.origin);
-            var previewCtx = {
-              preview: tu.searchParams.get('ab_preview') === '1',
-              testId: tu.searchParams.get('ab_preview_test') || null,
-              variantId: tu.searchParams.get('ab_preview_variant') || null,
-              variantName: tu.searchParams.get('ab_preview_variant_name') || null,
-              tenantDomain: tu.searchParams.get('ab_preview_domain') || null,
-              persistedAtMs: Date.now(),
-            };
-            if (previewCtx.preview || previewCtx.testId || previewCtx.variantId || previewCtx.variantName) {
-              try {
-                window.sessionStorage.setItem('__ripx_preview_ctx_v1__', JSON.stringify(previewCtx));
-              } catch (_se) {}
-              try {
-                window.name = '__ripx_preview_ctx_v1__:' + JSON.stringify(previewCtx);
-              } catch (_ne) {}
-            }
-          } catch (_seedErr) {}
+          seedPreviewCtx();
           // Keep bootstrap URL to preserve deterministic script injection across navigation.
           // Avoid replacing history with raw storefront URL, which can drop out of preview mode.
           try {
@@ -413,6 +460,7 @@ async function servePreviewBootstrap(req, res) {
             goHard();
           }
         }
+        seedPreviewCtx();
         fetch(target, { method: 'GET', credentials: 'include', redirect: 'follow' })
           .then(function (r) {
             if (!r || !r.ok) throw new Error('target_fetch_failed');
@@ -565,9 +613,59 @@ async function servePreviewBootstrapLoader(req, res) {
     var retryParams = new URLSearchParams(window.location.search || '');
     retryCount = Number(retryParams.get('ripx_retry') || '0') || 0;
   } catch (_eRetry) {}
+  function seedPreviewCtx() {
+    try {
+      var tu = new URL(target, window.location.origin);
+      var previewCtx = {
+        preview: tu.searchParams.get('ab_preview') === '1',
+        testId: tu.searchParams.get('ab_preview_test') || null,
+        variantId: tu.searchParams.get('ab_preview_variant') || null,
+        variantName: tu.searchParams.get('ab_preview_variant_name') || null,
+        tenantDomain: tu.searchParams.get('ab_preview_domain') || null,
+        persistedAtMs: Date.now(),
+      };
+      if (previewCtx.preview || previewCtx.testId || previewCtx.variantId || previewCtx.variantName) {
+        try {
+          window.sessionStorage.setItem('__ripx_preview_ctx_v1__', JSON.stringify(previewCtx));
+        } catch (_se) {}
+        try {
+          window.name = '__ripx_preview_ctx_v1__:' + JSON.stringify(previewCtx);
+        } catch (_ne) {}
+      }
+    } catch (_seedErr) {}
+  }
+  function showFallback() {
+    try {
+      var body = document.body || document.documentElement;
+      if (!body) return;
+      body.innerHTML = '';
+      var wrap = document.createElement('main');
+      wrap.style.cssText = 'font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;max-width:560px;margin:12vh auto;padding:24px;border:1px solid #ddd;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.08);';
+      var title = document.createElement('h1');
+      title.textContent = 'RipX preview needs another try';
+      title.style.cssText = 'font-size:22px;margin:0 0 10px;';
+      var text = document.createElement('p');
+      text.textContent = 'The storefront page did not finish loading through the preview bootstrap. Your preview context was saved, so retrying usually restores the price test runtime.';
+      text.style.cssText = 'line-height:1.5;color:#555;margin:0 0 18px;';
+      var retry = document.createElement('button');
+      retry.textContent = 'Retry preview';
+      retry.style.cssText = 'padding:10px 14px;border:0;border-radius:9px;background:#111827;color:white;margin-right:10px;cursor:pointer;';
+      retry.onclick = function () { window.location.reload(); };
+      var open = document.createElement('button');
+      open.textContent = 'Open product anyway';
+      open.style.cssText = 'padding:10px 14px;border:1px solid #ccc;border-radius:9px;background:white;cursor:pointer;';
+      open.onclick = function () { try { window.location.replace(target); } catch (_e) { window.location.href = target; } };
+      wrap.appendChild(title);
+      wrap.appendChild(text);
+      wrap.appendChild(retry);
+      wrap.appendChild(open);
+      body.appendChild(wrap);
+    } catch (_e) {}
+  }
   function goHard() {
     if (redirected || mounted) return;
     redirected = true;
+    seedPreviewCtx();
     if (retryCount < 2) {
       try {
         var selfUrl = new URL(window.location.href);
@@ -582,7 +680,7 @@ async function servePreviewBootstrapLoader(req, res) {
         targetUrl.searchParams.get('ab_preview') === '1' ||
         !!targetUrl.searchParams.get('ab_preview_test') ||
         !!targetUrl.searchParams.get('ab_preview_variant');
-      if (isPreviewTarget) return;
+      if (isPreviewTarget) return showFallback();
     } catch (_eCheck) {}
     try { window.location.replace(target); } catch (_e) { window.location.href = target; }
   }
@@ -619,6 +717,20 @@ async function servePreviewBootstrapLoader(req, res) {
         'u=withPreview(u);' +
         'return "https://"+window.location.hostname+"/apps/ripx/preview-bootstrap-v2?url="+encodeURIComponent(u.toString());' +
       '}catch(_e){return "";}}' +
+      'function isCartAddHref(href){try{var p=String(new URL(href,window.location.origin).pathname||"").replace(/\\/+$/,"");return /\\/cart\\/add(?:\\.js)?$/i.test(p);}catch(_e){return false;}}' +
+      'function setHidden(form,name,value){try{if(!form||!name||!value)return;var input=form.querySelector("input[name=\\""+name+"\\"]");if(!input){input=document.createElement("input");input.type="hidden";input.name=name;form.appendChild(input);}input.value=value;}catch(_e){}}' +
+      'function toReturnToValue(href){try{var u=new URL(href,window.location.origin);if(String(u.hostname||"").toLowerCase()===String(window.location.hostname||"").toLowerCase())return u.pathname+u.search+u.hash;return href;}catch(_e){return href||"";}}' +
+      'function getCurrentBootstrapReturnHref(){try{var u=new URL(window.location.href);if(/^\\/apps\\/ripx\\/preview-bootstrap(?:-v2)?/i.test(String(u.pathname||"")))return toReturnToValue(u.toString());var next=toBootstrapHref(u.toString());return next?toReturnToValue(next):"";}catch(_e){return "";}}' +
+      'function preserveCartAddPreviewReturn(form){try{var next=getCurrentBootstrapReturnHref();if(next)setHidden(form,"return_to",next);}catch(_e){}}' +
+      'function installPreviewNavMethodGuards(){try{if(window.__RIPX_PREVIEW_NAV_METHOD_GUARDS__)return;window.__RIPX_PREVIEW_NAV_METHOD_GUARDS__=true;' +
+        'var hp=history&&history.pushState;var hr=history&&history.replaceState;' +
+        'function wrapHistory(fn){return function(state,title,url){try{if(url){var next=toBootstrapHref(url);if(next)url=next;}}catch(_e){}return fn.apply(this,[state,title,url]);};}' +
+        'if(hp)history.pushState=wrapHistory(hp);if(hr)history.replaceState=wrapHistory(hr);' +
+        'try{var fs=HTMLFormElement&&HTMLFormElement.prototype&&HTMLFormElement.prototype.submit;if(fs){HTMLFormElement.prototype.submit=function(){try{if(isCartAddHref(this.action||window.location.href))preserveCartAddPreviewReturn(this);}catch(_e){}return fs.apply(this,arguments);};}}catch(_eForm){}' +
+        'try{var la=window.location&&window.location.assign&&window.location.assign.bind(window.location);if(la)window.location.assign=function(href){var next=toBootstrapHref(href);return la(next||href);};}catch(_eAssign){}' +
+        'try{var lr=window.location&&window.location.replace&&window.location.replace.bind(window.location);if(lr)window.location.replace=function(href){var next=toBootstrapHref(href);return lr(next||href);};}catch(_eReplace){}' +
+      '}catch(_e){}}' +
+      'installPreviewNavMethodGuards();' +
       'document.addEventListener("click",function(e){try{' +
         'if(!e||e.defaultPrevented) return;' +
         'if(e.metaKey||e.ctrlKey||e.shiftKey||e.altKey) return;' +
@@ -630,6 +742,7 @@ async function servePreviewBootstrapLoader(req, res) {
       'document.addEventListener("submit",function(e){try{' +
         'if(!e||e.defaultPrevented) return;' +
         'var f=e.target; if(!f||!f.action) return;' +
+        'if(isCartAddHref(f.action||window.location.href)){preserveCartAddPreviewReturn(f);return;}' +
         'var next=toBootstrapHref(f.action||window.location.href); if(!next) return;' +
         'e.preventDefault(); window.location.assign(next);' +
       '}catch(_e){}} , true);' +
@@ -711,25 +824,7 @@ async function servePreviewBootstrapLoader(req, res) {
       fallbackTimer = null;
     }
     var next = injectScriptTag(html);
-    try {
-      var tu = new URL(target, window.location.origin);
-      var previewCtx = {
-        preview: tu.searchParams.get('ab_preview') === '1',
-        testId: tu.searchParams.get('ab_preview_test') || null,
-        variantId: tu.searchParams.get('ab_preview_variant') || null,
-        variantName: tu.searchParams.get('ab_preview_variant_name') || null,
-        tenantDomain: tu.searchParams.get('ab_preview_domain') || null,
-        persistedAtMs: Date.now(),
-      };
-      if (previewCtx.preview || previewCtx.testId || previewCtx.variantId || previewCtx.variantName) {
-        try {
-          window.sessionStorage.setItem('__ripx_preview_ctx_v1__', JSON.stringify(previewCtx));
-        } catch (_se) {}
-        try {
-          window.name = '__ripx_preview_ctx_v1__:' + JSON.stringify(previewCtx);
-        } catch (_ne) {}
-      }
-    } catch (_seedErr) {}
+    seedPreviewCtx();
     // Keep bootstrap URL to preserve deterministic script injection across navigation.
     // Avoid replacing history with raw storefront URL, which can drop out of preview mode.
     try {
@@ -740,6 +835,7 @@ async function servePreviewBootstrapLoader(req, res) {
       goHard();
     }
   }
+  seedPreviewCtx();
   fetch(target, { method: 'GET', credentials: 'include', redirect: 'follow' })
     .then(function (r) {
       if (!r || !r.ok) throw new Error('target_fetch_failed');

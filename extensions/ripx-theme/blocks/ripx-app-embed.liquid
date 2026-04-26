@@ -3,13 +3,13 @@
   Optional fallback: if proxy fails, load a direct public script endpoint only when explicitly configured.
   This prevents local/dev stores from silently falling back to a different RipX environment.
   target: head — earlier fetch than body embeds; defer avoids blocking HTML parse.
-  ?v= must stay in sync with backend storefrontScriptRuntime.js SCRIPT_VERSION (currently 1.0.31).
+  ?v= must stay in sync with backend storefrontScriptRuntime.js SCRIPT_VERSION (currently 1.0.33).
 {% endcomment %}
 
 <script id="ripx-app-embed-config" type="application/json">
   {
     "shopHost": {{ request.host | json }},
-    "version": "1.0.31",
+    "version": "1.0.33",
     "directScriptBaseUrl": {{ block.settings.direct_script_base_url | json }}
   }
 </script>
@@ -17,7 +17,7 @@
 <script>
   (function () {
     var shopHost = '{{ request.host }}';
-    var version = '1.0.31';
+    var version = '1.0.33';
     var primarySrc = 'https://' + shopHost + '/apps/ripx/script.js?v=' + version;
     var directScriptBaseUrl = {{ block.settings.direct_script_base_url | json }};
     var fallbackSrc =

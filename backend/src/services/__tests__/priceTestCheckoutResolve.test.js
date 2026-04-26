@@ -775,6 +775,24 @@ describe('priceTestCheckoutResolve', () => {
     expect(parseFloat(r.discountDecimal, 10)).toBeCloseTo(10, 2);
   });
 
+  it('supports legacy all target_type for checkout price alignment', () => {
+    const test = {
+      ...baseTest,
+      target_type: 'all',
+      target_ids: null,
+      target_id: '',
+    };
+    const r = resolvePriceTestLineDiscount({
+      test,
+      assignmentVariantId: 'var-b',
+      productId: 'gid://shopify/Product/999999999',
+      linePresentmentTotal: 29.99,
+      quantity: 1,
+    });
+    expect(r.applies).toBe(true);
+    expect(parseFloat(r.discountDecimal, 10)).toBeCloseTo(10, 2);
+  });
+
   it('supports collection target_type at checkout (target_ids are collections, not products)', () => {
     const test = {
       ...baseTest,

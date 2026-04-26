@@ -686,7 +686,16 @@ class ABTestEngine {
   isUserEligible(test, context = {}) {
     const segments = test.segments || {};
     const testType = String(test?.type || '').toLowerCase();
-    const targetType = String(test?.target_type || '').toLowerCase();
+    let targetType = String(test?.target_type || '').toLowerCase();
+    if (
+      (testType === 'price' ||
+        testType === 'pricing' ||
+        testType === 'offer' ||
+        testType === 'shipping') &&
+      (!targetType || targetType === 'all')
+    ) {
+      targetType = 'all-products';
+    }
     const isSiteWideProductScope =
       (testType === 'price' ||
         testType === 'pricing' ||

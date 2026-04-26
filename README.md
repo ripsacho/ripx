@@ -190,8 +190,9 @@ git push -u origin hotfix/<short-name>
 shopify app dev --reset
 
 cd ~/RipX
-git restore "frontend/dist/index.html" "frontend/dist/ripx-storefront.js"
-git clean -fd "frontend/dist/assets"
+git restore "frontend"
+git restore "backend"
+git clean -fd "frontend"
 git pull
 NODE_OPTIONS=--max-old-space-size=4096 npm run build --prefix frontend
 npm run migrate
