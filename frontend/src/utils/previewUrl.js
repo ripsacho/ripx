@@ -293,6 +293,29 @@ export function buildShopifyPreviewBootstrapUrl({ previewUrl }) {
 }
 
 /**
+ * Build the isolated Shopify price-preview bootstrap URL.
+ *
+ * Price previews use this route instead of the generic HTML-rewriting bootstrap
+ * because price tests must keep RipX loaded while add-to-cart flows mutate the cart.
+ *
+ * @param {Object} options
+ * @param {string} options.previewUrl - Full preview page URL built by buildPreviewUrl()
+ * @returns {string|null}
+ */
+export function buildShopifyPricePreviewBootstrapUrl({ previewUrl }) {
+  const directPreviewUrl = typeof previewUrl === 'string' ? previewUrl.trim() : '';
+  if (!directPreviewUrl) return null;
+  try {
+    const directUrl = new URL(directPreviewUrl);
+    const host = String(directUrl.hostname || '').trim();
+    if (!host || !/\.myshopify\.com$/i.test(host)) return null;
+    return `https://${host}/apps/ripx/price-preview-bootstrap-v1?url=${encodeURIComponent(directPreviewUrl)}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Whether a preview URL points to a Shopify store host.
  *
  * @param {string} previewUrl

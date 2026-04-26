@@ -2,6 +2,7 @@ import {
   PREVIEW_PARAMS,
   buildPreviewDocumentUrl,
   buildPreviewLaunchUrl,
+  buildShopifyPricePreviewBootstrapUrl,
   buildShopifyPreviewBootstrapUrl,
   buildPreviewUrl,
   ensureShopifyPreviewBootstrapUrl,
@@ -100,6 +101,21 @@ describe('previewUrl', () => {
     expect(url.searchParams.get('url')).toBe(previewUrl);
   });
 
+  it('builds isolated Shopify price preview bootstrap URL', () => {
+    const previewUrl = buildPreviewUrl({
+      baseUrl: 'https://makripon.myshopify.com/products/test-product',
+      testId: '1d1f39c4-4083-44f4-b046-1c341b88cc29',
+      variantId: 'variant-a',
+      variantName: 'Variant A',
+      tenantDomain: 'echologyx.com',
+    });
+    const result = buildShopifyPricePreviewBootstrapUrl({ previewUrl });
+    const url = new URL(result);
+    expect(url.origin).toBe('https://makripon.myshopify.com');
+    expect(url.pathname).toBe('/apps/ripx/price-preview-bootstrap-v1');
+    expect(url.searchParams.get('url')).toBe(previewUrl);
+  });
+
   it('returns null for non-Shopify preview-bootstrap host', () => {
     const previewUrl = buildPreviewUrl({
       baseUrl: 'https://example.com/products/test-product',
@@ -108,6 +124,7 @@ describe('previewUrl', () => {
       variantName: 'Variant A',
     });
     expect(buildShopifyPreviewBootstrapUrl({ previewUrl })).toBeNull();
+    expect(buildShopifyPricePreviewBootstrapUrl({ previewUrl })).toBeNull();
   });
 
   it('detects Shopify preview URL host', () => {

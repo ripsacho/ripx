@@ -75,8 +75,8 @@ import {
   buildPreviewUrl as buildPreviewUrlUtil,
   buildPreviewDocumentUrl,
   buildPreviewLaunchUrl,
+  buildShopifyPricePreviewBootstrapUrl,
   buildShopifyPreviewBootstrapUrl,
-  ensureShopifyPreviewBootstrapUrl,
   isShopifyPreviewUrl,
   resolvePreviewBaseUrl,
 } from '../../utils/previewUrl';
@@ -3597,18 +3597,23 @@ function TestWizard({
     }
     let finalPreviewUrl = directPreviewUrl;
     if (isShopifyPreviewUrl(directPreviewUrl)) {
-      const bootstrapPreviewUrl = buildShopifyPreviewBootstrapUrl({
-        previewUrl: directPreviewUrl,
-      });
-      finalPreviewUrl =
-        bootstrapPreviewUrl ||
-        buildPreviewLaunchUrl({
+      if (isPricePreview) {
+        finalPreviewUrl =
+          buildShopifyPricePreviewBootstrapUrl({
+            previewUrl: directPreviewUrl,
+          }) || directPreviewUrl;
+      } else {
+        const launchPreviewUrl = buildPreviewLaunchUrl({
           apiBaseUrl: getApiBaseUrl(),
           previewUrl: directPreviewUrl,
-        }) ||
-        directPreviewUrl;
+        });
+        const bootstrapPreviewUrl = buildShopifyPreviewBootstrapUrl({
+          previewUrl: directPreviewUrl,
+        });
+        finalPreviewUrl = launchPreviewUrl || bootstrapPreviewUrl || directPreviewUrl;
+      }
     }
-    return ensureShopifyPreviewBootstrapUrl(finalPreviewUrl);
+    return finalPreviewUrl;
   };
 
   const handlePreviewVariant = async (variant, index) => {
@@ -3648,7 +3653,7 @@ function TestWizard({
       );
       return;
     }
-    const finalUrl = ensureShopifyPreviewBootstrapUrl(url);
+    const finalUrl = url;
     window.open(finalUrl, '_blank', 'noopener');
   };
 

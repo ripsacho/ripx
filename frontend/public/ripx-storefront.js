@@ -663,6 +663,7 @@
       return raw;
     }
   }
+  const PRICE_PREVIEW_FRAME = !!window.__RIPX_PRICE_PREVIEW_FRAME__;
   function toPreviewBootstrapUrl(urlValue) {
     var withCtx = withPreviewQueryParams(urlValue || window.location.href);
     if (!withCtx) return '';
@@ -672,9 +673,11 @@
       var p = String(parsed.pathname || '').toLowerCase();
       if (
         p.indexOf('/apps/ripx/preview-bootstrap') === 0 ||
-        p.indexOf('/apps/ripx/preview-bootstrap-v2') === 0
+        p.indexOf('/apps/ripx/preview-bootstrap-v2') === 0 ||
+        p.indexOf('/apps/ripx/price-preview-bootstrap-v1') === 0
       )
         return parsed.toString();
+      if (PRICE_PREVIEW_FRAME) return parsed.toString();
       return (
         'https://' +
         parsed.hostname +
@@ -703,6 +706,9 @@
   }
   function schedulePreviewBootstrapReloadAfterCartAdd(reason) {
     if (!PREVIEW_MODE) return;
+    // The isolated price-preview runner owns iframe navigation and re-injection.
+    // Reloading the frame into the generic bootstrap would reintroduce the old escape path.
+    if (PRICE_PREVIEW_FRAME) return;
     setTimeout(function () {
       try {
         var next = toPreviewBootstrapUrl(window.location.href);
@@ -3001,7 +3007,9 @@
           resolvedAction = rawAction ? new URL(rawAction, window.location.origin).toString() : '';
         } catch (_eAction) {}
         if (!resolvedAction || isCartAddPath(resolvedAction)) {
-          var returnTo = toPreviewBootstrapUrl(window.location.href);
+          var returnTo = PRICE_PREVIEW_FRAME
+            ? withPreviewQueryParams(window.location.href)
+            : toPreviewBootstrapUrl(window.location.href);
           if (returnTo) {
             setHiddenInputByName('return_to', toShopifyReturnToPath(returnTo));
           }

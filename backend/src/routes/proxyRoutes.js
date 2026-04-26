@@ -24,8 +24,14 @@ const {
 } = require('../utils/maintenanceMode');
 const { getTenantByDomain, normalizeDomain } = require('../models/tenant');
 const { ERROR_MESSAGES } = require('../constants');
+const { createPricePreviewBootstrapHandlers } = require('./pricePreviewBootstrap');
 
 const router = express.Router();
+
+const { servePricePreviewBootstrap } = createPricePreviewBootstrapHandlers({
+  validatePreviewBootstrapRequest,
+  SCRIPT_VERSION,
+});
 
 function isValidShopDomain(shop) {
   return /^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/.test(shop);
@@ -350,7 +356,7 @@ async function servePreviewBootstrap(req, res) {
               'var hp=history&&history.pushState;var hr=history&&history.replaceState;' +
               'function wrapHistory(fn){return function(state,title,url){try{if(url){var next=toBootstrapHref(url);if(next)url=next;}}catch(_e){}return fn.apply(this,[state,title,url]);};}' +
               'if(hp)history.pushState=wrapHistory(hp);if(hr)history.replaceState=wrapHistory(hr);' +
-              'try{var fs=HTMLFormElement&&HTMLFormElement.prototype&&HTMLFormElement.prototype.submit;if(fs){HTMLFormElement.prototype.submit=function(){try{if(isCartAddHref(this.action||window.location.href)){submitCartAddForm(this);return;}}catch(_e){}return fs.apply(this,arguments);};}}catch(_eForm){}' +
+              'try{var fp=HTMLFormElement&&HTMLFormElement.prototype;if(fp&&fp.submit){var fs=fp.submit;fp.submit=function(){try{if(isCartAddHref(this.action||window.location.href)){submitCartAddForm(this);return;}}catch(_e){}return fs.apply(this,arguments);};}if(fp&&fp.requestSubmit){var frs=fp.requestSubmit;fp.requestSubmit=function(){try{if(isCartAddHref(this.action||window.location.href)){submitCartAddForm(this);return;}}catch(_e){}return frs.apply(this,arguments);};}}catch(_eForm){}' +
               'try{var la=window.location&&window.location.assign&&window.location.assign.bind(window.location);if(la)window.location.assign=function(href){var next=toBootstrapHref(href);return la(next||href);};}catch(_eAssign){}' +
               'try{var lr=window.location&&window.location.replace&&window.location.replace.bind(window.location);if(lr)window.location.replace=function(href){var next=toBootstrapHref(href);return lr(next||href);};}catch(_eReplace){}' +
             '}catch(_e){}}' +
@@ -444,16 +450,40 @@ async function servePreviewBootstrap(req, res) {
           if (/<body[^>]*>/i.test(htmlText)) return htmlText.replace(/<body[^>]*>/i, '$&' + tags);
           return '<!doctype html><html><head>' + tags + '</head><body>' + htmlText + '</body></html>';
         }
+        function mountPreviewDocument(htmlText) {
+          var next = injectScriptTag(htmlText);
+          if (typeof DOMParser === 'undefined' || !document.documentElement) {
+            document.open();
+            document.write(next);
+            document.close();
+            return;
+          }
+          var parser = new DOMParser();
+          var parsed = parser.parseFromString(next, 'text/html');
+          var scriptNodes = Array.prototype.slice.call(parsed.querySelectorAll('script'));
+          scriptNodes.forEach(function (scriptEl) {
+            if (scriptEl && scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+          });
+          var importedRoot = document.importNode(parsed.documentElement, true);
+          document.replaceChild(importedRoot, document.documentElement);
+          var scriptTarget = document.head || document.body || document.documentElement;
+          scriptNodes.forEach(function (scriptEl) {
+            var nextScript = document.createElement('script');
+            Array.prototype.slice.call(scriptEl.attributes || []).forEach(function (attr) {
+              nextScript.setAttribute(attr.name, attr.value);
+            });
+            if (!nextScript.src) {
+              nextScript.text = scriptEl.textContent || '';
+            }
+            scriptTarget.appendChild(nextScript);
+          });
+        }
         function mount(htmlText) {
           if (!htmlText || typeof htmlText !== 'string') return goHard();
           mounted = true;
           seedPreviewCtx();
-          // Keep bootstrap URL to preserve deterministic script injection across navigation.
-          // Avoid replacing history with raw storefront URL, which can drop out of preview mode.
           try {
-            document.open();
-            document.write(injectScriptTag(htmlText));
-            document.close();
+            mountPreviewDocument(htmlText);
           } catch (_e) {
             goHard();
           }
@@ -718,7 +748,7 @@ async function servePreviewBootstrapLoader(req, res) {
         'var hp=history&&history.pushState;var hr=history&&history.replaceState;' +
         'function wrapHistory(fn){return function(state,title,url){try{if(url){var next=toBootstrapHref(url);if(next)url=next;}}catch(_e){}return fn.apply(this,[state,title,url]);};}' +
         'if(hp)history.pushState=wrapHistory(hp);if(hr)history.replaceState=wrapHistory(hr);' +
-        'try{var fs=HTMLFormElement&&HTMLFormElement.prototype&&HTMLFormElement.prototype.submit;if(fs){HTMLFormElement.prototype.submit=function(){try{if(isCartAddHref(this.action||window.location.href)){submitCartAddForm(this);return;}}catch(_e){}return fs.apply(this,arguments);};}}catch(_eForm){}' +
+        'try{var fp=HTMLFormElement&&HTMLFormElement.prototype;if(fp&&fp.submit){var fs=fp.submit;fp.submit=function(){try{if(isCartAddHref(this.action||window.location.href)){submitCartAddForm(this);return;}}catch(_e){}return fs.apply(this,arguments);};}if(fp&&fp.requestSubmit){var frs=fp.requestSubmit;fp.requestSubmit=function(){try{if(isCartAddHref(this.action||window.location.href)){submitCartAddForm(this);return;}}catch(_e){}return frs.apply(this,arguments);};}}catch(_eForm){}' +
         'try{var la=window.location&&window.location.assign&&window.location.assign.bind(window.location);if(la)window.location.assign=function(href){var next=toBootstrapHref(href);return la(next||href);};}catch(_eAssign){}' +
         'try{var lr=window.location&&window.location.replace&&window.location.replace.bind(window.location);if(lr)window.location.replace=function(href){var next=toBootstrapHref(href);return lr(next||href);};}catch(_eReplace){}' +
       '}catch(_e){}}' +
@@ -812,6 +842,34 @@ async function servePreviewBootstrapLoader(req, res) {
     if (/<body[^>]*>/i.test(html)) return html.replace(/<body[^>]*>/i, '$&' + tags);
     return '<!doctype html><html><head>' + tags + '</head><body>' + html + '</body></html>';
   }
+  function mountPreviewDocument(html) {
+    var next = injectScriptTag(html);
+    if (typeof DOMParser === 'undefined' || !document.documentElement) {
+      document.open();
+      document.write(next);
+      document.close();
+      return;
+    }
+    var parser = new DOMParser();
+    var parsed = parser.parseFromString(next, 'text/html');
+    var scriptNodes = Array.prototype.slice.call(parsed.querySelectorAll('script'));
+    scriptNodes.forEach(function (scriptEl) {
+      if (scriptEl && scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+    });
+    var importedRoot = document.importNode(parsed.documentElement, true);
+    document.replaceChild(importedRoot, document.documentElement);
+    var scriptTarget = document.head || document.body || document.documentElement;
+    scriptNodes.forEach(function (scriptEl) {
+      var nextScript = document.createElement('script');
+      Array.prototype.slice.call(scriptEl.attributes || []).forEach(function (attr) {
+        nextScript.setAttribute(attr.name, attr.value);
+      });
+      if (!nextScript.src) {
+        nextScript.text = scriptEl.textContent || '';
+      }
+      scriptTarget.appendChild(nextScript);
+    });
+  }
   function mount(html) {
     if (!html || typeof html !== 'string') return goHard();
     mounted = true;
@@ -819,14 +877,9 @@ async function servePreviewBootstrapLoader(req, res) {
       clearTimeout(fallbackTimer);
       fallbackTimer = null;
     }
-    var next = injectScriptTag(html);
     seedPreviewCtx();
-    // Keep bootstrap URL to preserve deterministic script injection across navigation.
-    // Avoid replacing history with raw storefront URL, which can drop out of preview mode.
     try {
-      document.open();
-      document.write(next);
-      document.close();
+      mountPreviewDocument(html);
     } catch (_e) {
       goHard();
     }
@@ -856,6 +909,12 @@ router.get('/script.js/preview-bootstrap', asyncHandler(servePreviewBootstrap));
 router.get('/script.js/preview-bootstrap-v2', asyncHandler(servePreviewBootstrap));
 router.get('/script.js/script.js/preview-bootstrap', asyncHandler(servePreviewBootstrap));
 router.get('/script.js/script.js/preview-bootstrap-v2', asyncHandler(servePreviewBootstrap));
+router.get('/price-preview-bootstrap-v1', asyncHandler(servePricePreviewBootstrap));
+router.get('/script.js/price-preview-bootstrap-v1', asyncHandler(servePricePreviewBootstrap));
+router.get(
+  '/script.js/script.js/price-preview-bootstrap-v1',
+  asyncHandler(servePricePreviewBootstrap)
+);
 router.get('/preview-bootstrap-loader.js', asyncHandler(servePreviewBootstrapLoader));
 router.get('/preview-bootstrap-v2-loader.js', asyncHandler(servePreviewBootstrapLoader));
 router.get('/script.js/preview-bootstrap-loader.js', asyncHandler(servePreviewBootstrapLoader));
