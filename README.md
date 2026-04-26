@@ -193,6 +193,10 @@ cd ~/RipX
 git restore "frontend"
 git restore "backend"
 git clean -fd "frontend"
+
+
+cd ~/RipX
+git stash push -u -m "server local changes before pull"
 git pull
 NODE_OPTIONS=--max-old-space-size=4096 npm run build --prefix frontend
 npm run migrate
