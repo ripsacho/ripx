@@ -207,7 +207,7 @@ npm run shopify:checkout-discount:prepare
 npm run shopify:cart-transform:prepare
 npm run shopify:payment-customization:prepare
 npm run shopify:delivery-customization:prepare
-shopify app deploy
+shopify app deploy --config shopify.app.production.toml
 pm2 restart ripx --update-env
 
 
