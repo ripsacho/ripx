@@ -100,8 +100,8 @@ describe('inferTemplateKeyFromVariants', () => {
     expect(inferTemplateKeyFromVariants([{ config: { code: 'div { }' } }])).toBe('onsite-edit');
   });
 
-  it('returns theme for type content when config has no distinctive key', () => {
-    expect(inferTemplateKeyFromVariants([{ config: {} }], 'content')).toBe('theme');
+  it('returns onsite-edit for type content when config has no distinctive key', () => {
+    expect(inferTemplateKeyFromVariants([{ config: {} }], 'content')).toBe('onsite-edit');
   });
 
   it('returns null when no inference possible', () => {

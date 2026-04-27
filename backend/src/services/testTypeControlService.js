@@ -69,6 +69,9 @@ function normalizeTestTypeKey(value) {
   if (key === 'price') {
     return 'pricing';
   }
+  if (key === 'content') {
+    return 'onsite-edit';
+  }
   return key;
 }
 

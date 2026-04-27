@@ -58,4 +58,19 @@ describe('testTypeControlService', () => {
     expect(shipping.effective.message).toBe('Shipping tests are under review.');
     expect(shipping.effective.enabled).toBe(false);
   });
+
+  test('maps legacy content payloads to onsite edit controls', async () => {
+    const { service } = loadServiceWithQueryRows([
+      {
+        key: 'test_type.rule.global.onsite-edit',
+        value: JSON.stringify({ mode: 'disabled', message: 'Onsite edits are paused.' }),
+      },
+    ]);
+
+    const resolved = await service.getResolvedTestTypeRule('content', {});
+
+    expect(resolved.key).toBe('onsite-edit');
+    expect(resolved.effective.mode).toBe('disabled');
+    expect(resolved.effective.enabled).toBe(false);
+  });
 });

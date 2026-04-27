@@ -1146,7 +1146,12 @@ router.post(
 
 /**
  * GET /api/track/variants
- * Batch get variants for multiple tests (reduces round trips for storefront)
+ *
+ * Live storefront bucketing endpoint. Price tests depend on this route for both assignment and
+ * diagnostics: the browser sends page/product/segment context, this route validates the tenant,
+ * asks `abTestEngine` for assignments, then signs each variant before returning it.
+ *
+ * See `PRICE_TEST_FLOW.md` before changing query params or diagnostic fields.
  */
 router.get(
   '/variants',
@@ -1168,6 +1173,7 @@ router.get(
       current_product_id,
       current_collection_id,
       preview_session,
+      ripx_diag,
     } = req.query;
 
     if (!user_id || !shop_domain || !test_ids) {
@@ -1206,6 +1212,8 @@ router.get(
       jsResults = {};
     }
 
+    // Keep this context aligned with `shopify/storefront-script.js#getVariantCachePromise`.
+    // Missing fields here can make live bucketing behave differently from debugStatus/preview.
     const context = { device, customer, country };
     context.user_agent = req.headers['user-agent'] || req.query.user_agent || null;
     context.user_ip =
@@ -1285,10 +1293,38 @@ router.get(
       signedAssignments[tid] = withAssignmentSignature(variant, tid, user_id, domain);
     });
 
-    res.json({
+    const responsePayload = {
       success: true,
       variants: signedAssignments,
-    });
+    };
+
+    // Only expose lightweight diagnostic metadata for known first-party probes. Full assignment
+    // details remain inside the signed variant payload and server logs.
+    const diagnosticMode = String(ripx_diag || '')
+      .trim()
+      .slice(0, 80);
+    const includeDiagnostics = ['live_batch', 'debugStatus'].includes(diagnosticMode);
+    if (includeDiagnostics) {
+      responsePayload.diagnostics = {
+        diagnostic: diagnosticMode,
+        requestedTestIds: ids,
+        assignedTestIds: Object.keys(signedAssignments),
+        assignedCount: Object.keys(signedAssignments).length,
+        previewSession: parsePreviewSessionFlag(preview_session),
+        context: {
+          current_pathname: context.current_pathname || null,
+          current_product_id: context.current_product_id || null,
+          current_collection_id: context.current_collection_id || null,
+          device: context.device || null,
+          customer: context.customer || null,
+          country: context.country || null,
+          traffic_source: context.traffic_source || null,
+          session_count: context.session_count ?? null,
+        },
+      };
+    }
+
+    res.json(responsePayload);
   })
 );
 

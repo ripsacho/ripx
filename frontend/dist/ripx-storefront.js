@@ -550,6 +550,7 @@
   const windowNamePreview = readWindowNamePreviewCtx();
 
   const _urlPreview = URL_PARAMS.get('ab_preview') === '1';
+  const PREVIEW_SIMPLE_MODE = URL_PARAMS.get('ab_preview_simple') === '1';
   const _urlPreviewTest = URL_PARAMS.get('ab_preview_test');
   const _urlPreviewVariantId = URL_PARAMS.get('ab_preview_variant');
   const _urlPreviewVariantName = URL_PARAMS.get('ab_preview_variant_name');
@@ -600,7 +601,11 @@
 
   // Persist preview so Shopify password redirects / in-theme navigation keep test+variant.
   // ab_preview_test alone (without ab_preview=1) still enables preview; session must survive losing query params.
-  if (PREVIEW_MODE && (PREVIEW_TEST_ID || PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME)) {
+  if (
+    PREVIEW_MODE &&
+    !PREVIEW_SIMPLE_MODE &&
+    (PREVIEW_TEST_ID || PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME)
+  ) {
     writePersistedPreviewCtx({
       preview: true,
       testId: PREVIEW_TEST_ID || null,
@@ -650,6 +655,7 @@
     try {
       var parsed = new URL(raw, window.location.origin);
       if (PREVIEW_MODE) parsed.searchParams.set('ab_preview', '1');
+      if (PREVIEW_SIMPLE_MODE) parsed.searchParams.set('ab_preview_simple', '1');
       if (PREVIEW_TEST_ID) parsed.searchParams.set('ab_preview_test', String(PREVIEW_TEST_ID));
       if (PREVIEW_VARIANT_ID)
         parsed.searchParams.set('ab_preview_variant', String(PREVIEW_VARIANT_ID));
@@ -663,6 +669,19 @@
       return raw;
     }
   }
+  const PRICE_PREVIEW_FRAME = !!window.__RIPX_PRICE_PREVIEW_FRAME__;
+  function getPricePreviewTargetPath() {
+    if (!PRICE_PREVIEW_FRAME) return '';
+    try {
+      var rawTarget = URL_PARAMS.get('url') || '';
+      if (!rawTarget) return '';
+      var parsedTarget = new URL(rawTarget, window.location.origin);
+      return parsedTarget.pathname + parsedTarget.search;
+    } catch (_e) {
+      return '';
+    }
+  }
+  const PRICE_PREVIEW_TARGET_PATH = getPricePreviewTargetPath();
   function toPreviewBootstrapUrl(urlValue) {
     var withCtx = withPreviewQueryParams(urlValue || window.location.href);
     if (!withCtx) return '';
@@ -672,9 +691,11 @@
       var p = String(parsed.pathname || '').toLowerCase();
       if (
         p.indexOf('/apps/ripx/preview-bootstrap') === 0 ||
-        p.indexOf('/apps/ripx/preview-bootstrap-v2') === 0
+        p.indexOf('/apps/ripx/preview-bootstrap-v2') === 0 ||
+        p.indexOf('/apps/ripx/price-preview-bootstrap-v1') === 0
       )
         return parsed.toString();
+      if (PRICE_PREVIEW_FRAME) return parsed.toString();
       return (
         'https://' +
         parsed.hostname +
@@ -703,6 +724,9 @@
   }
   function schedulePreviewBootstrapReloadAfterCartAdd(reason) {
     if (!PREVIEW_MODE) return;
+    // The isolated price-preview runner owns iframe navigation and re-injection.
+    // Reloading the frame into the generic bootstrap would reintroduce the old escape path.
+    if (PRICE_PREVIEW_FRAME) return;
     setTimeout(function () {
       try {
         var next = toPreviewBootstrapUrl(window.location.href);
@@ -1983,6 +2007,17 @@
     }
   }
 
+  function isCartUpdateOrChangePath(urlValue) {
+    if (!urlValue) return false;
+    try {
+      var parsed = new URL(String(urlValue), window.location.origin);
+      var p = (parsed.pathname || '').replace(/\/+$/, '');
+      return /\/cart\/(?:change|update)(?:\.js)?$/i.test(p);
+    } catch (e) {
+      return false;
+    }
+  }
+
   /** @type {Record<string, true>} */
   var _ripxCartDebugNearMiss = {};
 
@@ -2125,6 +2160,10 @@
         }
       }
     }
+    function applyPricePreviewSectionsUrlToObject(obj) {
+      if (!PRICE_PREVIEW_TARGET_PATH || !obj || typeof obj !== 'object') return;
+      obj.sections_url = PRICE_PREVIEW_TARGET_PATH;
+    }
     var effectivePayload = payload;
     var nativeSwapState = getRipxNativeVariantSwapState(effectivePayload);
     if (!effectivePayload._ripx_target_unit || !effectivePayload._ripx_discount_unit) {
@@ -2161,6 +2200,8 @@
           body.set('id', nativeSwapState.mappedVariantId);
         }
       }
+      if (PRICE_PREVIEW_TARGET_PATH && body.set)
+        body.set('sections_url', PRICE_PREVIEW_TARGET_PATH);
       applyRipxCartAttrsToFormData(body, effectivePayload, true);
       return { changed: true, body: body };
     }
@@ -2171,6 +2212,7 @@
           body.set('id', nativeSwapState.mappedVariantId);
         }
       }
+      if (PRICE_PREVIEW_TARGET_PATH) body.set('sections_url', PRICE_PREVIEW_TARGET_PATH);
       applyRipxCartAttrsToSearchParams(body, effectivePayload, true);
       return { changed: true, body: body };
     }
@@ -2184,6 +2226,7 @@
           var obj = JSON.parse(trimmed || '{}');
           if (obj && typeof obj === 'object') {
             applyNativeVariantSwapToObject(obj, nativeSwapState);
+            applyPricePreviewSectionsUrlToObject(obj);
             function mergedRipxProps(existing) {
               var nextProps = Object.assign({}, existing || {});
               function setPropIfMissing(key, value) {
@@ -2272,6 +2315,46 @@
     return { changed: false, body: body };
   }
 
+  function patchPricePreviewSectionsUrl(body, headers) {
+    if (!PRICE_PREVIEW_TARGET_PATH) return { changed: false, body: body };
+    if (typeof FormData !== 'undefined' && body instanceof FormData) {
+      if (body.set) body.set('sections_url', PRICE_PREVIEW_TARGET_PATH);
+      return { changed: true, body: body };
+    }
+    if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) {
+      body.set('sections_url', PRICE_PREVIEW_TARGET_PATH);
+      return { changed: true, body: body };
+    }
+    if (typeof body === 'string') {
+      var ct = String(getHeaderValue(headers, 'content-type') || '').toLowerCase();
+      var trimmed = body.trim();
+      var looksJson = ct.indexOf('application/json') !== -1 || /^\{[\s\S]*\}$/.test(trimmed);
+      if (looksJson) {
+        try {
+          var obj = JSON.parse(trimmed || '{}');
+          if (obj && typeof obj === 'object') {
+            obj.sections_url = PRICE_PREVIEW_TARGET_PATH;
+            return { changed: true, body: JSON.stringify(obj), contentType: 'application/json' };
+          }
+        } catch (eJson) {}
+      }
+      var looksUrlEncoded =
+        ct.indexOf('application/x-www-form-urlencoded') !== -1 || trimmed.indexOf('=') !== -1;
+      if (looksUrlEncoded) {
+        try {
+          var params = new URLSearchParams(body);
+          params.set('sections_url', PRICE_PREVIEW_TARGET_PATH);
+          return {
+            changed: true,
+            body: params.toString(),
+            contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
+          };
+        } catch (eParams) {}
+      }
+    }
+    return { changed: false, body: body };
+  }
+
   function getRipxLinePropertiesPayload(state) {
     var src = state || _ripxCartAttributeState;
     if (!src || !src._ripx_price_test || !src._ripx_variant) return null;
@@ -2316,12 +2399,18 @@
         (_ripxCartAttributeState && _ripxCartAttributeState.__ripx_source_variant_id) ||
         ''
     );
+    var fallbackIndex = -1;
     for (var i = cartState.items.length - 1; i >= 0; i--) {
       var item = cartState.items[i];
       if (!linePropertiesNeedRipxRepair(item, desiredProps)) continue;
       if (!preferredVariant) return i;
       if (normalizeCartVariantId(item && item.variant_id) === preferredVariant) return i;
+      if (fallbackIndex < 0) fallbackIndex = i;
     }
+    // In price preview, the product page is mounted through an app-proxy document and some
+    // themes submit the cart line before all variant metadata is available. Repair the newest
+    // missing-property line rather than leaving preview cart attributes empty.
+    if (PRICE_PREVIEW_FRAME) return fallbackIndex;
     return -1;
   }
 
@@ -2345,7 +2434,12 @@
       })
       .then(function (cartState) {
         var lineIndex = findRipxRepairLineIndex(cartState, desiredProps);
-        if (lineIndex < 0) return false;
+        if (lineIndex < 0) {
+          if (DEBUG) {
+            debugLog('cart props repair skipped:', reason || 'unknown', 'no matching line');
+          }
+          return false;
+        }
         var item = cartState.items[lineIndex] || {};
         var mergedProps = Object.assign({}, item.properties || {}, desiredProps);
         var requestBody = JSON.stringify({
@@ -2360,7 +2454,16 @@
           body: requestBody,
         })
           .then(function (res) {
-            if (!res || !res.ok) return false;
+            if (!res || !res.ok) {
+              if (DEBUG) {
+                debugLog(
+                  'cart props repair failed:',
+                  reason || 'unknown',
+                  res && res.status ? res.status : 'no-response'
+                );
+              }
+              return false;
+            }
             if (DEBUG) {
               debugLog('cart props repaired:', reason || 'unknown', 'line', lineIndex + 1);
             }
@@ -2382,7 +2485,7 @@
 
   function scheduleRipxCartPropsRepairBurst(reason) {
     maybeRepairRipxCartLineProperties(reason || 'immediate');
-    var delays = [120, 420, 1100];
+    var delays = PRICE_PREVIEW_FRAME ? [120, 420, 1100, 2200, 4200] : [120, 420, 1100];
     for (var i = 0; i < delays.length; i++) {
       (function (delayMs) {
         var timer = setTimeout(function () {
@@ -2513,6 +2616,75 @@
                 return response;
               });
             }
+          } else if (PRICE_PREVIEW_FRAME && method === 'POST' && isCartUpdateOrChangePath(url)) {
+            var sectionsInit = init ? Object.assign({}, init) : {};
+            if (!sectionsInit.headers) sectionsInit.headers = (input && input.headers) || {};
+            if (sectionsInit.body === undefined && input && typeof input !== 'string') {
+              if (
+                typeof FormData !== 'undefined' &&
+                input.body &&
+                input.body instanceof FormData
+              ) {
+                sectionsInit.body = input.body;
+              } else if (
+                typeof URLSearchParams !== 'undefined' &&
+                input.body &&
+                input.body instanceof URLSearchParams
+              ) {
+                sectionsInit.body = input.body;
+              } else if (typeof input.body === 'string') {
+                sectionsInit.body = input.body;
+              } else if (typeof input.clone === 'function' && typeof input.text === 'function') {
+                return input
+                  .clone()
+                  .text()
+                  .then(function (requestBodyText) {
+                    var asyncSectionsInit = Object.assign({}, sectionsInit);
+                    asyncSectionsInit.body = requestBodyText;
+                    var asyncSectionsPatch = patchPricePreviewSectionsUrl(
+                      asyncSectionsInit.body,
+                      asyncSectionsInit.headers
+                    );
+                    if (asyncSectionsPatch.changed) {
+                      asyncSectionsInit.body = asyncSectionsPatch.body;
+                      if (
+                        asyncSectionsPatch.contentType &&
+                        !getHeaderValue(asyncSectionsInit.headers, 'content-type')
+                      ) {
+                        setHeaderValue(
+                          asyncSectionsInit.headers,
+                          'Content-Type',
+                          asyncSectionsPatch.contentType
+                        );
+                      }
+                    }
+                    return nativeFetch(input, asyncSectionsInit).then(function (response) {
+                      if (response && response.ok) scheduleRipxCartNativeStateRefreshBurst();
+                      return response;
+                    });
+                  })
+                  .catch(function () {
+                    return nativeFetch(input, init);
+                  });
+              }
+            }
+            var sectionsPatch = patchPricePreviewSectionsUrl(
+              sectionsInit.body,
+              sectionsInit.headers
+            );
+            if (sectionsPatch.changed) {
+              sectionsInit.body = sectionsPatch.body;
+              if (
+                sectionsPatch.contentType &&
+                !getHeaderValue(sectionsInit.headers, 'content-type')
+              ) {
+                setHeaderValue(sectionsInit.headers, 'Content-Type', sectionsPatch.contentType);
+              }
+            }
+            return nativeFetch(input, sectionsInit).then(function (response) {
+              if (response && response.ok) scheduleRipxCartNativeStateRefreshBurst();
+              return response;
+            });
           } else if (DEBUG && method === 'POST' && looksLikeCartAddNearMiss(url)) {
             debugLogCartNearMissOnce(pathnameFromCartUrl(url));
           }
@@ -2583,6 +2755,18 @@
                   patch.changed ? '' : debugDescribeCartAddBody(bodyBeforeXhr)
                 );
               }
+            }
+          } else if (
+            PRICE_PREVIEW_FRAME &&
+            method === 'POST' &&
+            isCartUpdateOrChangePath(this.__ripxUrl)
+          ) {
+            var sectionsHeaderObj = { 'content-type': this.__ripxContentType || '' };
+            var sectionsPatch = patchPricePreviewSectionsUrl(body, sectionsHeaderObj);
+            body = sectionsPatch.body;
+            if (sectionsPatch.contentType && !this.__ripxContentType) {
+              this.setRequestHeader('Content-Type', sectionsPatch.contentType);
+              this.__ripxContentType = sectionsPatch.contentType;
             }
           } else if (DEBUG && method === 'POST' && looksLikeCartAddNearMiss(this.__ripxUrl)) {
             debugLogCartNearMissOnce(xhrCartPath);
@@ -3001,7 +3185,9 @@
           resolvedAction = rawAction ? new URL(rawAction, window.location.origin).toString() : '';
         } catch (_eAction) {}
         if (!resolvedAction || isCartAddPath(resolvedAction)) {
-          var returnTo = toPreviewBootstrapUrl(window.location.href);
+          var returnTo = PRICE_PREVIEW_FRAME
+            ? withPreviewQueryParams(window.location.href)
+            : toPreviewBootstrapUrl(window.location.href);
           if (returnTo) {
             setHiddenInputByName('return_to', toShopifyReturnToPath(returnTo));
           }
@@ -7065,7 +7251,14 @@
       initVisualPicker();
     }
     function run() {
-      installPreviewDebugFloatingPanel();
+      if (!PREVIEW_SIMPLE_MODE) installPreviewDebugFloatingPanel();
+      if (PREVIEW_MODE && !PREVIEW_SIMPLE_MODE) {
+        try {
+          setInterval(function () {
+            installPreviewDebugFloatingPanel();
+          }, 1500);
+        } catch (ePanelWatch) {}
+      }
       if (PREVIEW_MODE && PREVIEW_TEST_ID && (PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME)) {
         injectPriceTestCartAttributes(
           PREVIEW_TEST_ID,
@@ -7646,10 +7839,17 @@
         : PREVIEW_TEST_ID || null;
     var variant = null;
     var variantError = null;
-    try {
-      variant = tid ? await getVariant(tid) : null;
-    } catch (e) {
-      variantError = e && (e.message || String(e));
+    if (tid) {
+      try {
+        if (PREVIEW_MODE) {
+          variant = await getVariant(tid);
+        } else {
+          variantError =
+            'Skipped live getVariant() to avoid creating a saved assignment; see network.liveVariants.variants for the non-persistent diagnostic result.';
+        }
+      } catch (e) {
+        variantError = e && (e.message || String(e));
+      }
     }
     var sp = new URLSearchParams(window.location.search || '');
     var sess = null;
@@ -7664,7 +7864,7 @@
       pathLower.indexOf('/products/') !== -1 && pathLower.length > '/products/'.length + 1;
     var isPasswordPage = pathLower.indexOf('/password') !== -1;
 
-    var network = { preview: null, previewStorefrontTest: null };
+    var network = { preview: null, previewStorefrontTest: null, liveVariants: null };
     if (tid && CONFIG.apiUrl) {
       try {
         var pp = new URLSearchParams();
@@ -7695,6 +7895,57 @@
         network.previewStorefrontTest = { status: rs.status, ok: rs.ok };
       } catch (es) {
         network.previewStorefrontTest = { error: es && (es.message || String(es)) };
+      }
+    }
+    if (!PREVIEW_MODE && CONFIG.apiUrl && (tid || (CONFIG.activeTests || []).length > 0)) {
+      try {
+        var lv = new URLSearchParams();
+        var liveTestIds = tid
+          ? [tid]
+          : (CONFIG.activeTests || [])
+              .map(function (t) {
+                return t && t.id;
+              })
+              .filter(Boolean);
+        lv.set('user_id', getUserId());
+        lv.set('shop_domain', getShopDomain());
+        lv.set('test_ids', liveTestIds.join(','));
+        lv.set('device', getDeviceType());
+        lv.set('customer', getCustomerType());
+        lv.set('country', getCountryCode() || '');
+        lv.set('traffic_source', getTrafficSource());
+        lv.set('current_url', window.location.href || '');
+        lv.set('current_pathname', window.location.pathname || '/');
+        lv.set('session_count', '1');
+        // Diagnostic probe should not create a saved live assignment while inspecting.
+        // Backend still runs the same eligibility + selection path, but skips persistence.
+        lv.set('preview_session', '1');
+        lv.set('referrer', document.referrer || '');
+        var livePid = getCurrentProductId();
+        var liveCid = getCurrentCollectionId();
+        if (livePid) lv.set('current_product_id', livePid);
+        if (liveCid) lv.set('current_collection_id', liveCid);
+        var liveResponse = await fetchWithTimeout(
+          CONFIG.apiUrl + '/track/variants?' + lv.toString(),
+          { method: 'GET' },
+          8000
+        );
+        var liveBody = null;
+        try {
+          liveBody = await liveResponse.clone().json();
+        } catch (_eLiveJson) {}
+        network.liveVariants = {
+          status: liveResponse.status,
+          ok: liveResponse.ok,
+          diagnosticOnly: true,
+          assignedTestIds:
+            liveBody && liveBody.variants && typeof liveBody.variants === 'object'
+              ? Object.keys(liveBody.variants)
+              : [],
+          variants: liveBody && liveBody.variants ? liveBody.variants : null,
+        };
+      } catch (eLive) {
+        network.liveVariants = { error: eLive && (eLive.message || String(eLive)) };
       }
     }
 
@@ -7752,6 +8003,7 @@
         variantName: PREVIEW_VARIANT_NAME,
         urlParams: {
           ab_preview: sp.get('ab_preview'),
+          ab_preview_simple: sp.get('ab_preview_simple'),
           ab_preview_test: sp.get('ab_preview_test'),
           ab_preview_variant: sp.get('ab_preview_variant'),
           ab_preview_variant_name: sp.get('ab_preview_variant_name'),

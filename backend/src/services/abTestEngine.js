@@ -239,9 +239,13 @@ class ABTestEngine {
         }
 
         if (test.personalization_mode === 'personalized') {
+          const winnerId = winner.id ?? winner.name;
+          if (!winnerId) {
+            return null;
+          }
           return {
-            variantId: winner.id,
-            variantName: winner.name,
+            variantId: String(winnerId),
+            variantName: winner.name || String(winnerId),
             isNewAssignment: false,
             config: winner.config || {},
           };
@@ -260,9 +264,13 @@ class ABTestEngine {
           if (bucket >= percent) {
             return null; // User sees control (no variant)
           }
+          const winnerId = winner.id ?? winner.name;
+          if (!winnerId) {
+            return null;
+          }
           return {
-            variantId: winner.id,
-            variantName: winner.name,
+            variantId: String(winnerId),
+            variantName: winner.name || String(winnerId),
             isNewAssignment: false,
             config: winner.config || {},
           };
@@ -293,18 +301,14 @@ class ABTestEngine {
             variant_id: existingAssignment.variant_id,
             variant_name: existingAssignment.variant_name,
           });
-        const isOfferTest =
-          String(test?.type || '')
-            .trim()
-            .toLowerCase() === 'offer';
         const resolvedVariantId =
-          isOfferTest && matchedVariant?.id !== undefined && matchedVariant?.id !== null
+          matchedVariant?.id !== undefined && matchedVariant?.id !== null
             ? String(matchedVariant.id)
-            : existingAssignment.variant_id;
+            : existingAssignment.variant_id || matchedVariant?.name || existingAssignment.variant_name;
         const resolvedVariantName =
-          isOfferTest && matchedVariant?.name
+          matchedVariant?.name
             ? String(matchedVariant.name)
-            : existingAssignment.variant_name;
+            : existingAssignment.variant_name || resolvedVariantId;
         return {
           variantId: resolvedVariantId,
           variantName: resolvedVariantName,
@@ -446,7 +450,11 @@ class ABTestEngine {
   }
 
   /**
-   * Get variants for a user across multiple tests (batch, 2 DB queries instead of 2N)
+   * Get variants for a user across multiple tests (batch, 2 DB queries instead of 2N).
+   *
+   * This is the normal live storefront path for price tests. Keep its behavior aligned with
+   * `getVariant` because preview/debug calls may exercise the single-test route while live pages
+   * usually call `/track/variants` with many active tests at once.
    *
    * @param {string[]} testIds - Test IDs
    * @param {string} userId - User identifier
@@ -529,9 +537,49 @@ class ABTestEngine {
 
     for (const testId of ids) {
       const test = testsMap.get(testId);
-      if (!test || test.status !== 'running') {
+      if (!test || !this._shouldServeTest(test)) {
         continue;
       }
+
+      if (test.status !== 'running') {
+        const winner = this._getWinnerVariant(test);
+        if (!winner) {
+          continue;
+        }
+        if (test.personalization_mode === 'personalized') {
+          const winnerId = winner.id ?? winner.name;
+          if (winnerId) {
+            result[testId] = {
+              variantId: String(winnerId),
+              variantName: winner.name || String(winnerId),
+              isNewAssignment: false,
+              config: winner.config || {},
+            };
+          }
+          continue;
+        }
+        if (test.personalization_mode === 'rollout') {
+          const percent = personalizationService.getEffectiveRolloutPercent(test);
+          const hash = crypto
+            .createHash('md5')
+            .update(String(userId || ''))
+            .digest('hex');
+          const bucket = parseInt(hash.substring(0, 8), 16) % 100;
+          if (bucket < percent) {
+            const winnerId = winner.id ?? winner.name;
+            if (winnerId) {
+              result[testId] = {
+                variantId: String(winnerId),
+                variantName: winner.name || String(winnerId),
+                isNewAssignment: false,
+                config: winner.config || {},
+              };
+            }
+          }
+          continue;
+        }
+      }
+
       const testContext = { ...context, ...(contextOverrides[testId] || {}) };
       if (!this.isUserEligible(test, testContext)) {
         continue;
@@ -555,18 +603,14 @@ class ABTestEngine {
             variant_id: existingAssignment.variant_id,
             variant_name: existingAssignment.variant_name,
           });
-        const isOfferTest =
-          String(test?.type || '')
-            .trim()
-            .toLowerCase() === 'offer';
         const resolvedVariantId =
-          isOfferTest && matchedVariant?.id !== undefined && matchedVariant?.id !== null
+          matchedVariant?.id !== undefined && matchedVariant?.id !== null
             ? String(matchedVariant.id)
-            : existingAssignment.variant_id;
+            : existingAssignment.variant_id || matchedVariant?.name || existingAssignment.variant_name;
         const resolvedVariantName =
-          isOfferTest && matchedVariant?.name
+          matchedVariant?.name
             ? String(matchedVariant.name)
-            : existingAssignment.variant_name;
+            : existingAssignment.variant_name || resolvedVariantId;
         result[testId] = {
           variantId: resolvedVariantId,
           variantName: resolvedVariantName,
@@ -588,10 +632,19 @@ class ABTestEngine {
       if (!variant) {
         continue;
       }
+      const variantId = variant.id ?? variant.name;
+      if (!variantId) {
+        const logger = require('../utils/logger');
+        logger.warn('Variant has no id or name, skipping batch assignment', {
+          testId,
+          variant,
+        });
+        continue;
+      }
 
       result[testId] = {
-        variantId: variant.id,
-        variantName: variant.name,
+        variantId: String(variantId),
+        variantName: variant.name || String(variantId),
         isNewAssignment: true,
         config: variant.config || {},
       };
@@ -600,8 +653,8 @@ class ABTestEngine {
           test_id: testId,
           user_id: userId,
           shop_domain: shopDomain,
-          variant_id: variant.id,
-          variant_name: variant.name,
+          variant_id: String(variantId),
+          variant_name: variant.name || String(variantId),
           assigned_at: new Date(),
           device: context.device || null,
           country: context.country || null,
@@ -1025,8 +1078,11 @@ class ABTestEngine {
       'theme',
       'checkout',
       'combination',
+      'template',
+      'split-url',
+      'onsite-edit',
     ];
-    if (!validTypes.includes(testConfig.type)) {
+    if (!validTypes.includes(testType)) {
       errors.push(`Test type must be one of: ${validTypes.join(', ')}`);
     }
 
@@ -1067,6 +1123,28 @@ class ABTestEngine {
         return name === 'control' || name.startsWith('control ');
       };
 
+      const hasPriceSignalValue = value =>
+        value !== null && value !== undefined && String(value).trim() !== '';
+
+      const configHasPriceDeep = cfg => {
+        if (!cfg || typeof cfg !== 'object') {
+          return false;
+        }
+        const mode = String(cfg.priceMode || 'fixed')
+          .trim()
+          .toLowerCase();
+        if (mode === 'fixed' && hasPriceSignalValue(cfg.price)) {return true;}
+        if (mode === 'amount' && hasPriceSignalValue(cfg.priceDelta)) {return true;}
+        if (mode === 'percent' && hasPriceSignalValue(cfg.pricePercent)) {return true;}
+        if (cfg.byVariant && typeof cfg.byVariant === 'object') {
+          if (Object.values(cfg.byVariant).some(configHasPriceDeep)) {return true;}
+        }
+        if (cfg.byProduct && typeof cfg.byProduct === 'object') {
+          if (Object.values(cfg.byProduct).some(configHasPriceDeep)) {return true;}
+        }
+        return false;
+      };
+
       if ((testType === 'price' || testType === 'pricing') && testConfig.variants.length > 1) {
         let hasNonControlWithPrice = false;
         testConfig.variants.forEach((variant, index) => {
@@ -1075,6 +1153,9 @@ class ABTestEngine {
             .trim()
             .toLowerCase();
           const isControl = isLikelyControlVariant(variant, index);
+          if (!isControl && configHasPriceDeep(cfg)) {
+            hasNonControlWithPrice = true;
+          }
           if (
             mode === 'fixed' &&
             cfg.price !== null &&

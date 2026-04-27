@@ -1058,7 +1058,9 @@ router.post(
       testData.holdout_percent = holdoutResult.value;
     }
 
-    testData = normalizeCheckoutExperienceTestPayload(normalizeShippingTestPayload(testData));
+    testData = enrichGoalWithTemplateKey(
+      normalizeCheckoutExperienceTestPayload(normalizeShippingTestPayload(testData))
+    );
     try {
       await ensureTemplateTypeEnabledOrThrow(testData, shopDomain);
     } catch (error) {
@@ -2091,11 +2093,15 @@ router.put(
         }));
       }
 
-      const testData = normalizeCheckoutExperienceTestPayload(
+      let testData = normalizeCheckoutExperienceTestPayload(
         normalizeShippingTestPayload({ ...existingTest, ...updates })
       );
+      testData = enrichGoalWithTemplateKey(testData);
       if (Array.isArray(testData.variants)) {
         updates.variants = testData.variants;
+      }
+      if (testData.goal) {
+        updates.goal = testData.goal;
       }
       if (testData.type && updates.type !== undefined) {
         updates.type = testData.type;
@@ -2714,6 +2720,7 @@ router.post(
     clonedTestData = normalizeCheckoutExperienceTestPayload(
       normalizeShippingTestPayload(clonedTestData)
     );
+    clonedTestData = enrichGoalWithTemplateKey(clonedTestData);
 
     // Validate cloned test
     const validation = abTestEngine.validateTest(clonedTestData);

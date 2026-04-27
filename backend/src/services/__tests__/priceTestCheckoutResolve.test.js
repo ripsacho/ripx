@@ -279,7 +279,7 @@ describe('priceTestCheckoutResolve', () => {
     });
   });
 
-  it('explicit direct price override skips discount-function application', () => {
+  it('explicit direct price override uses signed discount path for reductions', () => {
     const test = {
       ...baseTest,
       variants: [
@@ -289,6 +289,38 @@ describe('priceTestCheckoutResolve', () => {
           config: {
             priceMode: 'fixed',
             price: 19.99,
+            priceApplicationMethod: 'direct_price_override',
+          },
+        },
+      ],
+    };
+    const r = resolvePriceTestLineDiscount({
+      test,
+      assignmentVariantId: 'var-b',
+      productId: '111',
+      linePresentmentTotal: 29.99,
+      quantity: 1,
+      debug: true,
+    });
+    expect(r.applies).toBe(true);
+    expect(parseFloat(r.discountDecimal, 10)).toBeCloseTo(10, 2);
+    expect(r.debug).toMatchObject({
+      configuredApplicationMethod: 'direct_price_override',
+      resolvedApplicationMethod: 'discounted_checkout_price',
+      canApplyDiscountFunction: true,
+    });
+  });
+
+  it('explicit direct price override skips discount-function application for increases', () => {
+    const test = {
+      ...baseTest,
+      variants: [
+        {
+          id: 'var-b',
+          name: 'Variant B',
+          config: {
+            priceMode: 'amount',
+            priceDelta: 5,
             priceApplicationMethod: 'direct_price_override',
           },
         },
@@ -372,6 +404,64 @@ describe('priceTestCheckoutResolve', () => {
     });
     expect(r.applies).toBe(true);
     expect(parseFloat(r.discountDecimal, 10)).toBeCloseTo(10, 2);
+  });
+
+  it('uses first product variant matrix row when current variant id is unavailable', () => {
+    const test = {
+      ...baseTest,
+      target_type: 'all-products',
+      target_ids: [],
+      variants: [
+        {
+          id: 'var-b',
+          name: 'Variant B',
+          config: {
+            priceMode: 'fixed',
+            price: 24.99,
+            byProduct: {
+              'gid://shopify/Product/111': {
+                byVariant: {
+                  222: {
+                    priceMode: 'fixed',
+                    price: 14.99,
+                  },
+                },
+              },
+              'gid://shopify/Product/333': {
+                byVariant: {
+                  444: {
+                    priceMode: 'fixed',
+                    price: 9.99,
+                  },
+                },
+              },
+            },
+          },
+        },
+      ],
+    };
+
+    const firstProduct = resolvePriceTestLineDiscount({
+      test,
+      assignmentVariantId: 'var-b',
+      productId: '111',
+      variantId: null,
+      linePresentmentTotal: 24.99,
+      quantity: 1,
+    });
+    const secondProduct = resolvePriceTestLineDiscount({
+      test,
+      assignmentVariantId: 'var-b',
+      productId: '333',
+      variantId: null,
+      linePresentmentTotal: 24.99,
+      quantity: 1,
+    });
+
+    expect(firstProduct.applies).toBe(true);
+    expect(parseFloat(firstProduct.discountDecimal, 10)).toBeCloseTo(10, 2);
+    expect(secondProduct.applies).toBe(true);
+    expect(parseFloat(secondProduct.discountDecimal, 10)).toBeCloseTo(15, 2);
   });
 
   it('resolveCheckoutPriceBatchForDomain caches getTestById per test_id', async () => {

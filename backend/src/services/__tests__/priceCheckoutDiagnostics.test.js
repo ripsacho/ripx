@@ -335,6 +335,27 @@ export const RIPX_CHECKOUT_PRICE_SECRET = ${JSON.stringify('other-secret')};
     expect(d.summary.overall_status).toBe('error');
   });
 
+  it('extensionConfig reports production error when generated config uses temporary tunnel host', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.APP_URL = 'https://api.example.com';
+    process.env.RIPX_CHECKOUT_PRICE_SECRET = 'server-secret';
+    const { buildCheckoutPriceDiagnostics } = require('../priceCheckoutDiagnostics');
+    const contents = `export const RIPX_PRICE_RESOLVE_BATCH_URL = ${JSON.stringify(
+      'https://abc123.trycloudflare.com/api/track/price-resolve-batch'
+    )};
+export const RIPX_CHECKOUT_PRICE_SECRET = ${JSON.stringify('server-secret')};
+`;
+    const d = buildCheckoutPriceDiagnostics({
+      extensionConfig: { source: 'present', contents },
+    });
+    const ext = d.checklist.find(c => c.id === 'extension_config_matches_env');
+    expect(ext?.ok).toBe(false);
+    expect(ext?.severity).toBe('error');
+    expect(ext?.message).toMatch(/temporary tunnel/i);
+    expect(d.infrastructure.extension_batch_url_ephemeral_tunnel).toBe(true);
+    expect(d.summary.overall_status).toBe('error');
+  });
+
   it('extensionConfig missing file adds informational checklist item', () => {
     process.env.APP_URL = 'https://api.example.com';
     const { buildCheckoutPriceDiagnostics } = require('../priceCheckoutDiagnostics');

@@ -295,6 +295,10 @@ function buildExtensionConfigDiagnostics(params) {
   const extSecret = parsed.secret;
   const batchMatches = Boolean(envNorm) && extBatch === envNorm;
   const secretMatches = envSecretTrim === extSecret;
+  const extBatchParsed = extBatch ? parseUrlSafe(extBatch) : null;
+  const extBatchHost = extBatchParsed ? extBatchParsed.hostname : '';
+  const extBatchUsesEphemeralTunnel = Boolean(extBatchHost && isEphemeralTunnelHost(extBatchHost));
+  const isProduction = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
 
   const infraOut = {
     ...infra,
@@ -302,6 +306,7 @@ function buildExtensionConfigDiagnostics(params) {
     extension_secret_configured: Boolean(extSecret),
     extension_batch_url_matches_env: envNorm ? batchMatches : null,
     extension_secret_matches_env: secretRequired || Boolean(extSecret) ? secretMatches : null,
+    extension_batch_url_ephemeral_tunnel: extBatch ? extBatchUsesEphemeralTunnel : null,
   };
 
   /** @type {{ level: 'error'|'warning', text: string }[]} */
@@ -331,6 +336,12 @@ function buildExtensionConfigDiagnostics(params) {
     issues.push({
       level: 'warning',
       text: 'Extension batch URL and server .env are both unset — set APP_URL (or RIPX_PRICE_RESOLVE_BATCH_URL), run npm run shopify:checkout-discount:sync-config, then rebuild the function.',
+    });
+  }
+  if (extBatchUsesEphemeralTunnel) {
+    issues.push({
+      level: isProduction ? 'error' : 'warning',
+      text: `Extension ripxConfig.js uses a temporary tunnel host (${extBatchHost}). Use a stable HTTPS API host before production deploy, then run sync-config and rebuild the function.`,
     });
   }
 

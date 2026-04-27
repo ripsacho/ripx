@@ -205,6 +205,42 @@ describe('validators.validateTestConfig', () => {
     expect(result.errors.some(e => e.includes('Test type must be one of'))).toBe(true);
   });
 
+  it('accepts case-normalized supported types', () => {
+    const result = validators.validateTestConfig({
+      name: 'Test',
+      type: 'OFFER',
+      variants: [
+        { name: 'A', allocation: 50 },
+        { name: 'B', allocation: 50 },
+      ],
+    });
+    expect(result.errors.some(e => e.includes('Test type must be one of'))).toBe(false);
+  });
+
+  it('accepts price tests configured only through matrix overrides', () => {
+    const result = validators.validateTestConfig({
+      name: 'Matrix price',
+      type: 'price',
+      variants: [
+        { name: 'Control', allocation: 50, config: { priceMode: 'fixed', price: '' } },
+        {
+          name: 'Variant A',
+          allocation: 50,
+          config: {
+            byProduct: {
+              'gid://shopify/Product/111': {
+                byVariant: {
+                  222: { priceMode: 'fixed', price: 14.99 },
+                },
+              },
+            },
+          },
+        },
+      ],
+    });
+    expect(result.errors.some(e => e.includes('Price test'))).toBe(false);
+  });
+
   it('returns errors when allocations do not sum to 100', () => {
     const result = validators.validateTestConfig({
       name: 'Test',

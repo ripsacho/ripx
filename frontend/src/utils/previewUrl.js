@@ -12,6 +12,7 @@ export const PREVIEW_PARAMS = {
   VARIANT_ID: 'ab_preview_variant',
   VARIANT_NAME: 'ab_preview_variant_name',
   TENANT_DOMAIN: 'ab_preview_domain',
+  SIMPLE: 'ab_preview_simple',
   VISUAL_EDITOR: 'ab_visual_editor',
   VISUAL_PICKER: 'ab_visual_picker',
 };
@@ -131,6 +132,7 @@ export function normalizePreviewBaseUrl(input) {
  * @param {string} [options.tenantDomain] - Saved test domain used for preview API lookups
  * @param {boolean} [options.visualEditor=false] - Add ab_visual_editor=1 for visual editor iframe
  * @param {boolean} [options.visualPicker=false] - Add ab_visual_picker=1 for picker mode
+ * @param {boolean} [options.simplePreview=false] - Add ab_preview_simple=1 for no-shell preview
  * @returns {string|null} Full preview URL or null if baseUrl/testId invalid
  */
 export function buildPreviewUrl({
@@ -141,6 +143,7 @@ export function buildPreviewUrl({
   tenantDomain,
   visualEditor = false,
   visualPicker = false,
+  simplePreview = false,
 }) {
   const normalized = normalizePreviewBaseUrl(baseUrl);
   if (!normalized) return null;
@@ -160,6 +163,7 @@ export function buildPreviewUrl({
     }
     if (visualEditor) url.searchParams.set(PREVIEW_PARAMS.VISUAL_EDITOR, PREVIEW_VALUE);
     if (visualPicker) url.searchParams.set(PREVIEW_PARAMS.VISUAL_PICKER, PREVIEW_VALUE);
+    if (simplePreview) url.searchParams.set(PREVIEW_PARAMS.SIMPLE, PREVIEW_VALUE);
     return url.toString();
   } catch {
     return null;
@@ -174,9 +178,15 @@ export function buildPreviewUrl({
  * @param {string} options.apiBaseUrl - API base URL (e.g. /api or https://host/api)
  * @param {string} options.previewUrl - Full preview page URL built by buildPreviewUrl()
  * @param {boolean} [options.visualEditor=false] - Add ab_visual_editor=1 to preview-document
+ * @param {boolean} [options.visualPicker=false] - Add ab_visual_picker=1 to preview-document
  * @returns {string|null}
  */
-export function buildPreviewDocumentUrl({ apiBaseUrl, previewUrl, visualEditor = false }) {
+export function buildPreviewDocumentUrl({
+  apiBaseUrl,
+  previewUrl,
+  visualEditor = false,
+  visualPicker = false,
+}) {
   const directPreviewUrl = typeof previewUrl === 'string' ? previewUrl.trim() : '';
   if (!directPreviewUrl) return null;
 
@@ -200,6 +210,9 @@ export function buildPreviewDocumentUrl({ apiBaseUrl, previewUrl, visualEditor =
     if (visualEditor) {
       previewDoc.searchParams.set(PREVIEW_PARAMS.VISUAL_EDITOR, PREVIEW_VALUE);
     }
+    if (visualPicker) {
+      previewDoc.searchParams.set(PREVIEW_PARAMS.VISUAL_PICKER, PREVIEW_VALUE);
+    }
 
     const directUrl = new URL(directPreviewUrl);
     [
@@ -208,6 +221,7 @@ export function buildPreviewDocumentUrl({ apiBaseUrl, previewUrl, visualEditor =
       PREVIEW_PARAMS.VARIANT_ID,
       PREVIEW_PARAMS.VARIANT_NAME,
       PREVIEW_PARAMS.TENANT_DOMAIN,
+      PREVIEW_PARAMS.VISUAL_PICKER,
     ].forEach(key => {
       const value = directUrl.searchParams.get(key);
       if (value !== undefined && value !== null && value !== '') {
@@ -335,6 +349,8 @@ export function isShopifyPreviewUrl(previewUrl) {
 /**
  * Ensure preview opens through Shopify bootstrap route.
  * Useful as a final safeguard right before window.open.
+ * Existing price-preview bootstrap URLs are left untouched so the generic bootstrap does not wrap
+ * the stricter price runner and lose its early cart-script injection behavior.
  *
  * @param {string} previewUrl
  * @returns {string}
@@ -349,7 +365,8 @@ export function ensureShopifyPreviewBootstrapUrl(previewUrl) {
     const p = String(parsed.pathname || '').toLowerCase();
     if (
       p.indexOf('/apps/ripx/preview-bootstrap') === 0 ||
-      p.indexOf('/apps/ripx/preview-bootstrap-v2') === 0
+      p.indexOf('/apps/ripx/preview-bootstrap-v2') === 0 ||
+      p.indexOf('/apps/ripx/price-preview-bootstrap') === 0
     )
       return parsed.toString();
     return `https://${host}/apps/ripx/preview-bootstrap-v2?url=${encodeURIComponent(parsed.toString())}`;

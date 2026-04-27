@@ -472,6 +472,23 @@
   const PREVIEW_WINDOW_NAME_PREFIX = '__ripx_preview_ctx_v1__:';
   const PREVIEW_STORAGE_MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
   const PREVIEW_VARIANT_CACHE_MAX_AGE_MS = 30 * 60 * 1000; // 30 minutes
+  const FORCE_LIVE_MODE =
+    URL_PARAMS.get('ripx_live') === '1' ||
+    URL_PARAMS.get('ripx_clear_preview') === '1' ||
+    URL_PARAMS.get('ab_preview_simple') === '1';
+  if (FORCE_LIVE_MODE) {
+    try {
+      if (window.sessionStorage) window.sessionStorage.removeItem(PREVIEW_STORAGE_KEY);
+    } catch (_eForceSession) {}
+    try {
+      if (
+        typeof window.name === 'string' &&
+        window.name.indexOf(PREVIEW_WINDOW_NAME_PREFIX) === 0
+      ) {
+        window.name = '';
+      }
+    } catch (_eForceWindowName) {}
+  }
   function normalizePreviewCtxObject(obj) {
     if (!obj || typeof obj !== 'object') return null;
     const persistedAtMs = Number(obj.persistedAtMs || 0);
@@ -550,6 +567,7 @@
   const windowNamePreview = readWindowNamePreviewCtx();
 
   const _urlPreview = URL_PARAMS.get('ab_preview') === '1';
+  const PREVIEW_SIMPLE_MODE = URL_PARAMS.get('ab_preview_simple') === '1';
   const _urlPreviewTest = URL_PARAMS.get('ab_preview_test');
   const _urlPreviewVariantId = URL_PARAMS.get('ab_preview_variant');
   const _urlPreviewVariantName = URL_PARAMS.get('ab_preview_variant_name');
@@ -597,10 +615,229 @@
     !!(windowNamePreview && windowNamePreview.preview) ||
     !!(persistedPreview && persistedPreview.preview);
   const STRICT_PREVIEW_TEST_MODE = PREVIEW_MODE && !!PREVIEW_TEST_ID;
+  const RIPX_LIVE_DIAGNOSTICS_KEY = '__ripx_live_diagnostics_v1__';
+  const RIPX_LIVE_DIAGNOSTICS_HISTORY_KEY = '__ripx_live_diagnostics_history_v1__';
+  const RIPX_LIVE_DIAGNOSTICS_COOKIE = 'ripx_ab_state';
+  const RIPX_LIVE_DIAGNOSTICS_MAX_EVENTS = 80;
+  var _ripxLiveDiagnostics = {
+    schema: 1,
+    version: SCRIPT_VERSION,
+    loadedAt: new Date().toISOString(),
+    href: (window.location.origin || '') + (window.location.pathname || ''),
+    shopDomain: CONFIG.shopDomain || null,
+    apiUrl: CONFIG.apiUrl || null,
+    preview: {
+      mode: PREVIEW_MODE,
+      testId: PREVIEW_TEST_ID || null,
+      simple: PREVIEW_SIMPLE_MODE,
+      forceLiveMode: FORCE_LIVE_MODE,
+      sessionStoragePresent: !!(persistedPreview && persistedPreview.preview),
+      windowNamePresent: !!(windowNamePreview && windowNamePreview.preview),
+    },
+    runtime: {
+      validConfig: hasValidConfig,
+      activeTestsCount: (CONFIG.activeTests || []).length,
+      activeTestIds: (CONFIG.activeTests || [])
+        .map(function (t) {
+          return t && t.id;
+        })
+        .filter(Boolean),
+      consentRequired: consentRequired,
+    },
+    assignments: {},
+    skips: {},
+    events: [],
+  };
+
+  function sanitizeDiagnosticVariant(variant) {
+    if (!variant || typeof variant !== 'object') return variant || null;
+    return {
+      variantId:
+        variant.variantId !== undefined && variant.variantId !== null
+          ? String(variant.variantId)
+          : variant.id !== undefined && variant.id !== null
+            ? String(variant.id)
+            : null,
+      variantName: variant.variantName || variant.name || null,
+      isNewAssignment: variant.isNewAssignment === true,
+      isPreview: variant.isPreview === true,
+      hasConfig: !!variant.config,
+      configKeys:
+        variant.config && typeof variant.config === 'object' ? Object.keys(variant.config) : [],
+      hasAssignmentSig: !!variant.assignment_sig,
+    };
+  }
+
+  function sanitizeDiagnosticVariantsMap(variants) {
+    var out = {};
+    if (!variants || typeof variants !== 'object') return out;
+    Object.keys(variants).forEach(function (testId) {
+      out[testId] = sanitizeDiagnosticVariant(variants[testId]);
+    });
+    return out;
+  }
+
+  function getSanitizedCurrentUrl() {
+    try {
+      var parsed = new URL(window.location.href || '', window.location.origin);
+      return parsed.origin + parsed.pathname;
+    } catch (_eUrl) {
+      return window.location.pathname || '';
+    }
+  }
+
+  function getRipxLiveDiagnosticsSnapshot() {
+    try {
+      return JSON.parse(JSON.stringify(_ripxLiveDiagnostics));
+    } catch (_eClone) {
+      return _ripxLiveDiagnostics;
+    }
+  }
+
+  function writeRipxDiagnosticsCookie() {
+    try {
+      if (consentRequired && !hasConsent()) return;
+      var assigned = Object.keys(_ripxLiveDiagnostics.assignments || {});
+      var value = [
+        'v=' + encodeURIComponent(SCRIPT_VERSION),
+        'loaded=1',
+        'tests=' + encodeURIComponent(String(_ripxLiveDiagnostics.runtime.activeTestsCount || 0)),
+        'assigned=' + encodeURIComponent(assigned.join('|')),
+        'preview=' + encodeURIComponent(PREVIEW_MODE ? '1' : '0'),
+        'ts=' + encodeURIComponent(String(Date.now())),
+      ].join('&');
+      document.cookie =
+        RIPX_LIVE_DIAGNOSTICS_COOKIE +
+        '=' +
+        value.slice(0, 900) +
+        ';max-age=1800;path=/;SameSite=Lax';
+    } catch (_eCookie) {}
+  }
+
+  function persistRipxLiveDiagnostics(eventName, detail) {
+    try {
+      var canPersistDiagnostics =
+        !consentRequired || hasConsent() || PREVIEW_MODE || FORCE_LIVE_MODE;
+      _ripxLiveDiagnostics.href = getSanitizedCurrentUrl() || _ripxLiveDiagnostics.href;
+      _ripxLiveDiagnostics.pathname = window.location.pathname || '';
+      _ripxLiveDiagnostics.updatedAt = new Date().toISOString();
+      _ripxLiveDiagnostics.runtime.activeTestsCount = (CONFIG.activeTests || []).length;
+      _ripxLiveDiagnostics.runtime.activeTestIds = (CONFIG.activeTests || [])
+        .map(function (t) {
+          return t && t.id;
+        })
+        .filter(Boolean);
+      if (eventName) {
+        _ripxLiveDiagnostics.events.push({
+          at: _ripxLiveDiagnostics.updatedAt,
+          event: eventName,
+          detail: detail || null,
+        });
+        if (_ripxLiveDiagnostics.events.length > RIPX_LIVE_DIAGNOSTICS_MAX_EVENTS) {
+          _ripxLiveDiagnostics.events = _ripxLiveDiagnostics.events.slice(
+            -RIPX_LIVE_DIAGNOSTICS_MAX_EVENTS
+          );
+        }
+      }
+      var snapshot = getRipxLiveDiagnosticsSnapshot();
+      if (canPersistDiagnostics) {
+        try {
+          if (window.sessionStorage) {
+            window.sessionStorage.setItem(RIPX_LIVE_DIAGNOSTICS_KEY, JSON.stringify(snapshot));
+          }
+        } catch (_eSession) {}
+        try {
+          if (window.localStorage) {
+            window.localStorage.setItem(RIPX_LIVE_DIAGNOSTICS_KEY, JSON.stringify(snapshot));
+            var rawHistory = window.localStorage.getItem(RIPX_LIVE_DIAGNOSTICS_HISTORY_KEY);
+            var history = rawHistory ? JSON.parse(rawHistory) : [];
+            if (!Array.isArray(history)) history = [];
+            history.push({
+              at: snapshot.updatedAt,
+              href: snapshot.href,
+              activeTestsCount: snapshot.runtime.activeTestsCount,
+              assignedTestIds: Object.keys(snapshot.assignments || {}),
+              previewMode: snapshot.preview.mode,
+              lastEvent: eventName || null,
+            });
+            window.localStorage.setItem(
+              RIPX_LIVE_DIAGNOSTICS_HISTORY_KEY,
+              JSON.stringify(history.slice(-25))
+            );
+          }
+        } catch (_eLocal) {}
+        writeRipxDiagnosticsCookie();
+      } else {
+        try {
+          _ripxLiveDiagnostics.persistenceSkipped = {
+            reason: 'consent_required',
+            at: _ripxLiveDiagnostics.updatedAt,
+          };
+          if (window.sessionStorage) {
+            window.sessionStorage.removeItem(RIPX_LIVE_DIAGNOSTICS_KEY);
+          }
+          if (window.localStorage) {
+            window.localStorage.removeItem(RIPX_LIVE_DIAGNOSTICS_KEY);
+          }
+        } catch (_eClearDiag) {}
+      }
+      snapshot = getRipxLiveDiagnosticsSnapshot();
+      try {
+        window.__RIPX_LIVE_DIAGNOSTICS__ = snapshot;
+      } catch (_eGlobal) {}
+      try {
+        if (
+          typeof window.CustomEvent === 'function' &&
+          typeof window.dispatchEvent === 'function'
+        ) {
+          window.dispatchEvent(
+            new CustomEvent('ripx:diagnostics', {
+              detail: { event: eventName || 'snapshot', diagnostics: snapshot },
+            })
+          );
+        }
+      } catch (_eEvent) {}
+      if (DEBUG && eventName) debugLog('diagnostics:', eventName, detail || {});
+      return snapshot;
+    } catch (_ePersist) {
+      return _ripxLiveDiagnostics;
+    }
+  }
+
+  function recordRipxAssignment(testId, variant, reason) {
+    var key = testId != null ? String(testId) : '';
+    if (!key) return;
+    var sanitized = sanitizeDiagnosticVariant(variant);
+    _ripxLiveDiagnostics.assignments[key] = Object.assign({}, sanitized || {}, {
+      reason: reason || 'assigned',
+      at: new Date().toISOString(),
+    });
+    persistRipxLiveDiagnostics('assignment:' + (reason || 'assigned'), {
+      testId: key,
+      variant: sanitized,
+    });
+  }
+
+  function recordRipxSkip(testId, reason, detail) {
+    var key = testId != null ? String(testId) : 'runtime';
+    _ripxLiveDiagnostics.skips[key] = {
+      reason: reason || 'unknown',
+      detail: detail || null,
+      at: new Date().toISOString(),
+    };
+    persistRipxLiveDiagnostics('skip:' + (reason || 'unknown'), {
+      testId: key,
+      detail: detail || null,
+    });
+  }
 
   // Persist preview so Shopify password redirects / in-theme navigation keep test+variant.
   // ab_preview_test alone (without ab_preview=1) still enables preview; session must survive losing query params.
-  if (PREVIEW_MODE && (PREVIEW_TEST_ID || PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME)) {
+  if (
+    PREVIEW_MODE &&
+    !PREVIEW_SIMPLE_MODE &&
+    (PREVIEW_TEST_ID || PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME)
+  ) {
     writePersistedPreviewCtx({
       preview: true,
       testId: PREVIEW_TEST_ID || null,
@@ -650,6 +887,7 @@
     try {
       var parsed = new URL(raw, window.location.origin);
       if (PREVIEW_MODE) parsed.searchParams.set('ab_preview', '1');
+      if (PREVIEW_SIMPLE_MODE) parsed.searchParams.set('ab_preview_simple', '1');
       if (PREVIEW_TEST_ID) parsed.searchParams.set('ab_preview_test', String(PREVIEW_TEST_ID));
       if (PREVIEW_VARIANT_ID)
         parsed.searchParams.set('ab_preview_variant', String(PREVIEW_VARIANT_ID));
@@ -736,9 +974,16 @@
   const AB_VISUAL_EDITOR =
     URL_PARAMS.get('ab_visual_editor') === '1' || !!(CONFIG.visualEditor === true);
   const IN_IFRAME = typeof window.parent !== 'undefined' && window.self !== window.top;
+  const HAS_VISUAL_PICKER_OPENER = (function () {
+    try {
+      return !!(window.opener && !window.opener.closed);
+    } catch (_eOpener) {
+      return false;
+    }
+  })();
   const VISUAL_EDITOR_EMBED = AB_VISUAL_EDITOR && IN_IFRAME;
-  /** Visual picker (and editor) only run when page is in iframe + param; never on live site to avoid affecting normal use */
-  const VISUAL_PICKER_EMBED = VISUAL_PICKER_MODE && IN_IFRAME;
+  /** Visual picker runs in the editor iframe or a picker tab opened by RipX; never on normal live visits. */
+  const VISUAL_PICKER_ACTIVE = VISUAL_PICKER_MODE && (IN_IFRAME || HAS_VISUAL_PICKER_OPENER);
 
   /**
    * Generate or retrieve user ID
@@ -1076,17 +1321,33 @@
     return { ok: true, stats: snapshot };
   }
 
+  /**
+   * Live price-test entry point.
+   *
+   * See `PRICE_TEST_FLOW.md` before changing this request contract. The backend uses the
+   * context below for targeting, segmentation, diagnostics, and assignment signing.
+   */
   function getVariantCachePromise() {
     if (_variantCachePromise) return _variantCachePromise;
     // Never bucket users from preview sessions.
     if (PREVIEW_MODE) {
+      recordRipxSkip('runtime', 'preview_mode_blocks_live_batch', {
+        previewTestId: PREVIEW_TEST_ID || null,
+        simplePreview: PREVIEW_SIMPLE_MODE,
+        sessionStoragePresent: !!(persistedPreview && persistedPreview.preview),
+      });
       _variantCachePromise = Promise.resolve({});
       return _variantCachePromise;
     }
     if (!hasValidConfig || !CONFIG.activeTests || CONFIG.activeTests.length === 0) {
+      recordRipxSkip('runtime', !hasValidConfig ? 'invalid_runtime_config' : 'no_active_tests', {
+        hasApiUrl: !!CONFIG.apiUrl,
+        activeTestsCount: CONFIG.activeTests ? CONFIG.activeTests.length : 0,
+      });
       return Promise.resolve({});
     }
     if (consentRequired && !hasConsent()) {
+      recordRipxSkip('runtime', 'consent_required', { consentRequired: true });
       return Promise.resolve({});
     }
     const userId = getUserId();
@@ -1137,16 +1398,40 @@
     if (Object.keys(jsTargetingResults).length > 0) {
       params.set('js_targeting_results', JSON.stringify(jsTargetingResults));
     }
+    params.set('ripx_diag', 'live_batch');
     var variantsUrl = CONFIG.apiUrl + '/track/variants?' + params.toString();
+    persistRipxLiveDiagnostics('variants_request', {
+      testIds: testIds,
+      productId: cProductId || null,
+      collectionId: cCollectionId || null,
+      pathname: currentPathname,
+    });
     _variantCachePromise = fetchWithRetry(variantsUrl, { method: 'GET' }, 8000, 600)
       .then(function (r) {
-        return r.ok ? r.json() : { variants: {} };
+        if (!r.ok) {
+          recordRipxSkip('runtime', 'variants_request_http_error', { status: r.status });
+          return { variants: {} };
+        }
+        return r.json();
       })
       .then(function (data) {
-        return data.variants || {};
+        var variants = data.variants || {};
+        var safeVariants = sanitizeDiagnosticVariantsMap(variants);
+        Object.keys(safeVariants).forEach(function (testId) {
+          recordRipxAssignment(testId, safeVariants[testId], 'live_batch');
+        });
+        persistRipxLiveDiagnostics('variants_response', {
+          assignedTestIds: Object.keys(variants),
+          variants: safeVariants,
+          backendDiagnostics: data.diagnostics || null,
+        });
+        return variants;
       })
       .catch(function (err) {
         if (DEBUG) debugLog('variants fetch failed', err && (err.message || err.name));
+        recordRipxSkip('runtime', 'variants_request_failed', {
+          error: err && (err.message || err.name || String(err)),
+        });
         return {};
       });
     return _variantCachePromise;
@@ -2001,6 +2286,17 @@
     }
   }
 
+  function isCartUpdateOrChangePath(urlValue) {
+    if (!urlValue) return false;
+    try {
+      var parsed = new URL(String(urlValue), window.location.origin);
+      var p = (parsed.pathname || '').replace(/\/+$/, '');
+      return /\/cart\/(?:change|update)(?:\.js)?$/i.test(p);
+    } catch (e) {
+      return false;
+    }
+  }
+
   /** @type {Record<string, true>} */
   var _ripxCartDebugNearMiss = {};
 
@@ -2110,6 +2406,12 @@
     }
   }
 
+  /**
+   * Last-mile cart handoff for price tests.
+   *
+   * Themes submit cart adds in many shapes (FormData, JSON, URLSearchParams, raw strings). This
+   * keeps RipX line properties attached so Cart Transform / Discount Function can trust the line.
+   */
   function patchCartAddBodyForRipx(body, headers, payload) {
     if (!payload || !payload._ripx_price_test || !payload._ripx_variant) {
       if (DEBUG) debugLog('cart patch skip: missing _ripx_price_test / _ripx_variant on payload');
@@ -2144,6 +2446,8 @@
       }
     }
     function applyPricePreviewSectionsUrlToObject(obj) {
+      // Price preview runs under /apps/ripx; Shopify section rendering must still use the real PDP
+      // path or cart drawers can render wrong/empty sections after add/change/update.
       if (!PRICE_PREVIEW_TARGET_PATH || !obj || typeof obj !== 'object') return;
       obj.sections_url = PRICE_PREVIEW_TARGET_PATH;
     }
@@ -2293,6 +2597,46 @@
             debugLog('cart patch: URLSearchParams parse failed', e && (e.message || String(e)));
           }
         }
+      }
+    }
+    return { changed: false, body: body };
+  }
+
+  function patchPricePreviewSectionsUrl(body, headers) {
+    if (!PRICE_PREVIEW_TARGET_PATH) return { changed: false, body: body };
+    if (typeof FormData !== 'undefined' && body instanceof FormData) {
+      if (body.set) body.set('sections_url', PRICE_PREVIEW_TARGET_PATH);
+      return { changed: true, body: body };
+    }
+    if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) {
+      body.set('sections_url', PRICE_PREVIEW_TARGET_PATH);
+      return { changed: true, body: body };
+    }
+    if (typeof body === 'string') {
+      var ct = String(getHeaderValue(headers, 'content-type') || '').toLowerCase();
+      var trimmed = body.trim();
+      var looksJson = ct.indexOf('application/json') !== -1 || /^\{[\s\S]*\}$/.test(trimmed);
+      if (looksJson) {
+        try {
+          var obj = JSON.parse(trimmed || '{}');
+          if (obj && typeof obj === 'object') {
+            obj.sections_url = PRICE_PREVIEW_TARGET_PATH;
+            return { changed: true, body: JSON.stringify(obj), contentType: 'application/json' };
+          }
+        } catch (eJson) {}
+      }
+      var looksUrlEncoded =
+        ct.indexOf('application/x-www-form-urlencoded') !== -1 || trimmed.indexOf('=') !== -1;
+      if (looksUrlEncoded) {
+        try {
+          var params = new URLSearchParams(body);
+          params.set('sections_url', PRICE_PREVIEW_TARGET_PATH);
+          return {
+            changed: true,
+            body: params.toString(),
+            contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
+          };
+        } catch (eParams) {}
       }
     }
     return { changed: false, body: body };
@@ -2559,6 +2903,71 @@
                 return response;
               });
             }
+          } else if (PRICE_PREVIEW_FRAME && method === 'POST' && isCartUpdateOrChangePath(url)) {
+            var sectionsInit = init ? Object.assign({}, init) : {};
+            if (!sectionsInit.headers) sectionsInit.headers = (input && input.headers) || {};
+            if (sectionsInit.body === undefined && input && typeof input !== 'string') {
+              if (typeof FormData !== 'undefined' && input.body && input.body instanceof FormData) {
+                sectionsInit.body = input.body;
+              } else if (
+                typeof URLSearchParams !== 'undefined' &&
+                input.body &&
+                input.body instanceof URLSearchParams
+              ) {
+                sectionsInit.body = input.body;
+              } else if (typeof input.body === 'string') {
+                sectionsInit.body = input.body;
+              } else if (typeof input.clone === 'function' && typeof input.text === 'function') {
+                return input
+                  .clone()
+                  .text()
+                  .then(function (requestBodyText) {
+                    var asyncSectionsInit = Object.assign({}, sectionsInit);
+                    asyncSectionsInit.body = requestBodyText;
+                    var asyncSectionsPatch = patchPricePreviewSectionsUrl(
+                      asyncSectionsInit.body,
+                      asyncSectionsInit.headers
+                    );
+                    if (asyncSectionsPatch.changed) {
+                      asyncSectionsInit.body = asyncSectionsPatch.body;
+                      if (
+                        asyncSectionsPatch.contentType &&
+                        !getHeaderValue(asyncSectionsInit.headers, 'content-type')
+                      ) {
+                        setHeaderValue(
+                          asyncSectionsInit.headers,
+                          'Content-Type',
+                          asyncSectionsPatch.contentType
+                        );
+                      }
+                    }
+                    return nativeFetch(input, asyncSectionsInit).then(function (response) {
+                      if (response && response.ok) scheduleRipxCartNativeStateRefreshBurst();
+                      return response;
+                    });
+                  })
+                  .catch(function () {
+                    return nativeFetch(input, init);
+                  });
+              }
+            }
+            var sectionsPatch = patchPricePreviewSectionsUrl(
+              sectionsInit.body,
+              sectionsInit.headers
+            );
+            if (sectionsPatch.changed) {
+              sectionsInit.body = sectionsPatch.body;
+              if (
+                sectionsPatch.contentType &&
+                !getHeaderValue(sectionsInit.headers, 'content-type')
+              ) {
+                setHeaderValue(sectionsInit.headers, 'Content-Type', sectionsPatch.contentType);
+              }
+            }
+            return nativeFetch(input, sectionsInit).then(function (response) {
+              if (response && response.ok) scheduleRipxCartNativeStateRefreshBurst();
+              return response;
+            });
           } else if (DEBUG && method === 'POST' && looksLikeCartAddNearMiss(url)) {
             debugLogCartNearMissOnce(pathnameFromCartUrl(url));
           }
@@ -2629,6 +3038,18 @@
                   patch.changed ? '' : debugDescribeCartAddBody(bodyBeforeXhr)
                 );
               }
+            }
+          } else if (
+            PRICE_PREVIEW_FRAME &&
+            method === 'POST' &&
+            isCartUpdateOrChangePath(this.__ripxUrl)
+          ) {
+            var sectionsHeaderObj = { 'content-type': this.__ripxContentType || '' };
+            var sectionsPatch = patchPricePreviewSectionsUrl(body, sectionsHeaderObj);
+            body = sectionsPatch.body;
+            if (sectionsPatch.contentType && !this.__ripxContentType) {
+              this.setRequestHeader('Content-Type', sectionsPatch.contentType);
+              this.__ripxContentType = sectionsPatch.contentType;
             }
           } else if (DEBUG && method === 'POST' && looksLikeCartAddNearMiss(this.__ripxUrl)) {
             debugLogCartNearMissOnce(xhrCartPath);
@@ -3079,6 +3500,12 @@
     }
   }
 
+  /**
+   * Build and inject the hidden line properties that connect storefront paint to checkout pricing.
+   *
+   * The visual PDP price alone is not enough. These fields carry the selected test/variant, signed
+   * assignment, target amount, and chosen application method into `/cart/add` and Shopify Functions.
+   */
   function injectPriceTestCartAttributes(
     testId,
     variantId,
@@ -3401,7 +3828,11 @@
     var tolerance = 0.0001;
     var isPriceIncrease = isFinite(target) && isFinite(catalog) && target > catalog + tolerance;
     if (normalized === 'native_variant_price') return 'native_variant_price';
-    if (normalized === 'direct_price_override') return 'direct_price_override';
+    if (normalized === 'direct_price_override') {
+      // Direct override is unsigned inside Cart Transform. Use it only for increases; reductions
+      // must stay on the signed discount-function path.
+      return isPriceIncrease ? 'direct_price_override' : 'discounted_checkout_price';
+    }
     if (normalized === 'discounted_checkout_price') return 'discounted_checkout_price';
     return isPriceIncrease ? 'native_variant_price' : 'discounted_checkout_price';
   }
@@ -3409,17 +3840,16 @@
   function getConfiguredCheckoutMethodProof(cfg, targetUnit, catalogUnit) {
     if (!cfg || typeof cfg !== 'object') return null;
     var configuredMethod = normalizePriceApplicationMethod(cfg.priceApplicationMethod);
-    var method =
-      configuredMethod === 'auto'
-        ? resolveStorefrontPriceApplicationMethod(configuredMethod, targetUnit, catalogUnit)
-        : configuredMethod;
+    var method = resolveStorefrontPriceApplicationMethod(configuredMethod, targetUnit, catalogUnit);
     if (!method || method === 'auto') return null;
     return { applicationMethod: method };
   }
 
   /**
-   * Get effective price config for current product (and optionally product variant/SKU).
-   * cfg.byProduct[productId] overrides base; cfg.byProduct[productId].byVariant[variantId] overrides per SKU.
+   * Resolve matrix pricing for the current PDP selection.
+   *
+   * Precedence is intentionally identical to `backend/src/services/priceTestCheckoutResolve.js`:
+   * base config -> root byVariant -> byProduct -> byProduct.byVariant. Keep both paths in sync.
    */
   function getEffectivePriceConfig(cfg, productId, currentVariantId) {
     if (!cfg || typeof cfg !== 'object') return cfg;
@@ -3483,6 +3913,15 @@
           if (Object.prototype.hasOwnProperty.call(variantOverride, v))
             merged[v] = variantOverride[v];
       }
+    } else if (byVariant && typeof byVariant === 'object') {
+      var fallbackVariantKeys = Object.keys(byVariant);
+      var fallbackVariantOverride =
+        fallbackVariantKeys.length > 0 ? byVariant[fallbackVariantKeys[0]] : null;
+      if (fallbackVariantOverride && typeof fallbackVariantOverride === 'object') {
+        for (var fv in fallbackVariantOverride)
+          if (Object.prototype.hasOwnProperty.call(fallbackVariantOverride, fv))
+            merged[fv] = fallbackVariantOverride[fv];
+      }
     }
     return normalizeMergedPriceConfig(cfg, merged);
   }
@@ -3497,11 +3936,10 @@
   }
 
   /**
-   * Apply price test — PDP only; scoped to main product (avoids cart, recs, collection cards).
-   * Supports priceMode: 'fixed' (default), 'amount' (catalog + priceDelta), 'percent' (catalog * (1 - pricePercent/100); negative pricePercent = increase, e.g. -10 = 10% on).
-   * When variant.config.byProduct[productId] exists, uses that override for this product (different price per product).
-   * Note: Display only; checkout = catalog unless Plus/Functions/discounts. Injects cart attributes so a Discount Function can align checkout.
-   * Sidecart: line-item prices in cart drawer/mini-cart are not painted here (theme-dependent DOM); Discount Function aligns charged price at checkout.
+   * Apply a price-test assignment to the product page.
+   *
+   * This function has two jobs: paint the main PDP price and prepare cart/checkout handoff data.
+   * It deliberately avoids cart drawers/recommendations so theme cart UI does not get double-painted.
    */
   async function applyPriceTest(testId, productId, variantId, providedVariant) {
     var variant = providedVariant || (await getVariant(testId));
@@ -3596,6 +4034,8 @@
         }
       }
     }
+    // Storefront must choose the same application method that checkout will honor. Discounts can
+    // lower prices, but increases need native-variant/direct-override style handling.
     var resolvedPriceApplicationMethod = resolveStorefrontPriceApplicationMethod(
       cfg.priceApplicationMethod,
       priceNum,
@@ -3885,6 +4325,7 @@
         }
       }
       window.__RIPX_PRICE_TEST_CTX__ = { testId: testId, variantId: variantIdForCart };
+      // This is the critical bridge from visible PDP changes to actual cart/checkout pricing.
       injectPriceTestCartAttributes(
         testId,
         variantIdForCart,
@@ -5093,10 +5534,10 @@
 
   /**
    * Visual editor element picker: overlay, highlight hovered element, on click send selector to opener or copy.
-   * Only run when embedded (defensive).
+   * Runs in the embedded editor iframe or a tab opened from the editor with ab_visual_picker=1.
    */
   function initVisualPicker() {
-    if (typeof window.parent !== 'undefined' && window.self === window.top) return;
+    if (!IN_IFRAME && !HAS_VISUAL_PICKER_OPENER) return;
     if (!document.body) {
       setTimeout(initVisualPicker, 50);
       return;
@@ -7109,11 +7550,23 @@
   function init() {
     if (_ripxInitStarted) return;
     _ripxInitStarted = true;
-    if (VISUAL_PICKER_EMBED) {
+    if (VISUAL_PICKER_ACTIVE) {
       initVisualPicker();
     }
     function run() {
-      installPreviewDebugFloatingPanel();
+      persistRipxLiveDiagnostics('runtime_init', {
+        activeTestsCount: (CONFIG.activeTests || []).length,
+        previewMode: PREVIEW_MODE,
+        validConfig: hasValidConfig,
+      });
+      if (!PREVIEW_SIMPLE_MODE) installPreviewDebugFloatingPanel();
+      if (PREVIEW_MODE && !PREVIEW_SIMPLE_MODE) {
+        try {
+          setInterval(function () {
+            installPreviewDebugFloatingPanel();
+          }, 1500);
+        } catch (ePanelWatch) {}
+      }
       if (PREVIEW_MODE && PREVIEW_TEST_ID && (PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME)) {
         injectPriceTestCartAttributes(
           PREVIEW_TEST_ID,
@@ -7132,6 +7585,7 @@
 
       if (!CONFIG.apiUrl) {
         console.warn('AB Test Tracker: apiUrl not configured');
+        recordRipxSkip('runtime', 'missing_api_url', {});
         return;
       }
 
@@ -7208,6 +7662,12 @@
           const shouldTrackAntiFlicker = guardEnabled && shouldUseAntiFlickerForTest(test);
           if (shouldTrackAntiFlicker) markAntiFlickerPending();
           if (!shouldRunPriceTestOnCurrentPage(test)) {
+            recordRipxSkip(test.id, 'target_mismatch', {
+              targetType: test.targetType || test.target_type || 'page',
+              currentProductId: getCurrentProductId() || null,
+              currentCollectionId: getCurrentCollectionId() || null,
+              pathname: window.location.pathname || '',
+            });
             if (DEBUG) {
               var targetType = test.targetType || test.target_type || 'page';
               var ids =
@@ -7229,6 +7689,10 @@
             function (variant) {
               try {
                 if (!variant) {
+                  recordRipxSkip(test.id, 'no_variant_assigned', {
+                    previewMode: PREVIEW_MODE,
+                    targetType: test.targetType || test.target_type || null,
+                  });
                   if (DEBUG) {
                     debugLog(
                       'Test skipped (no variant assigned):',
@@ -7238,6 +7702,7 @@
                   }
                   return;
                 }
+                recordRipxAssignment(test.id, variant, PREVIEW_MODE ? 'preview' : 'live');
                 var tt = getNormalizedTargetType(test);
                 var productScope = isProductScopeTargetType(tt);
                 var matched = matchesTarget(test);
@@ -7328,6 +7793,7 @@
                   }
                   if (!previewFocusTest) {
                     applyCustomCode(test.id, variant);
+                    applyVisualEditorRules(test.id, variant);
                   }
                 }
 
@@ -7353,6 +7819,12 @@
                     tids.length &&
                     productBelongsToPriceTestCollections(tids);
                   if (pdpProductMatch || pdpCollectionMatch) {
+                    persistRipxLiveDiagnostics('price_apply:pdp', {
+                      testId: test.id,
+                      productId: curProductId,
+                      targetType: tt,
+                      variant: sanitizeDiagnosticVariant(variant),
+                    });
                     applyPriceTest(test.id, curProductId, test.targetVariantId || null, variant);
                   } else if (
                     testTypeIsPrice(test) &&
@@ -7373,6 +7845,12 @@
                         var cid = getCurrentProductId();
                         if (cid) {
                           clearInterval(iv);
+                          persistRipxLiveDiagnostics('price_apply:pdp_retry', {
+                            testId: test.id,
+                            productId: cid,
+                            targetType: tt,
+                            variant: sanitizeDiagnosticVariant(variant),
+                          });
                           applyPriceTest(test.id, cid, test.targetVariantId || null, variant);
                         } else if (attempts >= maxAttempts) {
                           clearInterval(iv);
@@ -7694,10 +8172,17 @@
         : PREVIEW_TEST_ID || null;
     var variant = null;
     var variantError = null;
-    try {
-      variant = tid ? await getVariant(tid) : null;
-    } catch (e) {
-      variantError = e && (e.message || String(e));
+    if (tid) {
+      try {
+        if (PREVIEW_MODE) {
+          variant = await getVariant(tid);
+        } else {
+          variantError =
+            'Skipped live getVariant() to avoid creating a saved assignment; see network.liveVariants.variants for the non-persistent diagnostic result.';
+        }
+      } catch (e) {
+        variantError = e && (e.message || String(e));
+      }
     }
     var sp = new URLSearchParams(window.location.search || '');
     var sess = null;
@@ -7712,7 +8197,7 @@
       pathLower.indexOf('/products/') !== -1 && pathLower.length > '/products/'.length + 1;
     var isPasswordPage = pathLower.indexOf('/password') !== -1;
 
-    var network = { preview: null, previewStorefrontTest: null };
+    var network = { preview: null, previewStorefrontTest: null, liveVariants: null };
     if (tid && CONFIG.apiUrl) {
       try {
         var pp = new URLSearchParams();
@@ -7743,6 +8228,59 @@
         network.previewStorefrontTest = { status: rs.status, ok: rs.ok };
       } catch (es) {
         network.previewStorefrontTest = { error: es && (es.message || String(es)) };
+      }
+    }
+    if (!PREVIEW_MODE && CONFIG.apiUrl && (tid || (CONFIG.activeTests || []).length > 0)) {
+      try {
+        var lv = new URLSearchParams();
+        var liveTestIds = tid
+          ? [tid]
+          : (CONFIG.activeTests || [])
+              .map(function (t) {
+                return t && t.id;
+              })
+              .filter(Boolean);
+        lv.set('user_id', getUserId());
+        lv.set('shop_domain', getShopDomain());
+        lv.set('test_ids', liveTestIds.join(','));
+        lv.set('device', getDeviceType());
+        lv.set('customer', getCustomerType());
+        lv.set('country', getCountryCode() || '');
+        lv.set('traffic_source', getTrafficSource());
+        lv.set('current_url', window.location.href || '');
+        lv.set('current_pathname', window.location.pathname || '/');
+        lv.set('session_count', '1');
+        // Diagnostic probe should not create a saved live assignment while inspecting.
+        // Backend still runs the same eligibility + selection path, but skips persistence.
+        lv.set('preview_session', '1');
+        lv.set('ripx_diag', 'debugStatus');
+        lv.set('referrer', document.referrer || '');
+        var livePid = getCurrentProductId();
+        var liveCid = getCurrentCollectionId();
+        if (livePid) lv.set('current_product_id', livePid);
+        if (liveCid) lv.set('current_collection_id', liveCid);
+        var liveResponse = await fetchWithTimeout(
+          CONFIG.apiUrl + '/track/variants?' + lv.toString(),
+          { method: 'GET' },
+          8000
+        );
+        var liveBody = null;
+        try {
+          liveBody = await liveResponse.clone().json();
+        } catch (_eLiveJson) {}
+        network.liveVariants = {
+          status: liveResponse.status,
+          ok: liveResponse.ok,
+          diagnosticOnly: true,
+          backendDiagnostics: liveBody && liveBody.diagnostics ? liveBody.diagnostics : null,
+          assignedTestIds:
+            liveBody && liveBody.variants && typeof liveBody.variants === 'object'
+              ? Object.keys(liveBody.variants)
+              : [],
+          variants: liveBody && liveBody.variants ? liveBody.variants : null,
+        };
+      } catch (eLive) {
+        network.liveVariants = { error: eLive && (eLive.message || String(eLive)) };
       }
     }
 
@@ -7800,6 +8338,7 @@
         variantName: PREVIEW_VARIANT_NAME,
         urlParams: {
           ab_preview: sp.get('ab_preview'),
+          ab_preview_simple: sp.get('ab_preview_simple'),
           ab_preview_test: sp.get('ab_preview_test'),
           ab_preview_variant: sp.get('ab_preview_variant'),
           ab_preview_variant_name: sp.get('ab_preview_variant_name'),
@@ -7917,6 +8456,43 @@
     };
   }
 
+  function liveDiagnostics(options) {
+    var opts = options && typeof options === 'object' ? options : {};
+    var snapshot = persistRipxLiveDiagnostics('manual_snapshot', {
+      includeStorage: opts.includeStorage === true,
+    });
+    if (opts.log !== false && typeof console !== 'undefined') {
+      if (console.groupCollapsed) console.groupCollapsed('[RipX] live diagnostics');
+      if (console.log) {
+        console.log('snapshot', snapshot);
+        console.log('sessionStorage key', RIPX_LIVE_DIAGNOSTICS_KEY);
+        console.log('localStorage key', RIPX_LIVE_DIAGNOSTICS_KEY);
+        console.log('history key', RIPX_LIVE_DIAGNOSTICS_HISTORY_KEY);
+        console.log(
+          'cookie',
+          RIPX_LIVE_DIAGNOSTICS_COOKIE,
+          getCookie(RIPX_LIVE_DIAGNOSTICS_COOKIE)
+        );
+      }
+      if (console.table) {
+        console.table(
+          Object.keys(snapshot.assignments || {}).map(function (testId) {
+            var assignment = snapshot.assignments[testId] || {};
+            return {
+              testId: testId,
+              variantId: assignment.variantId || '',
+              variantName: assignment.variantName || '',
+              reason: assignment.reason || '',
+              at: assignment.at || '',
+            };
+          })
+        );
+      }
+      if (console.groupEnd) console.groupEnd();
+    }
+    return snapshot;
+  }
+
   // Export for use in other scripts (version for support/debugging)
   const api = {
     getVariant,
@@ -7939,6 +8515,8 @@
     },
     debugCart: debugCartSnapshot,
     debugStatus,
+    liveDiagnostics,
+    qa: liveDiagnostics,
     debugPaintStats: debugPaintStats,
     debugThemeStats: debugThemeStats,
     version: SCRIPT_VERSION,

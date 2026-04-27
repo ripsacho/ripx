@@ -160,7 +160,7 @@ export default function TestEditor() {
               variantId: currentVariant.id || currentVariant.name || `variant-${safeIndex + 1}`,
               variantName: currentVariant.name || `Variant ${safeIndex + 1}`,
               tenantDomain: test?.shop_domain || null,
-              visualEditor: false,
+              visualEditor: true,
             }) || '';
           const effectiveDomain = test?.shop_domain || getPreviewDomain() || getShopDomain() || '';
           if (!isShopifyStoreDomain(effectiveDomain)) {
@@ -170,11 +170,30 @@ export default function TestEditor() {
             buildPreviewDocumentUrl({
               apiBaseUrl: getApiBaseUrl(),
               previewUrl: directPreviewUrl,
-              visualEditor: false,
+              visualEditor: true,
             }) || directPreviewUrl
           );
         })()
       : '';
+  const visualPickerUrl = previewIframeSrc
+    ? (() => {
+        try {
+          const url = new URL(
+            previewIframeSrc,
+            typeof window !== 'undefined' && window.location?.origin
+              ? window.location.origin
+              : 'https://preview.invalid'
+          );
+          url.searchParams.set('ab_visual_editor', '1');
+          url.searchParams.set('ab_visual_picker', '1');
+          return url.toString();
+        } catch {
+          return previewIframeSrc.includes('?')
+            ? `${previewIframeSrc}&ab_visual_editor=1&ab_visual_picker=1`
+            : `${previewIframeSrc}?ab_visual_editor=1&ab_visual_picker=1`;
+        }
+      })()
+    : '';
 
   useEffect(() => {
     if (!previewIframeSrc) {
@@ -277,14 +296,12 @@ export default function TestEditor() {
                       {previewIframeSrc ? (
                         <>
                           <div className={styles.previewToolbar}>
+                            {/* The picker tab needs window.opener so it can post selected selectors back. */}
+                            {/* eslint-disable-next-line react/jsx-no-target-blank */}
                             <a
-                              href={
-                                previewIframeSrc.includes('?')
-                                  ? previewIframeSrc + '&ab_visual_picker=1'
-                                  : previewIframeSrc + '?ab_visual_picker=1'
-                              }
+                              href={visualPickerUrl || previewIframeSrc}
                               target="_blank"
-                              rel="noopener noreferrer"
+                              rel="opener"
                               className={styles.previewOpenEditorBtn}
                               aria-label="Open visual editor on your page"
                             >

@@ -1,6 +1,12 @@
 import { HttpRequestMethod } from '../generated/api';
 import { RIPX_CHECKOUT_PRICE_SECRET, RIPX_PRICE_RESOLVE_BATCH_URL } from './ripxConfig';
 
+// Checkout discount path:
+// storefront-script.js writes RipX attributes on cart lines, this fetch target sends them to the
+// backend resolver, and cart_lines_discounts_generate_run.js converts the response into discounts.
+// Direct/native-variant price methods are skipped here because Cart Transform or variant mapping
+// owns those cases instead. See PRICE_TEST_FLOW.md.
+
 function normalizePriceMethod(value) {
   const raw = String(value || '')
     .trim()
@@ -62,6 +68,8 @@ export function cartLinesDiscountsGenerateFetch(input) {
       continue;
     }
     if (linePriceMethod === 'direct_price_override' || linePriceMethod === 'native_variant_price') {
+      // These are not discount-function cases. Sending them to the resolver would create confusing
+      // "no discount" responses while the cart transform/native variant path is expected to apply.
       continue;
     }
     if (line.merchandise?.__typename !== 'ProductVariant') {
@@ -84,6 +92,9 @@ export function cartLinesDiscountsGenerateFetch(input) {
     const assignmentTs = line.ripxAssignmentTs?.value?.trim();
     const assignmentUser = line.ripxAssignmentUser?.value?.trim();
 
+    // Keep this payload aligned with backend/src/services/priceTestCheckoutResolve.js
+    // resolveCheckoutPriceBatchForDomain(). Missing proof fields usually means the resolver will
+    // return applies=false with invalid_assignment_signature or a related reason.
     lines.push({
       line_id: line.id,
       test_id: testId,

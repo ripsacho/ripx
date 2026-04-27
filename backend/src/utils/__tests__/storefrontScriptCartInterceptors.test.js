@@ -76,6 +76,7 @@ function bootStorefrontScriptHarness(opts = {}) {
   const windowObj = {
     __RIPX_TEST_HOOKS__: {},
     __RIPX_DEBUG__: false,
+    __RIPX_PRICE_PREVIEW_FRAME__: Boolean(opts.pricePreviewFrame),
     location,
     navigator: { userAgent: 'node-test' },
     document,
@@ -152,10 +153,16 @@ function createCartRoot(productIds) {
 }
 
 function getFetchInputUrl(call) {
-  if (!call) {return '';}
+  if (!call) {
+    return '';
+  }
   const input = call.input;
-  if (typeof input === 'string') {return input;}
-  if (input && typeof input.url === 'string') {return input.url;}
+  if (typeof input === 'string') {
+    return input;
+  }
+  if (input && typeof input.url === 'string') {
+    return input.url;
+  }
   return '';
 }
 
@@ -636,5 +643,52 @@ describe('storefront script cart/add interceptors', () => {
       _ripx_variant: 'variant-E',
       _ripx_shop: 'makripon.myshopify.com',
     });
+  });
+
+  it('normalizes sections_url for price-preview cart change fetch requests', async () => {
+    const { fetchCalls, windowObj } = bootStorefrontScriptHarness({
+      pathname: '/apps/ripx/price-preview-bootstrap-v1',
+      search:
+        '?url=https%3A%2F%2Fexample.com%2Fproducts%2Fdemo%3Fab_preview%3D1%26ab_preview_test%3D11111111-1111-4111-8111-111111111111',
+      pricePreviewFrame: true,
+    });
+    windowObj.__RIPX_TEST_HOOKS__.installRipxCartAddInterceptors();
+
+    await windowObj.fetch('/cart/change.js', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        line: 1,
+        quantity: 0,
+        sections_url: '/apps/ripx/price-preview-bootstrap-v1',
+      }),
+    });
+
+    const changeCall = fetchCalls.find(call => /\/cart\/change\.js/.test(getFetchInputUrl(call)));
+    expect(changeCall).toBeTruthy();
+    const body = JSON.parse(changeCall.init.body);
+    expect(body.sections_url).toBe(
+      '/products/demo?ab_preview=1&ab_preview_test=11111111-1111-4111-8111-111111111111'
+    );
+  });
+
+  it('normalizes sections_url for price-preview cart update XHR requests', () => {
+    const { hooks, FakeXMLHttpRequest } = bootStorefrontScriptHarness({
+      pathname: '/apps/ripx/price-preview-bootstrap-v1',
+      search:
+        '?url=https%3A%2F%2Fexample.com%2Fproducts%2Fdemo%3Fab_preview%3D1%26ab_preview_test%3D11111111-1111-4111-8111-111111111111',
+      pricePreviewFrame: true,
+    });
+    hooks.installRipxCartAddInterceptors();
+
+    const xhr = new FakeXMLHttpRequest();
+    xhr.open('POST', '/cart/update.js');
+    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+    xhr.send('updates%5B123%5D=0&sections_url=%2Fapps%2Fripx%2Fprice-preview-bootstrap-v1');
+
+    const params = new URLSearchParams(xhr.sentBody);
+    expect(params.get('sections_url')).toBe(
+      '/products/demo?ab_preview=1&ab_preview_test=11111111-1111-4111-8111-111111111111'
+    );
   });
 });

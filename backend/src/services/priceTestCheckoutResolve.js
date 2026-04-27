@@ -455,6 +455,13 @@ function normalizeMergedPriceConfig(baseCfg, mergedCfg) {
   return merged;
 }
 
+/**
+ * Resolve the price config that checkout should honor for a cart line.
+ *
+ * Keep this precedence identical to the storefront runtime so PDP paint, cart attributes, and
+ * checkout pricing all choose the same matrix row: base -> root byVariant -> byProduct ->
+ * byProduct.byVariant.
+ */
 function getEffectivePriceConfig(cfg, productId, currentVariantId) {
   if (!cfg || typeof cfg !== 'object') {
     return cfg;
@@ -516,6 +523,14 @@ function getEffectivePriceConfig(cfg, productId, currentVariantId) {
         merged[v] = variantOverride[v];
       }
     }
+  } else if (byVariant && typeof byVariant === 'object') {
+    const [fallbackVariantKey] = Object.keys(byVariant);
+    const fallbackVariantOverride = fallbackVariantKey ? byVariant[fallbackVariantKey] : null;
+    if (fallbackVariantOverride && typeof fallbackVariantOverride === 'object') {
+      for (const v of Object.keys(fallbackVariantOverride)) {
+        merged[v] = fallbackVariantOverride[v];
+      }
+    }
   }
   return normalizeMergedPriceConfig(cfg, merged);
 }
@@ -536,6 +551,12 @@ function normalizePriceApplicationMethod(value) {
   return 'auto';
 }
 
+/**
+ * Decide whether the discount-function path can represent the configured price.
+ *
+ * Shopify discounts can reduce a price but cannot increase it. In auto mode, increases must move
+ * to native variant pricing or direct price override when the shop supports that path.
+ */
 function resolveDiscountFunctionApplicationMethod({
   configuredMethod,
   targetUnit,
@@ -560,6 +581,14 @@ function resolveDiscountFunctionApplicationMethod({
   }
 
   if (normalized === 'direct_price_override') {
+    if (!isPriceIncrease) {
+      return {
+        configuredMethod: normalized,
+        resolvedMethod: 'discounted_checkout_price',
+        canApplyDiscountFunction: true,
+        reason: 'direct_override_reduction_uses_signed_discount',
+      };
+    }
     return {
       configuredMethod: normalized,
       resolvedMethod: 'direct_price_override',

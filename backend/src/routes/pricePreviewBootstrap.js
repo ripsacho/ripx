@@ -165,6 +165,18 @@ function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }) {
           if (dotEl) dotEl.className = 'ripx-price-preview-dot' + (ready ? ' ready' : '');
         }
 
+        function startStatusBarWatchdog() {
+          try {
+            window.setInterval(function () {
+              ensureStatusBar();
+              if (hasRipxRuntime()) {
+                if (statusEl) statusEl.textContent = 'RipX price preview ready';
+                if (dotEl) dotEl.className = 'ripx-price-preview-dot ready';
+              }
+            }, 1500);
+          } catch (_eWatchdog) {}
+        }
+
         function hasRipxRuntime() {
           try {
             return !!(window.RipX && window.RipX.version);
@@ -354,6 +366,7 @@ function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }) {
 
         persistPreviewCtx(null);
         window.__RIPX_PRICE_PREVIEW_FRAME__ = true;
+        startStatusBarWatchdog();
         loadPreview();
       })();
     </script>

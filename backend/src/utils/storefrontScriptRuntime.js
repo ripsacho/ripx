@@ -4,7 +4,7 @@
  */
 
 /** Bump when embedded runtime config or script contract changes. Keep ?v= in sync: extensions/ripx-theme/blocks/ripx-app-embed.liquid + frontend RIPX_STOREFRONT_SCRIPT_VERSION. */
-const SCRIPT_VERSION = '1.0.34';
+const SCRIPT_VERSION = '1.0.40';
 
 /**
  * DB/API may use "pricing"; storefront logic expects "price".
@@ -13,7 +13,7 @@ const SCRIPT_VERSION = '1.0.34';
  */
 function normalizeTestTypeForStorefront(type) {
   const t = (type || '').toString().toLowerCase();
-  return t === 'pricing' ? 'price' : (type || '').toString();
+  return t === 'pricing' ? 'price' : t;
 }
 
 function normalizeTargetTypeForStorefront(test) {
@@ -21,7 +21,7 @@ function normalizeTargetTypeForStorefront(test) {
     .toLowerCase()
     .trim();
   const type = normalizeTestTypeForStorefront(test?.type);
-  if ((type === 'price' || type === 'shipping') && (!raw || raw === 'all')) {
+  if ((type === 'price' || type === 'shipping' || type === 'offer') && (!raw || raw === 'all')) {
     return 'all-products';
   }
   if (raw === 'all_products') {
@@ -49,6 +49,8 @@ function normalizeProductIdList(rawList) {
 }
 
 function mapTestToStorefrontPayload(test) {
+  // This is the browser contract for price tests. Keep type/target normalization in sync with the
+  // wizard and `shouldRunPriceTestOnCurrentPage`, especially all-products and matrix-price tests.
   let ids =
     test.target_ids && Array.isArray(test.target_ids) ? test.target_ids.filter(Boolean) : [];
   if (!ids.length && test.target_id) {

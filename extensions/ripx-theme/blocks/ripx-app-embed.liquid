@@ -3,13 +3,13 @@
   Optional fallback: if proxy fails, load a direct public script endpoint only when explicitly configured.
   This prevents local/dev stores from silently falling back to a different RipX environment.
   target: head — earlier fetch than body embeds; defer avoids blocking HTML parse.
-  ?v= must stay in sync with backend storefrontScriptRuntime.js SCRIPT_VERSION (currently 1.0.34).
+  ?v= must stay in sync with backend storefrontScriptRuntime.js SCRIPT_VERSION (currently 1.0.40).
 {% endcomment %}
 
 <script id="ripx-app-embed-config" type="application/json">
   {
     "shopHost": {{ request.host | json }},
-    "version": "1.0.34",
+    "version": "1.0.40",
     "directScriptBaseUrl": {{ block.settings.direct_script_base_url | json }}
   }
 </script>
@@ -17,7 +17,7 @@
 <script>
   (function () {
     var shopHost = '{{ request.host }}';
-    var version = '1.0.34';
+    var version = '1.0.40';
     var primarySrc = 'https://' + shopHost + '/apps/ripx/script.js?v=' + version;
     var directScriptBaseUrl = {{ block.settings.direct_script_base_url | json }};
     var fallbackSrc =
@@ -53,6 +53,11 @@
       try {
         if (!window.sessionStorage || !window.location || !window.location.search) return null;
         var params = new URLSearchParams(window.location.search || '');
+        var simplePreview = params.get('ab_preview_simple') === '1';
+        if (simplePreview) {
+          window.sessionStorage.removeItem('__ripx_preview_ctx_v1__');
+          return null;
+        }
         var previewFlag = params.get('ab_preview') === '1';
         var testId = params.get('ab_preview_test') || null;
         var variantId = params.get('ab_preview_variant') || null;
@@ -95,6 +100,8 @@
         if (hasRipx()) return false;
         var ctx = readPreviewCtx();
         if (!ctx || !(ctx.preview || ctx.testId || ctx.variantId || ctx.variantName)) return false;
+        var currentParams = new URLSearchParams(window.location.search || '');
+        if (currentParams.get('ab_preview_simple') === '1') return false;
         var path = String(window.location.pathname || '').toLowerCase();
         if (path.indexOf('/apps/ripx/preview-bootstrap') === 0) return false;
         if (path.indexOf('/apps/ripx/preview-bootstrap-v2') === 0) return false;

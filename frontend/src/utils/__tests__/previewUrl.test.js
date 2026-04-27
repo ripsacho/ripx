@@ -38,6 +38,21 @@ describe('previewUrl', () => {
     expect(url.searchParams.has(PREVIEW_PARAMS.TENANT_DOMAIN)).toBe(false);
   });
 
+  it('builds simple preview URL without shell marker', () => {
+    const result = buildPreviewUrl({
+      baseUrl: 'https://makripon.myshopify.com/products/test-product',
+      testId: '1d1f39c4-4083-44f4-b046-1c341b88cc29',
+      variantId: 'variant-a',
+      variantName: 'Variant A',
+      simplePreview: true,
+    });
+
+    const url = new URL(result);
+    expect(url.searchParams.get(PREVIEW_PARAMS.PREVIEW)).toBe('1');
+    expect(url.searchParams.get(PREVIEW_PARAMS.SIMPLE)).toBe('1');
+    expect(url.pathname).toBe('/products/test-product');
+  });
+
   it('builds preview-document URL and preserves preview params', () => {
     const previewUrl = buildPreviewUrl({
       baseUrl: 'https://makripon.myshopify.com/products/test-product',
@@ -51,6 +66,7 @@ describe('previewUrl', () => {
       apiBaseUrl: '/api',
       previewUrl,
       visualEditor: true,
+      visualPicker: true,
     });
 
     const url = new URL(result, 'https://app.example.com');
@@ -61,6 +77,7 @@ describe('previewUrl', () => {
     );
     expect(url.searchParams.get(PREVIEW_PARAMS.TENANT_DOMAIN)).toBe('echologyx.com');
     expect(url.searchParams.get(PREVIEW_PARAMS.VISUAL_EDITOR)).toBe('1');
+    expect(url.searchParams.get(PREVIEW_PARAMS.VISUAL_PICKER)).toBe('1');
   });
 
   it('builds preview-launch URL and preserves preview params', () => {
@@ -148,6 +165,12 @@ describe('previewUrl', () => {
   it('does not re-wrap existing bootstrap URL', () => {
     const bootstrap =
       'https://makripon.myshopify.com/apps/ripx/preview-bootstrap-v2?url=https%3A%2F%2Fmakripon.myshopify.com%2Fproducts%2Ftest';
+    expect(ensureShopifyPreviewBootstrapUrl(bootstrap)).toBe(bootstrap);
+  });
+
+  it('does not re-wrap existing price preview bootstrap URL', () => {
+    const bootstrap =
+      'https://makripon.myshopify.com/apps/ripx/price-preview-bootstrap-v1?url=https%3A%2F%2Fmakripon.myshopify.com%2Fproducts%2Ftest%3Fab_preview%3D1';
     expect(ensureShopifyPreviewBootstrapUrl(bootstrap)).toBe(bootstrap);
   });
 });

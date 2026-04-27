@@ -24,6 +24,7 @@ function TrafficAllocationSlider({
   onAddVariant,
   onRemoveVariant,
   onPreviewVariant,
+  onSimplePreviewVariant,
   getPreviewUrl,
   compact = false,
 }) {
@@ -669,6 +670,24 @@ function TrafficAllocationSlider({
                           <Icon source={ViewIcon} />
                         </span>
                         <span className={styles.cardActionBtnLabel}>Preview</span>
+                      </button>
+                    </Tooltip>
+                  )}
+                  {onSimplePreviewVariant && (
+                    <Tooltip
+                      content="Open simple preview without debug shell"
+                      preferredPosition="above"
+                    >
+                      <button
+                        type="button"
+                        className={styles.cardActionBtn}
+                        onClick={() => onSimplePreviewVariant(variant, index)}
+                        aria-label="Open simple preview"
+                      >
+                        <span className={styles.cardActionBtnIcon} aria-hidden>
+                          <Icon source={ViewIcon} />
+                        </span>
+                        <span className={styles.cardActionBtnLabel}>Simple</span>
                       </button>
                     </Tooltip>
                   )}

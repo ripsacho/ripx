@@ -329,6 +329,70 @@ describe('ABTestEngine.validateTest theme contract', () => {
     expect(result.isValid).toBe(true);
   });
 
+  it('accepts canonical frontend content template types and case-normalized types', () => {
+    const onsite = ABTestEngine.validateTest({
+      name: 'Onsite edit test',
+      type: 'onsite-edit',
+      goal: { type: 'conversion', template_key: 'onsite-edit' },
+      variants: [
+        { name: 'Control', allocation: 50, config: {} },
+        { name: 'Variant A', allocation: 50, config: { code: 'document.body.classList.add("a")' } },
+      ],
+    });
+    const splitUrl = ABTestEngine.validateTest({
+      name: 'Split URL test',
+      type: 'split-url',
+      goal: { type: 'conversion', template_key: 'split-url' },
+      variants: [
+        { name: 'Control', allocation: 50, config: { url: '' } },
+        { name: 'Variant A', allocation: 50, config: { url: '/pages/variant-a' } },
+      ],
+    });
+    const uppercaseOffer = ABTestEngine.validateTest({
+      name: 'Uppercase Offer',
+      type: 'OFFER',
+      goal: { type: 'conversion' },
+      variants: [
+        { name: 'Control', allocation: 50, config: { discount_type: 'percent' } },
+        {
+          name: 'Variant A',
+          allocation: 50,
+          config: { discount_type: 'percent', discount_value: 10 },
+        },
+      ],
+    });
+
+    expect(onsite.isValid).toBe(true);
+    expect(splitUrl.isValid).toBe(true);
+    expect(uppercaseOffer.isValid).toBe(true);
+  });
+
+  it('accepts matrix-only price tests with per-product variant prices', () => {
+    const result = ABTestEngine.validateTest({
+      name: 'Matrix price test',
+      type: 'price',
+      goal: { type: 'conversion', template_key: 'price' },
+      variants: [
+        { name: 'Control', allocation: 50, config: { priceMode: 'fixed', price: '' } },
+        {
+          name: 'Variant A',
+          allocation: 50,
+          config: {
+            byProduct: {
+              'gid://shopify/Product/111': {
+                byVariant: {
+                  222: { priceMode: 'fixed', price: 14.99 },
+                },
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    expect(result.isValid).toBe(true);
+  });
+
   it('rejects invalid offer discount code name format', () => {
     const result = ABTestEngine.validateTest({
       name: 'Offer code format',

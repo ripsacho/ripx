@@ -11,6 +11,7 @@ describe('storefrontScriptRuntime', () => {
     expect(normalizeTestTypeForStorefront('pricing')).toBe('price');
     expect(normalizeTestTypeForStorefront('PRICING')).toBe('price');
     expect(normalizeTestTypeForStorefront('price')).toBe('price');
+    expect(normalizeTestTypeForStorefront('OFFER')).toBe('offer');
     expect(normalizeTestTypeForStorefront('content')).toBe('content');
   });
 
@@ -75,6 +76,20 @@ describe('storefrontScriptRuntime', () => {
       id: 't4',
       type: 'shipping',
       target_type: '',
+      target_id: null,
+      target_ids: null,
+      segments: {},
+    };
+    expect(normalizeTargetTypeForStorefront(row)).toBe('all-products');
+    const mapped = mapTestToStorefrontPayload(row);
+    expect(mapped.targetType).toBe('all-products');
+  });
+
+  it('defaults all offer test target_type to all-products for storefront cart handling', () => {
+    const row = {
+      id: 't-offer',
+      type: 'offer',
+      target_type: 'all',
       target_id: null,
       target_ids: null,
       segments: {},

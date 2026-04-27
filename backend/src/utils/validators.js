@@ -193,7 +193,10 @@ class Validators {
       'split-url',
       'onsite-edit',
     ];
-    if (!validTypes.includes(config.type)) {
+    const normalizedType = String(config.type || '')
+      .trim()
+      .toLowerCase();
+    if (!validTypes.includes(normalizedType)) {
       errors.push(`Test type must be one of: ${validTypes.join(', ')}`);
     }
 
@@ -220,19 +223,48 @@ class Validators {
       });
 
       // Price test: at least one non-control variant must have a price configured
-      const isPriceType =
-        (config.type || '').toLowerCase() === 'price' ||
-        (config.type || '').toLowerCase() === 'pricing';
+      const isPriceType = normalizedType === 'price' || normalizedType === 'pricing';
       if (isPriceType && config.variants.length > 1) {
+        const hasPriceSignalValue = value =>
+          value !== null && value !== undefined && String(value).trim() !== '';
+        const configHasPriceDeep = cfg => {
+          if (!cfg || typeof cfg !== 'object') {
+            return false;
+          }
+          const mode = String(cfg.priceMode || 'fixed').toLowerCase();
+          if (mode === 'fixed' && hasPriceSignalValue(cfg.price)) {
+            return true;
+          }
+          if (mode === 'amount' && hasPriceSignalValue(cfg.priceDelta)) {
+            return true;
+          }
+          if (mode === 'percent' && hasPriceSignalValue(cfg.pricePercent)) {
+            return true;
+          }
+          if (cfg.byVariant && typeof cfg.byVariant === 'object') {
+            if (Object.values(cfg.byVariant).some(configHasPriceDeep)) {
+              return true;
+            }
+          }
+          if (cfg.byProduct && typeof cfg.byProduct === 'object') {
+            if (Object.values(cfg.byProduct).some(configHasPriceDeep)) {
+              return true;
+            }
+          }
+          return false;
+        };
         let hasNonControlWithPrice = false;
         config.variants.forEach((v, i) => {
           const cfg = v?.config || {};
           const mode = (cfg.priceMode || 'fixed').toLowerCase();
+          const hasDeepPrice = configHasPriceDeep(cfg);
           const isControl =
             i === 0 ||
-            (mode === 'fixed' &&
+            (!hasDeepPrice &&
+              mode === 'fixed' &&
               (cfg.price === null || cfg.price === undefined || String(cfg.price).trim() === ''));
           const hasPrice =
+            hasDeepPrice ||
             (mode === 'fixed' &&
               cfg.price !== null &&
               cfg.price !== undefined &&

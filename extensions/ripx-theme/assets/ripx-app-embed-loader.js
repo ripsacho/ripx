@@ -20,7 +20,7 @@
 
   var config = readConfig();
   var shopHost = String(config.shopHost || window.location.hostname || '').trim();
-  var version = String(config.version || '').trim() || '1.0.34';
+  var version = String(config.version || '').trim() || '1.0.40';
   var directScriptBaseUrl = String(config.directScriptBaseUrl || '').trim();
 
   function hasRipx() {
@@ -44,6 +44,11 @@
     try {
       if (!window.sessionStorage || !window.location || !window.location.search) return null;
       var params = new URLSearchParams(window.location.search || '');
+      var simplePreview = params.get('ab_preview_simple') === '1';
+      if (simplePreview) {
+        window.sessionStorage.removeItem(PREVIEW_STORAGE_KEY);
+        return null;
+      }
       var previewFlag = params.get('ab_preview') === '1';
       var testId = params.get('ab_preview_test') || null;
       var variantId = params.get('ab_preview_variant') || null;

@@ -8,6 +8,11 @@ import {
   RIPX_CHECKOUT_PROBE_ATTRIBUTE_MATRIX,
 } from './ripxConfig';
 
+// Checkout discount path:
+// fetch target calls the backend resolver, then this run target turns resolved rows into Shopify
+// discount candidates. If fetch fails or is unavailable, the local fallback uses the same RipX line
+// attributes that storefront-script.js stamped during add-to-cart. See PRICE_TEST_FLOW.md.
+
 function normalizePriceMethod(value) {
   const raw = String(value || '')
     .trim()
@@ -38,6 +43,14 @@ function canApplyCheckoutDiscountForLineMethod(line) {
     return true;
   }
   return method !== 'direct_price_override' && method !== 'native_variant_price';
+}
+
+function hasAssignmentProof(line) {
+  return Boolean(
+    line?.ripxAssignmentSig?.value &&
+    line?.ripxAssignmentTs?.value &&
+    line?.ripxAssignmentUser?.value
+  );
 }
 
 function normalizeOfferDiscountType(value) {
@@ -149,6 +162,11 @@ function buildLocalFallbackCandidates(cartLines) {
     if (!line?.ripxTest?.value) {
       continue;
     }
+    if (!hasAssignmentProof(line)) {
+      continue;
+    }
+    // Preferred fallback for price reductions: storefront already computed catalog-target delta.
+    // It is safer than recomputing matrix config inside the Shopify Function run phase.
     const discountUnit = Number.parseFloat(String(discountUnitRaw || '').trim());
     if (Number.isFinite(discountUnit) && discountUnit > 0) {
       const candidate = buildCandidateForLine(line, Math.round(discountUnit * qty * 100) / 100);
@@ -201,6 +219,8 @@ function buildLocalFallbackCandidates(cartLines) {
         }
       }
     }
+    // Last fallback: derive the discount from target unit and current subtotal when discount unit
+    // was not stamped. This handles older carts while still refusing increases/no-discount rows.
     if (!targetUnitRaw || !Number.isFinite(subtotal) || subtotal <= 0) {
       continue;
     }
@@ -337,6 +357,8 @@ export function cartLinesDiscountsGenerateRun(input) {
   const byLineId = new Map(rows.map(row => [row.line_id, row]));
 
   const candidates = [];
+  // Normal path: resolver rows are keyed by fetch-stage cart line id and already include verified
+  // assignment/signature checks plus matrix price math from the backend.
   if (!(typeof status === 'number' && (status < 200 || status > 299))) {
     for (const line of cartLines) {
       const row = byLineId.get(line.id);
@@ -350,9 +372,9 @@ export function cartLinesDiscountsGenerateRun(input) {
     }
   }
 
-  // Fallback for potential fetch/run line-id drift: map by index order.
-  // Some environments may produce non-matching line IDs across stages.
-  if (candidates.length === 0 && rows.length > 0) {
+  // Conservative fallback for potential fetch/run line-id drift: only map by index for a
+  // single-line cart. Multi-line index fallback can apply one line's resolver discount to another.
+  if (candidates.length === 0 && rows.length === 1 && cartLines.length === 1) {
     const n = Math.min(cartLines.length, rows.length);
     for (let i = 0; i < n; i++) {
       const line = cartLines[i];

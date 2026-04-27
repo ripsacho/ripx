@@ -467,6 +467,46 @@ describe('wizardValidation', () => {
         ).toBe(true);
       });
 
+      it('accepts matrix-only price config as a non-control price', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            type: 'price',
+            target_type: 'all-products',
+            variants: [
+              { name: 'Control', config: { priceMode: 'fixed', price: '' } },
+              {
+                name: 'Variant A',
+                config: {
+                  priceMode: 'fixed',
+                  price: '',
+                  byProduct: {
+                    'gid://shopify/Product/100': {
+                      byVariant: {
+                        'gid://shopify/ProductVariant/200': {
+                          priceMode: 'fixed',
+                          price: 42,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'price',
+        });
+        expect(errors).not.toContain(
+          'At least one test variant (non-control) must have a price configured. Go to Traffic step → Variant configuration.'
+        );
+        expect(errors).not.toContain(
+          'At least one test variant (non-control) must have a price configured. Go to Traffic step → Variant configuration to set prices.'
+        );
+      });
+
       it('returns error for split-URL variant with invalid URL', () => {
         const errors = getWizardStepErrors(stepIdsWithTemplate.code, {
           stepIds: stepIdsWithTemplate,
@@ -989,6 +1029,26 @@ describe('wizardValidation', () => {
           showTemplateStep: true,
         });
         expect(errors.some(e => e.includes('At least one shipping variant'))).toBe(true);
+      });
+
+      it('uses selected template for offer review validation when type is legacy content', () => {
+        const errors = getWizardStepErrors(reviewStepId, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId,
+          formData: {
+            name: 'Offer Test',
+            type: 'content',
+            goal: { metric: 'revenue' },
+            variants: [
+              { name: 'Control', allocation: 50, config: { discount_type: 'percent' } },
+              { name: 'Variant A', allocation: 50, config: { discount_type: 'percent' } },
+            ],
+          },
+          initialData: {},
+          showTemplateStep: true,
+          selectedTemplate: 'offer',
+        });
+        expect(errors.some(e => e.includes('At least one offer variant'))).toBe(true);
       });
     });
 

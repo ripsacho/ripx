@@ -116,7 +116,7 @@ export function inferTemplateKeyFromVariants(variants = [], testType = '') {
   }
   if (type === 'offer') return 'offer';
   if (type === 'checkout') return 'checkout';
-  if (type === 'content') return 'theme';
+  if (type === 'content') return 'onsite-edit';
   return null;
 }
 

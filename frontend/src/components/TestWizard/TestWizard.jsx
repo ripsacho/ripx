@@ -220,7 +220,10 @@ function TestWizard({
     const raw = normalizeTargetIdValue(value);
     if (!raw) return raw;
     const normalized = raw.toLowerCase();
+    // Storefront targeting expects hyphenated values; saved/admin payloads can still contain legacy
+    // underscore variants. Price-test all-products previews depend on this normalization.
     if (normalized === 'all_products') return 'all-products';
+    if (normalized === 'all_collections') return 'all-collections';
     return raw;
   };
   const normalizePriceTargetTypeValue = (value, typeValue) => {
@@ -3591,6 +3594,7 @@ function TestWizard({
       variantName,
       tenantDomain: previewTenantDomain,
       visualEditor: false,
+      simplePreview: Boolean(options.simplePreview),
     });
     if (!directPreviewUrl) {
       return null;
@@ -3598,10 +3602,14 @@ function TestWizard({
     let finalPreviewUrl = directPreviewUrl;
     if (isShopifyPreviewUrl(directPreviewUrl)) {
       if (isPricePreview) {
-        finalPreviewUrl =
-          buildShopifyPricePreviewBootstrapUrl({
-            previewUrl: directPreviewUrl,
-          }) || directPreviewUrl;
+        // Price preview uses a dedicated bootstrap so RipX can inject before theme cart scripts and
+        // preserve debug state across Shopify section/cart updates. Simple preview intentionally
+        // skips the bootstrap for a clean, live-like link.
+        finalPreviewUrl = options.simplePreview
+          ? directPreviewUrl
+          : buildShopifyPricePreviewBootstrapUrl({
+              previewUrl: directPreviewUrl,
+            }) || directPreviewUrl;
       } else {
         const launchPreviewUrl = buildPreviewLaunchUrl({
           apiBaseUrl: getApiBaseUrl(),
@@ -3655,6 +3663,45 @@ function TestWizard({
     }
     const finalUrl = url;
     window.open(finalUrl, '_blank', 'noopener');
+  };
+
+  const handleSimplePreviewVariant = async (variant, index) => {
+    if (mode === 'edit' && isDirty) {
+      await handleSubmit({ silent: true });
+      const stillDirty = JSON.stringify(buildPayload()) !== lastSavedSnapshotRef.current;
+      if (stillDirty) {
+        setError('Save failed. Fix validation or network issues, then try preview again.');
+        return;
+      }
+    }
+    let pricePreviewProductOverride = null;
+    const targetType = normalizePriceTargetTypeValue(
+      formData.target_type || initialData?.target_type,
+      formData.type || initialData?.type || selectedTemplate
+    );
+    const normalizedTargetType = String(targetType || '')
+      .trim()
+      .toLowerCase()
+      .replace(/_/g, '-');
+    const isAllProductsPricePreview =
+      isPriceLikeTestType(formData.type || initialData?.type || selectedTemplate) &&
+      normalizedTargetType === 'all-products';
+    if (isAllProductsPricePreview && !pricePreviewProduct?.handle) {
+      pricePreviewProductOverride = await fetchFirstPricePreviewProduct();
+    }
+    const url = buildPreviewUrl(variant, index, {
+      pricePreviewProduct: pricePreviewProductOverride,
+      simplePreview: true,
+    });
+    if (!url) {
+      setError(
+        isAllProductsPricePreview
+          ? 'Could not load a product page for all-products price preview. Refresh products or reconnect Shopify, then try again.'
+          : 'Missing shop domain or preview URL.'
+      );
+      return;
+    }
+    window.open(url, '_blank', 'noopener');
   };
 
   const handleExecuteShippingFromReview = useCallback(
@@ -3979,6 +4026,9 @@ function TestWizard({
               if (nextLength > 0) setSelectedVariantIndex(prev => Math.min(prev, nextLength - 1));
             }}
             onPreviewVariant={mode === 'edit' && initialData?.id ? handlePreviewVariant : undefined}
+            onSimplePreviewVariant={
+              mode === 'edit' && initialData?.id ? handleSimplePreviewVariant : undefined
+            }
             getPreviewUrl={mode === 'edit' && initialData?.id ? buildPreviewUrl : undefined}
             compact
           />

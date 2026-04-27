@@ -85,6 +85,34 @@ export function getWizardStepErrors(stepId, options) {
     return hasFixed || hasAmount || hasPercent;
   }
 
+  function configHasPriceDeep(cfg) {
+    // Price tests can be valid even when the root config has no price: the matrix may store the
+    // first real amount under byProduct/byVariant. Keep this in sync with storefront/checkout
+    // effective-config resolution.
+    if (!cfg || typeof cfg !== 'object') return false;
+    if (configHasPrice(cfg)) return true;
+
+    const rootByVariant = cfg.byVariant;
+    if (rootByVariant && typeof rootByVariant === 'object') {
+      if (Object.values(rootByVariant).some(override => configHasPrice(override))) {
+        return true;
+      }
+    }
+
+    const byProduct = cfg.byProduct;
+    if (!byProduct || typeof byProduct !== 'object') return false;
+    return Object.values(byProduct).some(productOverride => {
+      if (!productOverride || typeof productOverride !== 'object') return false;
+      if (configHasPrice(productOverride)) return true;
+      const byVariant = productOverride.byVariant;
+      return (
+        byVariant &&
+        typeof byVariant === 'object' &&
+        Object.values(byVariant).some(variantOverride => configHasPrice(variantOverride))
+      );
+    });
+  }
+
   function validatePriceRange(cfg, label, detailedPercentMessage = true) {
     if (!cfg || typeof cfg !== 'object') return;
     const mode = (cfg.priceMode || 'fixed').toLowerCase();
@@ -568,11 +596,7 @@ export function getWizardStepErrors(stepId, options) {
       let hasNonControlWithPriceCode = false;
       formData.variants.forEach((v, i) => {
         const cfg = v?.config || {};
-        const mode = (cfg.priceMode || 'fixed').toLowerCase();
-        const isControl =
-          mode === 'fixed' &&
-          (cfg.price === null || cfg.price === undefined || String(cfg.price).trim() === '');
-        if (!isControl && configHasPrice(cfg)) {
+        if (configHasPriceDeep(cfg)) {
           hasNonControlWithPriceCode = true;
         }
         validatePriceRange(cfg, v?.name || `Variant ${i + 1}`, true);
@@ -787,11 +811,7 @@ export function getWizardStepErrors(stepId, options) {
       let hasNonControlWithPriceReview = false;
       formData.variants.forEach((v, i) => {
         const cfg = v?.config || {};
-        const mode = (cfg.priceMode || 'fixed').toLowerCase();
-        const isControl =
-          mode === 'fixed' &&
-          (cfg.price === null || cfg.price === undefined || String(cfg.price).trim() === '');
-        if (!isControl && configHasPrice(cfg)) {
+        if (configHasPriceDeep(cfg)) {
           hasNonControlWithPriceReview = true;
         }
         validatePriceRange(cfg, v?.name || `Variant ${i + 1}`, false);
@@ -889,7 +909,8 @@ export function getWizardStepErrors(stepId, options) {
       });
     }
     // Offer discount value
-    const isOfferReview = (formData.type || '').toLowerCase() === 'offer';
+    const isOfferReview =
+      reviewTemplateKey === 'offer' || String(formData.type || '').toLowerCase() === 'offer';
     if (isOfferReview && Array.isArray(formData.variants)) {
       let hasNonControlWithOfferReview = false;
       formData.variants.forEach((v, i) => {
@@ -930,7 +951,8 @@ export function getWizardStepErrors(stepId, options) {
       }
     }
 
-    const isShippingReview = (formData.type || '').toLowerCase() === 'shipping';
+    const isShippingReview =
+      reviewTemplateKey === 'shipping' || String(formData.type || '').toLowerCase() === 'shipping';
     if (isShippingReview && Array.isArray(formData.variants)) {
       let hasNonControlActionableShippingVariant = false;
       formData.variants.forEach((v, i) => {
@@ -948,7 +970,8 @@ export function getWizardStepErrors(stepId, options) {
       }
     }
 
-    const isCheckoutReview = (formData.type || '').toLowerCase() === 'checkout';
+    const isCheckoutReview =
+      reviewTemplateKey === 'checkout' || String(formData.type || '').toLowerCase() === 'checkout';
     if (isCheckoutReview && Array.isArray(formData.variants)) {
       const checkoutPhase = normalizeCheckoutPhase(
         formData.goal?.checkout_phase || initialData?.goal?.checkout_phase

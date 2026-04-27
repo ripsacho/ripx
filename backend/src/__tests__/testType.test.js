@@ -36,9 +36,9 @@ describe('inferTemplateKey', () => {
     expect(inferTemplateKey(variants, 'pricing')).toBe('pricing');
   });
 
-  it('returns theme when type is content and config is empty', () => {
+  it('returns onsite-edit when type is content and config is empty', () => {
     const variants = [{ config: {} }];
-    expect(inferTemplateKey(variants, 'content')).toBe('theme');
+    expect(inferTemplateKey(variants, 'content')).toBe('onsite-edit');
   });
 
   it('returns theme when type is theme', () => {

@@ -118,7 +118,7 @@ function inferTemplateKey(variants = [], testType = '') {
     return 'checkout';
   }
   if (type === 'content') {
-    return 'theme';
+    return 'onsite-edit';
   }
   return null;
 }

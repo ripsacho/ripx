@@ -38,15 +38,27 @@ function TestCreator() {
   const invalidateTests = useInvalidateTests();
   const routes = useAppRoutes();
   const [searchParams] = useSearchParams();
-  const rawTemplate = searchParams.get('type');
+  const rawTemplate = String(searchParams.get('type') || '')
+    .trim()
+    .toLowerCase();
+  const rawTestTypeId = String(
+    searchParams.get('testTypeId') || searchParams.get('test_type_id') || ''
+  )
+    .trim()
+    .toLowerCase();
   const isShopifyFromRoute = routeDomain && isShopifyStoreDomain(routeDomain);
   const standaloneMode = !isShopifyFromRoute && isStandaloneMode();
   const validSet = standaloneMode ? STANDALONE_TEMPLATES : SHOPIFY_TEMPLATES;
-  const templateType = rawTemplate && validSet.has(rawTemplate) ? rawTemplate : null;
+  const requestedTemplate =
+    rawTestTypeId && validSet.has(rawTestTypeId)
+      ? rawTestTypeId
+      : rawTemplate && validSet.has(rawTemplate)
+        ? rawTemplate
+        : null;
   const initialTemplateForWizard =
-    standaloneMode && templateType && !STANDALONE_TEST_TYPE_IDS.includes(templateType)
+    standaloneMode && requestedTemplate && !STANDALONE_TEST_TYPE_IDS.includes(requestedTemplate)
       ? null
-      : templateType;
+      : requestedTemplate;
   const testName = searchParams.get('name') || '';
   const testDescription = searchParams.get('description') || '';
 
