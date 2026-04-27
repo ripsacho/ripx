@@ -208,6 +208,7 @@ npm run shopify:cart-transform:prepare
 npm run shopify:payment-customization:prepare
 npm run shopify:delivery-customization:prepare
 shopify app deploy
+pm2 restart ripx --update-env
 
 
 cd ~/RipX
