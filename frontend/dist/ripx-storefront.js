@@ -472,10 +472,21 @@
   const PREVIEW_WINDOW_NAME_PREFIX = '__ripx_preview_ctx_v1__:';
   const PREVIEW_STORAGE_MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
   const PREVIEW_VARIANT_CACHE_MAX_AGE_MS = 30 * 60 * 1000; // 30 minutes
+  function getPreviewParam(name) {
+    var direct = URL_PARAMS.get(name);
+    if (direct !== null && direct !== undefined && direct !== '') return direct;
+    try {
+      var nestedTarget = URL_PARAMS.get('url') || '';
+      if (!nestedTarget) return direct;
+      var parsedTarget = new URL(nestedTarget, window.location.origin);
+      var nested = parsedTarget.searchParams.get(name);
+      return nested !== null && nested !== undefined && nested !== '' ? nested : direct;
+    } catch (_ePreviewParam) {
+      return direct;
+    }
+  }
   const FORCE_LIVE_MODE =
-    URL_PARAMS.get('ripx_live') === '1' ||
-    URL_PARAMS.get('ripx_clear_preview') === '1' ||
-    URL_PARAMS.get('ab_preview_simple') === '1';
+    URL_PARAMS.get('ripx_live') === '1' || URL_PARAMS.get('ripx_clear_preview') === '1';
   if (FORCE_LIVE_MODE) {
     try {
       if (window.sessionStorage) window.sessionStorage.removeItem(PREVIEW_STORAGE_KEY);
@@ -566,12 +577,12 @@
   const persistedPreview = readPersistedPreviewCtx();
   const windowNamePreview = readWindowNamePreviewCtx();
 
-  const _urlPreview = URL_PARAMS.get('ab_preview') === '1';
-  const PREVIEW_SIMPLE_MODE = URL_PARAMS.get('ab_preview_simple') === '1';
-  const _urlPreviewTest = URL_PARAMS.get('ab_preview_test');
-  const _urlPreviewVariantId = URL_PARAMS.get('ab_preview_variant');
-  const _urlPreviewVariantName = URL_PARAMS.get('ab_preview_variant_name');
-  const _urlPreviewTenantDomain = URL_PARAMS.get('ab_preview_domain');
+  const _urlPreview = getPreviewParam('ab_preview') === '1';
+  const PREVIEW_SIMPLE_MODE = getPreviewParam('ab_preview_simple') === '1';
+  const _urlPreviewTest = getPreviewParam('ab_preview_test');
+  const _urlPreviewVariantId = getPreviewParam('ab_preview_variant');
+  const _urlPreviewVariantName = getPreviewParam('ab_preview_variant_name');
+  const _urlPreviewTenantDomain = getPreviewParam('ab_preview_domain');
 
   const HAS_URL_PREVIEW_CTX = !!(
     _urlPreview ||
@@ -835,7 +846,6 @@
   // ab_preview_test alone (without ab_preview=1) still enables preview; session must survive losing query params.
   if (
     PREVIEW_MODE &&
-    !PREVIEW_SIMPLE_MODE &&
     (PREVIEW_TEST_ID || PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME)
   ) {
     writePersistedPreviewCtx({

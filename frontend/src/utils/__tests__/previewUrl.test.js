@@ -147,12 +147,17 @@ describe('previewUrl', () => {
       variantId: 'variant-a',
       variantName: 'Variant A',
       tenantDomain: 'echologyx.com',
+      simplePreview: true,
     });
     const result = buildShopifyPricePreviewBootstrapUrl({ previewUrl });
     const url = new URL(result);
     expect(url.origin).toBe('https://makripon.myshopify.com');
     expect(url.pathname).toBe('/apps/ripx/price-preview-bootstrap-v1');
     expect(url.searchParams.get('url')).toBe(previewUrl);
+    expect(url.searchParams.get(PREVIEW_PARAMS.TEST_ID)).toBe(
+      '1d1f39c4-4083-44f4-b046-1c341b88cc29'
+    );
+    expect(url.searchParams.get(PREVIEW_PARAMS.SIMPLE)).toBe('1');
   });
 
   it('returns null for non-Shopify preview-bootstrap host', () => {

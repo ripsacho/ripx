@@ -325,7 +325,22 @@ export function buildShopifyPricePreviewBootstrapUrl({ previewUrl }) {
     const directUrl = new URL(directPreviewUrl);
     const host = String(directUrl.hostname || '').trim();
     if (!host || !/\.myshopify\.com$/i.test(host)) return null;
-    return `https://${host}/apps/ripx/price-preview-bootstrap-v1?url=${encodeURIComponent(directPreviewUrl)}`;
+    const bootstrap = new URL(`https://${host}/apps/ripx/price-preview-bootstrap-v1`);
+    bootstrap.searchParams.set('url', directPreviewUrl);
+    [
+      PREVIEW_PARAMS.PREVIEW,
+      PREVIEW_PARAMS.TEST_ID,
+      PREVIEW_PARAMS.VARIANT_ID,
+      PREVIEW_PARAMS.VARIANT_NAME,
+      PREVIEW_PARAMS.TENANT_DOMAIN,
+      PREVIEW_PARAMS.SIMPLE,
+    ].forEach(key => {
+      const value = directUrl.searchParams.get(key);
+      if (value !== undefined && value !== null && value !== '') {
+        bootstrap.searchParams.set(key, value);
+      }
+    });
+    return bootstrap.toString();
   } catch {
     return null;
   }

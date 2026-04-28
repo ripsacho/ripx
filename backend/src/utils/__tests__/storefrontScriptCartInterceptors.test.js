@@ -50,6 +50,16 @@ function bootStorefrontScriptHarness(opts = {}) {
     querySelectorAll: opts.documentQuerySelectorAll,
     bodyQuerySelectorAll: opts.bodyQuerySelectorAll,
   });
+  const sessionStore = new Map(Object.entries(opts.sessionStorage || {}));
+  const sessionStorage = {
+    getItem: jest.fn(key => (sessionStore.has(String(key)) ? sessionStore.get(String(key)) : null)),
+    setItem: jest.fn((key, value) => {
+      sessionStore.set(String(key), String(value));
+    }),
+    removeItem: jest.fn(key => {
+      sessionStore.delete(String(key));
+    }),
+  };
 
   class FakeXMLHttpRequest {
     constructor() {
@@ -78,6 +88,7 @@ function bootStorefrontScriptHarness(opts = {}) {
     __RIPX_DEBUG__: false,
     __RIPX_PRICE_PREVIEW_FRAME__: Boolean(opts.pricePreviewFrame),
     location,
+    sessionStorage,
     navigator: { userAgent: 'node-test' },
     document,
     setTimeout,
@@ -134,6 +145,7 @@ function bootStorefrontScriptHarness(opts = {}) {
     fetchCalls,
     windowObj,
     FakeXMLHttpRequest,
+    sessionStore,
   };
 }
 
@@ -204,6 +216,41 @@ describe('storefront script cart/add interceptors', () => {
     expect(hooks.previewMode).toBe(true);
     expect(hooks.previewTestContext).toBe(false);
     expect(hooks.previewTestId).toBe(null);
+  });
+
+  it('keeps simple preview context persisted after startup', () => {
+    const { hooks, sessionStore, windowObj } = bootStorefrontScriptHarness({
+      search:
+        '?ab_preview=1&ab_preview_simple=1&ab_preview_test=11111111-1111-4111-8111-111111111111&ab_preview_variant=Variant%20A',
+    });
+
+    expect(hooks.previewMode).toBe(true);
+    expect(hooks.previewTestId).toBe('11111111-1111-4111-8111-111111111111');
+    expect(windowObj.sessionStorage.removeItem).not.toHaveBeenCalledWith('__ripx_preview_ctx_v1__');
+    const stored = JSON.parse(sessionStore.get('__ripx_preview_ctx_v1__'));
+    expect(stored).toMatchObject({
+      preview: true,
+      testId: '11111111-1111-4111-8111-111111111111',
+      variantId: 'Variant A',
+    });
+  });
+
+  it('reads preview context from nested price-preview bootstrap url', () => {
+    const { hooks, sessionStore } = bootStorefrontScriptHarness({
+      pathname: '/apps/ripx/price-preview-bootstrap-v1',
+      search:
+        '?url=https%3A%2F%2Fexample.com%2Fproducts%2Fdemo%3Fab_preview%3D1%26ab_preview_simple%3D1%26ab_preview_test%3D22222222-2222-4222-8222-222222222222%26ab_preview_variant%3DVariant%2520B',
+      pricePreviewFrame: true,
+    });
+
+    expect(hooks.previewMode).toBe(true);
+    expect(hooks.previewTestId).toBe('22222222-2222-4222-8222-222222222222');
+    const stored = JSON.parse(sessionStore.get('__ripx_preview_ctx_v1__'));
+    expect(stored).toMatchObject({
+      preview: true,
+      testId: '22222222-2222-4222-8222-222222222222',
+      variantId: 'Variant B',
+    });
   });
 
   it('runs selected-product shipping tests on cart surfaces and injects signed cart state', () => {
