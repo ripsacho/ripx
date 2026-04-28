@@ -9,6 +9,7 @@ import { Card, InlineStack, Text, Button, Tooltip, Icon } from '@shopify/polaris
 import {
   ViewIcon,
   LinkIcon,
+  PlayCircleIcon,
   PlusIcon,
   DragHandleIcon,
   EditIcon,
@@ -665,16 +666,11 @@ function TrafficAllocationSlider({
                 </div>
                 {(onPreviewVariant || onSimplePreviewVariant || getPreviewUrl) && (
                   <div className={styles.variantCardActions}>
-                    <div className={styles.previewActionHeader}>
-                      <span className={styles.previewActionTitle}>Preview tools</span>
-                      <span className={styles.previewActionHint}>
-                        Debug for diagnosis, customer view for clean testing.
-                      </span>
-                    </div>
+                    <span className={styles.previewActionTitle}>Preview</span>
                     <div className={styles.previewActionButtons}>
                       {onPreviewVariant && (
                         <Tooltip
-                          content="Open with RipX debug tools visible"
+                          content="Debug preview: opens with RipX diagnostics visible"
                           preferredPosition="above"
                         >
                           <button
@@ -692,27 +688,30 @@ function TrafficAllocationSlider({
                       )}
                       {onSimplePreviewVariant && (
                         <Tooltip
-                          content="Open without debug UI for a customer-like check"
+                          content="Customer view: opens clean preview without debug UI"
                           preferredPosition="above"
                         >
                           <button
                             type="button"
-                            className={styles.cardActionBtn}
+                            className={`${styles.cardActionBtn} ${styles.cardActionBtnCustomer}`}
                             onClick={() => onSimplePreviewVariant(variant, index)}
                             aria-label="Open customer-view preview"
                           >
                             <span className={styles.cardActionBtnIcon} aria-hidden>
-                              <Icon source={ViewIcon} />
+                              <Icon source={PlayCircleIcon} />
                             </span>
                             <span className={styles.cardActionBtnLabel}>Customer view</span>
                           </button>
                         </Tooltip>
                       )}
                       {getPreviewUrl && (
-                        <Tooltip content="Copy customer-view preview URL" preferredPosition="above">
+                        <Tooltip
+                          content="Copy customer-view preview link"
+                          preferredPosition="above"
+                        >
                           <button
                             type="button"
-                            className={styles.cardActionBtn}
+                            className={`${styles.cardActionBtn} ${styles.cardActionBtnCopy}`}
                             onClick={() => handleCopyPreviewLink(variant, index)}
                             aria-label="Copy customer-view preview link"
                           >

@@ -5551,7 +5551,8 @@
       if (window.opener && !window.opener.closed) window.opener.postMessage(payload, '*');
     } catch (_eOpenerPost) {}
     try {
-      if (IN_IFRAME && window.parent && window.parent !== window) window.parent.postMessage(payload, '*');
+      if (IN_IFRAME && window.parent && window.parent !== window)
+        window.parent.postMessage(payload, '*');
     } catch (_eParentPost) {}
   }
 
