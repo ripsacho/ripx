@@ -1,7 +1,6 @@
 // Price-test checkout path:
-// storefront-script.js writes RipX line attributes during cart add. This Cart Transform only uses
-// direct override for price increases or forced doc-test probes; signed discounts are handled by
-// the checkout discount function. See PRICE_TEST_FLOW.md.
+// storefront-script.js writes RipX line attributes during cart add. Price tests use this Cart
+// Transform direct API for both lower and higher target prices. See PRICE_TEST_FLOW.md.
 const NO_CHANGES = { operations: [] };
 const DIRECT_OVERRIDE_METHOD = 'direct_price_override';
 
@@ -37,6 +36,14 @@ function getConfiguredPriceMethod(line) {
     line,
     ['ripxPriceMethod', 'ripxPriceApplicationMethod', 'ripxPriceApplicationMethodLegacy'],
     ['_ripx_price_method', '_ripx_price_application_method', '__ripx_price_application_method']
+  );
+}
+
+function hasAssignmentProof(line) {
+  return Boolean(
+    getLineAttributeValue(line, ['ripxAssignmentSig'], ['_ripx_assignment_sig']) &&
+    getLineAttributeValue(line, ['ripxAssignmentTs'], ['_ripx_assignment_ts']) &&
+    getLineAttributeValue(line, ['ripxAssignmentUser'], ['_ripx_assignment_user'])
   );
 }
 
@@ -129,14 +136,18 @@ function shouldApplyDirectOverride(line, forcedTestAmount, forcedTestVariantId) 
       }
     }
   } else {
-    // Normal production path: only RipX-marked lines using direct override are eligible.
-    // Discount-checkout tests are handled by the discount function instead.
+    // Normal production path: only RipX-marked lines using direct override and assignment proof are
+    // eligible. Cart Transform has no network resolver, so fail closed when the storefront did not
+    // stamp the signed assignment fields.
     const ripxMarker = getLineAttributeValue(
       line,
       ['ripxTest', 'ripxVariant', 'ripxShop'],
       ['_ripx_price_test', '_ripx_variant', '_ripx_shop']
     );
     if (!ripxMarker) {
+      return false;
+    }
+    if (!hasAssignmentProof(line)) {
       return false;
     }
     if (!isDirectOverrideMethod(getConfiguredPriceMethod(line))) {
@@ -152,11 +163,6 @@ function shouldApplyDirectOverride(line, forcedTestAmount, forcedTestVariantId) 
     return false;
   }
   if (amountsMatch(targetUnit, currentUnit)) {
-    return false;
-  }
-  if (!isForcedDocTestMode && targetUnit < currentUnit) {
-    // Cart line attributes are client-originated. Do not let direct override become an unsigned
-    // discount path; lower prices must go through the signed checkout discount resolver instead.
     return false;
   }
   return true;

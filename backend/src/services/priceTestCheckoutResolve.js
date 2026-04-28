@@ -552,10 +552,11 @@ function normalizePriceApplicationMethod(value) {
 }
 
 /**
- * Decide whether the discount-function path can represent the configured price.
+ * Price tests are owned by the Cart Transform direct-price path.
  *
- * Shopify discounts can reduce a price but cannot increase it. In auto mode, increases must move
- * to native variant pricing or direct price override when the shop supports that path.
+ * Explicit direct-price configs must not become checkout discounts. Auto/legacy configs are still
+ * interpreted for diagnostics and backwards-compatible resolver calls, but the current storefront
+ * should stamp `_ripx_price_method=direct_price_override` for price tests before checkout.
  */
 function resolveDiscountFunctionApplicationMethod({
   configuredMethod,
@@ -581,14 +582,6 @@ function resolveDiscountFunctionApplicationMethod({
   }
 
   if (normalized === 'direct_price_override') {
-    if (!isPriceIncrease) {
-      return {
-        configuredMethod: normalized,
-        resolvedMethod: 'discounted_checkout_price',
-        canApplyDiscountFunction: true,
-        reason: 'direct_override_reduction_uses_signed_discount',
-      };
-    }
     return {
       configuredMethod: normalized,
       resolvedMethod: 'direct_price_override',

@@ -158,21 +158,16 @@ Owner files:
 
 Flow:
 
-1. The checkout discount fetch target reads RipX cart-line attributes and calls `POST /api/track/price-resolve-batch` with `X-RipX-Price-Secret`.
-2. Discounted checkout price uses the checkout resolver path. It verifies signed assignment/proof and resolves the target amount for checkout.
-3. The checkout discount run target converts resolver rows into Shopify `productDiscountsAdd` or, if the discount instance is order-only, an `orderDiscountsAdd` subtotal candidate.
-4. Direct price override uses the cart transform extension only for price increases or forced doc-test probes. Price reductions stay on the signed discount-function path even if the admin config says direct override, because cart line attributes are client-originated.
-5. `priceTestCheckoutResolve.js` replays the same effective config precedence as storefront runtime, including `byProduct` and `byVariant`.
-6. Price increases cannot be represented by normal discounts, so auto mode must choose native variant price/direct override where available.
+1. Price tests use the Cart Transform direct API only. The storefront stamps cart lines with `_ripx_price_method=direct_price_override`, `_ripx_target_unit`, and assignment proof fields; Cart Transform applies `lineUpdate.fixedPricePerUnit`.
+2. The checkout discount extension remains available for offer/shipping/checkout discount surfaces, but direct-shaped price-test lines are skipped by fetch and local fallback so stale carts cannot revive the old discount path.
+3. Shopify documents Cart Transform `lineUpdate` as available only on development stores or Shopify Plus stores, and rejects it for subscription/selling-plan lines. If checkout does not change on a non-Plus production shop, this is a Shopify capability limit rather than a resolver/config issue.
+4. `priceTestCheckoutResolve.js` still replays effective price config precedence for diagnostics and legacy resolver calls, including `byProduct` and `byVariant`, but it should not create checkout discounts for price tests.
 
 Debug first:
 
-- Settings diagnostics should detect the discount function and cart transform function.
-- Confirm `RIPX_PRICE_RESOLVE_BATCH_URL` points to `/api/track/price-resolve-batch` and `RIPX_CHECKOUT_PRICE_SECRET` matches the server value.
-- Before any Shopify Function deploy, run `npm run shopify:checkout-discount:sync-config` from the repo root so `extensions/ripx-checkout-discount/src/ripxConfig.js` does not ship a stale tunnel URL or stale secret.
-- For production deploys, reject any generated checkout config URL that still contains a temporary host such as `trycloudflare.com`, `ngrok-free.app`, or `ngrok.io`. `priceCheckoutDiagnostics` now reports this as an extension config error in production.
-- For direct override increases, cart lines must include `_ripx_target_unit` and `_ripx_price_method=direct_price_override`.
-- For discount checkout alignment, assignment and pricing signatures must validate.
+- Settings diagnostics should detect the cart transform function and report it as installed/available for the target shop.
+- Price-test cart lines must include `_ripx_target_unit`, `_ripx_price_method=direct_price_override`, `_ripx_assignment_sig`, `_ripx_assignment_ts`, and `_ripx_assignment_user` for both lower and higher target prices.
+- Checkout discount config (`RIPX_PRICE_RESOLVE_BATCH_URL`, `RIPX_CHECKOUT_PRICE_SECRET`) is not the primary price-test execution path anymore; keep it valid for other discount-based test types.
 
 Operator endpoints:
 
@@ -200,19 +195,19 @@ Cart line property contract:
 
 - Minimum marker fields: `_ripx_price_test`, `_ripx_variant`, `_ripx_shop`.
 - Checkout validation fields: `_ripx_assignment_sig`, `_ripx_assignment_ts`, `_ripx_assignment_user`.
-- Discount/direct price fields: `_ripx_target_unit`, `_ripx_discount_unit`, `_ripx_price_method`.
-- Native variant fields when used: `__ripx_native_variant_id`, `__ripx_source_variant_id`, `__ripx_price_application_method`.
+- Direct price fields: `_ripx_target_unit`, `_ripx_price_method=direct_price_override`, plus assignment proof fields.
+- Legacy/native fields may exist on old carts, but new price-test execution should not depend on `native_variant_price` or `discounted_checkout_price`.
 
 Checkout discount fetch contract:
 
 - `extensions/ripx-checkout-discount/src/cart_lines_discounts_generate_fetch.js` sends `{ shop, lines }` to `/api/track/price-resolve-batch`.
 - Each line should include `line_id`, `test_id`, `assignment_variant`, assignment proof fields, `product_id`, `variant_id`, `line_total`, `qty`, and optional compare-at fields.
-- Lines with `_ripx_price_method=direct_price_override` or `native_variant_price` are skipped by the discount function because those are owned by Cart Transform or variant mapping. The storefront/backend resolver should only choose direct override for increases.
+- Lines with `_ripx_price_method=direct_price_override` or direct-shaped price fields (`_ripx_target_unit` / `_ripx_discount_unit` without offer markers) are skipped by the discount function because price tests are owned by Cart Transform.
 
 Checkout resolver expected output:
 
-- Good discounted checkout row: `{ applies: true, discountDecimal: "x.xx", targetLineDecimal: "y.yy" }`.
-- Useful negative reasons include `invalid_assignment_signature`, `product_not_in_test`, `unknown_assignment_variant`, `no_variant_config`, `compare_at_unavailable`, `selected_direct_price_override`, `selected_native_variant_price`, `price_increase_requires_native_variant_price`, and `no_discount_needed`. A configured direct override reduction should resolve to signed discount handling (`direct_override_reduction_uses_signed_discount` in debug metadata), not Cart Transform.
+- Good price-test direct row: no checkout discount row is needed; Cart Transform should apply the line update from `_ripx_target_unit`.
+- Useful negative reasons from legacy resolver calls include `invalid_assignment_signature`, `product_not_in_test`, `unknown_assignment_variant`, `no_variant_config`, `compare_at_unavailable`, `selected_direct_price_override`, and `auto_selected_direct_price_override`.
 - `cart_lines_discounts_generate_run.js` converts successful rows into `productDiscountsAdd`; if the discount instance is order-only, it emits one `orderDiscountsAdd` subtotal candidate.
 - If Shopify fetch fails or never runs, the run target has a local fallback that uses `_ripx_discount_unit`, offer fields, or `_ripx_target_unit` from cart-line attributes.
 
@@ -224,8 +219,8 @@ Start with script load:
 2. If version exists but `/track/variants` has no assignment, debug test status, targeting, traffic allocation, segment rules, and stale preview state.
 3. If assignment exists but PDP price does not change, debug `applyPriceTest`, `getEffectivePriceConfig`, selected Shopify variant ID, and PDP price selectors.
 4. If PDP price changes but `/cart.js` has no `_ripx_*` properties, debug cart form injection and fetch/XHR cart interceptors.
-5. If `/cart.js` has `_ripx_*` properties but checkout does not change, debug Shopify Function deployment/config, resolver secret, `price-resolve-batch` URL, assignment signatures, and application method.
-6. If discount checkout does not change but `_ripx_price_method=direct_price_override`, inspect Cart Transform instead of the discount extension. For reductions, `_ripx_price_method` should resolve to `discounted_checkout_price`.
+5. If `/cart.js` has `_ripx_*` properties but checkout does not change, inspect Cart Transform deployment/install state, Plus/dev-store capability, selling-plan lines, and `_ripx_price_method`.
+6. If `/cart.js` has `_ripx_price_method=discounted_checkout_price` for a price test, the storefront/runtime is stale; rebuild/redeploy the app embed script so price tests stamp `direct_price_override`.
 7. If only preview works, retest live with `?ripx_live=1` and verify the test is actually returned by `/track/variants`.
 
 Fast browser checks:
@@ -240,6 +235,13 @@ fetch('/cart.js')
   .then(r => r.json())
   .then(c => c.items.map(i => i.properties));
 ```
+
+`window.RipX.debugStatus()` now includes a `cart` section:
+
+- `cart.hasRipxLines`: at least one cart line has RipX line properties.
+- `cart.readyForCheckoutDiscount`: line properties are sufficient for the signed discount path.
+- `cart.readyForCartTransform`: line properties are sufficient for direct Cart Transform.
+- `cart.missingByLine`: exact missing `_ripx_*` fields per cart line.
 
 Fast server/app checks:
 

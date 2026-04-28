@@ -16,8 +16,12 @@ It reads RipX line item properties already injected by `shopify/storefront-scrip
 - `_ripx_price_method`
 - `_ripx_price_application_method` (fallback)
 - `__ripx_price_application_method` (legacy fallback)
+- `_ripx_assignment_sig`
+- `_ripx_assignment_ts`
+- `_ripx_assignment_user`
 
-The function only overrides lines where the resolved price method is `direct_price_override`.
+The function only overrides lines where the resolved price method is `direct_price_override` and
+assignment proof fields are present.
 
 ## Important constraints
 

@@ -1,12 +1,12 @@
 # RipX checkout discount function
 
-JavaScript Shopify Function (**Discount API**, `cart.lines.discounts.generate.fetch` + `.run`) that calls RipX `**POST /api/track/price-resolve-batch`** so checkout line totals can match running **price\*\* tests.
+JavaScript Shopify Function (**Discount API**, `cart.lines.discounts.generate.fetch` + `.run`) for RipX discount-style surfaces. Price tests now use the Cart Transform direct API; direct-shaped price-test lines are intentionally skipped here.
 
 ## Requirements
 
 - **[Shopify CLI](https://shopify.dev/docs/api/shopify-cli)** 3.x on your machine for `shopify app function build` / `typegen` / `deploy` (or use `npm exec shopify` from `extensions/ripx-checkout-discount` after `npm install` there).
-- **Shopify Plus / Enterprise** with **network access** enabled for discount functions ([docs](https://shopify.dev/docs/apps/build/discounts/network-access)).
-- RipX storefront script must inject `**properties[_ripx_*]`\*\* on add-to-cart (see `docs/SHOPIFY_CHECKOUT_PRICE_RESOLVER.md`).
+- **Shopify Plus / Enterprise** with **network access** enabled for discount functions ([docs](https://shopify.dev/docs/apps/build/discounts/network-access)) when you rely on fetch-based discount resolution.
+- RipX storefront script must inject `properties[_ripx_*]` on add-to-cart.
 - `**shopify.extension.toml` `api_version**` must be a supported Functions API release for your CLI; after changing it, run `shopify app function schema --path extensions/ripx-checkout-discount` then `typegen` and `build` (aligned with root `shopify.app.toml` webhook API where practical).
 
 ## Go-live checklist (what you must do)
@@ -20,8 +20,9 @@ RipX cannot click Shopify Admin for you. Work through this once per production a
  npm run shopify:checkout-discount:sync-config
 ```
 
-This writes `src/ripxConfig.js` from `**APP_URL**` (or `**RIPX_PRICE_RESOLVE_BATCH_URL**`) and `**RIPX_CHECKOUT_PRICE_SECRET**`.  
- Or edit `src/ripxConfig.js` by hand if you prefer. 3. **Build the WASM** — From repo root:
+This writes `src/ripxConfig.js` from `APP_URL` (or `RIPX_PRICE_RESOLVE_BATCH_URL`) and `RIPX_CHECKOUT_PRICE_SECRET`.
+
+3. **Build the WASM** — From repo root:
 
 ```bash
  npm run shopify:checkout-discount:install
@@ -29,7 +30,11 @@ This writes `src/ripxConfig.js` from `**APP_URL**` (or `**RIPX_PRICE_RESOLVE_BAT
  npm run shopify:checkout-discount:build
 ```
 
-Or one shot (after `.env` is set): `**npm run shopify:checkout-discount:prepare**` 4. **Deploy the app** — `shopify app deploy` (or your pipeline) so the **function extension** is on the same app as the storefront script. 5. **Shopify Admin → Discounts** — Create an **automatic** (or app-backed) **product** discount that **uses this app’s discount function** (wording varies by Shopify version). Ensure the discount is **active** and applies at checkout. Enable **Product** discount class for that discount if the UI asks. 6. **Catalog** — For tests below list price, set Shopify variant prices to the **highest** test price; the function discounts down to the test price. 7. **Smoke test** — Add a line from a running price test, open checkout, confirm the charged line total matches the test price.
+Or one shot (after `.env` is set): `npm run shopify:checkout-discount:prepare`.
+
+4. **Deploy the app** — `shopify app deploy` (or your pipeline) so the function extension is on the same app as the storefront script.
+5. **Shopify Admin → Discounts** — Create an automatic/app-backed product discount that uses this app’s discount function when using offer/discount surfaces.
+6. **Smoke test** — Add a line for an offer/discount test and confirm the expected discount applies. For price tests, inspect the Cart Transform extension instead.
 
 ### Fast recovery (when diagnostics show config drift)
 
@@ -60,12 +65,12 @@ See also `**backend/docs/PRODUCT_EXCELLENCE_ROADMAP.md`\*\* for the long-term pr
 
 ## Behavior notes
 
-- **Product targets only at checkout** — The batch resolver applies discounts when `target_type === 'product'` and the line’s product is in `target_ids`. **Collection-targeted** price tests are supported on the storefront for display/cards, but checkout alignment requires **product-level** targeting (or add products explicitly) for the discount function.
+- **Price tests** — Cart/checkout price alignment is owned by the Cart Transform extension using `_ripx_price_method=direct_price_override` and `_ripx_target_unit`; those lines are skipped by this function.
 - `**priceBase: compare_at`** — The fetch query loads `compareAtAmountPerQuantity` from `CartLineCost` and sends `**compare_at_unit**` per line so the API matches storefront **amount/percent\*\* math off compare-at. If Shopify hides compare-at for the buyer, the API returns `compare_at_unavailable` for that mode (no discount).
 - **Personalization / rollout** — Tests with status `stopped` or `completed` but `personalization_mode` `personalized` or `rollout` are treated as active for checkout (same as storefront `activeTests`).
 - `**pricing` vs `price`\*\* — Both types are accepted in the resolver and in running-test counts.
 - **Selection strategy `ALL`**: multiple cart lines each get their own fixed-amount discount. (`FIRST` would only apply one candidate.)
-- **Method safety**: lines marked `_ripx_price_method` / `_ripx_price_application_method` as `direct_price_override` or `native_variant_price` are excluded from discount application and local fallback.
+- **Method safety**: lines marked `_ripx_price_method` / `_ripx_price_application_method` as `direct_price_override` or direct-shaped price lines carrying `_ripx_target_unit` / `_ripx_discount_unit` without offer markers are excluded from discount application and local fallback.
 - **HTTP errors**: if the batch URL returns a non-2xx status, or JSON without `success` / `lines`, the function applies no discounts.
 - **Header** `X-RipX-Client: ripx-checkout-discount` is sent for server log filtering.
 - **Shopify network limits** ([performance & resilience](https://shopify.dev/docs/apps/build/functions/network-access/performance-and-resilience)):

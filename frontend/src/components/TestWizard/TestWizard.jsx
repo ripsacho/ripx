@@ -851,11 +851,8 @@ function TestWizard({
           : directPriceOverrideReadiness === 'checking'
             ? 'RipX is still checking cart transform availability for this shop.'
             : 'RipX could not fully verify cart transform install state for this shop.';
-  const shouldUseDirectPriceOverrideExecution =
-    isShopifyFromRoute && !isStandalone && directPriceOverrideReadiness === 'ready';
-  const priceCheckoutExecutionMode = shouldUseDirectPriceOverrideExecution
-    ? 'direct_price_override'
-    : 'auto';
+  const shouldUseDirectPriceOverrideExecution = true;
+  const priceCheckoutExecutionMode = 'direct_price_override';
 
   useEffect(() => {
     let cancelled = false;
@@ -2427,15 +2424,11 @@ function TestWizard({
     return config;
   };
 
-  const applyPriceExecutionModeToConfig = (rawConfig, executionMode) => {
+  const applyPriceExecutionModeToConfig = rawConfig => {
     if (!rawConfig || typeof rawConfig !== 'object') {
       return rawConfig;
     }
-    const normalizedMode = String(executionMode || '')
-      .trim()
-      .toLowerCase();
-    const modeToWrite =
-      normalizedMode === 'direct_price_override' ? 'direct_price_override' : 'auto';
+    const modeToWrite = 'direct_price_override';
     const config = { ...rawConfig, priceApplicationMethod: modeToWrite };
 
     if (config.byProduct && typeof config.byProduct === 'object') {
@@ -8326,25 +8319,18 @@ function TestWizard({
     const method = cfg
       ? normalizePriceApplicationMethod(cfg.priceApplicationMethod)
       : normalizePriceApplicationMethod(cfgOrMethod);
-    const hasNativeVariantMapping =
-      !!cfg &&
-      cfg.nativeVariantId !== null &&
-      cfg.nativeVariantId !== undefined &&
-      String(cfg.nativeVariantId).trim() !== '';
     const impliesIncrease = priceConfigImpliesIncrease(cfg);
     if (method === 'discounted_checkout_price') {
       return {
-        label: 'Discounted Checkout Price',
-        shortLabel: 'Discounted Checkout',
+        label: 'Legacy Discounted Checkout',
+        shortLabel: 'Legacy Discount',
         helpText:
-          'Applies lower prices at checkout with Shopify discounts. Fast to launch, but shoppers may see a discount label.',
+          'Legacy price-test method. New price tests are saved as Cart Transform direct price override.',
         badges: [
-          { label: 'Recommended for lower prices', tone: 'success' },
-          { label: 'Easy setup', tone: 'info' },
+          { label: 'Legacy', tone: 'warning' },
+          { label: 'Not used for new price tests', tone: 'info' },
         ],
-        warning: impliesIncrease
-          ? 'This variant raises price. Discounted Checkout cannot increase totals. Use Auto or Native Variant.'
-          : 'This method cannot increase price because Shopify discounts only reduce totals.',
+        warning: 'RipX will normalize saved price-test variants to Cart Transform direct override.',
       };
     }
     if (method === 'native_variant_price') {
@@ -8366,7 +8352,7 @@ function TestWizard({
         label: 'Direct Price Override',
         shortLabel: 'Cart Transform',
         helpText:
-          'Uses Cart Transform to set cart line unit price directly (no discount label). Manual selections stay strict: RipX does not auto-switch this method.',
+          'Uses Shopify Cart Transform to set the cart line unit price directly for both lower and higher test prices.',
         badges: [
           { label: 'No discount label', tone: 'success' },
           { label: 'Cart Transform API', tone: 'info' },
@@ -8378,27 +8364,18 @@ function TestWizard({
             ? 'Deploy the RipX Cart Transform first. Shopify allows one Cart Transform per store.'
             : directPriceOverrideReadiness === 'needs_install'
               ? 'Install/bind the deployed RipX Cart Transform on this shop before relying on Direct Price Override.'
-              : impliesIncrease
-                ? 'Higher-price overrides can be ignored on some live shops. Manual Direct Price Override does not auto-fallback. Use Auto or switch this variant to Native Variant Price if needed.'
-                : null,
+              : null,
       };
     }
     return {
-      label: 'Auto (recommended)',
-      shortLabel: 'Auto',
-      helpText: cartTransformFunctionAvailable
-        ? 'RipX chooses the best supported strategy: Discounted Checkout for lower prices and Cart Transform for higher prices.'
-        : 'RipX chooses the best available strategy: Discounted Checkout for lower prices and Native Variant for higher prices.',
+      label: 'Cart Transform Direct',
+      shortLabel: 'Cart Transform',
+      helpText: 'Price tests are normalized to Cart Transform direct price override when saved.',
       badges: [
         { label: 'Recommended', tone: 'success' },
-        { label: 'Hybrid strategy', tone: 'info' },
+        { label: 'Direct API only', tone: 'info' },
       ],
-      warning:
-        impliesIncrease && cartTransformFunctionAvailable
-          ? 'This variant raises price. Auto can switch between Cart Transform and Native Variant when needed.'
-          : impliesIncrease && !hasNativeVariantMapping
-            ? 'This variant raises price. Add a mapped Shopify variant so Auto can use Native Variant at checkout.'
-            : null,
+      warning: null,
     };
   };
 
@@ -8408,31 +8385,11 @@ function TestWizard({
   const getResolvedPriceApplicationMethodSummary = cfg => {
     const method = normalizePriceApplicationMethod(cfg?.priceApplicationMethod);
     const impliesIncrease = priceConfigImpliesIncrease(cfg || {});
-    const impliesDecrease = priceConfigImpliesDecrease(cfg || {});
 
     if (method === 'auto') {
-      if (impliesIncrease && cartTransformFunctionAvailable) {
-        return {
-          label: 'Auto -> Cart Transform',
-          detail:
-            'Higher-price path resolves to Direct Price Override on this shop. Auto may still switch to Native Variant when required.',
-        };
-      }
-      if (impliesIncrease) {
-        return {
-          label: 'Auto -> Native Variant',
-          detail: 'Higher-price path falls back to Native Variant Price on this shop.',
-        };
-      }
-      if (impliesDecrease) {
-        return {
-          label: 'Auto -> Discounted Checkout',
-          detail: 'Lower-price path resolves to Discounted Checkout behavior.',
-        };
-      }
       return {
-        label: 'Auto',
-        detail: 'RipX chooses the best supported path for this variant.',
+        label: 'Cart Transform',
+        detail: 'Saved price-test variants are normalized to Direct Price Override.',
       };
     }
 

@@ -33,6 +33,15 @@ query Input {
       ripxPriceApplicationMethodLegacy: attribute(key: "__ripx_price_application_method") {
         value
       }
+      ripxAssignmentSig: attribute(key: "_ripx_assignment_sig") {
+        value
+      }
+      ripxAssignmentTs: attribute(key: "_ripx_assignment_ts") {
+        value
+      }
+      ripxAssignmentUser: attribute(key: "_ripx_assignment_user") {
+        value
+      }
       sellingPlanAllocation {
         sellingPlan {
           id

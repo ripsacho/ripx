@@ -34,6 +34,21 @@ query RipxCartLinesFetch {
       ripxPriceApplicationMethodLegacy: attribute(key: "__ripx_price_application_method") {
         value
       }
+      ripxTargetUnit: attribute(key: "_ripx_target_unit") {
+        value
+      }
+      ripxDiscountUnit: attribute(key: "_ripx_discount_unit") {
+        value
+      }
+      ripxOfferDiscountType: attribute(key: "_ripx_offer_discount_type") {
+        value
+      }
+      ripxOfferDiscountValue: attribute(key: "_ripx_offer_discount_value") {
+        value
+      }
+      ripxOfferCodeName: attribute(key: "_ripx_offer_code_name") {
+        value
+      }
       ripxAssignmentSig: attribute(key: "_ripx_assignment_sig") {
         value
       }

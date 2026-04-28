@@ -93,6 +93,63 @@ async function ensureTemplateTypeEnabledOrThrow(payload, shopDomain) {
   throw err;
 }
 
+function isPriceTestPayload(payload) {
+  const type = String(payload?.type || '')
+    .trim()
+    .toLowerCase();
+  if (type === 'price' || type === 'pricing') {
+    return true;
+  }
+  const templateKey = String(
+    payload?.goal?.template_key || resolveTemplateKeyFromPayload(payload) || ''
+  )
+    .trim()
+    .toLowerCase();
+  return templateKey === 'price' || templateKey === 'pricing';
+}
+
+function forceDirectPriceConfig(config) {
+  if (!config || typeof config !== 'object') {
+    return config;
+  }
+  const next = { ...config, priceApplicationMethod: 'direct_price_override' };
+  if (next.byProduct && typeof next.byProduct === 'object') {
+    next.byProduct = Object.fromEntries(
+      Object.entries(next.byProduct).map(([productId, productConfig]) => [
+        productId,
+        forceDirectPriceConfig(productConfig),
+      ])
+    );
+  }
+  if (next.byVariant && typeof next.byVariant === 'object') {
+    next.byVariant = Object.fromEntries(
+      Object.entries(next.byVariant).map(([variantId, variantConfig]) => [
+        variantId,
+        forceDirectPriceConfig(variantConfig),
+      ])
+    );
+  }
+  return next;
+}
+
+function normalizePriceTestDirectOverride(payload) {
+  if (!isPriceTestPayload(payload) || !Array.isArray(payload?.variants)) {
+    return payload;
+  }
+  return {
+    ...payload,
+    variants: payload.variants.map(variant => {
+      if (!variant || typeof variant !== 'object') {
+        return variant;
+      }
+      return {
+        ...variant,
+        config: forceDirectPriceConfig(variant.config || {}),
+      };
+    }),
+  };
+}
+
 function normalizeHoldout(value) {
   if (value === undefined || value === null || value === '') {
     return { value: null };
@@ -1061,6 +1118,7 @@ router.post(
     testData = enrichGoalWithTemplateKey(
       normalizeCheckoutExperienceTestPayload(normalizeShippingTestPayload(testData))
     );
+    testData = normalizePriceTestDirectOverride(testData);
     try {
       await ensureTemplateTypeEnabledOrThrow(testData, shopDomain);
     } catch (error) {
@@ -2097,6 +2155,7 @@ router.put(
         normalizeShippingTestPayload({ ...existingTest, ...updates })
       );
       testData = enrichGoalWithTemplateKey(testData);
+      testData = normalizePriceTestDirectOverride(testData);
       if (Array.isArray(testData.variants)) {
         updates.variants = testData.variants;
       }
@@ -2721,6 +2780,7 @@ router.post(
       normalizeShippingTestPayload(clonedTestData)
     );
     clonedTestData = enrichGoalWithTemplateKey(clonedTestData);
+    clonedTestData = normalizePriceTestDirectOverride(clonedTestData);
 
     // Validate cloned test
     const validation = abTestEngine.validateTest(clonedTestData);

@@ -279,7 +279,7 @@ describe('priceTestCheckoutResolve', () => {
     });
   });
 
-  it('explicit direct price override uses signed discount path for reductions', () => {
+  it('explicit direct price override skips discount-function application for reductions', () => {
     const test = {
       ...baseTest,
       variants: [
@@ -302,12 +302,12 @@ describe('priceTestCheckoutResolve', () => {
       quantity: 1,
       debug: true,
     });
-    expect(r.applies).toBe(true);
-    expect(parseFloat(r.discountDecimal, 10)).toBeCloseTo(10, 2);
+    expect(r.applies).toBe(false);
+    expect(r.reason).toBe('selected_direct_price_override');
     expect(r.debug).toMatchObject({
       configuredApplicationMethod: 'direct_price_override',
-      resolvedApplicationMethod: 'discounted_checkout_price',
-      canApplyDiscountFunction: true,
+      resolvedApplicationMethod: 'direct_price_override',
+      canApplyDiscountFunction: false,
     });
   });
 

@@ -37,7 +37,29 @@ function resolveLinePriceMethod(line) {
   );
 }
 
+function hasOfferMarkers(line) {
+  return Boolean(
+    line?.ripxOfferDiscountType?.value ||
+    line?.ripxOfferDiscountValue?.value ||
+    line?.ripxOfferCodeName?.value
+  );
+}
+
+function isPriceTestDirectLine(line) {
+  if (hasOfferMarkers(line)) {
+    return false;
+  }
+  const method = resolveLinePriceMethod(line);
+  if (method === 'direct_price_override' || method === 'native_variant_price') {
+    return true;
+  }
+  return Boolean(line?.ripxTargetUnit?.value || line?.ripxDiscountUnit?.value);
+}
+
 function canApplyCheckoutDiscountForLineMethod(line) {
+  if (isPriceTestDirectLine(line)) {
+    return false;
+  }
   const method = resolveLinePriceMethod(line);
   if (!method) {
     return true;
@@ -242,6 +264,9 @@ function buildLocalFallbackCandidates(cartLines) {
 function buildProbeCandidates(cartLines) {
   const candidates = [];
   for (const line of cartLines || []) {
+    if (isPriceTestDirectLine(line)) {
+      continue;
+    }
     if (!line?.ripxTest?.value) {
       continue;
     }
@@ -257,6 +282,9 @@ function buildProbeCandidates(cartLines) {
 function buildAttributeMatrixProbeCandidates(cartLines) {
   const candidates = [];
   for (const line of cartLines || []) {
+    if (isPriceTestDirectLine(line)) {
+      continue;
+    }
     if (!line?.ripxTest?.value) {
       continue;
     }

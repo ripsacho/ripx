@@ -4,8 +4,8 @@ import { RIPX_CHECKOUT_PRICE_SECRET, RIPX_PRICE_RESOLVE_BATCH_URL } from './ripx
 // Checkout discount path:
 // storefront-script.js writes RipX attributes on cart lines, this fetch target sends them to the
 // backend resolver, and cart_lines_discounts_generate_run.js converts the response into discounts.
-// Direct/native-variant price methods are skipped here because Cart Transform or variant mapping
-// owns those cases instead. See PRICE_TEST_FLOW.md.
+// Price tests now use Cart Transform direct price only, so direct price lines are skipped here.
+// This discount extension remains available for non-direct discount surfaces. See PRICE_TEST_FLOW.md.
 
 function normalizePriceMethod(value) {
   const raw = String(value || '')
@@ -29,6 +29,24 @@ function resolveLinePriceMethod(line) {
       line?.ripxPriceApplicationMethod?.value ||
       line?.ripxPriceApplicationMethodLegacy?.value
   );
+}
+
+function hasOfferMarkers(line) {
+  return Boolean(
+    line?.ripxOfferDiscountType?.value ||
+    line?.ripxOfferDiscountValue?.value ||
+    line?.ripxOfferCodeName?.value
+  );
+}
+
+function isPriceTestDirectLine(line, linePriceMethod) {
+  if (hasOfferMarkers(line)) {
+    return false;
+  }
+  if (linePriceMethod === 'direct_price_override' || linePriceMethod === 'native_variant_price') {
+    return true;
+  }
+  return Boolean(line?.ripxTargetUnit?.value || line?.ripxDiscountUnit?.value);
 }
 
 /**
@@ -67,9 +85,9 @@ export function cartLinesDiscountsGenerateFetch(input) {
     if (!testId || !assignmentVariant) {
       continue;
     }
-    if (linePriceMethod === 'direct_price_override' || linePriceMethod === 'native_variant_price') {
-      // These are not discount-function cases. Sending them to the resolver would create confusing
-      // "no discount" responses while the cart transform/native variant path is expected to apply.
+    if (isPriceTestDirectLine(line, linePriceMethod)) {
+      // Price tests are Cart Transform direct-price cases. Sending stale direct-shaped lines to the
+      // discount resolver can accidentally revive the old checkout-discount path.
       continue;
     }
     if (line.merchandise?.__typename !== 'ProductVariant') {
