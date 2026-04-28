@@ -267,6 +267,23 @@
               null;
             var targetUnit = p._ripx_target_unit || null;
             var hasSellingPlan = !!(item && item.selling_plan_allocation);
+            var assignedVariant = p._ripx_variant || null;
+            var transformEligible =
+              !hasSellingPlan &&
+              String(priceMethod || '').toLowerCase() === 'direct_price_override' &&
+              targetUnit !== null &&
+              targetUnit !== '';
+            var transformBlockReason = transformEligible
+              ? null
+              : hasSellingPlan
+                ? 'selling_plan_line'
+                : String(priceMethod || '').toLowerCase() !== 'direct_price_override'
+                  ? 'not_direct_price_override'
+                  : targetUnit === null || targetUnit === ''
+                    ? assignedVariant && String(assignedVariant).toLowerCase() === 'control'
+                      ? 'control_variant_has_no_target_price'
+                      : 'missing_ripx_target_unit'
+                    : 'not_eligible';
             return {
               row: idx + 1,
               key: item && item.key ? item.key : null,
@@ -279,13 +296,10 @@
               priceMethod: priceMethod,
               targetUnit: targetUnit,
               priceTest: p._ripx_price_test || null,
-              assignedVariant: p._ripx_variant || null,
+              assignedVariant: assignedVariant,
               hasSellingPlan: hasSellingPlan,
-              transformEligible:
-                !hasSellingPlan &&
-                String(priceMethod || '').toLowerCase() === 'direct_price_override' &&
-                targetUnit !== null &&
-                targetUnit !== '',
+              transformEligible: transformEligible,
+              transformBlockReason: transformBlockReason,
             };
           })
         : [];
@@ -516,6 +530,7 @@
       variantId: obj.variantId ? String(obj.variantId) : null,
       variantName: obj.variantName ? String(obj.variantName) : null,
       tenantDomain: obj.tenantDomain ? String(obj.tenantDomain) : null,
+      simple: obj.simple === true || obj.simple === '1',
       persistedAtMs:
         Number.isFinite(persistedAtMs) && persistedAtMs > 0 ? Math.round(persistedAtMs) : null,
     };
@@ -578,11 +593,14 @@
   const windowNamePreview = readWindowNamePreviewCtx();
 
   const _urlPreview = getPreviewParam('ab_preview') === '1';
-  const PREVIEW_SIMPLE_MODE = getPreviewParam('ab_preview_simple') === '1';
   const _urlPreviewTest = getPreviewParam('ab_preview_test');
   const _urlPreviewVariantId = getPreviewParam('ab_preview_variant');
   const _urlPreviewVariantName = getPreviewParam('ab_preview_variant_name');
   const _urlPreviewTenantDomain = getPreviewParam('ab_preview_domain');
+  const PREVIEW_SIMPLE_MODE =
+    getPreviewParam('ab_preview_simple') === '1' ||
+    !!(persistedPreview && persistedPreview.preview && persistedPreview.simple) ||
+    !!(windowNamePreview && windowNamePreview.preview && windowNamePreview.simple);
 
   const HAS_URL_PREVIEW_CTX = !!(
     _urlPreview ||
@@ -851,6 +869,7 @@
       variantId: PREVIEW_VARIANT_ID || null,
       variantName: PREVIEW_VARIANT_NAME || null,
       tenantDomain: PREVIEW_TENANT_DOMAIN || null,
+      simple: PREVIEW_SIMPLE_MODE,
     });
     if (
       windowNamePreview &&
@@ -859,6 +878,35 @@
       clearWindowNamePreviewCtx();
     }
   }
+
+  function cleanSimplePreviewUrlAfterSeed() {
+    if (!PREVIEW_SIMPLE_MODE || !HAS_URL_PREVIEW_CTX) return;
+    if (!window.history || typeof window.history.replaceState !== 'function') return;
+    try {
+      var current = new URL(window.location.href || '', window.location.origin);
+      if (current.searchParams.get('url')) return;
+      [
+        'ab_preview',
+        'ab_preview_simple',
+        'ab_preview_test',
+        'ab_preview_variant',
+        'ab_preview_variant_name',
+        'ab_preview_domain',
+      ].forEach(function (key) {
+        current.searchParams.delete(key);
+      });
+      var cleanPath = current.pathname + current.search + current.hash;
+      window.history.replaceState(window.history.state || null, document.title || '', cleanPath);
+      try {
+        window.__RIPX_SIMPLE_PREVIEW_CLEAN_URL__ = {
+          cleaned: true,
+          at: Date.now(),
+          href: current.toString(),
+        };
+      } catch (_eCleanStatus) {}
+    } catch (_eCleanUrl) {}
+  }
+  cleanSimplePreviewUrlAfterSeed();
 
   function whenConsent(cb) {
     // Preview QA must run without waiting for marketing consent (otherwise RipX never mounts).
@@ -8669,6 +8717,7 @@
     window.__RIPX_TEST_HOOKS__.debugDescribeCartAddBody = debugDescribeCartAddBody;
     window.__RIPX_TEST_HOOKS__.looksLikeCartAddNearMiss = looksLikeCartAddNearMiss;
     window.__RIPX_TEST_HOOKS__.previewMode = PREVIEW_MODE;
+    window.__RIPX_TEST_HOOKS__.previewSimpleMode = PREVIEW_SIMPLE_MODE;
     window.__RIPX_TEST_HOOKS__.previewTestContext = PREVIEW_TEST_CONTEXT;
     window.__RIPX_TEST_HOOKS__.previewTestId = PREVIEW_TEST_ID;
     window.__RIPX_TEST_HOOKS__.shouldRunPriceTestOnCurrentPage = shouldRunPriceTestOnCurrentPage;

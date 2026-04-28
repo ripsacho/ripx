@@ -89,6 +89,7 @@ function bootStorefrontScriptHarness(opts = {}) {
     __RIPX_PRICE_PREVIEW_FRAME__: Boolean(opts.pricePreviewFrame),
     location,
     sessionStorage,
+    history: opts.history || { state: null, replaceState: jest.fn() },
     navigator: { userAgent: 'node-test' },
     document,
     setTimeout,
@@ -120,6 +121,7 @@ function bootStorefrontScriptHarness(opts = {}) {
     document,
     navigator: windowObj.navigator,
     location,
+    history: windowObj.history,
     URL,
     URLSearchParams,
     FormData,
@@ -232,11 +234,17 @@ describe('storefront script cart/add interceptors', () => {
       preview: true,
       testId: '11111111-1111-4111-8111-111111111111',
       variantId: 'Variant A',
+      simple: true,
+    });
+    expect(windowObj.history.replaceState).toHaveBeenCalledWith(null, '', '/products/demo');
+    expect(windowObj.__RIPX_SIMPLE_PREVIEW_CLEAN_URL__).toMatchObject({
+      cleaned: true,
+      href: 'https://example.com/products/demo',
     });
   });
 
   it('reads preview context from nested price-preview bootstrap url', () => {
-    const { hooks, sessionStore } = bootStorefrontScriptHarness({
+    const { hooks, sessionStore, windowObj } = bootStorefrontScriptHarness({
       pathname: '/apps/ripx/price-preview-bootstrap-v1',
       search:
         '?url=https%3A%2F%2Fexample.com%2Fproducts%2Fdemo%3Fab_preview%3D1%26ab_preview_simple%3D1%26ab_preview_test%3D22222222-2222-4222-8222-222222222222%26ab_preview_variant%3DVariant%2520B',
@@ -250,7 +258,29 @@ describe('storefront script cart/add interceptors', () => {
       preview: true,
       testId: '22222222-2222-4222-8222-222222222222',
       variantId: 'Variant B',
+      simple: true,
     });
+    expect(windowObj.history.replaceState).not.toHaveBeenCalled();
+  });
+
+  it('keeps persisted simple previews chrome-free after navigation drops query params', () => {
+    const { hooks, windowObj } = bootStorefrontScriptHarness({
+      search: '',
+      sessionStorage: {
+        __ripx_preview_ctx_v1__: JSON.stringify({
+          preview: true,
+          testId: '33333333-3333-4333-8333-333333333333',
+          variantId: 'Variant C',
+          simple: true,
+          persistedAtMs: Date.now(),
+        }),
+      },
+    });
+
+    expect(hooks.previewMode).toBe(true);
+    expect(hooks.previewTestId).toBe('33333333-3333-4333-8333-333333333333');
+    expect(hooks.previewSimpleMode).toBe(true);
+    expect(windowObj.history.replaceState).not.toHaveBeenCalled();
   });
 
   it('runs selected-product shipping tests on cart surfaces and injects signed cart state', () => {

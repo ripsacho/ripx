@@ -56,6 +56,7 @@
         variantId: variantId,
         variantName: variantName,
         tenantDomain: tenantDomain,
+        simple: params.get('ab_preview_simple') === '1',
         persistedAtMs: Date.now(),
       };
       window.sessionStorage.setItem(PREVIEW_STORAGE_KEY, JSON.stringify(ctx));

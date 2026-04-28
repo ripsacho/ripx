@@ -3621,12 +3621,14 @@ function TestWizard({
     if (isShopifyPreviewUrl(directPreviewUrl)) {
       if (isPricePreview) {
         // Price preview uses a dedicated bootstrap so RipX can inject before theme cart scripts and
-        // preserve debug state across Shopify section/cart updates. Simple preview keeps the same
-        // bootstrap for reliable cart/checkout handoff, but the bootstrap hides its UI.
-        finalPreviewUrl =
-          buildShopifyPricePreviewBootstrapUrl({
-            previewUrl: directPreviewUrl,
-          }) || directPreviewUrl;
+        // preserve debug state across Shopify section/cart updates. Customer-view/copy links should
+        // feel like live storefront links, so simple preview stays on the direct product URL and relies
+        // on the theme app embed/runtime to seed the preview context from the URL params.
+        finalPreviewUrl = options.simplePreview
+          ? directPreviewUrl
+          : buildShopifyPricePreviewBootstrapUrl({
+              previewUrl: directPreviewUrl,
+            }) || directPreviewUrl;
       } else {
         const launchPreviewUrl = buildPreviewLaunchUrl({
           apiBaseUrl: getApiBaseUrl(),
@@ -3639,6 +3641,14 @@ function TestWizard({
       }
     }
     return finalPreviewUrl;
+  };
+
+  const isPriceControlPreviewVariant = (variant, index) => {
+    if (!isPriceLikeTestType(formData.type || initialData?.type || selectedTemplate)) return false;
+    const name = String(variant?.name || '')
+      .trim()
+      .toLowerCase();
+    return index === 0 || name === 'control' || name.startsWith('control ');
   };
 
   const handlePreviewVariant = async (variant, index) => {
@@ -3683,6 +3693,10 @@ function TestWizard({
   };
 
   const handleSimplePreviewVariant = async (variant, index) => {
+    if (isPriceControlPreviewVariant(variant, index)) {
+      setError('Control has no changed price. Open a treatment variant for cart/checkout testing.');
+      return;
+    }
     if (mode === 'edit' && isDirty) {
       await handleSubmit({ silent: true });
       const stillDirty = JSON.stringify(buildPayload()) !== lastSavedSnapshotRef.current;
@@ -3724,6 +3738,10 @@ function TestWizard({
   };
 
   const handleCopyPreviewVariant = async (variant, index) => {
+    if (isPriceControlPreviewVariant(variant, index)) {
+      setError('Control has no changed price. Copy a treatment variant link instead.');
+      return null;
+    }
     if (mode === 'edit' && isDirty) {
       await handleSubmit({ silent: true });
       const stillDirty = JSON.stringify(buildPayload()) !== lastSavedSnapshotRef.current;
@@ -4084,6 +4102,9 @@ function TestWizard({
             onCopyPreviewVariant={
               mode === 'edit' && initialData?.id ? handleCopyPreviewVariant : undefined
             }
+            pricePreviewMode={isPriceLikeTestType(
+              formData.type || initialData?.type || selectedTemplate
+            )}
             compact
           />
           {!allocationValid && (

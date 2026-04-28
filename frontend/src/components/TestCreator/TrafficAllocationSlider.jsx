@@ -28,6 +28,7 @@ function TrafficAllocationSlider({
   onSimplePreviewVariant,
   getPreviewUrl,
   onCopyPreviewVariant,
+  pricePreviewMode = false,
   compact = false,
 }) {
   const [localVariants, setLocalVariants] = useState(variants || []);
@@ -371,6 +372,10 @@ function TrafficAllocationSlider({
   const clearErrorMessage = useCallback(() => setErrorMessage(null), []);
 
   const handleCopyPreviewLink = async (variant, index) => {
+    if (isPriceControlVariant(variant, index)) {
+      setErrorMessage('Control has no changed price. Copy a treatment variant link instead.');
+      return;
+    }
     const url = (await onCopyPreviewVariant?.(variant, index)) || getPreviewUrl?.(variant, index);
     if (!url) {
       setErrorMessage(
@@ -387,6 +392,13 @@ function TrafficAllocationSlider({
   };
 
   const COLORS = VARIANT_COLORS;
+  const isPriceControlVariant = (variant, index) => {
+    if (!pricePreviewMode) return false;
+    const name = String(variant?.name || '')
+      .trim()
+      .toLowerCase();
+    return index === 0 || name === 'control' || name.startsWith('control ');
+  };
 
   const content = (
     <div className={`${styles.wrapper} ${compact ? styles.wrapperCompact : ''}`}>
@@ -555,6 +567,13 @@ function TrafficAllocationSlider({
       <div className={styles.variantCards}>
         {localVariants.map((variant, index) => {
           const color = COLORS[index % COLORS.length];
+          const priceControlVariant = isPriceControlVariant(variant, index);
+          const customerTooltip = priceControlVariant
+            ? 'Control has no changed price. Open a treatment variant to test cart and checkout price changes.'
+            : 'Customer view: opens clean preview without debug UI';
+          const copyTooltip = priceControlVariant
+            ? 'Control has no changed price. Copy a treatment variant link instead.'
+            : 'Copy customer-view preview link';
 
           return (
             <div key={index} className={styles.variantCard} style={{ '--variant-color': color }}>
@@ -687,15 +706,21 @@ function TrafficAllocationSlider({
                         </Tooltip>
                       )}
                       {onSimplePreviewVariant && (
-                        <Tooltip
-                          content="Customer view: opens clean preview without debug UI"
-                          preferredPosition="above"
-                        >
+                        <Tooltip content={customerTooltip} preferredPosition="above">
                           <button
                             type="button"
-                            className={`${styles.cardActionBtn} ${styles.cardActionBtnCustomer}`}
-                            onClick={() => onSimplePreviewVariant(variant, index)}
+                            className={`${styles.cardActionBtn} ${styles.cardActionBtnCustomer} ${priceControlVariant ? styles.cardActionBtnDisabled : ''}`}
+                            onClick={() => {
+                              if (priceControlVariant) {
+                                setErrorMessage(
+                                  'Control has no changed price. Open a treatment variant instead.'
+                                );
+                                return;
+                              }
+                              onSimplePreviewVariant(variant, index);
+                            }}
                             aria-label="Open customer-view preview"
+                            aria-disabled={priceControlVariant ? 'true' : undefined}
                           >
                             <span className={styles.cardActionBtnIcon} aria-hidden>
                               <Icon source={PlayCircleIcon} />
@@ -705,15 +730,13 @@ function TrafficAllocationSlider({
                         </Tooltip>
                       )}
                       {getPreviewUrl && (
-                        <Tooltip
-                          content="Copy customer-view preview link"
-                          preferredPosition="above"
-                        >
+                        <Tooltip content={copyTooltip} preferredPosition="above">
                           <button
                             type="button"
-                            className={`${styles.cardActionBtn} ${styles.cardActionBtnCopy}`}
+                            className={`${styles.cardActionBtn} ${styles.cardActionBtnCopy} ${priceControlVariant ? styles.cardActionBtnDisabled : ''}`}
                             onClick={() => handleCopyPreviewLink(variant, index)}
                             aria-label="Copy customer-view preview link"
+                            aria-disabled={priceControlVariant ? 'true' : undefined}
                           >
                             <span className={styles.cardActionBtnIcon} aria-hidden>
                               <Icon source={LinkIcon} />

@@ -93,13 +93,14 @@ Flow:
 3. The price preview route is implemented by `backend/src/routes/pricePreviewBootstrap.js` and registered from `backend/src/routes/proxyRoutes.js`; failures usually triage through app-proxy registration, CSP, and preview request validation.
 4. `init` merges the preview test into `CONFIG.activeTests` even when the test is draft or not present in active embedded config.
 5. `getVariant` uses preview endpoints/cache and never creates live assignments for preview sessions.
-6. Simple preview (`ab_preview_simple=1`) suppresses debug UI, but Shopify price-test links still use the price-preview bootstrap so RipX loads before theme cart scripts and can attach Cart Transform line properties reliably.
+6. Debug preview uses the price-preview bootstrap. Customer-view/copy links use the direct storefront product URL with `ab_preview_simple=1`; after the runtime seeds `sessionStorage`, it removes the `ab_preview*` params from the visible address bar so the page feels like a live storefront while the simple preview context remains sticky through cart updates and navigation.
 
 Debug first:
 
 - `sessionStorage.getItem('__ripx_preview_ctx_v1__')`
 - `window.__RIPX_BOOTSTRAP_OK__`
 - `window.__RIPX_PREVIEW_MERGE__`
+- Customer-view/copy links only: `window.__RIPX_SIMPLE_PREVIEW_CLEAN_URL__`
 - On the price bootstrap shell: `window.RipXPricePreview?.debugStatus?.()`
 - On the loaded product runtime: `window.RipX?.debugStatus?.()`
 
@@ -182,8 +183,8 @@ Preview URL contract:
 
 - Required for a chosen arm: `ab_preview_test`, `ab_preview_variant`, and `ab_preview_domain`.
 - Expected on generated links: `ab_preview=1`.
-- Simple preview adds `ab_preview_simple=1`; it suppresses the floating debug UI but still uses the price-preview bootstrap for Shopify price tests.
-- Full Shopify price preview should open through `/apps/ripx/price-preview-bootstrap-v1?url=...`.
+- Customer-view/copy links add `ab_preview_simple=1` and should stay on the storefront product URL, not `/apps/ripx/price-preview-bootstrap-v1`.
+- Full Shopify debug preview should open through `/apps/ripx/price-preview-bootstrap-v1?url=...`.
 
 Runtime assignment contract:
 
