@@ -23,6 +23,7 @@ function buildPreviewCtx() {
       variantId: tu.searchParams.get('ab_preview_variant') || null,
       variantName: tu.searchParams.get('ab_preview_variant_name') || null,
       tenantDomain: tu.searchParams.get('ab_preview_domain') || null,
+      simple: tu.searchParams.get('ab_preview_simple') === '1',
       persistedAtMs: Date.now()
     };
   } catch (_e) {
@@ -206,6 +207,34 @@ function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }) {
           } catch (_e2) {}
         }
 
+        function cleanSimplePreviewAddressBar() {
+          if (!simplePreview || !window.history || typeof window.history.replaceState !== 'function') return;
+          try {
+            var clean = new URL(target, window.location.origin);
+            [
+              'ab_preview',
+              'ab_preview_simple',
+              'ab_preview_test',
+              'ab_preview_variant',
+              'ab_preview_variant_name',
+              'ab_preview_domain'
+            ].forEach(function (key) {
+              clean.searchParams.delete(key);
+            });
+            window.history.replaceState(
+              window.history.state || null,
+              document.title || '',
+              clean.pathname + clean.search + clean.hash
+            );
+            window.__RIPX_SIMPLE_PREVIEW_CLEAN_URL__ = {
+              cleaned: true,
+              at: Date.now(),
+              href: clean.toString(),
+              source: 'price-preview-bootstrap'
+            };
+          } catch (_eClean) {}
+        }
+
         function buildPriceBootstrapUrl(urlValue) {
           try {
             var parsed = new URL(urlValue || target, window.location.origin);
@@ -341,6 +370,7 @@ function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }) {
           document.replaceChild(importedRoot, document.documentElement);
           mounted = true;
           persistPreviewCtx(window);
+          cleanSimplePreviewAddressBar();
           installNavigationGuard();
           injectRipxRuntimeThenScripts(scriptNodes);
         }

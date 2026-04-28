@@ -93,7 +93,7 @@ Flow:
 3. The price preview route is implemented by `backend/src/routes/pricePreviewBootstrap.js` and registered from `backend/src/routes/proxyRoutes.js`; failures usually triage through app-proxy registration, CSP, and preview request validation.
 4. `init` merges the preview test into `CONFIG.activeTests` even when the test is draft or not present in active embedded config.
 5. `getVariant` uses preview endpoints/cache and never creates live assignments for preview sessions.
-6. Debug preview uses the price-preview bootstrap. Customer-view/copy links use the direct storefront product URL with `ab_preview_simple=1`; after the runtime seeds `sessionStorage`, it removes the `ab_preview*` params from the visible address bar so the page feels like a live storefront while the simple preview context remains sticky through cart updates and navigation.
+6. Price tests use the price-preview bootstrap for debug and customer/copy modes because cart-line properties must be injected before theme cart scripts run. Customer-view/copy links add `ab_preview_simple=1`; the bootstrap hides its UI, seeds `sessionStorage`, and removes the `ab_preview*` params from the visible address bar so the page feels like a live storefront while the preview context remains sticky.
 
 Debug first:
 
@@ -183,8 +183,8 @@ Preview URL contract:
 
 - Required for a chosen arm: `ab_preview_test`, `ab_preview_variant`, and `ab_preview_domain`.
 - Expected on generated links: `ab_preview=1`.
-- Customer-view/copy links add `ab_preview_simple=1` and should stay on the storefront product URL, not `/apps/ripx/price-preview-bootstrap-v1`.
-- Full Shopify debug preview should open through `/apps/ripx/price-preview-bootstrap-v1?url=...`.
+- Customer-view/copy links add `ab_preview_simple=1` and open through `/apps/ripx/price-preview-bootstrap-v1?url=...`; the bootstrap should hide its UI and clean the visible address bar after the product document is mounted.
+- Full Shopify debug preview also opens through `/apps/ripx/price-preview-bootstrap-v1?url=...`, but keeps the debug status bar visible.
 
 Runtime assignment contract:
 
