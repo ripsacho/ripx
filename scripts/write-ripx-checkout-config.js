@@ -48,6 +48,27 @@ const probeAttributeMatrix =
     .trim()
     .toLowerCase() === 'true';
 
+function isEphemeralTunnelUrl(rawUrl) {
+  if (!rawUrl) return false;
+  try {
+    const host = new URL(rawUrl).hostname.toLowerCase();
+    return (
+      host.endsWith('.trycloudflare.com') ||
+      host.endsWith('.ngrok.io') ||
+      host.endsWith('.ngrok-free.app') ||
+      host.endsWith('.loca.lt') ||
+      host.endsWith('.serveo.net')
+    );
+  } catch {
+    return false;
+  }
+}
+
+const allowEphemeralCheckoutConfig =
+  String(process.env.RIPX_ALLOW_EPHEMERAL_CHECKOUT_CONFIG || '')
+    .trim()
+    .toLowerCase() === 'true';
+
 if (!batchUrl || !shippingBatchUrl) {
   console.error(
     '[write-ripx-checkout-config] Set APP_URL or RIPX_{PRICE,SHIPPING}_RESOLVE_BATCH_URL in .env (repo root), then re-run.'
@@ -59,6 +80,24 @@ if (!checkoutAssignmentUrl && appUrl) {
 }
 if (!checkoutConversionUrl && appUrl) {
   checkoutConversionUrl = `${appUrl}/api/track/checkout-conversion`;
+}
+
+const urlsToCheck = [
+  ['RIPX_PRICE_RESOLVE_BATCH_URL', batchUrl],
+  ['RIPX_SHIPPING_RESOLVE_BATCH_URL', shippingBatchUrl],
+  ['RIPX_CHECKOUT_ASSIGNMENT_URL', checkoutAssignmentUrl],
+  ['RIPX_CHECKOUT_CONVERSION_URL', checkoutConversionUrl],
+].filter(([, value]) => value);
+const ephemeralUrls = urlsToCheck.filter(([, value]) => isEphemeralTunnelUrl(value));
+if (ephemeralUrls.length > 0 && !allowEphemeralCheckoutConfig) {
+  console.error(
+    '[write-ripx-checkout-config] Refusing to write checkout config with ephemeral tunnel URLs.'
+  );
+  ephemeralUrls.forEach(([name, value]) => console.error(`  ${name} = ${value}`));
+  console.error(
+    'Set APP_URL/RIPX_* URLs to the deployed app host before Shopify Function deploy. For local dev only, set RIPX_ALLOW_EPHEMERAL_CHECKOUT_CONFIG=true.'
+  );
+  process.exit(1);
 }
 
 const dest = path.join(__dirname, '../extensions/ripx-checkout-discount/src/ripxConfig.js');
