@@ -215,6 +215,20 @@ export default function TestEditor() {
     function handleMessage(event) {
       try {
         if (
+          event.data?.type === 'ripx-visual-editor-ready' ||
+          event.data?.type === 'ripx-visual-picker-ready'
+        ) {
+          setPreviewLoadState('loaded');
+          if (event.data.type === 'ripx-visual-picker-ready') {
+            setToast({ message: 'Visual picker ready', type: 'success' });
+          }
+          return;
+        }
+        if (event.data?.type === 'ripx-preview-error') {
+          setPreviewLoadState('error');
+          return;
+        }
+        if (
           event.data?.type === 'ripx-visual-selector' &&
           typeof event.data.selector === 'string'
         ) {
@@ -333,7 +347,7 @@ export default function TestEditor() {
                             title={`Preview: ${currentVariant?.name || `Variant ${safeIndex + 1}`}`}
                             src={previewIframeSrc}
                             className={styles.previewIframe}
-                            sandbox="allow-scripts allow-same-origin allow-forms"
+                            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
                             onLoad={handlePreviewLoad}
                             onError={handlePreviewError}
                           />

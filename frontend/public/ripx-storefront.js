@@ -5537,10 +5537,33 @@
    * Visual editor element picker: overlay, highlight hovered element, on click send selector to opener or copy.
    * Runs in the embedded editor iframe or a tab opened from the editor with ab_visual_picker=1.
    */
+  function postVisualEditorStatus(type, details) {
+    var payload = Object.assign(
+      {
+        type: type,
+        source: 'ripx-visual-editor',
+        href: String(window.location.href || ''),
+        version: SCRIPT_VERSION,
+      },
+      details || {}
+    );
+    try {
+      if (window.opener && !window.opener.closed) window.opener.postMessage(payload, '*');
+    } catch (_eOpenerPost) {}
+    try {
+      if (IN_IFRAME && window.parent && window.parent !== window)
+        window.parent.postMessage(payload, '*');
+    } catch (_eParentPost) {}
+  }
+
   function initVisualPicker() {
     if (!IN_IFRAME && !HAS_VISUAL_PICKER_OPENER) return;
     if (!document.body) {
       setTimeout(initVisualPicker, 50);
+      return;
+    }
+    if (document.getElementById('ripx-visual-picker-overlay')) {
+      postVisualEditorStatus('ripx-visual-picker-ready', { duplicate: true });
       return;
     }
     var overlay = document.createElement('div');
@@ -5642,6 +5665,7 @@
     document.body.appendChild(overlay);
     document.body.appendChild(box);
     document.body.appendChild(bar);
+    postVisualEditorStatus('ripx-visual-picker-ready', { mode: IN_IFRAME ? 'iframe' : 'opener' });
 
     var barHeight = bar.offsetHeight;
 
@@ -5732,6 +5756,10 @@
       setTimeout(initVisualEditorEmbed, 25);
       return;
     }
+    if (document.getElementById('ripx-visual-editor-overlay')) {
+      postVisualEditorStatus('ripx-visual-editor-ready', { duplicate: true });
+      return;
+    }
     visualEditorEmbedInitialized = true;
     var targetWindow = window.parent;
     if (!targetWindow) return;
@@ -5757,6 +5785,7 @@
     document.body.appendChild(overlay);
     document.body.appendChild(box);
     document.body.appendChild(hint);
+    postVisualEditorStatus('ripx-visual-editor-ready', { mode: 'iframe' });
 
     function setHighlight(rect) {
       if (!rect || (rect.width === 0 && rect.height === 0)) {

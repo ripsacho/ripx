@@ -656,7 +656,7 @@ router.get(
 );
 
 const PREVIEW_FALLBACK_HTML =
-  '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Preview unavailable</title></head><body style="margin:0;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f3f4f6;color:#6b7280;"><script>try{window.parent.postMessage({type:"ripx-preview-error"},"*");}catch(e){}</script><p style="margin:0;font-size:0.9375rem;">Preview unavailable. Check the URL or try again.</p></body></html>';
+  '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Preview unavailable</title></head><body style="margin:0;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f3f4f6;color:#6b7280;"><script>try{var msg={type:"ripx-preview-error",source:"ripx-preview-document"};if(window.parent&&window.parent!==window)window.parent.postMessage(msg,"*");if(window.opener&&!window.opener.closed)window.opener.postMessage(msg,"*");}catch(e){}</script><p style="margin:0;font-size:0.9375rem;">Preview unavailable. Check the URL or try again.</p></body></html>';
 
 function sendPreviewFallback(res) {
   res

@@ -80,6 +80,26 @@ describe('previewUrl', () => {
     expect(url.searchParams.get(PREVIEW_PARAMS.VISUAL_PICKER)).toBe('1');
   });
 
+  it('preserves simple preview mode through preview-document URLs', () => {
+    const previewUrl = buildPreviewUrl({
+      baseUrl: 'https://makripon.myshopify.com/products/test-product',
+      testId: '1d1f39c4-4083-44f4-b046-1c341b88cc29',
+      variantId: 'variant-a',
+      variantName: 'Variant A',
+      simplePreview: true,
+    });
+
+    const result = buildPreviewDocumentUrl({
+      apiBaseUrl: '/api',
+      previewUrl,
+      visualEditor: true,
+    });
+
+    const url = new URL(result, 'https://app.example.com');
+    expect(url.searchParams.get('url')).toBe(previewUrl);
+    expect(url.searchParams.get(PREVIEW_PARAMS.SIMPLE)).toBe('1');
+  });
+
   it('builds preview-launch URL and preserves preview params', () => {
     const previewUrl = buildPreviewUrl({
       baseUrl: 'https://makripon.myshopify.com/products/test-product',
@@ -87,6 +107,7 @@ describe('previewUrl', () => {
       variantId: 'variant-a',
       variantName: 'Variant A',
       tenantDomain: 'echologyx.com',
+      simplePreview: true,
     });
 
     const result = buildPreviewLaunchUrl({
@@ -101,6 +122,7 @@ describe('previewUrl', () => {
       '1d1f39c4-4083-44f4-b046-1c341b88cc29'
     );
     expect(url.searchParams.get(PREVIEW_PARAMS.TENANT_DOMAIN)).toBe('echologyx.com');
+    expect(url.searchParams.get(PREVIEW_PARAMS.SIMPLE)).toBe('1');
   });
 
   it('builds Shopify preview-bootstrap URL for myshopify preview', () => {

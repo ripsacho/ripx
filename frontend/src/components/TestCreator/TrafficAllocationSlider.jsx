@@ -26,6 +26,7 @@ function TrafficAllocationSlider({
   onPreviewVariant,
   onSimplePreviewVariant,
   getPreviewUrl,
+  onCopyPreviewVariant,
   compact = false,
 }) {
   const [localVariants, setLocalVariants] = useState(variants || []);
@@ -369,11 +370,16 @@ function TrafficAllocationSlider({
   const clearErrorMessage = useCallback(() => setErrorMessage(null), []);
 
   const handleCopyPreviewLink = async (variant, index) => {
-    const url = getPreviewUrl?.(variant, index);
-    if (!url) return;
+    const url = (await onCopyPreviewVariant?.(variant, index)) || getPreviewUrl?.(variant, index);
+    if (!url) {
+      setErrorMessage(
+        'Preview link is not available yet. Check the shop domain and target product.'
+      );
+      return;
+    }
     try {
       await navigator.clipboard.writeText(url);
-      setCopySuccess(`Preview link copied for ${variant?.name || `Variant ${index + 1}`}`);
+      setCopySuccess(`Customer-view link copied for ${variant?.name || `Variant ${index + 1}`}`);
     } catch {
       setErrorMessage('Failed to copy link');
     }
@@ -657,56 +663,69 @@ function TrafficAllocationSlider({
                     </button>
                   </div>
                 </div>
-                <div className={styles.variantCardActions}>
-                  {onPreviewVariant && (
-                    <Tooltip content="Open in new tab" preferredPosition="above">
-                      <button
-                        type="button"
-                        className={`${styles.cardActionBtn} ${styles.cardActionBtnPrimary}`}
-                        onClick={() => onPreviewVariant(variant, index)}
-                        aria-label="Preview variant"
-                      >
-                        <span className={styles.cardActionBtnIcon} aria-hidden>
-                          <Icon source={ViewIcon} />
-                        </span>
-                        <span className={styles.cardActionBtnLabel}>Preview</span>
-                      </button>
-                    </Tooltip>
-                  )}
-                  {onSimplePreviewVariant && (
-                    <Tooltip
-                      content="Open simple preview without debug shell"
-                      preferredPosition="above"
-                    >
-                      <button
-                        type="button"
-                        className={styles.cardActionBtn}
-                        onClick={() => onSimplePreviewVariant(variant, index)}
-                        aria-label="Open simple preview"
-                      >
-                        <span className={styles.cardActionBtnIcon} aria-hidden>
-                          <Icon source={ViewIcon} />
-                        </span>
-                        <span className={styles.cardActionBtnLabel}>Simple</span>
-                      </button>
-                    </Tooltip>
-                  )}
-                  {getPreviewUrl && (
-                    <Tooltip content="Copy URL" preferredPosition="above">
-                      <button
-                        type="button"
-                        className={styles.cardActionBtn}
-                        onClick={() => handleCopyPreviewLink(variant, index)}
-                        aria-label="Copy preview link"
-                      >
-                        <span className={styles.cardActionBtnIcon} aria-hidden>
-                          <Icon source={LinkIcon} />
-                        </span>
-                        <span className={styles.cardActionBtnLabel}>Copy link</span>
-                      </button>
-                    </Tooltip>
-                  )}
-                </div>
+                {(onPreviewVariant || onSimplePreviewVariant || getPreviewUrl) && (
+                  <div className={styles.variantCardActions}>
+                    <div className={styles.previewActionHeader}>
+                      <span className={styles.previewActionTitle}>Preview tools</span>
+                      <span className={styles.previewActionHint}>
+                        Debug for diagnosis, customer view for clean testing.
+                      </span>
+                    </div>
+                    <div className={styles.previewActionButtons}>
+                      {onPreviewVariant && (
+                        <Tooltip
+                          content="Open with RipX debug tools visible"
+                          preferredPosition="above"
+                        >
+                          <button
+                            type="button"
+                            className={`${styles.cardActionBtn} ${styles.cardActionBtnPrimary}`}
+                            onClick={() => onPreviewVariant(variant, index)}
+                            aria-label="Open debug preview"
+                          >
+                            <span className={styles.cardActionBtnIcon} aria-hidden>
+                              <Icon source={ViewIcon} />
+                            </span>
+                            <span className={styles.cardActionBtnLabel}>Debug preview</span>
+                          </button>
+                        </Tooltip>
+                      )}
+                      {onSimplePreviewVariant && (
+                        <Tooltip
+                          content="Open without debug UI for a customer-like check"
+                          preferredPosition="above"
+                        >
+                          <button
+                            type="button"
+                            className={styles.cardActionBtn}
+                            onClick={() => onSimplePreviewVariant(variant, index)}
+                            aria-label="Open customer-view preview"
+                          >
+                            <span className={styles.cardActionBtnIcon} aria-hidden>
+                              <Icon source={ViewIcon} />
+                            </span>
+                            <span className={styles.cardActionBtnLabel}>Customer view</span>
+                          </button>
+                        </Tooltip>
+                      )}
+                      {getPreviewUrl && (
+                        <Tooltip content="Copy customer-view preview URL" preferredPosition="above">
+                          <button
+                            type="button"
+                            className={styles.cardActionBtn}
+                            onClick={() => handleCopyPreviewLink(variant, index)}
+                            aria-label="Copy customer-view preview link"
+                          >
+                            <span className={styles.cardActionBtnIcon} aria-hidden>
+                              <Icon source={LinkIcon} />
+                            </span>
+                            <span className={styles.cardActionBtnLabel}>Copy customer link</span>
+                          </button>
+                        </Tooltip>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           );

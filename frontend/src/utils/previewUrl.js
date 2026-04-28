@@ -221,6 +221,7 @@ export function buildPreviewDocumentUrl({
       PREVIEW_PARAMS.VARIANT_ID,
       PREVIEW_PARAMS.VARIANT_NAME,
       PREVIEW_PARAMS.TENANT_DOMAIN,
+      PREVIEW_PARAMS.SIMPLE,
       PREVIEW_PARAMS.VISUAL_PICKER,
     ].forEach(key => {
       const value = directUrl.searchParams.get(key);
@@ -273,6 +274,7 @@ export function buildPreviewLaunchUrl({ apiBaseUrl, previewUrl }) {
       PREVIEW_PARAMS.VARIANT_ID,
       PREVIEW_PARAMS.VARIANT_NAME,
       PREVIEW_PARAMS.TENANT_DOMAIN,
+      PREVIEW_PARAMS.SIMPLE,
     ].forEach(key => {
       const value = directUrl.searchParams.get(key);
       if (value !== undefined && value !== null && value !== '') {

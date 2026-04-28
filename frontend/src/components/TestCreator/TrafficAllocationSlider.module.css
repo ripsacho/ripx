@@ -866,12 +866,42 @@
 
 .variantCardActions {
   display: flex;
+  flex-direction: column;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: stretch;
   gap: 10px;
   padding-top: 14px;
   margin-top: 2px;
   border-top: 1px solid var(--traffic-border);
+}
+
+.previewActionHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.previewActionTitle {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--traffic-text);
+}
+
+.previewActionHint {
+  font-size: 0.75rem;
+  color: var(--traffic-muted);
+  line-height: 1.3;
+}
+
+.previewActionButtons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .cardActionBtn {
@@ -889,6 +919,10 @@
   color: var(--traffic-text);
   cursor: pointer;
   transition: background var(--traffic-time-200), border-color var(--traffic-time-200), color var(--traffic-time-200);
+}
+
+.previewActionButtons .cardActionBtn {
+  flex: 1 1 142px;
 }
 
 .cardActionBtnIcon {
@@ -1065,9 +1099,15 @@
 
 
 /* Polaris Tooltip wrapper - ensure buttons align properly */
-.variantCardActions .Polaris-Tooltip-Wrapper,
-.variantCardActions [class*="Tooltip"] {
+.previewActionButtons .Polaris-Tooltip-Wrapper,
+.previewActionButtons [class*="Tooltip"] {
   display: inline-flex;
+  flex: 1 1 142px;
+}
+
+.previewActionButtons .Polaris-Tooltip-Wrapper .cardActionBtn,
+.previewActionButtons [class*="Tooltip"] .cardActionBtn {
+  width: 100%;
 }
 
 /* Enhanced tooltip styling - Polaris tooltips (variant card actions) */

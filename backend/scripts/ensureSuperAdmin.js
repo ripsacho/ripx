@@ -108,8 +108,7 @@ async function ensureSuperAdmin() {
     throw new Error(`Failed to load super admin user ${email} after upsert.`);
   }
 
-  const { ensureAccountForUser } = standaloneUser;
-  const accountResult = await ensureAccountForUser(user.id);
+  const accountResult = await standaloneUser.ensureAccountForUser(user.id);
   if (!accountResult?.accountId) {
     throw new Error(`Failed to ensure account for super admin ${email}.`);
   }

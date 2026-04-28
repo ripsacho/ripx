@@ -93,7 +93,7 @@ Flow:
 3. The price preview route is implemented by `backend/src/routes/pricePreviewBootstrap.js` and registered from `backend/src/routes/proxyRoutes.js`; failures usually triage through app-proxy registration, CSP, and preview request validation.
 4. `init` merges the preview test into `CONFIG.activeTests` even when the test is draft or not present in active embedded config.
 5. `getVariant` uses preview endpoints/cache and never creates live assignments for preview sessions.
-6. Simple preview (`ab_preview_simple=1`) suppresses debug UI and clears `sessionStorage` + `window.name` preview context on load for a live-like page check.
+6. Simple preview (`ab_preview_simple=1`) suppresses debug UI, but Shopify price-test links still use the price-preview bootstrap so RipX loads before theme cart scripts and can attach Cart Transform line properties reliably.
 
 Debug first:
 
@@ -182,7 +182,7 @@ Preview URL contract:
 
 - Required for a chosen arm: `ab_preview_test`, `ab_preview_variant`, and `ab_preview_domain`.
 - Expected on generated links: `ab_preview=1`.
-- Simple preview adds `ab_preview_simple=1`; this clears persisted preview state on load and suppresses the floating debug UI.
+- Simple preview adds `ab_preview_simple=1`; it suppresses the floating debug UI but still uses the price-preview bootstrap for Shopify price tests.
 - Full Shopify price preview should open through `/apps/ripx/price-preview-bootstrap-v1?url=...`.
 
 Runtime assignment contract:

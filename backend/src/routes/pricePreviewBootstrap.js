@@ -53,6 +53,13 @@ function persistPreviewCtx(targetWindow) {
 
 function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }) {
   const previewContextScript = buildPreviewContextScript(targetUrl);
+  const simplePreview = (() => {
+    try {
+      return new URL(targetUrl).searchParams.get('ab_preview_simple') === '1';
+    } catch (_e) {
+      return false;
+    }
+  })();
 
   return `<!doctype html>
 <html lang="en">
@@ -104,7 +111,7 @@ function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }) {
     </style>
   </head>
   <body>
-    <div class="ripx-price-preview-bar" id="ripx-price-preview-bar">
+    <div class="ripx-price-preview-bar" id="ripx-price-preview-bar" style="${simplePreview ? 'display:none' : ''}">
       <span class="ripx-price-preview-dot" id="ripx-price-preview-dot"></span>
       <span id="ripx-price-preview-status">Loading price preview...</span>
       <button type="button" id="ripx-price-preview-retry">Retry</button>
@@ -114,6 +121,7 @@ function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }) {
       (function () {
         var target = ${JSON.stringify(targetUrl)};
         var appProxyScriptUrl = ${JSON.stringify(appProxyScriptUrl)};
+        var simplePreview = ${JSON.stringify(simplePreview)};
         var statusEl = document.getElementById('ripx-price-preview-status');
         var dotEl = document.getElementById('ripx-price-preview-dot');
         var retryButton = document.getElementById('ripx-price-preview-retry');
@@ -125,6 +133,7 @@ function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }) {
         ${previewContextScript}
 
         function ensureStatusBar() {
+          if (simplePreview) return;
           if (statusEl && document.documentElement.contains(statusEl)) return;
           if (!document.body) return;
           var style = document.getElementById('ripx-price-preview-style');
