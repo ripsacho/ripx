@@ -1258,7 +1258,9 @@
     }
   }
 
-  // Batch variant cache: pre-fetch all assignments in one request (reduces flicker)
+  // Batch variant cache: pre-fetch live assignments before per-test application starts.
+  // Backend caps /track/variants at 50 test IDs; chunk client-side so every running test can still bucket.
+  const LIVE_VARIANT_BATCH_SIZE = 50;
   var _variantCachePromise = null;
   /** Single in-flight GET /track/preview per page (main loop + visual preview + reapply share it). */
   var _previewVariantInflight = null;
@@ -1468,11 +1470,18 @@
     }
     const userId = getUserId();
     const shopDomain = getShopDomain();
-    const testIds = CONFIG.activeTests
+    const requestedTestIds = CONFIG.activeTests
       .map(function (t) {
         return t.id;
       })
-      .join(',');
+      .filter(Boolean);
+    const testIds = requestedTestIds.join(',');
+    if (!requestedTestIds.length) {
+      recordRipxSkip('runtime', 'no_active_test_ids', {
+        activeTestsCount: CONFIG.activeTests ? CONFIG.activeTests.length : 0,
+      });
+      return Promise.resolve({});
+    }
     const device = getDeviceType();
     const customer = getCustomerType();
     const country = getCountryCode();
@@ -1492,10 +1501,9 @@
     });
 
     const urlParams = new URLSearchParams(window.location.search);
-    const params = new URLSearchParams({
+    const baseParams = new URLSearchParams({
       user_id: userId,
       shop_domain: shopDomain,
-      test_ids: testIds,
       device: device,
       customer: customer,
       country: country || '',
@@ -1509,37 +1517,101 @@
     });
     var cProductId = getCurrentProductId();
     var cCollectionId = getCurrentCollectionId();
-    if (cProductId) params.set('current_product_id', cProductId);
-    if (cCollectionId) params.set('current_collection_id', cCollectionId);
+    if (cProductId) baseParams.set('current_product_id', cProductId);
+    if (cCollectionId) baseParams.set('current_collection_id', cCollectionId);
     if (Object.keys(jsTargetingResults).length > 0) {
-      params.set('js_targeting_results', JSON.stringify(jsTargetingResults));
+      baseParams.set('js_targeting_results', JSON.stringify(jsTargetingResults));
     }
-    params.set('ripx_diag', 'live_batch');
-    var variantsUrl = CONFIG.apiUrl + '/track/variants?' + params.toString();
+    baseParams.set('ripx_diag', 'live_batch');
+    var testIdChunks = [];
+    for (
+      var chunkStart = 0;
+      chunkStart < requestedTestIds.length;
+      chunkStart += LIVE_VARIANT_BATCH_SIZE
+    ) {
+      testIdChunks.push(requestedTestIds.slice(chunkStart, chunkStart + LIVE_VARIANT_BATCH_SIZE));
+    }
     persistRipxLiveDiagnostics('variants_request', {
       testIds: testIds,
+      requestedTestIds: requestedTestIds,
+      chunkCount: testIdChunks.length,
       productId: cProductId || null,
       collectionId: cCollectionId || null,
       pathname: currentPathname,
     });
-    _variantCachePromise = fetchWithRetry(variantsUrl, { method: 'GET' }, 8000, 600)
-      .then(function (r) {
-        if (!r.ok) {
-          recordRipxSkip('runtime', 'variants_request_http_error', { status: r.status });
-          return { variants: {} };
-        }
-        return r.json();
-      })
-      .then(function (data) {
-        var variants = data.variants || {};
+    function fetchVariantChunk(chunkIds, chunkIndex) {
+      var params = new URLSearchParams(baseParams.toString());
+      params.set('test_ids', chunkIds.join(','));
+      var variantsUrl = CONFIG.apiUrl + '/track/variants?' + params.toString();
+      return fetchWithRetry(variantsUrl, { method: 'GET' }, 8000, 600)
+        .then(function (r) {
+          if (!r.ok) {
+            recordRipxSkip('runtime', 'variants_request_http_error', {
+              status: r.status,
+              chunkIndex: chunkIndex,
+              testIds: chunkIds,
+            });
+            return { variants: {}, diagnostics: null };
+          }
+          return r.json();
+        })
+        .then(function (data) {
+          return {
+            variants: (data && data.variants) || {},
+            diagnostics: data && data.diagnostics ? data.diagnostics : null,
+            chunkIndex: chunkIndex,
+          };
+        })
+        .catch(function (err) {
+          recordRipxSkip('runtime', 'variants_request_failed', {
+            error: err && (err.message || err.name || String(err)),
+            chunkIndex: chunkIndex,
+            testIds: chunkIds,
+          });
+          return { variants: {}, diagnostics: null, chunkIndex: chunkIndex };
+        });
+    }
+    function fetchVariantChunksSequentially() {
+      var results = [];
+      return testIdChunks
+        .reduce(function (promise, chunkIds, chunkIndex) {
+          return promise.then(function () {
+            return fetchVariantChunk(chunkIds, chunkIndex).then(function (result) {
+              results.push(result);
+            });
+          });
+        }, Promise.resolve())
+        .then(function () {
+          return results;
+        });
+    }
+    _variantCachePromise = fetchVariantChunksSequentially()
+      .then(function (results) {
+        var variants = {};
+        var backendDiagnostics = [];
+        (results || []).forEach(function (result) {
+          if (result && result.variants && typeof result.variants === 'object') {
+            Object.keys(result.variants).forEach(function (testId) {
+              variants[testId] = result.variants[testId];
+            });
+          }
+          if (result && result.diagnostics) {
+            backendDiagnostics.push(result.diagnostics);
+          }
+        });
         var safeVariants = sanitizeDiagnosticVariantsMap(variants);
         Object.keys(safeVariants).forEach(function (testId) {
           recordRipxAssignment(testId, safeVariants[testId], 'live_batch');
         });
         persistRipxLiveDiagnostics('variants_response', {
+          requestedTestIds: requestedTestIds,
           assignedTestIds: Object.keys(variants),
+          missingAssignmentTestIds: requestedTestIds.filter(function (testId) {
+            return !Object.prototype.hasOwnProperty.call(variants, testId);
+          }),
+          chunkCount: testIdChunks.length,
           variants: safeVariants,
-          backendDiagnostics: data.diagnostics || null,
+          backendDiagnostics: backendDiagnostics,
         });
         return variants;
       })

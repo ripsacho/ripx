@@ -144,7 +144,7 @@ async function run() {
     const r = await query(
       "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'support_kb_chunks'"
     );
-    if (!r.rows.length) {
+    if (!r.rows?.length) {
       throw new Error(
         'Table support_kb_chunks not found. Run migration 050_pgvector_support_kb.sql first.'
       );

@@ -4,14 +4,22 @@ const vm = require('vm');
 
 function createDocumentStub(opts = {}) {
   return {
-    readyState: 'loading',
+    readyState: opts.readyState || 'loading',
     cookie: '',
     body: {
       addEventListener: jest.fn(),
+      appendChild: jest.fn(),
       querySelectorAll: jest.fn(() =>
         typeof opts.bodyQuerySelectorAll === 'function' ? opts.bodyQuerySelectorAll() : []
       ),
     },
+    head: { appendChild: jest.fn() },
+    documentElement: {
+      setAttribute: jest.fn(),
+      removeAttribute: jest.fn(),
+      appendChild: jest.fn(),
+    },
+    getElementById: jest.fn(() => null),
     addEventListener: jest.fn(),
     removeEventListener: jest.fn(),
     querySelector: jest.fn(selector =>
@@ -47,6 +55,7 @@ function bootStorefrontScriptHarness(opts = {}) {
     hostname: 'example.com',
   };
   const document = createDocumentStub({
+    readyState: opts.readyState,
     querySelector: opts.documentQuerySelector,
     querySelectorAll: opts.documentQuerySelectorAll,
     bodyQuerySelectorAll: opts.bodyQuerySelectorAll,
@@ -98,6 +107,9 @@ function bootStorefrontScriptHarness(opts = {}) {
     }
   }
 
+  const setIntervalStub = opts.setInterval || jest.fn(() => 1);
+  const clearIntervalStub = opts.clearInterval || jest.fn();
+
   const windowObj = {
     __RIPX_TEST_HOOKS__: {},
     __RIPX_DEBUG__: false,
@@ -108,14 +120,21 @@ function bootStorefrontScriptHarness(opts = {}) {
     history: opts.history || { state: null, replaceState: jest.fn() },
     navigator: { userAgent: 'node-test' },
     document,
+    addEventListener: jest.fn(),
+    removeEventListener: jest.fn(),
     setTimeout,
     clearTimeout,
+    setInterval: setIntervalStub,
+    clearInterval: clearIntervalStub,
     URL,
     URLSearchParams,
     FormData,
     Headers,
     fetch: jest.fn((input, init) => {
       fetchCalls.push({ input, init });
+      if (typeof opts.fetchImpl === 'function') {
+        return opts.fetchImpl(input, init);
+      }
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
     }),
     XMLHttpRequest: FakeXMLHttpRequest,
@@ -124,6 +143,7 @@ function bootStorefrontScriptHarness(opts = {}) {
       apiUrl: '',
       shopDomain: 'makripon.myshopify.com',
       activeTests: [],
+      ...(opts.runtimeConfig || {}),
     },
   };
 
@@ -146,6 +166,8 @@ function bootStorefrontScriptHarness(opts = {}) {
     fetch: windowObj.fetch,
     setTimeout,
     clearTimeout,
+    setInterval: setIntervalStub,
+    clearInterval: clearIntervalStub,
     console,
     CSS: { escape: s => String(s) },
     Intl,
@@ -209,6 +231,19 @@ function getCartSnapshotCalls(fetchCalls) {
   );
 }
 
+async function waitForVariantRequestCount(fetchCalls, count) {
+  for (let i = 0; i < 10; i++) {
+    const variantRequests = fetchCalls.filter(call =>
+      /\/track\/variants\?/.test(getFetchInputUrl(call))
+    );
+    if (variantRequests.length >= count) {
+      return variantRequests;
+    }
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+  return fetchCalls.filter(call => /\/track\/variants\?/.test(getFetchInputUrl(call)));
+}
+
 describe('storefront script cart/add interceptors', () => {
   it('exposes cart debug helpers on test hooks', () => {
     const { hooks } = bootStorefrontScriptHarness();
@@ -228,6 +263,55 @@ describe('storefront script cart/add interceptors', () => {
     expect(hooks.isCartAddPath('/en-us/cart/add')).toBe(true);
     expect(hooks.isCartAddPath('/de/fr/cart/add.js')).toBe(true);
     expect(hooks.isCartAddPath('/collections/all')).toBe(false);
+  });
+
+  it('chunks live assignment requests so every active test can bucket', async () => {
+    const activeTests = Array.from({ length: 51 }, (_, index) => ({
+      id: `test-${index + 1}`,
+      type: 'content',
+      targetType: 'all',
+      targetIds: null,
+    }));
+    const { fetchCalls } = bootStorefrontScriptHarness({
+      readyState: 'complete',
+      runtimeConfig: {
+        apiUrl: 'https://api.example.com/api',
+        activeTests,
+      },
+      fetchImpl: input => {
+        const url = new URL(String(input));
+        const ids = (url.searchParams.get('test_ids') || '').split(',').filter(Boolean);
+        const variants = {};
+        ids.forEach(id => {
+          variants[id] = { variantId: `${id}-variant`, variantName: 'Variant A', config: {} };
+        });
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              variants,
+              diagnostics: {
+                requestedTestIds: ids,
+                assignedTestIds: Object.keys(variants),
+              },
+            }),
+        });
+      },
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(await waitForVariantRequestCount(fetchCalls, 2)).toHaveLength(2);
+
+    const variantRequests = fetchCalls.filter(call =>
+      /\/track\/variants\?/.test(getFetchInputUrl(call))
+    );
+    expect(variantRequests).toHaveLength(2);
+    const chunkSizes = variantRequests.map(call => {
+      const url = new URL(getFetchInputUrl(call));
+      return (url.searchParams.get('test_ids') || '').split(',').filter(Boolean).length;
+    });
+    expect(chunkSizes).toEqual([50, 1]);
   });
 
   it('keeps preview flag inert without explicit preview test context', () => {

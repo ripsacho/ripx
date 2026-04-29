@@ -214,6 +214,39 @@ class ABTestEngine {
     return variant || null;
   }
 
+  _buildAssignmentResponseFromExisting(test, existingAssignment) {
+    if (!test || !existingAssignment) {
+      return null;
+    }
+    const variantMap = this._buildVariantMap(test.variants);
+    const matchedVariant =
+      variantMap.get(existingAssignment.variant_id) ??
+      variantMap.get(existingAssignment.variant_name) ??
+      (test.variants || []).find(
+        v => v?.id === existingAssignment.variant_id || v?.name === existingAssignment.variant_name
+      ) ??
+      findVariantForPreviewQuery(test.variants || [], {
+        variant_id: existingAssignment.variant_id,
+        variant_name: existingAssignment.variant_name,
+      });
+    const resolvedVariantId =
+      matchedVariant?.id !== undefined && matchedVariant?.id !== null
+        ? String(matchedVariant.id)
+        : existingAssignment.variant_id || matchedVariant?.name || existingAssignment.variant_name;
+    const resolvedVariantName = matchedVariant?.name
+      ? String(matchedVariant.name)
+      : existingAssignment.variant_name || resolvedVariantId;
+    if (!resolvedVariantId) {
+      return null;
+    }
+    return {
+      variantId: resolvedVariantId,
+      variantName: resolvedVariantName,
+      isNewAssignment: false,
+      config: matchedVariant?.config || {},
+    };
+  }
+
   /**
    * Get or assign a variant for a user
    *
@@ -277,41 +310,15 @@ class ABTestEngine {
         }
       }
 
-      if (!this.isUserEligible(test, context)) {
-        return null;
+      // Sticky assignment wins over later targeting/ramp changes. This keeps live users stable
+      // after a test is edited, matching production A/B testing tools.
+      const existingAssignment = await getTestAssignment(testId, userId, shopDomain);
+      if (existingAssignment) {
+        return this._buildAssignmentResponseFromExisting(test, existingAssignment);
       }
 
-      // Check if user already has an assignment
-      const existingAssignment = await getTestAssignment(testId, userId, shopDomain);
-
-      if (existingAssignment) {
-        const variantMap = this._buildVariantMap(test.variants);
-        const matchedVariant =
-          variantMap.get(existingAssignment.variant_id) ??
-          variantMap.get(existingAssignment.variant_name) ??
-          (test.variants || []).find(
-            v =>
-              v?.id === existingAssignment.variant_id || v?.name === existingAssignment.variant_name
-          ) ??
-          findVariantForPreviewQuery(test.variants || [], {
-            variant_id: existingAssignment.variant_id,
-            variant_name: existingAssignment.variant_name,
-          });
-        const resolvedVariantId =
-          matchedVariant?.id !== undefined && matchedVariant?.id !== null
-            ? String(matchedVariant.id)
-            : existingAssignment.variant_id ||
-              matchedVariant?.name ||
-              existingAssignment.variant_name;
-        const resolvedVariantName = matchedVariant?.name
-          ? String(matchedVariant.name)
-          : existingAssignment.variant_name || resolvedVariantId;
-        return {
-          variantId: resolvedVariantId,
-          variantName: resolvedVariantName,
-          isNewAssignment: false,
-          config: matchedVariant?.config || {},
-        };
+      if (!this.isUserEligible(test, context)) {
+        return null;
       }
 
       if (!this._isUserInTrafficRamp(test, userId)) {
@@ -582,39 +589,19 @@ class ABTestEngine {
       }
 
       const testContext = { ...context, ...(contextOverrides[testId] || {}) };
-      if (!this.isUserEligible(test, testContext)) {
+      const existingAssignment = assignmentsMap.get(testId);
+      if (existingAssignment) {
+        const existingResponse = this._buildAssignmentResponseFromExisting(
+          test,
+          existingAssignment
+        );
+        if (existingResponse) {
+          result[testId] = existingResponse;
+        }
         continue;
       }
 
-      const existingAssignment = assignmentsMap.get(testId);
-      if (existingAssignment) {
-        const variantMap = this._buildVariantMap(test.variants);
-        const matchedVariant =
-          variantMap.get(existingAssignment.variant_id) ??
-          variantMap.get(existingAssignment.variant_name) ??
-          (test.variants || []).find(
-            v =>
-              v?.id === existingAssignment.variant_id || v?.name === existingAssignment.variant_name
-          ) ??
-          findVariantForPreviewQuery(test.variants || [], {
-            variant_id: existingAssignment.variant_id,
-            variant_name: existingAssignment.variant_name,
-          });
-        const resolvedVariantId =
-          matchedVariant?.id !== undefined && matchedVariant?.id !== null
-            ? String(matchedVariant.id)
-            : existingAssignment.variant_id ||
-              matchedVariant?.name ||
-              existingAssignment.variant_name;
-        const resolvedVariantName = matchedVariant?.name
-          ? String(matchedVariant.name)
-          : existingAssignment.variant_name || resolvedVariantId;
-        result[testId] = {
-          variantId: resolvedVariantId,
-          variantName: resolvedVariantName,
-          isNewAssignment: false,
-          config: matchedVariant?.config || {},
-        };
+      if (!this.isUserEligible(test, testContext)) {
         continue;
       }
 

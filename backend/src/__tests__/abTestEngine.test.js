@@ -80,6 +80,94 @@ describe('ABTestEngine._shouldPersistAssignment', () => {
   });
 });
 
+describe('ABTestEngine sticky live assignments', () => {
+  afterEach(() => {
+    jest.resetModules();
+    jest.dontMock('../models/testAssignment');
+    jest.dontMock('../models/test');
+    jest.dontMock('../services/experimentationPolicyService');
+  });
+
+  function loadEngineWithMocks({ test, assignment, assignmentsMap }) {
+    jest.resetModules();
+    jest.doMock('../models/testAssignment', () => ({
+      getTestAssignment: jest.fn().mockResolvedValue(assignment || null),
+      getTestAssignmentsBatch: jest.fn().mockResolvedValue(assignmentsMap || new Map()),
+      saveTestAssignment: jest.fn().mockResolvedValue({}),
+    }));
+    jest.doMock('../models/test', () => ({
+      getTestById: jest.fn().mockResolvedValue(test),
+      getTestsByIds: jest.fn().mockResolvedValue(new Map([[String(test.id), test]])),
+      getActiveTestsForStorefront: jest.fn().mockResolvedValue([test]),
+    }));
+    jest.doMock('../services/experimentationPolicyService', () => ({
+      getGlobalHoldoutPercent: jest.fn().mockResolvedValue(0),
+    }));
+    return require('../services/abTestEngine');
+  }
+
+  it('returns an existing assignment before changed targeting can exclude the user', async () => {
+    const test = {
+      id: '11111111-1111-4111-8111-111111111111',
+      status: 'running',
+      type: 'content',
+      segments: { device: 'mobile' },
+      variants: [{ id: 'v-a', name: 'Variant A', allocation: 100, config: { html: '<b>A</b>' } }],
+    };
+    const engine = loadEngineWithMocks({
+      test,
+      assignment: {
+        variant_id: 'v-a',
+        variant_name: 'Variant A',
+      },
+    });
+
+    const variant = await engine.getVariant(test.id, 'user-1', 'shop.myshopify.com', {
+      device: 'desktop',
+    });
+
+    expect(variant).toMatchObject({
+      variantId: 'v-a',
+      variantName: 'Variant A',
+      isNewAssignment: false,
+      config: { html: '<b>A</b>' },
+    });
+  });
+
+  it('batch assignment returns existing assignments before changed targeting can exclude the user', async () => {
+    const test = {
+      id: '22222222-2222-4222-8222-222222222222',
+      status: 'running',
+      type: 'content',
+      segments: { device: 'mobile' },
+      variants: [{ id: 'v-b', name: 'Variant B', allocation: 100, config: { css: '.x{}' } }],
+    };
+    const engine = loadEngineWithMocks({
+      test,
+      assignmentsMap: new Map([
+        [
+          test.id,
+          {
+            variant_id: 'v-b',
+            variant_name: 'Variant B',
+          },
+        ],
+      ]),
+    });
+
+    const variants = await engine.getVariantsBatch([test.id], 'user-1', 'shop.myshopify.com', {
+      device: 'desktop',
+    });
+
+    expect(variants[test.id]).toMatchObject({
+      variantId: 'v-b',
+      variantName: 'Variant B',
+      isNewAssignment: false,
+      config: { css: '.x{}' },
+    });
+  });
+});
+
 describe('ABTestEngine.isUserEligible', () => {
   it('returns true when segments are all or empty', () => {
     const test = { segments: {} };

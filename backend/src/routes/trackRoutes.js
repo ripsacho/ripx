@@ -1305,11 +1305,15 @@ router.get(
       .slice(0, 80);
     const includeDiagnostics = ['live_batch', 'debugStatus'].includes(diagnosticMode);
     if (includeDiagnostics) {
+      const assignedTestIds = Object.keys(signedAssignments);
       responsePayload.diagnostics = {
         diagnostic: diagnosticMode,
         requestedTestIds: ids,
-        assignedTestIds: Object.keys(signedAssignments),
-        assignedCount: Object.keys(signedAssignments).length,
+        assignedTestIds,
+        unassignedTestIds: ids.filter(
+          id => !Object.prototype.hasOwnProperty.call(signedAssignments, id)
+        ),
+        assignedCount: assignedTestIds.length,
         previewSession: parsePreviewSessionFlag(preview_session),
         context: {
           current_pathname: context.current_pathname || null,
