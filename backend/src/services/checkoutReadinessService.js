@@ -481,14 +481,34 @@ async function buildPricingOrOfferReadiness({
 
   if (templateKey === 'pricing') {
     const directPriceReady = methodCapabilities?.directPriceOverrideAvailable === true;
+    const cartTransformAvailable = methodCapabilities?.cartTransformFunctionAvailable === true;
+    const cartTransformInstalled = methodCapabilities?.cartTransformInstalled;
+    const cartTransformInstallCheckStatus = normalizeLower(
+      methodCapabilities?.cartTransformInstallCheckStatus || ''
+    );
+    const capabilitySource = normalizeLower(methodCapabilities?.source || '');
+    const directPriceLookupUncertain =
+      !directPriceReady &&
+      (cartTransformInstalled === null ||
+        cartTransformInstallCheckStatus === 'scope_missing' ||
+        capabilitySource === 'missing_shop_session' ||
+        capabilitySource === 'lookup_error');
+    const directPriceCheckSeverity =
+      directPriceReady || directPriceLookupUncertain || cartTransformAvailable
+        ? 'warning'
+        : 'error';
     checklist.push(
       buildCheck(
         'pricing_direct_price_override_ready',
         directPriceReady,
-        'error',
+        directPriceReady ? 'ok' : directPriceCheckSeverity,
         directPriceReady
           ? 'Direct Price Override is available for this shop.'
-          : 'Direct Price Override is not ready for this shop yet. Deploy/install the RipX cart transform on a supported Plus/dev store path.'
+          : directPriceLookupUncertain
+            ? 'Direct Price Override could not be fully verified right now. Start is allowed, but confirm the RipX Cart Transform is installed/enabled before relying on checkout price changes.'
+            : cartTransformAvailable
+              ? 'RipX Cart Transform function exists, but install state still needs attention. Start is allowed for preview/live QA; install or re-enable the cart transform before production traffic.'
+              : 'Direct Price Override is not ready for this shop yet. Deploy/install the RipX cart transform on a supported Plus/dev store path.'
       )
     );
   }
@@ -517,13 +537,27 @@ async function buildPricingOrOfferReadiness({
                   ? 'ready'
                   : methodCapabilities?.cartTransformFunctionAvailable
                     ? 'needs_attention'
-                    : 'blocked',
+                    : methodCapabilities?.cartTransformInstalled === null ||
+                        normalizeLower(methodCapabilities?.cartTransformInstallCheckStatus) ===
+                          'scope_missing' ||
+                        ['missing_shop_session', 'lookup_error'].includes(
+                          normalizeLower(methodCapabilities?.source)
+                        )
+                      ? 'needs_attention'
+                      : 'blocked',
               summary:
                 methodCapabilities?.directPriceOverrideAvailable === true
                   ? 'Cart transform capability is available for direct price override.'
                   : methodCapabilities?.cartTransformFunctionAvailable
                     ? 'Cart transform exists, but install state or store eligibility still needs attention.'
-                    : 'Cart transform capability is not ready on this shop.',
+                    : methodCapabilities?.cartTransformInstalled === null ||
+                        normalizeLower(methodCapabilities?.cartTransformInstallCheckStatus) ===
+                          'scope_missing' ||
+                        ['missing_shop_session', 'lookup_error'].includes(
+                          normalizeLower(methodCapabilities?.source)
+                        )
+                      ? 'Cart transform install state could not be fully verified from the current shop session.'
+                      : 'Cart transform capability is not ready on this shop.',
             }
           : null,
     },

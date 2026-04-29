@@ -161,6 +161,42 @@ describe('testActivationService', () => {
       expect(preflight.errors.some(item => item.id === 'checkout_launch_readiness')).toBe(true);
     });
 
+    it('allows price launch when checkout readiness only reports warnings', async () => {
+      checkoutReadinessService.supportsCheckoutReadiness.mockReturnValue(true);
+      checkoutReadinessService.buildTestCheckoutReadiness.mockResolvedValue({
+        summary: {
+          status: 'needs_attention',
+          headline: 'Checkout readiness needs attention for this price test.',
+        },
+        checks: [
+          {
+            id: 'pricing_direct_price_override_ready',
+            ok: false,
+            severity: 'warning',
+            message: 'Direct Price Override could not be fully verified right now.',
+          },
+        ],
+      });
+
+      const preflight = await runActivationPreflight(
+        {
+          id: 't-price-warning',
+          status: 'draft',
+          type: 'price',
+          guardrail_config: { enabled: true },
+          variants: [
+            { name: 'Control', allocation: 50, config: { priceMode: 'control' } },
+            { name: 'Variant A', allocation: 50, config: { priceMode: 'fixed', price: 19.99 } },
+          ],
+        },
+        'shop.test'
+      );
+
+      expect(preflight.ok).toBe(true);
+      expect(preflight.errors).toHaveLength(0);
+      expect(preflight.warnings.some(item => item.id === 'checkout_launch_readiness')).toBe(true);
+    });
+
     it('fails theme preflight when non-control template switch variant has no template handle', async () => {
       const preflight = await runActivationPreflight(
         {

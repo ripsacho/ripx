@@ -63,6 +63,61 @@ describe('checkoutReadinessService', () => {
     ).toBe(false);
   });
 
+  it('allows pricing readiness with warning when cart transform install lookup is uncertain', async () => {
+    process.env.APP_URL = 'https://api.example.com';
+    setShopifyEnv();
+
+    const { buildTestCheckoutReadiness } = require('../checkoutReadinessService');
+    const readiness = await buildTestCheckoutReadiness({
+      test: {
+        id: 'test-price-scope-missing',
+        name: 'Price test',
+        type: 'price',
+        status: 'draft',
+        variants: [
+          { id: 'control', name: 'Control', config: {} },
+          {
+            id: 'variant-a',
+            name: 'Variant A',
+            config: { priceMode: 'fixed', price: 19.99 },
+          },
+        ],
+      },
+      shopDomain: 'store.myshopify.com',
+      accessToken: 'token',
+      shopifyFunctions: [
+        {
+          id: 'gid://shopify/ShopifyFunction/1',
+          title: 'RipX cart transform',
+          apiType: 'cart_transform',
+        },
+      ],
+      shopifyCartTransforms: null,
+      cartTransformsLookupStatus: 'scope_missing',
+      extensionConfig: {
+        source: 'present',
+        contents:
+          "export const RIPX_PRICE_RESOLVE_BATCH_URL = 'https://api.example.com/api/track/price-resolve-batch';\n" +
+          "export const RIPX_CHECKOUT_PRICE_SECRET = '';\n",
+      },
+      checkoutMethodCapabilities: {
+        directPriceOverrideAvailable: false,
+        cartTransformFunctionAvailable: true,
+        cartTransformInstalled: null,
+        cartTransformInstallCheckStatus: 'scope_missing',
+        source: 'shopify_admin',
+      },
+    });
+
+    const directPriceCheck = readiness.checks.find(
+      item => item.id === 'pricing_direct_price_override_ready'
+    );
+    expect(readiness.summary.status).toBe('needs_attention');
+    expect(readiness.capabilities.direct_price_override.level).toBe('needs_attention');
+    expect(directPriceCheck?.ok).toBe(false);
+    expect(directPriceCheck?.severity).toBe('warning');
+  });
+
   it('flags checkout ui extension sync drift', async () => {
     process.env.APP_URL = 'https://app.ripx.com';
     process.env.RIPX_CHECKOUT_PRICE_SECRET = 'shared-secret';
