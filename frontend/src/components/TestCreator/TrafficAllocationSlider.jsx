@@ -376,10 +376,12 @@ function TrafficAllocationSlider({
       setErrorMessage('Control has no changed price. Copy a treatment variant link instead.');
       return;
     }
-    const url = (await onCopyPreviewVariant?.(variant, index)) || getPreviewUrl?.(variant, index);
+    const url = await onCopyPreviewVariant?.(variant, index);
     if (!url) {
       setErrorMessage(
-        'Preview link is not available yet. Check the shop domain and target product.'
+        pricePreviewMode
+          ? 'Customer link is not available yet. Save the test and check the shop domain/target product.'
+          : 'Preview link is not available yet. Check the shop domain and target product.'
       );
       return;
     }

@@ -3613,6 +3613,8 @@ function TestWizard({
       tenantDomain: previewTenantDomain,
       visualEditor: false,
       simplePreview: Boolean(options.simplePreview),
+      resetPreviewSession: Boolean(options.resetPreviewSession),
+      previewSessionId: options.previewSessionId || null,
     });
     if (!directPreviewUrl) {
       return null;
@@ -3621,13 +3623,14 @@ function TestWizard({
     if (isShopifyPreviewUrl(directPreviewUrl)) {
       if (isPricePreview) {
         // Price preview uses a dedicated bootstrap so RipX can inject before theme cart scripts and
-        // preserve preview state across Shopify section/cart updates. Simple customer/copy mode hides
-        // the bootstrap UI and cleans the address bar after seeding, but still needs this bootstrap
-        // because some themes do not load the app embed on direct preview URLs.
-        finalPreviewUrl =
-          buildShopifyPricePreviewBootstrapUrl({
-            previewUrl: directPreviewUrl,
-          }) || directPreviewUrl;
+        // preserve debug state across Shopify section/cart updates. Customer-view/copy links must feel
+        // like real storefront links, so simple preview stays on the direct product URL and relies on
+        // the Shopify app embed/runtime to seed tab-scoped preview context.
+        finalPreviewUrl = options.simplePreview
+          ? directPreviewUrl
+          : buildShopifyPricePreviewBootstrapUrl({
+              previewUrl: directPreviewUrl,
+            }) || directPreviewUrl;
       } else {
         const launchPreviewUrl = buildPreviewLaunchUrl({
           apiBaseUrl: getApiBaseUrl(),
@@ -3722,6 +3725,8 @@ function TestWizard({
     const url = buildPreviewUrl(variant, index, {
       pricePreviewProduct: pricePreviewProductOverride,
       simplePreview: true,
+      resetPreviewSession: true,
+      previewSessionId: `customer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     });
     if (!url) {
       setError(

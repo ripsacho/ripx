@@ -281,10 +281,6 @@ class ABTestEngine {
         return null;
       }
 
-      if (!this._isUserInTrafficRamp(test, userId)) {
-        return null;
-      }
-
       // Check if user already has an assignment
       const existingAssignment = await getTestAssignment(testId, userId, shopDomain);
 
@@ -304,17 +300,22 @@ class ABTestEngine {
         const resolvedVariantId =
           matchedVariant?.id !== undefined && matchedVariant?.id !== null
             ? String(matchedVariant.id)
-            : existingAssignment.variant_id || matchedVariant?.name || existingAssignment.variant_name;
-        const resolvedVariantName =
-          matchedVariant?.name
-            ? String(matchedVariant.name)
-            : existingAssignment.variant_name || resolvedVariantId;
+            : existingAssignment.variant_id ||
+              matchedVariant?.name ||
+              existingAssignment.variant_name;
+        const resolvedVariantName = matchedVariant?.name
+          ? String(matchedVariant.name)
+          : existingAssignment.variant_name || resolvedVariantId;
         return {
           variantId: resolvedVariantId,
           variantName: resolvedVariantName,
           isNewAssignment: false,
           config: matchedVariant?.config || {},
         };
+      }
+
+      if (!this._isUserInTrafficRamp(test, userId)) {
+        return null;
       }
 
       const testGroupKey = this._getExperimentGroupKey(test);
@@ -585,10 +586,6 @@ class ABTestEngine {
         continue;
       }
 
-      if (!this._isUserInTrafficRamp(test, userId)) {
-        continue;
-      }
-
       const existingAssignment = assignmentsMap.get(testId);
       if (existingAssignment) {
         const variantMap = this._buildVariantMap(test.variants);
@@ -606,17 +603,22 @@ class ABTestEngine {
         const resolvedVariantId =
           matchedVariant?.id !== undefined && matchedVariant?.id !== null
             ? String(matchedVariant.id)
-            : existingAssignment.variant_id || matchedVariant?.name || existingAssignment.variant_name;
-        const resolvedVariantName =
-          matchedVariant?.name
-            ? String(matchedVariant.name)
-            : existingAssignment.variant_name || resolvedVariantId;
+            : existingAssignment.variant_id ||
+              matchedVariant?.name ||
+              existingAssignment.variant_name;
+        const resolvedVariantName = matchedVariant?.name
+          ? String(matchedVariant.name)
+          : existingAssignment.variant_name || resolvedVariantId;
         result[testId] = {
           variantId: resolvedVariantId,
           variantName: resolvedVariantName,
           isNewAssignment: false,
           config: matchedVariant?.config || {},
         };
+        continue;
+      }
+
+      if (!this._isUserInTrafficRamp(test, userId)) {
         continue;
       }
 
@@ -1133,14 +1135,24 @@ class ABTestEngine {
         const mode = String(cfg.priceMode || 'fixed')
           .trim()
           .toLowerCase();
-        if (mode === 'fixed' && hasPriceSignalValue(cfg.price)) {return true;}
-        if (mode === 'amount' && hasPriceSignalValue(cfg.priceDelta)) {return true;}
-        if (mode === 'percent' && hasPriceSignalValue(cfg.pricePercent)) {return true;}
+        if (mode === 'fixed' && hasPriceSignalValue(cfg.price)) {
+          return true;
+        }
+        if (mode === 'amount' && hasPriceSignalValue(cfg.priceDelta)) {
+          return true;
+        }
+        if (mode === 'percent' && hasPriceSignalValue(cfg.pricePercent)) {
+          return true;
+        }
         if (cfg.byVariant && typeof cfg.byVariant === 'object') {
-          if (Object.values(cfg.byVariant).some(configHasPriceDeep)) {return true;}
+          if (Object.values(cfg.byVariant).some(configHasPriceDeep)) {
+            return true;
+          }
         }
         if (cfg.byProduct && typeof cfg.byProduct === 'object') {
-          if (Object.values(cfg.byProduct).some(configHasPriceDeep)) {return true;}
+          if (Object.values(cfg.byProduct).some(configHasPriceDeep)) {
+            return true;
+          }
         }
         return false;
       };

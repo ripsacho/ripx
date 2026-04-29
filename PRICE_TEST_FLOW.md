@@ -88,19 +88,19 @@ Owner files:
 
 Flow:
 
-1. Normal preview opens a controlled app-proxy document for price tests: `/apps/ripx/price-preview-bootstrap-v1?url=...`.
+1. Debug preview opens a controlled app-proxy document for price tests: `/apps/ripx/price-preview-bootstrap-v1?url=...`.
 2. `pricePreviewBootstrap.js` persists preview context in `sessionStorage` and `window.name`, mounts the target product page, then injects the RipX app-proxy script early.
 3. The price preview route is implemented by `backend/src/routes/pricePreviewBootstrap.js` and registered from `backend/src/routes/proxyRoutes.js`; failures usually triage through app-proxy registration, CSP, and preview request validation.
 4. `init` merges the preview test into `CONFIG.activeTests` even when the test is draft or not present in active embedded config.
 5. `getVariant` uses preview endpoints/cache and never creates live assignments for preview sessions.
-6. Price tests use the price-preview bootstrap for debug and customer/copy modes because cart-line properties must be injected before theme cart scripts run. Customer-view/copy links add `ab_preview_simple=1`; the bootstrap hides its UI, seeds `sessionStorage`, and removes the `ab_preview*` params from the visible address bar so the page feels like a live storefront while the preview context remains sticky.
+6. Customer-view/copy links use the real storefront product URL with `ab_preview_simple=1`. The Shopify app embed/runtime must load on the real page, seed `sessionStorage`, and then remove `ab_preview*` from the visible URL so the page feels live while the tab-scoped preview context remains sticky.
 
 Debug first:
 
 - `sessionStorage.getItem('__ripx_preview_ctx_v1__')`
 - `window.__RIPX_BOOTSTRAP_OK__`
 - `window.__RIPX_PREVIEW_MERGE__`
-- Customer-view/copy links only: `window.__RIPX_SIMPLE_PREVIEW_CLEAN_URL__`
+- Customer-view/copy links only: `window.__RIPX_APP_EMBED_LOADER_STATUS__` and `window.__RIPX_SIMPLE_PREVIEW_CLEAN_URL__`
 - On the price bootstrap shell: `window.RipXPricePreview?.debugStatus?.()`
 - On the loaded product runtime: `window.RipX?.debugStatus?.()`
 
@@ -183,12 +183,17 @@ Preview URL contract:
 
 - Required for a chosen arm: `ab_preview_test`, `ab_preview_variant`, and `ab_preview_domain`.
 - Expected on generated links: `ab_preview=1`.
-- Customer-view/copy links add `ab_preview_simple=1` and open through `/apps/ripx/price-preview-bootstrap-v1?url=...`; the bootstrap should hide its UI and clean the visible address bar after the product document is mounted.
-- Full Shopify debug preview also opens through `/apps/ripx/price-preview-bootstrap-v1?url=...`, but keeps the debug status bar visible.
+- Customer-view/copy links add `ab_preview_simple=1` and should stay on the real storefront product URL, not `/apps/ripx/price-preview-bootstrap-v1`.
+- Customer view opened from the app also adds `ab_preview_reset=1` and an `ab_preview_session` nonce. The storefront/app embed clears prior tab preview context and same-test preview variant cache before seeding the selected variant, then removes those params from the visible URL.
+- Copy customer link remains self-contained for incognito or another browser: it carries the selected test/variant/simple params, but does not depend on clearing an existing tab first.
+- Full Shopify debug preview opens through `/apps/ripx/price-preview-bootstrap-v1?url=...` and keeps the debug status bar visible.
+- Persistence uses `sessionStorage` as the primary store and `window.name` as a redirect bridge. Avoid cookies for preview identity because they can leak preview state across tabs/customers and create stale live behavior.
 
 Runtime assignment contract:
 
 - Live storefront request: `/api/track/variants?test_ids=...&shop_domain=...&current_product_id=...`.
+- Live visitor identity uses first-party `ab_test_user_id` plus a localStorage mirror (`__ripx_live_user_id_v1__`) so the same browser keeps the same user id across tabs and visits. This is intentionally separate from preview `sessionStorage`.
+- Server-side `test_assignments` is the source of truth for sticky live variants. If an assignment already exists, it should be replayed before traffic-ramp checks so reducing ramp traffic does not rebucket already-assigned visitors.
 - Successful response: `variants[testId]` exists and includes `variantId`, `variantName`, `config`, `assignment_sig`, `assignment_ts`, and `assignment_user`.
 - The storefront then resolves `config` for current product/variant and writes the chosen price to PDP DOM.
 

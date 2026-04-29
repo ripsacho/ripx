@@ -41,6 +41,7 @@ function bootStorefrontScriptHarness(opts = {}) {
   const location = {
     href,
     origin: 'https://example.com',
+    protocol: 'https:',
     pathname,
     search,
     hostname: 'example.com',
@@ -52,12 +53,26 @@ function bootStorefrontScriptHarness(opts = {}) {
   });
   const sessionStore = new Map(Object.entries(opts.sessionStorage || {}));
   const sessionStorage = {
+    get length() {
+      return sessionStore.size;
+    },
+    key: jest.fn(index => Array.from(sessionStore.keys())[index] || null),
     getItem: jest.fn(key => (sessionStore.has(String(key)) ? sessionStore.get(String(key)) : null)),
     setItem: jest.fn((key, value) => {
       sessionStore.set(String(key), String(value));
     }),
     removeItem: jest.fn(key => {
       sessionStore.delete(String(key));
+    }),
+  };
+  const localStore = new Map(Object.entries(opts.localStorage || {}));
+  const localStorage = {
+    getItem: jest.fn(key => (localStore.has(String(key)) ? localStore.get(String(key)) : null)),
+    setItem: jest.fn((key, value) => {
+      localStore.set(String(key), String(value));
+    }),
+    removeItem: jest.fn(key => {
+      localStore.delete(String(key));
     }),
   };
 
@@ -89,6 +104,7 @@ function bootStorefrontScriptHarness(opts = {}) {
     __RIPX_PRICE_PREVIEW_FRAME__: Boolean(opts.pricePreviewFrame),
     location,
     sessionStorage,
+    localStorage,
     history: opts.history || { state: null, replaceState: jest.fn() },
     navigator: { userAgent: 'node-test' },
     document,
@@ -148,6 +164,7 @@ function bootStorefrontScriptHarness(opts = {}) {
     windowObj,
     FakeXMLHttpRequest,
     sessionStore,
+    localStore,
   };
 }
 
@@ -281,6 +298,93 @@ describe('storefront script cart/add interceptors', () => {
     expect(hooks.previewTestId).toBe('33333333-3333-4333-8333-333333333333');
     expect(hooks.previewSimpleMode).toBe(true);
     expect(windowObj.history.replaceState).not.toHaveBeenCalled();
+  });
+
+  it('resets stale preview state when customer view requests a new preview session', () => {
+    const { hooks, sessionStore, windowObj } = bootStorefrontScriptHarness({
+      search:
+        '?ab_preview=1&ab_preview_simple=1&ab_preview_reset=1&ab_preview_session=customer-abc&ab_preview_test=44444444-4444-4444-8444-444444444444&ab_preview_variant=Variant%20D',
+      sessionStorage: {
+        __ripx_preview_ctx_v1__: JSON.stringify({
+          preview: true,
+          testId: 'old-test',
+          variantId: 'Old Variant',
+          simple: true,
+          persistedAtMs: Date.now(),
+        }),
+        'ripx_preview_variant_cache_44444444-4444-4444-8444-444444444444': JSON.stringify({
+          variant: { variantId: 'Old Variant', config: { stale: true } },
+          persistedAtMs: Date.now(),
+        }),
+        ripx_preview_variant_cache_other: JSON.stringify({
+          variant: { variantId: 'Other Old Variant', config: { stale: true } },
+          persistedAtMs: Date.now(),
+        }),
+      },
+    });
+
+    expect(hooks.previewMode).toBe(true);
+    expect(hooks.previewTestId).toBe('44444444-4444-4444-8444-444444444444');
+    expect(
+      sessionStore.has('ripx_preview_variant_cache_44444444-4444-4444-8444-444444444444')
+    ).toBe(false);
+    expect(sessionStore.has('ripx_preview_variant_cache_other')).toBe(false);
+    const stored = JSON.parse(sessionStore.get('__ripx_preview_ctx_v1__'));
+    expect(stored).toMatchObject({
+      preview: true,
+      testId: '44444444-4444-4444-8444-444444444444',
+      variantId: 'Variant D',
+      simple: true,
+      sessionId: 'customer-abc',
+    });
+    expect(windowObj.__RIPX_SIMPLE_PREVIEW_CLEAN_URL__).toMatchObject({
+      cleaned: true,
+      reset: true,
+      sessionId: 'customer-abc',
+    });
+  });
+
+  it('restores preview session id from persisted context after URL cleanup', () => {
+    const { hooks } = bootStorefrontScriptHarness({
+      search: '',
+      sessionStorage: {
+        __ripx_preview_ctx_v1__: JSON.stringify({
+          preview: true,
+          testId: '55555555-5555-4555-8555-555555555555',
+          variantId: 'Variant E',
+          simple: true,
+          sessionId: 'customer-persisted',
+          persistedAtMs: Date.now(),
+        }),
+      },
+    });
+
+    expect(hooks.previewMode).toBe(true);
+    expect(hooks.previewSimpleMode).toBe(true);
+    expect(hooks.previewSessionId).toBe('customer-persisted');
+  });
+
+  it('mirrors live user identity between first-party cookie and localStorage', () => {
+    const { hooks, localStore, windowObj } = bootStorefrontScriptHarness();
+
+    const userId = hooks.getUserId();
+
+    expect(userId).toMatch(/^user_/);
+    expect(localStore.get('__ripx_live_user_id_v1__')).toBe(userId);
+    expect(windowObj.document.cookie).toContain(`ab_test_user_id=${encodeURIComponent(userId)}`);
+    expect(windowObj.document.cookie).toContain('SameSite=Lax');
+    expect(windowObj.document.cookie).toContain('Secure');
+  });
+
+  it('restores live user identity from localStorage when cookie is missing', () => {
+    const { hooks, windowObj } = bootStorefrontScriptHarness({
+      localStorage: {
+        __ripx_live_user_id_v1__: 'user_existing_cross_tab',
+      },
+    });
+
+    expect(hooks.getUserId()).toBe('user_existing_cross_tab');
+    expect(windowObj.document.cookie).toContain('ab_test_user_id=user_existing_cross_tab');
   });
 
   it('runs selected-product shipping tests on cart surfaces and injects signed cart state', () => {

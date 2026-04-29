@@ -50,6 +50,19 @@
       var variantName = params.get('ab_preview_variant_name') || null;
       var tenantDomain = params.get('ab_preview_domain') || null;
       if (!(previewFlag || testId || variantId || variantName)) return null;
+      if (params.get('ab_preview_reset') === '1') {
+        try {
+          window.sessionStorage.removeItem(PREVIEW_STORAGE_KEY);
+          if (testId)
+            window.sessionStorage.removeItem('ripx_preview_variant_cache_' + String(testId));
+          for (var i = window.sessionStorage.length - 1; i >= 0; i -= 1) {
+            var key = window.sessionStorage.key(i);
+            if (key && key.indexOf('ripx_preview_variant_cache_') === 0) {
+              window.sessionStorage.removeItem(key);
+            }
+          }
+        } catch (_eReset) {}
+      }
       var ctx = {
         preview: previewFlag,
         testId: testId,
@@ -57,6 +70,7 @@
         variantName: variantName,
         tenantDomain: tenantDomain,
         simple: params.get('ab_preview_simple') === '1',
+        sessionId: params.get('ab_preview_session') || null,
         persistedAtMs: Date.now(),
       };
       window.sessionStorage.setItem(PREVIEW_STORAGE_KEY, JSON.stringify(ctx));
@@ -102,7 +116,18 @@
     tag.async = false;
     tag.setAttribute('fetchpriority', 'high');
     tag.onload = function () {
-      if (hasRipx()) stopEnsure();
+      if (hasRipx()) {
+        try {
+          window.__RIPX_APP_EMBED_LOADER_STATUS__ = {
+            ok: true,
+            version: window.RipX.version,
+            source: isFallback ? 'direct' : 'app_proxy',
+            preview: hasPreviewCtx(),
+            at: Date.now(),
+          };
+        } catch (_eStatusOk) {}
+        stopEnsure();
+      }
     };
     tag.onerror = function () {
       try {
@@ -110,6 +135,7 @@
           ok: false,
           failedSrc: src,
           fallback: !!isFallback,
+          preview: hasPreviewCtx(),
           at: Date.now(),
         };
       } catch (_eStatus) {}
@@ -165,6 +191,9 @@
           ok: false,
           reason: 'runtime_missing_after_retries',
           preview: hasPreviewCtx(),
+          hasEmbedConfig: !!document.getElementById(CONFIG_ID),
+          primarySrc: buildPrimarySrc(),
+          fallbackConfigured: !!directScriptBaseUrl,
           at: Date.now(),
         };
       } catch (_eStatus) {}

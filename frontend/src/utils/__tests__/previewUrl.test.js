@@ -53,6 +53,23 @@ describe('previewUrl', () => {
     expect(url.pathname).toBe('/products/test-product');
   });
 
+  it('builds customer-view URL with preview reset session params', () => {
+    const result = buildPreviewUrl({
+      baseUrl: 'https://makripon.myshopify.com/products/test-product',
+      testId: '1d1f39c4-4083-44f4-b046-1c341b88cc29',
+      variantId: 'variant-a',
+      variantName: 'Variant A',
+      simplePreview: true,
+      resetPreviewSession: true,
+      previewSessionId: 'customer-123',
+    });
+
+    const url = new URL(result);
+    expect(url.searchParams.get(PREVIEW_PARAMS.SIMPLE)).toBe('1');
+    expect(url.searchParams.get(PREVIEW_PARAMS.RESET_SESSION)).toBe('1');
+    expect(url.searchParams.get(PREVIEW_PARAMS.SESSION_ID)).toBe('customer-123');
+  });
+
   it('builds preview-document URL and preserves preview params', () => {
     const previewUrl = buildPreviewUrl({
       baseUrl: 'https://makripon.myshopify.com/products/test-product',
@@ -140,14 +157,13 @@ describe('previewUrl', () => {
     expect(url.searchParams.get('url')).toBe(previewUrl);
   });
 
-  it('builds isolated Shopify price preview bootstrap URL', () => {
+  it('builds isolated Shopify price debug preview bootstrap URL', () => {
     const previewUrl = buildPreviewUrl({
       baseUrl: 'https://makripon.myshopify.com/products/test-product',
       testId: '1d1f39c4-4083-44f4-b046-1c341b88cc29',
       variantId: 'variant-a',
       variantName: 'Variant A',
       tenantDomain: 'echologyx.com',
-      simplePreview: true,
     });
     const result = buildShopifyPricePreviewBootstrapUrl({ previewUrl });
     const url = new URL(result);
@@ -157,7 +173,7 @@ describe('previewUrl', () => {
     expect(url.searchParams.get(PREVIEW_PARAMS.TEST_ID)).toBe(
       '1d1f39c4-4083-44f4-b046-1c341b88cc29'
     );
-    expect(url.searchParams.get(PREVIEW_PARAMS.SIMPLE)).toBe('1');
+    expect(url.searchParams.has(PREVIEW_PARAMS.SIMPLE)).toBe(false);
   });
 
   it('returns null for non-Shopify preview-bootstrap host', () => {

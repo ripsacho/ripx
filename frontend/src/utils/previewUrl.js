@@ -13,6 +13,8 @@ export const PREVIEW_PARAMS = {
   VARIANT_NAME: 'ab_preview_variant_name',
   TENANT_DOMAIN: 'ab_preview_domain',
   SIMPLE: 'ab_preview_simple',
+  RESET_SESSION: 'ab_preview_reset',
+  SESSION_ID: 'ab_preview_session',
   VISUAL_EDITOR: 'ab_visual_editor',
   VISUAL_PICKER: 'ab_visual_picker',
 };
@@ -133,6 +135,8 @@ export function normalizePreviewBaseUrl(input) {
  * @param {boolean} [options.visualEditor=false] - Add ab_visual_editor=1 for visual editor iframe
  * @param {boolean} [options.visualPicker=false] - Add ab_visual_picker=1 for picker mode
  * @param {boolean} [options.simplePreview=false] - Add ab_preview_simple=1 for no-shell preview
+ * @param {boolean} [options.resetPreviewSession=false] - Clear prior tab preview state before seeding this URL
+ * @param {string} [options.previewSessionId] - Optional preview session nonce for diagnostics/cache boundaries
  * @returns {string|null} Full preview URL or null if baseUrl/testId invalid
  */
 export function buildPreviewUrl({
@@ -144,6 +148,8 @@ export function buildPreviewUrl({
   visualEditor = false,
   visualPicker = false,
   simplePreview = false,
+  resetPreviewSession = false,
+  previewSessionId,
 }) {
   const normalized = normalizePreviewBaseUrl(baseUrl);
   if (!normalized) return null;
@@ -164,6 +170,14 @@ export function buildPreviewUrl({
     if (visualEditor) url.searchParams.set(PREVIEW_PARAMS.VISUAL_EDITOR, PREVIEW_VALUE);
     if (visualPicker) url.searchParams.set(PREVIEW_PARAMS.VISUAL_PICKER, PREVIEW_VALUE);
     if (simplePreview) url.searchParams.set(PREVIEW_PARAMS.SIMPLE, PREVIEW_VALUE);
+    if (resetPreviewSession) url.searchParams.set(PREVIEW_PARAMS.RESET_SESSION, PREVIEW_VALUE);
+    if (
+      previewSessionId !== null &&
+      previewSessionId !== undefined &&
+      String(previewSessionId).trim()
+    ) {
+      url.searchParams.set(PREVIEW_PARAMS.SESSION_ID, String(previewSessionId).trim());
+    }
     return url.toString();
   } catch {
     return null;
@@ -222,6 +236,8 @@ export function buildPreviewDocumentUrl({
       PREVIEW_PARAMS.VARIANT_NAME,
       PREVIEW_PARAMS.TENANT_DOMAIN,
       PREVIEW_PARAMS.SIMPLE,
+      PREVIEW_PARAMS.RESET_SESSION,
+      PREVIEW_PARAMS.SESSION_ID,
       PREVIEW_PARAMS.VISUAL_PICKER,
     ].forEach(key => {
       const value = directUrl.searchParams.get(key);
@@ -275,6 +291,8 @@ export function buildPreviewLaunchUrl({ apiBaseUrl, previewUrl }) {
       PREVIEW_PARAMS.VARIANT_NAME,
       PREVIEW_PARAMS.TENANT_DOMAIN,
       PREVIEW_PARAMS.SIMPLE,
+      PREVIEW_PARAMS.RESET_SESSION,
+      PREVIEW_PARAMS.SESSION_ID,
     ].forEach(key => {
       const value = directUrl.searchParams.get(key);
       if (value !== undefined && value !== null && value !== '') {
@@ -334,6 +352,8 @@ export function buildShopifyPricePreviewBootstrapUrl({ previewUrl }) {
       PREVIEW_PARAMS.VARIANT_NAME,
       PREVIEW_PARAMS.TENANT_DOMAIN,
       PREVIEW_PARAMS.SIMPLE,
+      PREVIEW_PARAMS.RESET_SESSION,
+      PREVIEW_PARAMS.SESSION_ID,
     ].forEach(key => {
       const value = directUrl.searchParams.get(key);
       if (value !== undefined && value !== null && value !== '') {
