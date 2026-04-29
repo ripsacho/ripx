@@ -30,7 +30,7 @@ async function getUnlinkedTenants(client) {
      WHERE account_id IS NULL
      ORDER BY domain`
   );
-  return result.rows;
+  return result.rows || [];
 }
 
 async function run() {
@@ -59,7 +59,7 @@ async function run() {
     );
     if (shopSessionResult.rowCount > 0) {
       console.log(`\nDeleted ${shopSessionResult.rowCount} shop_session(s):`);
-      shopSessionResult.rows.forEach(r => console.log(`  - ${r.shop_domain}`));
+      (shopSessionResult.rows || []).forEach(r => console.log(`  - ${r.shop_domain}`));
     }
 
     // Delete tenants (CASCADE removes user_domain_access, tests; other FKs set tenant_id to NULL)
@@ -68,7 +68,7 @@ async function run() {
       [tenantIds]
     );
     console.log(`\nDeleted ${tenantResult.rowCount} tenant(s):`);
-    tenantResult.rows.forEach(r => console.log(`  - ${r.domain}`));
+    (tenantResult.rows || []).forEach(r => console.log(`  - ${r.domain}`));
   });
 
   console.log('\nDone. Unlinked domains and their Shopify sessions have been removed.');
@@ -86,4 +86,7 @@ async function main() {
   }
 }
 
-main();
+main().catch(err => {
+  console.error('removeUnlinkedTenants crashed:', err.message);
+  process.exit(1);
+});

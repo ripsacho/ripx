@@ -22,7 +22,7 @@
 
 require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
 
-const { getClient } = require('../src/utils/database');
+const { getClient, closeDatabase } = require('../src/utils/database');
 const { getTestsByShop } = require('../src/models/test');
 const { insertHeatmapEventsBatch } = require('../src/models/heatmap');
 
@@ -291,26 +291,26 @@ async function seedDummyData(shopDomain, options = {}) {
 }
 
 async function main() {
-  const shopDomain = process.env.SHOP_DOMAIN || process.env.VITE_SHOP_DOMAIN || process.argv[2];
-
-  if (!shopDomain) {
-    console.error('Usage: SHOP_DOMAIN=store.myshopify.com node seed-dummy-data.js');
-    console.error('   or: node seed-dummy-data.js store.myshopify.com');
-    process.exitCode = 1;
-    return;
-  }
-
-  const options = {
-    visitorsMin: parseInt(process.env.SEED_VISITORS_MIN, 10) || 80,
-    visitorsMax: parseInt(process.env.SEED_VISITORS_MAX, 10) || 400,
-    conversionRateMin: parseFloat(process.env.SEED_CONVERSION_RATE_MIN) || 0.02,
-    conversionRateMax: parseFloat(process.env.SEED_CONVERSION_RATE_MAX) || 0.08,
-    revenueMin: parseFloat(process.env.SEED_REVENUE_MIN) || 15,
-    revenueMax: parseFloat(process.env.SEED_REVENUE_MAX) || 250,
-    includeSegments: process.env.SEED_INCLUDE_SEGMENTS !== 'false',
-  };
-
   try {
+    const shopDomain = process.env.SHOP_DOMAIN || process.env.VITE_SHOP_DOMAIN || process.argv[2];
+
+    if (!shopDomain) {
+      console.error('Usage: SHOP_DOMAIN=store.myshopify.com node seed-dummy-data.js');
+      console.error('   or: node seed-dummy-data.js store.myshopify.com');
+      process.exitCode = 1;
+      return;
+    }
+
+    const options = {
+      visitorsMin: parseInt(process.env.SEED_VISITORS_MIN, 10) || 80,
+      visitorsMax: parseInt(process.env.SEED_VISITORS_MAX, 10) || 400,
+      conversionRateMin: parseFloat(process.env.SEED_CONVERSION_RATE_MIN) || 0.02,
+      conversionRateMax: parseFloat(process.env.SEED_CONVERSION_RATE_MAX) || 0.08,
+      revenueMin: parseFloat(process.env.SEED_REVENUE_MIN) || 15,
+      revenueMax: parseFloat(process.env.SEED_REVENUE_MAX) || 250,
+      includeSegments: process.env.SEED_INCLUDE_SEGMENTS !== 'false',
+    };
+
     const result = await seedDummyData(shopDomain, options);
     console.log(
       `\nDone! Seeded ${result.assignments} visitors, ${result.events} events${result.heatmap ? `, ${result.heatmap} heatmap events` : ''} across ${result.tests} tests.`
@@ -320,10 +320,12 @@ async function main() {
     console.error('Seed failed:', err.message);
     process.exitCode = 1;
   } finally {
-    const { closeDatabase } = require('../src/utils/database');
     await closeDatabase().catch(() => {});
     process.exit(process.exitCode ?? 0);
   }
 }
 
-main();
+main().catch(err => {
+  console.error('seed-dummy-data crashed:', err.message);
+  process.exit(1);
+});

@@ -31,6 +31,7 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
 
 const { query, closeDatabase } = require('../src/utils/database');
+const { createAccount } = require('../src/models/account');
 const standaloneUser = require('../src/models/standaloneUser');
 
 function getSuperAdminEmail() {
@@ -49,6 +50,29 @@ function getSuperAdminEmail() {
     }
   }
   return null;
+}
+
+async function ensureUnifiedUserAccount(user) {
+  if (!user?.id) {
+    return null;
+  }
+  if (user.account_id) {
+    return { accountId: user.account_id, apiKey: null };
+  }
+
+  const { account, apiKey } = await createAccount(user.email || 'My Account');
+  const result = await query(
+    `UPDATE users
+     SET account_id = $2, updated_at = NOW()
+     WHERE id = $1
+     RETURNING account_id`,
+    [user.id, account.id]
+  );
+  const accountId = result.rows?.[0]?.account_id;
+  if (!accountId) {
+    throw new Error(`Failed to persist account link for user ${user.email || user.id}.`);
+  }
+  return { accountId, apiKey };
 }
 
 async function ensureSuperAdmin() {
@@ -108,7 +132,7 @@ async function ensureSuperAdmin() {
     throw new Error(`Failed to load super admin user ${email} after upsert.`);
   }
 
-  const accountResult = await standaloneUser.ensureAccountForUser(user.id);
+  const accountResult = await ensureUnifiedUserAccount(user);
   if (!accountResult?.accountId) {
     throw new Error(`Failed to ensure account for super admin ${email}.`);
   }
@@ -139,4 +163,7 @@ async function run() {
   }
 }
 
-run();
+run().catch(err => {
+  console.error('ensureSuperAdmin crashed:', err.message);
+  process.exit(1);
+});
