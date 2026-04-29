@@ -20,6 +20,7 @@ describe('checkoutReadinessService', () => {
 
   it('marks pricing readiness blocked when direct price override is unavailable', async () => {
     process.env.APP_URL = 'https://api.example.com';
+    process.env.RIPX_CHECKOUT_PRICE_SECRET = 'shared-secret';
     setShopifyEnv();
 
     const { buildTestCheckoutReadiness } = require('../checkoutReadinessService');
@@ -65,6 +66,7 @@ describe('checkoutReadinessService', () => {
 
   it('allows pricing readiness with warning when cart transform install lookup is uncertain', async () => {
     process.env.APP_URL = 'https://api.example.com';
+    process.env.RIPX_CHECKOUT_PRICE_SECRET = 'shared-secret';
     setShopifyEnv();
 
     const { buildTestCheckoutReadiness } = require('../checkoutReadinessService');
@@ -116,6 +118,61 @@ describe('checkoutReadinessService', () => {
     expect(readiness.capabilities.direct_price_override.level).toBe('needs_attention');
     expect(directPriceCheck?.ok).toBe(false);
     expect(directPriceCheck?.severity).toBe('warning');
+  });
+
+  it('blocks pricing readiness when assignment signing secret is missing', async () => {
+    process.env.APP_URL = 'https://api.example.com';
+    delete process.env.RIPX_CHECKOUT_PRICE_SECRET;
+    delete process.env.RIPX_PRICE_ASSIGNMENT_SIGNATURE_SECRET;
+    setShopifyEnv();
+
+    const { buildTestCheckoutReadiness } = require('../checkoutReadinessService');
+    const readiness = await buildTestCheckoutReadiness({
+      test: {
+        id: 'test-price-no-signing',
+        name: 'Price test',
+        type: 'price',
+        status: 'draft',
+        variants: [
+          { id: 'control', name: 'Control', config: {} },
+          {
+            id: 'variant-a',
+            name: 'Variant A',
+            config: { priceMode: 'fixed', price: 19.99 },
+          },
+        ],
+      },
+      shopDomain: 'store.myshopify.com',
+      accessToken: 'token',
+      shopifyFunctions: [
+        {
+          id: 'gid://shopify/ShopifyFunction/1',
+          title: 'RipX cart transform',
+          apiType: 'cart_transform',
+        },
+      ],
+      shopifyCartTransforms: [{ id: 'gid://shopify/CartTransform/1', functionId: '1' }],
+      cartTransformsLookupStatus: 'ok',
+      extensionConfig: {
+        source: 'present',
+        contents:
+          "export const RIPX_PRICE_RESOLVE_BATCH_URL = 'https://api.example.com/api/track/price-resolve-batch';\n" +
+          "export const RIPX_CHECKOUT_PRICE_SECRET = '';\n",
+      },
+      checkoutMethodCapabilities: {
+        directPriceOverrideAvailable: true,
+        cartTransformFunctionAvailable: true,
+        cartTransformInstalled: true,
+        source: 'shopify_admin',
+      },
+    });
+
+    const signingCheck = readiness.checks.find(
+      item => item.id === 'pricing_assignment_signing_ready'
+    );
+    expect(readiness.summary.status).toBe('blocked');
+    expect(signingCheck?.ok).toBe(false);
+    expect(signingCheck?.severity).toBe('error');
   });
 
   it('flags checkout ui extension sync drift', async () => {

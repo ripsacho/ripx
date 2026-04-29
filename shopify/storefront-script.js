@@ -3116,24 +3116,21 @@
 
           if (method === 'POST' && isCartAddPath(url)) {
             var ripxCartPath = pathnameFromCartUrl(url);
-            if (!_ripxCartAttributeState) {
-              if (DEBUG) {
-                debugLog('cart intercept fetch:', ripxCartPath, '— waiting for RipX line state');
-              }
-              return waitForRipxCartAttributeStateBeforeAdd('fetch').then(function (state) {
-                if (!state) {
-                  return finishRipxCartAddFetch(input, init, 'fetch-no-state');
-                }
-                return sendRipxPatchedCartAddFetch(input, init, state, ripxCartPath, 'fetch');
-              });
+            if (DEBUG && !_ripxCartAttributeState) {
+              debugLog('cart intercept fetch:', ripxCartPath, '— waiting for RipX line state');
             }
-            return sendRipxPatchedCartAddFetch(
-              input,
-              init,
-              _ripxCartAttributeState,
-              ripxCartPath,
-              'fetch'
-            );
+            if (
+              !isRipxCartAddStateReady(_ripxCartAttributeState) &&
+              !shouldWaitForRipxCartAddState()
+            ) {
+              return finishRipxCartAddFetch(input, init, 'fetch-no-ripx-candidate');
+            }
+            return waitForRipxCartAttributeStateBeforeAdd('fetch').then(function (state) {
+              if (!state) {
+                return finishRipxCartAddFetch(input, init, 'fetch-no-state');
+              }
+              return sendRipxPatchedCartAddFetch(input, init, state, ripxCartPath, 'fetch');
+            });
           } else if (PRICE_PREVIEW_FRAME && method === 'POST' && isCartUpdateOrChangePath(url)) {
             var sectionsInit = init ? Object.assign({}, init) : {};
             if (!sectionsInit.headers) sectionsInit.headers = (input && input.headers) || {};
@@ -3244,13 +3241,36 @@
                 { once: true }
               );
             } catch (eAdd) {}
-            if (!_ripxCartAttributeState) {
-              waitForRipxCartAttributeStateBeforeAdd('xhr').then(function (state) {
-                if (state) scheduleRipxCartPropsRepairBurst('xhr-late-state');
-              });
+            if (!isRipxCartAddStateReady(_ripxCartAttributeState)) {
+              if (!shouldWaitForRipxCartAddState()) {
+                return origSend.call(this, body);
+              }
               if (DEBUG) {
                 debugLog('cart intercept xhr:', xhrCartPath, '— waiting for RipX line state');
               }
+              waitForRipxCartAttributeStateBeforeAdd('xhr').then(function (state) {
+                var delayedBody = body;
+                if (state) {
+                  var delayedHeaderObj = { 'content-type': self.__ripxContentType || '' };
+                  var delayedPatch = patchCartAddBodyForRipx(body, delayedHeaderObj, state);
+                  delayedBody = delayedPatch.body;
+                  if (delayedPatch.contentType && !self.__ripxContentType) {
+                    self.setRequestHeader('Content-Type', delayedPatch.contentType);
+                    self.__ripxContentType = delayedPatch.contentType;
+                  }
+                  scheduleRipxCartPropsRepairBurst('xhr-late-state');
+                  if (DEBUG) {
+                    debugLog(
+                      'cart intercept xhr:',
+                      xhrCartPath,
+                      delayedPatch.changed ? 'patched after wait' : 'unchanged after wait',
+                      delayedPatch.changed ? '' : debugDescribeCartAddBody(body)
+                    );
+                  }
+                }
+                return origSend.call(self, delayedBody);
+              });
+              return undefined;
             } else {
               var bodyBeforeXhr = body;
               var headerObj = { 'content-type': this.__ripxContentType || '' };
@@ -3301,7 +3321,7 @@
   }
 
   function stampRipxCartAddFormsNow(reason, scopedForm) {
-    if (!_ripxCartAttributeState) return false;
+    if (!isRipxCartAddStateReady(_ripxCartAttributeState)) return false;
     try {
       applyRipxStateToCartForms(_ripxCartFormTargetProductIds);
       if (scopedForm && isRipxCartAddForm(scopedForm)) {
@@ -3325,9 +3345,39 @@
         function (event) {
           var form = event && event.target;
           if (!isRipxCartAddForm(form)) return;
+          if (form.__ripxResubmittingCartAdd) {
+            if (stampRipxCartAddFormsNow('submit-resume', form)) {
+              scheduleRipxCartPropsRepairBurst('submit-resume');
+            }
+            return;
+          }
           if (stampRipxCartAddFormsNow('submit', form)) {
             scheduleRipxCartPropsRepairBurst('submit');
+            return;
           }
+          if (!shouldWaitForRipxCartAddState()) return;
+          if (!event || typeof event.preventDefault !== 'function') return;
+          event.preventDefault();
+          if (typeof event.stopImmediatePropagation === 'function')
+            event.stopImmediatePropagation();
+          else if (typeof event.stopPropagation === 'function') event.stopPropagation();
+          waitForRipxCartAttributeStateBeforeAdd('submit').then(function (state) {
+            if (state) stampRipxCartAddFormsNow('submit-wait', form);
+            try {
+              form.__ripxResubmittingCartAdd = true;
+              if (typeof form.requestSubmit === 'function') {
+                form.requestSubmit(event.submitter || undefined);
+              } else if (typeof form.submit === 'function') {
+                form.submit();
+              }
+            } finally {
+              setTimeout(function () {
+                try {
+                  form.__ripxResubmittingCartAdd = false;
+                } catch (_eResetSubmit) {}
+              }, 0);
+            }
+          });
         },
         true
       );
@@ -4284,17 +4334,124 @@
     return true;
   }
 
+  function stateLooksLikePriceCartState(state) {
+    if (!state || !state._ripx_price_test) return false;
+    var activeTest = getActiveTestById(state._ripx_price_test);
+    if (testTypeIsPrice(activeTest)) return true;
+    if (
+      PREVIEW_MODE &&
+      PREVIEW_TEST_ID &&
+      String(state._ripx_price_test) === String(PREVIEW_TEST_ID)
+    ) {
+      return true;
+    }
+    return normalizePriceApplicationMethod(state._ripx_price_method) === 'direct_price_override';
+  }
+
+  function isPriceDirectOverrideStateIncomplete(state) {
+    if (!state || !state._ripx_price_test || !state._ripx_variant) return true;
+    var method = String(state._ripx_price_method || '').trim();
+    if (method && method !== 'direct_price_override') return false;
+    if (!state._ripx_target_unit) return true;
+    if (!state._ripx_assignment_sig || !state._ripx_assignment_ts || !state._ripx_assignment_user) {
+      return true;
+    }
+    return false;
+  }
+
+  function isRipxCartAddStateReady(state) {
+    if (!state || !state._ripx_price_test || !state._ripx_variant) return false;
+    // Price-test Cart Transform lines need a target unit and signed assignment proof. A lightweight
+    // preview placeholder is not enough, so keep waiting until the real preview/live variant hydrates.
+    if (stateLooksLikePriceCartState(state)) {
+      return !isPriceDirectOverrideStateIncomplete(state);
+    }
+    return true;
+  }
+
+  function shouldWaitForRipxCartAddState() {
+    if (_ripxCartAttributeState) return true;
+    if (PREVIEW_MODE && PREVIEW_TEST_ID) return true;
+    var tests = Array.isArray(CONFIG.activeTests) ? CONFIG.activeTests : [];
+    for (var i = 0; i < tests.length; i += 1) {
+      var test = tests[i];
+      if (testTypeIsPrice(test) || testTypeIsOffer(test) || testTypeIsShipping(test)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   function waitForRipxCartAttributeStateBeforeAdd(reason) {
-    if (_ripxCartAttributeState) return Promise.resolve(_ripxCartAttributeState);
+    function makeSyntheticPreviewPriceTest() {
+      if (!(PREVIEW_MODE && PREVIEW_TEST_ID)) return null;
+      return {
+        id: PREVIEW_TEST_ID,
+        type: 'price',
+        targetType: 'all-products',
+        targetIds: null,
+        targetId: null,
+      };
+    }
+    function tryHydratePreviewCartAddState() {
+      if (!(PREVIEW_MODE && PREVIEW_TEST_ID)) return Promise.resolve(null);
+      return getVariant(PREVIEW_TEST_ID)
+        .then(function (variant) {
+          if (!variant) return _ripxCartAttributeState || null;
+          var test = getActiveTestById(PREVIEW_TEST_ID);
+          if (!test && variant.config) test = makeSyntheticPreviewPriceTest();
+          if (test && testTypeIsPrice(test)) {
+            seedFixedPriceCartAttributesWithoutProductId(
+              test,
+              variant,
+              reason || 'cart_add_preview'
+            );
+            var curProductId = getCurrentProductId();
+            if (curProductId && variant.config) {
+              applyPriceTest(test.id, curProductId, test.targetVariantId || null, variant);
+            } else {
+              injectPreviewCartAttributesWhenConfigMissing(PREVIEW_TEST_ID, variant);
+            }
+          } else {
+            var previewVariantId =
+              variant.variantId != null && String(variant.variantId).trim()
+                ? variant.variantId
+                : variant.id != null && String(variant.id).trim()
+                  ? variant.id
+                  : PREVIEW_VARIANT_ID || PREVIEW_VARIANT_NAME;
+            if (previewVariantId) {
+              injectPriceTestCartAttributes(
+                PREVIEW_TEST_ID,
+                previewVariantId,
+                getAssignmentProofFromVariant(variant),
+                null,
+                null,
+                { applicationMethod: 'direct_price_override' }
+              );
+            }
+          }
+          return _ripxCartAttributeState || null;
+        })
+        .catch(function () {
+          return _ripxCartAttributeState || null;
+        });
+    }
+    if (isRipxCartAddStateReady(_ripxCartAttributeState)) {
+      return Promise.resolve(_ripxCartAttributeState);
+    }
     var timeoutMs = 850;
     var timeout = new Promise(function (resolve) {
       setTimeout(function () {
         resolve(null);
       }, timeoutMs);
     });
-    var hydrate = getVariantCachePromise()
+    var hydrate = tryHydratePreviewCartAddState()
+      .then(function (state) {
+        if (isRipxCartAddStateReady(state)) return state;
+        return getVariantCachePromise();
+      })
       .then(function (cache) {
-        if (_ripxCartAttributeState) return _ripxCartAttributeState;
+        if (isRipxCartAddStateReady(_ripxCartAttributeState)) return _ripxCartAttributeState;
         var tests = Array.isArray(CONFIG.activeTests) ? CONFIG.activeTests : [];
         for (var i = 0; i < tests.length; i += 1) {
           var test = tests[i];
@@ -4305,10 +4462,10 @@
             return _ripxCartAttributeState;
           }
         }
-        return _ripxCartAttributeState || null;
+        return isRipxCartAddStateReady(_ripxCartAttributeState) ? _ripxCartAttributeState : null;
       })
       .catch(function () {
-        return _ripxCartAttributeState || null;
+        return isRipxCartAddStateReady(_ripxCartAttributeState) ? _ripxCartAttributeState : null;
       });
     return Promise.race([hydrate, timeout]).then(function (state) {
       if (!state && DEBUG) {

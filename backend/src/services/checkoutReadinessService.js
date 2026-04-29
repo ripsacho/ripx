@@ -20,6 +20,7 @@ const {
 } = require('./checkoutCustomizationDeploymentService');
 const shopifyService = require('./shopifyService');
 const { inferTemplateKey } = require('../utils/testType');
+const { getSignatureSecret } = require('../utils/priceAssignmentSignature');
 
 const CHECKOUT_UI_CONFIG_RELATIVE_PATH = 'extensions/ripx-checkout-ui/src/ripxConfig.js';
 const SUPPORTED_TEMPLATE_KEYS = new Set(['pricing', 'offer', 'checkout', 'shipping']);
@@ -483,6 +484,7 @@ async function buildPricingOrOfferReadiness({
     const directPriceReady = methodCapabilities?.directPriceOverrideAvailable === true;
     const cartTransformAvailable = methodCapabilities?.cartTransformFunctionAvailable === true;
     const cartTransformInstalled = methodCapabilities?.cartTransformInstalled;
+    const assignmentSigningReady = Boolean(getSignatureSecret());
     const cartTransformInstallCheckStatus = normalizeLower(
       methodCapabilities?.cartTransformInstallCheckStatus || ''
     );
@@ -509,6 +511,16 @@ async function buildPricingOrOfferReadiness({
             : cartTransformAvailable
               ? 'RipX Cart Transform function exists, but install state still needs attention. Start is allowed for preview/live QA; install or re-enable the cart transform before production traffic.'
               : 'Direct Price Override is not ready for this shop yet. Deploy/install the RipX cart transform on a supported Plus/dev store path.'
+      )
+    );
+    checklist.push(
+      buildCheck(
+        'pricing_assignment_signing_ready',
+        assignmentSigningReady,
+        assignmentSigningReady ? 'ok' : 'error',
+        assignmentSigningReady
+          ? 'Price assignment signing is configured for storefront-to-checkout handoff.'
+          : 'Price assignment signing is not configured. Set RIPX_PRICE_ASSIGNMENT_SIGNATURE_SECRET or RIPX_CHECKOUT_PRICE_SECRET before launching price tests, otherwise Cart Transform cannot trust or apply RipX cart line prices.'
       )
     );
   }

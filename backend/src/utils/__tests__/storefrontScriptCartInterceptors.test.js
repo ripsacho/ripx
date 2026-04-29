@@ -242,7 +242,9 @@ function getCartChangeFetchCalls(fetchCalls) {
 async function waitForCartChangeCall(fetchCalls) {
   for (let i = 0; i < 10; i++) {
     const calls = getCartChangeFetchCalls(fetchCalls);
-    if (calls.length > 0) {return calls[0];}
+    if (calls.length > 0) {
+      return calls[0];
+    }
     await new Promise(resolve => setTimeout(resolve, 0));
   }
   return getCartChangeFetchCalls(fetchCalls)[0] || null;
@@ -661,7 +663,7 @@ describe('storefront script cart/add interceptors', () => {
       '99999999-9999-4999-8999-999999999999',
       'variant-direct',
       'makripon.myshopify.com',
-      null,
+      { sig: 'e'.repeat(64), ts: '1710000000000', user: 'user-direct' },
       { targetUnit: 84 }
     );
     hooks.setRipxCartAttributeState({
@@ -683,6 +685,7 @@ describe('storefront script cart/add interceptors', () => {
       _ripx_variant: 'variant-direct',
       _ripx_target_unit: '84.00',
       _ripx_price_method: 'direct_price_override',
+      _ripx_assignment_sig: 'e'.repeat(64),
     });
   });
 
@@ -701,7 +704,7 @@ describe('storefront script cart/add interceptors', () => {
       '12121212-1212-4121-8121-121212121212',
       'variant-form-submit',
       'makripon.myshopify.com',
-      null,
+      { sig: 'h'.repeat(64), ts: '1710000000000', user: 'user-form-submit' },
       { targetUnit: 77 },
       null
     );
@@ -724,6 +727,106 @@ describe('storefront script cart/add interceptors', () => {
     expect(hiddenByName.get('properties[_ripx_variant]')).toBe('variant-form-submit');
     expect(hiddenByName.get('properties[_ripx_target_unit]')).toBe('77.00');
     expect(hiddenByName.get('properties[_ripx_price_method]')).toBe('direct_price_override');
+  });
+
+  it('pauses native submit until simple-preview price state is ready', async () => {
+    const testId = '24242424-2424-4242-8242-242424242424';
+    const form = createCartAddFormStub();
+    form.requestSubmit = jest.fn();
+    const { windowObj } = bootStorefrontScriptHarness({
+      readyState: 'complete',
+      search:
+        `?ab_preview=1&ab_preview_simple=1&ab_preview_test=${testId}` +
+        '&ab_preview_variant=variant-form-preview',
+      runtimeConfig: {
+        apiUrl: 'https://api.example.com/api',
+        activeTests: [],
+      },
+      documentQuerySelectorAll: selector =>
+        String(selector || '').includes('form[action*="cart/add"]') ? [form] : [],
+      fetchImpl: input => {
+        const url = new URL(String(input), 'https://example.com');
+        if (/\/track\/preview$/.test(url.pathname)) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                variant: {
+                  variantId: 'variant-form-preview',
+                  variantName: 'Variant A',
+                  assignment_sig: 'g'.repeat(64),
+                  assignment_ts: '1710000000000',
+                  assignment_user: 'preview-user-form',
+                  config: {
+                    priceMode: 'fixed',
+                    price: 45,
+                    priceApplicationMethod: 'direct_price_override',
+                  },
+                },
+              }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({}),
+        });
+      },
+    });
+
+    const submitRegistration = windowObj.document.addEventListener.mock.calls.find(
+      call => call[0] === 'submit'
+    );
+    expect(submitRegistration).toBeTruthy();
+    const event = {
+      target: form,
+      preventDefault: jest.fn(),
+      stopImmediatePropagation: jest.fn(),
+    };
+    submitRegistration[1](event);
+
+    expect(event.preventDefault).toHaveBeenCalled();
+    for (let i = 0; i < 8 && form.requestSubmit.mock.calls.length === 0; i++) {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+
+    const hiddenByName = new Map(form.__hiddenInputs.map(input => [input.name, input.value]));
+    expect(hiddenByName.get('properties[_ripx_price_test]')).toBe(testId);
+    expect(hiddenByName.get('properties[_ripx_variant]')).toBe('variant-form-preview');
+    expect(hiddenByName.get('properties[_ripx_target_unit]')).toBe('45.00');
+    expect(hiddenByName.get('properties[_ripx_price_method]')).toBe('direct_price_override');
+    expect(hiddenByName.get('properties[_ripx_assignment_sig]')).toBe('g'.repeat(64));
+    expect(form.requestSubmit).toHaveBeenCalled();
+  });
+
+  it('does not pause native submit when no RipX cart handoff can hydrate', () => {
+    const form = createCartAddFormStub();
+    form.requestSubmit = jest.fn();
+    const { windowObj } = bootStorefrontScriptHarness({
+      readyState: 'complete',
+      runtimeConfig: {
+        apiUrl: 'https://api.example.com/api',
+        activeTests: [],
+      },
+      documentQuerySelectorAll: selector =>
+        String(selector || '').includes('form[action*="cart/add"]') ? [form] : [],
+    });
+
+    const submitRegistration = windowObj.document.addEventListener.mock.calls.find(
+      call => call[0] === 'submit'
+    );
+    expect(submitRegistration).toBeTruthy();
+    const event = {
+      target: form,
+      preventDefault: jest.fn(),
+      stopImmediatePropagation: jest.fn(),
+    };
+    submitRegistration[1](event);
+
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(form.requestSubmit).not.toHaveBeenCalled();
+    expect(form.__hiddenInputs).toHaveLength(0);
   });
 
   it('seeds fixed-price live cart attributes even when product id is unavailable', async () => {
@@ -851,6 +954,134 @@ describe('storefront script cart/add interceptors', () => {
     expect(body.properties._ripx_variant).toBe('variant-fast-live');
     expect(body.properties._ripx_target_unit).toBe('37.00');
     expect(body.properties._ripx_assignment_sig).toBe('b'.repeat(64));
+  });
+
+  it('waits past simple-preview placeholders before patching price cart adds', async () => {
+    const testId = '18181818-1818-4181-8181-181818181818';
+    const { fetchCalls, windowObj } = bootStorefrontScriptHarness({
+      readyState: 'complete',
+      search:
+        `?ab_preview=1&ab_preview_simple=1&ab_preview_test=${testId}` +
+        '&ab_preview_variant=variant-preview',
+      runtimeConfig: {
+        apiUrl: 'https://api.example.com/api',
+        activeTests: [
+          {
+            id: testId,
+            type: 'price',
+            targetType: 'all-products',
+            targetIds: null,
+          },
+        ],
+      },
+      fetchImpl: input => {
+        const url = new URL(String(input), 'https://example.com');
+        if (/\/track\/preview$/.test(url.pathname)) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                variant: {
+                  variantId: 'variant-preview',
+                  variantName: 'Variant A',
+                  assignment_sig: 'c'.repeat(64),
+                  assignment_ts: '1710000000000',
+                  assignment_user: 'preview-user-123',
+                  config: {
+                    priceMode: 'fixed',
+                    price: 29,
+                    priceApplicationMethod: 'direct_price_override',
+                  },
+                },
+              }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({}),
+        });
+      },
+    });
+
+    await windowObj.fetch('/cart/add.js', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 123, quantity: 1 }),
+    });
+
+    const cartAdd = getCartAddFetchCall(fetchCalls);
+    const body = JSON.parse(cartAdd.init.body);
+    expect(body.properties._ripx_price_test).toBe(testId);
+    expect(body.properties._ripx_variant).toBe('variant-preview');
+    expect(body.properties._ripx_target_unit).toBe('29.00');
+    expect(body.properties._ripx_price_method).toBe('direct_price_override');
+    expect(body.properties._ripx_assignment_sig).toBe('c'.repeat(64));
+  });
+
+  it('hydrates simple-preview price cart adds before preview test merge completes', async () => {
+    const testId = '19191919-1919-4191-8191-191919191919';
+    const { fetchCalls, windowObj } = bootStorefrontScriptHarness({
+      readyState: 'complete',
+      search:
+        `?ab_preview=1&ab_preview_simple=1&ab_preview_test=${testId}` +
+        '&ab_preview_variant=variant-premerge',
+      runtimeConfig: {
+        apiUrl: 'https://api.example.com/api',
+        activeTests: [],
+      },
+      fetchImpl: input => {
+        const url = new URL(String(input), 'https://example.com');
+        if (/\/track\/preview$/.test(url.pathname)) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                variant: {
+                  variantId: 'variant-premerge',
+                  variantName: 'Variant A',
+                  assignment_sig: 'd'.repeat(64),
+                  assignment_ts: '1710000000000',
+                  assignment_user: 'preview-user-456',
+                  config: {
+                    priceMode: 'fixed',
+                    price: 31,
+                    priceApplicationMethod: 'direct_price_override',
+                  },
+                },
+              }),
+          });
+        }
+        if (/\/track\/preview-storefront-test$/.test(url.pathname)) {
+          return Promise.resolve({
+            ok: false,
+            status: 404,
+            json: () => Promise.resolve({}),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({}),
+        });
+      },
+    });
+
+    await windowObj.fetch('/cart/add.js', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 123, quantity: 1 }),
+    });
+
+    const cartAdd = getCartAddFetchCall(fetchCalls);
+    const body = JSON.parse(cartAdd.init.body);
+    expect(body.properties._ripx_price_test).toBe(testId);
+    expect(body.properties._ripx_variant).toBe('variant-premerge');
+    expect(body.properties._ripx_target_unit).toBe('31.00');
+    expect(body.properties._ripx_price_method).toBe('direct_price_override');
+    expect(body.properties._ripx_assignment_sig).toBe('d'.repeat(64));
   });
 
   it('patches Blob fetch cart adds with RipX line properties', async () => {
@@ -1165,6 +1396,83 @@ describe('storefront script cart/add interceptors', () => {
     const params = new URLSearchParams(xhr.sentBody);
     expect(params.get('properties[_ripx_price_test]')).toBe('existing-test');
     expect(params.get('properties[_ripx_variant]')).toBe('existing-variant');
+  });
+
+  it('waits for simple-preview state before sending XHR cart adds', async () => {
+    const testId = '23232323-2323-4232-8232-232323232323';
+    const { hooks, FakeXMLHttpRequest } = bootStorefrontScriptHarness({
+      search:
+        `?ab_preview=1&ab_preview_simple=1&ab_preview_test=${testId}` +
+        '&ab_preview_variant=variant-xhr-preview',
+      runtimeConfig: {
+        apiUrl: 'https://api.example.com/api',
+        activeTests: [],
+      },
+      fetchImpl: input => {
+        const url = new URL(String(input), 'https://example.com');
+        if (/\/track\/preview$/.test(url.pathname)) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                variant: {
+                  variantId: 'variant-xhr-preview',
+                  variantName: 'Variant A',
+                  assignment_sig: 'f'.repeat(64),
+                  assignment_ts: '1710000000000',
+                  assignment_user: 'preview-user-xhr',
+                  config: {
+                    priceMode: 'fixed',
+                    price: 43,
+                    priceApplicationMethod: 'direct_price_override',
+                  },
+                },
+              }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({}),
+        });
+      },
+    });
+    hooks.installRipxCartAddInterceptors();
+
+    const xhr = new FakeXMLHttpRequest();
+    xhr.open('POST', '/cart/add');
+    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+    xhr.send('id=123&quantity=1');
+
+    expect(xhr.sentBody).toBe(null);
+    for (let i = 0; i < 8 && xhr.sentBody === null; i++) {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+
+    const params = new URLSearchParams(xhr.sentBody);
+    expect(params.get('properties[_ripx_price_test]')).toBe(testId);
+    expect(params.get('properties[_ripx_variant]')).toBe('variant-xhr-preview');
+    expect(params.get('properties[_ripx_target_unit]')).toBe('43.00');
+    expect(params.get('properties[_ripx_price_method]')).toBe('direct_price_override');
+    expect(params.get('properties[_ripx_assignment_sig]')).toBe('f'.repeat(64));
+  });
+
+  it('does not delay XHR cart adds when no RipX cart handoff can hydrate', () => {
+    const { hooks, FakeXMLHttpRequest } = bootStorefrontScriptHarness({
+      runtimeConfig: {
+        apiUrl: 'https://api.example.com/api',
+        activeTests: [],
+      },
+    });
+    hooks.installRipxCartAddInterceptors();
+
+    const xhr = new FakeXMLHttpRequest();
+    xhr.open('POST', '/cart/add');
+    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+    xhr.send('id=123&quantity=1');
+
+    expect(xhr.sentBody).toBe('id=123&quantity=1');
   });
 
   it('patches FormData fetch body for /cart/add.js', async () => {
