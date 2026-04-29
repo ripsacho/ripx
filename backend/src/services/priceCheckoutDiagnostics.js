@@ -311,10 +311,14 @@ function buildExtensionConfigDiagnostics(params) {
 
   /** @type {{ level: 'error'|'warning', text: string }[]} */
   const issues = [];
+  const strictExtensionConfig =
+    String(process.env.RIPX_PRICE_DIAGNOSTICS_STRICT_EXTENSION_CONFIG || '')
+      .trim()
+      .toLowerCase() === 'true';
   if (secretRequired && !secretMatches) {
     issues.push({
-      level: 'error',
-      text: `RIPX_CHECKOUT_PRICE_SECRET mismatch: server .env and ${RIPX_EXTENSION_CONFIG_RELATIVE_PATH} must match or batch calls return 403. Run npm run shopify:checkout-discount:sync-config.`,
+      level: strictExtensionConfig ? 'error' : 'warning',
+      text: `Checkout discount extension config drift: RIPX_CHECKOUT_PRICE_SECRET differs between server .env and ${RIPX_EXTENSION_CONFIG_RELATIVE_PATH}. Price tests now use Cart Transform direct price override, but discount-function paths can return 403 until you run npm run shopify:checkout-discount:sync-config and redeploy the checkout discount extension.`,
     });
   } else if (!secretRequired && extSecret) {
     issues.push({

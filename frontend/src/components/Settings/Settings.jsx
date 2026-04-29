@@ -1473,15 +1473,22 @@ function Settings() {
     const failedChecklist = Array.isArray(checkoutDiag?.checklist)
       ? checkoutDiag.checklist.filter(item => !item?.ok)
       : [];
-    const diagReady = failedChecklist.length === 0;
-    const firstFailedDiagMessage = failedChecklist[0]?.message || null;
+    const blockingDiagChecklist = failedChecklist.filter(
+      item => String(item?.severity || '').toLowerCase() === 'error'
+    );
+    const diagReady = blockingDiagChecklist.length === 0;
+    const firstBlockingDiagMessage = blockingDiagChecklist[0]?.message || null;
+    const firstAdvisoryDiagMessage = failedChecklist[0]?.message || null;
     checks.push({
       key: 'checkout_diag',
       ok: diagReady,
       required: true,
+      advisory: failedChecklist.length > 0 && blockingDiagChecklist.length === 0,
       message: diagReady
-        ? 'Checkout diagnostics passed.'
-        : `Checkout diagnostics has issues.${firstFailedDiagMessage ? ` First: ${firstFailedDiagMessage}` : ''}`,
+        ? failedChecklist.length > 0
+          ? `Checkout diagnostics has advisory item(s).${firstAdvisoryDiagMessage ? ` First: ${firstAdvisoryDiagMessage}` : ''}`
+          : 'Checkout diagnostics passed.'
+        : `Checkout diagnostics has blocking issue(s).${firstBlockingDiagMessage ? ` First: ${firstBlockingDiagMessage}` : ''}`,
     });
 
     const runningPriceTests =
@@ -1493,7 +1500,8 @@ function Settings() {
     checks.push({
       key: 'running_price_test',
       ok: hasRunningPriceTest === null ? false : hasRunningPriceTest,
-      required: true,
+      required: false,
+      advisory: true,
       message:
         hasRunningPriceTest === null
           ? 'Running price-test count unavailable.'
@@ -1540,7 +1548,7 @@ function Settings() {
     });
 
     const requiredChecks = checks.filter(c => c.required !== false);
-    const ready = requiredChecks.every(c => c.ok);
+    const ready = requiredChecks.every(c => c.ok || c.advisory === true);
     const supportLevel = !ready
       ? 'setup_incomplete'
       : cartNativeInstalled
@@ -1549,8 +1557,8 @@ function Settings() {
     return {
       ready,
       checks,
-      failed: requiredChecks.filter(c => !c.ok),
-      advisories: checks.filter(c => c.required === false && !c.ok),
+      failed: requiredChecks.filter(c => !c.ok && c.advisory !== true),
+      advisories: checks.filter(c => c.advisory === true || (c.required === false && !c.ok)),
       supportLevel,
     };
   }, [installation?.scriptVerified, installation?.instructions?.cartNative?.status, checkoutDiag]);
@@ -1615,7 +1623,7 @@ function Settings() {
     if (storeHealth.supportLevel === 'checkout_aligned_cart_fallback') {
       return 'Checkout aligned + cart fallback: checkout discount path is healthy, but native cart rendering is not confirmed on this theme yet.';
     }
-    return 'Setup incomplete: required checks are not passing yet (script, diagnostics, tenant, or running price test).';
+    return 'Setup incomplete: required checks are not passing yet (script, blocking diagnostics, or tenant registration).';
   }, [storeHealth.supportLevel]);
   const supportLevelBadgeTone =
     storeHealth.supportLevel === 'native_cart_checkout_aligned'
@@ -1631,8 +1639,8 @@ function Settings() {
         : 'Setup incomplete';
   const checkoutHealthSnapshot = useMemo(() => {
     const requiredChecks = storeHealth.checks.filter(item => item.required !== false);
-    const passedRequired = requiredChecks.filter(item => item.ok).length;
-    const failedRequired = requiredChecks.filter(item => !item.ok);
+    const passedRequired = requiredChecks.filter(item => item.ok || item.advisory === true).length;
+    const failedRequired = requiredChecks.filter(item => !item.ok && item.advisory !== true);
     return {
       passedRequired,
       requiredTotal: requiredChecks.length,
@@ -3936,14 +3944,16 @@ function Settings() {
                                                       tone={
                                                         item.ok
                                                           ? 'success'
-                                                          : item.required === false
+                                                          : item.advisory === true ||
+                                                              item.required === false
                                                             ? 'attention'
                                                             : 'critical'
                                                       }
                                                     >
                                                       {item.ok
                                                         ? 'OK'
-                                                        : item.required === false
+                                                        : item.advisory === true ||
+                                                            item.required === false
                                                           ? 'Advisory'
                                                           : 'Fail'}
                                                     </Badge>

@@ -317,9 +317,28 @@ export const RIPX_CHECKOUT_PRICE_SECRET = ${JSON.stringify('')};
     expect(d.infrastructure.extension_batch_url_matches_env).toBe(true);
   });
 
-  it('extensionConfig reports error when checkout secret differs from .env', () => {
+  it('extensionConfig reports warning when checkout secret differs from .env by default', () => {
     process.env.APP_URL = 'https://api.example.com';
     process.env.RIPX_CHECKOUT_PRICE_SECRET = 'server-secret';
+    const { buildCheckoutPriceDiagnostics } = require('../priceCheckoutDiagnostics');
+    const contents = `export const RIPX_PRICE_RESOLVE_BATCH_URL = ${JSON.stringify(
+      'https://api.example.com/api/track/price-resolve-batch'
+    )};
+export const RIPX_CHECKOUT_PRICE_SECRET = ${JSON.stringify('other-secret')};
+`;
+    const d = buildCheckoutPriceDiagnostics({
+      extensionConfig: { source: 'present', contents },
+    });
+    const ext = d.checklist.find(c => c.id === 'extension_config_matches_env');
+    expect(ext?.ok).toBe(false);
+    expect(ext?.severity).toBe('warning');
+    expect(d.summary.overall_status).toBe('warning');
+  });
+
+  it('extensionConfig reports error for checkout secret drift when strict diagnostics are enabled', () => {
+    process.env.APP_URL = 'https://api.example.com';
+    process.env.RIPX_CHECKOUT_PRICE_SECRET = 'server-secret';
+    process.env.RIPX_PRICE_DIAGNOSTICS_STRICT_EXTENSION_CONFIG = 'true';
     const { buildCheckoutPriceDiagnostics } = require('../priceCheckoutDiagnostics');
     const contents = `export const RIPX_PRICE_RESOLVE_BATCH_URL = ${JSON.stringify(
       'https://api.example.com/api/track/price-resolve-batch'
