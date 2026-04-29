@@ -20,7 +20,7 @@
 
   var config = readConfig();
   var shopHost = String(config.shopHost || window.location.hostname || '').trim();
-  var version = String(config.version || '').trim() || '1.0.40';
+  var version = String(config.version || '').trim() || '1.0.41';
   var directScriptBaseUrl = String(config.directScriptBaseUrl || '').trim();
 
   function hasRipx() {

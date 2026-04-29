@@ -70,13 +70,22 @@ const {
   shapePriceResolveBatchLinesForCheckout,
 } = require('../utils/priceResolveBatchResponse');
 const { checkoutPriceSecretsMatch } = require('../utils/checkoutPriceSecret');
-const { signPriceAssignment } = require('../utils/priceAssignmentSignature');
+const {
+  signPriceAssignment,
+  getPriceAssignmentSigningBlocker,
+} = require('../utils/priceAssignmentSignature');
 const { findVariantForPreviewQuery } = require('../utils/previewVariantMatch');
 const { normalizeShippingVariantConfig } = require('../services/shippingTestConfigService');
 const PRICE_RESOLVE_LINE_ID_MAX = Math.max(
   32,
   Number.parseInt(process.env.RIPX_PRICE_RESOLVE_LINE_ID_MAX || '256', 10) || 256
 );
+const PRICE_ASSIGNMENT_SIGNING_WARNING_INTERVAL_MS = Math.max(
+  10000,
+  Number.parseInt(process.env.RIPX_PRICE_ASSIGNMENT_SIGNING_WARNING_INTERVAL_MS || '60000', 10) ||
+    60000
+);
+const priceAssignmentSigningWarningLastAt = new Map();
 
 /** Middleware: return 403 when domain is on block list (key_value_store key block_list.<domain>) */
 async function blockListCheck(req, res, next) {
@@ -220,6 +229,24 @@ function findShippingVariantByCallbackQuery(test, queryInput = {}) {
   };
 }
 
+function warnPriceAssignmentSigningOnce(reason, details = {}) {
+  const key = [
+    String(reason || 'unknown'),
+    String(details.shopDomain || ''),
+    String(details.testId || ''),
+  ].join('|');
+  const now = Date.now();
+  const lastAt = priceAssignmentSigningWarningLastAt.get(key) || 0;
+  if (now - lastAt < PRICE_ASSIGNMENT_SIGNING_WARNING_INTERVAL_MS) {
+    return;
+  }
+  priceAssignmentSigningWarningLastAt.set(key, now);
+  logger.warn('price assignment returned unsigned', {
+    reason,
+    ...details,
+  });
+}
+
 function withAssignmentSignature(variant, testId, userId, shopDomain) {
   if (!variant || typeof variant !== 'object') {
     return variant;
@@ -232,18 +259,32 @@ function withAssignmentSignature(variant, testId, userId, shopDomain) {
   const normalizedShop = String(shopDomain || '')
     .trim()
     .toLowerCase();
-  if (!variantId || !normalizedUserId || !normalizedShop) {
-    return variant;
-  }
   const issuedAtMs = Date.now();
-  const signature = signPriceAssignment({
+  const signingInput = {
     testId,
     variantId,
     userId: normalizedUserId,
     shopDomain: normalizedShop,
     issuedAtMs,
-  });
+  };
+  const signingBlocker = getPriceAssignmentSigningBlocker(signingInput);
+  if (signingBlocker) {
+    warnPriceAssignmentSigningOnce(signingBlocker, {
+      testId: testId ? String(testId) : null,
+      hasVariantId: Boolean(variantId),
+      hasUserId: Boolean(normalizedUserId),
+      shopDomain: normalizedShop || null,
+    });
+    return variant;
+  }
+  const signature = signPriceAssignment(signingInput);
   if (!signature) {
+    warnPriceAssignmentSigningOnce('signature_generation_failed', {
+      testId: testId ? String(testId) : null,
+      shopDomain: normalizedShop || null,
+      hasVariantId: Boolean(variantId),
+      hasUserId: Boolean(normalizedUserId),
+    });
     return variant;
   }
   return {

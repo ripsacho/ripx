@@ -130,6 +130,7 @@ function bootStorefrontScriptHarness(opts = {}) {
     URLSearchParams,
     FormData,
     Headers,
+    Blob,
     fetch: jest.fn((input, init) => {
       fetchCalls.push({ input, init });
       if (typeof opts.fetchImpl === 'function') {
@@ -162,6 +163,7 @@ function bootStorefrontScriptHarness(opts = {}) {
     URLSearchParams,
     FormData,
     Headers,
+    Blob,
     XMLHttpRequest: FakeXMLHttpRequest,
     fetch: windowObj.fetch,
     setTimeout,
@@ -229,6 +231,21 @@ function getCartSnapshotCalls(fetchCalls) {
   return (Array.isArray(fetchCalls) ? fetchCalls : []).filter(call =>
     /\/cart\.js(?:[?#]|$)/i.test(getFetchInputUrl(call))
   );
+}
+
+function getCartChangeFetchCalls(fetchCalls) {
+  return (Array.isArray(fetchCalls) ? fetchCalls : []).filter(call =>
+    /\/cart\/change(?:\.js)?(?:[?#]|$)/i.test(getFetchInputUrl(call))
+  );
+}
+
+async function waitForCartChangeCall(fetchCalls) {
+  for (let i = 0; i < 10; i++) {
+    const calls = getCartChangeFetchCalls(fetchCalls);
+    if (calls.length > 0) {return calls[0];}
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+  return getCartChangeFetchCalls(fetchCalls)[0] || null;
 }
 
 function createCartAddFormStub() {
@@ -709,6 +726,194 @@ describe('storefront script cart/add interceptors', () => {
     expect(hiddenByName.get('properties[_ripx_price_method]')).toBe('direct_price_override');
   });
 
+  it('seeds fixed-price live cart attributes even when product id is unavailable', async () => {
+    const form = createCartAddFormStub();
+    const testId = '14141414-1414-4141-8141-141414141414';
+    const { fetchCalls } = bootStorefrontScriptHarness({
+      readyState: 'complete',
+      runtimeConfig: {
+        apiUrl: 'https://api.example.com/api',
+        activeTests: [
+          {
+            id: testId,
+            type: 'price',
+            targetType: 'all-products',
+            targetIds: null,
+          },
+        ],
+      },
+      documentQuerySelector: () => null,
+      documentQuerySelectorAll: selector =>
+        String(selector || '').includes('form[action*="cart/add"]') ? [form] : [],
+      fetchImpl: input => {
+        const url = new URL(String(input));
+        if (/\/track\/variants$/.test(url.pathname)) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                variants: {
+                  [testId]: {
+                    variantId: 'variant-fixed-live',
+                    variantName: 'Variant A',
+                    assignment_sig: 'a'.repeat(64),
+                    assignment_ts: '1710000000000',
+                    assignment_user: 'user-123',
+                    config: {
+                      priceMode: 'fixed',
+                      price: 42,
+                      priceApplicationMethod: 'direct_price_override',
+                    },
+                  },
+                },
+              }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({}),
+        });
+      },
+    });
+
+    await waitForVariantRequestCount(fetchCalls, 1);
+    for (let i = 0; i < 8 && form.__hiddenInputs.length === 0; i++) {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+
+    const hiddenByName = new Map(form.__hiddenInputs.map(input => [input.name, input.value]));
+    expect(hiddenByName.get('properties[_ripx_price_test]')).toBe(testId);
+    expect(hiddenByName.get('properties[_ripx_variant]')).toBe('variant-fixed-live');
+    expect(hiddenByName.get('properties[_ripx_target_unit]')).toBe('42.00');
+    expect(hiddenByName.get('properties[_ripx_price_method]')).toBe('direct_price_override');
+    expect(hiddenByName.get('properties[_ripx_assignment_sig]')).toBe('a'.repeat(64));
+  });
+
+  it('waits for fixed-price assignment before patching fast live fetch cart adds', async () => {
+    const testId = '15151515-1515-4151-8151-151515151515';
+    const { fetchCalls, windowObj } = bootStorefrontScriptHarness({
+      readyState: 'complete',
+      runtimeConfig: {
+        apiUrl: 'https://api.example.com/api',
+        activeTests: [
+          {
+            id: testId,
+            type: 'price',
+            targetType: 'all-products',
+            targetIds: null,
+          },
+        ],
+      },
+      fetchImpl: input => {
+        const url = new URL(String(input), 'https://example.com');
+        if (/\/track\/variants$/.test(url.pathname)) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                variants: {
+                  [testId]: {
+                    variantId: 'variant-fast-live',
+                    variantName: 'Variant A',
+                    assignment_sig: 'b'.repeat(64),
+                    assignment_ts: '1710000000000',
+                    assignment_user: 'user-123',
+                    config: {
+                      priceMode: 'fixed',
+                      price: 37,
+                      priceApplicationMethod: 'direct_price_override',
+                    },
+                  },
+                },
+              }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({}),
+        });
+      },
+    });
+
+    await windowObj.fetch('/cart/add.js', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 123, quantity: 1 }),
+    });
+
+    const cartAdd = getCartAddFetchCall(fetchCalls);
+    const body = JSON.parse(cartAdd.init.body);
+    expect(body.properties._ripx_price_test).toBe(testId);
+    expect(body.properties._ripx_variant).toBe('variant-fast-live');
+    expect(body.properties._ripx_target_unit).toBe('37.00');
+    expect(body.properties._ripx_assignment_sig).toBe('b'.repeat(64));
+  });
+
+  it('patches Blob fetch cart adds with RipX line properties', async () => {
+    const { hooks, fetchCalls, windowObj } = bootStorefrontScriptHarness();
+    const attrs = hooks.getRipxCartAttrsPayload(
+      '16161616-1616-4161-8161-161616161616',
+      'variant-blob',
+      'makripon.myshopify.com',
+      { sig: 'c'.repeat(64), ts: '1710000000000', user: 'user-123' },
+      { targetUnit: 22 },
+      null
+    );
+    hooks.setRipxCartAttributeState({
+      ...attrs,
+      _ripx_price_method: 'direct_price_override',
+    });
+    hooks.installRipxCartAddInterceptors();
+
+    await windowObj.fetch('/cart/add.js', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: new Blob([JSON.stringify({ id: 123, quantity: 1 })], {
+        type: 'application/json',
+      }),
+    });
+
+    const cartAdd = getCartAddFetchCall(fetchCalls);
+    const body = JSON.parse(cartAdd.init.body);
+    expect(body.properties._ripx_price_test).toBe('16161616-1616-4161-8161-161616161616');
+    expect(body.properties._ripx_variant).toBe('variant-blob');
+    expect(body.properties._ripx_target_unit).toBe('22.00');
+    expect(body.properties._ripx_price_method).toBe('direct_price_override');
+  });
+
+  it('uses variant-specific target units for multi-item JSON cart adds', () => {
+    const { hooks } = bootStorefrontScriptHarness();
+    const attrs = hooks.getRipxCartAttrsPayload(
+      '17171717-1717-4171-8171-171717171717',
+      'variant-matrix',
+      'makripon.myshopify.com',
+      { sig: 'd'.repeat(64), ts: '1710000000000', user: 'user-123' },
+      null,
+      null
+    );
+    hooks.rememberRipxTargetUnitForVariant('222', 12.5);
+    hooks.rememberRipxPriceMethodForVariant('222', 'direct_price_override');
+
+    const patch = hooks.patchCartAddBodyForRipx(
+      JSON.stringify({
+        items: [
+          { id: 222, quantity: 1 },
+          { id: 333, quantity: 1 },
+        ],
+      }),
+      { 'content-type': 'application/json' },
+      attrs
+    );
+    const body = JSON.parse(patch.body);
+    expect(body.items[0].properties._ripx_target_unit).toBe('12.50');
+    expect(body.items[0].properties._ripx_price_method).toBe('direct_price_override');
+    expect(body.items[1].properties._ripx_target_unit).toBeUndefined();
+  });
+
   it('does not swap add-to-cart variant id when native swap source does not match', async () => {
     const { hooks, fetchCalls, windowObj } = bootStorefrontScriptHarness();
     const attrs = hooks.getRipxCartAttrsPayload(
@@ -732,6 +937,62 @@ describe('storefront script cart/add interceptors', () => {
 
     const body = JSON.parse(fetchCalls[0].init.body);
     expect(body.id).toBe(55555555555);
+  });
+
+  it('repairs the only missing-property cart line when variant metadata does not match', async () => {
+    const { hooks, fetchCalls, windowObj } = bootStorefrontScriptHarness({
+      fetchImpl: input => {
+        const url = getFetchInputUrl({ input });
+        if (/\/cart\.js(?:[?#]|$)/i.test(url)) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [{ variant_id: 123, quantity: 1, properties: {} }],
+              }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({}),
+        });
+      },
+    });
+    const attrs = hooks.getRipxCartAttrsPayload(
+      '13131313-1313-4131-8131-131313131313',
+      'variant-repair',
+      'makripon.myshopify.com',
+      { sig: 'a'.repeat(64), ts: '1710000000000', user: 'user-123' },
+      { targetUnit: 66 },
+      null
+    );
+    hooks.setRipxCartAttributeState({
+      ...attrs,
+      _ripx_price_method: 'direct_price_override',
+      __ripx_price_application_method: 'direct_price_override',
+      __ripx_native_variant_id: '999',
+      __ripx_source_variant_id: '123',
+    });
+    hooks.installRipxCartAddInterceptors();
+
+    await windowObj.fetch('/cart/add.js', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 123, quantity: 1 }),
+    });
+
+    const changeCall = await waitForCartChangeCall(fetchCalls);
+    expect(changeCall).toBeTruthy();
+    const body = JSON.parse(changeCall.init.body);
+    expect(body.line).toBe(1);
+    expect(body.properties).toMatchObject({
+      _ripx_price_test: '13131313-1313-4131-8131-131313131313',
+      _ripx_variant: 'variant-repair',
+      _ripx_target_unit: '66.00',
+      _ripx_price_method: 'direct_price_override',
+    });
   });
 
   it('does not overwrite existing RipX properties in JSON body', async () => {

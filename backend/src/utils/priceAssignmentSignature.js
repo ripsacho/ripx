@@ -16,8 +16,12 @@ function shouldRequireSignedAssignment() {
   const raw = String(process.env.RIPX_CHECKOUT_REQUIRE_SIGNED_ASSIGNMENT || '')
     .trim()
     .toLowerCase();
-  if (raw === 'true' || raw === '1' || raw === 'yes') {return true;}
-  if (raw === 'false' || raw === '0' || raw === 'no') {return false;}
+  if (raw === 'true' || raw === '1' || raw === 'yes') {
+    return true;
+  }
+  if (raw === 'false' || raw === '0' || raw === 'no') {
+    return false;
+  }
   return String(process.env.NODE_ENV || '').toLowerCase() === 'production';
 }
 
@@ -60,11 +64,39 @@ function signPriceAssignment(input) {
   return crypto.createHmac('sha256', secret).update(canonicalize(p)).digest('hex');
 }
 
+function getPriceAssignmentSigningBlocker(input) {
+  const secret = getSignatureSecret();
+  const p = normalizeSignaturePayload(input || {});
+  if (!secret) {
+    return 'assignment_signature_secret_missing';
+  }
+  if (!p.testId) {
+    return 'test_id_missing';
+  }
+  if (!p.variantId) {
+    return 'variant_id_missing';
+  }
+  if (!p.userId) {
+    return 'user_id_missing';
+  }
+  if (!p.shopDomain) {
+    return 'shop_domain_missing';
+  }
+  if (!Number.isFinite(p.issuedAtMs) || p.issuedAtMs <= 0) {
+    return 'issued_at_invalid';
+  }
+  return null;
+}
+
 function timingSafeEqualsHex(a, b) {
-  if (!a || !b) {return false;}
+  if (!a || !b) {
+    return false;
+  }
   const left = String(a).trim().toLowerCase();
   const right = String(b).trim().toLowerCase();
-  if (left.length !== right.length || left.length < 16) {return false;}
+  if (left.length !== right.length || left.length < 16) {
+    return false;
+  }
   try {
     return crypto.timingSafeEqual(Buffer.from(left, 'hex'), Buffer.from(right, 'hex'));
   } catch {
@@ -87,7 +119,9 @@ function verifyPriceAssignmentSignature(input, opts = {}) {
   }
 
   if (!providedSig || !providedUser || !Number.isFinite(providedTs) || providedTs <= 0) {
-    if (strict) {return { ok: false, reason: 'missing_assignment_signature', enabled: true };}
+    if (strict) {
+      return { ok: false, reason: 'missing_assignment_signature', enabled: true };
+    }
     return { ok: true, reason: null, enabled: true };
   }
 
@@ -116,4 +150,5 @@ module.exports = {
   getSignatureSecret,
   getSignatureTtlSeconds,
   shouldRequireSignedAssignment,
+  getPriceAssignmentSigningBlocker,
 };
