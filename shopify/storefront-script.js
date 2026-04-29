@@ -1336,6 +1336,7 @@
   var _ripxCartFormObserverInstalled = false;
   var _ripxCartFormObserverTimer = null;
   var _ripxCartAddInterceptorsInstalled = false;
+  var _ripxCartSubmitGuardsInstalled = false;
   var _ripxCartPropsRepairInFlight = null;
   var _ripxCartPropsRepairLastAt = 0;
   var _ripxCartPropsRepairTimers = [];
@@ -2976,6 +2977,7 @@
   function installRipxCartAddInterceptors() {
     if (_ripxCartAddInterceptorsInstalled) return;
     _ripxCartAddInterceptorsInstalled = true;
+    installRipxCartSubmitGuards();
 
     // Intercept fetch('/cart/add(.js)') theme flows (no HTML form submit path).
     if (typeof window.fetch === 'function') {
@@ -3246,6 +3248,69 @@
         return origSend.call(this, body);
       };
     }
+  }
+
+  function isRipxCartAddForm(form) {
+    if (!form || !form.getAttribute) return false;
+    var action = form.getAttribute('action') || '';
+    if (action && isCartAddPath(action)) return true;
+    return !!(
+      (form.hasAttribute && form.hasAttribute('data-ajax-cart-form')) ||
+      (form.hasAttribute && form.hasAttribute('data-cart-add'))
+    );
+  }
+
+  function stampRipxCartAddFormsNow(reason, scopedForm) {
+    if (!_ripxCartAttributeState) return false;
+    try {
+      applyRipxStateToCartForms(_ripxCartFormTargetProductIds);
+      if (scopedForm && isRipxCartAddForm(scopedForm)) {
+        applyRipxStateToCartForms(_ripxCartFormTargetProductIds);
+      }
+      if (DEBUG) debugLog('cart form stamp:', reason || 'event');
+      return true;
+    } catch (e) {
+      if (DEBUG) debugLog('cart form stamp failed:', e && (e.message || String(e)));
+      return false;
+    }
+  }
+
+  function installRipxCartSubmitGuards() {
+    if (_ripxCartSubmitGuardsInstalled) return;
+    _ripxCartSubmitGuardsInstalled = true;
+    if (!document || typeof document.addEventListener !== 'function') return;
+    try {
+      document.addEventListener(
+        'submit',
+        function (event) {
+          var form = event && event.target;
+          if (!isRipxCartAddForm(form)) return;
+          if (stampRipxCartAddFormsNow('submit', form)) {
+            scheduleRipxCartPropsRepairBurst('submit');
+          }
+        },
+        true
+      );
+    } catch (_eSubmitGuard) {}
+    try {
+      document.addEventListener(
+        'click',
+        function (event) {
+          var target = event && event.target;
+          if (!target || !target.closest) return;
+          var control = target.closest(
+            'button[type="submit"], input[type="submit"], button[name="add"], [data-add-to-cart], [data-cart-add], .product-form__submit'
+          );
+          if (!control) return;
+          var form = control.form || (control.closest && control.closest('form'));
+          if (!isRipxCartAddForm(form)) return;
+          if (stampRipxCartAddFormsNow('click', form)) {
+            scheduleRipxCartPropsRepairBurst('click');
+          }
+        },
+        true
+      );
+    } catch (_eClickGuard) {}
   }
 
   function cartUiRoot() {
@@ -7820,6 +7885,9 @@
         recordRipxSkip('runtime', 'missing_api_url', {});
         return;
       }
+      // Install cart/add guards before async bucketing finishes. The guards read the latest
+      // _ripxCartAttributeState at submit/fetch time, closing races with fast add-to-cart clicks.
+      installRipxCartAddInterceptors();
 
       const activeTests = CONFIG.activeTests || [];
 

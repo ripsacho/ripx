@@ -231,6 +231,29 @@ function getCartSnapshotCalls(fetchCalls) {
   );
 }
 
+function createCartAddFormStub() {
+  const hiddenInputs = [];
+  return {
+    getAttribute: jest.fn(name => (name === 'action' ? '/cart/add' : '')),
+    hasAttribute: jest.fn(() => false),
+    closest: jest.fn(() => null),
+    querySelector: jest.fn(selector => {
+      if (selector === 'input[name="id"]' || selector === '[name="id"]') {
+        return { value: '123' };
+      }
+      return null;
+    }),
+    querySelectorAll: jest.fn(selector =>
+      selector === 'input[type="hidden"]' ? hiddenInputs : []
+    ),
+    appendChild: jest.fn(input => {
+      hiddenInputs.push(input);
+      return input;
+    }),
+    __hiddenInputs: hiddenInputs,
+  };
+}
+
 async function waitForVariantRequestCount(fetchCalls, count) {
   for (let i = 0; i < 10; i++) {
     const variantRequests = fetchCalls.filter(call =>
@@ -644,6 +667,46 @@ describe('storefront script cart/add interceptors', () => {
       _ripx_target_unit: '84.00',
       _ripx_price_method: 'direct_price_override',
     });
+  });
+
+  it('stamps native form-submit cart adds just before submit', async () => {
+    const form = createCartAddFormStub();
+    const { hooks, windowObj } = bootStorefrontScriptHarness({
+      readyState: 'complete',
+      runtimeConfig: {
+        apiUrl: 'https://api.example.com/api',
+        activeTests: [],
+      },
+      documentQuerySelectorAll: selector =>
+        String(selector || '').includes('form[action*="cart/add"]') ? [form] : [],
+    });
+    const attrs = hooks.getRipxCartAttrsPayload(
+      '12121212-1212-4121-8121-121212121212',
+      'variant-form-submit',
+      'makripon.myshopify.com',
+      null,
+      { targetUnit: 77 },
+      null
+    );
+    hooks.setRipxCartAttributeState({
+      ...attrs,
+      _ripx_price_method: 'direct_price_override',
+      __ripx_price_application_method: 'direct_price_override',
+    });
+
+    const submitRegistration = windowObj.document.addEventListener.mock.calls.find(
+      call => call[0] === 'submit'
+    );
+    expect(submitRegistration).toBeTruthy();
+    submitRegistration[1]({ target: form });
+
+    const hiddenByName = new Map(form.__hiddenInputs.map(input => [input.name, input.value]));
+    expect(hiddenByName.get('properties[_ripx_price_test]')).toBe(
+      '12121212-1212-4121-8121-121212121212'
+    );
+    expect(hiddenByName.get('properties[_ripx_variant]')).toBe('variant-form-submit');
+    expect(hiddenByName.get('properties[_ripx_target_unit]')).toBe('77.00');
+    expect(hiddenByName.get('properties[_ripx_price_method]')).toBe('direct_price_override');
   });
 
   it('does not swap add-to-cart variant id when native swap source does not match', async () => {
