@@ -4,7 +4,7 @@
  */
 
 /** Bump when embedded runtime config or script contract changes. Keep ?v= in sync: extensions/ripx-theme/blocks/ripx-app-embed.liquid + frontend RIPX_STOREFRONT_SCRIPT_VERSION. */
-const SCRIPT_VERSION = '1.0.42';
+const SCRIPT_VERSION = '1.0.43';
 
 /**
  * DB/API may use "pricing"; storefront logic expects "price".
@@ -92,6 +92,7 @@ function buildStorefrontRuntimeConfig(shop, tests, req) {
 
   return {
     apiUrl: `${appUrl}/api`,
+    featureFlagUrl: `${appUrl}/api/feature-flags/evaluate`,
     shopDomain: shop,
     version: SCRIPT_VERSION,
     consentRequired: process.env.RIPX_CONSENT_REQUIRED === 'true',

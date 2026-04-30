@@ -163,6 +163,19 @@
   min-width: 0 !important;
 }
 
+.decisionGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.875rem;
+}
+
+.decisionTile {
+  padding: 1rem;
+  border: 1px solid rgba(6, 182, 212, 0.14);
+  border-radius: 14px;
+  background: rgba(6, 182, 212, 0.05);
+}
+
 /* Hero - Mesh gradient + animated shine - Compact for full-screen */
 .heroSection {
   position: relative;
@@ -1209,6 +1222,10 @@
   }
 
   .statsGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .decisionGrid {
     grid-template-columns: 1fr 1fr;
   }
 }

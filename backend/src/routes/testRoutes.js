@@ -1181,7 +1181,21 @@ router.post(
 router.post(
   '/plan',
   asyncHandler(async (req, res) => {
-    const result = await experimentPlannerService.createPlannerDraft(req.body || {});
+    const result = experimentPlannerService.createPlannerDraft(req.body || {});
+    await auditLogService.log(req.shopDomain || '__auth__', {
+      entityType: 'ai_planner',
+      entityId: result.draft?.type || 'draft',
+      action: 'draft_created',
+      userId: req.user?.id || req.userId || req.shopDomain || null,
+      changes: {
+        persisted: false,
+        launchable: false,
+        validationErrors: result.validation?.errors?.length || 0,
+      },
+      actorType: 'user',
+      actorId: req.user?.id || req.userId || req.shopDomain || 'unknown',
+      ipAddress: req.ip || req.connection?.remoteAddress,
+    });
     return res.status(200).json({ success: true, ...result });
   })
 );
@@ -1951,7 +1965,13 @@ router.put(
         return updateIndex === index;
       });
 
-      if (update && ('code' in update || 'customCss' in update || 'customJs' in update)) {
+      if (
+        update &&
+        ('code' in update ||
+          'customCss' in update ||
+          'customJs' in update ||
+          'visual_editor_rules' in update)
+      ) {
         const codeValue =
           update.code !== undefined && update.code !== null
             ? String(update.code)
@@ -1978,6 +1998,11 @@ router.put(
           customCss: customCss || undefined,
           customJs: customJs || undefined,
         };
+        if (Array.isArray(update.visual_editor_rules)) {
+          nextConfig.visual_editor_rules = update.visual_editor_rules
+            .slice(0, 5)
+            .map(rule => (rule && typeof rule === 'object' ? rule : {}));
+        }
         if (!nextConfig.customCss) {
           delete nextConfig.customCss;
         }

@@ -49,6 +49,7 @@
     cookieExpiry: 365, // days
     shopDomain: null,
     activeTests: [],
+    featureFlagUrl: '',
   };
 
   const CONFIG = Object.assign({}, DEFAULT_CONFIG, window.AB_TEST_RUNTIME_CONFIG || {});
@@ -1950,6 +1951,56 @@
     } catch (error) {
       if (DEBUG) debugLog('track event failed', error && (error.message || error.name));
     }
+  }
+
+  async function evaluateFeatureFlags(keys) {
+    var list = Array.isArray(keys) ? keys : [keys];
+    list = list
+      .map(function (key) {
+        return String(key || '').trim();
+      })
+      .filter(Boolean);
+    if (!list.length || !hasValidConfig) return {};
+    var endpoint = CONFIG.featureFlagUrl || CONFIG.apiUrl + '/feature-flags/evaluate';
+    var params = new URLSearchParams();
+    params.set('keys', list.join(','));
+    var shopDomain = getShopDomain();
+    if (shopDomain) params.set('shop', shopDomain);
+    try {
+      var response = await fetchWithTimeout(
+        endpoint + '?' + params.toString(),
+        {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+        },
+        5000
+      );
+      if (!response || !response.ok) return {};
+      var payload = await response.json();
+      return (payload && payload.flags) || {};
+    } catch (error) {
+      if (DEBUG) debugLog('feature flag evaluation failed', error && (error.message || error.name));
+      return {};
+    }
+  }
+
+  async function trackRecommendationEvent(testId, action, metadata, variantId) {
+    var normalizedAction = String(action || '')
+      .trim()
+      .toLowerCase();
+    var eventName = 'recommendation_' + normalizedAction;
+    var allowed = {
+      recommendation_impression: true,
+      recommendation_click: true,
+      recommendation_add_to_cart: true,
+      recommendation_checkout_start: true,
+      recommendation_purchase: true,
+    };
+    if (!allowed[eventName]) {
+      if (DEBUG) debugLog('ignored recommendation event', normalizedAction);
+      return;
+    }
+    await trackEvent(testId, eventName, 0, metadata || {}, variantId);
   }
 
   /**
@@ -9309,6 +9360,8 @@
     getVariant,
     trackConversion,
     trackEvent,
+    trackRecommendationEvent,
+    evaluateFeatureFlags,
     applyPriceTest,
     reapplyPriceTests: null,
     reapplyCartFormRipxProps: null,

@@ -2668,6 +2668,7 @@ function TestWizard({
           id: variant?.id ?? null,
           name: (variant?.name || variant?.config?.name || `Variant ${index + 1}`).trim(),
           code,
+          visual_editor_rules: cloneVisualEditorRules(variant?.config?.visual_editor_rules),
         };
       }),
     };
@@ -2895,7 +2896,10 @@ function TestWizard({
           setChangingSelectorIndex(null);
           setVisualSnippetPanelExpanded(true);
           setVisualSnippetActiveElementIndex(changeIdx);
-          setVisualPreviewToast({ message: 'Selector updated', type: 'success' });
+          setVisualPreviewToast({
+            message: 'Selector updated — save code to apply',
+            type: 'success',
+          });
           setTimeout(() => setVisualPreviewToast(null), 2000);
           return;
         }
@@ -2918,7 +2922,7 @@ function TestWizard({
         setVisualSnippetPanelExpanded(true);
         setVisualSnippetActiveElementIndex(idx);
         setVisualPreviewToast({
-          message: 'Element selected — snippet panel opened',
+          message: 'Element selected — add edits, then save code',
           type: 'success',
         });
         setTimeout(() => setVisualPreviewToast(null), 2500);

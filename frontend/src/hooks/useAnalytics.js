@@ -56,13 +56,16 @@ export function useAnalyticsDashboard(
       const queryString = params.toString();
       const analyticsUrl = `/analytics/tests/${testId}${queryString ? `?${queryString}` : ''}`;
 
-      const [analyticsRes, timeSeriesRes, testRes, segmentsRes] = await Promise.all([
+      const [analyticsRes, timeSeriesRes, testRes, segmentsRes, decisionRes] = await Promise.all([
         apiGet(analyticsUrl),
         apiGet(`/analytics/tests/${testId}/timeseries`).catch(() => ({ data: { timeSeries: [] } })),
         apiGet(`/tests/${testId}`),
         apiGet(`/analytics/tests/${testId}/segments`).catch(() => ({
           data: { segments: { devices: [], countries: [] } },
         })),
+        apiGet(`/analytics/tests/${testId}/decision${queryString ? `?${queryString}` : ''}`).catch(
+          () => ({ data: { decision: null } })
+        ),
       ]);
 
       return {
@@ -70,6 +73,7 @@ export function useAnalyticsDashboard(
         timeSeries: unwrapData(timeSeriesRes)?.timeSeries ?? [],
         testInfo: unwrapData(testRes)?.test ?? unwrapData(testRes) ?? null,
         segments: unwrapData(segmentsRes)?.segments ?? { devices: [], countries: [] },
+        decision: unwrapData(decisionRes)?.decision ?? null,
       };
     },
     enabled: !!testId && testId !== 'undefined',

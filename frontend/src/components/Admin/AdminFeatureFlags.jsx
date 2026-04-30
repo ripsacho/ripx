@@ -32,6 +32,31 @@ const KNOWN_FLAGS = [
   },
   { key: 'flag.guardrails', label: 'Guardrails', description: 'Enable guardrail auto-stop' },
   {
+    key: 'flag.experiment_runtime',
+    label: 'Experiment runtime',
+    description: 'Global kill switch for live experiment assignment and rollout serving',
+  },
+  {
+    key: 'flag.ai_planner',
+    label: 'AI planner',
+    description: 'Enable AI-assisted draft planning surfaces',
+  },
+  {
+    key: 'flag.visual_editor',
+    label: 'Visual editor',
+    description: 'Enable no-code selector capture and visual edit sessions',
+  },
+  {
+    key: 'flag.recommendations',
+    label: 'Recommendations',
+    description: 'Enable recommendation and upsell experiment blocks',
+  },
+  {
+    key: 'flag.warehouse_exports',
+    label: 'Warehouse exports',
+    description: 'Enable advanced warehouse schema/status workflows',
+  },
+  {
     key: 'flag.scheduled_tests',
     label: 'Scheduled tests',
     description: 'Enable scheduled start/stop',

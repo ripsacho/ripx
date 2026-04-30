@@ -80,8 +80,11 @@ build/
 *.min.js
 *.min.css
 
-# Docs folder (not needed for live) - only root README.md in live
-docs/
+# Documentation is referenced from README.md and should be tracked.
+# Ignore generated/heavy documentation artifacts only.
+docs/generated/
+docs/**/*.tmp
+docs/**/*.log
 
 # Cache
 .cache/

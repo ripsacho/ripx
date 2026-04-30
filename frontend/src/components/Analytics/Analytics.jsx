@@ -96,6 +96,7 @@ function Analytics() {
   const analytics = data?.analytics ?? null;
   const timeSeries = data?.timeSeries ?? null;
   const testInfo = data?.testInfo ?? null;
+  const decision = data?.decision ?? null;
   const segmentOptions = data?.segments ?? { devices: [], countries: [] };
 
   useEffect(() => {
@@ -650,6 +651,85 @@ function Analytics() {
                       </BlockStack>
                     </div>
                   </Layout.Section>
+
+                  {decision && (
+                    <Layout.Section>
+                      <Card>
+                        <BlockStack gap="400">
+                          <InlineStack align="space-between" blockAlign="center">
+                            <BlockStack gap="100">
+                              <Text variant="headingLg" as="h2">
+                                Decision Quality
+                              </Text>
+                              <Text variant="bodySm" color="subdued" as="p">
+                                Trust checks for SRM, guardrails, sample size, and ordered funnel
+                                readiness.
+                              </Text>
+                            </BlockStack>
+                            <Badge
+                              tone={
+                                decision.guardrails?.status === 'breached' ||
+                                decision.statistics?.srm?.detected
+                                  ? 'critical'
+                                  : decision.statistics?.sampleSize?.status === 'healthy'
+                                    ? 'success'
+                                    : 'warning'
+                              }
+                            >
+                              {decision.guardrails?.status === 'breached'
+                                ? 'Guardrail breached'
+                                : decision.statistics?.srm?.detected
+                                  ? 'SRM detected'
+                                  : decision.statistics?.sampleSize?.status === 'healthy'
+                                    ? 'Healthy'
+                                    : 'Needs more data'}
+                            </Badge>
+                          </InlineStack>
+                          <div className={styles.decisionGrid}>
+                            <div className={styles.decisionTile}>
+                              <Text variant="bodySm" color="subdued" as="p">
+                                SRM
+                              </Text>
+                              <Text variant="headingMd" as="p">
+                                {decision.statistics?.srm?.detected ? 'Detected' : 'Clear'}
+                              </Text>
+                            </div>
+                            <div className={styles.decisionTile}>
+                              <Text variant="bodySm" color="subdued" as="p">
+                                Guardrails
+                              </Text>
+                              <Text variant="headingMd" as="p">
+                                {decision.guardrails?.configured || 0} configured
+                              </Text>
+                            </div>
+                            <div className={styles.decisionTile}>
+                              <Text variant="bodySm" color="subdued" as="p">
+                                CUPED
+                              </Text>
+                              <Text variant="headingMd" as="p">
+                                {decision.statistics?.cuped?.status === 'ready_for_covariates'
+                                  ? 'Ready'
+                                  : 'Needs covariates'}
+                              </Text>
+                            </div>
+                            <div className={styles.decisionTile}>
+                              <Text variant="bodySm" color="subdued" as="p">
+                                Funnel mode
+                              </Text>
+                              <Text variant="headingMd" as="p">
+                                {decision.funnel?.orderedScaffold?.mode === 'ordered_sequence'
+                                  ? 'Sequenced'
+                                  : 'Step counts'}
+                              </Text>
+                            </div>
+                          </div>
+                          {decision.recommendations?.length > 0 && (
+                            <Banner tone="info">{decision.recommendations.join(' ')}</Banner>
+                          )}
+                        </BlockStack>
+                      </Card>
+                    </Layout.Section>
+                  )}
 
                   {/* Statistical Significance */}
                   {analytics.significance && (

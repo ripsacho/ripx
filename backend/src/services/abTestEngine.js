@@ -27,6 +27,7 @@ const {
   normalizeCheckoutPhase,
   validateCheckoutExperienceConfig,
 } = require('./checkoutExperienceConfigService');
+const { evaluateFlags } = require('./featureFlagService');
 
 /** Derive pathname from URL for path-based url_pattern matching (homepage, etc.) */
 function getPathnameFromUrl(currentUrl) {
@@ -157,6 +158,24 @@ class ABTestEngine {
     }
   }
 
+  async _getExperimentFlagState(test, shopDomain) {
+    const testId = String(test?.id || '').trim();
+    const flagKeys = ['experiment_runtime'];
+    if (testId) {
+      flagKeys.push(`experiment.${testId}.enabled`);
+    }
+    const flags = await evaluateFlags(flagKeys, { domain: shopDomain, defaultValue: true }).catch(
+      () => ({})
+    );
+    const runtimeFlag = flags['flag.experiment_runtime'];
+    const testFlag = testId ? flags[`flag.experiment.${testId}.enabled`] : null;
+    return {
+      enabled: runtimeFlag?.enabled !== false && testFlag?.enabled !== false,
+      runtimeFlag,
+      testFlag,
+    };
+  }
+
   _isUserInTrafficRamp(test, userId) {
     const rampPercent = Number(test?.segments?.traffic_ramp_percent);
     if (!Number.isFinite(rampPercent) || rampPercent <= 0 || rampPercent >= 100) {
@@ -261,6 +280,11 @@ class ABTestEngine {
       const test = await getTestById(testId, shopDomain);
 
       if (!test || !this._shouldServeTest(test)) {
+        return null;
+      }
+
+      const flagState = await this._getExperimentFlagState(test, shopDomain);
+      if (!flagState.enabled) {
         return null;
       }
 
@@ -542,10 +566,24 @@ class ABTestEngine {
       shopDomain,
       globalHoldoutPercent
     );
+    const testFlagStates = new Map(
+      await Promise.all(
+        ids.map(async testId => {
+          const test = testsMap.get(testId);
+          if (!test || !this._shouldServeTest(test)) {
+            return [testId, { enabled: false }];
+          }
+          return [testId, await this._getExperimentFlagState(test, shopDomain)];
+        })
+      )
+    );
 
     for (const testId of ids) {
       const test = testsMap.get(testId);
       if (!test || !this._shouldServeTest(test)) {
+        continue;
+      }
+      if (testFlagStates.get(testId)?.enabled === false) {
         continue;
       }
 
