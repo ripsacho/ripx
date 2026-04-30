@@ -16,6 +16,7 @@
 const { query } = require('../utils/database');
 const logger = require('../utils/logger');
 const integrationConfig = require('../services/integrationConfigService');
+const { validateExportSchemaManifest } = require('../services/warehouseExportSchemaService');
 
 const EXPORT_STATE_KEY = 'bigquery_last_export_at';
 const HEATMAP_EXPORT_STATE_KEY = 'bigquery_heatmap_last_export_at';
@@ -91,7 +92,7 @@ async function exportToBigQuery(options = {}) {
     const lastExport = fullExport ? null : await getLastExportTime();
     const since = lastExport || new Date(Date.now() - 25 * 60 * 60 * 1000);
 
-    const results = { exported: 0, tables: [] };
+    const results = { exported: 0, tables: [], schemaValidation: validateExportSchemaManifest() };
 
     // 1. Export events (incremental)
     const eventsResult = await query(
@@ -149,6 +150,28 @@ async function exportToBigQuery(options = {}) {
         }));
         await testsTable.insert(rows);
         results.tables.push('tests');
+      }
+
+      const assignmentsResult = await query(`
+        SELECT test_id, variant_id, user_id, shop_domain, assigned_at, device, country
+        FROM test_assignments
+        ORDER BY assigned_at DESC
+        LIMIT 100000
+      `);
+      if (assignmentsResult.rows.length > 0) {
+        const assignmentsTable = dataset.table('assignments');
+        const rows = assignmentsResult.rows.map(r => ({
+          test_id: r.test_id ? String(r.test_id) : null,
+          variant_id: r.variant_id || null,
+          user_id: r.user_id || null,
+          shop_domain: r.shop_domain || null,
+          assigned_at: r.assigned_at,
+          device: r.device || null,
+          country: r.country || null,
+        }));
+        await assignmentsTable.insert(rows);
+        results.exported += rows.length;
+        results.tables.push('assignments');
       }
     }
 

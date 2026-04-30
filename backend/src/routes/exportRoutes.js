@@ -12,6 +12,10 @@ const { asyncHandler } = require('../middleware/asyncHandler');
 const validators = require('../utils/validators');
 const exportService = require('../services/exportService');
 const { exportToBigQuery } = require('../jobs/bigQueryExport');
+const {
+  getExportSchemaManifest,
+  validateExportSchemaManifest,
+} = require('../services/warehouseExportSchemaService');
 
 const validateTestId = (req, res, next) => {
   const id = req.params?.id;
@@ -86,6 +90,7 @@ router.post(
         exported: result.exported,
         tables: result.tables,
         lastExportAt: result.lastExportAt,
+        schemaValidation: result.schemaValidation || null,
       });
     } catch (error) {
       const msg = String(error?.message || '');
@@ -103,6 +108,22 @@ router.post(
       }
       next(error);
     }
+  })
+);
+
+/**
+ * GET /api/analytics/export/schema
+ * Warehouse schema manifest for analyst workflows and BigQuery validation.
+ */
+router.get(
+  '/export/schema',
+  asyncHandler((_req, res) => {
+    const manifest = getExportSchemaManifest();
+    return res.json({
+      success: true,
+      manifest,
+      validation: validateExportSchemaManifest(manifest),
+    });
   })
 );
 

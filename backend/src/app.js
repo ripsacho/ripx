@@ -148,6 +148,9 @@ const analyticsRoutes = require('./routes/analyticsRoutes');
 const shopifyRoutes = require('./routes/shopifyRoutes');
 const trackRoutes = require('./routes/trackRoutes');
 const proxyRoutes = require('./routes/proxyRoutes');
+const featureFlagRoutes = require('./routes/featureFlagRoutes');
+const visualEditorRoutes = require('./routes/visualEditorRoutes');
+const recommendationRoutes = require('./routes/recommendationRoutes');
 const webhookRoutes = require('./routes/webhookRoutes');
 const promoLinkRoutes = require('./routes/promoLinkRoutes');
 const profileRoutes = require('./routes/profileRoutes');
@@ -760,10 +763,13 @@ app.use('/api/tenants', tenantRoutes); // Tenant registration (standalone)
 app.use('/api/account', authenticate, accountRoutes); // Multi-store: list/add stores
 app.use('/api/dashboard', authenticate, require('./routes/dashboardRoutes'));
 app.use('/api/tests', authenticate, testRoutes);
+app.use('/api/visual-editor', authenticate, visualEditorRoutes);
+app.use('/api/recommendations', authenticate, recommendationRoutes);
 app.use('/api/analytics', authenticate, analyticsRoutes);
 app.use('/api/shopify', authenticateShopify, shopifyRoutes); // Shopify-specific (requires shop)
 app.use('/api/track', trackRoutes); // Public endpoint for tracking
 app.use('/api/proxy', proxyRoutes); // App proxy endpoints (no auth, uses signature)
+app.use('/api/feature-flags', featureFlagRoutes); // Public read-only feature flag evaluation
 app.use('/api/webhooks', webhookRoutes); // Webhook endpoints (no auth, uses HMAC)
 app.use('/api/promo-links', authenticate, promoLinkRoutes);
 app.use('/api/profile', authenticate, profileRoutes);

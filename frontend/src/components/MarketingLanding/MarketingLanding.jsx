@@ -46,6 +46,12 @@ const credibilityStats = [
   ['0', 'guesswork launches'],
 ];
 
+const heroSignals = [
+  ['Preflight', 'Install, proxy, preview, and checkout checks before traffic.'],
+  ['Checkout-safe', 'Price and offer paths designed around Shopify constraints.'],
+  ['Decision-ready', 'Revenue, AOV, confidence, and guardrails in one view.'],
+];
+
 const conversionPillars = [
   {
     title: 'Revenue experiments',
@@ -121,6 +127,14 @@ function MarketingLanding() {
               shipping promises, landing pages, and theme changes with confidence, diagnostics, and
               analytics in one command center.
             </p>
+            <div className={styles.heroSignalGrid} aria-label="RipX value signals">
+              {heroSignals.map(([label, text]) => (
+                <div key={label} className={styles.heroSignalCard}>
+                  <span>{label}</span>
+                  <p>{text}</p>
+                </div>
+              ))}
+            </div>
             <div className={styles.heroActions}>
               <Link to={ROUTES.CONNECT} className={styles.primaryButton}>
                 Purchase the app
@@ -161,11 +175,18 @@ function MarketingLanding() {
               <span />
               <span />
               <span />
+              <strong>Live readiness</strong>
+            </div>
+            <div className={styles.visualStatusBar}>
+              <span>Script live</span>
+              <span>Checkout path ready</span>
+              <span>Preview passed</span>
             </div>
             <div className={styles.visualCard}>
               <div>
                 <p>Revenue confidence</p>
                 <strong>97.4%</strong>
+                <em>Variant B trending +12.8% revenue per visitor</em>
               </div>
               <div className={styles.visualGraph}>
                 <span style={{ height: '42%' }} />
@@ -174,6 +195,16 @@ function MarketingLanding() {
                 <span style={{ height: '86%' }} />
                 <span style={{ height: '76%' }} />
               </div>
+            </div>
+            <div className={styles.visualTimeline}>
+              {['Build variant', 'Verify checkout', 'Launch test', 'Roll out winner'].map(
+                (step, index) => (
+                  <div key={step}>
+                    <span>{String(index + 1).padStart(2, '0')}</span>
+                    <strong>{step}</strong>
+                  </div>
+                )
+              )}
             </div>
             <div className={styles.visualGrid}>
               <div>

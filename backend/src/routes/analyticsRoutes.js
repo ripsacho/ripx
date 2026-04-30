@@ -31,6 +31,7 @@ const { getFunnelMetrics, getEventsList, getEventTypesForTest } = require('../mo
 const { getTestById } = require('../models/test');
 const exportRoutes = require('./exportRoutes');
 const { PAGINATION } = require('../constants');
+const { getExperimentDecisionOverview } = require('../services/experimentDecisionService');
 
 /**
  * GET /api/analytics/tests/:id
@@ -148,6 +149,29 @@ router.get(
       success: true,
       funnel,
     });
+  })
+);
+
+/**
+ * GET /api/analytics/tests/:id/decision
+ * Advanced decision overview: statistics readiness, guardrails, and funnel scaffold.
+ */
+router.get(
+  '/tests/:id/decision',
+  validateTestId,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const shopDomain = req.shopDomain;
+    const { device, country } = req.query;
+    const options = {};
+    if (device && device !== 'all') {
+      options.device = device;
+    }
+    if (country && country !== 'all') {
+      options.country = country;
+    }
+    const decision = await getExperimentDecisionOverview(id, shopDomain, options);
+    res.json({ success: true, decision });
   })
 );
 

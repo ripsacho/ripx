@@ -73,6 +73,7 @@ const {
   resolveTemplateKeyFromPayload,
   getResolvedTestTypeRule,
 } = require('../services/testTypeControlService');
+const experimentPlannerService = require('../services/experimentPlannerService');
 
 async function ensureTemplateTypeEnabledOrThrow(payload, shopDomain) {
   const templateKey = resolveTemplateKeyFromPayload(payload);
@@ -1170,6 +1171,18 @@ router.post(
       payload.warning = 'Overlapping tests may affect results';
     }
     return sendSuccess(res, HTTP_STATUS.CREATED, payload, SUCCESS_MESSAGES.TEST_CREATED);
+  })
+);
+
+/**
+ * POST /api/tests/plan
+ * Authenticated AI-planner contract. Returns a validated draft only; it never saves or launches.
+ */
+router.post(
+  '/plan',
+  asyncHandler(async (req, res) => {
+    const result = await experimentPlannerService.createPlannerDraft(req.body || {});
+    return res.status(200).json({ success: true, ...result });
   })
 );
 
