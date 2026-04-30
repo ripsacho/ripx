@@ -541,11 +541,11 @@
 .testTypeShowcase {
   position: relative;
   margin-top: -2.5rem;
-  padding: 1.15rem;
+  padding: 1.2rem 1.2rem 1.35rem;
   border: 1px solid rgba(103, 232, 249, 0.16);
   border-radius: 30px;
   background:
-    linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(6, 182, 212, 0.06)), rgba(15, 23, 42, 0.7);
+    linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(6, 182, 212, 0.08)), rgba(15, 23, 42, 0.72);
   box-shadow:
     0 26px 70px rgba(0, 0, 0, 0.24),
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
@@ -577,10 +577,11 @@
   position: relative;
   z-index: 3;
   display: flex;
-  align-items: end;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 0.95rem;
+  gap: 1.25rem;
+  margin-bottom: 1.15rem;
+  padding-inline: 0.15rem;
 }
 
 .testTypeShowcaseHeader .eyebrow {
@@ -588,7 +589,7 @@
 }
 
 .testTypeShowcaseHeader h2 {
-  max-width: 720px;
+  max-width: 780px;
   margin: 0;
   color: #fff;
   font-size: clamp(1.35rem, 3vw, 2.25rem);
@@ -624,23 +625,25 @@
 
 .testTypeCard {
   width: clamp(260px, 24vw, 340px);
-  min-height: 150px;
+  min-height: 170px;
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr);
-  gap: 0.85rem;
+  grid-template-columns: 1fr;
+  gap: 0.9rem;
   align-items: start;
-  padding: 1rem;
+  padding: 1.05rem;
   border: 1px solid rgba(103, 232, 249, 0.14);
   border-radius: 22px;
   background:
-    radial-gradient(circle at 0% 0%, rgba(103, 232, 249, 0.13), transparent 42%),
-    rgba(255, 255, 255, 0.045);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    radial-gradient(circle at 0% 0%, rgba(103, 232, 249, 0.18), transparent 44%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.025));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 16px 40px rgba(0, 0, 0, 0.16);
 }
 
 .testTypeIcon {
-  width: 58px;
-  height: 58px;
+  width: 68px;
+  height: 68px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -687,13 +690,17 @@
 
 .clientShowcase {
   width: min(1440px, calc(100% - 32px));
-  margin: 1.25rem auto 0;
-  padding: 1.25rem;
-  border: 1px solid rgba(167, 139, 250, 0.18);
-  border-radius: 30px;
+  margin: 0 auto;
+  padding: clamp(1rem, 2vw, 1.4rem);
+  display: grid;
+  grid-template-columns: minmax(280px, 0.42fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: stretch;
+  border: 1px solid rgba(167, 139, 250, 0.2);
+  border-radius: 34px;
   background:
-    linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(6, 182, 212, 0.05)),
-    rgba(15, 23, 42, 0.62);
+    radial-gradient(circle at 8% 12%, rgba(167, 139, 250, 0.18), transparent 38%),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.82), rgba(6, 182, 212, 0.06)), rgba(15, 23, 42, 0.68);
   overflow: hidden;
   position: relative;
 }
@@ -704,14 +711,14 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 120px;
+  width: 90px;
   z-index: 2;
   pointer-events: none;
 }
 
 .clientShowcase::before {
-  left: 0;
-  background: linear-gradient(90deg, #08111f, transparent);
+  left: min(42%, 460px);
+  background: linear-gradient(90deg, rgba(8, 17, 31, 0.96), transparent);
 }
 
 .clientShowcase::after {
@@ -719,33 +726,43 @@
   background: linear-gradient(270deg, #08111f, transparent);
 }
 
-.clientShowcaseHeader {
+.clientSpotlight {
   position: relative;
   z-index: 3;
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1rem;
+  min-height: 260px;
+  padding: clamp(1.2rem, 3vw, 2rem);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 26px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(103, 232, 249, 0.12), transparent 34%),
+    rgba(255, 255, 255, 0.04);
 }
 
-.clientShowcaseHeader .eyebrow {
+.clientSpotlight .eyebrow {
   margin-bottom: 0.3rem;
 }
 
-.clientShowcaseHeader h2 {
-  max-width: 720px;
+.clientSpotlight h2 {
   margin: 0;
   color: #fff;
-  font-size: clamp(1.25rem, 3vw, 2.1rem);
+  font-size: clamp(1.7rem, 4vw, 3.2rem);
   line-height: 1.08;
   letter-spacing: -0.05em;
+}
+
+.clientSpotlight p {
+  margin: 1rem 0 0;
+  color: rgba(226, 232, 240, 0.72);
+  line-height: 1.7;
+  max-width: 34rem;
 }
 
 .clientRail {
   position: relative;
   z-index: 1;
+  align-self: center;
   overflow: hidden;
+  padding-block: 0.35rem;
 }
 
 .clientTrack {
@@ -769,18 +786,21 @@
 }
 
 .clientCard {
-  width: clamp(280px, 26vw, 380px);
-  min-height: 160px;
+  width: clamp(300px, 30vw, 430px);
+  min-height: 210px;
   display: grid;
   grid-template-columns: 58px minmax(0, 1fr);
   gap: 0.85rem;
   align-items: start;
   padding: 1rem;
   border: 1px solid rgba(167, 139, 250, 0.16);
-  border-radius: 24px;
+  border-radius: 28px;
   background:
     radial-gradient(circle at 8% 0%, rgba(167, 139, 250, 0.16), transparent 42%),
-    rgba(255, 255, 255, 0.045);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03));
+  box-shadow:
+    0 18px 46px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .clientIcon {
@@ -1101,9 +1121,8 @@
     flex-direction: column;
   }
 
-  .clientShowcaseHeader {
-    align-items: flex-start;
-    flex-direction: column;
+  .clientShowcase {
+    grid-template-columns: 1fr;
   }
 
   .ctaSection {
@@ -1162,6 +1181,7 @@
 
   .clientCard {
     width: 290px;
+    min-height: 190px;
   }
 
   .testTypeIcon {

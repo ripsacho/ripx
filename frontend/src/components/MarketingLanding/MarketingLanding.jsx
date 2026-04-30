@@ -351,33 +351,6 @@ function MarketingLanding() {
           </div>
         </section>
 
-        <section className={styles.clientShowcase} aria-label="Client stories">
-          <div className={styles.clientShowcaseHeader}>
-            <p className={styles.eyebrow}>Trusted by growth teams</p>
-            <h2>Teams use RipX to turn storefront ideas into measured outcomes.</h2>
-          </div>
-          <div className={styles.clientRail} aria-label="Client slider">
-            <div className={styles.clientTrack}>
-              {[...clients, ...clients].map((client, index) => (
-                <article
-                  key={`${client.name}-${index}`}
-                  className={styles.clientCard}
-                  aria-hidden={index >= clients.length ? 'true' : undefined}
-                >
-                  <div className={styles.clientIcon}>{client.icon || client.name?.slice(0, 2)}</div>
-                  <div>
-                    <h3>{client.name}</h3>
-                    <span>{client.industry || 'Ecommerce team'}</span>
-                  </div>
-                  <p>
-                    {client.quote || 'Experiment workflows became easier to launch and verify.'}
-                  </p>
-                </article>
-              ))}
-            </div>
-          </div>
-        </section>
-
         <section className={styles.section}>
           <div className={styles.sectionHeading}>
             <p className={styles.eyebrow}>Why RipX</p>
@@ -398,6 +371,37 @@ function MarketingLanding() {
                 <p>{feature.text}</p>
               </article>
             ))}
+          </div>
+        </section>
+
+        <section className={styles.clientShowcase} aria-label="Client stories">
+          <div className={styles.clientSpotlight}>
+            <p className={styles.eyebrow}>Trusted by growth teams</p>
+            <h2>Client proof that feels alive, not like a static logo wall.</h2>
+            <p>
+              Showcase merchants, teams, or agencies from Admin. Until then, RipX shows polished
+              demo examples so the selling page keeps its momentum.
+            </p>
+          </div>
+          <div className={styles.clientRail} aria-label="Client slider">
+            <div className={styles.clientTrack}>
+              {[...clients, ...clients].map((client, index) => (
+                <article
+                  key={`${client.name}-${index}`}
+                  className={styles.clientCard}
+                  aria-hidden={index >= clients.length ? 'true' : undefined}
+                >
+                  <div className={styles.clientIcon}>{client.icon || client.name?.slice(0, 2)}</div>
+                  <div>
+                    <h3>{client.name}</h3>
+                    <span>{client.industry || 'Ecommerce team'}</span>
+                  </div>
+                  <p>
+                    {client.quote || 'Experiment workflows became easier to launch and verify.'}
+                  </p>
+                </article>
+              ))}
+            </div>
           </div>
         </section>
 
