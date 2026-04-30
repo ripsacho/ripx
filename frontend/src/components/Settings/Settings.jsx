@@ -3445,7 +3445,8 @@ function Settings() {
                             </Card>
                           )}
 
-                          {installation &&
+                          {false &&
+                            installation &&
                             installation.platform === 'shopify' &&
                             !installationLoading &&
                             !installationError && (

@@ -287,7 +287,7 @@ function TestDetail() {
   const storefrontRuntimeReady =
     storefrontSetupStatus?.proxyStatus?.ok === true &&
     storefrontSetupStatus?.embedStatus?.detected === true;
-  const storefrontRuntimeBlocked =
+  const storefrontRuntimeNeedsReview =
     preLaunchOpen &&
     requiresStorefrontRuntime &&
     storefrontSetupStatus &&
@@ -1276,7 +1276,7 @@ function TestDetail() {
           onAction: handleStart,
           loading: actionLoading,
           destructive: forceStart,
-          disabled: forceReasonRequired || visualQaRequiredButMissing || storefrontRuntimeBlocked,
+          disabled: forceReasonRequired || visualQaRequiredButMissing,
         }}
         secondaryActions={[
           {
@@ -1299,8 +1299,8 @@ function TestDetail() {
             {requiresStorefrontRuntime && (
               <Banner
                 tone={
-                  storefrontRuntimeBlocked
-                    ? 'critical'
+                  storefrontRuntimeNeedsReview
+                    ? 'warning'
                     : storefrontSetupError
                       ? 'warning'
                       : storefrontRuntimeReady
@@ -1308,8 +1308,8 @@ function TestDetail() {
                         : 'info'
                 }
                 title={
-                  storefrontRuntimeBlocked
-                    ? 'Enable the RipX app embed before launching'
+                  storefrontRuntimeNeedsReview
+                    ? 'Storefront runtime check needs review'
                     : storefrontSetupError
                       ? 'Could not verify the app embed'
                       : storefrontRuntimeReady
@@ -1318,8 +1318,8 @@ function TestDetail() {
                 }
               >
                 <Text as="p" variant="bodySm">
-                  {storefrontRuntimeBlocked
-                    ? 'Live storefront tests need the theme app embed or snippet so RipX can assign visitors and stamp cart lines before checkout.'
+                  {storefrontRuntimeNeedsReview
+                    ? 'RipX could not confirm the theme app embed from this probe. You can still start the test if the embed is enabled in Shopify; use Settings > Installation checklist to re-check after launch.'
                     : storefrontSetupError ||
                       (storefrontSetupLoading
                         ? 'Checking the App Proxy and theme embed on the active storefront.'

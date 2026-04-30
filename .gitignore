@@ -70,8 +70,10 @@ Thumbs.db
 # ============================================
 # Build outputs (generated, not needed in repo)
 # ============================================
-dist/
+# Ignore only root build output; frontend/dist is intentionally tracked for server deploys.
+/dist/
 !frontend/dist/
+!frontend/dist/**
 build/
 # frontend/dist tracked so we can push built app for server (build locally, git push, pull on server)
 *.map
