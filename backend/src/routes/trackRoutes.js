@@ -104,12 +104,14 @@ function buildPreviewDocumentFrameAncestors(req) {
   const requestOrigin = `${req.protocol}://${req.get('host')}`;
   const appOrigin = normalizeCspOrigin(process.env.APP_URL, requestOrigin);
   const frontendOrigin = normalizeCspOrigin(process.env.FRONTEND_URL, null);
+  const parentOrigin = normalizeCspOrigin(req.query.parent_origin, null);
   const sources = new Set([
     "'self'",
     'https://admin.shopify.com',
     'https://*.myshopify.com',
     appOrigin,
     frontendOrigin,
+    parentOrigin,
   ]);
   return Array.from(sources).filter(Boolean).join(' ');
 }

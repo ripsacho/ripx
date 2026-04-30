@@ -32,11 +32,9 @@ import {
 import {
   buildPreviewUrl,
   buildPreviewDocumentUrl,
-  isShopifyPreviewUrl,
   resolvePreviewBaseUrl,
   stripPreviewDocumentSecretParams,
 } from '../../utils/previewUrl';
-import { isShopifyStoreDomain } from '../../utils/shopifyAdmin';
 import { useAppRoutes } from '../../hooks';
 import Toast from '../Toast/Toast';
 import styles from './TestEditor.module.css';
@@ -153,9 +151,6 @@ export default function TestEditor() {
     domain: test?.shop_domain || getPreviewDomain() || getShopDomain() || undefined,
     path: '/',
   });
-  const isShopifyPreviewTarget =
-    isShopifyStoreDomain(test?.shop_domain || getPreviewDomain() || getShopDomain() || '') ||
-    isShopifyPreviewUrl(effectiveBaseUrl);
   const previewIframeSrc =
     effectiveBaseUrl && id && currentVariant
       ? (() => {
@@ -168,15 +163,16 @@ export default function TestEditor() {
               tenantDomain: test?.shop_domain || null,
               visualEditor: true,
             }) || '';
-          if (!isShopifyPreviewTarget) {
-            return directPreviewUrl;
-          }
           return (
             buildPreviewDocumentUrl({
               apiBaseUrl: getApiBaseUrl(),
               previewUrl: directPreviewUrl,
               visualEditor: true,
               storefrontPassword,
+              parentOrigin:
+                typeof window !== 'undefined' && window.location?.origin
+                  ? window.location.origin
+                  : undefined,
             }) || directPreviewUrl
           );
         })()
@@ -306,16 +302,14 @@ export default function TestEditor() {
                       autoComplete="url"
                       helpText="Base URL of the page to preview. Leave empty to use the test’s default. Preview shows the selected variant’s saved code; save to see changes."
                     />
-                    {isShopifyPreviewTarget && (
-                      <TextField
-                        label="Storefront password"
-                        type="password"
-                        value={storefrontPassword}
-                        onChange={setStorefrontPassword}
-                        autoComplete="off"
-                        helpText="For password-protected Shopify dev stores. Leave empty for public stores."
-                      />
-                    )}
+                    <TextField
+                      label="Storefront password"
+                      type="password"
+                      value={storefrontPassword}
+                      onChange={setStorefrontPassword}
+                      autoComplete="off"
+                      helpText="For password-protected Shopify dev stores. Leave empty for public stores."
+                    />
                     <Box
                       paddingBlockStart="200"
                       minHeight="420px"

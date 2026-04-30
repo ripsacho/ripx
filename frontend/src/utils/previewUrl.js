@@ -194,6 +194,7 @@ export function buildPreviewUrl({
  * @param {boolean} [options.visualEditor=false] - Add ab_visual_editor=1 to preview-document
  * @param {boolean} [options.visualPicker=false] - Add ab_visual_picker=1 to preview-document
  * @param {string} [options.storefrontPassword] - Optional Shopify storefront password for dev/password-protected stores
+ * @param {string} [options.parentOrigin] - App origin that will embed the preview iframe
  * @returns {string|null}
  */
 export function buildPreviewDocumentUrl({
@@ -202,6 +203,7 @@ export function buildPreviewDocumentUrl({
   visualEditor = false,
   visualPicker = false,
   storefrontPassword,
+  parentOrigin,
 }) {
   const directPreviewUrl = typeof previewUrl === 'string' ? previewUrl.trim() : '';
   if (!directPreviewUrl) return null;
@@ -234,6 +236,15 @@ export function buildPreviewDocumentUrl({
       if (password) {
         previewDoc.searchParams.set('storefront_password', password);
       }
+    }
+    const explicitParentOrigin =
+      typeof parentOrigin === 'string' && parentOrigin.trim()
+        ? parentOrigin.trim()
+        : typeof window !== 'undefined' && window.location?.origin
+          ? window.location.origin
+          : '';
+    if (explicitParentOrigin) {
+      previewDoc.searchParams.set('parent_origin', explicitParentOrigin);
     }
 
     const directUrl = new URL(directPreviewUrl);

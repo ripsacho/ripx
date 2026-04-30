@@ -957,7 +957,35 @@ function TestDetail() {
         messageType="error"
         onCloseMessage={() => setErrorMessage(null)}
       >
-        <Page title="Test Details" />
+        <Page
+          title="Test Details"
+          backAction={{ content: 'Tests', onAction: () => navigate(routes.tests) }}
+        >
+          <Layout>
+            <Layout.Section>
+              <Banner
+                tone="critical"
+                title="Could not load this test"
+                action={{ content: 'Retry', onAction: () => refetchTest?.() }}
+                secondaryAction={{
+                  content: 'Back to tests',
+                  onAction: () => navigate(routes.tests),
+                }}
+              >
+                <BlockStack gap="200">
+                  <Text as="p" variant="bodyMd">
+                    {displayError}
+                  </Text>
+                  {id ? (
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      Test ID: {id}
+                    </Text>
+                  ) : null}
+                </BlockStack>
+              </Banner>
+            </Layout.Section>
+          </Layout>
+        </Page>
       </PageShell>
     );
   }

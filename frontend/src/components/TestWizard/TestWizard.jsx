@@ -14690,6 +14690,10 @@ function TestWizard({
                                   previewUrl: fullPreviewUrl || directPreviewUrl,
                                   visualEditor: true,
                                   storefrontPassword: visualEditorStorefrontPassword,
+                                  parentOrigin:
+                                    typeof window !== 'undefined' && window.location?.origin
+                                      ? window.location.origin
+                                      : undefined,
                                 }) || '';
                             }
                             const _previewWithoutTestId = Boolean(baseUrl && !testId);
