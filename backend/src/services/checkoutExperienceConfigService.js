@@ -16,6 +16,12 @@ const SUPPORTED_CHECKOUT_PRODUCT_SOURCE_MODES = Object.freeze([
   'cart_related',
   'collection',
 ]);
+const SUPPORTED_CHECKOUT_PRODUCT_DISPLAY_LAYOUTS = Object.freeze([
+  'stacked_cards',
+  'compact_rows',
+  'two_column_grid',
+  'comparison_table',
+]);
 const MAX_CHECKOUT_SECTIONS = 8;
 
 function normalizeCheckoutPhase(rawPhase) {
@@ -85,6 +91,13 @@ function normalizeCheckoutProductSourceLimit(rawValue) {
     return 3;
   }
   return Math.min(6, Math.max(1, numeric));
+}
+
+function normalizeCheckoutProductDisplayLayout(rawLayout) {
+  const layout = String(rawLayout || 'stacked_cards')
+    .trim()
+    .toLowerCase();
+  return SUPPORTED_CHECKOUT_PRODUCT_DISPLAY_LAYOUTS.includes(layout) ? layout : 'stacked_cards';
 }
 
 function normalizeProductSourceCollections(rawValue) {
@@ -206,6 +219,9 @@ function normalizeSectionProps(rawSection = {}) {
     ),
     product_source_limit: normalizeCheckoutProductSourceLimit(
       propsSource.product_source_limit || propsSource.checkout_product_source_limit
+    ),
+    product_display_layout: normalizeCheckoutProductDisplayLayout(
+      propsSource.product_display_layout || propsSource.checkout_product_display_layout
     ),
     product_source_collections: normalizeProductSourceCollections(
       propsSource.product_source_collections ||

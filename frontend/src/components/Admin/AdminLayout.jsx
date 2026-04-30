@@ -726,7 +726,7 @@ function AdminLayout({ children }) {
                 <button
                   type="button"
                   className={styles.adminFooterLinkBtn}
-                  onClick={() => navigateWithEmbed(ROUTES.DOCS)}
+                  onClick={() => window.open(ROUTES.DOCS, '_blank', 'noopener,noreferrer')}
                 >
                   Docs
                 </button>

@@ -690,19 +690,13 @@ function AppContent() {
   const isUserPanelRoute = location.pathname === ROUTES.USER_PANEL;
   const isAppDomainRoute = !!getAppDomainFromPath(location.pathname);
   const isUniversalAppRoute = UNIVERSAL_APP_ROUTES.includes(location.pathname);
-  const shouldHideChromeForPublicPath = isPublicPath && !isDocsRoute;
-  /* TopBar on every app page including admin and universal Profile/Settings/Docs/Notifications.
-     Docs are public for auth, but signed-in users still get app chrome there. */
+  const shouldHideChromeForPublicPath = isPublicPath;
+  /* TopBar on authenticated app pages. Public routes, including Documentation, stay chrome-free. */
   const showTopBar =
     !isOnConnectOrAuthPath &&
     hasCreds &&
     !shouldHideChromeForPublicPath &&
-    (isAppDomainRoute ||
-      isDocsRoute ||
-      isUserPanelRoute ||
-      isDomainsRoute ||
-      isAdminRoute ||
-      isUniversalAppRoute);
+    (isAppDomainRoute || isUserPanelRoute || isDomainsRoute || isAdminRoute || isUniversalAppRoute);
   /* Sidebar (AB test nav) only when inside /app/:domain; Profile, Settings, Docs, Notifications are outside the panel (TopBar only) */
   const showSidebar =
     !isOnConnectOrAuthPath &&
@@ -1159,7 +1153,14 @@ function AppContent() {
                 path="/app/:domain/notifications"
                 element={<Navigate to={ROUTES.NOTIFICATIONS} replace />}
               />
-              <Route path="/app/:domain/docs" element={<Navigate to={ROUTES.DOCS} replace />} />
+              <Route
+                path="/app/:domain/docs"
+                element={
+                  <Suspense fallback={<RouteLoading />}>
+                    <Documentation />
+                  </Suspense>
+                }
+              />
               <Route
                 path="/app/:domain/support"
                 element={<Navigate to={ROUTES.SUPPORT} replace />}

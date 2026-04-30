@@ -1586,6 +1586,197 @@
   box-shadow: none;
 }
 
+.goalWorkspace {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.goalWorkspaceSidebar,
+.goalWorkspaceCard {
+  border: 1px solid rgba(59, 130, 246, 0.16);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 8px 28px rgba(59, 130, 246, 0.06);
+}
+
+.goalWorkspaceSidebar {
+  display: grid;
+  gap: 8px;
+  align-self: start;
+  padding: 10px;
+}
+
+.goalWorkspaceNavItem {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.goalWorkspaceNavItem:hover,
+.goalWorkspaceNavItemActive {
+  border-color: rgba(59, 130, 246, 0.24);
+  color: var(--goal-accent);
+  background: var(--goal-accent-soft);
+}
+
+.goalWorkspaceNavIcon {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.goalWorkspaceNavIcon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.goalWorkspaceNavItem span:last-child {
+  display: grid;
+  gap: 2px;
+}
+
+.goalWorkspaceNavItem small,
+.goalWorkspaceHint {
+  color: var(--text-tertiary);
+  line-height: 1.4;
+}
+
+.goalWorkspaceCard {
+  padding: 16px;
+}
+
+.goalWorkspaceHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.goalWorkspaceHeader h4 {
+  margin: 0 0 4px;
+  color: var(--text-primary);
+  font-weight: 850;
+}
+
+.goalWorkspaceHeader p,
+.goalWorkspaceHint {
+  margin: 0;
+}
+
+.goalMiniList,
+.goalLibraryGrid {
+  display: grid;
+  gap: 10px;
+}
+
+.goalMiniList span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.82);
+  color: var(--text-primary);
+  font-weight: 750;
+}
+
+.goalMiniList svg {
+  width: 16px;
+  height: 16px;
+  color: var(--goal-accent);
+}
+
+.goalLibraryGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.goalLibraryCard {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 14px;
+  color: var(--text-primary);
+  background: rgba(248, 250, 252, 0.82);
+  cursor: pointer;
+  text-align: left;
+}
+
+.goalLibraryCard:hover,
+.goalLibraryCardSelected {
+  border-color: rgba(34, 197, 94, 0.38);
+  background: rgba(240, 253, 244, 0.92);
+}
+
+.goalLibraryCard code,
+.goalEventTable code {
+  color: #1d4ed8;
+  font-size: 0.75rem;
+  background: rgba(59, 130, 246, 0.08);
+  border-radius: 8px;
+  padding: 2px 6px;
+}
+
+.goalLibraryCard span {
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.goalEventTableWrap {
+  overflow-x: auto;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 14px;
+}
+
+.goalEventTable {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 620px;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.goalEventTable th,
+.goalEventTable td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  text-align: left;
+  vertical-align: top;
+}
+
+.goalEventTable th {
+  color: var(--text-tertiary);
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.goalEventTable td:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.goalEventTable tr:last-child td {
+  border-bottom: 0;
+}
+
 .goalListPanel {
   padding: 16px;
   margin-bottom: 20px;
@@ -1804,6 +1995,18 @@
     grid-template-columns: 1fr;
   }
 
+  .goalWorkspace {
+    grid-template-columns: 1fr;
+  }
+
+  .goalWorkspaceSidebar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .goalLibraryGrid {
+    grid-template-columns: 1fr;
+  }
+
   .goalMatrixHeader {
     display: none;
   }
@@ -1815,6 +2018,10 @@
 }
 
 @media (max-width: 560px) {
+  .goalWorkspaceSidebar {
+    grid-template-columns: 1fr;
+  }
+
   .goalListItem {
     grid-template-columns: auto minmax(0, 1fr);
   }
@@ -11063,6 +11270,18 @@
   gap: 10px;
 }
 
+.checkoutProductPreviewListRows {
+  gap: 8px;
+}
+
+.checkoutProductPreviewListGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.checkoutProductPreviewListTable {
+  gap: 6px;
+}
+
 .checkoutProductPreviewCard {
   display: flex;
   flex-direction: column;
@@ -11071,6 +11290,20 @@
   border-radius: 14px;
   border: 1px solid rgba(6, 182, 212, 0.12);
   background: rgba(255, 255, 255, 0.72);
+}
+
+.checkoutProductPreviewListRows .checkoutProductPreviewCard,
+.checkoutProductPreviewListTable .checkoutProductPreviewCard {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 10px;
+}
+
+.checkoutProductPreviewListTable .checkoutProductPreviewCard {
+  grid-template-columns: minmax(0, 1fr) auto;
+  border-style: dashed;
+  box-shadow: none;
 }
 
 .checkoutProductPreviewMedia,
@@ -11088,6 +11321,18 @@
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+.checkoutProductPreviewListRows .checkoutProductPreviewMedia,
+.checkoutProductPreviewListRows .checkoutProductPreviewMediaPlaceholder {
+  width: 46px;
+  height: 46px;
+}
+
+.checkoutProductPreviewListTable .checkoutProductPreviewMedia,
+.checkoutProductPreviewListTable .checkoutProductPreviewMediaPlaceholder,
+.checkoutProductPreviewListTable .checkoutProductPreviewSubtitle {
+  display: none;
 }
 
 .checkoutProductPreviewMediaPlaceholder {
@@ -11144,6 +11389,16 @@
   color: var(--text-secondary);
   font-size: 0.74rem;
   text-decoration: line-through;
+}
+
+.checkoutProductPreviewListRows .checkoutProductPreviewTop,
+.checkoutProductPreviewListRows .checkoutProductPreviewSubtitle,
+.checkoutProductPreviewListRows .checkoutProductPreviewPrices {
+  grid-column: 2;
+}
+
+.checkoutProductPreviewListTable .checkoutProductPreviewPrices {
+  justify-content: flex-end;
 }
 
 .checkoutSectionActionRow {

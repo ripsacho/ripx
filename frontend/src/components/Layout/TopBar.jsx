@@ -447,7 +447,7 @@ function TopBar({
                   onClick={() => {
                     setHelpPopoverActive(false);
                     trackUiEvent('topbar_help_navigate', { target: docsPath });
-                    navigateWithEmbed(docsPath);
+                    window.open(docsPath, '_blank', 'noopener,noreferrer');
                   }}
                 >
                   Documentation

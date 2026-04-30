@@ -77,7 +77,13 @@ const ACCOUNT_TILES = [
     label: 'Settings',
     desc: 'Installation hub & account settings',
   },
-  { to: ROUTES.DOCS, icon: BookIcon, label: 'Documentation', desc: 'Guides & API' },
+  {
+    to: ROUTES.DOCS,
+    icon: BookIcon,
+    label: 'Documentation',
+    desc: 'Guides & API',
+    external: true,
+  },
   {
     to: ROUTES.NOTIFICATIONS,
     icon: NotificationIcon,
@@ -208,6 +214,19 @@ function UserPanel() {
     },
     [openingDomain, shopifyInstallStatus]
   );
+  const shopifyDomains = domains.filter(domainRow =>
+    isShopifyStoreDomain(typeof domainRow === 'string' ? domainRow : domainRow?.domain)
+  );
+  const connectedShopifyCount = shopifyDomains.filter(domainRow => {
+    const domain = typeof domainRow === 'string' ? domainRow : domainRow?.domain;
+    return getShopifyInstallState(domain) === 'connected';
+  }).length;
+  const needsAttentionCount = shopifyDomains.filter(domainRow => {
+    const domain = typeof domainRow === 'string' ? domainRow : domainRow?.domain;
+    const state = getShopifyInstallState(domain);
+    return ['needs_install', 'needs_link', 'restricted'].includes(state);
+  }).length;
+  const standaloneCount = Math.max(0, domainCount - shopifyDomains.length);
 
   const openShopifyConnectPopup = useCallback(
     (url, shop, preferredPopup = null) => {
@@ -457,13 +476,40 @@ function UserPanel() {
             <p className={styles.heroSubtitle}>
               {userEmail ? (
                 <>
-                  Signed in as <strong>{userEmail}</strong>. Open a domain to run experiments and
-                  view analytics.
+                  Signed in as <strong>{userEmail}</strong>. Pick a store, launch a test, or finish
+                  setup from one place.
                 </>
               ) : (
-                'Open a domain to run A/B tests, analytics, and experiments.'
+                'Pick a store, launch a test, or finish setup from one place.'
               )}
             </p>
+            <div className={styles.heroInsightGrid} aria-label="Account overview">
+              <div className={styles.heroInsightCard}>
+                <span className={styles.heroInsightLabel}>Portfolio</span>
+                <span className={styles.heroInsightValue}>{domainCount}</span>
+                <span className={styles.heroInsightHint}>
+                  {domainCount === 1 ? 'domain connected' : 'domains connected'}
+                </span>
+              </div>
+              <div className={styles.heroInsightCard}>
+                <span className={styles.heroInsightLabel}>Shopify</span>
+                <span className={styles.heroInsightValue}>
+                  {connectedShopifyCount}/{shopifyDomains.length}
+                </span>
+                <span className={styles.heroInsightHint}>stores ready</span>
+              </div>
+              <div
+                className={`${styles.heroInsightCard} ${
+                  needsAttentionCount > 0 ? styles.heroInsightCardAttention : ''
+                }`}
+              >
+                <span className={styles.heroInsightLabel}>Action needed</span>
+                <span className={styles.heroInsightValue}>{needsAttentionCount}</span>
+                <span className={styles.heroInsightHint}>
+                  {needsAttentionCount === 1 ? 'store to review' : 'stores to review'}
+                </span>
+              </div>
+            </div>
             <div className={styles.quickActions}>
               <Link to={getNavigateToWithEmbed(ROUTES.DOMAINS)} className={styles.quickActionCard}>
                 <span className={styles.quickActionIcon}>
@@ -501,9 +547,18 @@ function UserPanel() {
             <span className={styles.statsValue}>{domainCount}</span>
             <span className={styles.statsLabel}>{domainCount === 1 ? 'Domain' : 'Domains'}</span>
           </div>
+          <div className={styles.statsDivider} aria-hidden="true" />
+          <div className={styles.statsItem}>
+            <span className={styles.statsValue}>{shopifyDomains.length}</span>
+            <span className={styles.statsLabel}>Shopify</span>
+          </div>
+          <div className={styles.statsDivider} aria-hidden="true" />
+          <div className={styles.statsItem}>
+            <span className={styles.statsValue}>{standaloneCount}</span>
+            <span className={styles.statsLabel}>Standalone</span>
+          </div>
           {domainCount === 0 ? (
             <>
-              <div className={styles.statsDivider} aria-hidden="true" />
               <Link to={ROUTES.DOMAINS} className={styles.statsCta}>
                 Add your first domain
                 <Icon source={ChevronRightIcon} tone="subdued" />
@@ -513,22 +568,67 @@ function UserPanel() {
         </div>
 
         <div className={styles.appContent}>
+          <section className={styles.focusPanel} aria-label="Recommended next step">
+            <div className={styles.focusPanelMain}>
+              <span className={styles.focusPanelEyebrow}>Recommended</span>
+              <h2 className={styles.focusPanelTitle}>
+                {domainCount === 0
+                  ? 'Connect your first domain'
+                  : needsAttentionCount > 0
+                    ? 'Finish store setup'
+                    : 'Open a store and start testing'}
+              </h2>
+              <p className={styles.focusPanelText}>
+                {domainCount === 0
+                  ? 'Add a Shopify store or standalone site to unlock experiments and analytics.'
+                  : needsAttentionCount > 0
+                    ? `${needsAttentionCount} Shopify ${needsAttentionCount === 1 ? 'store needs' : 'stores need'} install, link, or access review.`
+                    : 'Your connected stores are ready. Choose a domain to create or review tests.'}
+              </p>
+            </div>
+            <Link to={ROUTES.DOMAINS} className={styles.focusPanelAction}>
+              {domainCount === 0
+                ? 'Add domain'
+                : needsAttentionCount > 0
+                  ? 'Review domains'
+                  : 'Open domains'}
+              <Icon source={ChevronRightIcon} tone="subdued" />
+            </Link>
+          </section>
+
           {/* Account – large tiles */}
           <nav className={styles.accountSection} aria-label="Account">
             <h2 className={styles.accountSectionTitle}>Account</h2>
             <div className={styles.accountTiles}>
-              {ACCOUNT_TILES.map(({ to, icon: IconSrc, label, desc }) => (
-                <Link key={to} to={to} className={styles.accountTile}>
-                  <span className={styles.accountTileIcon}>
-                    <Icon source={IconSrc} tone="base" />
-                  </span>
-                  <span className={styles.accountTileLabel}>{label}</span>
-                  <span className={styles.accountTileDesc}>{desc}</span>
-                  <span className={styles.accountTileArrow}>
-                    <Icon source={ChevronRightIcon} tone="subdued" />
-                  </span>
-                </Link>
-              ))}
+              {ACCOUNT_TILES.map(({ to, icon: IconSrc, label, desc, external }) => {
+                const content = (
+                  <>
+                    <span className={styles.accountTileIcon}>
+                      <Icon source={IconSrc} tone="base" />
+                    </span>
+                    <span className={styles.accountTileLabel}>{label}</span>
+                    <span className={styles.accountTileDesc}>{desc}</span>
+                    <span className={styles.accountTileArrow}>
+                      <Icon source={ChevronRightIcon} tone="subdued" />
+                    </span>
+                  </>
+                );
+                return external ? (
+                  <a
+                    key={to}
+                    href={to}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={styles.accountTile}
+                  >
+                    {content}
+                  </a>
+                ) : (
+                  <Link key={to} to={to} className={styles.accountTile}>
+                    {content}
+                  </Link>
+                );
+              })}
             </div>
           </nav>
 
@@ -556,9 +656,14 @@ function UserPanel() {
                   <Button url={ROUTES.DOMAINS} variant="primary" size="large" icon={GlobeIcon}>
                     Add domain
                   </Button>
-                  <Link to={ROUTES.DOCS} className={styles.emptyLink}>
+                  <a
+                    href={ROUTES.DOCS}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={styles.emptyLink}
+                  >
                     Learn how to connect
-                  </Link>
+                  </a>
                 </div>
               </div>
             </Card>
@@ -575,10 +680,11 @@ function UserPanel() {
                         Your domains
                       </h2>
                     </div>
-                    <p className={styles.domainsSectionDesc}>
-                      Open a domain to run A/B tests and view analytics, or connect one with an API
-                      key.
-                    </p>
+                    <div className={styles.domainsSectionPills} aria-label="Domain status summary">
+                      <span>{connectedShopifyCount} Shopify ready</span>
+                      {needsAttentionCount > 0 && <span>{needsAttentionCount} need setup</span>}
+                      {standaloneCount > 0 && <span>{standaloneCount} standalone</span>}
+                    </div>
                   </div>
                   <div className={styles.domainsSectionActions}>
                     <Link to={ROUTES.DOMAINS} className={styles.domainsSectionPrimaryAction}>

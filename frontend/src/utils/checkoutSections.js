@@ -12,6 +12,12 @@ export const CHECKOUT_TONES = ['success', 'info', 'warning', 'critical'];
 export const CHECKOUT_LAYOUTS = ['banner', 'stacked', 'compact'];
 export const CHECKOUT_CTA_KINDS = ['track', 'offer_code', 'none'];
 export const CHECKOUT_PRODUCT_SOURCE_MODES = ['manual', 'cart_related', 'collection'];
+export const CHECKOUT_PRODUCT_DISPLAY_LAYOUTS = [
+  'stacked_cards',
+  'compact_rows',
+  'two_column_grid',
+  'comparison_table',
+];
 
 export function normalizeCheckoutPhase(rawValue) {
   const value = String(rawValue || 'experience')
@@ -82,6 +88,13 @@ export function normalizeCheckoutProductSourceLimit(rawValue) {
     return 3;
   }
   return Math.min(6, Math.max(1, numeric));
+}
+
+export function normalizeCheckoutProductDisplayLayout(rawValue) {
+  const value = String(rawValue || 'stacked_cards')
+    .trim()
+    .toLowerCase();
+  return CHECKOUT_PRODUCT_DISPLAY_LAYOUTS.includes(value) ? value : 'stacked_cards';
 }
 
 export function normalizeCheckoutProductSourceCollections(rawValue) {
@@ -221,6 +234,9 @@ function normalizeCheckoutSectionProps(section = {}) {
     product_source_limit: normalizeCheckoutProductSourceLimit(
       propsSource.product_source_limit || propsSource.checkout_product_source_limit
     ),
+    product_display_layout: normalizeCheckoutProductDisplayLayout(
+      propsSource.product_display_layout || propsSource.checkout_product_display_layout
+    ),
     product_source_collections: normalizeCheckoutProductSourceCollections(
       propsSource.product_source_collections ||
         propsSource.checkout_product_source_collections ||
@@ -325,6 +341,7 @@ export function syncLegacyCheckoutExperienceFields(config = {}) {
     checkout_tone: props.tone || 'success',
     checkout_layout: props.layout || 'banner',
     checkout_cta_kind: props.cta_kind || 'track',
+    checkout_product_display_layout: props.product_display_layout || 'stacked_cards',
     checkout_feature_bullets: normalizeCheckoutListInput(props.feature_bullets),
   };
 }

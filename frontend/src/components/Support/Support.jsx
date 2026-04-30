@@ -913,10 +913,15 @@ function Support() {
           <nav className={styles.quickLinks} aria-label="Popular topics">
             <span className={styles.quickLinksLabel}>Popular topics</span>
             <div className={styles.quickLinksList}>
-              <Link to={ROUTES.DOCS} className={styles.quickLinkPill}>
+              <a
+                href={ROUTES.DOCS}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.quickLinkPill}
+              >
                 <Icon source={BookIcon} tone="base" />
                 Documentation
-              </Link>
+              </a>
               <Link to={ROUTES.USER_PANEL} className={styles.quickLinkPill}>
                 Dashboard
               </Link>

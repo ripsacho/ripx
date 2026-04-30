@@ -60,7 +60,7 @@ import TrafficAllocationSlider from '../TestCreator/TrafficAllocationSlider';
 import Toast from '../Toast/Toast';
 import styles from './TargetingSection.module.css';
 import stepStyles from './WizardSteps.module.css';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import {
   getShopDomain,
   getPreviewDomain,
@@ -116,6 +116,7 @@ import {
   CHECKOUT_PLACEMENT_OPTIONS,
   CHECKOUT_PRODUCT_SOURCE_LIMIT_OPTIONS,
   CHECKOUT_PRODUCT_SOURCE_OPTIONS,
+  CHECKOUT_PRODUCT_DISPLAY_LAYOUT_OPTIONS,
   CHECKOUT_SECTION_TYPE_OPTIONS,
   CHECKOUT_TONE_OPTIONS,
   HOMEPAGE_URL_PATTERN_SHOPIFY,
@@ -159,6 +160,7 @@ import {
   normalizeCheckoutProductSourceCollections,
   normalizeCheckoutProductSourceLimit,
   normalizeCheckoutProductSourceMode,
+  normalizeCheckoutProductDisplayLayout,
   syncLegacyCheckoutExperienceFields,
 } from '../../utils/checkoutSections';
 function TestWizard({
@@ -525,6 +527,7 @@ function TestWizard({
   const [_advancedTargetingOpen, _setAdvancedTargetingOpen] = useState(false);
   const [customEventInput, setCustomEventInput] = useState('');
   const [advancedGoalOpen, setAdvancedGoalOpen] = useState(false);
+  const [goalWorkspacePanel, setGoalWorkspacePanel] = useState('goals');
   const [customGoalDraft, setCustomGoalDraft] = useState({
     label: '',
     event_name: '',
@@ -3488,6 +3491,68 @@ function TestWizard({
   const activeAnalysisLabel =
     (formData.goal?.analysis_method || 'frequentist') === 'bayesian' ? 'Bayesian' : 'Frequentist';
   const customGoalCanAdd = Boolean(normalizeGoalEventName(customGoalDraft.event_name));
+  const goalWorkspaceNavItems = [
+    {
+      id: 'goals',
+      label: 'Goals added',
+      description: goalGlanceText,
+      icon: ChartLineIcon,
+    },
+    {
+      id: 'library',
+      label: 'Prebuilt library',
+      description: `${recommendedGoalPresets.length} ready events`,
+      icon: PlusIcon,
+    },
+    {
+      id: 'events',
+      label: 'Event matrix',
+      description: 'Status and interaction signals',
+      icon: DataTableIcon,
+    },
+    {
+      id: 'advanced',
+      label: 'Advanced',
+      description: 'Custom event goal',
+      icon: CodeIcon,
+    },
+  ];
+  const goalEventRows = [
+    {
+      eventKey: formData.goal?.metric || 'revenue',
+      label: metricLabelMap[formData.goal?.metric || 'revenue'] || 'Revenue',
+      type: 'Primary',
+      aggregation: formData.goal?.metric === 'aov' ? 'Average' : 'Automatic',
+      direction: 'Higher',
+      status: 'Active',
+    },
+    ...recommendedGoalPresets.map(preset => {
+      const addedGoal = selectedSecondaryGoals.find(
+        goal => getSecondaryGoalName(goal) === preset.event_name
+      );
+      return {
+        eventKey: preset.event_name,
+        label: preset.label,
+        type: 'Prebuilt',
+        aggregation: addedGoal?.aggregation || preset.aggregation,
+        direction: (addedGoal?.direction || preset.direction) === 'decrease' ? 'Lower' : 'Higher',
+        status: addedGoal ? 'Added' : 'Available',
+      };
+    }),
+    ...selectedSecondaryGoals
+      .filter(
+        goal =>
+          !recommendedGoalPresets.some(preset => preset.event_name === getSecondaryGoalName(goal))
+      )
+      .map(goal => ({
+        eventKey: getSecondaryGoalName(goal),
+        label: getGoalLabel(goal),
+        type: goal?.source === 'custom' ? 'Custom' : 'Quick',
+        aggregation: goal?.aggregation || 'count',
+        direction: (goal?.direction || 'increase') === 'decrease' ? 'Lower' : 'Higher',
+        status: 'Added',
+      })),
+  ];
 
   const handleSaveCodeOnly = async () => {
     if (!onSaveCode || !initialData?.id) return;
@@ -4070,9 +4135,8 @@ function TestWizard({
 
   const openShippingDocs = useCallback(() => {
     if (typeof window === 'undefined') return;
-    const docsPath = routeDomain ? ROUTES.appDocs(routeDomain) : ROUTES.DOCS;
-    window.open(`${docsPath}#shipping`, '_blank', 'noopener');
-  }, [routeDomain]);
+    window.open(`${ROUTES.DOCS}#shipping`, '_blank', 'noopener,noreferrer');
+  }, []);
 
   const jumpToShippingTargeting = useCallback(
     targetId => {
@@ -7965,6 +8029,156 @@ function TestWizard({
               </span>
             </div>
           </div>
+          <div className={styles.goalWorkspace}>
+            <nav className={styles.goalWorkspaceSidebar} aria-label="Goal and event navigation">
+              {goalWorkspaceNavItems.map(item => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`${styles.goalWorkspaceNavItem} ${goalWorkspacePanel === item.id ? styles.goalWorkspaceNavItemActive : ''}`}
+                  onClick={() => setGoalWorkspacePanel(item.id)}
+                  aria-current={goalWorkspacePanel === item.id ? 'page' : undefined}
+                >
+                  <span className={styles.goalWorkspaceNavIcon}>
+                    <Icon source={item.icon} />
+                  </span>
+                  <span>
+                    <strong>{item.label}</strong>
+                    <small>{item.description}</small>
+                  </span>
+                </button>
+              ))}
+            </nav>
+            <div className={styles.goalWorkspacePanel}>
+              {goalWorkspacePanel === 'goals' && (
+                <div className={styles.goalWorkspaceCard}>
+                  <div className={styles.goalWorkspaceHeader}>
+                    <div>
+                      <h4>Current test goals</h4>
+                      <p>Review the winner metric and all secondary/custom goals before launch.</p>
+                    </div>
+                    <Badge tone="success">{goalGlanceText}</Badge>
+                  </div>
+                  <div className={styles.goalMiniList}>
+                    {goalListItems.map(item => (
+                      <span key={item.key}>
+                        <Icon source={item.icon} />
+                        {item.label}
+                        <Badge tone={item.badgeTone}>{item.role}</Badge>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {goalWorkspacePanel === 'library' && (
+                <div className={styles.goalWorkspaceCard}>
+                  <div className={styles.goalWorkspaceHeader}>
+                    <div>
+                      <h4>Prebuilt event library</h4>
+                      <p>Add standardized events so tests use consistent names and reporting.</p>
+                    </div>
+                    <Badge tone="info">Reusable</Badge>
+                  </div>
+                  <div className={styles.goalLibraryGrid}>
+                    {recommendedGoalPresets.map(preset => {
+                      const isSelected = selectedGoalNames.has(preset.event_name);
+                      return (
+                        <button
+                          key={preset.event_name}
+                          type="button"
+                          className={`${styles.goalLibraryCard} ${isSelected ? styles.goalLibraryCardSelected : ''}`}
+                          onClick={() => {
+                            if (isSelected) {
+                              const goalIndex = selectedSecondaryGoals.findIndex(
+                                goal => getSecondaryGoalName(goal) === preset.event_name
+                              );
+                              removeSecondaryGoal(goalIndex);
+                            } else {
+                              addSecondaryGoal({ ...preset, source: 'preset' });
+                            }
+                          }}
+                        >
+                          <strong>{preset.label}</strong>
+                          <code>{preset.event_name}</code>
+                          <span>{preset.description}</span>
+                          <Badge tone={isSelected ? 'success' : 'info'}>
+                            {isSelected ? 'Added' : 'Use in test'}
+                          </Badge>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {goalWorkspacePanel === 'events' && (
+                <div className={styles.goalWorkspaceCard}>
+                  <div className={styles.goalWorkspaceHeader}>
+                    <div>
+                      <h4>Event interaction matrix</h4>
+                      <p>
+                        Track which events are active, available, or custom for this experiment.
+                      </p>
+                    </div>
+                    <Badge tone="attention">Planning table</Badge>
+                  </div>
+                  <div className={styles.goalEventTableWrap}>
+                    <table className={styles.goalEventTable}>
+                      <thead>
+                        <tr>
+                          <th>Event / goal</th>
+                          <th>Type</th>
+                          <th>Aggregation</th>
+                          <th>Direction</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {goalEventRows.map(row => (
+                          <tr key={`${row.type}-${row.eventKey}`}>
+                            <td>
+                              <strong>{row.label}</strong>
+                              <code>{row.eventKey}</code>
+                            </td>
+                            <td>{row.type}</td>
+                            <td>{row.aggregation}</td>
+                            <td>{row.direction}</td>
+                            <td>
+                              <Badge
+                                tone={
+                                  row.status === 'Added' || row.status === 'Active'
+                                    ? 'success'
+                                    : 'info'
+                                }
+                              >
+                                {row.status}
+                              </Badge>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+              {goalWorkspacePanel === 'advanced' && (
+                <div className={styles.goalWorkspaceCard}>
+                  <div className={styles.goalWorkspaceHeader}>
+                    <div>
+                      <h4>Advanced custom goal</h4>
+                      <p>Create event-based goals with custom names, aggregation, and direction.</p>
+                    </div>
+                    <Button size="slim" onClick={() => setAdvancedGoalOpen(true)}>
+                      Open builder
+                    </Button>
+                  </div>
+                  <p className={styles.goalWorkspaceHint}>
+                    Advanced goals save into the same secondary-goal list and appear in the event
+                    matrix immediately after they are added.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
           <div className={styles.goalListPanel} aria-label="Goals added to this test">
             <div className={styles.goalListHeader}>
               <div>
@@ -10194,13 +10408,14 @@ function TestWizard({
                     false positives.
                   </Text>
                   <Text as="p" variant="bodyMd">
-                    <Link
-                      to={`${ROUTES.DOCS}#price-testing`}
+                    <a
+                      href={`${ROUTES.DOCS}#price-testing`}
                       className={styles.priceDocLink}
+                      target="_blank"
                       rel="noopener noreferrer"
                     >
                       Price testing guide {'->'}
-                    </Link>
+                    </a>
                   </Text>
                   <Text as="p" variant="bodyMd">
                     <a
@@ -10734,9 +10949,9 @@ function TestWizard({
             RipX assigns variants and tracks outcomes. Strategy execution depends on store plan and
             configured Shopify adapters (CarrierService / Discount Function). Use diagnostics
             endpoints to confirm auto-execution readiness for this shop.{' '}
-            <Link to={`${ROUTES.DOCS}#tests`} rel="noopener noreferrer">
+            <a href={`${ROUTES.DOCS}#tests`} target="_blank" rel="noopener noreferrer">
               Test types &amp; docs →
-            </Link>
+            </a>
           </Text>
         </Banner>
         <Text variant="bodyMd" color="subdued" as="p">
@@ -11000,9 +11215,9 @@ function TestWizard({
             RipX assigns the variant for analytics. To apply the discount at checkout, use a{' '}
             <strong>Discount Function</strong> that reads cart attributes, or create discount codes
             per variant and share them.{' '}
-            <Link to={`${ROUTES.DOCS}#tests`} rel="noopener noreferrer">
+            <a href={`${ROUTES.DOCS}#tests`} target="_blank" rel="noopener noreferrer">
               Test types &amp; docs →
-            </Link>
+            </a>
           </Text>
         </Banner>
 
@@ -11433,7 +11648,7 @@ function TestWizard({
       checkoutVariants.length > 0
         ? Math.min(checkoutStudioVariantIndex, checkoutVariants.length - 1)
         : 0;
-    const checkoutDocsPath = routeDomain ? ROUTES.appDocs(routeDomain) : ROUTES.DOCS;
+    const checkoutDocsPath = ROUTES.DOCS;
     const phaseActionOptions = [
       { label: 'Hide methods', value: 'hide' },
       { label: 'Rename methods', value: 'rename' },
@@ -12111,6 +12326,13 @@ function TestWizard({
                         const productSourceLimit = normalizeCheckoutProductSourceLimit(
                           props.product_source_limit
                         );
+                        const productDisplayLayout = normalizeCheckoutProductDisplayLayout(
+                          props.product_display_layout
+                        );
+                        const productDisplayLayoutLabel =
+                          CHECKOUT_PRODUCT_DISPLAY_LAYOUT_OPTIONS.find(
+                            option => option.value === productDisplayLayout
+                          )?.label || 'Stacked cards';
                         const productSourceCollections = normalizeCheckoutProductSourceCollections(
                           props.product_source_collections
                         );
@@ -12203,6 +12425,11 @@ function TestWizard({
                                         ID: {sectionId}
                                       </span>
                                     ) : null}
+                                    {section.type === 'product_list' ? (
+                                      <span className={styles.checkoutSectionAccordionChip}>
+                                        {productDisplayLayoutLabel}
+                                      </span>
+                                    ) : null}
                                   </div>
                                 </div>
                                 <span
@@ -12262,7 +12489,17 @@ function TestWizard({
                                             </Text>
                                           ) : null}
                                           {previewProductItems.length > 0 ? (
-                                            <div className={styles.checkoutProductPreviewList}>
+                                            <div
+                                              className={`${styles.checkoutProductPreviewList} ${
+                                                productDisplayLayout === 'compact_rows'
+                                                  ? styles.checkoutProductPreviewListRows
+                                                  : productDisplayLayout === 'two_column_grid'
+                                                    ? styles.checkoutProductPreviewListGrid
+                                                    : productDisplayLayout === 'comparison_table'
+                                                      ? styles.checkoutProductPreviewListTable
+                                                      : ''
+                                              }`}
+                                            >
                                               {previewProductItems.slice(0, 3).map(item => (
                                                 <div
                                                   key={item.id}
@@ -12574,13 +12811,14 @@ function TestWizard({
                                                 <Icon source={InfoIcon} />
                                               </span>
                                             </TooltipWrapper>
-                                            <Link
-                                              to={`${checkoutDocsPath}#tests`}
+                                            <a
+                                              href={`${checkoutDocsPath}#tests`}
                                               className={styles.checkoutInlineDocLink}
+                                              target="_blank"
                                               rel="noopener noreferrer"
                                             >
                                               Setup guide
-                                            </Link>
+                                            </a>
                                           </InlineStack>
                                           <TextField
                                             labelHidden
@@ -12733,13 +12971,14 @@ function TestWizard({
                                                   <Icon source={InfoIcon} />
                                                 </span>
                                               </TooltipWrapper>
-                                              <Link
-                                                to={`${checkoutDocsPath}#tests`}
+                                              <a
+                                                href={`${checkoutDocsPath}#tests`}
                                                 className={styles.checkoutInlineDocLink}
+                                                target="_blank"
                                                 rel="noopener noreferrer"
                                               >
                                                 Setup guide
-                                              </Link>
+                                              </a>
                                             </InlineStack>
                                             <Badge tone="info">
                                               {featureBullets.length} item
@@ -13024,6 +13263,38 @@ function TestWizard({
                                                   )
                                                 }
                                                 helpText="Controls how many products the block shows in checkout."
+                                              />
+                                              <Select
+                                                label="Display design"
+                                                options={CHECKOUT_PRODUCT_DISPLAY_LAYOUT_OPTIONS}
+                                                value={productDisplayLayout}
+                                                onChange={value =>
+                                                  updateCheckoutExperienceVariantConfig(
+                                                    index,
+                                                    current => {
+                                                      const currentSections =
+                                                        getNormalizedCheckoutExperienceConfig(
+                                                          current
+                                                        ).checkout_sections;
+                                                      return {
+                                                        ...current,
+                                                        checkout_sections: currentSections.map(
+                                                          (item, itemIndex) =>
+                                                            itemIndex === sectionIndex
+                                                              ? {
+                                                                  ...item,
+                                                                  props: {
+                                                                    ...(item.props || {}),
+                                                                    product_display_layout: value,
+                                                                  },
+                                                                }
+                                                              : item
+                                                        ),
+                                                      };
+                                                    }
+                                                  )
+                                                }
+                                                helpText="Test compact rows, richer cards, a two-column grid, or comparison-style rows."
                                               />
                                             </div>
                                             {productSourceMode === 'cart_related' ? (
@@ -16005,9 +16276,13 @@ function TestWizard({
                 )}
                 <Text as="p" variant="bodySm">
                   Use the{' '}
-                  <Link to={`${ROUTES.DOCS}#price-testing`} rel="noopener noreferrer">
+                  <a
+                    href={`${ROUTES.DOCS}#price-testing`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
                     Price testing guide
-                  </Link>{' '}
+                  </a>{' '}
                   for the pre-launch QA checklist (script live, preview each variant, incognito
                   test, full journey to checkout).
                 </Text>

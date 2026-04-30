@@ -3122,12 +3122,14 @@ function Settings() {
                                   </details>
                                   <div className={styles.installChecklistFooter}>
                                     {installation?.domain && (
-                                      <Link
-                                        to={ROUTES.appDocs(installation.domain)}
+                                      <a
+                                        href={ROUTES.DOCS}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
                                         className={styles.installDocLink}
                                       >
                                         Setup guide
-                                      </Link>
+                                      </a>
                                     )}
                                     <Tooltip content={supportLevelHelpText}>
                                       <span

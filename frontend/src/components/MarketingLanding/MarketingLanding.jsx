@@ -99,7 +99,9 @@ function MarketingLanding() {
           <span>RipX</span>
         </Link>
         <nav className={styles.navLinks} aria-label="Public navigation">
-          <Link to={ROUTES.DOCS}>Documentation</Link>
+          <a href={ROUTES.DOCS} target="_blank" rel="noopener noreferrer">
+            Documentation
+          </a>
           <Link to={ROUTES.CONNECT}>Sign in</Link>
           <Link to={ROUTES.USER_PANEL}>Dashboard</Link>
         </nav>
@@ -123,9 +125,14 @@ function MarketingLanding() {
               <Link to={ROUTES.CONNECT} className={styles.primaryButton}>
                 Purchase the app
               </Link>
-              <Link to={ROUTES.DOCS} className={styles.secondaryButton}>
+              <a
+                href={ROUTES.DOCS}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.secondaryButton}
+              >
                 Read documentation
-              </Link>
+              </a>
             </div>
             <div className={styles.heroProof}>
               {proofItems.map(item => (
@@ -335,9 +342,14 @@ function MarketingLanding() {
             <Link to={ROUTES.CONNECT} className={styles.primaryButton}>
               Purchase the app
             </Link>
-            <Link to={ROUTES.DOCS} className={styles.secondaryButton}>
+            <a
+              href={ROUTES.DOCS}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.secondaryButton}
+            >
               Explore docs
-            </Link>
+            </a>
           </div>
         </section>
       </div>

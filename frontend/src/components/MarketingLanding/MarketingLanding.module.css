@@ -216,7 +216,7 @@
 .planCard li,
 .footer span {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
 }
 
@@ -227,6 +227,8 @@
   width: 18px;
   height: 18px;
   color: #67e8f9;
+  flex: 0 0 auto;
+  margin: 0;
 }
 
 .statStrip {
@@ -403,6 +405,7 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
+  align-items: stretch;
 }
 
 .featureCard,
@@ -428,6 +431,7 @@
 .featureIcon svg {
   width: 24px;
   height: 24px;
+  margin: 0;
 }
 
 .featureCard h3,
@@ -532,6 +536,7 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 16px;
+  align-items: start;
   padding: 18px;
   border-radius: 22px;
 }
@@ -539,6 +544,7 @@
 .workflowStep > span {
   width: 42px;
   height: 42px;
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;

@@ -51,6 +51,13 @@ export const CHECKOUT_PRODUCT_SOURCE_LIMIT_OPTIONS = [
   { label: '6 cards', value: '6' },
 ];
 
+export const CHECKOUT_PRODUCT_DISPLAY_LAYOUT_OPTIONS = [
+  { label: 'Stacked cards', value: 'stacked_cards' },
+  { label: 'Compact rows', value: 'compact_rows' },
+  { label: 'Two-column grid', value: 'two_column_grid' },
+  { label: 'Comparison table', value: 'comparison_table' },
+];
+
 export const CHECKOUT_SECTION_TYPE_OPTIONS = [
   { label: 'Hero notice', value: 'hero_notice' },
   { label: 'Trust box', value: 'trust_box' },
@@ -205,6 +212,7 @@ export function buildCheckoutSectionSmartPreset(rawType) {
         tone: 'info',
         layout: 'stacked',
         cta_kind: 'track',
+        product_display_layout: 'stacked_cards',
         feature_bullets: [
           'Manual checkout merchandising',
           'Cart-aware product highlights',
