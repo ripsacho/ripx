@@ -53,4 +53,7 @@ async function main() {
   }
 }
 
-main();
+main().catch(err => {
+  console.error('mark-applied crashed:', err);
+  process.exit(1);
+});
