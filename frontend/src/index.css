@@ -4356,7 +4356,7 @@ body.ripx-install-detail-modal-open div[class*='Polaris-Modal'][class*='Backdrop
 /* Polaris centers standalone icons with margin:auto; in icon+text rows that can push
    the icon away from its label. App layouts center icons through their own wrappers. */
 .Polaris-Icon {
-  margin: 0;
+  margin: 0 !important;
   flex-shrink: 0;
 }
 
