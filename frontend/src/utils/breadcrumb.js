@@ -34,6 +34,7 @@ export function getBreadcrumb(pathname, search = '') {
   const appDomain = getAppDomainFromPath(path);
   const appPrefix = appDomain ? `/app/${encodeURIComponent(appDomain)}` : '';
 
+  if (path === ROUTES.MARKETING) return { current: 'RipX' };
   if (path === ROUTES.USER_PANEL) return { current: 'Home' };
   if (path === ROUTES.DASHBOARD || (appPrefix && (path === appPrefix || path === appPrefix + '/')))
     return { current: 'Dashboard' };
@@ -157,6 +158,7 @@ export function getBreadcrumb(pathname, search = '') {
     return { parent: 'Admin', current: section, parentPath: ROUTES.ADMIN_OVERVIEW };
   }
   const isKnown =
+    path === ROUTES.MARKETING ||
     path === ROUTES.USER_PANEL ||
     path.startsWith('/app/') ||
     path.startsWith('/tests/') ||

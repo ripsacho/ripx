@@ -7,8 +7,11 @@
  */
 
 export const ROUTES = {
+  // Public marketing page
+  MARKETING: '/',
+
   // User panel (post-login home for all users)
-  USER_PANEL: '/',
+  USER_PANEL: '/home',
 
   // Domain-scoped AB test app (path-based; domain in URL)
   APP_DOMAIN: '/app/:domain',
@@ -30,7 +33,7 @@ export const ROUTES = {
   appTestPromoLinks: (domain, id) => `/app/${encodeURIComponent(domain)}/tests/${id}/promo-links`,
 
   // Legacy root paths (redirect to user panel or /app/:domain when appropriate)
-  DASHBOARD: '/',
+  DASHBOARD: '/home',
   TESTS: '/tests',
   TESTS_PERSONALIZATION: '/tests?view=personalization',
   CREATE_TEST: '/tests/new',

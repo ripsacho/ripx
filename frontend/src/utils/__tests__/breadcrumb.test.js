@@ -34,11 +34,15 @@ describe('getAppDomainFromPath', () => {
 });
 
 describe('getBreadcrumb', () => {
+  it('returns public label for the marketing page', () => {
+    expect(getBreadcrumb(ROUTES.MARKETING)).toEqual({ current: 'RipX' });
+  });
+
   it('returns Home for user panel', () => {
     expect(getBreadcrumb(ROUTES.USER_PANEL)).toEqual({ current: 'Home' });
   });
 
-  it('returns Home for root (user panel); Dashboard for app-scoped dashboard', () => {
+  it('returns Home for app home; Dashboard for app-scoped dashboard', () => {
     expect(getBreadcrumb(ROUTES.DASHBOARD)).toEqual({ current: 'Home' }); // same as USER_PANEL
     expect(getBreadcrumb('/app/store.com')).toEqual({ current: 'Dashboard' });
     expect(getBreadcrumb('/app/store.com/')).toEqual({ current: 'Dashboard' });

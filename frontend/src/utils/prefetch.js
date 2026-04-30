@@ -2,12 +2,13 @@
  * Route prefetch utilities
  *
  * Preloads lazy-loaded route chunks on sidebar link hover for faster navigation.
- * Supports both legacy paths (/, /tests) and domain-scoped paths (/app/:domain, /app/:domain/tests).
+ * Supports legacy paths (/home, /tests), public paths (/), and domain-scoped paths
+ * (/app/:domain, /app/:domain/tests).
  */
 import { ROUTES } from '../constants';
 
 const prefetchMap = {
-  [ROUTES.DASHBOARD]: () => import('../components/Dashboard/Dashboard'),
+  [ROUTES.MARKETING]: () => import('../components/MarketingLanding/MarketingLanding'),
   [ROUTES.USER_PANEL]: () => import('../components/UserPanel/UserPanel'),
   [ROUTES.TESTS]: () => import('../components/TestList/TestList'),
   [ROUTES.CREATE_TEST]: () => import('../components/TestCreator/TestCreator'),

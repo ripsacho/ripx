@@ -6,7 +6,7 @@
 
 client_id = "475a569769b25edb8df85288e1be9637"
 name = "RipperX"
-application_url = "https://splitter.echologyx.com"
+application_url = "https://splitter.echologyx.com/home"
 embedded = true
 
 [build]

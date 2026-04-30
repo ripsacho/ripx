@@ -7,6 +7,7 @@ import {
   buildPreviewUrl,
   ensureShopifyPreviewBootstrapUrl,
   isShopifyPreviewUrl,
+  stripPreviewDocumentSecretParams,
 } from '../previewUrl';
 
 describe('previewUrl', () => {
@@ -115,6 +116,34 @@ describe('previewUrl', () => {
     const url = new URL(result, 'https://app.example.com');
     expect(url.searchParams.get('url')).toBe(previewUrl);
     expect(url.searchParams.get(PREVIEW_PARAMS.SIMPLE)).toBe('1');
+  });
+
+  it('adds optional storefront password to preview-document URLs only when provided', () => {
+    const previewUrl = buildPreviewUrl({
+      baseUrl: 'https://makripon.myshopify.com/products/test-product',
+      testId: '1d1f39c4-4083-44f4-b046-1c341b88cc29',
+      variantId: 'variant-a',
+    });
+
+    const result = buildPreviewDocumentUrl({
+      apiBaseUrl: '/api',
+      previewUrl,
+      visualEditor: true,
+      storefrontPassword: 'secret-password',
+    });
+
+    const url = new URL(result, 'https://app.example.com');
+    expect(url.searchParams.get('storefront_password')).toBe('secret-password');
+  });
+
+  it('strips storefront password from copied preview-document links', () => {
+    const result = stripPreviewDocumentSecretParams(
+      'https://app.example.com/api/track/preview-document?url=https%3A%2F%2Fstore.myshopify.com&storefront_password=secret&ab_visual_editor=1'
+    );
+
+    const url = new URL(result);
+    expect(url.searchParams.has('storefront_password')).toBe(false);
+    expect(url.searchParams.get('ab_visual_editor')).toBe('1');
   });
 
   it('builds preview-launch URL and preserves preview params', () => {

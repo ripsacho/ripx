@@ -696,10 +696,12 @@ router.get(
   })
 );
 
-const PREVIEW_FALLBACK_HTML =
-  '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Preview unavailable</title></head><body style="margin:0;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f3f4f6;color:#6b7280;"><script>try{var msg={type:"ripx-preview-error",source:"ripx-preview-document"};if(window.parent&&window.parent!==window)window.parent.postMessage(msg,"*");if(window.opener&&!window.opener.closed)window.opener.postMessage(msg,"*");}catch(e){}</script><p style="margin:0;font-size:0.9375rem;">Preview unavailable. Check the URL or try again.</p></body></html>';
+function buildPreviewFallbackHtml(message = 'Preview unavailable. Check the URL or try again.') {
+  const safeMessage = escapeHtmlAttr(message);
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Preview unavailable</title></head><body style="margin:0;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f3f4f6;color:#6b7280;"><script>try{var msg={type:"ripx-preview-error",source:"ripx-preview-document",message:${JSON.stringify(message)}};if(window.parent&&window.parent!==window)window.parent.postMessage(msg,"*");if(window.opener&&!window.opener.closed)window.opener.postMessage(msg,"*");}catch(e){}</script><p style="margin:0;font-size:0.9375rem;text-align:center;max-width:460px;line-height:1.5;">${safeMessage}</p></body></html>`;
+}
 
-function sendPreviewFallback(res) {
+function sendPreviewFallback(res, message) {
   res
     .status(200)
     .set('Content-Type', 'text/html; charset=utf-8')
@@ -708,7 +710,7 @@ function sendPreviewFallback(res) {
       'Content-Security-Policy',
       "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'"
     )
-    .send(PREVIEW_FALLBACK_HTML);
+    .send(buildPreviewFallbackHtml(message));
 }
 
 /** Reject private/loopback hostnames for preview-document to reduce SSRF risk. In development, localhost is allowed. */
@@ -752,6 +754,75 @@ function escapeHtmlAttr(value) {
     .replace(/"/g, '&quot;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
+}
+
+function collectSetCookieHeaders(headers) {
+  if (!headers) {
+    return [];
+  }
+  if (typeof headers.getSetCookie === 'function') {
+    return headers.getSetCookie();
+  }
+  const single = headers.get && headers.get('set-cookie');
+  return single ? [single] : [];
+}
+
+function cookieHeaderFromSetCookie(setCookieHeaders) {
+  return (Array.isArray(setCookieHeaders) ? setCookieHeaders : [])
+    .map(value =>
+      String(value || '')
+        .split(';')[0]
+        .trim()
+    )
+    .filter(Boolean)
+    .join('; ');
+}
+
+function isLikelyShopifyPasswordPage(html, responseUrl = '') {
+  const lowerHtml = String(html || '').toLowerCase();
+  const lowerUrl = String(responseUrl || '').toLowerCase();
+  return (
+    lowerUrl.includes('/password') ||
+    lowerHtml.includes('name="form_type" value="storefront_password"') ||
+    lowerHtml.includes("name='form_type' value='storefront_password'") ||
+    lowerHtml.includes('this store is password protected') ||
+    lowerHtml.includes('enter store password') ||
+    lowerHtml.includes('/password')
+  );
+}
+
+async function getShopifyStorefrontPasswordCookie(parsedUrl, password, controller) {
+  const rawPassword = typeof password === 'string' ? password.trim() : '';
+  if (!rawPassword || !/\.myshopify\.com$/i.test(parsedUrl.hostname || '')) {
+    return '';
+  }
+  const passwordUrl = new URL('/password', parsedUrl.origin);
+  const body = new URLSearchParams();
+  body.set('form_type', 'storefront_password');
+  body.set('utf8', '✓');
+  body.set('password', rawPassword);
+
+  try {
+    const response = await fetch(passwordUrl.toString(), {
+      method: 'POST',
+      redirect: 'manual',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+      body,
+    });
+    return cookieHeaderFromSetCookie(collectSetCookieHeaders(response.headers));
+  } catch (error) {
+    logger.warn('Preview document: storefront password submit failed', {
+      shop: parsedUrl.hostname,
+      error: error.message,
+    });
+    return '';
+  }
 }
 
 /**
@@ -889,6 +960,15 @@ router.get(
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
+      const storefrontPassword =
+        typeof req.query.storefront_password === 'string'
+          ? req.query.storefront_password.trim()
+          : '';
+      const storefrontPasswordCookie = await getShopifyStorefrontPasswordCookie(
+        parsed,
+        storefrontPassword,
+        controller
+      );
       const fetchRes = await fetch(rawUrl, {
         signal: controller.signal,
         redirect: 'follow',
@@ -897,6 +977,7 @@ router.get(
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Accept-Language': 'en-US,en;q=0.9',
+          ...(storefrontPasswordCookie ? { Cookie: storefrontPasswordCookie } : {}),
         },
       });
       clearTimeout(timeoutId);
@@ -911,6 +992,15 @@ router.get(
         return;
       }
       let html = await fetchRes.text();
+      if (isLikelyShopifyPasswordPage(html, fetchRes.url || rawUrl)) {
+        sendPreviewFallback(
+          res,
+          storefrontPassword
+            ? 'Storefront password was not accepted. Check the password and try again.'
+            : 'This Shopify store is password protected. Enter the storefront password in the visual editor and reload preview.'
+        );
+        return;
+      }
       const maxHtmlBytes = 5 * 1024 * 1024; // 5MB cap to avoid DoS from huge responses
       if (Buffer.byteLength(html, 'utf8') > maxHtmlBytes) {
         logger.warn('Preview document: response too large', {

@@ -842,7 +842,7 @@ const buildDiscountLaunchRedirect = ({ req, basePrefix = '' }) => {
     return `${basePrefix}/app/${encodeURIComponent(shop)}/settings?${nextQuery.toString()}`;
   }
   const suffix = nextQuery.toString();
-  return suffix ? `${basePrefix}/?${suffix}` : `${basePrefix || '/'}`;
+  return suffix ? `${basePrefix}/home?${suffix}` : `${basePrefix || ''}/home`;
 };
 
 app.get('/discounts/*', (req, res) => {

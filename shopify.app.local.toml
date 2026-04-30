@@ -8,7 +8,7 @@
 
 client_id = "e7a7d74e7aaa14162e3951a559bda6c1"
 name = "RipperX"
-application_url = "https://responsible-welfare-greatly-why.trycloudflare.com"
+application_url = "https://responsible-welfare-greatly-why.trycloudflare.com/home"
 embedded = true
 
 [build]

@@ -193,6 +193,7 @@ export function buildPreviewUrl({
  * @param {string} options.previewUrl - Full preview page URL built by buildPreviewUrl()
  * @param {boolean} [options.visualEditor=false] - Add ab_visual_editor=1 to preview-document
  * @param {boolean} [options.visualPicker=false] - Add ab_visual_picker=1 to preview-document
+ * @param {string} [options.storefrontPassword] - Optional Shopify storefront password for dev/password-protected stores
  * @returns {string|null}
  */
 export function buildPreviewDocumentUrl({
@@ -200,6 +201,7 @@ export function buildPreviewDocumentUrl({
   previewUrl,
   visualEditor = false,
   visualPicker = false,
+  storefrontPassword,
 }) {
   const directPreviewUrl = typeof previewUrl === 'string' ? previewUrl.trim() : '';
   if (!directPreviewUrl) return null;
@@ -226,6 +228,12 @@ export function buildPreviewDocumentUrl({
     }
     if (visualPicker) {
       previewDoc.searchParams.set(PREVIEW_PARAMS.VISUAL_PICKER, PREVIEW_VALUE);
+    }
+    if (storefrontPassword !== null && storefrontPassword !== undefined) {
+      const password = String(storefrontPassword).trim();
+      if (password) {
+        previewDoc.searchParams.set('storefront_password', password);
+      }
     }
 
     const directUrl = new URL(directPreviewUrl);
@@ -380,6 +388,23 @@ export function isShopifyPreviewUrl(previewUrl) {
     return /\.myshopify\.com$/i.test(host);
   } catch {
     return false;
+  }
+}
+
+export function stripPreviewDocumentSecretParams(previewDocumentUrl) {
+  const raw = typeof previewDocumentUrl === 'string' ? previewDocumentUrl.trim() : '';
+  if (!raw) return '';
+  try {
+    const url = new URL(
+      raw,
+      typeof window !== 'undefined' && window.location?.origin
+        ? window.location.origin
+        : 'https://preview.invalid'
+    );
+    url.searchParams.delete('storefront_password');
+    return url.toString();
+  } catch {
+    return raw.replace(/([?&])storefront_password=[^&]*/i, '$1').replace(/[?&]$/, '');
   }
 }
 

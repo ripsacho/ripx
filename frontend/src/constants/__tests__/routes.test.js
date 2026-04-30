@@ -7,7 +7,9 @@ import { ROUTES, ROUTE_PATTERNS, MAIN_APP_PATHS, APP_DOMAIN_PATTERN } from '../r
 
 describe('ROUTES', () => {
   it('exposes static paths', () => {
-    expect(ROUTES.USER_PANEL).toBe('/');
+    expect(ROUTES.MARKETING).toBe('/');
+    expect(ROUTES.USER_PANEL).toBe('/home');
+    expect(ROUTES.DASHBOARD).toBe('/home');
     expect(ROUTES.CONNECT).toBe('/connect');
     expect(ROUTES.ADMIN).toBe('/admin');
     expect(ROUTES.DOMAINS).toBe('/domains');

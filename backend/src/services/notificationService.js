@@ -5,6 +5,22 @@
  */
 
 class NotificationService {
+  buildTestAnalyticsUrl(test) {
+    const appUrl = String(process.env.FRONTEND_URL || process.env.APP_URL || '').replace(
+      /\/+$/,
+      ''
+    );
+    const shopDomain = String(test?.shop_domain || test?.shopDomain || test?.domain || '').trim();
+    const testId = encodeURIComponent(String(test?.id || ''));
+    if (!appUrl || !testId) {
+      return '';
+    }
+    if (shopDomain) {
+      return `${appUrl}/app/${encodeURIComponent(shopDomain)}/tests/${testId}/analytics`;
+    }
+    return `${appUrl}/home`;
+  }
+
   /**
    * Send test completion notification
    *
@@ -21,6 +37,7 @@ class NotificationService {
       ? analytics.variants.find(v => v.id === analytics.significance.winner)?.name
       : 'No clear winner';
 
+    const analyticsUrl = this.buildTestAnalyticsUrl(test);
     const _body = `
       Your AB test "${test.name}" has completed.
 
@@ -30,7 +47,7 @@ class NotificationService {
       - Lift: ${analytics.significance?.lift || 0}%
       - Revenue Impact: $${analytics.revenueImpact?.impact || 0}
 
-      View full results: ${process.env.APP_URL}/tests/${test.id}/analytics
+      View full results: ${analyticsUrl}
     `;
 
     const logger = require('../utils/logger');
@@ -59,6 +76,7 @@ class NotificationService {
     }
 
     const subject = `AB Test Reached Significance: ${test.name}`;
+    const analyticsUrl = this.buildTestAnalyticsUrl(test);
     const _body = `
       Your AB test "${test.name}" has reached statistical significance!
 
@@ -66,7 +84,7 @@ class NotificationService {
       Confidence: ${analytics.significance.confidence}%
       Lift: ${analytics.significance.lift}%
 
-      View results: ${process.env.APP_URL}/tests/${test.id}/analytics
+      View results: ${analyticsUrl}
     `;
 
     const logger = require('../utils/logger');

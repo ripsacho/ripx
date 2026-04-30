@@ -3,15 +3,16 @@
  */
 
 import { getNotFoundHome } from '../notFoundHome';
+import { ROUTES } from '../../constants';
 
 describe('getNotFoundHome', () => {
   it('returns user panel when pathname is not app-scoped', () => {
     expect(getNotFoundHome('store.com', '/')).toEqual({
-      homePath: '/',
+      homePath: ROUTES.USER_PANEL,
       homeLabel: 'Go to home',
     });
     expect(getNotFoundHome('store.com', '/domains')).toEqual({
-      homePath: '/',
+      homePath: ROUTES.USER_PANEL,
       homeLabel: 'Go to home',
     });
   });
@@ -58,7 +59,7 @@ describe('getNotFoundHome', () => {
 
   it('returns user panel when pathname is not app-scoped and domain is missing', () => {
     expect(getNotFoundHome(null, '/profile')).toEqual({
-      homePath: '/',
+      homePath: ROUTES.USER_PANEL,
       homeLabel: 'Go to home',
     });
   });

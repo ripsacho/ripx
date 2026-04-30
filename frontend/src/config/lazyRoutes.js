@@ -6,6 +6,9 @@
 import { lazy } from 'react';
 
 export const Connect = lazy(() => import('../components/Connect/Connect'));
+export const MarketingLanding = lazy(
+  () => import('../components/MarketingLanding/MarketingLanding')
+);
 export const Dashboard = lazy(() => import('../components/Dashboard/Dashboard'));
 export const TestList = lazy(() => import('../components/TestList/TestList'));
 export const TestCreator = lazy(() => import('../components/TestCreator/TestCreator'));

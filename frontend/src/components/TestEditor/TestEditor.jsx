@@ -32,7 +32,9 @@ import {
 import {
   buildPreviewUrl,
   buildPreviewDocumentUrl,
+  isShopifyPreviewUrl,
   resolvePreviewBaseUrl,
+  stripPreviewDocumentSecretParams,
 } from '../../utils/previewUrl';
 import { isShopifyStoreDomain } from '../../utils/shopifyAdmin';
 import { useAppRoutes } from '../../hooks';
@@ -47,6 +49,7 @@ export default function TestEditor() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
+  const [storefrontPassword, setStorefrontPassword] = useState('');
   const [previewLoadState, setPreviewLoadState] = useState(null); // 'loading' | 'loaded' | 'error'
   const [selectedVariantIndex, setSelectedVariantIndex] = useState(0);
   const [customCssByVariant, setCustomCssByVariant] = useState({});
@@ -150,6 +153,9 @@ export default function TestEditor() {
     domain: test?.shop_domain || getPreviewDomain() || getShopDomain() || undefined,
     path: '/',
   });
+  const isShopifyPreviewTarget =
+    isShopifyStoreDomain(test?.shop_domain || getPreviewDomain() || getShopDomain() || '') ||
+    isShopifyPreviewUrl(effectiveBaseUrl);
   const previewIframeSrc =
     effectiveBaseUrl && id && currentVariant
       ? (() => {
@@ -162,8 +168,7 @@ export default function TestEditor() {
               tenantDomain: test?.shop_domain || null,
               visualEditor: true,
             }) || '';
-          const effectiveDomain = test?.shop_domain || getPreviewDomain() || getShopDomain() || '';
-          if (!isShopifyStoreDomain(effectiveDomain)) {
+          if (!isShopifyPreviewTarget) {
             return directPreviewUrl;
           }
           return (
@@ -171,6 +176,7 @@ export default function TestEditor() {
               apiBaseUrl: getApiBaseUrl(),
               previewUrl: directPreviewUrl,
               visualEditor: true,
+              storefrontPassword,
             }) || directPreviewUrl
           );
         })()
@@ -300,6 +306,16 @@ export default function TestEditor() {
                       autoComplete="url"
                       helpText="Base URL of the page to preview. Leave empty to use the test’s default. Preview shows the selected variant’s saved code; save to see changes."
                     />
+                    {isShopifyPreviewTarget && (
+                      <TextField
+                        label="Storefront password"
+                        type="password"
+                        value={storefrontPassword}
+                        onChange={setStorefrontPassword}
+                        autoComplete="off"
+                        helpText="For password-protected Shopify dev stores. Leave empty for public stores."
+                      />
+                    )}
                     <Box
                       paddingBlockStart="200"
                       minHeight="420px"
@@ -330,8 +346,16 @@ export default function TestEditor() {
                               className={styles.previewCopyLink}
                               onClick={() => {
                                 try {
-                                  navigator.clipboard.writeText(previewIframeSrc).then(
-                                    () => setToast({ message: 'Link copied', type: 'success' }),
+                                  const safePreviewLink =
+                                    stripPreviewDocumentSecretParams(previewIframeSrc);
+                                  navigator.clipboard.writeText(safePreviewLink).then(
+                                    () =>
+                                      setToast({
+                                        message: storefrontPassword
+                                          ? 'Link copied without password'
+                                          : 'Link copied',
+                                        type: 'success',
+                                      }),
                                     () => setToast({ message: 'Could not copy', type: 'critical' })
                                   );
                                 } catch (_) {

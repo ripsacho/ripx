@@ -268,6 +268,7 @@ function TestWizard({
   const [visualPreviewRetryKey, setVisualPreviewRetryKey] = useState(0); // increment to force iframe remount on retry
   const [visualPreviewLoadingSlow, setVisualPreviewLoadingSlow] = useState(false); // true after 3s in loading
   const [visualPreviewVariantIndex, setVisualPreviewVariantIndex] = useState(0);
+  const [visualEditorStorefrontPassword, setVisualEditorStorefrontPassword] = useState('');
   const [visualPreviewToast, setVisualPreviewToast] = useState(null);
   const [visualSnippetPanelExpanded, setVisualSnippetPanelExpanded] = useState(false);
   const [visualSnippetActiveElementIndex, setVisualSnippetActiveElementIndex] = useState(0); // which element (rule index 0–4) is shown in the snippet panel
@@ -523,6 +524,13 @@ function TestWizard({
   const [shippingScopeAdvancedOpen, setShippingScopeAdvancedOpen] = useState(false);
   const [_advancedTargetingOpen, _setAdvancedTargetingOpen] = useState(false);
   const [customEventInput, setCustomEventInput] = useState('');
+  const [advancedGoalOpen, setAdvancedGoalOpen] = useState(false);
+  const [customGoalDraft, setCustomGoalDraft] = useState({
+    label: '',
+    event_name: '',
+    aggregation: 'count',
+    direction: 'increase',
+  });
   const [advancedSectionsOpen, setAdvancedSectionsOpen] = useState({
     safety: true,
     presets: false,
@@ -3309,18 +3317,177 @@ function TestWizard({
   handleNextRef.current = handleNext;
   handleBackRef.current = handleBack;
 
-  const addCustomEvent = () => {
-    const name = (customEventInput || '').trim().toLowerCase().replace(/\s+/g, '_');
-    if (!name || name.length > 100) return;
-    const goal = formData.goal || {};
-    const secondary = goal.secondary || [];
-    if (secondary.some(s => (s?.event_name || s) === name)) return;
-    setFormData({
-      ...formData,
-      goal: { ...goal, secondary: [...secondary, { event_name: name, aggregation: 'count' }] },
-    });
-    setCustomEventInput('');
+  const metricLabelMap = {
+    revenue: 'Revenue',
+    conversion_rate: 'Conversion rate',
+    aov: 'Average order value',
   };
+  const selectedSecondaryGoals = Array.isArray(formData.goal?.secondary)
+    ? formData.goal.secondary
+    : [];
+  const recommendedGoalPresets = [
+    {
+      label: 'Add to cart',
+      event_name: 'add_to_cart',
+      aggregation: 'count',
+      direction: 'increase',
+      description: 'Useful leading signal for product and price tests.',
+    },
+    {
+      label: 'Checkout started',
+      event_name: 'checkout_start',
+      aggregation: 'count',
+      direction: 'increase',
+      description: 'Watch whether variants push more shoppers toward checkout.',
+    },
+    {
+      label: 'Newsletter signup',
+      event_name: 'newsletter_signup',
+      aggregation: 'count',
+      direction: 'increase',
+      description: 'Good for lead capture, content, and landing page tests.',
+    },
+    {
+      label: 'Form submit',
+      event_name: 'form_submit',
+      aggregation: 'count',
+      direction: 'increase',
+      description: 'Track quote, lead, or contact form completion.',
+    },
+  ];
+
+  const normalizeGoalEventName = value =>
+    String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_ -]/g, '')
+      .replace(/[\s-]+/g, '_')
+      .slice(0, 100);
+
+  const getSecondaryGoalName = goal => goal?.event_name || goal;
+  const getGoalLabel = goal => {
+    const rawLabel = typeof goal === 'object' ? goal.label || goal.event_name : goal;
+    return String(rawLabel || '')
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, char => char.toUpperCase());
+  };
+
+  const addSecondaryGoal = goalConfig => {
+    const name = normalizeGoalEventName(goalConfig?.event_name);
+    if (!name) return false;
+    let added = false;
+    setFormData(prev => {
+      const goal = prev.goal || {};
+      const secondary = Array.isArray(goal.secondary) ? goal.secondary : [];
+      if (secondary.some(item => getSecondaryGoalName(item) === name)) {
+        return prev;
+      }
+      added = true;
+      return {
+        ...prev,
+        goal: {
+          ...goal,
+          secondary: [
+            ...secondary,
+            {
+              event_name: name,
+              aggregation: goalConfig?.aggregation || 'count',
+              direction: goalConfig?.direction || 'increase',
+              label: goalConfig?.label || getGoalLabel(name),
+              source: goalConfig?.source || 'preset',
+            },
+          ],
+        },
+      };
+    });
+    return added;
+  };
+
+  const removeSecondaryGoal = index => {
+    setFormData(prev => {
+      const goal = prev.goal || {};
+      const secondary = Array.isArray(goal.secondary) ? goal.secondary : [];
+      return {
+        ...prev,
+        goal: { ...goal, secondary: secondary.filter((_, idx) => idx !== index) },
+      };
+    });
+  };
+
+  const updateSecondaryGoal = (index, patch) => {
+    setFormData(prev => {
+      const goal = prev.goal || {};
+      const secondary = Array.isArray(goal.secondary) ? goal.secondary : [];
+      const next = secondary.map((item, idx) => {
+        if (idx !== index) return item;
+        const base = typeof item === 'object' ? item : { event_name: item };
+        return { ...base, ...patch };
+      });
+      return { ...prev, goal: { ...goal, secondary: next } };
+    });
+  };
+
+  const addCustomEvent = () => {
+    const name = normalizeGoalEventName(customEventInput);
+    if (!name) return;
+    if (addSecondaryGoal({ event_name: name, aggregation: 'count', source: 'quick' })) {
+      setCustomEventInput('');
+    }
+  };
+
+  const addAdvancedCustomGoal = () => {
+    const eventName = normalizeGoalEventName(customGoalDraft.event_name);
+    if (!eventName) return;
+    const added = addSecondaryGoal({
+      ...customGoalDraft,
+      event_name: eventName,
+      label: customGoalDraft.label.trim() || getGoalLabel(eventName),
+      source: 'custom',
+    });
+    if (added) {
+      setCustomGoalDraft({
+        label: '',
+        event_name: '',
+        aggregation: 'count',
+        direction: 'increase',
+      });
+      setAdvancedGoalOpen(false);
+    }
+  };
+
+  const goalListItems = [
+    {
+      key: 'primary',
+      role: 'Primary',
+      label: metricLabelMap[formData.goal?.metric || 'revenue'] || 'Revenue',
+      detail:
+        formData.goal?.metric === 'revenue' && formData.goal?.cogs?.enabled
+          ? `Profit-adjusted revenue, ${formData.goal?.cogs?.value ?? 30}${formData.goal?.cogs?.type === 'fixed_per_order' ? ' per order COGS' : '% COGS'}`
+          : 'Used to decide the winner',
+      badgeTone: 'success',
+      icon: ChartLineIcon,
+    },
+    ...selectedSecondaryGoals.map((goal, index) => {
+      const name = getSecondaryGoalName(goal);
+      const aggregation = goal?.aggregation || 'count';
+      const direction = goal?.direction || 'increase';
+      return {
+        key: `${name}-${index}`,
+        role: goal?.source === 'custom' ? 'Custom' : 'Secondary',
+        label: getGoalLabel(goal),
+        detail: `${aggregation === 'sum' ? 'Sum value' : 'Count events'} · ${direction === 'decrease' ? 'lower is better' : 'higher is better'}`,
+        badgeTone: goal?.source === 'custom' ? 'info' : 'attention',
+        icon: DataTableIcon,
+        secondaryIndex: index,
+      };
+    }),
+  ];
+
+  const selectedGoalNames = new Set(selectedSecondaryGoals.map(goal => getSecondaryGoalName(goal)));
+  const goalGlanceText = `${goalListItems.length} ${goalListItems.length === 1 ? 'goal' : 'goals'} added`;
+  const activeAnalysisLabel =
+    (formData.goal?.analysis_method || 'frequentist') === 'bayesian' ? 'Bayesian' : 'Frequentist';
+  const customGoalCanAdd = Boolean(normalizeGoalEventName(customGoalDraft.event_name));
 
   const handleSaveCodeOnly = async () => {
     if (!onSaveCode || !initialData?.id) return;
@@ -7777,39 +7944,70 @@ function TestWizard({
               </p>
             </div>
           </div>
-          <div className={styles.goalInstruction}>
-            <Icon source={ChartLineIcon} />
-            <span>
-              {formData.goal?.metric
-                ? 'Metric selected. Set conversion window and optional secondary events below, then click Next.'
-                : 'Choose your primary success metric (Revenue, Conversion, or AOV). Configure the conversion window and optional events as needed.'}
-            </span>
+          <div className={styles.goalBuilderHero}>
+            <div className={styles.goalBuilderHeroCopy}>
+              <Badge tone="info">{goalGlanceText}</Badge>
+              <h3>Goals are shown as a simple list.</h3>
+              <p>
+                Pick one primary success metric, then add any secondary or guardrail goals below.
+                Every goal appears in the list immediately so the launch criteria stay easy to scan.
+              </p>
+            </div>
+            <div className={styles.goalSummaryCompact}>
+              <span className={styles.goalSummaryChip}>
+                <Icon source={ClockIcon} />
+                {formData.goal?.conversion_window_days ?? 30} day window
+              </span>
+              <span className={styles.goalSummaryDivider} aria-hidden="true" />
+              <span className={styles.goalSummaryChip}>
+                <Icon source={CalculatorIcon} />
+                {activeAnalysisLabel}
+              </span>
+            </div>
           </div>
-          <div className={styles.goalSummaryCompact}>
-            <span className={styles.goalSummaryChip}>
-              <Icon source={ChartLineIcon} />
-              {formData.goal?.metric === 'revenue'
-                ? 'Revenue'
-                : formData.goal?.metric === 'conversion_rate'
-                  ? 'Conversion'
-                  : formData.goal?.metric === 'aov'
-                    ? 'AOV'
-                    : '—'}
-            </span>
-            <span className={styles.goalSummaryDivider} aria-hidden="true" />
-            <span className={styles.goalSummaryChip}>
-              <Icon source={ClockIcon} />
-              {formData.goal?.conversion_window_days ?? 30} days
-            </span>
+          <div className={styles.goalListPanel} aria-label="Goals added to this test">
+            <div className={styles.goalListHeader}>
+              <div>
+                <h4>Goals added</h4>
+                <p>Primary, secondary, and custom goals in one glanceable list.</p>
+              </div>
+              <Badge tone={selectedSecondaryGoals.length > 0 ? 'success' : 'attention'}>
+                {selectedSecondaryGoals.length} extra
+              </Badge>
+            </div>
+            <div className={styles.goalList}>
+              {goalListItems.map(item => (
+                <div key={item.key} className={styles.goalListItem}>
+                  <span className={styles.goalListIcon}>
+                    <Icon source={item.icon} />
+                  </span>
+                  <span className={styles.goalListBody}>
+                    <span className={styles.goalListTitle}>{item.label}</span>
+                    <span className={styles.goalListDetail}>{item.detail}</span>
+                  </span>
+                  <Badge tone={item.badgeTone}>{item.role}</Badge>
+                  {typeof item.secondaryIndex === 'number' && (
+                    <button
+                      type="button"
+                      className={styles.goalListRemove}
+                      onClick={() => removeSecondaryGoal(item.secondaryIndex)}
+                      aria-label={`Remove ${item.label}`}
+                    >
+                      <Icon source={XIcon} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
           <div className={styles.goalFormWrapper}>
             <FormLayout>
               <div className={styles.goalSectionGroup}>
                 <h4 className={styles.goalSectionGroupTitle}>Primary metric</h4>
                 <div className={styles.formSection} id="targeting-metric">
-                  <h4 className={styles.formSectionTitle}>Success metric</h4>
+                  <h4 className={styles.formSectionTitle}>Choose the winner metric</h4>
                   <p className={styles.formSectionHint}>
-                    Primary metric for measuring test performance.
+                    This is the single metric used to decide which variant wins.
                   </p>
                   <div className={styles.metricPresets}>
                     {[
@@ -7933,117 +8131,176 @@ function TestWizard({
                 )}
 
                 <div className={styles.formSection}>
-                  <h4 className={styles.formSectionTitle}>Secondary events (optional)</h4>
+                  <h4 className={styles.formSectionTitle}>Add more goals</h4>
                   <p className={styles.formSectionHint}>
-                    Track additional events per variant. Use{' '}
+                    Add secondary goals and guardrails. Use{' '}
                     <code className={styles.inlineCode}>
                       RipX.trackEvent(testId, &apos;event_name&apos;, value)
                     </code>{' '}
-                    in your theme.
+                    in your theme for custom events.
                   </p>
-                  <div className={styles.secondaryEventChips}>
-                    {[
-                      'add_to_cart',
-                      'newsletter_signup',
-                      'signup',
-                      'view_content',
-                      'form_submit',
-                    ].map(name => {
-                      const secondary = formData.goal?.secondary || [];
-                      const isSelected = secondary.some(s => (s?.event_name || s) === name);
+                  <div className={styles.goalPresetList}>
+                    {recommendedGoalPresets.map(preset => {
+                      const isSelected = selectedGoalNames.has(preset.event_name);
                       return (
                         <button
-                          key={name}
+                          key={preset.event_name}
                           type="button"
-                          className={`${styles.secondaryEventChip} ${isSelected ? styles.secondaryEventChipSelected : ''}`}
+                          className={`${styles.goalPresetRow} ${isSelected ? styles.goalPresetRowSelected : ''}`}
                           onClick={() => {
-                            const next = isSelected
-                              ? secondary.filter(s => (s?.event_name || s) !== name)
-                              : [...secondary, { event_name: name, aggregation: 'count' }];
-                            setFormData({
-                              ...formData,
-                              goal: { ...(formData.goal || {}), secondary: next },
-                            });
+                            if (isSelected) {
+                              const index = selectedSecondaryGoals.findIndex(
+                                goal => getSecondaryGoalName(goal) === preset.event_name
+                              );
+                              removeSecondaryGoal(index);
+                            } else {
+                              addSecondaryGoal({ ...preset, source: 'preset' });
+                            }
                           }}
+                          aria-pressed={isSelected}
                         >
-                          {name.replace(/_/g, ' ')}
+                          <span>
+                            <strong>{preset.label}</strong>
+                            <small>{preset.description}</small>
+                          </span>
+                          <Badge tone={isSelected ? 'success' : 'info'}>
+                            {isSelected ? 'Added' : 'Add'}
+                          </Badge>
                         </button>
                       );
                     })}
                   </div>
-                  <InlineStack gap="200" blockAlign="end" wrap>
-                    <div style={{ flex: 1, minWidth: 180 }}>
-                      <TextField
-                        label="Custom event name"
-                        labelHidden
-                        value={customEventInput}
-                        onChange={setCustomEventInput}
-                        placeholder="e.g. product_view, checkout_start"
-                        autoComplete="off"
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            addCustomEvent();
-                          }
-                        }}
-                      />
-                    </div>
+                  <div className={styles.quickCustomGoal}>
+                    <TextField
+                      label="Quick custom event"
+                      labelHidden
+                      value={customEventInput}
+                      onChange={setCustomEventInput}
+                      placeholder="Quick add event, e.g. checkout_start"
+                      autoComplete="off"
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addCustomEvent();
+                        }
+                      }}
+                    />
                     <Button
                       variant="secondary"
                       size="slim"
                       onClick={addCustomEvent}
                       disabled={!customEventInput?.trim()}
                     >
-                      Add custom
+                      Add
                     </Button>
-                  </InlineStack>
-                  {(formData.goal?.secondary || []).length > 0 && (
-                    <BlockStack gap="200">
-                      <Text variant="bodySm" fontWeight="semibold" as="p">
-                        Selected events
-                      </Text>
-                      <div className={styles.secondaryEventList}>
-                        {(formData.goal?.secondary || []).map((s, idx) => {
-                          const name = s?.event_name || s;
-                          const agg = s?.aggregation || 'count';
-                          return (
-                            <InlineStack
-                              key={`${name}-${idx}`}
-                              gap="200"
-                              blockAlign="center"
-                              wrap={false}
-                            >
-                              <span className={styles.secondaryEventName}>
-                                {String(name).replace(/_/g, ' ')}
-                              </span>
-                              <Select
-                                label="Aggregation"
-                                labelHidden
-                                options={[
-                                  { label: 'Count', value: 'count' },
-                                  { label: 'Sum (value)', value: 'sum' },
-                                ]}
-                                value={agg}
-                                onChange={value => {
-                                  const next = [...(formData.goal?.secondary || [])];
-                                  next[idx] = {
-                                    ...(typeof next[idx] === 'object'
-                                      ? next[idx]
-                                      : { event_name: next[idx] }),
-                                    event_name: name,
-                                    aggregation: value,
-                                  };
-                                  setFormData({
-                                    ...formData,
-                                    goal: { ...(formData.goal || {}), secondary: next },
-                                  });
-                                }}
-                              />
-                            </InlineStack>
-                          );
-                        })}
+                  </div>
+                  <div className={styles.advancedGoalBuilder}>
+                    <button
+                      type="button"
+                      className={styles.advancedGoalToggle}
+                      onClick={() => setAdvancedGoalOpen(open => !open)}
+                      aria-expanded={advancedGoalOpen}
+                      aria-controls="advanced-custom-goal"
+                    >
+                      <span>
+                        <strong>Advanced custom goal</strong>
+                        <small>Set label, event, aggregation, and desired direction.</small>
+                      </span>
+                      <Icon source={ChevronDownIcon} />
+                    </button>
+                    <Collapsible
+                      id="advanced-custom-goal"
+                      open={advancedGoalOpen}
+                      transition={{ duration: '180ms', timingFunction: 'ease' }}
+                    >
+                      <div className={styles.advancedGoalFields}>
+                        <TextField
+                          label="Goal label"
+                          value={customGoalDraft.label}
+                          onChange={value =>
+                            setCustomGoalDraft(prev => ({ ...prev, label: value }))
+                          }
+                          placeholder="e.g. Checkout intent"
+                          autoComplete="off"
+                        />
+                        <TextField
+                          label="Event name"
+                          value={customGoalDraft.event_name}
+                          onChange={value =>
+                            setCustomGoalDraft(prev => ({ ...prev, event_name: value }))
+                          }
+                          placeholder="e.g. checkout_start"
+                          autoComplete="off"
+                          helpText="Use lowercase event keys. Spaces are converted to underscores."
+                        />
+                        <Select
+                          label="Aggregation"
+                          options={[
+                            { label: 'Count events', value: 'count' },
+                            { label: 'Sum event value', value: 'sum' },
+                          ]}
+                          value={customGoalDraft.aggregation}
+                          onChange={value =>
+                            setCustomGoalDraft(prev => ({ ...prev, aggregation: value }))
+                          }
+                        />
+                        <Select
+                          label="Desired direction"
+                          options={[
+                            { label: 'Higher is better', value: 'increase' },
+                            { label: 'Lower is better', value: 'decrease' },
+                          ]}
+                          value={customGoalDraft.direction}
+                          onChange={value =>
+                            setCustomGoalDraft(prev => ({ ...prev, direction: value }))
+                          }
+                        />
+                        <Button
+                          variant="primary"
+                          onClick={addAdvancedCustomGoal}
+                          disabled={!customGoalCanAdd}
+                        >
+                          Add advanced goal
+                        </Button>
                       </div>
-                    </BlockStack>
+                    </Collapsible>
+                  </div>
+                  {selectedSecondaryGoals.length > 0 && (
+                    <div className={styles.goalMatrixList}>
+                      <div className={styles.goalMatrixHeader}>
+                        <span>Goal</span>
+                        <span>Aggregation</span>
+                        <span>Direction</span>
+                      </div>
+                      {selectedSecondaryGoals.map((goal, idx) => {
+                        const name = getSecondaryGoalName(goal);
+                        return (
+                          <div key={`${name}-${idx}`} className={styles.goalMatrixRow}>
+                            <span>{getGoalLabel(goal)}</span>
+                            <Select
+                              label="Aggregation"
+                              labelHidden
+                              options={[
+                                { label: 'Count', value: 'count' },
+                                { label: 'Sum value', value: 'sum' },
+                              ]}
+                              value={goal?.aggregation || 'count'}
+                              onChange={value => updateSecondaryGoal(idx, { aggregation: value })}
+                            />
+                            <Select
+                              label="Direction"
+                              labelHidden
+                              options={[
+                                { label: 'Higher', value: 'increase' },
+                                { label: 'Lower', value: 'decrease' },
+                              ]}
+                              value={goal?.direction || 'increase'}
+                              onChange={value => updateSecondaryGoal(idx, { direction: value })}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
               </div>
@@ -14056,6 +14313,30 @@ function TestWizard({
                             helpText="When empty, the first target page from Targeting is used automatically (e.g. first product, collection, or homepage). Add the RipX script to your store (App settings → Installation) to enable click-to-select."
                             autoComplete="url"
                           />
+                          {(isShopifyStoreDomain(
+                            routeDomain ||
+                              getPreviewDomain() ||
+                              getShopDomain() ||
+                              initialData?.shop_domain ||
+                              ''
+                          ) ||
+                            isShopifyPreviewUrl(
+                              formData.segments?.visual_editor_preview_url ||
+                                formData.segments?.url_pattern ||
+                                ''
+                            )) && (
+                            <TextField
+                              label="Storefront password"
+                              type="password"
+                              value={visualEditorStorefrontPassword}
+                              onChange={value => {
+                                setVisualEditorStorefrontPassword(value);
+                                setVisualPreviewLoadState('idle');
+                              }}
+                              autoComplete="off"
+                              helpText="For password-protected Shopify dev stores. Leave empty for public stores."
+                            />
+                          )}
                           {(() => {
                             const veUrl = (
                               formData.segments?.visual_editor_preview_url ?? ''
@@ -14106,6 +14387,7 @@ function TestWizard({
                                   apiBaseUrl: getApiBaseUrl(),
                                   previewUrl: fullPreviewUrl || directPreviewUrl,
                                   visualEditor: true,
+                                  storefrontPassword: visualEditorStorefrontPassword,
                                 }) || '';
                             }
                             const _previewWithoutTestId = Boolean(baseUrl && !testId);

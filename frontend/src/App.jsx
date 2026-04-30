@@ -79,6 +79,35 @@ function NavigateToConnect() {
   return <Navigate to={{ pathname: ROUTES.CONNECT, search: location.search }} replace />;
 }
 
+function LegacyAppRouteRedirect({ target }) {
+  const location = useLocation();
+  const { id } = useParams();
+  const domain = getShopDomain();
+  if (!domain) {
+    return <Navigate to={ROUTES.USER_PANEL} replace />;
+  }
+
+  const safeId = id ? encodeURIComponent(String(id)) : '';
+  const routeMap = {
+    tests: ROUTES.appTests(domain),
+    createTest: ROUTES.appCreateTest(domain),
+    analytics: ROUTES.appAnalytics(domain),
+    setup: ROUTES.appSetup(domain),
+    testDetail: safeId ? ROUTES.appTestDetail(domain, safeId) : ROUTES.appTests(domain),
+    testEditor: safeId ? ROUTES.appTestEditor(domain, safeId) : ROUTES.appTests(domain),
+    testAnalytics: safeId ? ROUTES.appTestAnalytics(domain, safeId) : ROUTES.appAnalytics(domain),
+    testExport: safeId ? ROUTES.appTestExport(domain, safeId) : ROUTES.appTests(domain),
+    testPromoLinks: safeId ? ROUTES.appTestPromoLinks(domain, safeId) : ROUTES.appTests(domain),
+  };
+
+  return (
+    <Navigate
+      to={{ pathname: routeMap[target] || ROUTES.appDashboard(domain), search: location.search }}
+      replace
+    />
+  );
+}
+
 /** When URL has connect_token (admin "Open app"), exchange it and redirect to dashboard. Runs before auth redirect so token is not lost. */
 function ConnectTokenExchange({ connectToken }) {
   const navigate = useNavigate();
@@ -170,6 +199,7 @@ function ConnectTokenExchange({ connectToken }) {
 
 import {
   Connect,
+  MarketingLanding,
   Dashboard,
   TestList,
   TestCreator,
@@ -643,6 +673,8 @@ function AppContent() {
     pathname.includes('/connect') ||
     pathname.includes('/auth/');
   const publicPaths = [
+    ROUTES.MARKETING,
+    ROUTES.DOCS,
     ROUTES.CONNECT,
     ROUTES.AUTH_CALLBACK,
     ROUTES.AUTH_CONFIRM_RESULT,
@@ -652,16 +684,19 @@ function AppContent() {
   const isProtectedRouteWithCreds = hasCreds && !isPublicPath && !isOnConnectOrAuthPath;
 
   const isAdminRoute = location.pathname.startsWith(ROUTES.ADMIN);
+  const isMarketingRoute = location.pathname === ROUTES.MARKETING;
   const isDocsRoute = location.pathname === ROUTES.DOCS;
   const isDomainsRoute = location.pathname === ROUTES.DOMAINS;
   const isUserPanelRoute = location.pathname === ROUTES.USER_PANEL;
   const isAppDomainRoute = !!getAppDomainFromPath(location.pathname);
   const isUniversalAppRoute = UNIVERSAL_APP_ROUTES.includes(location.pathname);
-  /* TopBar on every app page including admin and universal Profile/Settings/Docs/Notifications */
+  const shouldHideChromeForPublicPath = isPublicPath && !isDocsRoute;
+  /* TopBar on every app page including admin and universal Profile/Settings/Docs/Notifications.
+     Docs are public for auth, but signed-in users still get app chrome there. */
   const showTopBar =
     !isOnConnectOrAuthPath &&
     hasCreds &&
-    !isPublicPath &&
+    !shouldHideChromeForPublicPath &&
     (isAppDomainRoute ||
       isDocsRoute ||
       isUserPanelRoute ||
@@ -670,7 +705,11 @@ function AppContent() {
       isUniversalAppRoute);
   /* Sidebar (AB test nav) only when inside /app/:domain; Profile, Settings, Docs, Notifications are outside the panel (TopBar only) */
   const showSidebar =
-    !isOnConnectOrAuthPath && hasCreds && !isPublicPath && !isAdminRoute && isAppDomainRoute;
+    !isOnConnectOrAuthPath &&
+    hasCreds &&
+    !shouldHideChromeForPublicPath &&
+    !isAdminRoute &&
+    isAppDomainRoute;
 
   const announcementBanner = health?.announcementBanner;
   const showAnnouncement =
@@ -883,7 +922,8 @@ function AppContent() {
     return <Navigate to={{ pathname: ROUTES.CONNECT, search: location.search }} replace />;
   }
 
-  // Email-only users (session but no API key/shop): allow /, /domains, and universal routes (Profile, Settings, Docs, Notifications). Redirect other main app paths to /domains so they connect a store; /app/:domain is handled by AppDomainLayout.
+  // Email-only users (session but no API key/shop): allow public marketing/docs, /home, /domains,
+  // and universal routes. Redirect legacy test paths to /domains so they connect a store first.
   const emailOnlyNoKey =
     hasCreds &&
     hasEmailSession() &&
@@ -991,11 +1031,19 @@ function AppContent() {
         )}
         <main
           id="main-content"
-          className={`main-content-wrapper${isAppDomainRoute || UNIVERSAL_APP_ROUTES.includes(location.pathname) || [ROUTES.SETUP, ROUTES.CREATE_TEST, ROUTES.TESTS, ROUTES.ANALYTICS].includes(location.pathname) || /^\/app\/[^/]+\/tests\/[^/]+/.test(location.pathname) || isUserPanelRoute || isDomainsRoute ? ' main-content-wrapper--full-width' : ''}${[ROUTES.CONNECT, ROUTES.AUTH_CALLBACK, ROUTES.AUTH_CONFIRM_RESULT, ROUTES.CONNECT_OAUTH_SUCCESS].includes(location.pathname) ? ' main-content-wrapper--auth' : ''}${isAdminRoute ? ' main-content-wrapper--admin' : ''}${isDocsRoute ? ' main-content-wrapper--docs' : ''}${isDomainsRoute ? ' main-content-wrapper--domains' : ''}${isUserPanelRoute ? ' main-content-wrapper--user-panel' : ''}${isUniversalAppRoute ? ' main-content-wrapper--universal' : ''}`}
+          className={`main-content-wrapper${isMarketingRoute || isAppDomainRoute || UNIVERSAL_APP_ROUTES.includes(location.pathname) || [ROUTES.SETUP, ROUTES.CREATE_TEST, ROUTES.TESTS, ROUTES.ANALYTICS].includes(location.pathname) || /^\/app\/[^/]+\/tests\/[^/]+/.test(location.pathname) || isUserPanelRoute || isDomainsRoute ? ' main-content-wrapper--full-width' : ''}${[ROUTES.CONNECT, ROUTES.AUTH_CALLBACK, ROUTES.AUTH_CONFIRM_RESULT, ROUTES.CONNECT_OAUTH_SUCCESS].includes(location.pathname) ? ' main-content-wrapper--auth' : ''}${isAdminRoute ? ' main-content-wrapper--admin' : ''}${isDocsRoute ? ' main-content-wrapper--docs' : ''}${isDomainsRoute ? ' main-content-wrapper--domains' : ''}${isUserPanelRoute ? ' main-content-wrapper--user-panel' : ''}${isUniversalAppRoute ? ' main-content-wrapper--universal' : ''}`}
           tabIndex={-1}
         >
           <ErrorBoundary resetKeys={[location.pathname]}>
             <Routes>
+              <Route
+                path={ROUTES.MARKETING}
+                element={
+                  <Suspense fallback={<RouteLoading />}>
+                    <MarketingLanding />
+                  </Suspense>
+                }
+              />
               <Route
                 path={ROUTES.CONNECT}
                 element={
@@ -1088,9 +1136,7 @@ function AppContent() {
                 path={ROUTES.DOCS}
                 element={
                   <Suspense fallback={<RouteLoading />}>
-                    <AuthGuard>
-                      <Documentation />
-                    </AuthGuard>
+                    <Documentation />
                   </Suspense>
                 }
               />
@@ -1218,36 +1264,36 @@ function AppContent() {
                   }
                 />
               </Route>
-              {/* Legacy root paths: redirect to user panel */}
-              <Route path={ROUTES.TESTS} element={<Navigate to={ROUTES.USER_PANEL} replace />} />
+              {/* Legacy root paths: preserve existing deep links when a current store is known. */}
+              <Route path={ROUTES.TESTS} element={<LegacyAppRouteRedirect target="tests" />} />
               <Route
                 path={ROUTES.CREATE_TEST}
-                element={<Navigate to={ROUTES.USER_PANEL} replace />}
+                element={<LegacyAppRouteRedirect target="createTest" />}
               />
               <Route
                 path={ROUTES.ANALYTICS}
-                element={<Navigate to={ROUTES.USER_PANEL} replace />}
+                element={<LegacyAppRouteRedirect target="analytics" />}
               />
-              <Route path={ROUTES.SETUP} element={<Navigate to={ROUTES.USER_PANEL} replace />} />
+              <Route path={ROUTES.SETUP} element={<LegacyAppRouteRedirect target="setup" />} />
               <Route
                 path={ROUTE_PATTERNS.TEST_DETAIL}
-                element={<Navigate to={ROUTES.USER_PANEL} replace />}
+                element={<LegacyAppRouteRedirect target="testDetail" />}
               />
               <Route
                 path={ROUTE_PATTERNS.TEST_EDITOR}
-                element={<Navigate to={ROUTES.USER_PANEL} replace />}
+                element={<LegacyAppRouteRedirect target="testEditor" />}
               />
               <Route
                 path={ROUTE_PATTERNS.TEST_ANALYTICS}
-                element={<Navigate to={ROUTES.USER_PANEL} replace />}
+                element={<LegacyAppRouteRedirect target="testAnalytics" />}
               />
               <Route
                 path={ROUTE_PATTERNS.TEST_EXPORT}
-                element={<Navigate to={ROUTES.USER_PANEL} replace />}
+                element={<LegacyAppRouteRedirect target="testExport" />}
               />
               <Route
                 path={ROUTE_PATTERNS.TEST_PROMO_LINKS}
-                element={<Navigate to={ROUTES.USER_PANEL} replace />}
+                element={<LegacyAppRouteRedirect target="testPromoLinks" />}
               />
               {/* Admin routes: AdminGuard enforces platform admin role; non-admins are redirected */}
               <Route
