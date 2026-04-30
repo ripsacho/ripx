@@ -3622,15 +3622,13 @@ function TestWizard({
     let finalPreviewUrl = directPreviewUrl;
     if (isShopifyPreviewUrl(directPreviewUrl)) {
       if (isPricePreview) {
-        // Price preview uses a dedicated bootstrap so RipX can inject before theme cart scripts and
-        // preserve debug state across Shopify section/cart updates. Customer-view/copy links must feel
-        // like real storefront links, so simple preview stays on the direct product URL and relies on
-        // the Shopify app embed/runtime to seed tab-scoped preview context.
-        finalPreviewUrl = options.simplePreview
-          ? directPreviewUrl
-          : buildShopifyPricePreviewBootstrapUrl({
-              previewUrl: directPreviewUrl,
-            }) || directPreviewUrl;
+        // Price preview always uses the dedicated bootstrap so RipX can inject before theme cart
+        // scripts. Simple/customer links hide the debug chrome and clean the address bar, but still
+        // need this bootstrap because some stores do not load the app embed on raw product URLs.
+        finalPreviewUrl =
+          buildShopifyPricePreviewBootstrapUrl({
+            previewUrl: directPreviewUrl,
+          }) || directPreviewUrl;
       } else {
         const launchPreviewUrl = buildPreviewLaunchUrl({
           apiBaseUrl: getApiBaseUrl(),

@@ -2639,7 +2639,9 @@
     }
     function getCartLineVariantIdFromObject(obj) {
       if (!obj || typeof obj !== 'object') return '';
-      return normalizeCartVariantId(obj.id || obj.variant_id || obj.variantId || obj.merchandise_id);
+      return normalizeCartVariantId(
+        obj.id || obj.variant_id || obj.variantId || obj.merchandise_id
+      );
     }
     function payloadForCartLineVariant(basePayload, variantId) {
       return enrichRipxPayloadForCartVariant(basePayload, variantId);
@@ -2742,10 +2744,7 @@
               setPropIfMissing('_ripx_target_unit', propsPayload._ripx_target_unit);
               setPropIfMissing('_ripx_discount_unit', propsPayload._ripx_discount_unit);
               setPropIfMissing('_ripx_price_method', propsPayload._ripx_price_method);
-              setPropIfMissing(
-                '_ripx_offer_discount_type',
-                propsPayload._ripx_offer_discount_type
-              );
+              setPropIfMissing('_ripx_offer_discount_type', propsPayload._ripx_offer_discount_type);
               setPropIfMissing(
                 '_ripx_offer_discount_value',
                 propsPayload._ripx_offer_discount_value
@@ -3118,13 +3117,12 @@
           if (method === 'POST' && isCartAddPath(url)) {
             var ripxCartPath = pathnameFromCartUrl(url);
             if (DEBUG && !_ripxCartAttributeState) {
-              debugLog(
-                'cart intercept fetch:',
-                ripxCartPath,
-                '— waiting for RipX line state'
-              );
+              debugLog('cart intercept fetch:', ripxCartPath, '— waiting for RipX line state');
             }
-            if (!isRipxCartAddStateReady(_ripxCartAttributeState) && !shouldWaitForRipxCartAddState()) {
+            if (
+              !isRipxCartAddStateReady(_ripxCartAttributeState) &&
+              !shouldWaitForRipxCartAddState()
+            ) {
               return finishRipxCartAddFetch(input, init, 'fetch-no-ripx-candidate');
             }
             return waitForRipxCartAttributeStateBeforeAdd('fetch').then(function (state) {
@@ -3248,11 +3246,7 @@
                 return origSend.call(this, body);
               }
               if (DEBUG) {
-                debugLog(
-                  'cart intercept xhr:',
-                  xhrCartPath,
-                  '— waiting for RipX line state'
-                );
+                debugLog('cart intercept xhr:', xhrCartPath, '— waiting for RipX line state');
               }
               waitForRipxCartAttributeStateBeforeAdd('xhr').then(function (state) {
                 var delayedBody = body;
@@ -3364,7 +3358,8 @@
           if (!shouldWaitForRipxCartAddState()) return;
           if (!event || typeof event.preventDefault !== 'function') return;
           event.preventDefault();
-          if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+          if (typeof event.stopImmediatePropagation === 'function')
+            event.stopImmediatePropagation();
           else if (typeof event.stopPropagation === 'function') event.stopPropagation();
           waitForRipxCartAttributeStateBeforeAdd('submit').then(function (state) {
             if (state) stampRipxCartAddFormsNow('submit-wait', form);
@@ -4305,7 +4300,11 @@
     var cfg = normalizePriceConfigKeys(variant.config || {});
     var mode = String(cfg.priceMode || 'fixed').toLowerCase();
     if (mode !== 'fixed') return false;
-    if (cfg.byProduct && typeof cfg.byProduct === 'object' && Object.keys(cfg.byProduct).length > 0) {
+    if (
+      cfg.byProduct &&
+      typeof cfg.byProduct === 'object' &&
+      Object.keys(cfg.byProduct).length > 0
+    ) {
       return false;
     }
     var targetUnit = Number(cfg.price);
@@ -4402,7 +4401,11 @@
           var test = getActiveTestById(PREVIEW_TEST_ID);
           if (!test && variant.config) test = makeSyntheticPreviewPriceTest();
           if (test && testTypeIsPrice(test)) {
-            seedFixedPriceCartAttributesWithoutProductId(test, variant, reason || 'cart_add_preview');
+            seedFixedPriceCartAttributesWithoutProductId(
+              test,
+              variant,
+              reason || 'cart_add_preview'
+            );
             var curProductId = getCurrentProductId();
             if (curProductId && variant.config) {
               applyPriceTest(test.id, curProductId, test.targetVariantId || null, variant);
@@ -9350,7 +9353,8 @@
     window.__RIPX_TEST_HOOKS__.shouldShowShippingTestOnCart = shouldShowShippingTestOnCart;
     window.__RIPX_TEST_HOOKS__.injectShippingTestCartAttributes = injectShippingTestCartAttributes;
     window.__RIPX_TEST_HOOKS__.rememberRipxTargetUnitForVariant = rememberRipxTargetUnitForVariant;
-    window.__RIPX_TEST_HOOKS__.rememberRipxPriceMethodForVariant = rememberRipxPriceMethodForVariant;
+    window.__RIPX_TEST_HOOKS__.rememberRipxPriceMethodForVariant =
+      rememberRipxPriceMethodForVariant;
     window.__RIPX_TEST_HOOKS__.rememberRipxDiscountUnitForVariant =
       rememberRipxDiscountUnitForVariant;
     window.__RIPX_TEST_HOOKS__.setRipxCartAttributeState = function (payload) {

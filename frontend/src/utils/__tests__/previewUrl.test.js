@@ -176,6 +176,26 @@ describe('previewUrl', () => {
     expect(url.searchParams.has(PREVIEW_PARAMS.SIMPLE)).toBe(false);
   });
 
+  it('preserves simple customer price preview params on price bootstrap URL', () => {
+    const previewUrl = buildPreviewUrl({
+      baseUrl: 'https://makripon.myshopify.com/products/test-product',
+      testId: '1d1f39c4-4083-44f4-b046-1c341b88cc29',
+      variantId: 'variant-a',
+      variantName: 'Variant A',
+      tenantDomain: 'makripon.myshopify.com',
+      simplePreview: true,
+      resetPreviewSession: true,
+      previewSessionId: 'customer-123',
+    });
+    const result = buildShopifyPricePreviewBootstrapUrl({ previewUrl });
+    const url = new URL(result);
+    expect(url.pathname).toBe('/apps/ripx/price-preview-bootstrap-v1');
+    expect(url.searchParams.get(PREVIEW_PARAMS.SIMPLE)).toBe('1');
+    expect(url.searchParams.get(PREVIEW_PARAMS.RESET_SESSION)).toBe('1');
+    expect(url.searchParams.get(PREVIEW_PARAMS.SESSION_ID)).toBe('customer-123');
+    expect(url.searchParams.get('url')).toBe(previewUrl);
+  });
+
   it('returns null for non-Shopify preview-bootstrap host', () => {
     const previewUrl = buildPreviewUrl({
       baseUrl: 'https://example.com/products/test-product',

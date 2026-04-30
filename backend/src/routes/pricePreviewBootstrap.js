@@ -217,7 +217,9 @@ function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }) {
               'ab_preview_test',
               'ab_preview_variant',
               'ab_preview_variant_name',
-              'ab_preview_domain'
+              'ab_preview_domain',
+              'ab_preview_reset',
+              'ab_preview_session'
             ].forEach(function (key) {
               clean.searchParams.delete(key);
             });

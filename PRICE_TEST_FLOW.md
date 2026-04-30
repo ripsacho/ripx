@@ -93,7 +93,7 @@ Flow:
 3. The price preview route is implemented by `backend/src/routes/pricePreviewBootstrap.js` and registered from `backend/src/routes/proxyRoutes.js`; failures usually triage through app-proxy registration, CSP, and preview request validation.
 4. `init` merges the preview test into `CONFIG.activeTests` even when the test is draft or not present in active embedded config.
 5. `getVariant` uses preview endpoints/cache and never creates live assignments for preview sessions.
-6. Customer-view/copy links use the real storefront product URL with `ab_preview_simple=1`. The Shopify app embed/runtime must load on the real page, seed `sessionStorage`, and then remove `ab_preview*` from the visible URL so the page feels live while the tab-scoped preview context remains sticky.
+6. Customer-view/copy links for Shopify price tests use `/apps/ripx/price-preview-bootstrap-v1` with `ab_preview_simple=1`. The bootstrap hides debug chrome, injects the storefront runtime before theme cart scripts, seeds `sessionStorage`, and cleans the visible address bar to the product URL so the page feels live without depending on the theme app embed loading on the raw product page.
 
 Debug first:
 
@@ -183,7 +183,7 @@ Preview URL contract:
 
 - Required for a chosen arm: `ab_preview_test`, `ab_preview_variant`, and `ab_preview_domain`.
 - Expected on generated links: `ab_preview=1`.
-- Customer-view/copy links add `ab_preview_simple=1` and should stay on the real storefront product URL, not `/apps/ripx/price-preview-bootstrap-v1`.
+- Customer-view/copy links add `ab_preview_simple=1` and route through `/apps/ripx/price-preview-bootstrap-v1`; simple mode hides the debug bar and uses `history.replaceState` to show the real storefront product URL after bootstrap.
 - Customer view opened from the app also adds `ab_preview_reset=1` and an `ab_preview_session` nonce. The storefront/app embed clears prior tab preview context and same-test preview variant cache before seeding the selected variant, then removes those params from the visible URL.
 - Copy customer link remains self-contained for incognito or another browser: it carries the selected test/variant/simple params, but does not depend on clearing an existing tab first.
 - Full Shopify debug preview opens through `/apps/ripx/price-preview-bootstrap-v1?url=...` and keeps the debug status bar visible.
