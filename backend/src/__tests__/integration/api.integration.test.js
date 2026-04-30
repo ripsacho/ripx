@@ -37,6 +37,49 @@ jest.mock('../../jobs/productSyncProcessor', () => ({
 
 // Load app after mocks so health handler uses mocked modules
 const app = require('../../app');
+const database = require('../../utils/database');
+const abTestEngine = require('../../services/abTestEngine');
+
+const CHECKOUT_CONTRACT_TEST_ID = '00000000-0000-4000-8000-000000000321';
+const CHECKOUT_CONTRACT_SHOP = 'test.myshopify.com';
+
+function mockCheckoutContractData(phase = 'payment_method') {
+  database.query.mockImplementation(sql => {
+    const normalizedSql = String(sql || '').toLowerCase();
+    if (normalizedSql.includes('from tenants')) {
+      return { rows: [{ domain: CHECKOUT_CONTRACT_SHOP, status: 'active' }] };
+    }
+    if (normalizedSql.includes('from tests')) {
+      return {
+        rows: [
+          {
+            id: CHECKOUT_CONTRACT_TEST_ID,
+            shop_domain: CHECKOUT_CONTRACT_SHOP,
+            type: 'checkout',
+            status: 'running',
+            goal: JSON.stringify({ checkout_phase: phase }),
+            variants: JSON.stringify([
+              { id: 'control', name: 'Control', config: {} },
+              { id: 'variant-a', name: 'Variant A', config: { payment_method_names: ['PayPal'] } },
+            ]),
+            segments: '{}',
+            target_ids: null,
+          },
+        ],
+      };
+    }
+    if (normalizedSql.includes('insert into events')) {
+      return { rows: [{ id: 'event-1' }] };
+    }
+    return { rows: [] };
+  });
+  jest.spyOn(abTestEngine, 'getVariant').mockResolvedValue({
+    variantId: 'variant-a',
+    variantName: 'Variant A',
+    isNewAssignment: true,
+    config: { payment_method_names: ['PayPal'] },
+  });
+}
 
 describe('API integration', () => {
   describe('GET /health', () => {
@@ -253,6 +296,11 @@ describe('API integration', () => {
   });
 
   describe('POST /api/track/checkout-assignment', () => {
+    afterEach(() => {
+      jest.restoreAllMocks();
+      database.query.mockResolvedValue({ rows: [] });
+    });
+
     it('returns 400 when required fields are missing', async () => {
       const res = await request(app).post('/api/track/checkout-assignment').send({});
       expect(res.status).toBe(400);
@@ -270,9 +318,38 @@ describe('API integration', () => {
       expect(res.body).toHaveProperty('success', false);
       expect(res.body.error).toMatch(/test_id|invalid/i);
     });
+
+    it('returns explicit checkout phase in the assignment contract', async () => {
+      mockCheckoutContractData('payment_method');
+
+      const res = await request(app).post('/api/track/checkout-assignment').send({
+        shop: CHECKOUT_CONTRACT_SHOP,
+        test_id: CHECKOUT_CONTRACT_TEST_ID,
+        checkout_id: 'checkout-123',
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        success: true,
+        assignment: {
+          test_id: CHECKOUT_CONTRACT_TEST_ID,
+          user_id: 'checkout:checkout-123',
+          variant_id: 'variant-a',
+          variant_name: 'Variant A',
+          checkout_phase: 'payment_method',
+          assignment_source: 'bucket',
+          config: { payment_method_names: ['PayPal'] },
+        },
+      });
+    });
   });
 
   describe('POST /api/track/checkout-conversion', () => {
+    afterEach(() => {
+      jest.restoreAllMocks();
+      database.query.mockResolvedValue({ rows: [] });
+    });
+
     it('returns 400 when required fields are missing', async () => {
       const res = await request(app).post('/api/track/checkout-conversion').send({});
       expect(res.status).toBe(400);
@@ -289,6 +366,45 @@ describe('API integration', () => {
       expect(res.status).toBe(400);
       expect(res.body).toHaveProperty('success', false);
       expect(res.body.error).toMatch(/test_id|invalid/i);
+    });
+
+    it('returns explicit checkout phase and stores it in conversion metadata', async () => {
+      mockCheckoutContractData('delivery_method');
+
+      const res = await request(app)
+        .post('/api/track/checkout-conversion')
+        .send({
+          shop: CHECKOUT_CONTRACT_SHOP,
+          test_id: CHECKOUT_CONTRACT_TEST_ID,
+          checkout_id: 'checkout-456',
+          event_name: 'checkout_delivery_method_action',
+          metadata: { checkout_phase: 'delivery_method', action: 'hide' },
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        success: true,
+        variant_id: 'variant-a',
+        checkout_phase: 'delivery_method',
+        event_name: 'checkout_delivery_method_action',
+      });
+      const insertCall = database.query.mock.calls.find(call =>
+        String(call[0]).toLowerCase().includes('insert into events')
+      );
+      expect(insertCall).toBeTruthy();
+      const metadataJson = insertCall[1].find(value => {
+        try {
+          return JSON.parse(value)?.checkout_phase === 'delivery_method';
+        } catch (_) {
+          return false;
+        }
+      });
+      expect(JSON.parse(metadataJson)).toMatchObject({
+        source: 'checkout_ui_extension',
+        checkout_id: 'checkout-456',
+        checkout_phase: 'delivery_method',
+        action: 'hide',
+      });
     });
   });
 

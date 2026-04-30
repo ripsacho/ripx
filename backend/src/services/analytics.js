@@ -12,11 +12,27 @@ const { query } = require('../utils/database');
 const { getTestAnalytics, getSecondaryEventMetrics } = require('../models/analytics');
 const { getTestById } = require('../models/test');
 const { STATISTICAL_THRESHOLD, SETTINGS_BOUNDS } = require('../constants');
+const { getCheckoutPhaseFromTest } = require('../utils/checkoutPhases');
 
 const CHECKOUT_SECTION_EVENT_NAMES = Object.freeze([
   'checkout_section_impression',
   'checkout_section_cta_click',
   'checkout_section_offer_apply',
+]);
+const CHECKOUT_PHASE_EVENT_NAMES = Object.freeze([
+  'checkout_phase_impression',
+  'checkout_phase_cta_click',
+  'checkout_phase_offer_apply',
+  'checkout_phase_conversion',
+  'checkout_runtime_diagnostic',
+]);
+const CHECKOUT_PAYMENT_EVENT_NAMES = Object.freeze([
+  'checkout_payment_method_action',
+  'checkout_customization_match',
+]);
+const CHECKOUT_DELIVERY_EVENT_NAMES = Object.freeze([
+  'checkout_delivery_method_action',
+  'checkout_customization_match',
 ]);
 
 class AnalyticsService {
@@ -251,13 +267,17 @@ class AnalyticsService {
     const type = String(test?.type || '')
       .trim()
       .toLowerCase();
-    const checkoutPhase = String(test?.goal?.checkout_phase || '')
-      .trim()
-      .toLowerCase();
-    if (type !== 'checkout' || checkoutPhase !== 'experience') {
+    const checkoutPhase = getCheckoutPhaseFromTest(test);
+    if (type !== 'checkout') {
       return [];
     }
-    return [...CHECKOUT_SECTION_EVENT_NAMES];
+    if (checkoutPhase === 'payment_method') {
+      return [...CHECKOUT_PHASE_EVENT_NAMES, ...CHECKOUT_PAYMENT_EVENT_NAMES];
+    }
+    if (checkoutPhase === 'delivery_method') {
+      return [...CHECKOUT_PHASE_EVENT_NAMES, ...CHECKOUT_DELIVERY_EVENT_NAMES];
+    }
+    return [...CHECKOUT_PHASE_EVENT_NAMES, ...CHECKOUT_SECTION_EVENT_NAMES];
   }
 
   /**

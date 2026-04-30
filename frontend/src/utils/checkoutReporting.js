@@ -5,6 +5,38 @@ import {
 } from './checkoutSections';
 
 export const CHECKOUT_SECTION_EVENT_DEFINITIONS = Object.freeze({
+  checkout_phase_impression: {
+    label: 'Checkout phase impression',
+    description: 'The assigned checkout phase rendered or initialized for the shopper.',
+  },
+  checkout_phase_cta_click: {
+    label: 'Checkout phase CTA click',
+    description: 'A shopper clicked a checkout-level CTA.',
+  },
+  checkout_phase_offer_apply: {
+    label: 'Checkout offer apply',
+    description: 'A checkout-level offer apply interaction was attempted or completed.',
+  },
+  checkout_phase_conversion: {
+    label: 'Checkout phase conversion',
+    description: 'Generic checkout conversion event emitted by the checkout runtime.',
+  },
+  checkout_runtime_diagnostic: {
+    label: 'Checkout runtime diagnostic',
+    description: 'Runtime health signal from the checkout extension.',
+  },
+  checkout_payment_method_action: {
+    label: 'Payment method action',
+    description: 'Payment customization function matched and acted on a payment method.',
+  },
+  checkout_delivery_method_action: {
+    label: 'Delivery method action',
+    description: 'Delivery customization function matched and acted on a delivery method.',
+  },
+  checkout_customization_match: {
+    label: 'Checkout customization match',
+    description: 'Payment or delivery customization matched a RipX checkout assignment.',
+  },
   checkout_section_impression: {
     label: 'Section impression',
     description: 'A checkout content section rendered for the shopper.',

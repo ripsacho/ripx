@@ -289,6 +289,13 @@ function normalizeCheckoutLayout(rawValue) {
   return ['banner', 'stacked', 'compact'].includes(value) ? value : 'banner';
 }
 
+function normalizeCheckoutPhase(rawValue) {
+  const value = String(rawValue || 'experience')
+    .trim()
+    .toLowerCase();
+  return ['experience', 'payment_method', 'delivery_method'].includes(value) ? value : 'experience';
+}
+
 function parseCheckoutFeatureBullets(rawValue) {
   if (Array.isArray(rawValue)) {
     return rawValue.map(item => String(item || '').trim()).filter(Boolean);
@@ -591,6 +598,10 @@ const CHECKOUT_EVENT_NAMES = {
   ctaClick: 'checkout_phase_cta_click',
   offerApplied: 'checkout_phase_offer_apply',
   conversion: 'checkout_phase_conversion',
+  diagnostic: 'checkout_runtime_diagnostic',
+  paymentMethodAction: 'checkout_payment_method_action',
+  deliveryMethodAction: 'checkout_delivery_method_action',
+  customizationMatch: 'checkout_customization_match',
   sectionImpression: 'checkout_section_impression',
   sectionCtaClick: 'checkout_section_cta_click',
   sectionOfferApplied: 'checkout_section_offer_apply',
@@ -640,6 +651,12 @@ function CheckoutExperiment() {
     () => getAssignmentVariantFromCartLines(cartLines, testId),
     [cartLines, testId]
   );
+  const assignmentCheckoutPhase = normalizeCheckoutPhase(
+    assignment?.checkout_phase ||
+      assignment?.checkoutPhase ||
+      assignment?.metadata?.checkout_phase ||
+      inferCheckoutPhaseFromConfig(assignment?.config || {})
+  );
 
   const sendCheckoutEvent = useCallback(
     async (eventName, metadata = {}) => {
@@ -686,6 +703,17 @@ function CheckoutExperiment() {
     [sendingConversion, sendCheckoutEvent]
   );
 
+  const sendRuntimeDiagnostic = useCallback(
+    (reason, metadata = {}) => {
+      void sendCheckoutEvent(CHECKOUT_EVENT_NAMES.diagnostic, {
+        diagnostic_reason: reason,
+        checkout_phase: metadata.checkout_phase || 'experience',
+        ...metadata,
+      });
+    },
+    [sendCheckoutEvent]
+  );
+
   useEffect(() => {
     let cancelled = false;
     async function loadAssignment() {
@@ -729,9 +757,15 @@ function CheckoutExperiment() {
         if (cancelled) {
           return;
         }
-        setAssignment(payload.assignment || null);
+        const nextAssignment = payload.assignment || null;
+        setAssignment(nextAssignment);
         setLoading(false);
         setError('');
+        if (!nextAssignment) {
+          sendRuntimeDiagnostic('no_assignment', {
+            assignment_source: 'none',
+          });
+        }
       } catch (e) {
         if (cancelled) {
           return;
@@ -739,29 +773,35 @@ function CheckoutExperiment() {
         setAssignment(null);
         setLoading(false);
         setError(String(e?.message || 'Could not fetch assignment'));
+        sendRuntimeDiagnostic('assignment_fetch_failed', {
+          error_message: String(e?.message || 'Could not fetch assignment').slice(0, 180),
+        });
       }
     }
     void loadAssignment();
     return () => {
       cancelled = true;
     };
-  }, [shopDomain, checkoutId, testId, assignmentVariantFromLines]);
+  }, [shopDomain, checkoutId, testId, assignmentVariantFromLines, sendRuntimeDiagnostic]);
 
   useEffect(() => {
     if (!assignment || impressionTracked) {
       return;
     }
     setImpressionTracked(true);
-    const phase =
-      assignment?.config && typeof assignment.config === 'object'
-        ? inferCheckoutPhaseFromConfig(assignment.config)
-        : 'experience';
+    const phase = assignmentCheckoutPhase;
     const sections =
       assignment?.config && typeof assignment.config === 'object'
         ? getCheckoutSections(assignment.config).filter(section =>
             hasRenderableCheckoutSection(section)
           )
         : [];
+    if (phase === 'experience' && sections.length === 0) {
+      sendRuntimeDiagnostic('no_renderable_checkout_sections', {
+        variant_id: assignment?.variant_id || null,
+        checkout_phase: phase,
+      });
+    }
     void sendCheckoutEvent(CHECKOUT_EVENT_NAMES.impression, {
       variant_id: assignment?.variant_id || null,
       checkout_phase: phase,
@@ -774,7 +814,43 @@ function CheckoutExperiment() {
         checkout_section_type: section.type || null,
       });
     });
-  }, [assignment, impressionTracked, sendCheckoutEvent]);
+    if (phase === 'payment_method') {
+      const methods = parseCheckoutFeatureBullets(assignment?.config?.payment_method_names);
+      void sendCheckoutEvent(CHECKOUT_EVENT_NAMES.customizationMatch, {
+        variant_id: assignment?.variant_id || null,
+        checkout_phase: phase,
+        checkout_customization_type: 'payment_method',
+        checkout_method_count: methods.length,
+      });
+      void sendCheckoutEvent(CHECKOUT_EVENT_NAMES.paymentMethodAction, {
+        variant_id: assignment?.variant_id || null,
+        checkout_phase: phase,
+        checkout_method_action: String(assignment?.config?.payment_action || 'hide'),
+        checkout_method_count: methods.length,
+      });
+    }
+    if (phase === 'delivery_method') {
+      const methods = parseCheckoutFeatureBullets(assignment?.config?.delivery_method_names);
+      void sendCheckoutEvent(CHECKOUT_EVENT_NAMES.customizationMatch, {
+        variant_id: assignment?.variant_id || null,
+        checkout_phase: phase,
+        checkout_customization_type: 'delivery_method',
+        checkout_method_count: methods.length,
+      });
+      void sendCheckoutEvent(CHECKOUT_EVENT_NAMES.deliveryMethodAction, {
+        variant_id: assignment?.variant_id || null,
+        checkout_phase: phase,
+        checkout_method_action: String(assignment?.config?.delivery_action || 'hide'),
+        checkout_method_count: methods.length,
+      });
+    }
+  }, [
+    assignment,
+    assignmentCheckoutPhase,
+    impressionTracked,
+    sendCheckoutEvent,
+    sendRuntimeDiagnostic,
+  ]);
 
   const cfg =
     assignment && assignment.config && typeof assignment.config === 'object'
@@ -797,7 +873,7 @@ function CheckoutExperiment() {
     checkoutSections.find(section => hasRenderableCheckoutSection(section)) ||
     checkoutSections[0] ||
     null;
-  const checkoutPhase = inferCheckoutPhaseFromConfig(cfg);
+  const checkoutPhase = assignmentCheckoutPhase;
   const activeDiscountCodes = useMemo(() => {
     const rows = Array.isArray(discountCodes)
       ? discountCodes
@@ -857,6 +933,11 @@ function CheckoutExperiment() {
         setDiscountCodeApplyError(
           'Checkout API does not allow discount code updates in this context.'
         );
+        sendRuntimeDiagnostic('discount_code_api_unavailable', {
+          variant_id: assignment?.variant_id || null,
+          checkout_phase: checkoutPhase,
+          discount_code: discountCodeName,
+        });
         return;
       }
       setApplyingDiscountCode(true);
@@ -870,6 +951,14 @@ function CheckoutExperiment() {
           setDiscountCodeApplyError(
             String(result?.message || 'Could not apply discount code at checkout.')
           );
+          sendRuntimeDiagnostic('discount_code_apply_failed', {
+            variant_id: assignment?.variant_id || null,
+            checkout_phase: checkoutPhase,
+            discount_code: discountCodeName,
+            error_message: String(
+              result?.message || 'Could not apply discount code at checkout.'
+            ).slice(0, 180),
+          });
           return;
         }
         void sendCheckoutEvent(CHECKOUT_EVENT_NAMES.offerApplied, {
@@ -897,11 +986,13 @@ function CheckoutExperiment() {
     [
       applyDiscountCodeChange,
       assignment?.variant_id,
+      checkoutPhase,
       discountCodeName,
       hasDiscountCodeApplied,
       hasOfferConfig,
       primarySection,
       sendCheckoutEvent,
+      sendRuntimeDiagnostic,
     ]
   );
 

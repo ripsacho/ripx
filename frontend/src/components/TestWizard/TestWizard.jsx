@@ -11662,6 +11662,20 @@ function TestWizard({
           : 'track';
     const selectedPhaseActionLabel =
       phaseActionOptions.find(option => option.value === phaseActionValue)?.label || 'Hide methods';
+    const checkoutReadinessPreviewItems =
+      checkoutPhase === 'experience'
+        ? [
+            'Checkout UI extension deployed and synced',
+            'RipX checkout block added in Shopify checkout editor',
+            'Checkout context can pass test ID and checkout token',
+            'Collection-fed product lists can resolve products when used',
+          ]
+        : [
+            `${phaseDetails.title} function deployed in Shopify`,
+            'RipX customization instance created or updated',
+            'Cart line assignment attributes available before checkout',
+            'Analytics will use the server-owned checkout phase',
+          ];
     const updateCheckoutGoal = patch => {
       setIsDirty(true);
       setFormData(prev => ({
@@ -12033,6 +12047,19 @@ function TestWizard({
             <div className={styles.checkoutPhaseInlineNote}>
               <span className={styles.checkoutPhaseInlineNoteLabel}>{phaseDetails.title}</span>
               <span className={styles.checkoutPhaseInlineNoteText}>{phaseDetails.surface}</span>
+            </div>
+            <div className={styles.checkoutReadinessPreview}>
+              <div className={styles.checkoutReadinessPreviewHeader}>
+                <span>Preview readiness path</span>
+                <Badge tone="info">Before launch</Badge>
+              </div>
+              <div className={styles.checkoutReadinessPreviewGrid}>
+                {checkoutReadinessPreviewItems.map(item => (
+                  <span key={item} className={styles.checkoutReadinessPreviewItem}>
+                    {item}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
         </Card>

@@ -213,7 +213,6 @@
 }
 
 .heroProof span,
-.planCard li,
 .footer span {
   display: inline-flex;
   align-items: flex-start;
@@ -511,6 +510,24 @@
   display: grid;
   gap: 10px;
   color: rgba(226, 232, 240, 0.82);
+}
+
+.planCard li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  justify-content: start;
+  gap: 0.55rem;
+}
+
+.planCard li :global(.Polaris-Icon),
+.heroProof span :global(.Polaris-Icon),
+.footer span :global(.Polaris-Icon),
+.compareList div :global(.Polaris-Icon),
+.heroBadge :global(.Polaris-Icon),
+.featureIcon :global(.Polaris-Icon) {
+  margin: 0 !important;
+  flex: 0 0 auto;
 }
 
 .planButton {

@@ -5,6 +5,7 @@ Checkout block extension (`purchase.checkout.block.render`) for Shopify Plus tha
 - Fetches RipX variant assignment from `POST /api/track/checkout-assignment`
 - Renders variant-driven checkout content in a merchant-placed checkout block
 - Tracks extension interactions via `POST /api/track/checkout-conversion`
+- Uses the server-owned `checkout_phase` from assignment responses for analytics consistency
 
 ## Configure
 
@@ -33,6 +34,9 @@ This writes `src/ripxConfig.js` from root `.env`:
 ## Notes
 
 - If `RIPX_CHECKOUT_PRICE_SECRET` is enabled on the backend, this extension sends it in header/body for both API calls.
-- This is intentionally a lightweight foundation: content can be fully controlled via assigned variant config fields (`checkout_title`, `checkout_message`, `checkout_cta_label`) and expanded later.
-- Structured checkout sections can include a stable `id` per section (for example `trust-box` or `shipping-promise`).
-- RipX emits that value as `checkout_section_id` in checkout analytics events, so using the same ID you reference in your checkout editor/theme naming makes debugging and reporting easier.
+- Production checkout experience tests should use `checkout_sections` on each assigned variant. Legacy fields such as `checkout_title`, `checkout_message`, and `checkout_cta_label` are still normalized for backward compatibility.
+- Structured checkout sections can include a stable `id` per section (for example `trust-box` or `shipping-promise`). RipX emits that value as `checkout_section_id` in checkout analytics events.
+- Product list sections support manual, cart-related, and collection-fed sources. The `product_display_layout` prop supports `stacked_cards`, `compact_rows`, `two_column_grid`, and `comparison_table`.
+- Assignment responses include `checkout_phase` (`experience`, `payment_method`, or `delivery_method`). The extension uses that value instead of inferring phase from config fields.
+- Runtime diagnostics are emitted as `checkout_runtime_diagnostic` when assignment fails, no assignment is returned, no renderable checkout sections exist for an experience phase, or an offer apply action fails.
+- Payment and delivery checkout phases emit phase-level analytics (`checkout_phase_impression`) plus planning signals (`checkout_payment_method_action`, `checkout_delivery_method_action`, and `checkout_customization_match`). Shopify Functions execute the actual payment/delivery changes without network access, so these signals identify assigned configuration, not Shopify's final method rendering result.

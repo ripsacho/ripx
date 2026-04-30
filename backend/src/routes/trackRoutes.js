@@ -36,6 +36,7 @@ const {
   normalizeCheckoutTrackingMetadata,
   normalizeEventName,
 } = require('../utils/checkoutTracking');
+const { getCheckoutPhaseFromTest } = require('../utils/checkoutPhases');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const {
   HEATMAP_EVENTS_BATCH_MAX,
@@ -1689,9 +1690,10 @@ router.post(
     }
 
     let variant = null;
+    let test = null;
     let assignmentSource = 'bucket';
     if (assignmentVariant) {
-      const test = await getTestById(testId, domain);
+      test = await getTestById(testId, domain);
       const variants = Array.isArray(test?.variants) ? test.variants : [];
       const forced = findVariantForPreviewQuery(variants, {
         variant_id: assignmentVariant,
@@ -1718,6 +1720,10 @@ router.post(
     if (!variant) {
       return res.json({ success: true, assignment: null });
     }
+    if (!test) {
+      test = await getTestById(testId, domain).catch(() => null);
+    }
+    const checkoutPhase = getCheckoutPhaseFromTest(test);
     variant = {
       ...variant,
       config: await enrichCheckoutAssignmentCollectionProducts(variant.config || {}, domain),
@@ -1730,6 +1736,7 @@ router.post(
         user_id: userId,
         variant_id: signedVariant.variantId,
         variant_name: signedVariant.variantName || null,
+        checkout_phase: checkoutPhase,
         assignment_source: assignmentSource,
         config: signedVariant.config || {},
         assignment_sig: signedVariant.assignment_sig || null,
@@ -1799,6 +1806,8 @@ router.post(
     if (!variant) {
       return res.status(404).json({ success: false, error: 'Test not found or not running' });
     }
+    const test = await getTestById(testId, domain).catch(() => null);
+    const checkoutPhase = getCheckoutPhaseFromTest(test);
 
     const eventNameRaw = body.event_name ?? req.query.event_name;
     const eventName = normalizeEventName(eventNameRaw, 'checkout_phase_conversion');
@@ -1822,6 +1831,7 @@ router.post(
       metadata: {
         source: 'checkout_ui_extension',
         checkout_id: checkoutId,
+        checkout_phase: metadata.checkout_phase || checkoutPhase,
         ...metadata,
       },
     };
@@ -1836,6 +1846,7 @@ router.post(
     return res.json({
       success: true,
       variant_id: variant.variantId,
+      checkout_phase: checkoutPhase,
       event_name: eventName,
     });
   })
