@@ -691,7 +691,25 @@ function Settings() {
         appSettingsDomain ? { domain: appSettingsDomain } : {}
       );
       const data = unwrapData(res)?.installation ?? null;
-      setInstallation(data);
+      let liveSetupStatus = null;
+      if (data?.platform === 'shopify' && data?.domain) {
+        try {
+          const statusRes = await apiGet('/shopify/setup/status', { domain: data.domain });
+          liveSetupStatus = statusRes?.data || statusRes || null;
+        } catch {
+          liveSetupStatus = null;
+        }
+      }
+      setInstallation(
+        data
+          ? {
+              ...data,
+              liveSetupStatus,
+              scriptVerified:
+                data.scriptVerified === true || liveSetupStatus?.embedStatus?.detected === true,
+            }
+          : null
+      );
       if (!data) setInstallationError(true);
     } catch {
       setInstallation(null);
@@ -1460,14 +1478,21 @@ function Settings() {
 
   const storeHealth = useMemo(() => {
     const checks = [];
+    const liveEmbedDetected = installation?.liveSetupStatus?.embedStatus?.detected === true;
+    const liveProxyOk = installation?.liveSetupStatus?.proxyStatus?.ok === true;
     const scriptDetected = installation?.scriptVerified === true;
     checks.push({
       key: 'script_detected',
-      ok: scriptDetected,
+      ok: scriptDetected && liveProxyOk !== false,
       required: true,
-      message: scriptDetected
-        ? 'Storefront script detected on store theme.'
-        : 'Storefront script not detected on theme embed/snippet.',
+      message:
+        scriptDetected && liveProxyOk !== false
+          ? liveEmbedDetected
+            ? 'RipX app embed detected on the live theme.'
+            : 'Storefront script detected on store theme.'
+          : liveProxyOk === false
+            ? 'RipX App Proxy script is not reachable from this storefront.'
+            : 'RipX app embed/snippet is not detected. Enable the theme app embed before launching live storefront tests.',
     });
 
     const failedChecklist = Array.isArray(checkoutDiag?.checklist)
@@ -1561,7 +1586,12 @@ function Settings() {
       advisories: checks.filter(c => c.advisory === true || (c.required === false && !c.ok)),
       supportLevel,
     };
-  }, [installation?.scriptVerified, installation?.instructions?.cartNative?.status, checkoutDiag]);
+  }, [
+    installation?.scriptVerified,
+    installation?.instructions?.cartNative?.status,
+    installation?.liveSetupStatus,
+    checkoutDiag,
+  ]);
 
   const configuredIntegrationCount = useMemo(() => {
     if (!integrations) return 0;
@@ -2325,6 +2355,13 @@ function Settings() {
     runCheckoutDiagnostics,
     runCheckoutDiscountListCheck,
   ]);
+  const installationChecklistRows = useMemo(
+    () => [
+      ...installationCheckRows.map(item => ({ ...item, group: 'Verify' })),
+      ...installationActionRows.map(item => ({ ...item, group: 'Install' })),
+    ],
+    [installationActionRows, installationCheckRows]
+  );
   return (
     <PageShell
       message={message}
@@ -2941,13 +2978,18 @@ function Settings() {
                                   <div className={styles.installHubHeader}>
                                     <div className={styles.installHubHeaderContent}>
                                       <Text variant="headingMd" as="h2">
-                                        Setup checklist
+                                        Installation checklist
                                       </Text>
                                       <Text as="p" variant="bodySm" tone="subdued">
-                                        Check status, run actions, open details only when needed.
+                                        One place to verify the app embed, checkout functions,
+                                        diagnostics, and install actions.
                                       </Text>
                                     </div>
                                     <InlineStack gap="200" wrap blockAlign="center">
+                                      <Badge tone={checkoutLaunchTone}>{checkoutLaunchLabel}</Badge>
+                                      <Badge tone={supportLevelBadgeTone}>
+                                        {supportLevelBadgeLabel}
+                                      </Badge>
                                       {checkoutDiagCheckedLabel && (
                                         <Badge tone={checkoutDiagIsStale ? 'attention' : 'success'}>
                                           {checkoutDiagIsStale
@@ -2957,18 +2999,51 @@ function Settings() {
                                       )}
                                     </InlineStack>
                                   </div>
-                                  <div className={styles.installHubGrid}>
-                                    <div className={styles.installHubSection}>
-                                      <div className={styles.installHubSectionHeader}>
-                                        <Text variant="headingSm" as="h3">
-                                          Verify
-                                        </Text>
-                                      </div>
-                                      <BlockStack gap="200">
-                                        {installationCheckRows.map(item => (
-                                          <div key={item.id} className={styles.installHubRow}>
-                                            <div className={styles.installHubRowMain}>
-                                              <div className={styles.installHubRowTitle}>
+                                  <div className={styles.installChecklistSummary}>
+                                    <div className={styles.installChecklistMetric}>
+                                      <span className={styles.installChecklistMetricLabel}>
+                                        Required passing
+                                      </span>
+                                      <span className={styles.installChecklistMetricValue}>
+                                        {checkoutHealthSnapshot.passedRequired}/
+                                        {checkoutHealthSnapshot.requiredTotal}
+                                      </span>
+                                    </div>
+                                    <div className={styles.installChecklistMetric}>
+                                      <span className={styles.installChecklistMetricLabel}>
+                                        Blockers
+                                      </span>
+                                      <span className={styles.installChecklistMetricValue}>
+                                        {checkoutHealthSnapshot.failedRequired.length}
+                                      </span>
+                                    </div>
+                                    <div className={styles.installChecklistMetric}>
+                                      <span className={styles.installChecklistMetricLabel}>
+                                        Advisories
+                                      </span>
+                                      <span className={styles.installChecklistMetricValue}>
+                                        {checkoutHealthSnapshot.advisoryCount}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className={styles.installChecklistTableWrap}>
+                                    <table className={styles.installChecklistTable}>
+                                      <thead>
+                                        <tr>
+                                          <th scope="col">Step</th>
+                                          <th scope="col">Status</th>
+                                          <th scope="col">Details</th>
+                                          <th scope="col">Action</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {installationChecklistRows.map(item => (
+                                          <tr key={item.id}>
+                                            <td>
+                                              <div className={styles.installChecklistStep}>
+                                                <span className={styles.installChecklistGroup}>
+                                                  {item.group}
+                                                </span>
                                                 <Text
                                                   as="span"
                                                   variant="bodyMd"
@@ -2976,76 +3051,93 @@ function Settings() {
                                                 >
                                                   {item.title}
                                                 </Text>
-                                                <Badge tone={item.tone}>{item.status}</Badge>
                                               </div>
-                                            </div>
-                                            <div className={styles.installHubRowActions}>
-                                              <Button
-                                                size="slim"
-                                                onClick={item.onAction}
-                                                loading={item.loading}
-                                                disabled={item.disabled}
-                                              >
-                                                {item.actionLabel}
-                                              </Button>
-                                              {item.secondaryLabel && item.onSecondaryAction && (
+                                            </td>
+                                            <td>
+                                              <Badge tone={item.tone}>{item.status}</Badge>
+                                            </td>
+                                            <td>
+                                              <Text as="span" variant="bodySm" tone="subdued">
+                                                {item.summary}
+                                              </Text>
+                                            </td>
+                                            <td>
+                                              <div className={styles.installChecklistActions}>
                                                 <Button
                                                   size="slim"
-                                                  variant="plain"
-                                                  onClick={item.onSecondaryAction}
+                                                  onClick={item.onAction}
+                                                  loading={item.loading}
+                                                  disabled={item.disabled}
                                                 >
-                                                  {item.secondaryLabel}
+                                                  {item.actionLabel}
                                                 </Button>
-                                              )}
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </BlockStack>
-                                    </div>
-                                    <div className={styles.installHubSection}>
-                                      <div className={styles.installHubSectionHeader}>
-                                        <Text variant="headingSm" as="h3">
-                                          Enable
-                                        </Text>
-                                      </div>
-                                      <BlockStack gap="200">
-                                        {installationActionRows.map(item => (
-                                          <div key={item.id} className={styles.installHubRow}>
-                                            <div className={styles.installHubRowMain}>
-                                              <div className={styles.installHubRowTitle}>
-                                                <Text
-                                                  as="span"
-                                                  variant="bodyMd"
-                                                  fontWeight="semibold"
-                                                >
-                                                  {item.title}
-                                                </Text>
-                                                <Badge tone={item.tone}>{item.status}</Badge>
+                                                {item.secondaryLabel && item.onSecondaryAction && (
+                                                  <Button
+                                                    size="slim"
+                                                    variant="plain"
+                                                    onClick={item.onSecondaryAction}
+                                                  >
+                                                    {item.secondaryLabel}
+                                                  </Button>
+                                                )}
                                               </div>
-                                            </div>
-                                            <div className={styles.installHubRowActions}>
-                                              <Button
-                                                size="slim"
-                                                onClick={item.onAction}
-                                                loading={item.loading}
-                                                disabled={item.disabled}
-                                              >
-                                                {item.actionLabel}
-                                              </Button>
-                                              {item.secondaryLabel && item.onSecondaryAction && (
-                                                <Button
-                                                  size="slim"
-                                                  variant="plain"
-                                                  onClick={item.onSecondaryAction}
-                                                >
-                                                  {item.secondaryLabel}
-                                                </Button>
-                                              )}
-                                            </div>
-                                          </div>
+                                            </td>
+                                          </tr>
                                         ))}
-                                      </BlockStack>
-                                    </div>
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                  <details className={styles.installChecklistDetails}>
+                                    <summary>
+                                      Review health checks ({storeHealth.checks.length})
+                                    </summary>
+                                    <BlockStack gap="150">
+                                      {storeHealth.checks.map(item => (
+                                        <div key={item.key} className={styles.checkoutDiagCheckRow}>
+                                          <Badge
+                                            tone={
+                                              item.ok
+                                                ? 'success'
+                                                : item.advisory === true || item.required === false
+                                                  ? 'attention'
+                                                  : 'critical'
+                                            }
+                                          >
+                                            {item.ok
+                                              ? 'OK'
+                                              : item.advisory === true || item.required === false
+                                                ? 'Advisory'
+                                                : 'Fail'}
+                                          </Badge>
+                                          <Text
+                                            as="span"
+                                            variant="bodySm"
+                                            className={styles.checkoutDiagCheckMessage}
+                                          >
+                                            {item.message}
+                                          </Text>
+                                        </div>
+                                      ))}
+                                    </BlockStack>
+                                  </details>
+                                  <div className={styles.installChecklistFooter}>
+                                    {installation?.domain && (
+                                      <Link
+                                        to={ROUTES.appDocs(installation.domain)}
+                                        className={styles.installDocLink}
+                                      >
+                                        Setup guide
+                                      </Link>
+                                    )}
+                                    <Tooltip content={supportLevelHelpText}>
+                                      <span
+                                        className={styles.supportLevelHint}
+                                        role="note"
+                                        aria-label="Support level help"
+                                      >
+                                        Support details
+                                      </span>
+                                    </Tooltip>
                                   </div>
                                 </BlockStack>
                               </Box>
@@ -3368,185 +3460,13 @@ function Settings() {
                                       </div>
                                       <div className={styles.sectionHeaderContent}>
                                         <Text variant="headingMd" as="h2">
-                                          Checkout health
+                                          Advanced diagnostics
                                         </Text>
                                         <Text as="p" variant="bodySm" tone="subdued">
-                                          Price and offer checkout status.
+                                          Deeper checkout, preview, and Shopify inventory tools.
+                                          Daily install actions now live in the checklist above.
                                         </Text>
                                       </div>
-                                    </div>
-                                    <div className={styles.checkoutDiagActionBar}>
-                                      <div className={styles.checkoutHealthLead}>
-                                        <div className={styles.checkoutHealthLeadMeta}>
-                                          <div className={styles.checkoutHealthLeadMetric}>
-                                            <span className={styles.checkoutHealthLeadLabel}>
-                                              Launch status
-                                            </span>
-                                            <span className={styles.checkoutHealthLeadValue}>
-                                              <Badge tone={checkoutLaunchTone}>
-                                                {checkoutLaunchLabel}
-                                              </Badge>
-                                            </span>
-                                          </div>
-                                          <div className={styles.checkoutHealthLeadMetric}>
-                                            <span className={styles.checkoutHealthLeadLabel}>
-                                              Support mode
-                                            </span>
-                                            <span className={styles.checkoutHealthLeadValue}>
-                                              <Badge tone={supportLevelBadgeTone}>
-                                                {supportLevelBadgeLabel}
-                                              </Badge>
-                                            </span>
-                                          </div>
-                                          <div className={styles.checkoutHealthLeadMetric}>
-                                            <span className={styles.checkoutHealthLeadLabel}>
-                                              Last check
-                                            </span>
-                                            <span className={styles.checkoutHealthLeadValue}>
-                                              {checkoutDiagCheckedLabel || 'Not run yet'}
-                                            </span>
-                                          </div>
-                                        </div>
-                                        {installation?.domain && (
-                                          <Link
-                                            to={ROUTES.appDocs(installation.domain)}
-                                            className={styles.installDocLink}
-                                          >
-                                            Setup guide
-                                          </Link>
-                                        )}
-                                      </div>
-                                      <div className={styles.checkoutDiagActionGroups}>
-                                        <InlineStack
-                                          gap="300"
-                                          blockAlign="center"
-                                          wrap
-                                          className={styles.checkoutDiagPrimaryActions}
-                                        >
-                                          <Button
-                                            onClick={runFullCheckoutVerification}
-                                            loading={checkoutFullVerifyRunning}
-                                            disabled={
-                                              checkoutFullVerifyRunning ||
-                                              checkoutCartTransformEnsuring ||
-                                              checkoutDiscountEnsuring ||
-                                              checkoutDiagLoading
-                                            }
-                                            variant="primary"
-                                          >
-                                            Run full verify
-                                          </Button>
-                                          <Button
-                                            onClick={runCheckoutDiagnostics}
-                                            loading={checkoutDiagLoading}
-                                            disabled={
-                                              checkoutDiagLoading || checkoutFullVerifyRunning
-                                            }
-                                          >
-                                            Run check now
-                                          </Button>
-                                        </InlineStack>
-                                        <InlineStack
-                                          gap="200"
-                                          blockAlign="center"
-                                          wrap
-                                          className={styles.checkoutDiagSecondaryActions}
-                                        >
-                                          <Button
-                                            size="slim"
-                                            onClick={ensureCartTransform}
-                                            loading={checkoutCartTransformEnsuring}
-                                            disabled={
-                                              checkoutCartTransformEnsuring ||
-                                              checkoutFullVerifyRunning
-                                            }
-                                          >
-                                            Install cart transform
-                                          </Button>
-                                          <Button
-                                            size="slim"
-                                            onClick={ensureCheckoutDiscount}
-                                            loading={checkoutDiscountEnsuring}
-                                            disabled={
-                                              checkoutDiscountEnsuring || checkoutFullVerifyRunning
-                                            }
-                                          >
-                                            Attach discount
-                                          </Button>
-                                          <Button
-                                            size="slim"
-                                            variant="plain"
-                                            onClick={runCheckoutDiscountListCheck}
-                                            loading={checkoutDiscountListCheckLoading}
-                                            disabled={
-                                              checkoutDiscountListCheckLoading ||
-                                              checkoutDiscountEnsuring ||
-                                              checkoutFullVerifyRunning
-                                            }
-                                          >
-                                            Check discount list
-                                          </Button>
-                                        </InlineStack>
-                                      </div>
-                                      <InlineStack
-                                        gap="200"
-                                        blockAlign="center"
-                                        wrap
-                                        className={styles.checkoutDiagStatusRow}
-                                      >
-                                        {checkoutDiagCheckedLabel && (
-                                          <>
-                                            <Badge
-                                              tone={checkoutDiagIsStale ? 'attention' : 'success'}
-                                            >
-                                              {checkoutDiagIsStale
-                                                ? 'Status may be stale'
-                                                : 'Status fresh'}
-                                            </Badge>
-                                            <Text as="span" variant="bodySm" tone="subdued">
-                                              Last checked {checkoutDiagCheckedLabel}
-                                            </Text>
-                                          </>
-                                        )}
-                                        {(checkoutDiag || installation) && (
-                                          <Badge tone={storeHealth.ready ? 'success' : 'warning'}>
-                                            {storeHealth.ready
-                                              ? 'Store health: PASS'
-                                              : `Store health: FAIL (${storeHealth.failed.length})`}
-                                          </Badge>
-                                        )}
-                                        {(checkoutDiag || installation) && (
-                                          <Badge tone={supportLevelBadgeTone}>
-                                            Support: {supportLevelBadgeLabel}
-                                          </Badge>
-                                        )}
-                                        {(checkoutDiag || installation) && (
-                                          <Tooltip content={supportLevelHelpText}>
-                                            <span
-                                              className={styles.supportLevelHint}
-                                              role="note"
-                                              aria-label="Support level help"
-                                            >
-                                              Support details
-                                            </span>
-                                          </Tooltip>
-                                        )}
-                                        {checkoutDiag?.summary && (
-                                          <Badge
-                                            tone={
-                                              checkoutDiag.summary.overall_ok
-                                                ? 'success'
-                                                : checkoutDiag.summary.overall_status === 'error'
-                                                  ? 'critical'
-                                                  : 'warning'
-                                            }
-                                          >
-                                            {checkoutDiag.summary.overall_ok
-                                              ? 'All checks passed'
-                                              : `${checkoutDiag.summary.checks_passed}/${checkoutDiag.summary.checks_total} checks OK`}
-                                          </Badge>
-                                        )}
-                                      </InlineStack>
                                     </div>
                                     <details className={styles.installAdvancedDisclosure}>
                                       <summary className={styles.installAdvancedDisclosureSummary}>
@@ -3881,93 +3801,6 @@ function Settings() {
                                                 </div>
                                               ))}
                                             </div>
-                                          </div>
-                                        )}
-                                        {(checkoutDiag || installation) && (
-                                          <div className={styles.checkoutDiagHealthSummary}>
-                                            <div className={styles.checkoutDiagHealthHeader}>
-                                              <div>
-                                                <Text variant="headingSm" as="h3">
-                                                  Store health summary
-                                                </Text>
-                                                <Text as="p" variant="bodySm" tone="subdued">
-                                                  {checkoutHealthSnapshot.failedRequired.length > 0
-                                                    ? 'Review blockers first, then expand the check list only if you need detail.'
-                                                    : 'All required checks are passing. Advisories are optional improvements.'}
-                                                </Text>
-                                              </div>
-                                              <div className={styles.checkoutHealthStatGrid}>
-                                                <div className={styles.checkoutHealthStat}>
-                                                  <span className={styles.checkoutHealthStatLabel}>
-                                                    Passing
-                                                  </span>
-                                                  <span className={styles.checkoutHealthStatValue}>
-                                                    {checkoutHealthSnapshot.passedRequired}/
-                                                    {checkoutHealthSnapshot.requiredTotal}
-                                                  </span>
-                                                </div>
-                                                <div className={styles.checkoutHealthStat}>
-                                                  <span className={styles.checkoutHealthStatLabel}>
-                                                    Blockers
-                                                  </span>
-                                                  <span className={styles.checkoutHealthStatValue}>
-                                                    {checkoutHealthSnapshot.failedRequired.length}
-                                                  </span>
-                                                </div>
-                                                <div className={styles.checkoutHealthStat}>
-                                                  <span className={styles.checkoutHealthStatLabel}>
-                                                    Advisories
-                                                  </span>
-                                                  <span className={styles.checkoutHealthStatValue}>
-                                                    {checkoutHealthSnapshot.advisoryCount}
-                                                  </span>
-                                                </div>
-                                              </div>
-                                            </div>
-                                            <details className={styles.checkoutDiagDetails}>
-                                              <summary
-                                                className={styles.checkoutDiagDetailsSummary}
-                                              >
-                                                Review individual checks (
-                                                {storeHealth.checks.length})
-                                              </summary>
-                                              <BlockStack
-                                                gap="150"
-                                                className={styles.checkoutDiagDetailsList}
-                                              >
-                                                {storeHealth.checks.map(item => (
-                                                  <div
-                                                    key={item.key}
-                                                    className={styles.checkoutDiagCheckRow}
-                                                  >
-                                                    <Badge
-                                                      tone={
-                                                        item.ok
-                                                          ? 'success'
-                                                          : item.advisory === true ||
-                                                              item.required === false
-                                                            ? 'attention'
-                                                            : 'critical'
-                                                      }
-                                                    >
-                                                      {item.ok
-                                                        ? 'OK'
-                                                        : item.advisory === true ||
-                                                            item.required === false
-                                                          ? 'Advisory'
-                                                          : 'Fail'}
-                                                    </Badge>
-                                                    <Text
-                                                      as="span"
-                                                      variant="bodySm"
-                                                      className={styles.checkoutDiagCheckMessage}
-                                                    >
-                                                      {item.message}
-                                                    </Text>
-                                                  </div>
-                                                ))}
-                                              </BlockStack>
-                                            </details>
                                           </div>
                                         )}
                                       </BlockStack>

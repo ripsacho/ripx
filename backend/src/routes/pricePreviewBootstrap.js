@@ -252,6 +252,7 @@ function buildPricePreviewHtml({ targetUrl, appProxyScriptUrl }) {
         }
 
         function installNavigationGuard() {
+          if (simplePreview) return;
           document.addEventListener('click', function (event) {
             var anchor = event.target && event.target.closest ? event.target.closest('a[href]') : null;
             if (!anchor) return;

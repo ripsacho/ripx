@@ -161,6 +161,9 @@ function TestDetail() {
     tracking: false,
     staging: false,
   });
+  const [storefrontSetupStatus, setStorefrontSetupStatus] = useState(null);
+  const [storefrontSetupLoading, setStorefrontSetupLoading] = useState(false);
+  const [storefrontSetupError, setStorefrontSetupError] = useState(null);
 
   const queryClient = useQueryClient();
   const invalidateTests = useInvalidateTests();
@@ -173,6 +176,7 @@ function TestDetail() {
     isLoading: loading,
     isError,
     error,
+    refetch: refetchTest,
   } = useTest(id, {
     placeholderData: placeholderTest,
   });
@@ -203,6 +207,23 @@ function TestDetail() {
       return next;
     });
   }, [test, queryClient]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !id) return undefined;
+    let cancelled = false;
+    const refreshDetail = () => {
+      if (cancelled) return;
+      queryClient.invalidateQueries({ queryKey: testDetailQueryKey(getShopDomain(), id) });
+      refetchTest?.();
+    };
+    window.addEventListener('pageshow', refreshDetail);
+    document.addEventListener('visibilitychange', refreshDetail);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('pageshow', refreshDetail);
+      document.removeEventListener('visibilitychange', refreshDetail);
+    };
+  }, [id, queryClient, refetchTest]);
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
@@ -256,6 +277,54 @@ function TestDetail() {
   const supportsCheckoutReadiness =
     isPriceLikeTest || isOfferTest || isCheckoutTest || isShippingTest;
   const checkoutReadinessLabel = isCheckoutTest ? 'Checkout readiness' : 'Launch readiness';
+  const requiresStorefrontRuntime =
+    isPriceLikeTest ||
+    isOfferTest ||
+    isShippingTest ||
+    String(test?.type || '').toLowerCase() === 'theme' ||
+    String(test?.type || '').toLowerCase() === 'content' ||
+    String(test?.type || '').toLowerCase() === 'url';
+  const storefrontRuntimeReady =
+    storefrontSetupStatus?.proxyStatus?.ok === true &&
+    storefrontSetupStatus?.embedStatus?.detected === true;
+  const storefrontRuntimeBlocked =
+    preLaunchOpen &&
+    requiresStorefrontRuntime &&
+    storefrontSetupStatus &&
+    storefrontRuntimeReady === false;
+
+  useEffect(() => {
+    if (!preLaunchOpen || !requiresStorefrontRuntime) return undefined;
+    let cancelled = false;
+    const loadStorefrontSetupStatus = async () => {
+      setStorefrontSetupLoading(true);
+      setStorefrontSetupError(null);
+      try {
+        const shopDomain = getShopDomain();
+        const status = await apiGet(
+          '/shopify/setup/status',
+          shopDomain ? { domain: shopDomain } : {}
+        );
+        if (!cancelled) {
+          setStorefrontSetupStatus(status?.data || status || null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setStorefrontSetupError(
+            err?.response?.data?.error || err?.message || 'Could not check storefront app embed'
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setStorefrontSetupLoading(false);
+        }
+      }
+    };
+    loadStorefrontSetupStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [preLaunchOpen, requiresStorefrontRuntime]);
 
   const summarizePreflight = useCallback(preflight => {
     if (!preflight || typeof preflight !== 'object') {
@@ -1207,7 +1276,7 @@ function TestDetail() {
           onAction: handleStart,
           loading: actionLoading,
           destructive: forceStart,
-          disabled: forceReasonRequired || visualQaRequiredButMissing,
+          disabled: forceReasonRequired || visualQaRequiredButMissing || storefrontRuntimeBlocked,
         }}
         secondaryActions={[
           {
@@ -1224,9 +1293,40 @@ function TestDetail() {
         <Modal.Section>
           <BlockStack gap="300">
             <Text variant="bodyMd" as="p" tone="subdued">
-              Run preflight before launch. You can optionally apply canary ramp overrides at start
-              time.
+              Run preflight before launch. Advanced overrides stay optional and collapsed into this
+              short checklist.
             </Text>
+            {requiresStorefrontRuntime && (
+              <Banner
+                tone={
+                  storefrontRuntimeBlocked
+                    ? 'critical'
+                    : storefrontSetupError
+                      ? 'warning'
+                      : storefrontRuntimeReady
+                        ? 'success'
+                        : 'info'
+                }
+                title={
+                  storefrontRuntimeBlocked
+                    ? 'Enable the RipX app embed before launching'
+                    : storefrontSetupError
+                      ? 'Could not verify the app embed'
+                      : storefrontRuntimeReady
+                        ? 'Storefront runtime is ready'
+                        : 'Checking storefront runtime...'
+                }
+              >
+                <Text as="p" variant="bodySm">
+                  {storefrontRuntimeBlocked
+                    ? 'Live storefront tests need the theme app embed or snippet so RipX can assign visitors and stamp cart lines before checkout.'
+                    : storefrontSetupError ||
+                      (storefrontSetupLoading
+                        ? 'Checking the App Proxy and theme embed on the active storefront.'
+                        : 'RipX will use the App Proxy script and theme embed for live visitor assignment.')}
+                </Text>
+              </Banner>
+            )}
             {preflightResult && (
               <Banner
                 tone={
@@ -1353,80 +1453,83 @@ function TestDetail() {
                   </BlockStack>
                 </div>
               )}
-            <BlockStack gap="200">
-              <TextField
-                label="Canary percent override (optional)"
-                type="number"
-                value={launchCanaryPercent}
-                onChange={setLaunchCanaryPercent}
-                placeholder="e.g. 10"
-                min={0}
-                max={100}
-                suffix="%"
-                autoComplete="off"
-                helpText="If set, overrides this launch with a start ramp percent."
-              />
-              <TextField
-                label="Canary days override (optional)"
-                type="number"
-                value={launchCanaryDays}
-                onChange={setLaunchCanaryDays}
-                placeholder="e.g. 7"
-                min={1}
-                max={30}
-                suffix="days"
-                autoComplete="off"
-                helpText="Used with canary percent to ramp to 100% over N days."
-              />
-              <Checkbox
-                label="Visual QA baseline required for this launch"
-                checked={launchVisualQaRequired}
-                onChange={setLaunchVisualQaRequired}
-                helpText="When enabled, launch requires baseline metadata and preflight enforces it."
-              />
-              <TextField
-                label="Visual QA baseline ID (optional)"
-                value={launchVisualQaBaselineId}
-                onChange={setLaunchVisualQaBaselineId}
-                placeholder="e.g. home-v2-desktop"
-                autoComplete="off"
-                error={
-                  visualQaRequiredButMissing
-                    ? 'Baseline ID is required when visual QA requirement is enabled.'
-                    : undefined
-                }
-              />
-              <TextField
-                label="Visual QA checked at (optional)"
-                type="date"
-                value={launchVisualQaCheckedAt}
-                onChange={setLaunchVisualQaCheckedAt}
-                autoComplete="off"
-                helpText="Date of latest visual QA verification for this launch."
-              />
-              <Checkbox
-                label="Force start even if preflight has blocking errors"
-                checked={forceStart}
-                onChange={setForceStart}
-                helpText="Use only for emergency/controlled launches."
-              />
-              {forceStart && (
+            <details className={styles.launchAdvancedOptions}>
+              <summary>Advanced launch options</summary>
+              <BlockStack gap="200">
                 <TextField
-                  label="Force-start reason (required)"
-                  value={forceStartReason}
-                  onChange={setForceStartReason}
-                  placeholder="Why is a forced launch needed?"
+                  label="Canary percent override (optional)"
+                  type="number"
+                  value={launchCanaryPercent}
+                  onChange={setLaunchCanaryPercent}
+                  placeholder="e.g. 10"
+                  min={0}
+                  max={100}
+                  suffix="%"
                   autoComplete="off"
-                  multiline={2}
-                  maxLength={500}
+                  helpText="If set, overrides this launch with a start ramp percent."
+                />
+                <TextField
+                  label="Canary days override (optional)"
+                  type="number"
+                  value={launchCanaryDays}
+                  onChange={setLaunchCanaryDays}
+                  placeholder="e.g. 7"
+                  min={1}
+                  max={30}
+                  suffix="days"
+                  autoComplete="off"
+                  helpText="Used with canary percent to ramp to 100% over N days."
+                />
+                <Checkbox
+                  label="Visual QA baseline required for this launch"
+                  checked={launchVisualQaRequired}
+                  onChange={setLaunchVisualQaRequired}
+                  helpText="When enabled, launch requires baseline metadata and preflight enforces it."
+                />
+                <TextField
+                  label="Visual QA baseline ID (optional)"
+                  value={launchVisualQaBaselineId}
+                  onChange={setLaunchVisualQaBaselineId}
+                  placeholder="e.g. home-v2-desktop"
+                  autoComplete="off"
                   error={
-                    forceReasonRequired
-                      ? 'Provide at least 8 characters so this action is auditable.'
+                    visualQaRequiredButMissing
+                      ? 'Baseline ID is required when visual QA requirement is enabled.'
                       : undefined
                   }
                 />
-              )}
-            </BlockStack>
+                <TextField
+                  label="Visual QA checked at (optional)"
+                  type="date"
+                  value={launchVisualQaCheckedAt}
+                  onChange={setLaunchVisualQaCheckedAt}
+                  autoComplete="off"
+                  helpText="Date of latest visual QA verification for this launch."
+                />
+                <Checkbox
+                  label="Force start even if preflight has blocking errors"
+                  checked={forceStart}
+                  onChange={setForceStart}
+                  helpText="Use only for emergency/controlled launches."
+                />
+                {forceStart && (
+                  <TextField
+                    label="Force-start reason (required)"
+                    value={forceStartReason}
+                    onChange={setForceStartReason}
+                    placeholder="Why is a forced launch needed?"
+                    autoComplete="off"
+                    multiline={2}
+                    maxLength={500}
+                    error={
+                      forceReasonRequired
+                        ? 'Provide at least 8 characters so this action is auditable.'
+                        : undefined
+                    }
+                  />
+                )}
+              </BlockStack>
+            </details>
             <BlockStack gap="200">
               <Checkbox
                 label="Hypothesis or goal is documented"
