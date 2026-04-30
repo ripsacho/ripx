@@ -88,6 +88,32 @@ const PRICE_ASSIGNMENT_SIGNING_WARNING_INTERVAL_MS = Math.max(
 );
 const priceAssignmentSigningWarningLastAt = new Map();
 
+function normalizeCspOrigin(rawValue, fallback = null) {
+  const value = rawValue || fallback;
+  if (!value) {
+    return null;
+  }
+  try {
+    return new URL(String(value)).origin;
+  } catch (_) {
+    return null;
+  }
+}
+
+function buildPreviewDocumentFrameAncestors(req) {
+  const requestOrigin = `${req.protocol}://${req.get('host')}`;
+  const appOrigin = normalizeCspOrigin(process.env.APP_URL, requestOrigin);
+  const frontendOrigin = normalizeCspOrigin(process.env.FRONTEND_URL, null);
+  const sources = new Set([
+    "'self'",
+    'https://admin.shopify.com',
+    'https://*.myshopify.com',
+    appOrigin,
+    frontendOrigin,
+  ]);
+  return Array.from(sources).filter(Boolean).join(' ');
+}
+
 /** Middleware: return 403 when domain is on block list (key_value_store key block_list.<domain>) */
 async function blockListCheck(req, res, next) {
   const shop = req.query.shop || req.body?.shop_domain || req.body?.shop;
@@ -1099,10 +1125,12 @@ router.get(
       }
       res.set('Content-Type', 'text/html; charset=utf-8');
       res.set('Cache-Control', 'no-store');
-      // Permissive CSP for preview iframe so injected script and store CSS/JS/resources load; frame-ancestors limits embedding to same origin.
+      // Permissive CSP for preview iframe so injected script and store CSS/JS/resources load.
+      // The editor often runs inside Shopify Admin, so frame-ancestors must allow the full
+      // ancestor chain, not just the app origin.
       res.set(
         'Content-Security-Policy',
-        "default-src 'self' https: http:; script-src 'unsafe-inline' 'unsafe-eval' 'self' https: http:; style-src 'unsafe-inline' 'self' https: http:; img-src 'self' data: https: http:; font-src 'self' https: http: data:; connect-src 'self' https: http:; frame-ancestors 'self'"
+        `default-src 'self' https: http:; script-src 'unsafe-inline' 'unsafe-eval' 'self' https: http:; style-src 'unsafe-inline' 'self' https: http:; img-src 'self' data: https: http:; font-src 'self' https: http: data:; connect-src 'self' https: http:; frame-ancestors ${buildPreviewDocumentFrameAncestors(req)}`
       );
       res.send(html);
     } catch (err) {

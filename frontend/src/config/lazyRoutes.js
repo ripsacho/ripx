@@ -70,6 +70,7 @@ export const AdminMaintenance = lazy(() => import('../components/Admin/AdminMain
 export const AdminAnnouncementBanner = lazy(
   () => import('../components/Admin/AdminAnnouncementBanner')
 );
+export const AdminLandingClients = lazy(() => import('../components/Admin/AdminLandingClients'));
 export const AdminMailProcesses = lazy(() => import('../components/Admin/AdminMailProcesses'));
 export const AdminUsageExport = lazy(() => import('../components/Admin/AdminUsageExport'));
 export const DomainList = lazy(() => import('../components/Domains/DomainList'));

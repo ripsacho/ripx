@@ -531,35 +531,292 @@
   padding: 84px 0;
 }
 
-.logoCloud,
+.testTypeShowcase,
 .pillarSection,
 .compareSection {
   width: min(1440px, calc(100% - 32px));
   margin: 0 auto;
 }
 
-.logoCloud {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 10px;
-  padding: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  border-radius: 24px;
-  background: rgba(15, 23, 42, 0.42);
+.testTypeShowcase {
+  position: relative;
+  margin-top: -2.5rem;
+  padding: 1.15rem;
+  border: 1px solid rgba(103, 232, 249, 0.16);
+  border-radius: 30px;
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(6, 182, 212, 0.06)), rgba(15, 23, 42, 0.7);
+  box-shadow:
+    0 26px 70px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  overflow: hidden;
 }
 
-.logoCloud span {
-  min-height: 54px;
+.testTypeShowcase::before,
+.testTypeShowcase::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 120px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.testTypeShowcase::before {
+  left: 0;
+  background: linear-gradient(90deg, #07111f, transparent);
+}
+
+.testTypeShowcase::after {
+  right: 0;
+  background: linear-gradient(270deg, #07111f, transparent);
+}
+
+.testTypeShowcaseHeader {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.95rem;
+}
+
+.testTypeShowcaseHeader .eyebrow {
+  margin-bottom: 0.3rem;
+}
+
+.testTypeShowcaseHeader h2 {
+  max-width: 720px;
+  margin: 0;
+  color: #fff;
+  font-size: clamp(1.35rem, 3vw, 2.25rem);
+  line-height: 1.05;
+  letter-spacing: -0.05em;
+}
+
+.testTypeRail {
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+}
+
+.testTypeTrack {
+  display: flex;
+  gap: 0.9rem;
+  width: max-content;
+  animation: testTypeMarquee 42s linear infinite;
+}
+
+.testTypeRail:hover .testTypeTrack {
+  animation-play-state: paused;
+}
+
+@keyframes testTypeMarquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(-50% - 0.45rem));
+  }
+}
+
+.testTypeCard {
+  width: clamp(260px, 24vw, 340px);
+  min-height: 150px;
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 0.85rem;
+  align-items: start;
+  padding: 1rem;
+  border: 1px solid rgba(103, 232, 249, 0.14);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(103, 232, 249, 0.13), transparent 42%),
+    rgba(255, 255, 255, 0.045);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.testTypeIcon {
+  width: 58px;
+  height: 58px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 16px;
-  color: rgba(226, 232, 240, 0.72);
-  background: rgba(255, 255, 255, 0.035);
-  font-size: 0.84rem;
-  font-weight: 850;
-  text-transform: uppercase;
+  border-radius: 18px;
+  color: #67e8f9;
+  background: linear-gradient(135deg, rgba(103, 232, 249, 0.18), rgba(167, 139, 250, 0.1));
+  border: 1px solid rgba(103, 232, 249, 0.18);
+  box-shadow: 0 12px 30px rgba(6, 182, 212, 0.08);
+}
+
+.testTypeIcon :global(.Polaris-Icon) {
+  width: 28px;
+  height: 28px;
+  margin: 0 !important;
+}
+
+.testTypeCardBody {
+  min-width: 0;
+}
+
+.testTypeCardBody span {
+  display: inline-flex;
+  margin-bottom: 0.35rem;
+  color: #67e8f9;
+  font-size: 0.68rem;
+  font-weight: 900;
   letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.testTypeCardBody h3 {
+  margin: 0 0 0.35rem;
+  color: #fff;
+  font-size: 1.05rem;
+  letter-spacing: -0.035em;
+}
+
+.testTypeCardBody p {
+  margin: 0;
+  color: rgba(226, 232, 240, 0.72);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.clientShowcase {
+  width: min(1440px, calc(100% - 32px));
+  margin: 1.25rem auto 0;
+  padding: 1.25rem;
+  border: 1px solid rgba(167, 139, 250, 0.18);
+  border-radius: 30px;
+  background:
+    linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(6, 182, 212, 0.05)),
+    rgba(15, 23, 42, 0.62);
+  overflow: hidden;
+  position: relative;
+}
+
+.clientShowcase::before,
+.clientShowcase::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 120px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.clientShowcase::before {
+  left: 0;
+  background: linear-gradient(90deg, #08111f, transparent);
+}
+
+.clientShowcase::after {
+  right: 0;
+  background: linear-gradient(270deg, #08111f, transparent);
+}
+
+.clientShowcaseHeader {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.clientShowcaseHeader .eyebrow {
+  margin-bottom: 0.3rem;
+}
+
+.clientShowcaseHeader h2 {
+  max-width: 720px;
+  margin: 0;
+  color: #fff;
+  font-size: clamp(1.25rem, 3vw, 2.1rem);
+  line-height: 1.08;
+  letter-spacing: -0.05em;
+}
+
+.clientRail {
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+}
+
+.clientTrack {
+  width: max-content;
+  display: flex;
+  gap: 0.9rem;
+  animation: clientMarquee 48s linear infinite;
+}
+
+.clientRail:hover .clientTrack {
+  animation-play-state: paused;
+}
+
+@keyframes clientMarquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(-50% - 0.45rem));
+  }
+}
+
+.clientCard {
+  width: clamp(280px, 26vw, 380px);
+  min-height: 160px;
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 0.85rem;
+  align-items: start;
+  padding: 1rem;
+  border: 1px solid rgba(167, 139, 250, 0.16);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(167, 139, 250, 0.16), transparent 42%),
+    rgba(255, 255, 255, 0.045);
+}
+
+.clientIcon {
+  width: 58px;
+  height: 58px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 20px;
+  color: #020617;
+  background: linear-gradient(135deg, #67e8f9, #a78bfa);
+  font-size: 0.95rem;
+  font-weight: 950;
+  letter-spacing: -0.04em;
+  box-shadow: 0 14px 34px rgba(139, 92, 246, 0.2);
+}
+
+.clientCard h3 {
+  margin: 0 0 0.15rem;
+  color: #fff;
+  font-size: 1.05rem;
+  letter-spacing: -0.035em;
+}
+
+.clientCard span {
+  color: #67e8f9;
+  font-size: 0.75rem;
+  font-weight: 850;
+}
+
+.clientCard p {
+  grid-column: 1 / -1;
+  margin: 0.35rem 0 0;
+  color: rgba(226, 232, 240, 0.72);
+  line-height: 1.55;
+  font-size: 0.9rem;
 }
 
 .sectionHeading {
@@ -830,13 +1087,23 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .logoCloud {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
   .heroSignalGrid,
   .visualStatusBar {
     grid-template-columns: 1fr;
+  }
+
+  .testTypeShowcase {
+    margin-top: -1.25rem;
+  }
+
+  .testTypeShowcaseHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .clientShowcaseHeader {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .ctaSection {
@@ -864,10 +1131,43 @@
   .featureGrid,
   .planGrid,
   .pillarGrid,
-  .logoCloud,
   .statStrip,
   .visualGrid {
     grid-template-columns: 1fr;
+  }
+
+  .testTypeShowcase {
+    width: min(100% - 24px, 1440px);
+    padding: 0.9rem;
+    border-radius: 22px;
+  }
+
+  .testTypeShowcase::before,
+  .testTypeShowcase::after,
+  .clientShowcase::before,
+  .clientShowcase::after {
+    width: 44px;
+  }
+
+  .testTypeCard {
+    width: 280px;
+    grid-template-columns: 48px minmax(0, 1fr);
+  }
+
+  .clientShowcase {
+    width: min(100% - 24px, 1440px);
+    padding: 0.9rem;
+    border-radius: 22px;
+  }
+
+  .clientCard {
+    width: 290px;
+  }
+
+  .testTypeIcon {
+    width: 48px;
+    height: 48px;
+    border-radius: 15px;
   }
 
   .heroActions,

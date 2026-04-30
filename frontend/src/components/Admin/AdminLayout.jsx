@@ -125,6 +125,7 @@ const adminNavGroups = [
       { path: ROUTES.ADMIN_LEGAL, label: 'Terms & Privacy', icon: KeyIcon },
       { path: ROUTES.ADMIN_MAINTENANCE, label: 'Maintenance', icon: ClockIcon },
       { path: ROUTES.ADMIN_ANNOUNCEMENT_BANNER, label: 'Announcement banner', icon: FlagIcon },
+      { path: ROUTES.ADMIN_LANDING_CLIENTS, label: 'Landing clients', icon: GlobeIcon },
       { path: ROUTES.ADMIN_MAIL_PROCESSES, label: 'Email delivery', icon: EmailIcon },
       { path: ROUTES.ADMIN_USAGE_EXPORT, label: 'Usage export', icon: ChartVerticalIcon },
     ],

@@ -98,6 +98,7 @@ export const ROUTES = {
   ADMIN_LEGAL: '/admin/legal',
   ADMIN_MAINTENANCE: '/admin/maintenance',
   ADMIN_ANNOUNCEMENT_BANNER: '/admin/announcement-banner',
+  ADMIN_LANDING_CLIENTS: '/admin/landing-clients',
   ADMIN_MAIL_PROCESSES: '/admin/mail-processes',
   ADMIN_USAGE_EXPORT: '/admin/usage-export',
   ADMIN_SUPPORT_TICKETS: '/admin/support-tickets',

@@ -163,6 +163,7 @@ const accountRoutes = require('./routes/accountRoutes');
 const authRoutes = require('./routes/authRoutes');
 const meRoutes = require('./routes/meRoutes');
 const uiEventsRoutes = require('./routes/uiEventsRoutes');
+const landingRoutes = require('./routes/landingRoutes');
 const { requireEmailSession } = require('./middleware/requireEmailSession');
 const adminRoutes = require('./routes/adminRoutes');
 const apiDocsRoutes = require('./routes/apiDocsRoutes');
@@ -787,6 +788,7 @@ app.use(
   uiEventsRoutes
 );
 app.use('/api/support', supportRoutes); // Ticket submit (public) + My tickets (authenticated)
+app.use('/api/landing', landingRoutes); // Public landing-page content
 app.use('/api/admin', adminRoutes); // Admin panel (requireAdmin inside router)
 
 // 404 handler for API routes - return JSON for unmatched /api/* paths

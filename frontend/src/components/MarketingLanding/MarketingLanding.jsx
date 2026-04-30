@@ -52,6 +52,45 @@ const heroSignals = [
   ['Decision-ready', 'Revenue, AOV, confidence, and guardrails in one view.'],
 ];
 
+const testTypeShowcase = [
+  {
+    icon: CreditCardIcon,
+    title: 'Pricing',
+    text: 'Direct price override paths for product and variant-level price experiments.',
+    accent: 'Price matrix',
+  },
+  {
+    icon: MagicIcon,
+    title: 'Offers',
+    text: 'Promo, discount, and free-shipping campaigns with checkout-aware tracking.',
+    accent: 'Campaign lift',
+  },
+  {
+    icon: ShieldCheckMarkIcon,
+    title: 'Checkout',
+    text: 'Trust blocks, payment methods, delivery methods, and checkout UI experiments.',
+    accent: 'Plus-ready',
+  },
+  {
+    icon: GlobeIcon,
+    title: 'Shipping',
+    text: 'Shipping promise, threshold, carrier quote, and delivery strategy tests.',
+    accent: 'Rate strategy',
+  },
+  {
+    icon: TargetIcon,
+    title: 'Themes',
+    text: 'Theme, template, and onsite edits without losing experiment attribution.',
+    accent: 'No-code edits',
+  },
+  {
+    icon: SearchIcon,
+    title: 'Landing pages',
+    text: 'Split URLs and page-level targeting for campaigns, funnels, and segments.',
+    accent: 'Traffic split',
+  },
+];
+
 const conversionPillars = [
   {
     title: 'Revenue experiments',
@@ -96,7 +135,65 @@ const proofItems = [
   'Clear install checks so missing embeds and function setup are visible before launch.',
 ];
 
+const fallbackClients = [
+  {
+    name: 'Northstar Goods',
+    icon: 'NG',
+    industry: 'Shopify Plus',
+    quote: 'Pricing and checkout tests in one launch checklist.',
+  },
+  {
+    name: 'Luma Home',
+    icon: 'LH',
+    industry: 'Home decor',
+    quote: 'Offer tests moved from guesswork to measurable revenue.',
+  },
+  {
+    name: 'Pixel Pantry',
+    icon: 'PP',
+    industry: 'Food & beverage',
+    quote: 'Preview links made experiments easier for the whole team.',
+  },
+  {
+    name: 'EverFit Studio',
+    icon: 'EF',
+    industry: 'Wellness',
+    quote: 'Guardrails helped us scale tests without noisy rollouts.',
+  },
+  {
+    name: 'Craft Lane',
+    icon: 'CL',
+    industry: 'DTC retail',
+    quote: 'One dashboard for offers, content, and product pricing.',
+  },
+  {
+    name: 'Orbit Supply',
+    icon: 'OS',
+    industry: 'B2B commerce',
+    quote: 'Cleaner setup checks before sending traffic live.',
+  },
+];
+
 function MarketingLanding() {
+  const [clients, setClients] = React.useState(fallbackClients);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch('/api/landing/clients', { credentials: 'omit' })
+      .then(res => (res.ok ? res.json() : null))
+      .then(payload => {
+        if (cancelled) return;
+        const list = payload?.data?.clients;
+        if (Array.isArray(list) && list.length > 0) {
+          setClients(list);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div className={styles.page}>
       <header className={styles.nav}>
@@ -227,10 +324,58 @@ function MarketingLanding() {
           </div>
         </section>
 
-        <section className={styles.logoCloud} aria-label="Optimization areas RipX supports">
-          {['Pricing', 'Offers', 'Checkout', 'Shipping', 'Themes', 'Landing pages'].map(item => (
-            <span key={item}>{item}</span>
-          ))}
+        <section className={styles.testTypeShowcase} aria-label="Optimization areas RipX supports">
+          <div className={styles.testTypeShowcaseHeader}>
+            <p className={styles.eyebrow}>Experiment surfaces</p>
+            <h2>More than page edits. Test the moments that move revenue.</h2>
+          </div>
+          <div className={styles.testTypeRail} aria-label="Supported test types">
+            <div className={styles.testTypeTrack}>
+              {[...testTypeShowcase, ...testTypeShowcase].map((item, index) => (
+                <article
+                  key={`${item.title}-${index}`}
+                  className={styles.testTypeCard}
+                  aria-hidden={index >= testTypeShowcase.length ? 'true' : undefined}
+                >
+                  <div className={styles.testTypeIcon}>
+                    <Icon source={item.icon} />
+                  </div>
+                  <div className={styles.testTypeCardBody}>
+                    <span>{item.accent}</span>
+                    <h3>{item.title}</h3>
+                    <p>{item.text}</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className={styles.clientShowcase} aria-label="Client stories">
+          <div className={styles.clientShowcaseHeader}>
+            <p className={styles.eyebrow}>Trusted by growth teams</p>
+            <h2>Teams use RipX to turn storefront ideas into measured outcomes.</h2>
+          </div>
+          <div className={styles.clientRail} aria-label="Client slider">
+            <div className={styles.clientTrack}>
+              {[...clients, ...clients].map((client, index) => (
+                <article
+                  key={`${client.name}-${index}`}
+                  className={styles.clientCard}
+                  aria-hidden={index >= clients.length ? 'true' : undefined}
+                >
+                  <div className={styles.clientIcon}>{client.icon || client.name?.slice(0, 2)}</div>
+                  <div>
+                    <h3>{client.name}</h3>
+                    <span>{client.industry || 'Ecommerce team'}</span>
+                  </div>
+                  <p>
+                    {client.quote || 'Experiment workflows became easier to launch and verify.'}
+                  </p>
+                </article>
+              ))}
+            </div>
+          </div>
         </section>
 
         <section className={styles.section}>

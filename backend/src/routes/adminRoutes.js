@@ -76,6 +76,7 @@ const {
   setGlobalHoldoutPercent,
   normalizeGlobalHoldoutPercent,
 } = require('../services/experimentationPolicyService');
+const { getLandingClients, saveLandingClients } = require('../services/landingContentService');
 
 /**
  * GET /api/admin/me - Current user identity (any authenticated shop).
@@ -142,6 +143,38 @@ router.get(
       status,
       permissions: role ? permissions : [],
     });
+  })
+);
+
+/**
+ * GET /api/admin/landing-clients
+ * Editable client/logo slider entries for the public landing page.
+ */
+router.get(
+  '/landing-clients',
+  requireAdmin,
+  asyncHandler(async (_req, res) => {
+    const result = await getLandingClients({ includeFallback: false });
+    return sendSuccess(res, HTTP_STATUS.OK, result, 'Landing clients loaded');
+  })
+);
+
+/**
+ * PUT /api/admin/landing-clients
+ * Body: { clients: Array<{ name, icon, industry, quote }> }
+ */
+router.put(
+  '/landing-clients',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const clients = await saveLandingClients(req.body?.clients || []);
+    await auditLogService.logAdminAction(req, {
+      action: 'update',
+      entityType: 'landing_clients',
+      entityId: 'landing.clients.v1',
+      changes: { count: clients.length },
+    });
+    return sendSuccess(res, HTTP_STATUS.OK, { clients }, 'Landing clients saved');
   })
 );
 

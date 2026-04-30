@@ -249,6 +249,7 @@ import {
   AdminLegal,
   AdminMaintenance,
   AdminAnnouncementBanner,
+  AdminLandingClients,
   AdminMailProcesses,
   AdminUsageExport,
   DomainList,
@@ -1340,6 +1341,7 @@ function AppContent() {
                 <Route path="legal" element={<AdminLegal />} />
                 <Route path="maintenance" element={<AdminMaintenance />} />
                 <Route path="announcement-banner" element={<AdminAnnouncementBanner />} />
+                <Route path="landing-clients" element={<AdminLandingClients />} />
                 <Route path="mail-processes" element={<AdminMailProcesses />} />
                 <Route path="usage-export" element={<AdminUsageExport />} />
               </Route>
