@@ -11,11 +11,31 @@ describe('database first-wave migration', () => {
     const sql = fs.readFileSync(migrationPath, 'utf8');
 
     expect(sql).toContain('e.shop_domain = ta.shop_domain');
+    expect(sql).toContain('WITH scoped_rows AS');
+    expect(sql).toContain('UNION ALL');
+    expect(sql).toContain('COUNT(DISTINCT visitor_user_id) AS visitors');
+    expect(sql).not.toContain('OR e.id IS NOT NULL');
     expect(sql).toContain('DROP INDEX IF EXISTS idx_events_analytics');
     expect(sql).toContain('idx_events_custom_metrics_lookup');
     expect(sql).toContain("WHERE event_type = 'custom' AND event_name IS NOT NULL");
     expect(sql).toContain('idx_events_conversion_order_dedup');
     expect(sql).toContain("WHERE event_type = 'conversion' AND metadata ? 'order_id'");
+  });
+
+  it('adds a follow-up aggregate_daily_analytics fix for migrated databases', () => {
+    const sql = fs.readFileSync(
+      path.join(__dirname, '../../migrations/067_fix_aggregate_daily_analytics_window.sql'),
+      'utf8'
+    );
+
+    expect(sql).toContain('CREATE OR REPLACE FUNCTION aggregate_daily_analytics()');
+    expect(sql).toContain('WITH scoped_rows AS');
+    expect(sql).toContain('UNION ALL');
+    expect(sql).toContain('COUNT(DISTINCT visitor_user_id) AS visitors');
+    expect(sql).toContain("WHERE e.event_type = 'conversion'");
+    expect(sql).toContain('AND e.created_at >= target_start');
+    expect(sql).toContain('AND e.created_at < target_end');
+    expect(sql).not.toContain('OR e.id IS NOT NULL');
   });
 
   it('adds a follow-up unique index for race-safe conversion dedupe', () => {

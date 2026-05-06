@@ -1,7 +1,6 @@
--- Database improvement first wave:
--- - Fix daily analytics aggregation to use test_assignments.assigned_at.
--- - Remove a duplicate events index.
--- - Add focused indexes for goal metric observed counts and conversion dedupe.
+-- Fix analytics_daily aggregation so assignment visitors and conversion events are
+-- independently bounded to the target day. Older assignments with same-day
+-- conversions should count conversions/revenue, but not inflate same-day visitors.
 
 CREATE OR REPLACE FUNCTION aggregate_daily_analytics()
 RETURNS void AS $$
@@ -59,17 +58,3 @@ BEGIN
     updated_at = NOW();
 END;
 $$ LANGUAGE plpgsql;
-
-DROP INDEX IF EXISTS idx_events_analytics;
-
-CREATE INDEX IF NOT EXISTS idx_events_shop_event_name_created_at
-  ON events (shop_domain, event_name, created_at DESC)
-  WHERE event_name IS NOT NULL AND event_name <> '';
-
-CREATE INDEX IF NOT EXISTS idx_events_custom_metrics_lookup
-  ON events (test_id, shop_domain, event_name, variant_id, user_id)
-  WHERE event_type = 'custom' AND event_name IS NOT NULL AND event_name <> '';
-
-CREATE INDEX IF NOT EXISTS idx_events_conversion_order_dedup
-  ON events (test_id, user_id, (metadata->>'order_id'))
-  WHERE event_type = 'conversion' AND metadata ? 'order_id';
