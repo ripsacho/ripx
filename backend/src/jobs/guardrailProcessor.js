@@ -7,10 +7,10 @@
 const { query } = require('../utils/database');
 const logger = require('../utils/logger');
 const { updateTest } = require('../models/test');
-const analyticsService = require('../services/analytics');
 const notificationService = require('../services/notificationService');
 const outboundWebhookService = require('../services/outboundWebhookService');
 const { buildGuardrailMetricSummary } = require('../services/experimentDecisionService');
+const { getAutomationAnalytics } = require('./analyticsAutomation');
 
 function clampPercent(value, fallback = 0) {
   const n = Number(value);
@@ -77,6 +77,7 @@ async function stopForGuardrail({
     reason: 'guardrail',
     rollback: rollbackSummary,
     analytics: analytics?.variants,
+    analyticsScope: analytics?.automationScope,
   });
 
   logger.info('Guardrail triggered, test stopped', {
@@ -98,6 +99,7 @@ async function processGuardrails() {
              (guardrail_config IS NOT NULL AND (guardrail_config->>'enabled')::boolean = true)
              OR jsonb_array_length(COALESCE(goal->'guardrails', '[]'::jsonb)) > 0
              OR jsonb_array_length(COALESCE(goal->'guardrail_metrics', '[]'::jsonb)) > 0
+             OR jsonb_path_exists(COALESCE(goal->'secondary', '[]'::jsonb), '$[*] ? (@.metric_role == "guardrail")')
            )
            AND (
              status = 'running'
@@ -117,6 +119,7 @@ async function processGuardrails() {
              (guardrail_config IS NOT NULL AND (guardrail_config->>'enabled')::boolean = true)
              OR jsonb_array_length(COALESCE(goal->'guardrails', '[]'::jsonb)) > 0
              OR jsonb_array_length(COALESCE(goal->'guardrail_metrics', '[]'::jsonb)) > 0
+             OR jsonb_path_exists(COALESCE(goal->'secondary', '[]'::jsonb), '$[*] ? (@.metric_role == "guardrail")')
            )`
       );
       rows = resolveGuardrailQueryRows(fallback);
@@ -138,7 +141,7 @@ async function processGuardrails() {
         const hasActivePersonalization =
           personalizationMode === 'rollout' || personalizationMode === 'personalized';
 
-        const analytics = await analyticsService.getTestAnalytics(test.id, test.shop_domain);
+        const analytics = await getAutomationAnalytics(test.id, test.shop_domain);
 
         if (!analytics?.variants || analytics.variants.length < 2) {
           continue;
@@ -156,7 +159,7 @@ async function processGuardrails() {
               test,
               analytics,
               variantName: breachedVariant?.variantName || variant?.name || 'Variant',
-              reason: `${breachedMetric.metric} guardrail breached (${breachedVariant.relativeLift}% vs control)`,
+              reason: `${breachedMetric.label || breachedMetric.metric} guardrail breached (${breachedVariant.relativeLift}% vs control)`,
               rollbackPercent,
               autoRollback,
               hasActivePersonalization,

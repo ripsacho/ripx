@@ -61,7 +61,7 @@ function MetricCard({
         <Text variant="bodyMd" color="subdued" as="p" fontWeight="medium">
           {title}
         </Text>
-        <Text variant="heading2xl" as="h2" fontWeight="bold" tone="base">
+        <Text variant="heading2xl" as="p" fontWeight="bold" tone="base">
           {displayValue}
         </Text>
         {subtitle && (

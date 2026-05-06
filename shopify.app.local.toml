@@ -8,7 +8,7 @@
 
 client_id = "e7a7d74e7aaa14162e3951a559bda6c1"
 name = "RipperX"
-application_url = "https://responsible-welfare-greatly-why.trycloudflare.com/home"
+application_url = "https://window-reservoir-ratings-centuries.trycloudflare.com/home"
 embedded = true
 
 [build]
@@ -32,10 +32,10 @@ optional_scopes = [ ]
 use_legacy_install_flow = false
 
 [auth]
-redirect_urls = [ "https://responsible-welfare-greatly-why.trycloudflare.com/api/auth/callback" ]
+redirect_urls = [ "https://window-reservoir-ratings-centuries.trycloudflare.com/api/auth/callback" ]
 
 [app_proxy]
-url = "https://responsible-welfare-greatly-why.trycloudflare.com/api/proxy/script.js"
+url = "https://window-reservoir-ratings-centuries.trycloudflare.com/api/proxy/script.js"
 subpath = "ripx"
 prefix = "apps"
 

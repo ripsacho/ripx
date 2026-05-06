@@ -6,9 +6,9 @@
 
 const { query } = require('../utils/database');
 const logger = require('../utils/logger');
-const analyticsService = require('../services/analytics');
 const notificationService = require('../services/notificationService');
 const outboundWebhookService = require('../services/outboundWebhookService');
+const { getAutomationAnalytics, resolveWinningVariant } = require('./analyticsAutomation');
 
 async function processSignificanceAlerts() {
   try {
@@ -18,7 +18,7 @@ async function processSignificanceAlerts() {
 
     for (const test of rows) {
       try {
-        const analytics = await analyticsService.getTestAnalytics(test.id, test.shop_domain);
+        const analytics = await getAutomationAnalytics(test.id, test.shop_domain);
 
         if (!analytics?.significance || !analytics.significance.significant) {
           continue;
@@ -27,18 +27,7 @@ async function processSignificanceAlerts() {
           continue;
         }
 
-        const sig = analytics.significance;
-        let winnerId = null;
-        if (sig.winner === 'variantB') {
-          winnerId = analytics.variants[1]?.id;
-        } else if (sig.winner === 'variantA') {
-          winnerId = analytics.variants[0]?.id;
-        } else if (sig.winner === 'best' && (sig.winnerVariantId || sig.bestVariantId)) {
-          winnerId = sig.winnerVariantId || sig.bestVariantId;
-        }
-        const winner = winnerId
-          ? analytics.variants.find(v => v.id === winnerId)
-          : analytics.variants[1] || analytics.variants[0];
+        const winner = resolveWinningVariant(analytics);
 
         if (!winner) {
           continue;
@@ -104,6 +93,7 @@ async function processSignificanceAlerts() {
           lift: analytics.significance.lift,
           pValue: analytics.significance.pValue,
           variants: analytics.variants,
+          analyticsScope: analytics.automationScope,
         });
 
         logger.info('Significance alert sent', {

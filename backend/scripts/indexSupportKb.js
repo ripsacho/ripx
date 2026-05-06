@@ -7,6 +7,8 @@
  *   npm run index-support-kb [directory]
  *   npm run index-support-kb -- --no-embed   # content only (no OpenAI); use when quota exceeded
  *   npm run index-support-kb -- --clear      # delete all chunks
+ *   npm run index-support-kb -- --include-archive
+ *   npm run index-support-kb -- --dry-run
  *   node backend/scripts/indexSupportKb.js docs
  *   node backend/scripts/indexSupportKb.js --clear
  *   node backend/scripts/indexSupportKb.js --no-embed
@@ -25,6 +27,39 @@ const CHUNK_CHARS = 2000; // ~512 tokens at ~4 chars/token
 const CHUNK_OVERLAP = 200; // ~10% overlap
 const EMBEDDING_MODEL = 'text-embedding-3-small';
 const DIM = 1536;
+const SUPPORTED_EXT_RE = /\.(md|txt|markdown)$/i;
+
+function shouldSkipDirectory(absPath, { includeArchive = false } = {}) {
+  const base = path.basename(absPath).toLowerCase();
+  if (base.startsWith('.')) {
+    return true;
+  }
+  if (!includeArchive && (base === 'archive' || base === 'archives')) {
+    return true;
+  }
+  return ['node_modules', 'dist', 'build', 'coverage'].includes(base);
+}
+
+function collectKbFiles(absDir, options = {}) {
+  const out = [];
+  function walk(currentDir) {
+    const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const absolutePath = path.join(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        if (!shouldSkipDirectory(absolutePath, options)) {
+          walk(absolutePath);
+        }
+        continue;
+      }
+      if (entry.isFile() && SUPPORTED_EXT_RE.test(entry.name)) {
+        out.push(absolutePath);
+      }
+    }
+  }
+  walk(absDir);
+  return out.sort();
+}
 
 function extractText(filePath) {
   const raw = fs.readFileSync(filePath, 'utf8');
@@ -136,6 +171,8 @@ async function run() {
   const args = process.argv.slice(2).filter(a => !a.startsWith('--'));
   const clearOnly = process.argv.includes('--clear');
   const noEmbed = process.argv.includes('--no-embed');
+  const includeArchive = process.argv.includes('--include-archive');
+  const dryRun = process.argv.includes('--dry-run');
   const dir = args[0] || path.join(__dirname, '../../docs');
 
   const { getClient, withTransaction } = require('../src/utils/database');
@@ -185,16 +222,16 @@ async function run() {
     process.exit(1);
   }
 
-  const files = fs
-    .readdirSync(absDir)
-    .filter(f => /\.(md|txt|markdown)$/i.test(f))
-    .map(f => path.join(absDir, f));
+  const files = collectKbFiles(absDir, { includeArchive });
 
   if (files.length === 0) {
     console.log('No .md/.txt files in', absDir);
     await closeDatabase();
     return;
   }
+  console.log(
+    `Found ${files.length} KB file(s) under ${absDir}${includeArchive ? ' (including archives)' : ' (archives skipped)'}`
+  );
 
   let totalInserted = 0;
 
@@ -207,6 +244,10 @@ async function run() {
     }
     const chunks = chunkText(content, sourceLabel);
     console.log(sourceLabel, '→', chunks.length, 'chunks');
+    if (dryRun) {
+      totalInserted += chunks.length;
+      continue;
+    }
 
     await withTransaction(async client => {
       await clearChunks(client, sourceLabel);

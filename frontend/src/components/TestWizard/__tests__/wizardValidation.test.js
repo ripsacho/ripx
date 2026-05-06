@@ -74,7 +74,9 @@ describe('wizardValidation', () => {
           initialData: {},
           showTemplateStep: true,
         });
-        expect(errors).toContain('Select a success metric (Revenue, Conversion, or AOV).');
+        expect(errors).toContain(
+          'Select a success metric (Revenue, Conversion, RPV, PPV, or AOV).'
+        );
       });
 
       it('returns error for COGS percentage out of range', () => {
@@ -117,6 +119,85 @@ describe('wizardValidation', () => {
           showTemplateStep: true,
         });
         expect(errors).toHaveLength(0);
+      });
+
+      it('requires COGS when PPV is the primary metric', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.goal, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: { name: 'Test', goal: { metric: 'profit_per_visitor' } },
+          initialData: {},
+          showTemplateStep: true,
+        });
+        expect(errors).toContain('Enable COGS to use Profit per visitor (PPV).');
+      });
+
+      it('validates duplicate and malformed secondary event goals', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.goal, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            name: 'Test',
+            goal: {
+              metric: 'revenue',
+              secondary: [
+                { event_name: 'checkout start', metric_role: 'secondary' },
+                { event_name: 'add_to_cart', metric_role: 'secondary' },
+                { event_name: 'add_to_cart', metric_role: 'secondary' },
+              ],
+            },
+          },
+          initialData: {},
+          showTemplateStep: true,
+        });
+        expect(errors).toContain(
+          'Goal 1: event name must use lowercase letters, numbers, and underscores only.'
+        );
+        expect(errors).toContain('Goal 3: duplicate event goal "add_to_cart" is already selected.');
+      });
+
+      it('validates guardrail thresholds', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.goal, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            name: 'Test',
+            goal: {
+              metric: 'revenue',
+              secondary: [
+                {
+                  event_name: 'checkout_start',
+                  metric_role: 'guardrail',
+                  min_relative_lift: -150,
+                },
+              ],
+            },
+          },
+          initialData: {},
+          showTemplateStep: true,
+        });
+        expect(errors).toContain('Goal 1: guardrail threshold must be between -100 and 100.');
+      });
+
+      it('validates decision rule bounds', () => {
+        const errors = getWizardStepErrors(stepIdsWithTemplate.goal, {
+          stepIds: stepIdsWithTemplate,
+          reviewStepId: 6,
+          formData: {
+            name: 'Test',
+            goal: {
+              metric: 'revenue',
+              conversion_window_days: 400,
+              significance_level: 1,
+              statistical_power: 0.2,
+            },
+          },
+          initialData: {},
+          showTemplateStep: true,
+        });
+        expect(errors).toContain('Conversion window must be between 1 and 365 days.');
+        expect(errors).toContain('Confidence level must be between 50% and 99.9%.');
+        expect(errors).toContain('Statistical power must be between 50% and 99.9%.');
       });
     });
 

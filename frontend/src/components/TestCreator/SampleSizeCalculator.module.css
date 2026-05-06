@@ -17,11 +17,17 @@
   gap: 1.5rem;
 }
 
+.rootEmbedded {
+  gap: 0.65rem;
+}
+
 /* Embedded: compact intro + mode toggle always visible */
 .embeddedIntro {
   display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
 }
 
 .embeddedIntroText {
@@ -29,6 +35,21 @@
   color: var(--calc-muted);
   line-height: 1.45;
   margin: 0;
+}
+
+.rootEmbedded .embeddedIntroText {
+  display: none;
+}
+
+.metricCaveat {
+  margin: 0;
+  padding: 7px 9px;
+  border: 1px solid rgba(245, 158, 11, 0.24);
+  border-radius: 10px;
+  background: rgba(255, 251, 235, 0.78);
+  color: #92400e;
+  font-size: 0.74rem;
+  line-height: 1.35;
 }
 
 /* Mode toggle - segmented control */
@@ -42,6 +63,10 @@
   width: fit-content;
 }
 
+.rootEmbedded .modeToggle {
+  flex: 0 0 auto;
+}
+
 .modeBtn {
   padding: 10px 20px;
   border: none;
@@ -53,6 +78,11 @@
   font-family: inherit;
   color: var(--calc-muted);
   background: transparent;
+}
+
+.rootEmbedded .modeBtn {
+  padding: 6px 10px;
+  font-size: 0.75rem;
 }
 
 .modeBtn:hover {
@@ -72,6 +102,11 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1.25rem 1.5rem;
   width: 100%;
+}
+
+.rootEmbedded .inputsGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
 }
 
 .inputsStack {
@@ -94,6 +129,18 @@
   }
 }
 
+@media (max-width: 980px) {
+  .rootEmbedded .inputsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .rootEmbedded .inputsGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Each input section - card style */
 .section {
   display: flex;
@@ -105,6 +152,18 @@
   border-radius: var(--calc-radius);
   position: relative;
   transition: border-color var(--sample-size-time-200), box-shadow var(--sample-size-time-200);
+}
+
+.rootEmbedded .section {
+  gap: 5px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(148, 163, 184, 0.18);
+  border-radius: 10px;
+}
+
+.rootEmbedded .section::before {
+  display: none;
 }
 
 .section::before {
@@ -136,11 +195,19 @@
   letter-spacing: 0.01em;
 }
 
+.rootEmbedded .sectionLabel {
+  font-size: 0.72rem;
+}
+
 /* Preset row */
 .presetRow {
   display: flex;
   flex-wrap: wrap;
   gap: 8px 10px;
+}
+
+.rootEmbedded .presetRow {
+  gap: 4px;
 }
 
 .preset {
@@ -154,6 +221,19 @@
   transition: all var(--sample-size-time-200);
   font-family: inherit;
   color: var(--calc-muted);
+}
+
+.rootEmbedded .preset {
+  padding: 4px 6px;
+  font-size: 0.68rem;
+}
+
+.rootEmbedded .inputWrap {
+  margin-top: 0;
+}
+
+.rootEmbedded .inputWrap :global(.Polaris-TextField__HelpText) {
+  display: none;
 }
 
 .preset:hover {
@@ -209,6 +289,46 @@
   background: linear-gradient(165deg, rgba(59, 130, 246, 0.08) 0%, rgba(139, 92, 246, 0.05) 100%);
   box-shadow: 0 4px 20px rgba(59, 130, 246, 0.08);
   position: relative;
+}
+
+.rootEmbedded .resultCard {
+  margin-top: 0;
+}
+
+.rootEmbedded .resultInner {
+  padding: 0.7rem 0.75rem 0.7rem 0.95rem;
+}
+
+.rootEmbedded .resultTitle {
+  margin-bottom: 0.45rem;
+  font-size: 0.84rem;
+}
+
+.rootEmbedded .resultRows {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.rootEmbedded .resultRow {
+  display: grid;
+  gap: 3px;
+  align-items: start;
+  justify-content: stretch;
+  padding: 6px 7px;
+}
+
+.rootEmbedded .resultLabel {
+  font-size: 0.7rem;
+}
+
+.rootEmbedded .resultValue {
+  font-size: 0.88rem;
+}
+
+.rootEmbedded .resultTip {
+  margin-top: 0.55rem;
+  font-size: 0.72rem;
 }
 
 .resultCard::before {
@@ -281,6 +401,13 @@
   background: rgba(255, 255, 255, 0.5);
   border-radius: var(--calc-radius-sm);
   line-height: 1.5;
+}
+
+.rootEmbedded .resultExplanation {
+  margin-top: 0.5rem;
+  padding: 8px 9px;
+  font-size: 0.72rem;
+  line-height: 1.35;
 }
 
 /* Standalone (non-embedded) wrapper */

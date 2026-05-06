@@ -1056,7 +1056,7 @@ npm run dev`}
         <BlockStack gap="400">
           <Text as="p" variant="bodyMd">
             These tabs are in <strong>App settings</strong> (open a store, then Settings in the
-            sidebar). Account settings (theme only) are under your profile menu.
+            sidebar). Account, API, and appearance preferences are now inside Profile.
           </Text>
           <Text variant="headingMd" as="h4">
             General Tab
@@ -1142,7 +1142,7 @@ npm run dev`}
               'Create GCP project, enable BigQuery',
               'Service account with BigQuery Data Editor',
               'Add GCP_PROJECT_ID, GCP_DATASET, GOOGLE_APPLICATION_CREDENTIALS to .env',
-              'Create tables from backend/docs/bigquery_schema.sql',
+              'Create tables from backend/docs/bigquery_schema.sql or inspect GET /api/analytics/export/schema',
             ]}
           />
           <Text variant="headingMd" as="h4">
@@ -1159,8 +1159,31 @@ npm run dev`}
             headers={['Table', 'Type', 'Description']}
             rows={[
               ['events', 'Incremental', 'Conversion, view, click, custom events'],
-              ['heatmap_events', 'Incremental', 'Click and scroll data'],
+              [
+                'heatmap_events',
+                'Incremental',
+                'Click, scroll, full-page coordinates, and capture diagnostics',
+              ],
               ['tests', 'Full only', 'Test snapshots'],
+              ['assignments', 'Full only', 'Assignment snapshots with device/country segments'],
+              [
+                'analytics_daily_segments',
+                'Full only',
+                'Daily visitors, conversions, and revenue by segment',
+              ],
+              [
+                'heatmap_daily_rollups',
+                'Full only',
+                'Daily heatmap counts by page, event type, and segment',
+              ],
+              ['event_health', 'Full only', 'Event volume and freshness diagnostics'],
+              ['funnels', 'Full only', 'Derived funnel step reach metrics'],
+              ['guardrails', 'Full only', 'Experiment guardrail summaries'],
+              [
+                'checkout_diagnostics',
+                'Reserved',
+                'Checkout diagnostic events when this export is enabled',
+              ],
             ]}
           />
         </BlockStack>
@@ -1995,8 +2018,8 @@ function Documentation() {
             <Link to={ROUTES.CONNECT} className={styles.docsResourcesLink}>
               <ConnectIcon /> Connect / API Key
             </Link>
-            <Link to={ROUTES.SETTINGS} className={styles.docsResourcesLink}>
-              <SettingsIcon /> Account settings (theme)
+            <Link to={ROUTES.PROFILE_APPEARANCE} className={styles.docsResourcesLink}>
+              <SettingsIcon /> Profile appearance
             </Link>
             <Link to={ROUTES.USER_PANEL} className={styles.docsResourcesLink}>
               <SettingsIcon /> App settings

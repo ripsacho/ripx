@@ -6,12 +6,12 @@
  */
 
 const express = require('express');
-const path = require('path');
 const fs = require('fs');
 const router = express.Router();
 const validators = require('../utils/validators');
 const { trackEvent } = require('../models/analytics');
 const { getActiveTestsForStorefront, getTestById, getTestsByIds } = require('../models/test');
+const { listGoalMetricDefinitions } = require('../models/goalMetricDefinition');
 const abTestEngine = require('../services/abTestEngine');
 const {
   tenantExists,
@@ -19,7 +19,7 @@ const {
   normalizeDomain,
   setDomainVerifiedAt,
 } = require('../models/tenant');
-const { insertHeatmapEventsBatch } = require('../models/heatmap');
+const { insertHeatmapEventsBatch, normalizeHeatmapStoredPageUrl } = require('../models/heatmap');
 const {
   SCRIPT_VERSION,
   buildStorefrontRuntimeConfig,
@@ -36,6 +36,10 @@ const {
   normalizeCheckoutTrackingMetadata,
   normalizeEventName,
 } = require('../utils/checkoutTracking');
+const {
+  getStorefrontScriptPath,
+  readStorefrontScriptSource,
+} = require('../utils/storefrontScriptSource');
 const { getCheckoutPhaseFromTest } = require('../utils/checkoutPhases');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const {
@@ -77,6 +81,7 @@ const {
 } = require('../utils/priceAssignmentSignature');
 const { findVariantForPreviewQuery } = require('../utils/previewVariantMatch');
 const { normalizeShippingVariantConfig } = require('../services/shippingTestConfigService');
+const { evaluateFlag } = require('../services/featureFlagService');
 const PRICE_RESOLVE_LINE_ID_MAX = Math.max(
   32,
   Number.parseInt(process.env.RIPX_PRICE_RESOLVE_LINE_ID_MAX || '256', 10) || 256
@@ -87,6 +92,127 @@ const PRICE_ASSIGNMENT_SIGNING_WARNING_INTERVAL_MS = Math.max(
     60000
 );
 const priceAssignmentSigningWarningLastAt = new Map();
+const HEATMAP_VARIANT_ID_MAX = 255;
+const HEATMAP_MAX_VIEWPORT_DIMENSION = 20000;
+const HEATMAP_MAX_PAGE_DIMENSION = 200000;
+
+function parseFiniteHeatmapNumber(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function clampHeatmapNumber(value, min, max) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  return Math.max(min, Math.min(max, value));
+}
+
+function normalizePositiveHeatmapInt(value, max) {
+  const parsed = parseFiniteHeatmapNumber(value);
+  if (parsed === null || parsed <= 0) {
+    return null;
+  }
+  return Math.min(max, Math.max(1, Math.round(parsed)));
+}
+
+function normalizeHeatmapBoolean(value) {
+  if (value === true || value === false) {
+    return value;
+  }
+  if (value === 'true' || value === '1' || value === 1) {
+    return true;
+  }
+  if (value === 'false' || value === '0' || value === 0) {
+    return false;
+  }
+  return null;
+}
+
+function normalizeHeatmapCaptureEvent(raw, domain) {
+  const eventType = raw.event_type;
+  const viewportWidth = normalizePositiveHeatmapInt(
+    raw.viewport_width,
+    HEATMAP_MAX_VIEWPORT_DIMENSION
+  );
+  const viewportHeight = normalizePositiveHeatmapInt(
+    raw.viewport_height,
+    HEATMAP_MAX_VIEWPORT_DIMENSION
+  );
+  const pageWidth = normalizePositiveHeatmapInt(raw.page_width, HEATMAP_MAX_PAGE_DIMENSION);
+  const pageHeight = normalizePositiveHeatmapInt(raw.page_height, HEATMAP_MAX_PAGE_DIMENSION);
+  const x = clampHeatmapNumber(parseFiniteHeatmapNumber(raw.x), 0, 100);
+  const y = clampHeatmapNumber(parseFiniteHeatmapNumber(raw.y), 0, 100);
+  const scrollDepth = clampHeatmapNumber(parseFiniteHeatmapNumber(raw.scroll_depth), 0, 100);
+  const pageX = pageWidth
+    ? clampHeatmapNumber(parseFiniteHeatmapNumber(raw.page_x), 0, pageWidth)
+    : null;
+  const pageY = pageHeight
+    ? clampHeatmapNumber(parseFiniteHeatmapNumber(raw.page_y), 0, pageHeight)
+    : null;
+  const hasFullPageClick = pageX !== null && pageY !== null && pageWidth && pageHeight;
+  const hasLegacyClick = x !== null && y !== null && viewportWidth && viewportHeight;
+
+  if (eventType === 'click' && !hasFullPageClick && !hasLegacyClick) {
+    return { event: null, reason: 'malformed' };
+  }
+  if (eventType === 'scroll' && scrollDepth === null) {
+    return { event: null, reason: 'malformed' };
+  }
+
+  return {
+    event: {
+      test_id: raw.test_id,
+      variant_id: String(raw.variant_id).trim().substring(0, HEATMAP_VARIANT_ID_MAX),
+      shop_domain: domain,
+      page_url: normalizeHeatmapStoredPageUrl(String(raw.page_url).substring(0, 2048)),
+      event_type: eventType,
+      x,
+      y,
+      scroll_depth: eventType === 'scroll' ? scrollDepth : null,
+      viewport_width: viewportWidth,
+      viewport_height: viewportHeight,
+      page_x: hasFullPageClick ? pageX : null,
+      page_y: hasFullPageClick ? pageY : null,
+      page_width: pageWidth,
+      page_height: pageHeight,
+      device: raw.device,
+      country: raw.country,
+      capture_version: raw.capture_version,
+      page_height_source: raw.page_height_source,
+      scroll_container_detected: normalizeHeatmapBoolean(raw.scroll_container_detected),
+    },
+    reason: null,
+  };
+}
+
+function isValidHeatmapVariantId(value) {
+  const text = String(value || '').trim();
+  return (
+    text.length > 0 &&
+    text.length <= HEATMAP_VARIANT_ID_MAX &&
+    !Array.from(text).some(char => {
+      const code = char.charCodeAt(0);
+      return code < 32 || code === 127;
+    })
+  );
+}
+
+function isHeatmapVariantAllowedForTest(test, variantId) {
+  if (!test || !variantId) {
+    return false;
+  }
+  const normalizedVariantId = String(variantId).trim();
+  return (test.variants || []).some(variant => {
+    const candidates = [variant?.id, variant?.name, variant?.variant_id, variant?.variantId]
+      .filter(value => value !== null && value !== undefined)
+      .map(value => String(value).trim());
+    return candidates.includes(normalizedVariantId);
+  });
+}
 
 function normalizeCspOrigin(rawValue, fallback = null) {
   const value = rawValue || fallback;
@@ -586,10 +712,6 @@ function isTenantSuspendedOrBlocked(tenant) {
   return s === 'suspended' || s === 'blocked';
 }
 
-function getStorefrontScriptPath() {
-  return path.join(__dirname, '../../..', 'shopify', 'storefront-script.js');
-}
-
 router.use(blockListCheck);
 router.use(maintenanceCheck);
 
@@ -707,12 +829,15 @@ router.get(
           .json({ success: false, error: 'Access suspended. Contact support.' });
       }
 
-      const tests = await getActiveTestsForStorefront(domain);
-      runtimeConfig = buildStorefrontRuntimeConfig(domain, tests, req);
+      const [tests, goalMetricDefinitions] = await Promise.all([
+        getActiveTestsForStorefront(domain),
+        listGoalMetricDefinitions(domain).catch(() => []),
+      ]);
+      runtimeConfig = buildStorefrontRuntimeConfig(domain, tests, req, goalMetricDefinitions);
     }
 
     const scriptPath = getStorefrontScriptPath();
-    const scriptContents = fs.readFileSync(scriptPath, 'utf8');
+    const scriptContents = readStorefrontScriptSource(scriptPath);
 
     const cacheControl = getStorefrontScriptCacheControl();
     const versionLabel = req.query.v ? String(req.query.v) : SCRIPT_VERSION;
@@ -1103,7 +1228,7 @@ router.get(
       };
       let scriptContent;
       try {
-        scriptContent = fs.readFileSync(getStorefrontScriptPath(), 'utf8');
+        scriptContent = readStorefrontScriptSource(getStorefrontScriptPath());
         scriptContent = scriptContent.replace(/<\/script>/gi, '<\\/script>');
       } catch (e) {
         logger.warn('Preview document: could not read storefront script', { error: e.message });
@@ -1263,6 +1388,13 @@ router.post(
     if (tenantHeatmap && isTenantSuspendedOrBlocked(tenantHeatmap)) {
       return res.status(403).json({ success: false, error: 'Access suspended. Contact support.' });
     }
+    const heatmapFlag = await evaluateFlag('flag.heatmaps', {
+      domain,
+      defaultValue: true,
+    });
+    if (!heatmapFlag.enabled) {
+      return res.json({ success: true, inserted: 0, rejected: 0, disabled: true });
+    }
 
     if (!events || !Array.isArray(events) || events.length === 0) {
       return res.json({ success: true, inserted: 0 });
@@ -1275,34 +1407,61 @@ router.post(
       });
     }
 
-    const valid = events.filter(
-      e =>
+    const rejectedByReason = { malformed: 0, invalid_variant: 0 };
+    const valid = [];
+    events.forEach(e => {
+      if (
         validators.isValidUUID(e.test_id) &&
-        validators.isValidUUID(e.variant_id) &&
+        isValidHeatmapVariantId(e.variant_id) &&
         e.page_url &&
         (e.event_type === 'click' || e.event_type === 'scroll')
-    );
+      ) {
+        valid.push(e);
+      } else {
+        rejectedByReason.malformed += 1;
+      }
+    });
 
     if (valid.length === 0) {
-      return res.json({ success: true, inserted: 0 });
+      return res.json({ success: true, inserted: 0, rejected: events.length, rejectedByReason });
     }
 
-    const toInsert = valid.map(e => ({
-      test_id: e.test_id,
-      variant_id: e.variant_id,
-      shop_domain: domain,
-      page_url: String(e.page_url).substring(0, 2048),
-      event_type: e.event_type,
-      x: e.x != null ? parseFloat(e.x) : null, // eslint-disable-line eqeqeq
-      y: e.y != null ? parseFloat(e.y) : null, // eslint-disable-line eqeqeq
-      scroll_depth: e.scroll_depth != null ? parseFloat(e.scroll_depth) : null, // eslint-disable-line eqeqeq
-      viewport_width: e.viewport_width != null ? parseInt(e.viewport_width, 10) : null, // eslint-disable-line eqeqeq
-      viewport_height: e.viewport_height != null ? parseInt(e.viewport_height, 10) : null, // eslint-disable-line eqeqeq
-    }));
+    const testsById = await getTestsByIds(
+      valid.map(event => event.test_id),
+      domain
+    );
+    const toInsert = [];
+    valid.forEach(e => {
+      const test = testsById.get(String(e.test_id));
+      if (!test || !isHeatmapVariantAllowedForTest(test, e.variant_id)) {
+        rejectedByReason.invalid_variant += 1;
+        return;
+      }
+      const normalized = normalizeHeatmapCaptureEvent(e, domain);
+      if (!normalized.event) {
+        rejectedByReason[normalized.reason] = (rejectedByReason[normalized.reason] || 0) + 1;
+        return;
+      }
+      toInsert.push(normalized.event);
+    });
+
+    if (toInsert.length === 0) {
+      return res.json({
+        success: true,
+        inserted: 0,
+        rejected: events.length,
+        rejectedByReason,
+      });
+    }
 
     const { inserted } = await insertHeatmapEventsBatch(toInsert);
 
-    res.json({ success: true, inserted });
+    res.json({
+      success: true,
+      inserted,
+      rejected: events.length - inserted,
+      rejectedByReason,
+    });
   })
 );
 
@@ -1318,6 +1477,7 @@ router.post(
 router.get(
   '/variants',
   asyncHandler(async (req, res) => {
+    res.set('Cache-Control', 'no-store');
     const {
       user_id,
       shop_domain,
@@ -1501,6 +1661,7 @@ router.get(
 router.get(
   '/variant',
   asyncHandler(async (req, res) => {
+    res.set('Cache-Control', 'no-store');
     const {
       test_id,
       user_id,
@@ -2689,5 +2850,12 @@ router.post(
     return res.json({ success: true });
   })
 );
+
+router.__testUtils = {
+  isValidHeatmapVariantId,
+  isHeatmapVariantAllowedForTest,
+  normalizeHeatmapCaptureEvent,
+  parseFiniteHeatmapNumber,
+};
 
 module.exports = router;

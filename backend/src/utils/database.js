@@ -51,6 +51,12 @@ function initDatabase() {
 
     const connectionString = process.env.DATABASE_URL;
     const timeoutMs = getStatementTimeoutMs();
+    if (process.env.NODE_ENV === 'production' && !timeoutMs) {
+      const logger = require('./logger');
+      logger.warn(
+        'DATABASE_STATEMENT_TIMEOUT_MS is not set; long-running queries can hold database pool connections.'
+      );
+    }
     // Append statement_timeout so long queries don't hold connections (PostgreSQL option in ms)
     const urlWithTimeout =
       timeoutMs !== undefined && timeoutMs !== null && timeoutMs > 0 && connectionString

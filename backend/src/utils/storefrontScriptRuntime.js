@@ -4,7 +4,7 @@
  */
 
 /** Bump when embedded runtime config or script contract changes. Keep ?v= in sync: extensions/ripx-theme/blocks/ripx-app-embed.liquid + frontend RIPX_STOREFRONT_SCRIPT_VERSION. */
-const SCRIPT_VERSION = '1.0.43';
+const SCRIPT_VERSION = '1.0.46';
 
 /**
  * DB/API may use "pricing"; storefront logic expects "price".
@@ -61,10 +61,30 @@ function mapTestToStorefrontPayload(test) {
     .toLowerCase()
     .trim();
   const antiFlickerMode = antiFlickerModeRaw === 'strict' ? 'strict' : 'balanced';
+  const antiFlickerTimeoutRaw = Number(test.segments?.anti_flicker_timeout_ms);
+  const antiFlickerTimeoutMs = Number.isFinite(antiFlickerTimeoutRaw)
+    ? Math.max(300, Math.min(2000, Math.round(antiFlickerTimeoutRaw)))
+    : null;
   const templateKey = String(test.goal?.template_key || '')
     .toLowerCase()
     .trim();
   const excludedProductIds = normalizeProductIdList(test.segments?.excluded_product_ids);
+  const goalEvents = (Array.isArray(test.goal?.secondary) ? test.goal.secondary : [])
+    .map(item => {
+      if (!item || typeof item !== 'object') {
+        return null;
+      }
+      const eventName = String(item.event_name || item.eventName || '').trim();
+      if (!eventName) {
+        return null;
+      }
+      return {
+        eventName,
+        aggregation: item.aggregation || 'count',
+        metricRole: item.metric_role || 'secondary',
+      };
+    })
+    .filter(Boolean);
   return {
     id: test.id,
     type: normalizeTestTypeForStorefront(test.type),
@@ -74,8 +94,61 @@ function mapTestToStorefrontPayload(test) {
     targetIds: ids.length > 0 ? ids : null,
     excludedProductIds: excludedProductIds.length > 0 ? excludedProductIds : null,
     antiFlickerMode,
+    antiFlickerTimeoutMs,
     jsTargeting:
       jsTargeting?.enabled && jsTargeting?.code ? { enabled: true, code: jsTargeting.code } : null,
+    goalEvents,
+  };
+}
+
+function mapGoalMetricDefinitionToRuntime(definition) {
+  if (!definition || typeof definition !== 'object') {
+    return null;
+  }
+  const eventName = String(definition.event_name || '').trim();
+  if (!eventName) {
+    return null;
+  }
+  const triggerType = String(definition.trigger_type || 'custom_event').trim() || 'custom_event';
+  const triggerConfig =
+    definition.trigger_config && typeof definition.trigger_config === 'object'
+      ? definition.trigger_config
+      : {};
+  return {
+    id: definition.id,
+    name: definition.name || eventName,
+    eventName,
+    triggerType,
+    triggerConfig: {
+      selector: String(triggerConfig.selector || '').trim(),
+      urlPattern: String(triggerConfig.url_pattern || triggerConfig.urlPattern || '').trim(),
+      parameterName: String(
+        triggerConfig.parameter_name || triggerConfig.parameterName || ''
+      ).trim(),
+      linkKind: String(triggerConfig.link_kind || triggerConfig.linkKind || '').trim(),
+      visibilityThreshold: Number(triggerConfig.visibility_threshold || 50) || 50,
+      visibilityMinDurationMs: Number(triggerConfig.visibility_min_duration_ms || 0) || 0,
+      visibilityFrequency: String(triggerConfig.visibility_frequency || 'once_per_page').trim(),
+      observeDomChanges: triggerConfig.observe_dom_changes !== false,
+      customJavascript: String(
+        triggerConfig.custom_javascript || triggerConfig.customJavascript || ''
+      ).trim(),
+      customJavascriptIntervalMs:
+        Number(triggerConfig.custom_javascript_interval_ms || 1000) || 1000,
+      customJavascriptMaxWaitMs:
+        Number(triggerConfig.custom_javascript_max_wait_ms || 10000) || 10000,
+    },
+    aggregation: definition.aggregation || 'count',
+    metricRole: definition.metric_role || 'secondary',
+  };
+}
+
+function getHeatmapCollectionRuntimeConfig() {
+  const sampleRateRaw = Number.parseFloat(process.env.RIPX_HEATMAP_SAMPLE_RATE || '1');
+  const sampleRate = Number.isFinite(sampleRateRaw) ? Math.min(1, Math.max(0, sampleRateRaw)) : 1;
+  return {
+    enabled: process.env.RIPX_HEATMAP_COLLECTION_ENABLED !== 'false',
+    sampleRate,
   };
 }
 
@@ -84,7 +157,7 @@ function mapTestToStorefrontPayload(test) {
  * @param {object[]} tests
  * @param {import('express').Request} req
  */
-function buildStorefrontRuntimeConfig(shop, tests, req) {
+function buildStorefrontRuntimeConfig(shop, tests, req, goalMetricDefinitions = []) {
   const appUrl = (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(
     /\/+$/,
     ''
@@ -96,7 +169,11 @@ function buildStorefrontRuntimeConfig(shop, tests, req) {
     shopDomain: shop,
     version: SCRIPT_VERSION,
     consentRequired: process.env.RIPX_CONSENT_REQUIRED === 'true',
+    heatmapCollection: getHeatmapCollectionRuntimeConfig(),
     activeTests: (tests || []).map(mapTestToStorefrontPayload),
+    goalMetricDefinitions: (goalMetricDefinitions || [])
+      .map(mapGoalMetricDefinitionToRuntime)
+      .filter(Boolean),
   };
 }
 
@@ -116,6 +193,7 @@ module.exports = {
   SCRIPT_VERSION,
   buildStorefrontRuntimeConfig,
   getStorefrontScriptCacheControl,
+  getHeatmapCollectionRuntimeConfig,
   normalizeTestTypeForStorefront,
   normalizeTargetTypeForStorefront,
   mapTestToStorefrontPayload,

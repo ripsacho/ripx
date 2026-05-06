@@ -17,9 +17,126 @@ const { query } = require('../utils/database');
 const logger = require('../utils/logger');
 const integrationConfig = require('../services/integrationConfigService');
 const { validateExportSchemaManifest } = require('../services/warehouseExportSchemaService');
+const analyticsService = require('../services/analytics');
+const { getFunnelMetrics } = require('../models/analytics');
+const { buildGuardrailMetricSummary } = require('../services/experimentDecisionService');
+const { parseGoalConfig } = require('../utils/goalConfig');
 
 const EXPORT_STATE_KEY = 'bigquery_last_export_at';
 const HEATMAP_EXPORT_STATE_KEY = 'bigquery_heatmap_last_export_at';
+const EVENT_EXPORT_LIMIT = 100000;
+const HEATMAP_EXPORT_LIMIT = 50000;
+const SNAPSHOT_EXPORT_LIMIT = 100000;
+const DERIVED_TEST_EXPORT_LIMIT = 500;
+const BIGQUERY_EXPORT_FIELDS = Object.freeze({
+  assignments: [
+    'test_id',
+    'variant_id',
+    'user_id',
+    'shop_domain',
+    'assigned_at',
+    'device',
+    'country',
+  ],
+  events: [
+    'id',
+    'test_id',
+    'variant_id',
+    'user_id',
+    'shop_domain',
+    'event_type',
+    'event_name',
+    'event_value',
+    'metadata',
+    'created_at',
+  ],
+  heatmap_events: [
+    'id',
+    'tenant_id',
+    'test_id',
+    'variant_id',
+    'shop_domain',
+    'page_url',
+    'page_key',
+    'event_type',
+    'x',
+    'y',
+    'scroll_depth',
+    'viewport_width',
+    'viewport_height',
+    'page_x',
+    'page_y',
+    'page_width',
+    'page_height',
+    'capture_version',
+    'page_height_source',
+    'scroll_container_detected',
+    'device',
+    'country',
+    'created_at',
+  ],
+  tests: [
+    'id',
+    'shop_domain',
+    'name',
+    'description',
+    'type',
+    'status',
+    'goal',
+    'variants',
+    'holdout_percent',
+    'created_at',
+    'updated_at',
+  ],
+  analytics_daily_segments: [
+    'date',
+    'test_id',
+    'shop_domain',
+    'variant_id',
+    'variant_name',
+    'device',
+    'country',
+    'visitors',
+    'conversions',
+    'revenue',
+  ],
+  event_health: [
+    'test_id',
+    'event_name',
+    'role',
+    'total_events',
+    'unique_users',
+    'first_seen',
+    'last_seen',
+  ],
+  funnels: [
+    'test_id',
+    'variant_id',
+    'shop_domain',
+    'funnel_mode',
+    'step_id',
+    'step_order',
+    'users',
+    'start_date',
+    'end_date',
+    'device',
+    'country',
+    'computed_at',
+  ],
+  guardrails: ['test_id', 'metric', 'threshold', 'status', 'evaluated_at'],
+  heatmap_daily_rollups: [
+    'event_date',
+    'shop_domain',
+    'test_id',
+    'variant_id',
+    'page_key',
+    'event_type',
+    'device',
+    'country',
+    'event_count',
+    'last_seen_at',
+  ],
+});
 
 async function getLastExportTime(key = EXPORT_STATE_KEY) {
   try {
@@ -60,6 +177,214 @@ async function ensureKeyValueStore() {
   }
 }
 
+async function safeQueryRows(sql, params = []) {
+  try {
+    const result = await query(sql, params);
+    return result.rows || [];
+  } catch (error) {
+    logger.warn('BigQuery optional analytics export skipped', { error: error.message });
+    return [];
+  }
+}
+
+async function insertRows(dataset, tableName, rows, results) {
+  if (!rows.length) {
+    return;
+  }
+  await dataset.table(tableName).insert(rows);
+  results.exported += rows.length;
+  results.tables.push(tableName);
+}
+
+function addExportWarning(results, code, message, metadata = {}) {
+  if (!results.warnings) {
+    results.warnings = [];
+  }
+  results.warnings.push({ code, message, ...metadata });
+}
+
+function markIfTruncated(results, tableName, rowCount, limit) {
+  if (rowCount >= limit) {
+    addExportWarning(
+      results,
+      'export_limit_reached',
+      `${tableName} export reached the ${limit.toLocaleString()} row limit and may be partial.`,
+      { table: tableName, limit, rowCount }
+    );
+  }
+}
+
+async function exportAnalyticsDailySegments(dataset, results) {
+  const rows = await safeQueryRows(`
+    SELECT date, test_id, shop_domain, variant_id, variant_name, device, country, visitors, conversions, revenue
+    FROM analytics_daily_segments
+    ORDER BY date DESC
+    LIMIT ${SNAPSHOT_EXPORT_LIMIT}
+  `);
+  markIfTruncated(results, 'analytics_daily_segments', rows.length, SNAPSHOT_EXPORT_LIMIT);
+  await insertRows(
+    dataset,
+    'analytics_daily_segments',
+    rows.map(r => ({
+      date: r.date,
+      test_id: r.test_id ? String(r.test_id) : null,
+      shop_domain: r.shop_domain || null,
+      variant_id: r.variant_id || null,
+      variant_name: r.variant_name || null,
+      device: r.device || null,
+      country: r.country || null,
+      visitors: Number(r.visitors) || 0,
+      conversions: Number(r.conversions) || 0,
+      revenue: parseFloat(r.revenue) || 0,
+    })),
+    results
+  );
+}
+
+async function exportHeatmapDailyRollups(dataset, results) {
+  const rows = await safeQueryRows(`
+    SELECT event_date, shop_domain, test_id, variant_id, page_key, event_type, device, country, event_count, last_seen_at
+    FROM heatmap_event_daily_rollups
+    ORDER BY event_date DESC
+    LIMIT ${SNAPSHOT_EXPORT_LIMIT}
+  `);
+  markIfTruncated(results, 'heatmap_daily_rollups', rows.length, SNAPSHOT_EXPORT_LIMIT);
+  await insertRows(
+    dataset,
+    'heatmap_daily_rollups',
+    rows.map(r => ({
+      event_date: r.event_date,
+      shop_domain: r.shop_domain || null,
+      test_id: r.test_id ? String(r.test_id) : null,
+      variant_id: r.variant_id || null,
+      page_key: r.page_key || null,
+      event_type: r.event_type || null,
+      device: r.device || null,
+      country: r.country || null,
+      event_count: Number(r.event_count) || 0,
+      last_seen_at: r.last_seen_at || null,
+    })),
+    results
+  );
+}
+
+async function exportEventHealth(dataset, results) {
+  const rows = await safeQueryRows(`
+    SELECT
+      test_id,
+      event_name,
+      COUNT(*)::bigint AS total_events,
+      COUNT(DISTINCT user_id)::bigint AS unique_users,
+      MIN(created_at) AS first_seen,
+      MAX(created_at) AS last_seen
+    FROM events
+    WHERE event_name IS NOT NULL
+      AND event_name <> ''
+    GROUP BY test_id, event_name
+    ORDER BY last_seen DESC NULLS LAST
+    LIMIT ${SNAPSHOT_EXPORT_LIMIT}
+  `);
+  markIfTruncated(results, 'event_health', rows.length, SNAPSHOT_EXPORT_LIMIT);
+  await insertRows(
+    dataset,
+    'event_health',
+    rows.map(r => ({
+      test_id: r.test_id ? String(r.test_id) : null,
+      event_name: r.event_name || null,
+      role: null,
+      total_events: Number(r.total_events) || 0,
+      unique_users: Number(r.unique_users) || 0,
+      first_seen: r.first_seen || null,
+      last_seen: r.last_seen || null,
+    })),
+    results
+  );
+}
+
+async function exportDerivedFunnelRows(dataset, results, tests = []) {
+  const rows = [];
+  const scopedTests = tests.slice(0, DERIVED_TEST_EXPORT_LIMIT);
+  if (tests.length > scopedTests.length) {
+    addExportWarning(
+      results,
+      'derived_test_limit_reached',
+      `Funnel export processed ${scopedTests.length.toLocaleString()} tests and skipped the remaining tests.`,
+      { table: 'funnels', limit: DERIVED_TEST_EXPORT_LIMIT, testCount: tests.length }
+    );
+  }
+  for (const test of scopedTests) {
+    try {
+      const goal = parseGoalConfig(test.goal);
+      const funnel = await getFunnelMetrics(test.id, test.shop_domain, {
+        funnel_steps: goal?.funnel_steps,
+        funnel_mode: goal?.funnel_mode,
+        conversionWindowDays: goal?.conversion_window_days,
+        conversionUrl: goal?.conversion_url,
+      });
+      const steps = Array.isArray(funnel?.steps) ? funnel.steps : [];
+      const funnelMode = funnel?.mode || goal?.funnel_mode || 'step_reach';
+      Object.entries(funnel?.byVariant || {}).forEach(([variantId, stepCounts]) => {
+        steps.forEach((step, index) => {
+          rows.push({
+            test_id: String(test.id),
+            variant_id: variantId,
+            shop_domain: test.shop_domain || null,
+            funnel_mode: funnelMode,
+            step_id: step.id || null,
+            step_order: index + 1,
+            users: Number(stepCounts?.[step.id]) || 0,
+            start_date: null,
+            end_date: null,
+            device: null,
+            country: null,
+            computed_at: new Date(),
+          });
+        });
+      });
+    } catch (error) {
+      logger.warn('BigQuery funnel export skipped for test', {
+        testId: test.id,
+        error: error.message,
+      });
+    }
+  }
+  await insertRows(dataset, 'funnels', rows, results);
+}
+
+async function exportDerivedGuardrails(dataset, results, tests = []) {
+  const rows = [];
+  const scopedTests = tests.slice(0, DERIVED_TEST_EXPORT_LIMIT);
+  if (tests.length > scopedTests.length) {
+    addExportWarning(
+      results,
+      'derived_test_limit_reached',
+      `Guardrail export processed ${scopedTests.length.toLocaleString()} tests and skipped the remaining tests.`,
+      { table: 'guardrails', limit: DERIVED_TEST_EXPORT_LIMIT, testCount: tests.length }
+    );
+  }
+  for (const test of scopedTests) {
+    try {
+      const analytics = await analyticsService.getTestAnalytics(test.id, test.shop_domain);
+      const summary = buildGuardrailMetricSummary(test, analytics);
+      (summary.metrics || []).forEach(metric => {
+        rows.push({
+          test_id: String(test.id),
+          metric: metric.metric || metric.label || null,
+          threshold: Number(metric.threshold ?? metric.minRelativeLift) || null,
+          status: metric.status || summary.status || null,
+          evaluated_at: new Date(),
+        });
+      });
+    } catch (error) {
+      logger.warn('BigQuery guardrail export skipped for test', {
+        testId: test.id,
+        error: error.message,
+      });
+    }
+  }
+  await insertRows(dataset, 'guardrails', rows, results);
+}
+
 async function exportToBigQuery(options = {}) {
   const shopDomain = options.shopDomain;
   const bqConfig = shopDomain
@@ -92,7 +417,19 @@ async function exportToBigQuery(options = {}) {
     const lastExport = fullExport ? null : await getLastExportTime();
     const since = lastExport || new Date(Date.now() - 25 * 60 * 60 * 1000);
 
-    const results = { exported: 0, tables: [], schemaValidation: validateExportSchemaManifest() };
+    const results = {
+      exported: 0,
+      tables: [],
+      warnings: [],
+      schemaValidation: validateExportSchemaManifest(),
+    };
+    if (!fullExport) {
+      addExportWarning(
+        results,
+        'snapshot_tables_require_full_export',
+        'Rollup and derived warehouse tables are only refreshed during full BigQuery exports.'
+      );
+    }
 
     // 1. Export events (incremental)
     const eventsResult = await query(
@@ -101,9 +438,10 @@ async function exportToBigQuery(options = {}) {
        FROM events
        WHERE created_at > $1
        ORDER BY created_at
-       LIMIT 100000`,
+       LIMIT ${EVENT_EXPORT_LIMIT}`,
       [since]
     );
+    markIfTruncated(results, 'events', eventsResult.rows.length, EVENT_EXPORT_LIMIT);
 
     if (eventsResult.rows.length > 0) {
       const eventsTable = dataset.table('events');
@@ -125,13 +463,18 @@ async function exportToBigQuery(options = {}) {
       logger.info(`BigQuery: exported ${rows.length} events`);
     }
 
+    let exportedTests = [];
+
     // 2. Full export of tests (snapshot)
     if (fullExport) {
       const testsResult = await query(`
         SELECT id, shop_domain, name, description, type, status, goal, variants,
                holdout_percent, created_at, updated_at
         FROM tests
+        LIMIT ${SNAPSHOT_EXPORT_LIMIT}
       `);
+      exportedTests = testsResult.rows || [];
+      markIfTruncated(results, 'tests', exportedTests.length, SNAPSHOT_EXPORT_LIMIT);
       if (testsResult.rows.length > 0) {
         const testsTable = dataset.table('tests');
         const rows = testsResult.rows.map(r => ({
@@ -152,12 +495,19 @@ async function exportToBigQuery(options = {}) {
         results.tables.push('tests');
       }
 
+      await exportAnalyticsDailySegments(dataset, results);
+      await exportHeatmapDailyRollups(dataset, results);
+      await exportEventHealth(dataset, results);
+      await exportDerivedFunnelRows(dataset, results, exportedTests);
+      await exportDerivedGuardrails(dataset, results, exportedTests);
+
       const assignmentsResult = await query(`
         SELECT test_id, variant_id, user_id, shop_domain, assigned_at, device, country
         FROM test_assignments
         ORDER BY assigned_at DESC
-        LIMIT 100000
+        LIMIT ${SNAPSHOT_EXPORT_LIMIT}
       `);
+      markIfTruncated(results, 'assignments', assignmentsResult.rows.length, SNAPSHOT_EXPORT_LIMIT);
       if (assignmentsResult.rows.length > 0) {
         const assignmentsTable = dataset.table('assignments');
         const rows = assignmentsResult.rows.map(r => ({
@@ -179,24 +529,30 @@ async function exportToBigQuery(options = {}) {
     const heatmapSince = fullExport ? null : await getLastExportTime(HEATMAP_EXPORT_STATE_KEY);
     const heatmapFrom = heatmapSince || since;
     const heatmapResult = await query(
-      `SELECT id, test_id, variant_id, shop_domain, page_url, event_type,
-              x, y, scroll_depth, viewport_width, viewport_height, created_at
+      `SELECT id, tenant_id, test_id, variant_id, shop_domain, page_url, page_key, event_type,
+              x, y, scroll_depth, viewport_width, viewport_height,
+              page_x, page_y, page_width, page_height,
+              capture_version, page_height_source, scroll_container_detected,
+              device, country, created_at
        FROM heatmap_events
        WHERE created_at > $1
        ORDER BY created_at
-       LIMIT 50000`,
+       LIMIT ${HEATMAP_EXPORT_LIMIT}`,
       [heatmapFrom]
     );
+    markIfTruncated(results, 'heatmap_events', heatmapResult.rows.length, HEATMAP_EXPORT_LIMIT);
 
     if (heatmapResult.rows.length > 0) {
       try {
         const heatmapTable = dataset.table('heatmap_events');
         const heatmapRows = heatmapResult.rows.map(r => ({
           id: String(r.id),
+          tenant_id: r.tenant_id ? String(r.tenant_id) : null,
           test_id: r.test_id ? String(r.test_id) : null,
           variant_id: r.variant_id || null,
           shop_domain: r.shop_domain || null,
           page_url: (r.page_url || '').substring(0, 2048),
+          page_key: r.page_key || null,
           event_type: r.event_type || null,
           x: r.x !== null && r.x !== undefined ? r.x : null,
           y: r.y !== null && r.y !== undefined ? r.y : null,
@@ -208,6 +564,18 @@ async function exportToBigQuery(options = {}) {
             r.viewport_height !== null && r.viewport_height !== undefined
               ? r.viewport_height
               : null,
+          page_x: r.page_x !== null && r.page_x !== undefined ? r.page_x : null,
+          page_y: r.page_y !== null && r.page_y !== undefined ? r.page_y : null,
+          page_width: r.page_width !== null && r.page_width !== undefined ? r.page_width : null,
+          page_height: r.page_height !== null && r.page_height !== undefined ? r.page_height : null,
+          capture_version: r.capture_version || null,
+          page_height_source: r.page_height_source || null,
+          scroll_container_detected:
+            r.scroll_container_detected !== null && r.scroll_container_detected !== undefined
+              ? r.scroll_container_detected
+              : null,
+          device: r.device || null,
+          country: r.country || null,
           created_at: r.created_at,
         }));
         await heatmapTable.insert(heatmapRows);
@@ -249,4 +617,10 @@ async function exportToBigQuery(options = {}) {
   }
 }
 
-module.exports = { exportToBigQuery, getLastExportTime };
+module.exports = {
+  BIGQUERY_EXPORT_FIELDS,
+  addExportWarning,
+  exportToBigQuery,
+  getLastExportTime,
+  markIfTruncated,
+};

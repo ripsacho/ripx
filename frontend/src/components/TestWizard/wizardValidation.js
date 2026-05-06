@@ -113,6 +113,62 @@ export function getWizardStepErrors(stepId, options) {
     });
   }
 
+  function validateGoalMetricConfig(goal = {}, scope = 'goal') {
+    const secondaryGoals = Array.isArray(goal.secondary) ? goal.secondary : [];
+    const seenEventNames = new Set();
+    secondaryGoals.forEach((item, index) => {
+      const eventName =
+        typeof item === 'string' ? item : String(item?.event_name || item?.name || '').trim();
+      const label = `Goal ${index + 1}`;
+      if (!eventName) {
+        errors.push(`${label}: event name is required.`);
+        return;
+      }
+      if (!/^[a-z0-9_]{2,100}$/.test(eventName)) {
+        errors.push(
+          `${label}: event name must use lowercase letters, numbers, and underscores only.`
+        );
+      }
+      const normalized = eventName.toLowerCase();
+      if (seenEventNames.has(normalized)) {
+        errors.push(`${label}: duplicate event goal "${eventName}" is already selected.`);
+      }
+      seenEventNames.add(normalized);
+
+      const role =
+        typeof item === 'object' ? item.metric_role || item.role || 'secondary' : 'secondary';
+      if (role === 'guardrail') {
+        const threshold = Number(item?.min_relative_lift);
+        if (!Number.isFinite(threshold) || threshold < -100 || threshold > 100) {
+          errors.push(`${label}: guardrail threshold must be between -100 and 100.`);
+        }
+      }
+    });
+
+    if (goal.metric === 'profit_per_visitor' && !goal.cogs?.enabled) {
+      errors.push(
+        scope === 'review'
+          ? 'Enable COGS in the Goal & Metrics step to use PPV.'
+          : 'Enable COGS to use Profit per visitor (PPV).'
+      );
+    }
+
+    const conversionWindow = Number(goal.conversion_window_days ?? 30);
+    if (!Number.isFinite(conversionWindow) || conversionWindow < 1 || conversionWindow > 365) {
+      errors.push('Conversion window must be between 1 and 365 days.');
+    }
+
+    const confidence = Number(goal.significance_level ?? 0.95);
+    if (!Number.isFinite(confidence) || confidence < 0.5 || confidence >= 1) {
+      errors.push('Confidence level must be between 50% and 99.9%.');
+    }
+
+    const power = Number(goal.statistical_power ?? 0.8);
+    if (!Number.isFinite(power) || power < 0.5 || power >= 1) {
+      errors.push('Statistical power must be between 50% and 99.9%.');
+    }
+  }
+
   function validatePriceRange(cfg, label, detailedPercentMessage = true) {
     if (!cfg || typeof cfg !== 'object') return;
     const mode = (cfg.priceMode || 'fixed').toLowerCase();
@@ -427,8 +483,9 @@ export function getWizardStepErrors(stepId, options) {
     const nameToCheck = formData.name?.trim() || initialData?.name?.trim();
     if (!nameToCheck) errors.push('Test name is required.');
     if (!formData.goal?.metric) {
-      errors.push('Select a success metric (Revenue, Conversion, or AOV).');
+      errors.push('Select a success metric (Revenue, Conversion, RPV, PPV, or AOV).');
     }
+    validateGoalMetricConfig(formData.goal || {});
     const cogs = formData.goal?.cogs;
     if (cogs?.enabled) {
       const cogsVal = Number(cogs.value);
@@ -787,6 +844,7 @@ export function getWizardStepErrors(stepId, options) {
     if (!formData.goal?.metric && !initialData?.goal?.metric) {
       errors.push('Select a success metric in the Goal & Metrics step.');
     }
+    validateGoalMetricConfig(formData.goal || initialData?.goal || {}, 'review');
     const cogsReview = formData.goal?.cogs;
     if (cogsReview?.enabled) {
       const v = Number(cogsReview.value);

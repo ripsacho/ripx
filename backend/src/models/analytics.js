@@ -6,6 +6,46 @@
 
 const { query } = require('../utils/database');
 
+function normalizeShopDomain(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeAnalyticsEventName(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 100);
+}
+
+function buildFunnelTransitions(steps = [], byVariant = {}, semantics = {}) {
+  const transitionsByVariant = {};
+  Object.entries(byVariant || {}).forEach(([variantId, counts]) => {
+    transitionsByVariant[variantId] = steps.slice(1).map((step, index) => {
+      const fromStep = steps[index];
+      const fromCount = Number(counts?.[fromStep?.id]) || 0;
+      const toCount = Number(counts?.[step?.id]) || 0;
+      const dropOff = Math.max(0, fromCount - toCount);
+      return {
+        fromStepId: fromStep?.id || null,
+        fromStepLabel: fromStep?.label || fromStep?.id || 'Previous step',
+        toStepId: step?.id || null,
+        toStepLabel: step?.label || step?.id || 'Next step',
+        fromCount,
+        toCount,
+        transitionRate: fromCount > 0 ? (toCount / fromCount) * 100 : 0,
+        dropOff,
+        dropOffRate: fromCount > 0 ? (dropOff / fromCount) * 100 : 0,
+        semantics: semantics.ordered ? 'ordered_transition' : 'independent_step_reach_ratio',
+      };
+    });
+  });
+  return transitionsByVariant;
+}
+
 class AnalyticsModel {
   /**
    * Track a conversion event
@@ -26,23 +66,14 @@ class AnalyticsModel {
       metadata,
     } = eventData;
 
-    const meta = metadata && typeof metadata === 'object' ? metadata : {};
+    const normalizedShopDomain = normalizeShopDomain(shop_domain);
+    const normalizedEventName = normalizeAnalyticsEventName(event_name);
+    const normalizedEventValue = Number(event_value);
+    const meta =
+      metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {};
     const orderId = meta.order_id != null ? String(meta.order_id) : null; // eslint-disable-line eqeqeq
 
-    if (event_type === 'conversion' && orderId) {
-      const dupSql = `
-        SELECT 1 FROM events
-        WHERE test_id = $1 AND user_id = $2 AND event_type = 'conversion'
-          AND metadata->>'order_id' = $3
-        LIMIT 1
-      `;
-      const dupResult = await query(dupSql, [test_id, user_id, orderId]);
-      if (dupResult.rows.length > 0) {
-        return null;
-      }
-    }
-
-    const hasEventName = event_name && String(event_name).trim().length > 0;
+    const hasEventName = normalizedEventName.length > 0;
     const columns = [
       'test_id',
       'variant_id',
@@ -51,32 +82,41 @@ class AnalyticsModel {
       'event_type',
       'event_value',
       'metadata',
-      'created_at',
     ];
     const values = [
       test_id,
       variant_id,
       user_id,
-      shop_domain,
+      normalizedShopDomain,
       event_type,
-      event_value,
+      Number.isFinite(normalizedEventValue) ? normalizedEventValue : 0,
       JSON.stringify(meta),
     ];
 
     if (hasEventName) {
       columns.splice(6, 0, 'event_name');
-      values.splice(6, 0, String(event_name).trim().substring(0, 100));
+      values.splice(6, 0, normalizedEventName);
     }
 
     const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
+    const dedupeConflictClause =
+      event_type === 'conversion' && orderId
+        ? `
+      ON CONFLICT (test_id, user_id, (metadata->>'order_id'))
+      WHERE event_type = 'conversion' AND metadata ? 'order_id' AND metadata->>'order_id' <> ''
+      DO UPDATE SET
+        event_value = GREATEST(events.event_value, EXCLUDED.event_value),
+        metadata = COALESCE(events.metadata, '{}'::jsonb) || COALESCE(EXCLUDED.metadata, '{}'::jsonb)`
+        : '';
     const sql = `
       INSERT INTO events (${columns.join(', ')})
       VALUES (${placeholders})
+      ${dedupeConflictClause}
       RETURNING *
     `;
 
     const result = await query(sql, values);
-    return result.rows[0];
+    return result.rows[0] || null;
   }
 
   /**
@@ -88,7 +128,7 @@ class AnalyticsModel {
    * @returns {Promise<Array>} Analytics by variant
    */
   async getTestAnalytics(testId, shopDomain, options = {}) {
-    const { conversionWindowDays, conversionUrl } = options;
+    const { conversionWindowDays, conversionUrl, start_date, end_date } = options;
 
     const runQuery = async (device, country) => {
       const params = [testId, (shopDomain || '').toLowerCase().trim()];
@@ -103,6 +143,16 @@ class AnalyticsModel {
       if (country) {
         visitorWhere += ` AND ta.country = $${paramIndex}`;
         params.push(country);
+        paramIndex += 1;
+      }
+      if (start_date) {
+        visitorWhere += ` AND ta.assigned_at >= $${paramIndex}`;
+        params.push(start_date);
+        paramIndex += 1;
+      }
+      if (end_date) {
+        visitorWhere += ` AND ta.assigned_at < $${paramIndex}`;
+        params.push(end_date);
         paramIndex += 1;
       }
 
@@ -129,6 +179,16 @@ class AnalyticsModel {
       if (country) {
         convExtra += ` AND ta.country = $${convIdx}`;
         conversionParams.push(country);
+        convIdx += 1;
+      }
+      if (start_date) {
+        convExtra += ` AND ta.assigned_at >= $${convIdx} AND e.created_at >= $${convIdx}`;
+        conversionParams.push(start_date);
+        convIdx += 1;
+      }
+      if (end_date) {
+        convExtra += ` AND ta.assigned_at < $${convIdx} AND e.created_at < $${convIdx}`;
+        conversionParams.push(end_date);
         convIdx += 1;
       }
       if (conversionWindowDays && conversionWindowDays > 0) {
@@ -215,12 +275,12 @@ class AnalyticsModel {
     try {
       const devicesSql = `
         SELECT DISTINCT device FROM test_assignments
-        WHERE test_id = $1 AND shop_domain = $2 AND device IS NOT NULL AND device != ''
+        WHERE test_id = $1 AND LOWER(TRIM(shop_domain)) = LOWER(TRIM($2)) AND device IS NOT NULL AND device != ''
         ORDER BY device
       `;
       const countriesSql = `
         SELECT DISTINCT country FROM test_assignments
-        WHERE test_id = $1 AND shop_domain = $2 AND country IS NOT NULL AND country != ''
+        WHERE test_id = $1 AND LOWER(TRIM(shop_domain)) = LOWER(TRIM($2)) AND country IS NOT NULL AND country != ''
         ORDER BY country
       `;
       const [devicesResult, countriesResult] = await Promise.all([
@@ -249,11 +309,11 @@ class AnalyticsModel {
       SELECT COUNT(*) as count
       FROM events
       WHERE test_id = $1 
-        AND shop_domain = $2
+        AND LOWER(TRIM(shop_domain)) = LOWER(TRIM($2))
         AND event_type = $3
     `;
 
-    const result = await query(sql, [testId, shopDomain, eventType]);
+    const result = await query(sql, [testId, normalizeShopDomain(shopDomain), eventType]);
     return parseInt(result.rows[0].count, 10) || 0;
   }
 
@@ -272,62 +332,235 @@ class AnalyticsModel {
     }
 
     const { device, country } = options;
-    const result = {};
+    const safeNames = Array.from(
+      new Set(eventNames.map(eventName => normalizeAnalyticsEventName(eventName)).filter(Boolean))
+    );
 
-    for (const eventName of eventNames) {
-      const safeName = String(eventName).trim().substring(0, 100);
-      if (!safeName) {
-        continue;
+    const result = Object.fromEntries(safeNames.map(eventName => [eventName, {}]));
+    if (!safeNames.length) {
+      return result;
+    }
+
+    const params = [testId, normalizeShopDomain(shopDomain), safeNames];
+    const conditions = [
+      'e.test_id = $1',
+      'LOWER(TRIM(e.shop_domain)) = LOWER(TRIM($2))',
+      "e.event_type = 'custom'",
+      'e.event_name = ANY($3::text[])',
+    ];
+    let joinClause = '';
+
+    if (device || country) {
+      joinClause =
+        'JOIN test_assignments ta ON ta.test_id = e.test_id AND ta.user_id = e.user_id AND LOWER(TRIM(ta.shop_domain)) = LOWER(TRIM(e.shop_domain)) AND ta.variant_id = e.variant_id';
+      if (device) {
+        conditions.push(`ta.device = $${params.length + 1}`);
+        params.push(device);
       }
-
-      let sql;
-      const params = [testId, shopDomain, safeName];
-
-      if (device || country) {
-        const joinClause =
-          'JOIN test_assignments ta ON ta.test_id = e.test_id AND ta.user_id = e.user_id AND ta.shop_domain = e.shop_domain AND ta.variant_id = e.variant_id';
-        const conditions = [
-          'e.test_id = $1',
-          'e.shop_domain = $2',
-          "e.event_type = 'custom'",
-          'e.event_name = $3',
-        ];
-        if (device) {
-          conditions.push(`ta.device = $${params.length + 1}`);
-          params.push(device);
-        }
-        if (country) {
-          conditions.push(`ta.country = $${params.length + 1}`);
-          params.push(country);
-        }
-        sql = `
-          SELECT e.variant_id, COUNT(DISTINCT e.user_id) as count, COALESCE(SUM(e.event_value), 0) as sum
-          FROM events e
-          ${joinClause}
-          WHERE ${conditions.join(' AND ')}
-          GROUP BY e.variant_id
-        `;
-      } else {
-        sql = `
-          SELECT variant_id, COUNT(DISTINCT user_id) as count, COALESCE(SUM(event_value), 0) as sum
-          FROM events
-          WHERE test_id = $1 AND shop_domain = $2 AND event_type = 'custom' AND event_name = $3
-          GROUP BY variant_id
-        `;
+      if (country) {
+        conditions.push(`ta.country = $${params.length + 1}`);
+        params.push(country);
       }
+    }
 
-      try {
-        const q = await query(sql, params);
-        result[safeName] = {};
-        q.rows.forEach(row => {
-          result[safeName][row.variant_id] = {
-            count: parseInt(row.count, 10) || 0,
-            sum: parseFloat(row.sum) || 0,
-          };
+    const sql = `
+      SELECT
+        e.event_name,
+        e.variant_id,
+        COUNT(DISTINCT e.user_id) as count,
+        COALESCE(SUM(e.event_value), 0) as sum
+      FROM events e
+      ${joinClause}
+      WHERE ${conditions.join(' AND ')}
+      GROUP BY e.event_name, e.variant_id
+    `;
+
+    try {
+      const q = await query(sql, params);
+      q.rows.forEach(row => {
+        if (!result[row.event_name]) {
+          result[row.event_name] = {};
+        }
+        result[row.event_name][row.variant_id] = {
+          count: parseInt(row.count, 10) || 0,
+          sum: parseFloat(row.sum) || 0,
+        };
+      });
+    } catch (err) {
+      return result;
+    }
+
+    return result;
+  }
+
+  /**
+   * Get collection health stats for configured custom event goals.
+   *
+   * @param {string} testId - Test ID
+   * @param {string} shopDomain - Shop domain
+   * @param {string[]} eventNames - Custom event names to summarize
+   * @param {Object} options - Optional filters: { device, country }
+   * @returns {Promise<Object>} { eventName: { totalEvents, uniqueUsers, sum, firstSeen, lastSeen, byVariant, sources } }
+   */
+  async getEventCollectionStats(testId, shopDomain, eventNames = [], options = {}) {
+    const safeNames = Array.from(
+      new Set(
+        (eventNames || []).map(eventName => normalizeAnalyticsEventName(eventName)).filter(Boolean)
+      )
+    );
+    const result = Object.fromEntries(
+      safeNames.map(eventName => [
+        eventName,
+        {
+          totalEvents: 0,
+          uniqueUsers: 0,
+          sum: 0,
+          firstSeen: null,
+          lastSeen: null,
+          byVariant: {},
+          sources: [],
+          trend: [],
+        },
+      ])
+    );
+    if (!safeNames.length) {
+      return result;
+    }
+
+    const { device, country } = options;
+    const params = [testId, normalizeShopDomain(shopDomain), safeNames];
+    const conditions = [
+      'e.test_id = $1',
+      'LOWER(TRIM(e.shop_domain)) = LOWER(TRIM($2))',
+      "e.event_type = 'custom'",
+      'e.event_name = ANY($3::text[])',
+    ];
+    const joinClause =
+      'LEFT JOIN test_assignments ta ON ta.test_id = e.test_id AND ta.user_id = e.user_id AND LOWER(TRIM(ta.shop_domain)) = LOWER(TRIM(e.shop_domain)) AND ta.variant_id = e.variant_id';
+    if (device) {
+      conditions.push(`ta.device = $${params.length + 1}`);
+      params.push(device);
+    }
+    if (country) {
+      conditions.push(`ta.country = $${params.length + 1}`);
+      params.push(country);
+    }
+
+    const statsSql = `
+      SELECT
+        e.event_name,
+        e.variant_id,
+        COUNT(*) as total_events,
+        COUNT(DISTINCT e.user_id) as unique_users,
+        COALESCE(SUM(e.event_value), 0) as sum,
+        MIN(e.created_at) as first_seen,
+        MAX(e.created_at) as last_seen
+      FROM events e
+      ${joinClause}
+      WHERE ${conditions.join(' AND ')}
+      GROUP BY e.event_name, e.variant_id
+    `;
+    const totalsSql = `
+      SELECT
+        e.event_name,
+        COUNT(*) as total_events,
+        COUNT(DISTINCT e.user_id) as unique_users,
+        COALESCE(SUM(e.event_value), 0) as sum,
+        MIN(e.created_at) as first_seen,
+        MAX(e.created_at) as last_seen
+      FROM events e
+      ${joinClause}
+      WHERE ${conditions.join(' AND ')}
+      GROUP BY e.event_name
+    `;
+    const sourcesSql = `
+      SELECT
+        e.event_name,
+        COALESCE(NULLIF(e.metadata->>'source', ''), 'unknown') as source,
+        COALESCE(NULLIF(e.metadata->>'trigger_type', ''), 'manual') as trigger_type,
+        COUNT(*) as count
+      FROM events e
+      ${joinClause}
+      WHERE ${conditions.join(' AND ')}
+      GROUP BY e.event_name, source, trigger_type
+      ORDER BY count DESC
+    `;
+    const trendSql = `
+      SELECT
+        e.event_name,
+        TO_CHAR(DATE_TRUNC('day', e.created_at), 'YYYY-MM-DD') as bucket,
+        COUNT(*) as total_events,
+        COUNT(DISTINCT e.user_id) as unique_users,
+        COALESCE(SUM(e.event_value), 0) as sum
+      FROM events e
+      ${joinClause}
+      WHERE ${conditions.join(' AND ')}
+      GROUP BY e.event_name, bucket
+      ORDER BY bucket ASC, e.event_name ASC
+    `;
+
+    try {
+      const [statsResult, totalsResult, sourcesResult, trendResult] = await Promise.all([
+        query(statsSql, params),
+        query(totalsSql, params),
+        query(sourcesSql, params),
+        query(trendSql, params),
+      ]);
+
+      statsResult.rows.forEach(row => {
+        const eventName = row.event_name;
+        if (!result[eventName]) {
+          return;
+        }
+        const variantId = row.variant_id || 'unknown';
+        const variantStats = {
+          totalEvents: parseInt(row.total_events, 10) || 0,
+          uniqueUsers: parseInt(row.unique_users, 10) || 0,
+          sum: parseFloat(row.sum) || 0,
+          firstSeen: row.first_seen || null,
+          lastSeen: row.last_seen || null,
+        };
+        result[eventName].byVariant[variantId] = variantStats;
+      });
+
+      totalsResult.rows.forEach(row => {
+        const eventName = row.event_name;
+        if (!result[eventName]) {
+          return;
+        }
+        result[eventName].totalEvents = parseInt(row.total_events, 10) || 0;
+        result[eventName].uniqueUsers = parseInt(row.unique_users, 10) || 0;
+        result[eventName].sum = parseFloat(row.sum) || 0;
+        result[eventName].firstSeen = row.first_seen || null;
+        result[eventName].lastSeen = row.last_seen || null;
+      });
+
+      sourcesResult.rows.forEach(row => {
+        const eventName = row.event_name;
+        if (!result[eventName]) {
+          return;
+        }
+        result[eventName].sources.push({
+          source: row.source || 'unknown',
+          triggerType: row.trigger_type || 'manual',
+          count: parseInt(row.count, 10) || 0,
         });
-      } catch (err) {
-        result[safeName] = {};
-      }
+      });
+
+      trendResult.rows.forEach(row => {
+        const eventName = row.event_name;
+        if (!result[eventName]) {
+          return;
+        }
+        result[eventName].trend.push({
+          date: row.bucket,
+          totalEvents: parseInt(row.total_events, 10) || 0,
+          uniqueUsers: parseInt(row.unique_users, 10) || 0,
+          sum: parseFloat(row.sum) || 0,
+        });
+      });
+    } catch (err) {
+      return result;
     }
 
     return result;
@@ -348,16 +581,44 @@ class AnalyticsModel {
       { id: 'add_to_cart', label: 'Add to Cart', type: 'event', event_name: 'add_to_cart' },
       { id: 'conversion', label: 'Purchase', type: 'conversion' },
     ];
-    const steps =
+    const rawSteps =
       options.funnel_steps && Array.isArray(options.funnel_steps) && options.funnel_steps.length > 0
         ? options.funnel_steps
         : defaultSteps;
+    const warnings = [];
+    const steps = rawSteps
+      .map((step, index) => ({
+        ...step,
+        id: String(step?.id || `step_${index + 1}`),
+        label: step?.label || step?.name || step?.id || `Step ${index + 1}`,
+        type: step?.type || (index === 0 ? 'visitors' : 'event'),
+      }))
+      .filter(step => {
+        if (step.type === 'event' && !step.event_name) {
+          warnings.push({
+            code: 'missing_event_name',
+            stepId: step.id,
+            message: `${step.label} is missing an event key and cannot be counted.`,
+          });
+          return false;
+        }
+        if (!['visitors', 'event', 'conversion'].includes(step.type)) {
+          warnings.push({
+            code: 'unsupported_step_type',
+            stepId: step.id,
+            message: `${step.label} uses unsupported funnel step type "${step.type}".`,
+          });
+          return false;
+        }
+        return true;
+      });
 
-    const { device, country, start_date, end_date } = options;
-    const params = [testId, shopDomain];
+    const { device, country, start_date, end_date, conversionWindowDays, conversionUrl } = options;
+    const normalizedShopDomain = normalizeShopDomain(shopDomain);
+    const params = [testId, normalizedShopDomain];
     let paramIndex = 3;
 
-    let visitorWhere = 'ta.test_id = $1 AND ta.shop_domain = $2';
+    let visitorWhere = 'ta.test_id = $1 AND LOWER(TRIM(ta.shop_domain)) = LOWER(TRIM($2))';
     if (device) {
       visitorWhere += ` AND ta.device = $${paramIndex}`;
       params.push(device);
@@ -389,13 +650,177 @@ class AnalyticsModel {
     const eventSteps = steps.filter(s => s.type === 'event' && s.event_name);
     const conversionStep = steps.find(s => s.type === 'conversion');
     const conversionStepId = conversionStep?.id || 'conversion';
+    const requestedFunnelMode = ['ordered', 'sequence'].includes(
+      String(options.funnel_mode || options.mode || '').toLowerCase()
+    )
+      ? 'ordered'
+      : 'step_reach';
+    const applyVisitorStepAliases = byVariantMap => {
+      const visitorSteps = steps.filter(step => step.type === 'visitors');
+      Object.keys(byVariantMap || {}).forEach(variantId => {
+        const variant = byVariantMap[variantId];
+        const visitorCount = Number(variant.visitors) || 0;
+        visitorSteps.forEach(step => {
+          variant[step.id] = visitorCount;
+        });
+      });
+    };
+
+    const buildOrderedFunnelParams = orderedSteps => {
+      const p = [...params];
+      orderedSteps.forEach(step => {
+        if (step.type === 'event') {
+          p.push(normalizeAnalyticsEventName(step.event_name));
+        }
+        if (start_date) {
+          p.push(start_date);
+        }
+        if (end_date) {
+          p.push(end_date);
+        }
+        if (step.type === 'conversion' && conversionWindowDays && conversionWindowDays > 0) {
+          p.push(conversionWindowDays);
+        }
+        if (step.type === 'conversion' && conversionUrl && String(conversionUrl).trim()) {
+          String(conversionUrl)
+            .split(',')
+            .map(pattern => pattern.trim())
+            .filter(Boolean)
+            .forEach(pattern => p.push(`%${pattern}%`));
+        }
+      });
+      return p;
+    };
+
+    const buildOrderedFunnelSql = orderedSteps => {
+      let idx = params.length + 1;
+      const ctes = [
+        `assigned AS (
+          SELECT user_id, variant_id, assigned_at
+          FROM test_assignments ta
+          WHERE ${visitorWhere}
+        )`,
+      ];
+
+      orderedSteps.forEach((step, stepIndex) => {
+        const source = stepIndex === 0 ? 'assigned' : `step_${stepIndex}`;
+        const timestampFloor = stepIndex === 0 ? 's.assigned_at' : 's.reached_at';
+        const conditions = [
+          'e.test_id = $1',
+          'LOWER(TRIM(e.shop_domain)) = LOWER(TRIM($2))',
+          'e.user_id = s.user_id',
+          'e.variant_id = s.variant_id',
+          `e.created_at >= ${timestampFloor}`,
+        ];
+        if (step.type === 'event') {
+          conditions.push("e.event_type = 'custom'");
+          conditions.push(`e.event_name = $${idx}`);
+          idx += 1;
+        } else {
+          conditions.push("e.event_type = 'conversion'");
+        }
+        if (start_date) {
+          conditions.push(`e.created_at >= $${idx}`);
+          idx += 1;
+        }
+        if (end_date) {
+          conditions.push(`e.created_at < $${idx}`);
+          idx += 1;
+        }
+        if (step.type === 'conversion' && conversionWindowDays && conversionWindowDays > 0) {
+          conditions.push(`e.created_at <= s.assigned_at + ($${idx} || ' days')::interval`);
+          idx += 1;
+        }
+        if (step.type === 'conversion' && conversionUrl && String(conversionUrl).trim()) {
+          const urlConditions = String(conversionUrl)
+            .split(',')
+            .map(pattern => pattern.trim())
+            .filter(Boolean)
+            .map(() => {
+              const condition = `(e.metadata->>'conversion_url')::text ILIKE $${idx}`;
+              idx += 1;
+              return condition;
+            });
+          if (urlConditions.length > 0) {
+            conditions.push(`(${urlConditions.join(' OR ')})`);
+          }
+        }
+
+        ctes.push(`step_${stepIndex + 1} AS (
+          SELECT s.user_id, s.variant_id, s.assigned_at, MIN(e.created_at) AS reached_at
+          FROM ${source} s
+          JOIN events e ON ${conditions.join(' AND ')}
+          GROUP BY s.user_id, s.variant_id, s.assigned_at
+        )`);
+      });
+
+      const unions = orderedSteps.map((step, stepIndex) => {
+        const escapedStepId = String(step.id).replace(/'/g, "''");
+        return `SELECT '${escapedStepId}' AS step_id, variant_id, COUNT(DISTINCT user_id) AS count FROM step_${
+          stepIndex + 1
+        } GROUP BY variant_id`;
+      });
+
+      return `WITH ${ctes.join(', ')} ${unions.join(' UNION ALL ')}`;
+    };
+
+    if (requestedFunnelMode === 'ordered') {
+      const orderedSteps = steps.filter(s => s.type === 'event' || s.type === 'conversion');
+      const orderedResults = await Promise.all([
+        query(visitorsSql, params),
+        orderedSteps.length > 0
+          ? query(buildOrderedFunnelSql(orderedSteps), buildOrderedFunnelParams(orderedSteps))
+          : Promise.resolve({ rows: [] }),
+      ]);
+      const byVariant = {};
+      const variantNames = {};
+      orderedResults[0].rows.forEach(row => {
+        byVariant[row.variant_id] = { visitors: parseInt(row.count, 10) || 0 };
+        variantNames[row.variant_id] = row.variant_name;
+      });
+      applyVisitorStepAliases(byVariant);
+      orderedResults[1].rows.forEach(row => {
+        if (byVariant[row.variant_id]) {
+          byVariant[row.variant_id][row.step_id] = parseInt(row.count, 10) || 0;
+        }
+      });
+      Object.keys(byVariant).forEach(vid => {
+        const v = byVariant[vid];
+        steps.forEach(s => {
+          if (s.type !== 'visitors' && v[s.id] === undefined) {
+            v[s.id] = 0;
+          }
+        });
+      });
+
+      const semantics = {
+        counting: 'distinct_users_reaching_each_step_in_order',
+        ordered: true,
+        visitorDate: 'test_assignments.assigned_at',
+        eventDate: 'events.created_at',
+      };
+      return {
+        steps,
+        byVariant,
+        transitionsByVariant: buildFunnelTransitions(steps, byVariant, semantics),
+        variantNames,
+        warnings,
+        mode: 'ordered_sequence',
+        stepLatency: {
+          available: false,
+          reason:
+            'Latency diagnostics require persisted per-user step timestamps; ordered counts are active.',
+        },
+        semantics,
+      };
+    }
 
     const queries = [{ key: 'visitors', sql: visitorsSql, params }];
     eventSteps.forEach(step => {
-      const p = [testId, shopDomain, step.event_name];
+      const p = [testId, normalizedShopDomain, normalizeAnalyticsEventName(step.event_name)];
       const cond = [
         'e.test_id = $1',
-        'e.shop_domain = $2',
+        'LOWER(TRIM(e.shop_domain)) = LOWER(TRIM($2))',
         "e.event_type = 'custom'",
         'e.event_name = $3',
       ];
@@ -408,24 +833,30 @@ class AnalyticsModel {
         p.push(country);
       }
       if (start_date) {
+        cond.push(`ta.assigned_at >= $${p.length + 1}`);
         cond.push(`e.created_at >= $${p.length + 1}`);
         p.push(start_date);
       }
       if (end_date) {
+        cond.push(`ta.assigned_at < $${p.length + 1}`);
         cond.push(`e.created_at < $${p.length + 1}`);
         p.push(end_date);
       }
       queries.push({
         key: step.id,
         sql: `SELECT e.variant_id, COUNT(DISTINCT e.user_id) as count FROM events e
-          JOIN test_assignments ta ON ta.test_id = e.test_id AND ta.user_id = e.user_id AND ta.shop_domain = e.shop_domain AND ta.variant_id = e.variant_id
+          JOIN test_assignments ta ON ta.test_id = e.test_id AND ta.user_id = e.user_id AND LOWER(TRIM(ta.shop_domain)) = LOWER(TRIM(e.shop_domain)) AND ta.variant_id = e.variant_id
           WHERE ${cond.join(' AND ')} GROUP BY e.variant_id`,
         params: p,
       });
     });
     if (conversionStep) {
-      const p = [testId, shopDomain];
-      const cond = ['e.test_id = $1', 'e.shop_domain = $2', "e.event_type = 'conversion'"];
+      const p = [testId, normalizedShopDomain];
+      const cond = [
+        'e.test_id = $1',
+        'LOWER(TRIM(e.shop_domain)) = LOWER(TRIM($2))',
+        "e.event_type = 'conversion'",
+      ];
       if (device) {
         cond.push(`ta.device = $${p.length + 1}`);
         p.push(device);
@@ -435,17 +866,38 @@ class AnalyticsModel {
         p.push(country);
       }
       if (start_date) {
+        cond.push(`ta.assigned_at >= $${p.length + 1}`);
         cond.push(`e.created_at >= $${p.length + 1}`);
         p.push(start_date);
       }
       if (end_date) {
+        cond.push(`ta.assigned_at < $${p.length + 1}`);
         cond.push(`e.created_at < $${p.length + 1}`);
         p.push(end_date);
+      }
+      if (conversionWindowDays && conversionWindowDays > 0) {
+        cond.push(
+          `e.created_at >= ta.assigned_at AND e.created_at <= ta.assigned_at + ($${p.length + 1} || ' days')::interval`
+        );
+        p.push(conversionWindowDays);
+      }
+      if (conversionUrl && String(conversionUrl).trim()) {
+        const patterns = String(conversionUrl)
+          .split(',')
+          .map(pattern => pattern.trim())
+          .filter(Boolean);
+        if (patterns.length > 0) {
+          const urlConditions = patterns.map(pattern => {
+            p.push(`%${pattern}%`);
+            return `(e.metadata->>'conversion_url')::text ILIKE $${p.length}`;
+          });
+          cond.push(`(${urlConditions.join(' OR ')})`);
+        }
       }
       queries.push({
         key: conversionStepId,
         sql: `SELECT e.variant_id, COUNT(DISTINCT e.user_id) as count FROM events e
-          JOIN test_assignments ta ON ta.test_id = e.test_id AND ta.user_id = e.user_id AND ta.shop_domain = e.shop_domain AND ta.variant_id = e.variant_id
+          JOIN test_assignments ta ON ta.test_id = e.test_id AND ta.user_id = e.user_id AND LOWER(TRIM(ta.shop_domain)) = LOWER(TRIM(e.shop_domain)) AND ta.variant_id = e.variant_id
           WHERE ${cond.join(' AND ')} GROUP BY e.variant_id`,
         params: p,
       });
@@ -459,6 +911,7 @@ class AnalyticsModel {
       byVariant[row.variant_id] = { visitors: parseInt(row.count, 10) || 0 };
       variantNames[row.variant_id] = row.variant_name;
     });
+    applyVisitorStepAliases(byVariant);
     for (let i = 1; i < results.length; i++) {
       const key = queries[i].key;
       results[i].rows.forEach(row => {
@@ -480,10 +933,24 @@ class AnalyticsModel {
       });
     });
 
+    const semantics = {
+      counting: 'distinct_users_per_step',
+      ordered: false,
+      visitorDate: 'test_assignments.assigned_at',
+      eventDate: 'events.created_at',
+    };
     return {
       steps,
       byVariant,
+      transitionsByVariant: buildFunnelTransitions(steps, byVariant, semantics),
       variantNames,
+      warnings,
+      mode: 'step_reach',
+      stepLatency: {
+        available: false,
+        reason: 'Latency diagnostics are only meaningful for ordered funnel paths.',
+      },
+      semantics,
     };
   }
 
@@ -504,10 +971,27 @@ class AnalyticsModel {
       variant_id,
       start_date,
       end_date,
+      device,
+      country,
     } = options;
-    const conditions = ['e.test_id = $1', 'e.shop_domain = $2'];
-    const params = [testId, shopDomain];
+    const conditions = ['e.test_id = $1', 'LOWER(TRIM(e.shop_domain)) = LOWER(TRIM($2))'];
+    const params = [testId, normalizeShopDomain(shopDomain)];
     let idx = 3;
+    let joinClause = '';
+    if (device || country) {
+      joinClause =
+        'JOIN test_assignments ta ON ta.test_id = e.test_id AND ta.user_id = e.user_id AND LOWER(TRIM(ta.shop_domain)) = LOWER(TRIM(e.shop_domain)) AND ta.variant_id = e.variant_id';
+      if (device) {
+        conditions.push(`ta.device = $${idx}`);
+        params.push(device);
+        idx += 1;
+      }
+      if (country) {
+        conditions.push(`ta.country = $${idx}`);
+        params.push(country);
+        idx += 1;
+      }
+    }
     if (event_type) {
       conditions.push(`e.event_type = $${idx}`);
       params.push(event_type);
@@ -515,7 +999,7 @@ class AnalyticsModel {
     }
     if (event_name) {
       conditions.push(`e.event_name = $${idx}`);
-      params.push(event_name);
+      params.push(normalizeAnalyticsEventName(event_name));
       idx += 1;
     }
     if (variant_id) {
@@ -534,14 +1018,18 @@ class AnalyticsModel {
       idx += 1;
     }
 
+    const countExpression = joinClause ? 'COUNT(DISTINCT e.id)' : 'COUNT(*)';
+    const listDistinct = joinClause ? 'DISTINCT' : '';
     const countSql = `
-      SELECT COUNT(*) as total FROM events e
+      SELECT ${countExpression} as total FROM events e
+      ${joinClause}
       WHERE ${conditions.join(' AND ')}
     `;
     const listSql = `
-      SELECT e.id, e.test_id, e.variant_id, e.user_id, e.event_type, e.event_name,
+      SELECT ${listDistinct} e.id, e.test_id, e.variant_id, e.user_id, e.event_type, e.event_name,
              e.event_value, e.metadata, e.created_at
       FROM events e
+      ${joinClause}
       WHERE ${conditions.join(' AND ')}
       ORDER BY e.created_at DESC
       LIMIT $${idx} OFFSET $${idx + 1}
@@ -570,17 +1058,148 @@ class AnalyticsModel {
   /**
    * Get distinct event types and names for a test (for filters)
    */
-  async getEventTypesForTest(testId, shopDomain) {
+  async getEventTypesForTest(testId, shopDomain, options = {}) {
+    const { start_date, end_date, device, country, variant_id } = options;
+    const conditions = ['e.test_id = $1', 'LOWER(TRIM(e.shop_domain)) = LOWER(TRIM($2))'];
+    const params = [testId, normalizeShopDomain(shopDomain)];
+    let idx = 3;
+    let joinClause = '';
+    if (device || country) {
+      joinClause =
+        'JOIN test_assignments ta ON ta.test_id = e.test_id AND ta.user_id = e.user_id AND LOWER(TRIM(ta.shop_domain)) = LOWER(TRIM(e.shop_domain)) AND ta.variant_id = e.variant_id';
+      if (device) {
+        conditions.push(`ta.device = $${idx}`);
+        params.push(device);
+        idx += 1;
+      }
+      if (country) {
+        conditions.push(`ta.country = $${idx}`);
+        params.push(country);
+        idx += 1;
+      }
+    }
+    if (variant_id) {
+      conditions.push(`e.variant_id = $${idx}`);
+      params.push(variant_id);
+      idx += 1;
+    }
+    if (start_date) {
+      conditions.push(`e.created_at >= $${idx}`);
+      params.push(start_date);
+      idx += 1;
+    }
+    if (end_date) {
+      conditions.push(`e.created_at < $${idx}`);
+      params.push(end_date);
+    }
+
     const sql = `
-      SELECT DISTINCT event_type, event_name
-      FROM events
-      WHERE test_id = $1 AND shop_domain = $2
+      SELECT DISTINCT e.event_type, e.event_name
+      FROM events e
+      ${joinClause}
+      WHERE ${conditions.join(' AND ')}
       ORDER BY event_type, event_name NULLS LAST
     `;
-    const result = await query(sql, [testId, shopDomain]);
+    const result = await query(sql, params);
     const types = [...new Set(result.rows.map(r => r.event_type).filter(Boolean))];
     const names = [...new Set(result.rows.map(r => r.event_name).filter(Boolean))];
     return { types, names };
+  }
+
+  async getAssignmentCohorts(testId, shopDomain, options = {}) {
+    const granularity = options.granularity === 'day' ? 'day' : 'week';
+    const params = [testId, normalizeShopDomain(shopDomain)];
+    const assignmentWhere = [
+      'ta.test_id = $1',
+      'LOWER(TRIM(ta.shop_domain)) = LOWER(TRIM($2))',
+      'ta.assigned_at IS NOT NULL',
+    ];
+    const conversionWhere = [
+      'e.test_id = $1',
+      'LOWER(TRIM(e.shop_domain)) = LOWER(TRIM($2))',
+      "e.event_type = 'conversion'",
+    ];
+    if (options.device) {
+      params.push(options.device);
+      assignmentWhere.push(`ta.device = $${params.length}`);
+      conversionWhere.push(`ta.device = $${params.length}`);
+    }
+    if (options.country) {
+      params.push(options.country);
+      assignmentWhere.push(`ta.country = $${params.length}`);
+      conversionWhere.push(`ta.country = $${params.length}`);
+    }
+    if (options.start_date) {
+      params.push(options.start_date);
+      assignmentWhere.push(`ta.assigned_at >= $${params.length}`);
+      conversionWhere.push(`e.created_at >= $${params.length}`);
+    }
+    if (options.end_date) {
+      params.push(options.end_date);
+      assignmentWhere.push(`ta.assigned_at < $${params.length}`);
+      conversionWhere.push(`e.created_at < $${params.length}`);
+    }
+
+    const sql = `
+      WITH assignment_cohorts AS (
+        SELECT
+          date_trunc('${granularity}', ta.assigned_at AT TIME ZONE 'UTC')::date AS cohort_period,
+          ta.variant_id,
+          MAX(ta.variant_name) AS variant_name,
+          COUNT(DISTINCT ta.user_id)::integer AS visitors
+        FROM test_assignments ta
+        WHERE ${assignmentWhere.join(' AND ')}
+        GROUP BY date_trunc('${granularity}', ta.assigned_at AT TIME ZONE 'UTC')::date, ta.variant_id
+      ),
+      conversion_cohorts AS (
+        SELECT
+          date_trunc('${granularity}', ta.assigned_at AT TIME ZONE 'UTC')::date AS cohort_period,
+          e.variant_id,
+          COUNT(DISTINCT e.user_id)::integer AS conversions,
+          COALESCE(SUM(e.event_value), 0)::float AS revenue
+        FROM events e
+        INNER JOIN test_assignments ta
+          ON ta.test_id = e.test_id
+          AND ta.user_id = e.user_id
+          AND LOWER(TRIM(ta.shop_domain)) = LOWER(TRIM(e.shop_domain))
+          AND ta.variant_id = e.variant_id
+        WHERE ${conversionWhere.join(' AND ')}
+        GROUP BY date_trunc('${granularity}', ta.assigned_at AT TIME ZONE 'UTC')::date, e.variant_id
+      )
+      SELECT
+        ac.cohort_period,
+        ac.variant_id,
+        ac.variant_name,
+        ac.visitors,
+        COALESCE(cc.conversions, 0)::integer AS conversions,
+        COALESCE(cc.revenue, 0)::float AS revenue
+      FROM assignment_cohorts ac
+      LEFT JOIN conversion_cohorts cc
+        ON cc.cohort_period = ac.cohort_period
+        AND cc.variant_id = ac.variant_id
+      ORDER BY ac.cohort_period ASC, ac.variant_name ASC
+    `;
+
+    const result = await query(sql, params);
+    return result.rows.map(row => {
+      const visitors = parseInt(row.visitors, 10) || 0;
+      const conversions = parseInt(row.conversions, 10) || 0;
+      const revenue = parseFloat(row.revenue) || 0;
+      const period =
+        row.cohort_period instanceof Date
+          ? row.cohort_period.toISOString().split('T')[0]
+          : String(row.cohort_period).split('T')[0];
+      return {
+        cohortPeriod: period,
+        variantId: row.variant_id,
+        variantName: row.variant_name || row.variant_id,
+        visitors,
+        conversions,
+        revenue,
+        conversionRate: visitors > 0 ? (conversions / visitors) * 100 : 0,
+        revenuePerVisitor: visitors > 0 ? revenue / visitors : 0,
+      };
+    });
   }
 
   /**
@@ -694,7 +1313,10 @@ module.exports = {
   getEventCount: (testId, shop, type) => model.getEventCount(testId, shop, type),
   getSecondaryEventMetrics: (testId, shop, names, opts) =>
     model.getSecondaryEventMetrics(testId, shop, names, opts),
+  getEventCollectionStats: (testId, shop, names, opts) =>
+    model.getEventCollectionStats(testId, shop, names, opts),
   getFunnelMetrics: (testId, shop, opts) => model.getFunnelMetrics(testId, shop, opts),
   getEventsList: (testId, shop, opts) => model.getEventsList(testId, shop, opts),
-  getEventTypesForTest: (testId, shop) => model.getEventTypesForTest(testId, shop),
+  getEventTypesForTest: (testId, shop, opts) => model.getEventTypesForTest(testId, shop, opts),
+  getAssignmentCohorts: (testId, shop, opts) => model.getAssignmentCohorts(testId, shop, opts),
 };

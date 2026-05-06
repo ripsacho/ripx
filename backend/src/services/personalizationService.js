@@ -16,6 +16,29 @@ const PERSONALIZATION_MODES = {
   ROLLOUT: 'rollout',
 };
 
+function getPrimaryMetricValue(variant = {}, metric = 'revenue') {
+  const visitors = Math.max(1, Number(variant.visitors) || 0);
+  const conversions = Number(variant.conversions) || 0;
+  const revenue = Number(variant.revenue) || 0;
+  const profit = Number(variant.profit) || revenue;
+
+  switch (metric) {
+    case 'conversion_rate':
+    case 'conversions':
+      return conversions / visitors;
+    case 'revenue_per_visitor':
+      return revenue / visitors;
+    case 'profit_per_visitor':
+      return profit / visitors;
+    case 'aov':
+    case 'average_order_value':
+      return Number(variant.avgOrderValue) || (conversions > 0 ? revenue / conversions : 0);
+    case 'revenue':
+    default:
+      return revenue;
+  }
+}
+
 /**
  * Determine winner from analytics (best performing variant by primary metric)
  * Falls back to test variants when analytics has insufficient data.
@@ -58,14 +81,7 @@ function getWinnerFromAnalytics(analytics, goal = {}, testVariants = []) {
     let bestValue = -Infinity;
 
     analytics.variants.forEach((v, i) => {
-      let value = 0;
-      if (metric === 'revenue') {
-        value = v.revenue || 0;
-      } else if (metric === 'conversion_rate' || metric === 'conversions') {
-        value = (v.conversions || 0) / Math.max(1, v.visitors || 0);
-      } else {
-        value = v.revenue || 0;
-      }
+      const value = getPrimaryMetricValue(v, metric);
       if (value > bestValue) {
         bestValue = value;
         bestIdx = i;

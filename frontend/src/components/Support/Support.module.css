@@ -47,7 +47,7 @@
   pointer-events: none;
 }
 
-[data-theme="dark"] .supportPage::before {
+[data-theme='dark'] .supportPage::before {
   background:
     radial-gradient(ellipse 80% 60% at 50% -20%, rgba(6, 182, 212, 0.12), transparent 50%),
     radial-gradient(ellipse 60% 50% at 90% 60%, rgba(139, 92, 246, 0.06), transparent 45%),
@@ -116,7 +116,7 @@
 .hero {
   position: relative;
   text-align: center;
-  padding: clamp(2rem, 6vw, 3rem) clamp(1.5rem, 4vw, 2.5rem);
+  padding: clamp(1.75rem, 5vw, 2.75rem) clamp(1.5rem, 4vw, 2.5rem);
   margin-bottom: var(--section-gap);
   margin-left: -24px;
   margin-right: -24px;
@@ -125,8 +125,12 @@
   overflow: hidden;
   max-width: calc(100% + 48px);
   box-sizing: border-box;
-  background:
-    linear-gradient(165deg, var(--bg-secondary) 0%, var(--bg-tertiary) 50%, var(--bg-tertiary) 100%);
+  background: linear-gradient(
+    165deg,
+    var(--bg-secondary) 0%,
+    var(--bg-tertiary) 50%,
+    var(--bg-tertiary) 100%
+  );
   border: 1px solid var(--border-secondary);
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.85) inset,
@@ -136,6 +140,17 @@
   flex-direction: column;
   align-items: center;
   gap: 0;
+}
+
+.heroHeaderRow {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
 }
 
 @media (max-width: 600px) {
@@ -167,7 +182,13 @@
   width: 120px;
   height: 3px;
   border-radius: 3px;
-  background: linear-gradient(90deg, transparent, var(--support-cyan), var(--support-violet), transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--support-cyan),
+    var(--support-violet),
+    transparent
+  );
   opacity: 0.6;
   pointer-events: none;
 }
@@ -177,7 +198,7 @@
   align-items: center;
   gap: var(--space-1);
   padding: 12px 24px;
-  margin-bottom: var(--space-3);
+  margin-bottom: 0;
   font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -192,7 +213,9 @@
     0 0 0 1px rgba(255, 255, 255, 0.6) inset,
     0 2px 12px rgba(6, 182, 212, 0.15),
     0 0 24px -8px rgba(6, 182, 212, 0.2);
-  transition: box-shadow var(--support-time-250) ease, border-color var(--support-time-250) ease;
+  transition:
+    box-shadow var(--support-time-250) ease,
+    border-color var(--support-time-250) ease;
 }
 
 .heroBadge:hover {
@@ -237,6 +260,35 @@
   position: relative;
   z-index: 1;
   letter-spacing: 0.01em;
+}
+
+.heroSignalGrid {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 1.25rem;
+}
+
+.heroSignalGrid span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid rgba(6, 182, 212, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.heroSignalGrid :global(.Polaris-Icon) {
+  margin: 0 !important;
+  color: var(--support-cyan);
 }
 
 /* ----- Quick links (premium bar, advanced layout) ----- */
@@ -337,6 +389,206 @@
 }
 
 /* ----- Action cards grid (advanced layout) ----- */
+.supportPathGrid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin-bottom: var(--section-gap);
+}
+
+.supportPathCard {
+  min-width: 0;
+  border: 1px solid rgba(6, 182, 212, 0.14);
+  border-radius: 16px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.65rem;
+  align-items: center;
+  padding: 0.9rem;
+  text-align: center;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: var(--surface-2);
+  cursor: pointer;
+  transition:
+    transform var(--support-time-200) ease,
+    border-color var(--support-time-200) ease,
+    box-shadow var(--support-time-200) ease,
+    background var(--support-time-200) ease;
+}
+
+.supportPathCard:hover {
+  transform: translateY(-2px);
+  border-color: rgba(6, 182, 212, 0.3);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--surface-3);
+}
+
+.supportPathCard:focus-visible {
+  outline: 2px solid var(--support-cyan);
+  outline-offset: 3px;
+}
+
+.supportPathCardPrimary {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.12), rgba(139, 92, 246, 0.07));
+  border-color: rgba(6, 182, 212, 0.26);
+}
+
+.supportPathCardActive,
+.supportPathCard[aria-selected='true'] {
+  border-color: rgba(6, 182, 212, 0.38);
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.16), rgba(139, 92, 246, 0.08));
+  box-shadow:
+    0 14px 34px rgba(6, 182, 212, 0.13),
+    0 0 0 1px rgba(255, 255, 255, 0.7) inset;
+}
+
+.supportPathCardAgent {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(34, 197, 94, 0.07));
+  border-color: rgba(139, 92, 246, 0.24);
+}
+
+.supportPathIcon {
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--support-cyan);
+  background: linear-gradient(145deg, rgba(6, 182, 212, 0.18), rgba(139, 92, 246, 0.1));
+  margin: 0 auto;
+}
+
+.supportPathIcon :global(.Polaris-Icon) {
+  margin: 0 !important;
+}
+
+.supportPathCopy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  align-items: center;
+}
+
+.supportPathCopy strong {
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  letter-spacing: -0.02em;
+}
+
+.supportPathCopy span {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 900px) {
+  .supportPathGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .supportPathGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.aiModeBridge {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(139, 92, 246, 0.16);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(6, 182, 212, 0.05));
+}
+
+.aiModeBridge h3,
+.aiModeBridge p {
+  margin: 0;
+}
+
+.faqGrid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.85fr) minmax(0, 1.15fr);
+  gap: 1rem;
+}
+
+.faqQuestionList {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.faqQuestionButton {
+  border: 1px solid rgba(6, 182, 212, 0.14);
+  border-radius: 12px;
+  padding: 0.75rem 0.85rem;
+  text-align: left;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.76);
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1.35;
+  transition:
+    border-color var(--support-time-200) ease,
+    background var(--support-time-200) ease,
+    transform var(--support-time-200) ease;
+}
+
+.faqQuestionButton:hover {
+  transform: translateY(-1px);
+  border-color: rgba(6, 182, 212, 0.3);
+  background: rgba(6, 182, 212, 0.06);
+}
+
+.faqQuestionButtonActive {
+  border-color: rgba(6, 182, 212, 0.42);
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.14), rgba(139, 92, 246, 0.06));
+  box-shadow: 0 10px 26px rgba(6, 182, 212, 0.1);
+}
+
+.faqAnswerPanel {
+  min-height: 260px;
+  border: 1px solid rgba(139, 92, 246, 0.16);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 1.1rem;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(139, 92, 246, 0.1), transparent 34%),
+    rgba(255, 255, 255, 0.82);
+  box-shadow: var(--surface-2);
+}
+
+.faqAnswerPanel h3,
+.faqAnswerPanel p {
+  margin: 0;
+}
+
+.faqAnswerEyebrow {
+  color: var(--support-violet);
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 700px) {
+  .aiModeBridge {
+    grid-template-columns: 1fr;
+  }
+
+  .faqGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .actionCardsGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -373,7 +625,10 @@
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   box-shadow: var(--surface-2);
-  transition: transform var(--support-time-250) ease, box-shadow var(--support-time-250) ease, border-color var(--support-time-250) ease;
+  transition:
+    transform var(--support-time-250) ease,
+    box-shadow var(--support-time-250) ease,
+    border-color var(--support-time-250) ease;
   overflow: hidden;
 }
 
@@ -478,20 +733,26 @@
   font-weight: 600 !important;
   border-radius: 14px !important;
   width: 100%;
-  transition: box-shadow var(--support-time-200) ease, transform var(--support-time-200) ease;
+  transition:
+    box-shadow var(--support-time-200) ease,
+    transform var(--support-time-200) ease;
 }
 
 .actionCardCta :global(.Polaris-Button--variantPrimary) {
-  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.2) inset;
+  box-shadow:
+    0 2px 8px rgba(6, 182, 212, 0.25),
+    0 0 0 1px rgba(255, 255, 255, 0.2) inset;
 }
 
 .actionCardCta :global(.Polaris-Button--variantPrimary:hover) {
-  box-shadow: 0 4px 16px rgba(6, 182, 212, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.25) inset;
+  box-shadow:
+    0 4px 16px rgba(6, 182, 212, 0.3),
+    0 0 0 1px rgba(255, 255, 255, 0.25) inset;
 }
 
 /* ----- Content section (premium glass panel, single page scroll) ----- */
 .contentSection {
-  margin-top: var(--section-gap);
+  margin-top: calc(var(--section-gap) * 0.75);
   border-radius: 20px;
   overflow: hidden;
   min-width: 0;
@@ -513,9 +774,55 @@
   flex: none;
 }
 
+.supportPanelHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 1rem;
+  padding: 1.1rem 1.25rem;
+  border-bottom: 1px solid rgba(6, 182, 212, 0.12);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(6, 182, 212, 0.1), transparent 34%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.8), rgba(248, 252, 255, 0.64));
+}
+
+.supportPanelHeader h2,
+.supportPanelHeader p {
+  margin: 0;
+}
+
+.supportPanelHeader h2 {
+  margin-top: 0.18rem;
+  color: var(--text-primary);
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+}
+
+.supportPanelHeader p {
+  margin-top: 0.25rem;
+  max-width: 58rem;
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+  line-height: 1.48;
+}
+
+.supportPanelEyebrow {
+  color: var(--support-cyan);
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
 @media (max-width: 600px) {
   .contentSection {
     border-radius: 22px;
+  }
+
+  .supportPanelHeader {
+    grid-template-columns: 1fr;
+    padding: 1rem;
   }
 }
 
@@ -527,11 +834,7 @@
   padding: var(--space-2) var(--space-3) 0;
   margin: 0;
   list-style: none;
-  background: linear-gradient(
-    180deg,
-    rgba(6, 182, 212, 0.05) 0%,
-    transparent 100%
-  );
+  background: linear-gradient(180deg, rgba(6, 182, 212, 0.05) 0%, transparent 100%);
   border-bottom: 1px solid rgba(6, 182, 212, 0.1);
   flex-shrink: 0;
   min-width: 0;
@@ -593,7 +896,9 @@
   height: 5px;
   border-radius: 5px 5px 0 0;
   background: linear-gradient(90deg, var(--support-cyan), var(--support-violet));
-  box-shadow: 0 0 16px var(--support-glow), 0 2px 8px rgba(6, 182, 212, 0.2);
+  box-shadow:
+    0 0 16px var(--support-glow),
+    0 2px 8px rgba(6, 182, 212, 0.2);
 }
 
 .tabStripItem:focus-visible,
@@ -702,7 +1007,10 @@
   min-height: 48px !important;
   font-size: 1rem !important;
   line-height: 1.5 !important;
-  transition: border-color var(--support-time-200) ease, box-shadow var(--support-time-200) ease, background var(--support-time-200) ease;
+  transition:
+    border-color var(--support-time-200) ease,
+    box-shadow var(--support-time-200) ease,
+    background var(--support-time-200) ease;
   box-sizing: border-box;
 }
 
@@ -753,7 +1061,9 @@
   min-height: 48px !important;
   font-size: 1rem !important;
   line-height: 1.5 !important;
-  transition: border-color var(--support-time-200) ease, box-shadow var(--support-time-200) ease;
+  transition:
+    border-color var(--support-time-200) ease,
+    box-shadow var(--support-time-200) ease;
   box-sizing: border-box;
 }
 
@@ -792,7 +1102,9 @@
   font-size: 1rem !important;
   font-weight: 600 !important;
   border-radius: 14px !important;
-  transition: transform var(--support-time-150) ease, box-shadow var(--support-time-200) ease;
+  transition:
+    transform var(--support-time-150) ease,
+    box-shadow var(--support-time-200) ease;
   box-sizing: border-box;
 }
 
@@ -837,7 +1149,10 @@
     0 0 0 1px rgba(255, 255, 255, 0.25) inset,
     0 2px 8px rgba(6, 182, 212, 0.3),
     0 0 20px -6px rgba(6, 182, 212, 0.35);
-  transition: box-shadow var(--support-time-250) ease, transform var(--support-time-200) ease, background var(--support-time-250) ease;
+  transition:
+    box-shadow var(--support-time-250) ease,
+    transform var(--support-time-200) ease,
+    background var(--support-time-250) ease;
 }
 
 .tabCardForm :global(button[type='submit']):hover:not(:disabled) {
@@ -915,7 +1230,10 @@
   background: var(--bg-secondary);
   border: 1px solid var(--border-secondary);
   box-shadow: var(--shadow-sm);
-  transition: background var(--support-time-250) ease, box-shadow var(--support-time-250) ease, border-color var(--support-time-250) ease;
+  transition:
+    background var(--support-time-250) ease,
+    box-shadow var(--support-time-250) ease,
+    border-color var(--support-time-250) ease;
 }
 
 .tabCardList :global(.Polaris-List__Item:hover) {
@@ -1007,8 +1325,21 @@
 }
 
 @keyframes chatStatusPulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 2px rgba(255,255,255,0.8), 0 0 12px rgba(6,182,212,0.5), 0 0 24px -8px rgba(6,182,212,0.4); }
-  50% { opacity: 0.9; box-shadow: 0 0 0 3px rgba(255,255,255,0.6), 0 0 16px rgba(6,182,212,0.6), 0 0 32px -8px rgba(6,182,212,0.5); }
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow:
+      0 0 0 2px rgba(255, 255, 255, 0.8),
+      0 0 12px rgba(6, 182, 212, 0.5),
+      0 0 24px -8px rgba(6, 182, 212, 0.4);
+  }
+  50% {
+    opacity: 0.9;
+    box-shadow:
+      0 0 0 3px rgba(255, 255, 255, 0.6),
+      0 0 16px rgba(6, 182, 212, 0.6),
+      0 0 32px -8px rgba(6, 182, 212, 0.5);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1025,10 +1356,14 @@
   font-weight: 600;
   letter-spacing: 0.02em;
   border: 1px solid rgba(255, 255, 255, 0.8);
-  background: linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(248,252,255,0.92) 100%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 252, 255, 0.92) 100%);
   color: var(--text-secondary, #64748b);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  transition: border-color var(--support-time-250) ease, background var(--support-time-250) ease, color var(--support-time-200) ease, box-shadow var(--support-time-250) ease;
+  transition:
+    border-color var(--support-time-250) ease,
+    background var(--support-time-250) ease,
+    color var(--support-time-200) ease,
+    box-shadow var(--support-time-250) ease;
 }
 
 .chatHeaderClear:hover:not(:disabled) {
@@ -1090,7 +1425,9 @@
   background: var(--bg-active, rgba(6, 182, 212, 0.1));
   border: 1px solid var(--border-accent);
   box-shadow: var(--shadow-sm);
-  transition: box-shadow var(--support-time-250) ease, transform var(--support-time-200) ease;
+  transition:
+    box-shadow var(--support-time-250) ease,
+    transform var(--support-time-200) ease;
 }
 
 .chatBubbleUser:hover {
@@ -1105,7 +1442,9 @@
   background: var(--bg-secondary);
   border: 1px solid var(--border-secondary);
   box-shadow: var(--shadow-sm);
-  transition: box-shadow var(--support-time-250) ease, transform var(--support-time-200) ease;
+  transition:
+    box-shadow var(--support-time-250) ease,
+    transform var(--support-time-200) ease;
 }
 
 .chatBubbleAssistant:hover {
@@ -1140,11 +1479,7 @@
   gap: 12px;
   padding: 16px 20px;
   align-self: flex-start;
-  background: linear-gradient(
-    165deg,
-    rgba(255, 255, 255, 0.98) 0%,
-    rgba(248, 252, 255, 0.96) 100%
-  );
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 252, 255, 0.96) 100%);
   border-radius: 20px 20px 20px 6px;
   border: 1px solid rgba(255, 255, 255, 0.8);
   box-shadow:
@@ -1178,7 +1513,9 @@
 }
 
 @keyframes chatTypingBounce {
-  0%, 80%, 100% {
+  0%,
+  80%,
+  100% {
     transform: scale(0.65);
     opacity: 0.55;
   }
@@ -1211,7 +1548,9 @@
   background: var(--bg-tertiary);
   border: 1px solid var(--border-secondary);
   box-shadow: none;
-  transition: background var(--support-time-200) ease, border-color var(--support-time-200) ease;
+  transition:
+    background var(--support-time-200) ease,
+    border-color var(--support-time-200) ease;
 }
 
 .supportPage .chatComposer:hover {
@@ -1295,7 +1634,9 @@
   border-radius: 8px !important;
   background: var(--futuristic-cyan) !important;
   color: var(--text-inverse) !important;
-  transition: background var(--support-time-150) ease, transform var(--support-time-150) ease;
+  transition:
+    background var(--support-time-150) ease,
+    transform var(--support-time-150) ease;
 }
 
 .supportPage .chatComposerSend :global(.Polaris-Icon) {
@@ -1377,7 +1718,12 @@
   border: 1px solid var(--border-secondary);
   background: var(--bg-tertiary);
   box-shadow: var(--shadow-sm);
-  transition: border-color var(--support-time-250) ease, background var(--support-time-250) ease, box-shadow var(--support-time-250) ease, color var(--support-time-200) ease, transform var(--support-time-200) ease;
+  transition:
+    border-color var(--support-time-250) ease,
+    background var(--support-time-250) ease,
+    box-shadow var(--support-time-250) ease,
+    color var(--support-time-200) ease,
+    transform var(--support-time-200) ease;
   font-size: 0.9375rem;
   font-weight: 600;
   color: var(--text-primary);
@@ -1435,12 +1781,17 @@
   padding: 10px 20px;
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.8);
-  background: linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,252,255,0.95) 100%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 252, 255, 0.95) 100%);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   font-weight: 600;
   font-size: 0.9375rem;
   color: #334155;
-  transition: border-color var(--support-time-250) ease, background var(--support-time-250) ease, box-shadow var(--support-time-250) ease, color var(--support-time-200) ease, transform var(--support-time-200) ease;
+  transition:
+    border-color var(--support-time-250) ease,
+    background var(--support-time-250) ease,
+    box-shadow var(--support-time-250) ease,
+    color var(--support-time-200) ease,
+    transform var(--support-time-200) ease;
 }
 
 .stillNeedHelp :global(button:hover) {
@@ -1653,8 +2004,13 @@
   justify-content: center;
   background: #0e7490;
   color: #fff;
-  box-shadow: 0 4px 14px rgba(6, 182, 212, 0.4), 0 2px 6px rgba(0, 0, 0, 0.1);
-  transition: transform var(--support-time-200) ease, box-shadow var(--support-time-200) ease, background var(--support-time-200) ease;
+  box-shadow:
+    0 4px 14px rgba(6, 182, 212, 0.4),
+    0 2px 6px rgba(0, 0, 0, 0.1);
+  transition:
+    transform var(--support-time-200) ease,
+    box-shadow var(--support-time-200) ease,
+    background var(--support-time-200) ease;
   z-index: 9998;
 }
 
@@ -1691,7 +2047,9 @@
 .bubbleFab:hover {
   transform: scale(1.05);
   background: #06b6d4;
-  box-shadow: 0 6px 20px rgba(6, 182, 212, 0.5), 0 3px 8px rgba(0, 0, 0, 0.12);
+  box-shadow:
+    0 6px 20px rgba(6, 182, 212, 0.5),
+    0 3px 8px rgba(0, 0, 0, 0.12);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1842,7 +2200,9 @@
   cursor: pointer;
   color: var(--text-secondary);
   border-radius: var(--radius-md);
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .bubbleWindowClose:hover {
@@ -1889,7 +2249,11 @@
   color: var(--text-secondary);
   cursor: pointer;
   border-radius: 999px;
-  transition: color var(--support-time-200) ease, background var(--support-time-200) ease, border-color var(--support-time-200) ease, box-shadow var(--support-time-200) ease;
+  transition:
+    color var(--support-time-200) ease,
+    background var(--support-time-200) ease,
+    border-color var(--support-time-200) ease,
+    box-shadow var(--support-time-200) ease;
 }
 
 .bubbleChatClear:hover:not(:disabled) {
@@ -1958,7 +2322,9 @@
   background: var(--bg-tertiary);
   border: 1px solid var(--border-secondary);
   box-shadow: none;
-  transition: background var(--support-time-200) ease, border-color var(--support-time-200) ease;
+  transition:
+    background var(--support-time-200) ease,
+    border-color var(--support-time-200) ease;
 }
 
 .bubbleComposer:hover {
@@ -2030,7 +2396,9 @@
   border-radius: 8px !important;
   background: var(--futuristic-cyan) !important;
   color: var(--text-inverse) !important;
-  transition: background var(--support-time-150) ease, transform var(--support-time-150) ease;
+  transition:
+    background var(--support-time-150) ease,
+    transform var(--support-time-150) ease;
 }
 
 .bubbleComposerSend :global(.Polaris-Icon) {
@@ -2121,22 +2489,22 @@
 }
 
 /* ----- Dark theme: Support page & bubble (vars already theme-aware) ----- */
-[data-theme="dark"] .supportPage .hero {
+[data-theme='dark'] .supportPage .hero {
   border-color: var(--border-secondary);
 }
 
-[data-theme="dark"] .supportPage .chatComposer {
+[data-theme='dark'] .supportPage .chatComposer {
   border-color: var(--border-secondary);
 }
 
-[data-theme="dark"] .supportPage .chatComposer:focus-within {
+[data-theme='dark'] .supportPage .chatComposer:focus-within {
   border-color: var(--border-accent);
 }
 
-[data-theme="dark"] .bubbleWindow {
+[data-theme='dark'] .bubbleWindow {
   border-color: var(--border-secondary);
 }
 
-[data-theme="dark"] .bubbleComposer {
+[data-theme='dark'] .bubbleComposer {
   border-color: var(--border-secondary);
 }

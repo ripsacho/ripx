@@ -28,7 +28,20 @@ const { insertHeatmapEventsBatch } = require('../src/models/heatmap');
 
 const DEVICES = ['desktop', 'mobile', 'tablet'];
 const COUNTRIES = ['US', 'CA', 'GB', 'DE', 'AU', 'FR', 'IN', 'JP', 'BR', 'MX'];
-const HEATMAP_PAGES = ['/', '/products', '/collections/all', '/cart', '/pages/about'];
+const DEFAULT_HEATMAP_PATHS = [
+  '/',
+  '/collections/all',
+  '/products/ripperx-demo-product',
+  '/cart',
+  '/pages/about',
+];
+const HEATMAP_CLICK_HOTSPOTS = [
+  { name: 'hero_primary_cta', x: 48, y: 42, weight: 0.28, spreadX: 10, spreadY: 7 },
+  { name: 'product_image', x: 30, y: 48, weight: 0.18, spreadX: 12, spreadY: 10 },
+  { name: 'add_to_cart', x: 70, y: 58, weight: 0.3, spreadX: 8, spreadY: 6 },
+  { name: 'cart_checkout', x: 76, y: 72, weight: 0.14, spreadX: 7, spreadY: 5 },
+  { name: 'nav_search', x: 84, y: 12, weight: 0.1, spreadX: 9, spreadY: 4 },
+];
 
 function randomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -40,6 +53,94 @@ function randomChoice(arr) {
 
 function randomFloat(min, max) {
   return Math.round((min + Math.random() * (max - min)) * 100) / 100;
+}
+
+function weightedChoice(items) {
+  const total = items.reduce((sum, item) => sum + (Number(item.weight) || 0), 0);
+  let cursor = Math.random() * total;
+  for (const item of items) {
+    cursor -= Number(item.weight) || 0;
+    if (cursor <= 0) {
+      return item;
+    }
+  }
+  return items[items.length - 1];
+}
+
+function getSeedBaseUrl(shopDomain) {
+  const raw =
+    process.env.SEED_BASE_URL ||
+    process.env.STOREFRONT_URL ||
+    (shopDomain ? `https://${String(shopDomain).trim().toLowerCase()}` : '');
+  return String(raw || '').replace(/\/+$/, '');
+}
+
+function buildHeatmapPages(shopDomain) {
+  const configured = String(process.env.SEED_HEATMAP_PAGES || '')
+    .split(',')
+    .map(page => page.trim())
+    .filter(Boolean);
+  const pages = configured.length > 0 ? configured : DEFAULT_HEATMAP_PATHS;
+  const baseUrl = getSeedBaseUrl(shopDomain);
+  return pages.map(page => {
+    if (/^https?:\/\//i.test(page)) {
+      return page;
+    }
+    const path = page.startsWith('/') ? page : `/${page}`;
+    return baseUrl ? `${baseUrl}${path}` : path;
+  });
+}
+
+function generateRealisticClick() {
+  const hotspot = weightedChoice(HEATMAP_CLICK_HOTSPOTS);
+  return {
+    x: randomFloat(
+      Math.max(0, hotspot.x - hotspot.spreadX),
+      Math.min(99, hotspot.x + hotspot.spreadX)
+    ),
+    y: randomFloat(
+      Math.max(0, hotspot.y - hotspot.spreadY),
+      Math.min(99, hotspot.y + hotspot.spreadY)
+    ),
+    hotspot: hotspot.name,
+  };
+}
+
+function getSeedHeatmapPageDimensions(pageUrl) {
+  const path = (() => {
+    try {
+      return new URL(pageUrl, 'https://ripx.local').pathname;
+    } catch {
+      return String(pageUrl || '');
+    }
+  })();
+  if (path.includes('/products/')) {
+    return { width: 1440, height: randomInt(3600, 5200) };
+  }
+  if (path.includes('/collections/')) {
+    return { width: 1440, height: randomInt(3200, 4800) };
+  }
+  if (path.includes('/cart')) {
+    return { width: 1440, height: randomInt(1700, 2600) };
+  }
+  if (path.includes('/pages/')) {
+    return { width: 1440, height: randomInt(2600, 4200) };
+  }
+  return { width: 1440, height: randomInt(3000, 5000) };
+}
+
+function generateScrollDepth() {
+  const roll = Math.random();
+  if (roll < 0.18) {
+    return randomInt(15, 35);
+  }
+  if (roll < 0.52) {
+    return randomInt(40, 70);
+  }
+  if (roll < 0.82) {
+    return randomInt(75, 95);
+  }
+  return 100;
 }
 
 function generateUserId() {
@@ -55,10 +156,14 @@ async function seedDummyData(shopDomain, options = {}) {
     revenueMin = 15,
     revenueMax = 250,
     includeSegments = true,
+    storefrontPassword = process.env.STOREFRONT_PASSWORD ||
+      process.env.SEED_STOREFRONT_PASSWORD ||
+      '',
   } = options;
 
   const tests = await getTestsByShop(shopDomain, null);
   const testsWithVariants = tests.filter(t => t.variants && t.variants.length > 0);
+  const heatmapPages = buildHeatmapPages(shopDomain);
 
   if (testsWithVariants.length === 0) {
     console.log('No tests with variants found. Create and run some tests first.');
@@ -191,6 +296,8 @@ async function seedDummyData(shopDomain, options = {}) {
         const metadata = JSON.stringify({
           order_id: `seed_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
           source: 'seed_dummy_data',
+          conversion_url: `${getSeedBaseUrl(shopDomain)}/checkout/thank-you`,
+          storefront_password_protected: Boolean(storefrontPassword),
         });
         await client.query(eventSql, [test.id, variantId, uid, shopDomain, revenue, metadata]);
         totalEvents += 1;
@@ -199,12 +306,23 @@ async function seedDummyData(shopDomain, options = {}) {
       // Optionally add some custom events (add_to_cart) for event explorer
       const customEventSql = `
         INSERT INTO events (test_id, variant_id, user_id, shop_domain, event_type, event_name, event_value, metadata, created_at)
-        VALUES ($1, $2, $3, $4, 'custom', $5, 0, '{}', NOW() - (random() * interval '7 days'))
+        VALUES ($1, $2, $3, $4, 'custom', $5, 0, $6, NOW() - (random() * interval '7 days'))
       `;
       const addToCartCount = Math.min(randomInt(20, 50), shuffled.length);
       const addToCartUsers = shuffled.slice(0, addToCartCount);
       for (const { uid, variantId } of addToCartUsers) {
-        await client.query(customEventSql, [test.id, variantId, uid, shopDomain, 'add_to_cart']);
+        await client.query(customEventSql, [
+          test.id,
+          variantId,
+          uid,
+          shopDomain,
+          'add_to_cart',
+          JSON.stringify({
+            source: 'seed_dummy_data',
+            page_url: randomChoice(heatmapPages),
+            storefront_password_protected: Boolean(storefrontPassword),
+          }),
+        ]);
         totalEvents += 1;
       }
 
@@ -213,45 +331,55 @@ async function seedDummyData(shopDomain, options = {}) {
       let testHeatmapCount = 0;
       try {
         const heatmapEvents = [];
-        const viewportW = 100;
-        const viewportH = 100;
+        const viewportProfiles = [
+          { width: 1440, height: 900 },
+          { width: 1366, height: 768 },
+          { width: 390, height: 844 },
+          { width: 430, height: 932 },
+        ];
         for (const variant of variants) {
           const variantId = String(variant.id ?? variant.name ?? '');
-          const pageUrl = randomChoice(HEATMAP_PAGES);
-          // Click events - spread across 10x10 grid (x,y 0-95 -> buckets 0-9)
-          const clickCount = randomInt(80, 200);
-          for (let i = 0; i < clickCount; i++) {
-            const x = randomInt(0, 95);
-            const y = randomInt(0, 95);
-            heatmapEvents.push({
-              test_id: test.id,
-              variant_id: variantId,
-              shop_domain: shopDomain,
-              page_url: pageUrl,
-              event_type: 'click',
-              x,
-              y,
-              scroll_depth: null,
-              viewport_width: viewportW,
-              viewport_height: viewportH,
-            });
-          }
-          // Scroll events - distribution across depth buckets
-          const scrollCount = randomInt(60, 150);
-          for (let i = 0; i < scrollCount; i++) {
-            const depth = randomInt(0, 100);
-            heatmapEvents.push({
-              test_id: test.id,
-              variant_id: variantId,
-              shop_domain: shopDomain,
-              page_url: pageUrl,
-              event_type: 'scroll',
-              x: null,
-              y: null,
-              scroll_depth: depth,
-              viewport_width: viewportW,
-              viewport_height: viewportH,
-            });
+          for (const pageUrl of heatmapPages) {
+            const pageDimensions = getSeedHeatmapPageDimensions(pageUrl);
+            // Click events with realistic hotspots across hero, product, and cart CTAs.
+            const clickCount = randomInt(45, 130);
+            for (let i = 0; i < clickCount; i++) {
+              const click = generateRealisticClick();
+              const viewport = randomChoice(viewportProfiles);
+              heatmapEvents.push({
+                test_id: test.id,
+                variant_id: variantId,
+                shop_domain: shopDomain,
+                page_url: pageUrl,
+                event_type: 'click',
+                x: click.x,
+                y: click.y,
+                scroll_depth: null,
+                viewport_width: viewport.width,
+                viewport_height: viewport.height,
+                page_x: Math.round((click.x / 100) * pageDimensions.width),
+                page_y: Math.round((click.y / 100) * pageDimensions.height),
+                page_width: pageDimensions.width,
+                page_height: pageDimensions.height,
+              });
+            }
+            // Scroll events biased toward mid/deep scroll, with some bounce behavior.
+            const scrollCount = randomInt(35, 90);
+            for (let i = 0; i < scrollCount; i++) {
+              const viewport = randomChoice(viewportProfiles);
+              heatmapEvents.push({
+                test_id: test.id,
+                variant_id: variantId,
+                shop_domain: shopDomain,
+                page_url: pageUrl,
+                event_type: 'scroll',
+                x: null,
+                y: null,
+                scroll_depth: generateScrollDepth(),
+                viewport_width: viewport.width,
+                viewport_height: viewport.height,
+              });
+            }
           }
         }
         if (heatmapEvents.length > 0) {
@@ -309,6 +437,8 @@ async function main() {
       revenueMin: parseFloat(process.env.SEED_REVENUE_MIN) || 15,
       revenueMax: parseFloat(process.env.SEED_REVENUE_MAX) || 250,
       includeSegments: process.env.SEED_INCLUDE_SEGMENTS !== 'false',
+      storefrontPassword:
+        process.env.STOREFRONT_PASSWORD || process.env.SEED_STOREFRONT_PASSWORD || '',
     };
 
     const result = await seedDummyData(shopDomain, options);

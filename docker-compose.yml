@@ -15,10 +15,11 @@ services:
       - APP_URL=${APP_URL}
       - JWT_SECRET=${JWT_SECRET}
     depends_on:
-      - postgres
-      - redis
-    volumes:
-      - ./backend:/app/backend
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: sh -c "npm run migrate && node backend/src/app.js"
     restart: unless-stopped
 
   # PostgreSQL Database (align with .env.example: ripx_db)
@@ -32,7 +33,11 @@ services:
       - POSTGRES_DB=ripx_db
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./backend/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ripx -d ripx_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
     restart: unless-stopped
 
   # Redis Cache
@@ -42,6 +47,11 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
     restart: unless-stopped
 
   # Frontend (if serving from backend)

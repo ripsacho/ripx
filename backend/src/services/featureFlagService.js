@@ -41,13 +41,13 @@ function normalizeFlagKey(rawKey) {
 }
 
 async function getStoredFlagRows(keys = []) {
-  if (!keys.length) {
+  const uniqueKeys = Array.from(new Set((Array.isArray(keys) ? keys : []).filter(Boolean)));
+  if (!uniqueKeys.length) {
     return [];
   }
-  const placeholders = keys.map((_, index) => `$${index + 1}`).join(', ');
   const result = await query(
-    `SELECT key, value, updated_at FROM key_value_store WHERE key IN (${placeholders})`,
-    keys
+    'SELECT key, value, updated_at FROM key_value_store WHERE key = ANY($1::text[])',
+    [uniqueKeys]
   ).catch(() => ({ rows: [] }));
   return result.rows || [];
 }
@@ -78,7 +78,25 @@ async function evaluateFlags(keys = [], options = {}) {
   const normalized = Array.from(
     new Set((Array.isArray(keys) ? keys : []).map(normalizeFlagKey).filter(Boolean))
   );
-  const results = await Promise.all(normalized.map(key => evaluateFlag(key, options)));
+  const domain = String(options.domain || options.shopDomain || '')
+    .trim()
+    .toLowerCase();
+  const domainKeys = domain ? normalized.map(key => `${key}.${domain}`) : [];
+  const rows = await getStoredFlagRows([...domainKeys, ...normalized]);
+  const rowByKey = new Map(rows.map(row => [row.key, row]));
+  const results = normalized.map(key => {
+    const domainKey = domain ? `${key}.${domain}` : '';
+    const domainRow = domainKey ? rowByKey.get(domainKey) : null;
+    const globalRow = rowByKey.get(key);
+    const sourceRow = domainRow || globalRow;
+    return {
+      key,
+      domain: domain || null,
+      enabled: parseFlagValue(sourceRow?.value, Boolean(options.defaultValue)),
+      source: domainRow ? 'domain' : globalRow ? 'global' : 'default',
+      updatedAt: sourceRow?.updated_at || null,
+    };
+  });
   return Object.fromEntries(results.map(result => [result.key, result]));
 }
 

@@ -204,6 +204,570 @@
   font-weight: 600;
 }
 
+.commandCenter {
+  display: grid;
+  gap: 1rem;
+  padding: 1.5rem;
+  border: 1px solid rgba(139, 92, 246, 0.16);
+  border-radius: var(--overview-card-radius);
+  background:
+    radial-gradient(circle at 12% 18%, rgba(139, 92, 246, 0.08), transparent 32%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.9));
+  box-shadow: 0 10px 36px rgba(15, 23, 42, 0.055);
+}
+
+[data-theme="dark"] .commandCenter {
+  background:
+    radial-gradient(circle at 12% 18%, rgba(139, 92, 246, 0.12), transparent 32%),
+    linear-gradient(135deg, rgba(26, 26, 26, 0.96), rgba(18, 18, 18, 0.9));
+  border-color: rgba(139, 92, 246, 0.22);
+}
+
+.commandCenterMain {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.36fr);
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.commandCenterMain h2 {
+  margin: 0.25rem 0 0.35rem;
+  color: var(--text-primary);
+  font-size: clamp(1.35rem, 2vw, 2rem);
+  letter-spacing: -0.04em;
+}
+
+.commandCenterMain p,
+.commandActionCard small,
+.commandMetric small,
+.sectionTitleRow p {
+  color: var(--text-secondary);
+}
+
+.commandEyebrow {
+  color: var(--futuristic-purple);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.commandActionCard {
+  display: grid;
+  gap: 0.45rem;
+  padding: 1rem;
+  border: 1px solid rgba(6, 182, 212, 0.14);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+[data-theme="dark"] .commandActionCard {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.commandActionCard span,
+.commandMetric span {
+  color: var(--text-tertiary);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.commandActionCard strong {
+  color: var(--text-primary);
+  font-size: 1.1rem;
+}
+
+.commandMetricGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.commandMetric {
+  display: grid;
+  gap: 0.25rem;
+  padding: 1rem;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+[data-theme="dark"] .commandMetric {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.commandMetric strong {
+  color: var(--text-primary);
+  font-size: 1.55rem;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+}
+
+.commandMetric_good {
+  border-color: rgba(34, 197, 94, 0.2);
+}
+
+.commandMetric_warn {
+  border-color: rgba(245, 158, 11, 0.24);
+}
+
+.commandMetric_bad {
+  border-color: rgba(239, 68, 68, 0.24);
+}
+
+.visualCommandDeck {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+  gap: 1rem;
+}
+
+.readinessFlowCard,
+.riskRadarCard,
+.performanceMapCard {
+  padding: 1.25rem;
+  border: 1px solid rgba(6, 182, 212, 0.14);
+  border-radius: var(--overview-card-radius);
+  background:
+    radial-gradient(circle at 14% 12%, rgba(6, 182, 212, 0.08), transparent 30%),
+    rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+}
+
+[data-theme="dark"] .readinessFlowCard,
+[data-theme="dark"] .riskRadarCard,
+[data-theme="dark"] .performanceMapCard {
+  background:
+    radial-gradient(circle at 14% 12%, rgba(6, 182, 212, 0.12), transparent 30%),
+    rgba(255, 255, 255, 0.04);
+  border-color: rgba(6, 182, 212, 0.2);
+}
+
+.readinessFlow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.readinessStage {
+  position: relative;
+  display: grid;
+  gap: 0.35rem;
+  min-height: 132px;
+  padding: 1rem;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+[data-theme="dark"] .readinessStage {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.readinessStage span,
+.riskSignalRow span {
+  color: var(--text-tertiary);
+  font-size: 0.7rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.readinessStage strong {
+  color: var(--text-primary);
+  font-size: 1.65rem;
+  font-weight: 900;
+  letter-spacing: -0.05em;
+}
+
+.readinessStage small {
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
+.readinessStage > div {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+
+.readinessStage > div i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
+}
+
+.readinessStage > b {
+  position: absolute;
+  top: 50%;
+  right: -0.62rem;
+  z-index: 2;
+  width: 1rem;
+  height: 2px;
+  background: rgba(6, 182, 212, 0.35);
+}
+
+.readinessStage_good,
+.readinessStage_winner {
+  border-color: rgba(34, 197, 94, 0.2);
+}
+
+.readinessStage_active {
+  border-color: rgba(6, 182, 212, 0.22);
+}
+
+.riskRadarCard {
+  grid-column: auto;
+}
+
+.riskRadarBody {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.45fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: center;
+}
+
+.riskOrb {
+  --risk-score: 0%;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 0.2rem;
+  width: 152px;
+  height: 152px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at center, var(--bg-secondary) 55%, transparent 56%),
+    conic-gradient(from -90deg, #ef4444 var(--risk-score), rgba(15, 23, 42, 0.08) 0);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.06), 0 10px 26px rgba(15, 23, 42, 0.08);
+}
+
+.riskOrb strong {
+  color: var(--text-primary);
+  font-size: 1.2rem;
+}
+
+.riskOrb span {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.riskSignalRows {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.riskSignalRow {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.6fr) minmax(90px, 1fr) auto;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.riskSignalRow div {
+  height: 9px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+
+.riskSignalRow i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #f59e0b, #ef4444);
+}
+
+.riskSignalRow strong {
+  color: var(--text-primary);
+  font-size: 0.82rem;
+}
+
+.performanceMapCard {
+  grid-column: 1 / -1;
+}
+
+.performanceMap {
+  position: relative;
+  min-height: 260px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 18px;
+  background:
+    linear-gradient(rgba(6, 182, 212, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(6, 182, 212, 0.05) 1px, transparent 1px),
+    radial-gradient(circle at 85% 20%, rgba(34, 197, 94, 0.08), transparent 26%);
+  background-size: 28px 28px, 28px 28px, 100% 100%;
+  overflow: hidden;
+}
+
+.performanceBubble {
+  position: absolute;
+  left: var(--bubble-left);
+  bottom: var(--bubble-bottom);
+  display: grid;
+  place-items: center;
+  width: var(--bubble-size);
+  height: var(--bubble-size);
+  border: 2px solid rgba(255, 255, 255, 0.78);
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--futuristic-cyan), var(--futuristic-violet));
+  color: #fff;
+  cursor: pointer;
+  transform: translate(-50%, 50%);
+  box-shadow: 0 12px 28px rgba(6, 182, 212, 0.22);
+}
+
+.performanceBubble span {
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+
+.performanceMapAxis {
+  position: absolute;
+  right: 1rem;
+  bottom: 0.85rem;
+  left: 1rem;
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  pointer-events: none;
+}
+
+.portfolioMixCard {
+  padding: 1.25rem;
+  border: 1px solid rgba(139, 92, 246, 0.16);
+  border-radius: var(--overview-card-radius);
+  background:
+    radial-gradient(circle at 92% 12%, rgba(139, 92, 246, 0.1), transparent 28%),
+    rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+}
+
+[data-theme="dark"] .portfolioMixCard {
+  background:
+    radial-gradient(circle at 92% 12%, rgba(139, 92, 246, 0.14), transparent 28%),
+    rgba(255, 255, 255, 0.04);
+  border-color: rgba(139, 92, 246, 0.24);
+}
+
+.portfolioMixVisual {
+  display: grid;
+  gap: 1rem;
+}
+
+.portfolioMixStack {
+  display: flex;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.04);
+}
+
+.portfolioMixStack i {
+  display: block;
+  min-width: 8px;
+  height: 100%;
+}
+
+.portfolioMixRows {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.portfolioMixRow {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.55fr) minmax(120px, 1fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.75rem;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.72);
+}
+
+[data-theme="dark"] .portfolioMixRow {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.portfolioMixRow span {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.portfolioMixRow span i {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--mix-color, var(--futuristic-cyan));
+}
+
+.portfolioMixRow strong {
+  overflow: hidden;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portfolioMixRow > div {
+  height: 9px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+
+.portfolioMixRow b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--mix-color, var(--futuristic-cyan)), var(--futuristic-violet));
+}
+
+.portfolioMixRow em {
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.statusPipeline,
+.insightCard {
+  padding: 1.25rem;
+  border: 1px solid rgba(6, 182, 212, 0.14);
+  border-radius: var(--overview-card-radius);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.045);
+}
+
+[data-theme="dark"] .statusPipeline,
+[data-theme="dark"] .insightCard {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(6, 182, 212, 0.18);
+}
+
+.sectionTitleRow,
+.chartHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.chartHeader h2,
+.sectionTitleRow h2 {
+  margin-bottom: 0;
+}
+
+.chartMetricSelect {
+  min-width: 220px;
+}
+
+.statusRows,
+.insightRows {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.statusRow {
+  display: grid;
+  grid-template-columns: minmax(100px, 0.25fr) minmax(160px, 1fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.statusRow span {
+  color: var(--text-primary);
+  font-weight: 750;
+  text-transform: capitalize;
+}
+
+.statusRow div {
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+
+.statusRow i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--futuristic-cyan), var(--futuristic-violet));
+}
+
+.statusRow strong {
+  color: var(--text-primary);
+}
+
+.insightGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.insightRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  width: 100%;
+  padding: 0.85rem;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.72);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+[data-theme="dark"] .insightRow {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.insightRow:hover {
+  border-color: rgba(6, 182, 212, 0.24);
+  box-shadow: 0 8px 22px rgba(6, 182, 212, 0.08);
+}
+
+.insightRow span {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.insightRow strong {
+  overflow: hidden;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.insightRow small {
+  overflow: hidden;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.insightRow b {
+  color: var(--text-primary);
+  font-size: 0.82rem;
+}
+
 /* Test Card - Synced with TestList UI */
 .testCard {
   background: var(--bg-secondary);
@@ -211,7 +775,6 @@
   border-radius: var(--overview-card-radius);
   padding: 1.25rem 1.5rem;
   transition: all var(--overview-transition);
-  cursor: pointer;
   position: relative;
   overflow: hidden;
 }
@@ -237,6 +800,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
+  cursor: pointer;
   flex-wrap: wrap;
 }
 
@@ -339,6 +903,39 @@
   grid-column: 1 / -1;
 }
 
+.testCardAlerts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.testCardAlerts span {
+  padding: 0.35rem 0.55rem;
+  border: 1px solid rgba(245, 158, 11, 0.24);
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.08);
+  color: var(--text-primary);
+  font-size: 0.74rem;
+  font-weight: 750;
+}
+
+.testCardActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.filterPanel {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(180px, 0.35fr) minmax(190px, 0.35fr);
+  gap: 0.85rem;
+  align-items: end;
+  padding: 1rem;
+  border: 1px solid rgba(6, 182, 212, 0.12);
+  border-radius: 16px;
+  background: rgba(6, 182, 212, 0.04);
+}
+
 @media (max-width: 600px) {
   .testCardMetricsGrid {
     grid-template-columns: repeat(2, 1fr);
@@ -421,6 +1018,21 @@
   .overviewPage {
     padding: 0 24px 32px;
   }
+
+  .commandCenterMain,
+  .insightGrid,
+  .visualCommandDeck {
+    grid-template-columns: 1fr;
+  }
+
+  .commandMetricGrid,
+  .readinessFlow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .filterPanel {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 768px) {
@@ -436,6 +1048,15 @@
     gap: 1.25rem;
   }
 
+  .sectionTitleRow,
+  .chartHeader {
+    flex-direction: column;
+  }
+
+  .chartMetricSelect {
+    width: 100%;
+  }
+
   .heroStat {
     min-width: 80px;
     padding: 0.5rem 1rem;
@@ -444,10 +1065,49 @@
   .heroStatValue {
     font-size: 1.25rem;
   }
+
+  .statusRow {
+    grid-template-columns: 1fr;
+  }
+
+  .riskRadarBody {
+    grid-template-columns: 1fr;
+  }
+
+  .portfolioMixRows {
+    grid-template-columns: 1fr;
+  }
+
+  .riskOrb {
+    justify-self: center;
+  }
+}
+
+@media (max-width: 600px) {
+  .commandMetricGrid,
+  .testCardMetricsGrid,
+  .readinessFlow {
+    grid-template-columns: 1fr;
+  }
+
+  .readinessStage > b {
+    display: none;
+  }
+
+  .performanceMap {
+    min-height: 220px;
+  }
+
+  .portfolioMixRow {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .heroSection::before {
+    animation: none;
+  }
+  .skeletonHero {
     animation: none;
   }
   .heroStat:hover {

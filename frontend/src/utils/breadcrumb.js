@@ -91,17 +91,21 @@ export function getBreadcrumb(pathname, search = '') {
     return { parent: 'Tests', current: 'Create Test', parentPath: testsListPath };
   if (path === (appPrefix ? `${appPrefix}/analytics` : ROUTES.ANALYTICS))
     return { current: 'Analytics' };
+  if (appPrefix && path === `${appPrefix}/goals-metrics`)
+    return { parent: 'Dashboard', current: 'Goals & Metrics', parentPath: appPrefix };
   if (appPrefix && path === `${appPrefix}/settings`)
     return { parent: 'Dashboard', current: 'App settings', parentPath: appPrefix };
   if (path === ROUTES.SETTINGS)
-    return { parent: 'Home', current: 'Account settings', parentPath: ROUTES.USER_PANEL };
+    return { parent: 'Profile', current: 'Account', parentPath: ROUTES.PROFILE };
   if (appPrefix && path === `${appPrefix}/setup`) return { current: 'Setup Wizard' };
   if (path === ROUTES.PROFILE) {
     const tab = new URLSearchParams(search || '').get('tab');
     if (tab === 'account')
       return { parent: 'Profile', current: 'Account', parentPath: ROUTES.PROFILE };
+    if (tab === 'appearance')
+      return { parent: 'Profile', current: 'Appearance', parentPath: ROUTES.PROFILE };
     if (tab === 'preferences')
-      return { parent: 'Profile', current: 'Preferences', parentPath: ROUTES.PROFILE };
+      return { parent: 'Profile', current: 'Workflow', parentPath: ROUTES.PROFILE };
     return { parent: 'Home', current: 'Profile', parentPath: ROUTES.USER_PANEL };
   }
   if (path === ROUTES.NOTIFICATIONS)
@@ -173,7 +177,7 @@ export function getBreadcrumb(pathname, search = '') {
     [ROUTES.TESTS]: 'Tests',
     [ROUTES.CREATE_TEST]: 'Create Test',
     [ROUTES.ANALYTICS]: 'Analytics',
-    [ROUTES.SETTINGS]: 'Account settings',
+    [ROUTES.SETTINGS]: 'Account',
     [ROUTES.SETUP]: 'Setup',
     [ROUTES.PROFILE]: 'Profile',
     [ROUTES.NOTIFICATIONS]: 'Notifications',

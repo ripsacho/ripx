@@ -75,7 +75,7 @@ function SetupWizard() {
   const isShopifyFromRoute = domain && isShopifyStoreDomain(domain);
   const standalone = !isShopifyFromRoute && isStandaloneMode();
   const shopDomain = setupStatus?.shopDomain || getShopDomain();
-  const settingsPath = domain ? ROUTES.appSettings(domain) : ROUTES.SETTINGS;
+  const settingsPath = domain ? ROUTES.appSettings(domain) : ROUTES.PROFILE_ACCOUNT;
   const installationHubPath = domain
     ? `${ROUTES.appSettings(domain)}?tab=installation&guided_setup=1`
     : settingsPath;

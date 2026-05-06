@@ -11,6 +11,7 @@ const { scheduledTestsQueue } = require('./queue');
 const { updateTest } = require('../models/test');
 const notificationService = require('../services/notificationService');
 const outboundWebhookService = require('../services/outboundWebhookService');
+const { getAutomationAnalytics } = require('./analyticsAutomation');
 
 async function processScheduledStart(testId) {
   try {
@@ -41,8 +42,7 @@ async function processScheduledStop(testId) {
 
     await updateTest(testId, test.shop_domain, { status: 'stopped', stopped_at: new Date() });
 
-    const analyticsService = require('../services/analytics');
-    const analytics = await analyticsService.getTestAnalytics(testId, test.shop_domain);
+    const analytics = await getAutomationAnalytics(testId, test.shop_domain);
 
     await notificationService.createInAppNotification(test.shop_domain, {
       type: 'test_complete',
@@ -55,6 +55,7 @@ async function processScheduledStop(testId) {
       testId,
       testName: test.name,
       analytics: analytics?.variants,
+      analyticsScope: analytics?.automationScope,
     });
 
     logger.info('Test auto-stopped', { testId, shopDomain: test.shop_domain });

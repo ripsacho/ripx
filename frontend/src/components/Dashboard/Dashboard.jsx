@@ -639,7 +639,7 @@ function Dashboard() {
           </span>
         )}
         <span className={styles.fabIcon}>+</span>
-        <span className={styles.fabLabel}>New test</span>
+        <span className={styles.fabLabel}>NewTest</span>
       </button>
 
       <Toast

@@ -24,6 +24,8 @@ const PERMISSIONS = Object.freeze({
   MAIL_TEST_SEND: 'admin:mail:test_send',
   // Impersonation – high privilege
   IMPERSONATE: 'admin:impersonate',
+  // Analytics operations – expensive aggregation/retention jobs
+  ANALYTICS_AGGREGATION: 'admin:analytics:aggregation',
   // Optional future: admin:audit:export, admin:domains:suspend, etc.
 });
 
@@ -38,6 +40,10 @@ const PERMISSION_META = Object.freeze({
   },
   [PERMISSIONS.USERS_SET_ROLE]: { riskLevel: 'high', description: 'Set platform role on a user' },
   [PERMISSIONS.IMPERSONATE]: { riskLevel: 'high', description: 'Issue impersonation JWT' },
+  [PERMISSIONS.ANALYTICS_AGGREGATION]: {
+    riskLevel: 'high',
+    description: 'Run analytics aggregation and retention jobs',
+  },
 });
 
 /** Permissions that use stricter rate limit (see middleware/sensitiveAdminLimiter) */
@@ -56,6 +62,7 @@ const ROLE_PERMISSIONS = Object.freeze({
     PERMISSIONS.USERS_LOCK,
     PERMISSIONS.USERS_EXPORT,
     PERMISSIONS.MAIL_TEST_SEND,
+    PERMISSIONS.ANALYTICS_AGGREGATION,
   ],
   [PLATFORM_ROLES.SUPERADMIN]: [
     PERMISSIONS.ADMIN_VIEW,
@@ -64,6 +71,7 @@ const ROLE_PERMISSIONS = Object.freeze({
     PERMISSIONS.USERS_EXPORT,
     PERMISSIONS.MAIL_TEST_SEND,
     PERMISSIONS.IMPERSONATE,
+    PERMISSIONS.ANALYTICS_AGGREGATION,
   ],
 });
 
@@ -114,6 +122,9 @@ const ROUTE_PERMISSION_MAP = Object.freeze({
   'GET /api/admin/users/export': PERMISSIONS.USERS_EXPORT,
   'GET /api/admin/users/:shopDomain/export': PERMISSIONS.USERS_EXPORT,
   'POST /api/admin/mail-test-send': PERMISSIONS.MAIL_TEST_SEND,
+  'POST /api/admin/aggregation/trigger': PERMISSIONS.ANALYTICS_AGGREGATION,
+  'POST /api/admin/aggregation/heatmap-rollups': PERMISSIONS.ANALYTICS_AGGREGATION,
+  'POST /api/admin/aggregation/goal-event-rollups': PERMISSIONS.ANALYTICS_AGGREGATION,
 });
 
 module.exports = {

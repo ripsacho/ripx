@@ -123,11 +123,11 @@ describe('getBreadcrumb', () => {
     });
   });
 
-  it('returns Home > current for universal pages (Settings, Profile, Notifications, Docs, Support)', () => {
+  it('returns Home > current for universal pages (Profile, Notifications, Docs, Support)', () => {
     expect(getBreadcrumb(ROUTES.SETTINGS)).toEqual({
-      parent: 'Home',
-      current: 'Account settings',
-      parentPath: ROUTES.USER_PANEL,
+      parent: 'Profile',
+      current: 'Account',
+      parentPath: ROUTES.PROFILE,
     });
     expect(getBreadcrumb(ROUTES.PROFILE)).toEqual({
       parent: 'Home',
@@ -139,9 +139,14 @@ describe('getBreadcrumb', () => {
       current: 'Account',
       parentPath: ROUTES.PROFILE,
     });
+    expect(getBreadcrumb(ROUTES.PROFILE, '?tab=appearance')).toEqual({
+      parent: 'Profile',
+      current: 'Appearance',
+      parentPath: ROUTES.PROFILE,
+    });
     expect(getBreadcrumb(ROUTES.PROFILE, '?tab=preferences')).toEqual({
       parent: 'Profile',
-      current: 'Preferences',
+      current: 'Workflow',
       parentPath: ROUTES.PROFILE,
     });
     expect(getBreadcrumb(ROUTES.NOTIFICATIONS)).toEqual({
@@ -165,6 +170,14 @@ describe('getBreadcrumb', () => {
     expect(getBreadcrumb('/app/my-store.com/settings')).toEqual({
       parent: 'Dashboard',
       current: 'App settings',
+      parentPath: '/app/my-store.com',
+    });
+  });
+
+  it('returns Dashboard > Goals & Metrics for app goals metrics', () => {
+    expect(getBreadcrumb('/app/my-store.com/goals-metrics')).toEqual({
+      parent: 'Dashboard',
+      current: 'Goals & Metrics',
       parentPath: '/app/my-store.com',
     });
   });

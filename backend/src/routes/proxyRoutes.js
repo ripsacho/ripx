@@ -6,11 +6,10 @@
 
 const express = require('express');
 const crypto = require('crypto');
-const path = require('path');
-const fs = require('fs');
 const querystring = require('querystring');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const { getActiveTestsForStorefront } = require('../models/test');
+const { listGoalMetricDefinitions } = require('../models/goalMetricDefinition');
 const logger = require('../utils/logger');
 const {
   SCRIPT_VERSION,
@@ -25,6 +24,10 @@ const {
 const { getTenantByDomain, normalizeDomain } = require('../models/tenant');
 const { ERROR_MESSAGES } = require('../constants');
 const { createPricePreviewBootstrapHandlers } = require('./pricePreviewBootstrap');
+const {
+  getStorefrontScriptPath,
+  readStorefrontScriptSource,
+} = require('../utils/storefrontScriptSource');
 
 const router = express.Router();
 
@@ -35,10 +38,6 @@ const { servePricePreviewBootstrap } = createPricePreviewBootstrapHandlers({
 
 function isValidShopDomain(shop) {
   return /^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/.test(shop);
-}
-
-function getStorefrontScriptPath() {
-  return path.join(__dirname, '../../..', 'shopify', 'storefront-script.js');
 }
 
 function isTenantSuspendedOrBlocked(tenant) {
@@ -182,13 +181,21 @@ async function serveScript(req, res) {
     }
   }
 
-  const tests = await getActiveTestsForStorefront(normalizedShop);
-  const runtimeConfig = buildStorefrontRuntimeConfig(normalizedShop, tests, req);
+  const [tests, goalMetricDefinitions] = await Promise.all([
+    getActiveTestsForStorefront(normalizedShop),
+    listGoalMetricDefinitions(normalizedShop).catch(() => []),
+  ]);
+  const runtimeConfig = buildStorefrontRuntimeConfig(
+    normalizedShop,
+    tests,
+    req,
+    goalMetricDefinitions
+  );
   const scriptPath = getStorefrontScriptPath();
 
   let scriptContents;
   try {
-    scriptContents = fs.readFileSync(scriptPath, 'utf8');
+    scriptContents = readStorefrontScriptSource(scriptPath);
   } catch (err) {
     logger.error('Storefront script file missing or unreadable', {
       path: scriptPath,

@@ -101,7 +101,7 @@ function TopBar({
     suggestions: [],
   });
 
-  /* Profile, Docs, Notifications: always root. Settings: in app → app settings; elsewhere → account settings (theme) */
+  /* Profile, Docs, Notifications: always root. Settings only exists inside a selected app. */
   const profilePath = ROUTES.PROFILE;
   const notificationsPath = ROUTES.NOTIFICATIONS;
   const docsPath = ROUTES.DOCS;
@@ -110,7 +110,7 @@ function TopBar({
   const activeStoreLabel = appDomain || null;
   const identityLabel = activeStoreLabel || userEmail || shopDomain || null;
   const identityTitle = activeStoreLabel ? 'Store' : userEmail ? 'Signed in as' : 'Account';
-  const settingsPath = appDomain ? ROUTES.appSettings(appDomain) : ROUTES.SETTINGS;
+  const settingsPath = appDomain ? ROUTES.appSettings(appDomain) : null;
 
   const isShopifyStore = Boolean(appDomain && isShopifyStoreDomain(appDomain));
   const {
@@ -389,7 +389,7 @@ function TopBar({
                       return next;
                     })
                   }
-                  aria-label="Help – Documentation and Support"
+                  aria-label="Help and documentation"
                   aria-expanded={helpPopoverActive}
                   aria-haspopup="true"
                   className={`${styles.iconBtn} ${helpPopoverActive ? styles.active : ''}`}
@@ -451,17 +451,6 @@ function TopBar({
                   }}
                 >
                   Documentation
-                </button>
-                <button
-                  type="button"
-                  className={styles.helpPopoverLink}
-                  onClick={() => {
-                    setHelpPopoverActive(false);
-                    trackUiEvent('topbar_help_navigate', { target: supportPath });
-                    navigateWithEmbed(supportPath);
-                  }}
-                >
-                  Support
                 </button>
               </BlockStack>
             </div>
@@ -737,35 +726,9 @@ function TopBar({
               </div>
 
               <div className={styles.menuSection}>
-                <span className={styles.menuSectionTitle}>Settings</span>
-                <button
-                  type="button"
-                  className={styles.menuItem}
-                  role="menuitem"
-                  onClick={() => handleUserMenuNavigate(settingsPath)}
-                >
-                  {appDomain ? 'App settings' : 'Account settings'}
-                </button>
-                <button
-                  type="button"
-                  className={styles.menuItem}
-                  role="menuitem"
-                  onClick={() => handleUserMenuNavigate(notificationsPath)}
-                >
-                  Notifications
-                </button>
-                <button
-                  type="button"
-                  className={styles.menuItem}
-                  role="menuitem"
-                  onClick={() => handleUserMenuNavigate(ROUTES.PROFILE, { tab: 'account' })}
-                >
-                  Account & API keys
-                </button>
-              </div>
-
-              <div className={styles.menuSection}>
-                <span className={styles.menuSectionTitle}>Resources</span>
+                <span className={styles.menuSectionTitle}>
+                  {appDomain ? 'Settings' : 'Account'}
+                </span>
                 <button
                   type="button"
                   className={styles.menuItem}
@@ -774,21 +737,23 @@ function TopBar({
                 >
                   My Profile
                 </button>
+                {settingsPath && (
+                  <button
+                    type="button"
+                    className={styles.menuItem}
+                    role="menuitem"
+                    onClick={() => handleUserMenuNavigate(settingsPath)}
+                  >
+                    App settings
+                  </button>
+                )}
                 <button
                   type="button"
                   className={styles.menuItem}
                   role="menuitem"
-                  onClick={() => handleUserMenuNavigate(ROUTES.PROFILE, { tab: 'preferences' })}
+                  onClick={() => handleUserMenuNavigate(notificationsPath)}
                 >
-                  Preferences
-                </button>
-                <button
-                  type="button"
-                  className={styles.menuItem}
-                  role="menuitem"
-                  onClick={() => handleUserMenuNavigate(docsPath)}
-                >
-                  Documentation
+                  Notifications
                 </button>
               </div>
 

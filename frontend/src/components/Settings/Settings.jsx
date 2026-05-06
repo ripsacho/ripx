@@ -20,7 +20,6 @@ import {
   Checkbox,
   ChoiceList,
   Box,
-  Select,
   Icon,
   Banner,
   Spinner,
@@ -35,14 +34,13 @@ import {
   TargetIcon,
   CodeIcon,
   ClipboardIcon,
-  PaintBrushFlatIcon,
   SettingsIcon,
   InfoIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
 } from '@shopify/polaris-icons';
 import { PageShell } from '../Shared';
-import { CONTENT_GAP, ROUTES, APP_META, STORAGE_KEYS } from '../../constants';
+import { CONTENT_GAP, ROUTES, APP_META } from '../../constants';
 import styles from './Settings.module.css';
 import { apiGet, apiPut, apiPost, apiDelete, isStandaloneMode, unwrapData } from '../../services';
 import { buildPreviewUrl, ensureShopifyPreviewBootstrapUrl } from '../../utils/previewUrl';
@@ -50,7 +48,6 @@ import {
   getCheckoutExperienceTestInventory,
   summarizeCheckoutExperienceInventory,
 } from '../../utils/checkoutReporting';
-import { getSavedTheme, updateTheme } from '../../utils/theme';
 
 const WEBHOOK_EVENT_CHOICES = [
   { label: 'When test completes', value: 'test_complete' },
@@ -113,13 +110,7 @@ const CONFIDENCE_QUICK = [
   { label: '95%', value: 0.95 },
   { label: '99%', value: 0.99 },
 ];
-const APP_SETTINGS_SECTION_IDS = [
-  'installation',
-  'general',
-  'integrations',
-  'presets',
-  'appearance',
-];
+const APP_SETTINGS_SECTION_IDS = ['installation', 'general', 'integrations', 'presets'];
 
 /** Default settings values - single source for initial state and validation */
 const DEFAULT_SETTINGS = {
@@ -138,16 +129,6 @@ const DEFAULT_INTEGRATION_CONFIG = {
   bigqueryDataset: 'ripx_analytics',
   bigqueryCredentials: '',
 };
-
-/** Theme options - single source of truth for Appearance tab */
-const THEME_OPTIONS = [
-  { value: 'light', label: 'Light', preview: 'light' },
-  { value: 'dark', label: 'Dark', preview: 'dark' },
-  { value: 'auto', label: 'Auto (by time of day)', preview: 'auto' },
-  { value: 'custom', label: 'Custom schedule', preview: 'auto' },
-];
-
-const THEME_VALUES = THEME_OPTIONS.map(o => o.value);
 
 /** Format ISO date to relative time (e.g. "2 hours ago") */
 function formatRelativeTime(iso) {
@@ -235,11 +216,10 @@ const TAB_CONFIG_APP = [
   { id: 'general', label: 'Test defaults', icon: SettingsIcon },
   { id: 'integrations', label: 'Connections', icon: ChartVerticalIcon },
   { id: 'presets', label: 'Targeting presets', icon: TargetIcon },
-  { id: 'appearance', label: 'Appearance', icon: PaintBrushFlatIcon },
 ];
 
-/** Account-level only (universal /settings) – theme/appearance; app-related config is in the app */
-const TAB_CONFIG_ACCOUNT = [{ id: 'appearance', label: 'Appearance', icon: PaintBrushFlatIcon }];
+/** Legacy fallback if Settings is ever rendered outside /app/:domain/settings. */
+const TAB_CONFIG_ACCOUNT = [{ id: 'account', label: 'Account settings', icon: SettingsIcon }];
 
 /** Long-form help moved to tooltips on section titles */
 const SECTION_HELP = {
@@ -254,7 +234,6 @@ const SECTION_HELP = {
   analyticsData: 'Optional integrations: GA4 for event forwarding and BigQuery for exports.',
   integrationsSave: 'Save writes GA4 and BigQuery credentials and dataset settings.',
   targetingPresets: 'Saved targeting presets from the Test Wizard, reusable on new tests.',
-  themeAppearance: 'Choose light, dark, or auto. For a custom schedule, use Profile → Preferences.',
 };
 
 function SectionTitleWithTip({
@@ -405,10 +384,6 @@ function Settings() {
   const [installationLoading, setInstallationLoading] = useState(true);
   const [installationError, setInstallationError] = useState(false);
   const [copiedSnippet, setCopiedSnippet] = useState(false);
-  const [theme, setTheme] = useState(() => {
-    const saved = getSavedTheme();
-    return THEME_VALUES.includes(saved) ? saved : THEME_OPTIONS[0].value;
-  });
   const [webhookError, setWebhookError] = useState(null);
   const [presetApplyingKey, setPresetApplyingKey] = useState(null);
   const [deletePresetLoading, setDeletePresetLoading] = useState(false);
@@ -1278,27 +1253,6 @@ function Settings() {
     }
   };
 
-  const handleThemeChange = value => {
-    const valid = THEME_VALUES.includes(value) ? value : THEME_OPTIONS[0].value;
-    setTheme(valid);
-    if (valid !== 'custom') {
-      updateTheme(valid);
-      setMessage('Theme updated');
-    } else {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEYS.PREFERENCES);
-        const prefs = saved ? JSON.parse(saved) : {};
-        const start = prefs.customThemeStart ?? 7;
-        const end = prefs.customThemeEnd ?? 19;
-        updateTheme('custom', { start, end });
-        setMessage('Custom theme applied. Adjust schedule in Profile → Preferences.');
-      } catch {
-        updateTheme('custom', { start: 7, end: 19 });
-        setMessage('Custom theme applied. Adjust schedule in Profile → Preferences.');
-      }
-    }
-  };
-
   const activeTabId = TAB_IDS[selectedTab];
   const focusAppSection = useCallback(
     sectionId => {
@@ -2068,9 +2022,6 @@ function Settings() {
       },
     ];
   }, [configuredIntegrationCount, integrations]);
-  const selectedThemeLabel = useMemo(() => {
-    return THEME_OPTIONS.find(option => option.value === theme)?.label || 'Light';
-  }, [theme]);
   const appSettingsSectionIndex = useMemo(
     () => [
       {
@@ -2097,12 +2048,6 @@ function Settings() {
         shortLabel: 'PR',
         status: Array.isArray(targetingPresets) && targetingPresets.length > 0 ? 'ok' : 'neutral',
       },
-      {
-        id: 'appearance',
-        label: 'Appearance',
-        shortLabel: 'AP',
-        status: 'neutral',
-      },
     ],
     [setupComplete, configuredIntegrationCount, targetingPresets]
   );
@@ -2120,7 +2065,8 @@ function Settings() {
           ? `${configuredIntegrationCount} integration(s) configured and active.`
           : 'Connect GA4 or BigQuery to activate external analytics flow.',
       presets: `${Array.isArray(targetingPresets) ? targetingPresets.length : 0} saved targeting preset(s).`,
-      appearance: 'Tune visual preferences and operator experience.',
+      account:
+        'Personal theme and display preferences live in Profile. Store settings live inside each store.',
     }),
     [setupComplete, configuredIntegrationCount, targetingPresets]
   );
@@ -2144,22 +2090,12 @@ function Settings() {
         label: `${Array.isArray(targetingPresets) ? targetingPresets.length : 0} saved`,
         status: Array.isArray(targetingPresets) && targetingPresets.length > 0 ? 'ok' : 'neutral',
       },
-      appearance: {
-        label: selectedThemeLabel,
-        status: 'neutral',
-      },
     }),
-    [
-      configuredIntegrationCount,
-      selectedSettingsPresetKey,
-      selectedThemeLabel,
-      setupComplete,
-      targetingPresets,
-    ]
+    [configuredIntegrationCount, selectedSettingsPresetKey, setupComplete, targetingPresets]
   );
 
   const appSettingsSubtitleHelp =
-    'Manage snippet and checkout setup, defaults, integrations, targeting presets, and appearance for this shop.';
+    'Manage snippet and checkout setup, defaults, integrations, and targeting presets for this shop.';
 
   const metricTips = useMemo(
     () => ({
@@ -2172,7 +2108,7 @@ function Settings() {
   );
 
   const installationHubPath = useMemo(() => {
-    if (!appSettingsDomain) return ROUTES.SETTINGS;
+    if (!appSettingsDomain) return ROUTES.PROFILE_ACCOUNT;
     return `${ROUTES.appSettings(appSettingsDomain)}?tab=installation&guided_setup=1`;
   }, [appSettingsDomain]);
   const isInstallationSectionActive = isAppSettings && activeTabId === 'installation';
@@ -2224,9 +2160,6 @@ function Settings() {
       integrations?.ga4?.configured ? 'active' : 'not configured'
     } and BigQuery is ${integrations?.bigquery?.configured ? 'configured' : 'not configured'}.`;
   }, [configuredIntegrationCount, integrations]);
-  const appearanceSectionSummary = useMemo(() => {
-    return `${selectedThemeLabel} theme is active. Use Profile preferences only for custom scheduling.`;
-  }, [selectedThemeLabel]);
   const presetsSectionSummary = useMemo(() => {
     if (targetingPresets.length === 0) {
       return 'No saved targeting presets yet. Create one in the Test Wizard when you want reusable targeting.';
@@ -2390,7 +2323,7 @@ function Settings() {
                             ? isFocusedInstallationMode || isInstallationSectionActive
                               ? 'Install, verify, launch.'
                               : 'Store setup and defaults.'
-                            : 'Theme and appearance.'}
+                            : 'Personal preferences live in Profile.'}
                         </p>
                         {isAppSettings && (
                           <Tooltip content={appSettingsSubtitleHelp}>
@@ -2629,13 +2562,17 @@ function Settings() {
                   <Box padding="400">
                     <BlockStack gap="200">
                       <Text variant="bodyMd" as="p">
-                        Test configuration, installation snippet, webhooks, integrations, and
-                        targeting presets are available in the app. Open a store from Home to
-                        configure them.
+                        Appearance is now a personal profile preference, so one user changing theme
+                        will not affect anyone else on the account.
                       </Text>
-                      <Link to={ROUTES.USER_PANEL} className={styles.quickLinkBtn}>
-                        Open app
-                      </Link>
+                      <InlineStack gap="200" wrap>
+                        <Link to={ROUTES.PROFILE_APPEARANCE} className={styles.quickLinkBtn}>
+                          Open appearance
+                        </Link>
+                        <Link to={ROUTES.USER_PANEL} className={styles.quickLinkBtn}>
+                          Open store settings
+                        </Link>
+                      </InlineStack>
                     </BlockStack>
                   </Box>
                 </Card>
@@ -2680,7 +2617,7 @@ function Settings() {
               className={styles.settingsBody}
               aria-label={isAppSettings ? 'App settings content' : 'Account settings content'}
             >
-              {!showAllAppSections && !isInstallationSectionActive && (
+              {!showAllAppSections && (
                 <div className={styles.settingsTabStickyWrap}>
                   <nav
                     className={`${styles.settingsTabBar} ${styles.settingsTopNav}`}
@@ -2872,7 +2809,7 @@ function Settings() {
                             <Tooltip
                               content={
                                 showAllAppSections
-                                  ? 'All App Settings sections are visible in one organized page. Scroll to edit setup, defaults, integrations, targeting presets, and appearance without switching tabs.'
+                                  ? 'All App Settings sections are visible in one organized page. Scroll to edit setup, defaults, integrations, and targeting presets without switching tabs.'
                                   : tabSummaries[activeTabId] ||
                                     'Tips and context for the tab you selected.'
                               }
@@ -2957,6 +2894,50 @@ function Settings() {
                           </div>
                         </div>
                       )}
+                      {!isAppSettings && activeTabId === 'account' && (
+                        <div
+                          id="settings-panel-account"
+                          role="tabpanel"
+                          aria-labelledby="settings-tab-account"
+                          className={`${styles.settingsContent} ${styles.settingsPanelLayout}`}
+                        >
+                          <Card
+                            className={`${styles.settingsPanelCard} ${styles.settingsPanelCardFull}`}
+                          >
+                            <Box padding="500">
+                              <BlockStack gap="400">
+                                <div className={styles.sectionHeader}>
+                                  <div className={styles.sectionHeaderIcon}>
+                                    <SettingsIcon />
+                                  </div>
+                                  <div className={styles.sectionHeaderContent}>
+                                    <Text variant="headingMd" as="h2">
+                                      Account settings moved to the right scope
+                                    </Text>
+                                    <Text as="p" variant="bodySm" tone="subdued">
+                                      Use Profile for user-specific appearance and display
+                                      preferences. Open a store from Home for per-store
+                                      installation, defaults, integrations, and targeting presets.
+                                    </Text>
+                                  </div>
+                                </div>
+                                <InlineStack gap="200" wrap>
+                                  <Link
+                                    to={ROUTES.PROFILE_APPEARANCE}
+                                    className={styles.quickLinkBtn}
+                                  >
+                                    Profile appearance
+                                  </Link>
+                                  <Link to={ROUTES.USER_PANEL} className={styles.quickLinkBtn}>
+                                    Open stores
+                                  </Link>
+                                </InlineStack>
+                              </BlockStack>
+                            </Box>
+                          </Card>
+                        </div>
+                      )}
+
                       {isAppSettings && (showAllAppSections || activeTabId === 'installation') && (
                         <div
                           id="settings-panel-installation"
@@ -5000,7 +4981,8 @@ function Settings() {
                                         >
                                           Open Profile
                                         </Link>{' '}
-                                        for notifications, theme, and dashboard.
+                                        for notifications, personal theme, and dashboard
+                                        preferences.
                                       </Text>
                                     </div>
                                   </div>
@@ -5325,97 +5307,6 @@ function Settings() {
                         </div>
                       )}
 
-                      {(showAllAppSections || activeTabId === 'appearance') && (
-                        <div
-                          id="settings-panel-appearance"
-                          ref={node => setAppSectionNode('appearance', node)}
-                          data-app-section="appearance"
-                          role={showAllAppSections ? 'region' : 'tabpanel'}
-                          aria-labelledby={
-                            showAllAppSections ? undefined : 'settings-tab-appearance'
-                          }
-                          aria-label={showAllAppSections ? 'Appearance settings' : undefined}
-                          className={`${styles.settingsContent} ${styles.settingsPanelLayout} ${styles.settingsPanelAppearance}`}
-                        >
-                          {showAllAppSections && (
-                            <SettingsSectionLead
-                              title="Appearance"
-                              summary={appearanceSectionSummary}
-                              badgeLabel={selectedThemeLabel}
-                              badgeTone="info"
-                              actionLabel="Open only this section"
-                              onAction={() => focusAppSection('appearance')}
-                            />
-                          )}
-                          <Card
-                            className={`${styles.settingsPanelCard} ${styles.settingsPanelCardFull}`}
-                          >
-                            <Box padding="500">
-                              <BlockStack gap="400">
-                                <div className={styles.sectionHeader}>
-                                  <div className={styles.sectionHeaderIcon}>
-                                    <PaintBrushFlatIcon />
-                                  </div>
-                                  <div className={styles.sectionHeaderContent}>
-                                    <SectionTitleWithTip
-                                      title="Theme"
-                                      tip={SECTION_HELP.themeAppearance}
-                                    />
-                                    <Text as="p" variant="bodySm" tone="subdued">
-                                      Custom schedule:{' '}
-                                      <Link
-                                        to={`${ROUTES.PROFILE}?tab=preferences`}
-                                        className={styles.setupWizardLink}
-                                      >
-                                        Profile → Preferences
-                                      </Link>
-                                    </Text>
-                                  </div>
-                                </div>
-                                <div className={styles.panelCardBody}>
-                                  <div className={styles.themePreviewGrid}>
-                                    {THEME_OPTIONS.map(opt => (
-                                      <button
-                                        key={opt.value}
-                                        type="button"
-                                        className={`${styles.themePreviewCard} ${theme === opt.value ? styles.themePreviewCardActive : ''}`}
-                                        onClick={() => handleThemeChange(opt.value)}
-                                        aria-pressed={theme === opt.value}
-                                        aria-label={`Theme: ${opt.label}`}
-                                      >
-                                        <div
-                                          className={`${styles.themePreviewSwatch} ${styles[`themePreviewSwatch_${opt.preview}`]}`}
-                                        />
-                                        <span className={styles.themePreviewLabel}>
-                                          {opt.label}
-                                        </span>
-                                      </button>
-                                    ))}
-                                  </div>
-                                  <div className={styles.themeSelectFallback}>
-                                    <Text as="span" variant="bodySm" tone="subdued">
-                                      Or choose from dropdown:
-                                    </Text>
-                                    <div className={styles.themeSelectWrap}>
-                                      <Select
-                                        label="Theme"
-                                        labelHidden
-                                        options={THEME_OPTIONS.map(({ value, label }) => ({
-                                          value,
-                                          label,
-                                        }))}
-                                        value={theme}
-                                        onChange={handleThemeChange}
-                                      />
-                                    </div>
-                                  </div>
-                                </div>
-                              </BlockStack>
-                            </Box>
-                          </Card>
-                        </div>
-                      )}
-
                       {isAppSettings && (showAllAppSections || activeTabId === 'presets') && (
                         <div
                           id="settings-panel-presets"
@@ -5520,7 +5411,7 @@ function Settings() {
                         <div className={styles.aboutVersion}>Version {APP_META.VERSION}</div>
                         <p className={styles.aboutDesc}>
                           Centralized configuration for install health, test defaults, integrations,
-                          and account appearance.
+                          and store workflows.
                         </p>
                       </div>
                     </Box>

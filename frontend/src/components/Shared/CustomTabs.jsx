@@ -9,7 +9,7 @@ import React, { useCallback } from 'react';
 import { InlineStack, Text } from '@shopify/polaris';
 import './CustomTabs.css';
 
-function CustomTabs({ tabs, selected, onSelect, children }) {
+function CustomTabs({ tabs, selected, onSelect, children, ariaLabel = 'Tabs' }) {
   const count = tabs.length;
   const handleKeyDown = useCallback(
     e => {
@@ -26,23 +26,15 @@ function CustomTabs({ tabs, selected, onSelect, children }) {
   );
 
   return (
-    <div
-      className="custom-tabs-container"
-      role="tablist"
-      aria-label="Tabs"
-      onKeyDown={handleKeyDown}
-    >
+    <div className="custom-tabs-container" aria-label={ariaLabel} onKeyDown={handleKeyDown}>
       <div className="custom-tabs-list">
         <InlineStack gap="200" align="start">
           {tabs.map((tab, index) => (
             <button
               key={tab.id || index}
-              role="tab"
               type="button"
-              aria-selected={selected === index}
-              aria-controls={`custom-tabpanel-${index}`}
-              id={`custom-tab-${index}`}
-              tabIndex={selected === index ? 0 : -1}
+              aria-current={selected === index ? 'page' : undefined}
+              aria-pressed={selected === index}
               className={`custom-tab ${selected === index ? 'custom-tab--selected' : ''}`}
               onClick={() => onSelect(index)}
             >
@@ -57,14 +49,7 @@ function CustomTabs({ tabs, selected, onSelect, children }) {
           ))}
         </InlineStack>
       </div>
-      <div
-        className="custom-tabs-panel"
-        role="tabpanel"
-        id={`custom-tabpanel-${selected}`}
-        aria-labelledby={`custom-tab-${selected}`}
-      >
-        {children}
-      </div>
+      <div className="custom-tabs-panel">{children}</div>
     </div>
   );
 }

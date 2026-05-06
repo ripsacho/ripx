@@ -70,6 +70,7 @@ import {
   getApiBaseUrl,
   unwrapData,
 } from '../../services';
+import { getGoalMetricDefinitions, saveGoalMetricDefinition } from '../../services/goalMetricsApi';
 import { isShopifyStoreDomain } from '../../utils/shopifyAdmin';
 import {
   buildPreviewUrl as buildPreviewUrlUtil,
@@ -202,10 +203,13 @@ function TestWizard({
   const [savePresetModalOpen, setSavePresetModalOpen] = useState(false);
   const [savePresetAsFullTemplate, setSavePresetAsFullTemplate] = useState(false);
   const [sampleSizeExpanded, setSampleSizeExpanded] = useState(false);
+  const [goalRulesExpanded, setGoalRulesExpanded] = useState(false);
+  const [goalAttributionExpanded, setGoalAttributionExpanded] = useState(false);
   const [visualEditorExpanded, setVisualEditorExpanded] = useState(false);
   const [codeEditorExpanded, setCodeEditorExpanded] = useState(false);
   const [visualEditorDirty, setVisualEditorDirty] = useState(false);
   const [codeEditorDirty, setCodeEditorDirty] = useState(false);
+  const codeEditorDirtyRef = useRef(false);
   const [codeEditorSubTab, setCodeEditorSubTab] = useState('css'); // 'css' | 'js' – IDE-style tab blend
   const [variantDropdownOpen, setVariantDropdownOpen] = useState(false);
   const variantDropdownRef = useRef(null);
@@ -264,6 +268,7 @@ function TestWizard({
     if (!isDirty) {
       setVisualEditorDirty(false);
       setCodeEditorDirty(false);
+      codeEditorDirtyRef.current = false;
     }
   }, [isDirty]);
   const [visualPreviewLoadState, setVisualPreviewLoadState] = useState('idle'); // 'idle' | 'loading' | 'loaded' | 'error'
@@ -291,6 +296,7 @@ function TestWizard({
   const [simulationExportToast, setSimulationExportToast] = useState(null);
   const [priceMatrixActionToast, setPriceMatrixActionToast] = useState(null);
   const [antiFlickerToast, setAntiFlickerToast] = useState(null);
+  const [goalEventCopyToast, setGoalEventCopyToast] = useState(null);
   const [shippingExecutionLoading, setShippingExecutionLoading] = useState(false);
   const [shippingExecutionAction, setShippingExecutionAction] = useState(null);
   const [shippingExecutionReport, setShippingExecutionReport] = useState(null);
@@ -525,14 +531,23 @@ function TestWizard({
   const [audienceAdvancedOpen, setAudienceAdvancedOpen] = useState(false);
   const [shippingScopeAdvancedOpen, setShippingScopeAdvancedOpen] = useState(false);
   const [_advancedTargetingOpen, _setAdvancedTargetingOpen] = useState(false);
-  const [customEventInput, setCustomEventInput] = useState('');
-  const [advancedGoalOpen, setAdvancedGoalOpen] = useState(false);
-  const [goalWorkspacePanel, setGoalWorkspacePanel] = useState('goals');
-  const [customGoalDraft, setCustomGoalDraft] = useState({
-    label: '',
+  const [goalEventModalOpen, setGoalEventModalOpen] = useState(false);
+  const [goalEventModalMode, setGoalEventModalMode] = useState('browse');
+  const [goalEventCreateSaving, setGoalEventCreateSaving] = useState(false);
+  const [goalEventCreateError, setGoalEventCreateError] = useState('');
+  const [goalCatalogSearch, setGoalCatalogSearch] = useState('');
+  const [goalCatalogRoleFilter, setGoalCatalogRoleFilter] = useState('all');
+  const [goalMetricDefinitions, setGoalMetricDefinitions] = useState([]);
+  const [goalMetricDefinitionsLoading, setGoalMetricDefinitionsLoading] = useState(false);
+  const [goalEventCreateDraft, setGoalEventCreateDraft] = useState({
+    name: '',
     event_name: '',
+    description: '',
+    metric_role: 'secondary',
     aggregation: 'count',
     direction: 'increase',
+    parameter_name: '',
+    min_relative_lift: -10,
   });
   const [advancedSectionsOpen, setAdvancedSectionsOpen] = useState({
     safety: true,
@@ -556,6 +571,30 @@ function TestWizard({
   );
   /** When store-resources API fails or returns empty_reason, show this instead of generic message */
   const [storeResourcesError, setStoreResourcesError] = useState(null);
+  const fetchGoalMetricDefinitions = useCallback(async () => {
+    const catalogDomain = routeDomain ? String(routeDomain).trim().toLowerCase() : '';
+    setGoalMetricDefinitionsLoading(true);
+    try {
+      const definitions = await getGoalMetricDefinitions(catalogDomain);
+      setGoalMetricDefinitions(Array.isArray(definitions) ? definitions : []);
+      return Array.isArray(definitions) ? definitions : [];
+    } catch {
+      setGoalMetricDefinitions([]);
+      return [];
+    } finally {
+      setGoalMetricDefinitionsLoading(false);
+    }
+  }, [routeDomain]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchGoalMetricDefinitions().then(() => {
+      if (cancelled) return;
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchGoalMetricDefinitions]);
   const [checkoutCollectionResources, setCheckoutCollectionResources] = useState([]);
   const [checkoutCollectionLoading, setCheckoutCollectionLoading] = useState(false);
   const [checkoutCollectionSearch, setCheckoutCollectionSearch] = useState('');
@@ -1358,6 +1397,24 @@ function TestWizard({
       root?.classList.remove(modalClass);
     };
   }, [priceProductModalOpen]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const modalClass = 'ripx-goal-event-modal-open';
+    const root = document.documentElement;
+    const isOpen = goalEventModalOpen && currentStep === stepIds.goal;
+    if (isOpen) {
+      document.body.classList.add(modalClass);
+      root?.classList.add(modalClass);
+    } else {
+      document.body.classList.remove(modalClass);
+      root?.classList.remove(modalClass);
+    }
+    return () => {
+      document.body.classList.remove(modalClass);
+      root?.classList.remove(modalClass);
+    };
+  }, [currentStep, goalEventModalOpen, stepIds.goal]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
@@ -2996,9 +3053,16 @@ function TestWizard({
     if (!str.trim()) return { css: '', js: '' };
     const cssMatch = str.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
     const jsMatch = str.match(/<script[^>]*>([\s\S]*?)<\/script>/i);
+    const unwrapBlockContent = value => {
+      if (value === undefined || value === null) return '';
+      let output = String(value);
+      if (output.startsWith('\n')) output = output.slice(1);
+      if (output.endsWith('\n')) output = output.slice(0, -1);
+      return output;
+    };
     return {
-      css: cssMatch ? cssMatch[1].trim() : '',
-      js: jsMatch ? jsMatch[1].trim() : '',
+      css: cssMatch ? unwrapBlockContent(cssMatch[1]) : '',
+      js: jsMatch ? unwrapBlockContent(jsMatch[1]) : '',
     };
   };
 
@@ -3041,6 +3105,13 @@ function TestWizard({
         const variant = formVariants[index] ?? serverVariants[index];
         if (!variant) return { name: `Variant ${index + 1}`, css: '', js: '', code: '' };
         const existing = prev[index] || prev.find(item => item?.name === variant.name);
+        if (
+          codeEditorDirtyRef.current &&
+          existing &&
+          (typeof existing.css === 'string' || typeof existing.js === 'string')
+        ) {
+          return { ...existing, name: variant.name };
+        }
         const fromForm = variant?.code ?? variant?.config?.code ?? '';
         const fromServer = serverVariants[index]
           ? (serverVariants[index].code ?? serverVariants[index].config?.code ?? '')
@@ -3319,20 +3390,33 @@ function TestWizard({
     }
   };
 
+  const scrollToGoalSection = sectionId => {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return;
+    const section = document.getElementById(sectionId);
+    if (!section) return;
+
+    const stickyProgressHeight = progressBarRef.current?.getBoundingClientRect?.().height || 0;
+    const topBarOffset = 56;
+    const comfortableGap = 28;
+    const nextTop =
+      window.scrollY +
+      section.getBoundingClientRect().top -
+      stickyProgressHeight -
+      topBarOffset -
+      comfortableGap;
+
+    window.scrollTo({ top: Math.max(nextTop, 0), behavior: 'smooth' });
+  };
+
   const handleNextRef = useRef(handleNext);
   const handleBackRef = useRef(handleBack);
   handleNextRef.current = handleNext;
   handleBackRef.current = handleBack;
 
-  const metricLabelMap = {
-    revenue: 'Revenue',
-    conversion_rate: 'Conversion rate',
-    aov: 'Average order value',
-  };
   const selectedSecondaryGoals = Array.isArray(formData.goal?.secondary)
     ? formData.goal.secondary
     : [];
-  const recommendedGoalPresets = [
+  const fallbackGoalPresets = [
     {
       label: 'Add to cart',
       event_name: 'add_to_cart',
@@ -3362,13 +3446,39 @@ function TestWizard({
       description: 'Track quote, lead, or contact form completion.',
     },
   ];
+  const recommendedGoalPresets = useMemo(() => {
+    const catalogDefinitions = Array.isArray(goalMetricDefinitions) ? goalMetricDefinitions : [];
+    const sourceDefinitions =
+      catalogDefinitions.length > 0 ? catalogDefinitions : fallbackGoalPresets;
+    return sourceDefinitions
+      .filter(definition => definition?.event_name)
+      .map(definition => ({
+        label:
+          definition.label ||
+          definition.name ||
+          String(definition.event_name || '')
+            .replace(/_/g, ' ')
+            .replace(/\b\w/g, char => char.toUpperCase()),
+        event_name: definition.event_name,
+        aggregation: definition.aggregation || 'count',
+        direction: definition.direction || 'increase',
+        description: definition.description || 'Reusable goal from the Goals & Metrics catalog.',
+        catalog_id: definition.id,
+        source: definition.builtin ? 'catalog_builtin' : 'catalog',
+        observed_count: definition.observed_count || 0,
+        metric_role: definition.metric_role || 'secondary',
+        min_relative_lift: definition.trigger_config?.min_relative_lift,
+      }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [goalMetricDefinitions]);
 
   const normalizeGoalEventName = value =>
     String(value || '')
       .trim()
       .toLowerCase()
-      .replace(/[^a-z0-9_ -]/g, '')
+      .replace(/[^a-z0-9_]+/g, '_')
       .replace(/[\s-]+/g, '_')
+      .replace(/^_+|_+$/g, '')
       .slice(0, 100);
 
   const getSecondaryGoalName = goal => goal?.event_name || goal;
@@ -3377,6 +3487,28 @@ function TestWizard({
     return String(rawLabel || '')
       .replace(/_/g, ' ')
       .replace(/\b\w/g, char => char.toUpperCase());
+  };
+  const resetGoalEventCreateDraft = () => {
+    setGoalEventCreateDraft({
+      name: '',
+      event_name: '',
+      description: '',
+      metric_role: 'secondary',
+      aggregation: 'count',
+      direction: 'increase',
+      parameter_name: '',
+      min_relative_lift: -10,
+    });
+    setGoalEventCreateError('');
+  };
+  const openGoalEventModal = mode => {
+    setGoalEventModalMode(mode || 'browse');
+    setGoalEventCreateError('');
+    setGoalEventModalOpen(true);
+  };
+  const closeGoalEventModal = () => {
+    setGoalEventModalOpen(false);
+    setGoalEventCreateError('');
   };
 
   const addSecondaryGoal = goalConfig => {
@@ -3402,15 +3534,26 @@ function TestWizard({
               direction: goalConfig?.direction || 'increase',
               label: goalConfig?.label || getGoalLabel(name),
               source: goalConfig?.source || 'preset',
+              catalog_id: goalConfig?.catalog_id,
+              metric_role: goalConfig?.metric_role || goalConfig?.role || 'secondary',
+              min_relative_lift:
+                (goalConfig?.metric_role || goalConfig?.role) === 'guardrail'
+                  ? (goalConfig?.min_relative_lift ??
+                    ((goalConfig?.direction || 'increase') === 'decrease' ? 10 : -10))
+                  : goalConfig?.min_relative_lift,
             },
           ],
         },
       };
     });
+    if (added) {
+      setIsDirty(true);
+    }
     return added;
   };
 
   const removeSecondaryGoal = index => {
+    setIsDirty(true);
     setFormData(prev => {
       const goal = prev.goal || {};
       const secondary = Array.isArray(goal.secondary) ? goal.secondary : [];
@@ -3422,141 +3565,295 @@ function TestWizard({
   };
 
   const updateSecondaryGoal = (index, patch) => {
+    setIsDirty(true);
     setFormData(prev => {
       const goal = prev.goal || {};
       const secondary = Array.isArray(goal.secondary) ? goal.secondary : [];
       const next = secondary.map((item, idx) => {
         if (idx !== index) return item;
         const base = typeof item === 'object' ? item : { event_name: item };
-        return { ...base, ...patch };
+        const nextItem = { ...base, ...patch };
+        if (
+          nextItem.metric_role === 'guardrail' &&
+          (nextItem.min_relative_lift === undefined ||
+            nextItem.min_relative_lift === null ||
+            nextItem.min_relative_lift === '')
+        ) {
+          nextItem.min_relative_lift = nextItem.direction === 'decrease' ? 10 : -10;
+        }
+        return nextItem;
       });
       return { ...prev, goal: { ...goal, secondary: next } };
     });
   };
 
-  const addCustomEvent = () => {
-    const name = normalizeGoalEventName(customEventInput);
-    if (!name) return;
-    if (addSecondaryGoal({ event_name: name, aggregation: 'count', source: 'quick' })) {
-      setCustomEventInput('');
+  const handleCreateCatalogGoalFromWizard = async () => {
+    const eventName = normalizeGoalEventName(
+      goalEventCreateDraft.event_name || goalEventCreateDraft.name
+    );
+    const name = goalEventCreateDraft.name.trim() || getGoalLabel(eventName);
+    if (!name || !eventName) {
+      setGoalEventCreateError('Add a name and event key before saving this reusable event.');
+      return;
     }
-  };
-
-  const addAdvancedCustomGoal = () => {
-    const eventName = normalizeGoalEventName(customGoalDraft.event_name);
-    if (!eventName) return;
-    const added = addSecondaryGoal({
-      ...customGoalDraft,
-      event_name: eventName,
-      label: customGoalDraft.label.trim() || getGoalLabel(eventName),
-      source: 'custom',
-    });
-    if (added) {
-      setCustomGoalDraft({
-        label: '',
-        event_name: '',
-        aggregation: 'count',
-        direction: 'increase',
+    if (goalEventCreateDraft.aggregation === 'sum' && !goalEventCreateDraft.parameter_name.trim()) {
+      setGoalEventCreateError('Sum goals need a value parameter name, such as amount or revenue.');
+      return;
+    }
+    const existingPreset = recommendedGoalPresets.find(preset => preset.event_name === eventName);
+    if (existingPreset) {
+      if (selectedGoalNames.has(eventName)) {
+        setGoalEventCreateError('This event is already selected for the test.');
+        return;
+      }
+      addSecondaryGoal({
+        ...existingPreset,
+        source: existingPreset.source || 'catalog',
+        aggregation: goalEventCreateDraft.aggregation,
+        direction: goalEventCreateDraft.direction,
+        metric_role: goalEventCreateDraft.metric_role,
+        parameter_name: goalEventCreateDraft.parameter_name.trim(),
+        min_relative_lift:
+          goalEventCreateDraft.metric_role === 'guardrail'
+            ? Number(goalEventCreateDraft.min_relative_lift ?? -10)
+            : existingPreset.min_relative_lift,
       });
-      setAdvancedGoalOpen(false);
+      resetGoalEventCreateDraft();
+      setGoalEventModalMode('browse');
+      return;
+    }
+
+    const catalogDomain = routeDomain ? String(routeDomain).trim().toLowerCase() : '';
+    const catalogRole =
+      goalEventCreateDraft.metric_role === 'diagnostic'
+        ? 'secondary'
+        : goalEventCreateDraft.metric_role;
+    const triggerConfig = {
+      selector: '',
+      url_pattern: '',
+      parameter_name: goalEventCreateDraft.parameter_name.trim(),
+      visibility_threshold: 50,
+      visibility_min_duration_ms: 0,
+      visibility_frequency: 'once_per_page',
+      observe_dom_changes: true,
+      custom_javascript: '',
+      custom_javascript_interval_ms: 1000,
+      custom_javascript_max_wait_ms: 10000,
+      min_relative_lift:
+        goalEventCreateDraft.metric_role === 'guardrail'
+          ? Number(goalEventCreateDraft.min_relative_lift ?? -10)
+          : '',
+    };
+
+    setGoalEventCreateSaving(true);
+    setGoalEventCreateError('');
+    try {
+      const savedDefinition = await saveGoalMetricDefinition(catalogDomain, {
+        name,
+        event_name: eventName,
+        description:
+          goalEventCreateDraft.description.trim() || 'Reusable event created from the Test Wizard.',
+        category: 'custom',
+        aggregation: goalEventCreateDraft.aggregation,
+        direction: goalEventCreateDraft.direction,
+        metric_role: catalogRole,
+        trigger_type: 'custom_event',
+        tags: ['wizard-created'],
+        trigger_config: triggerConfig,
+      });
+      await fetchGoalMetricDefinitions();
+      addSecondaryGoal({
+        label: savedDefinition?.name || name,
+        event_name: savedDefinition?.event_name || eventName,
+        aggregation: savedDefinition?.aggregation || goalEventCreateDraft.aggregation,
+        direction: savedDefinition?.direction || goalEventCreateDraft.direction,
+        description: savedDefinition?.description || goalEventCreateDraft.description,
+        catalog_id: savedDefinition?.id,
+        source: 'catalog',
+        metric_role: goalEventCreateDraft.metric_role,
+        min_relative_lift:
+          goalEventCreateDraft.metric_role === 'guardrail'
+            ? Number(goalEventCreateDraft.min_relative_lift ?? -10)
+            : undefined,
+      });
+      resetGoalEventCreateDraft();
+      setGoalEventModalMode('browse');
+    } catch (err) {
+      setGoalEventCreateError(
+        err?.response?.data?.error || err?.message || 'Could not create this reusable event.'
+      );
+    } finally {
+      setGoalEventCreateSaving(false);
     }
   };
-
-  const goalListItems = [
-    {
-      key: 'primary',
-      role: 'Primary',
-      label: metricLabelMap[formData.goal?.metric || 'revenue'] || 'Revenue',
-      detail:
-        formData.goal?.metric === 'revenue' && formData.goal?.cogs?.enabled
-          ? `Profit-adjusted revenue, ${formData.goal?.cogs?.value ?? 30}${formData.goal?.cogs?.type === 'fixed_per_order' ? ' per order COGS' : '% COGS'}`
-          : 'Used to decide the winner',
-      badgeTone: 'success',
-      icon: ChartLineIcon,
-    },
-    ...selectedSecondaryGoals.map((goal, index) => {
-      const name = getSecondaryGoalName(goal);
-      const aggregation = goal?.aggregation || 'count';
-      const direction = goal?.direction || 'increase';
-      return {
-        key: `${name}-${index}`,
-        role: goal?.source === 'custom' ? 'Custom' : 'Secondary',
-        label: getGoalLabel(goal),
-        detail: `${aggregation === 'sum' ? 'Sum value' : 'Count events'} · ${direction === 'decrease' ? 'lower is better' : 'higher is better'}`,
-        badgeTone: goal?.source === 'custom' ? 'info' : 'attention',
-        icon: DataTableIcon,
-        secondaryIndex: index,
-      };
-    }),
-  ];
 
   const selectedGoalNames = new Set(selectedSecondaryGoals.map(goal => getSecondaryGoalName(goal)));
-  const goalGlanceText = `${goalListItems.length} ${goalListItems.length === 1 ? 'goal' : 'goals'} added`;
+  const goalGlanceText = `1 primary + ${selectedSecondaryGoals.length} supporting`;
   const activeAnalysisLabel =
     (formData.goal?.analysis_method || 'frequentist') === 'bayesian' ? 'Bayesian' : 'Frequentist';
-  const customGoalCanAdd = Boolean(normalizeGoalEventName(customGoalDraft.event_name));
-  const goalWorkspaceNavItems = [
+  const guardrailGoalCount = selectedSecondaryGoals.filter(
+    goal => goal?.metric_role === 'guardrail'
+  ).length;
+  const diagnosticGoalCount = selectedSecondaryGoals.filter(
+    goal => goal?.metric_role === 'diagnostic'
+  ).length;
+  const confidencePercent = Math.round((formData.goal?.significance_level ?? 0.95) * 100);
+  const powerPercent = Math.round((formData.goal?.statistical_power ?? 0.8) * 100);
+  const conversionWindowPresets = [1, 3, 7, 14, 30];
+  const conversionWindowValue = Number(formData.goal?.conversion_window_days ?? 30);
+  const isCustomConversionWindow = !conversionWindowPresets.includes(conversionWindowValue);
+  const analysisMethodOptions = [
     {
-      id: 'goals',
-      label: 'Goals added',
-      description: goalGlanceText,
+      value: 'frequentist',
+      label: 'Frequentist',
+      detail: 'p-values, confidence threshold, and traditional decision language.',
+      bestFor: 'Best for teams that need conventional launch evidence.',
+    },
+    {
+      value: 'bayesian',
+      label: 'Bayesian',
+      detail: 'Probability-to-beat-control context using conversion-rate evidence today.',
+      bestFor: 'Best for easier stakeholder interpretation during monitoring.',
+    },
+  ];
+  const statisticalDesignPresets = [
+    {
+      label: 'E-commerce default',
+      confidence: 0.95,
+      power: 0.8,
+      detail: 'Balanced false-positive risk and sample needs.',
+    },
+    {
+      label: 'High assurance',
+      confidence: 0.99,
+      power: 0.9,
+      detail: 'Slower, stricter readout for high-impact tests.',
+    },
+    {
+      label: 'Exploratory',
+      confidence: 0.9,
+      power: 0.8,
+      detail: 'Faster learning when risk is lower.',
+    },
+  ];
+  const activeStatisticalPreset =
+    statisticalDesignPresets.find(
+      preset =>
+        (formData.goal?.significance_level ?? 0.95) === preset.confidence &&
+        (formData.goal?.statistical_power ?? 0.8) === preset.power
+    ) || null;
+  const goalCatalogQuery = goalCatalogSearch.trim().toLowerCase();
+  const filteredGoalPresets = recommendedGoalPresets.filter(preset => {
+    if (
+      goalCatalogRoleFilter !== 'all' &&
+      (preset.metric_role || 'secondary') !== goalCatalogRoleFilter
+    ) {
+      return false;
+    }
+    if (!goalCatalogQuery) return true;
+    return [preset.label, preset.event_name, preset.description, preset.metric_role]
+      .filter(Boolean)
+      .some(value => String(value).toLowerCase().includes(goalCatalogQuery));
+  });
+  const availableGoalPresets = filteredGoalPresets.filter(
+    preset => !selectedGoalNames.has(preset.event_name)
+  );
+  const goalEventDraftEventName = normalizeGoalEventName(
+    goalEventCreateDraft.event_name || goalEventCreateDraft.name
+  );
+  const goalEventDraftName =
+    goalEventCreateDraft.name.trim() || getGoalLabel(goalEventDraftEventName);
+  const goalEventDraftCatalogMatch = recommendedGoalPresets.find(
+    preset => preset.event_name === goalEventDraftEventName
+  );
+  const goalEventDraftAlreadySelected = Boolean(
+    goalEventDraftEventName && selectedGoalNames.has(goalEventDraftEventName)
+  );
+  const goalEventDisplayNameReady = Boolean(goalEventCreateDraft.name.trim());
+  const goalEventKeyDraftTouched = Boolean(
+    (goalEventCreateDraft.event_name || goalEventCreateDraft.name || '').trim()
+  );
+  const goalEventKeyInvalid = goalEventKeyDraftTouched && !goalEventDraftEventName;
+  const goalEventGuardrailThresholdReady =
+    goalEventCreateDraft.metric_role !== 'guardrail' ||
+    Number.isFinite(Number(goalEventCreateDraft.min_relative_lift));
+  const goalEventCreateNeedsParameter =
+    goalEventCreateDraft.aggregation === 'sum' && !goalEventCreateDraft.parameter_name.trim();
+  const goalEventCreateCanSubmit = Boolean(
+    goalEventDisplayNameReady &&
+    goalEventDraftName &&
+    goalEventDraftEventName &&
+    !goalEventKeyInvalid &&
+    goalEventGuardrailThresholdReady &&
+    !goalEventCreateNeedsParameter &&
+    !goalEventDraftAlreadySelected &&
+    !goalEventCreateSaving
+  );
+  const goalEventTrackingSnippet = `RipX.trackEvent(testId, '${normalizeGoalEventName(goalEventCreateDraft.event_name || goalEventCreateDraft.name) || 'event_key'}', value)`;
+  const goalCatalogRoleFilters = [
+    { label: 'All', value: 'all' },
+    { label: 'Secondary', value: 'secondary' },
+    { label: 'Guardrail', value: 'guardrail' },
+    { label: 'Diagnostic', value: 'diagnostic' },
+  ];
+  const primaryMetricOptions = [
+    {
+      label: 'Revenue',
+      value: 'revenue',
+      desc: 'Total sales',
+      useCase: 'Best for price, offer, and merchandising tests where total sales matter.',
+      requiredData: 'Purchase value events',
+      interpretation: 'Winner is the variant with the strongest revenue result.',
+      icon: ProductIcon,
+      recommended: isPriceLikeTestType(formData.type),
+    },
+    {
+      label: 'Conversion',
+      value: 'conversion_rate',
+      desc: 'Purchase rate',
+      useCase: 'Best for UX, checkout, and copy changes where completion rate is the target.',
+      requiredData: 'Visitors and conversions',
+      interpretation: 'Current significance and Bayesian readouts are conversion-based.',
       icon: ChartLineIcon,
+      recommended: !isPriceLikeTestType(formData.type),
     },
     {
-      id: 'library',
-      label: 'Prebuilt library',
-      description: `${recommendedGoalPresets.length} ready events`,
-      icon: PlusIcon,
+      label: 'RPV',
+      value: 'revenue_per_visitor',
+      desc: 'Revenue / visitor',
+      useCase: 'Balances conversion rate and order value for broad business impact.',
+      requiredData: 'Visitors and purchase value',
+      interpretation: 'Results show business lift per visitor; significance is labeled separately.',
+      icon: ChartLineIcon,
+      recommended: true,
     },
     {
-      id: 'events',
-      label: 'Event matrix',
-      description: 'Status and interaction signals',
-      icon: DataTableIcon,
+      label: 'PPV',
+      value: 'profit_per_visitor',
+      desc: 'Profit / visitor',
+      useCase: 'Best when margin matters and COGS can be estimated reliably.',
+      requiredData: 'Revenue, visitors, and COGS',
+      interpretation: 'Uses profit after COGS divided by visitors.',
+      icon: ProductIcon,
+      recommended: isPriceLikeTestType(formData.type),
     },
     {
-      id: 'advanced',
-      label: 'Advanced',
-      description: 'Custom event goal',
-      icon: CodeIcon,
+      label: 'AOV',
+      value: 'aov',
+      desc: 'Order value',
+      useCase: 'Useful as a supporting metric when order size matters.',
+      requiredData: 'Revenue and conversions',
+      interpretation: 'Usually pair with conversion or RPV to avoid volume blind spots.',
+      icon: CartIcon,
+      recommended: false,
     },
   ];
-  const goalEventRows = [
-    {
-      eventKey: formData.goal?.metric || 'revenue',
-      label: metricLabelMap[formData.goal?.metric || 'revenue'] || 'Revenue',
-      type: 'Primary',
-      aggregation: formData.goal?.metric === 'aov' ? 'Average' : 'Automatic',
-      direction: 'Higher',
-      status: 'Active',
-    },
-    ...recommendedGoalPresets.map(preset => {
-      const addedGoal = selectedSecondaryGoals.find(
-        goal => getSecondaryGoalName(goal) === preset.event_name
-      );
-      return {
-        eventKey: preset.event_name,
-        label: preset.label,
-        type: 'Prebuilt',
-        aggregation: addedGoal?.aggregation || preset.aggregation,
-        direction: (addedGoal?.direction || preset.direction) === 'decrease' ? 'Lower' : 'Higher',
-        status: addedGoal ? 'Added' : 'Available',
-      };
-    }),
-    ...selectedSecondaryGoals
-      .filter(
-        goal =>
-          !recommendedGoalPresets.some(preset => preset.event_name === getSecondaryGoalName(goal))
-      )
-      .map(goal => ({
-        eventKey: getSecondaryGoalName(goal),
-        label: getGoalLabel(goal),
-        type: goal?.source === 'custom' ? 'Custom' : 'Quick',
-        aggregation: goal?.aggregation || 'count',
-        direction: (goal?.direction || 'increase') === 'decrease' ? 'Lower' : 'Higher',
-        status: 'Added',
-      })),
-  ];
+  const selectedPrimaryMetric =
+    primaryMetricOptions.find(option => option.value === (formData.goal?.metric || 'revenue')) ||
+    primaryMetricOptions[0];
+  const cogsSummary = formData.goal?.cogs?.enabled
+    ? `${formData.goal?.cogs?.value ?? 30}${formData.goal?.cogs?.type === 'fixed_per_order' ? ' per order' : '%'} COGS`
+    : 'Not enabled';
 
   const handleSaveCodeOnly = async () => {
     if (!onSaveCode || !initialData?.id) return;
@@ -3570,6 +3867,7 @@ function TestWizard({
       await onSaveCode(codePayload);
       lastSavedSnapshotRef.current = JSON.stringify(buildPayload(form, codes));
       setIsDirty(false);
+      codeEditorDirtyRef.current = false;
       setAutosaveState('saved');
       setLastSavedAt(new Date());
     } catch (err) {
@@ -3640,6 +3938,7 @@ function TestWizard({
       const snapshot = JSON.stringify(payloadWithName);
       lastSavedSnapshotRef.current = snapshot;
       setIsDirty(false);
+      codeEditorDirtyRef.current = false;
       setAutosaveState('saved');
       setLastSavedAt(new Date());
     } catch (err) {
@@ -3766,6 +4065,7 @@ function TestWizard({
     const index =
       typeof variantIndex === 'number' && variantIndex >= 0 ? variantIndex : selectedVariantIndex;
     setCodeEditorDirty(true);
+    codeEditorDirtyRef.current = true;
     setVariantCodesData(prev => {
       const updated = [...prev];
       const current = updated[index] ?? { name: `Variant ${index + 1}`, css: '', js: '', code: '' };
@@ -7999,331 +8299,178 @@ function TestWizard({
   const renderGoalStep = () => (
     <BlockStack gap="400">
       <Card>
-        <div className={styles.configWrapper}>
+        <div className={`${styles.configWrapper} ${styles.goalConfigWrapper}`}>
           <div className={styles.configAccent} aria-hidden />
-          <div className={styles.stepHeader}>
-            <span className={styles.stepHeaderIcon}>
-              <Icon source={TargetIcon} />
-            </span>
-            <div>
-              <h2 className={styles.stepHeaderTitle}>Goal & Metrics</h2>
-              <p className={styles.stepHeaderSubtitle}>
-                Define what success looks like and how to measure it.
-              </p>
-            </div>
-          </div>
           <div className={styles.goalBuilderHero}>
-            <div className={styles.goalBuilderHeroCopy}>
-              <Badge tone="info">{goalGlanceText}</Badge>
-              <h3>Goals are shown as a simple list.</h3>
-              <p>
-                Pick one primary success metric, then add any secondary or guardrail goals below.
-                Every goal appears in the list immediately so the launch criteria stay easy to scan.
-              </p>
-            </div>
-            <div className={styles.goalSummaryCompact}>
-              <span className={styles.goalSummaryChip}>
-                <Icon source={ClockIcon} />
-                {formData.goal?.conversion_window_days ?? 30} day window
+            <div className={styles.goalHeroIdentity}>
+              <span className={styles.stepHeaderIcon}>
+                <Icon source={TargetIcon} />
               </span>
-              <span className={styles.goalSummaryDivider} aria-hidden="true" />
-              <span className={styles.goalSummaryChip}>
-                <Icon source={CalculatorIcon} />
-                {activeAnalysisLabel}
-              </span>
-            </div>
-          </div>
-          <div className={styles.goalWorkspace}>
-            <nav className={styles.goalWorkspaceSidebar} aria-label="Goal and event navigation">
-              {goalWorkspaceNavItems.map(item => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={`${styles.goalWorkspaceNavItem} ${goalWorkspacePanel === item.id ? styles.goalWorkspaceNavItemActive : ''}`}
-                  onClick={() => setGoalWorkspacePanel(item.id)}
-                  aria-current={goalWorkspacePanel === item.id ? 'page' : undefined}
-                >
-                  <span className={styles.goalWorkspaceNavIcon}>
-                    <Icon source={item.icon} />
-                  </span>
-                  <span>
-                    <strong>{item.label}</strong>
-                    <small>{item.description}</small>
-                  </span>
-                </button>
-              ))}
-            </nav>
-            <div className={styles.goalWorkspacePanel}>
-              {goalWorkspacePanel === 'goals' && (
-                <div className={styles.goalWorkspaceCard}>
-                  <div className={styles.goalWorkspaceHeader}>
-                    <div>
-                      <h4>Current test goals</h4>
-                      <p>Review the winner metric and all secondary/custom goals before launch.</p>
-                    </div>
-                    <Badge tone="success">{goalGlanceText}</Badge>
-                  </div>
-                  <div className={styles.goalMiniList}>
-                    {goalListItems.map(item => (
-                      <span key={item.key}>
-                        <Icon source={item.icon} />
-                        {item.label}
-                        <Badge tone={item.badgeTone}>{item.role}</Badge>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {goalWorkspacePanel === 'library' && (
-                <div className={styles.goalWorkspaceCard}>
-                  <div className={styles.goalWorkspaceHeader}>
-                    <div>
-                      <h4>Prebuilt event library</h4>
-                      <p>Add standardized events so tests use consistent names and reporting.</p>
-                    </div>
-                    <Badge tone="info">Reusable</Badge>
-                  </div>
-                  <div className={styles.goalLibraryGrid}>
-                    {recommendedGoalPresets.map(preset => {
-                      const isSelected = selectedGoalNames.has(preset.event_name);
-                      return (
-                        <button
-                          key={preset.event_name}
-                          type="button"
-                          className={`${styles.goalLibraryCard} ${isSelected ? styles.goalLibraryCardSelected : ''}`}
-                          onClick={() => {
-                            if (isSelected) {
-                              const goalIndex = selectedSecondaryGoals.findIndex(
-                                goal => getSecondaryGoalName(goal) === preset.event_name
-                              );
-                              removeSecondaryGoal(goalIndex);
-                            } else {
-                              addSecondaryGoal({ ...preset, source: 'preset' });
-                            }
-                          }}
-                        >
-                          <strong>{preset.label}</strong>
-                          <code>{preset.event_name}</code>
-                          <span>{preset.description}</span>
-                          <Badge tone={isSelected ? 'success' : 'info'}>
-                            {isSelected ? 'Added' : 'Use in test'}
-                          </Badge>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              {goalWorkspacePanel === 'events' && (
-                <div className={styles.goalWorkspaceCard}>
-                  <div className={styles.goalWorkspaceHeader}>
-                    <div>
-                      <h4>Event interaction matrix</h4>
-                      <p>
-                        Track which events are active, available, or custom for this experiment.
-                      </p>
-                    </div>
-                    <Badge tone="attention">Planning table</Badge>
-                  </div>
-                  <div className={styles.goalEventTableWrap}>
-                    <table className={styles.goalEventTable}>
-                      <thead>
-                        <tr>
-                          <th>Event / goal</th>
-                          <th>Type</th>
-                          <th>Aggregation</th>
-                          <th>Direction</th>
-                          <th>Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {goalEventRows.map(row => (
-                          <tr key={`${row.type}-${row.eventKey}`}>
-                            <td>
-                              <strong>{row.label}</strong>
-                              <code>{row.eventKey}</code>
-                            </td>
-                            <td>{row.type}</td>
-                            <td>{row.aggregation}</td>
-                            <td>{row.direction}</td>
-                            <td>
-                              <Badge
-                                tone={
-                                  row.status === 'Added' || row.status === 'Active'
-                                    ? 'success'
-                                    : 'info'
-                                }
-                              >
-                                {row.status}
-                              </Badge>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-              {goalWorkspacePanel === 'advanced' && (
-                <div className={styles.goalWorkspaceCard}>
-                  <div className={styles.goalWorkspaceHeader}>
-                    <div>
-                      <h4>Advanced custom goal</h4>
-                      <p>Create event-based goals with custom names, aggregation, and direction.</p>
-                    </div>
-                    <Button size="slim" onClick={() => setAdvancedGoalOpen(true)}>
-                      Open builder
-                    </Button>
-                  </div>
-                  <p className={styles.goalWorkspaceHint}>
-                    Advanced goals save into the same secondary-goal list and appear in the event
-                    matrix immediately after they are added.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-          <div className={styles.goalListPanel} aria-label="Goals added to this test">
-            <div className={styles.goalListHeader}>
-              <div>
-                <h4>Goals added</h4>
-                <p>Primary, secondary, and custom goals in one glanceable list.</p>
+              <div className={styles.goalHeroTitleRow}>
+                <h2 className={styles.stepHeaderTitle}>
+                  Goal & Metrics
+                  <TooltipWrapper
+                    content="Define what success looks like and how the test should be measured."
+                    accessibilityLabel="Goal and metrics help"
+                    preferredPosition="above"
+                  >
+                    <span className={styles.goalHeaderInfoIcon} tabIndex={0}>
+                      <Icon source={InfoIcon} />
+                    </span>
+                  </TooltipWrapper>
+                </h2>
+                <span className={styles.goalHeroSeparator} aria-hidden />
+                <span className={styles.goalHeroSubtitle}>
+                  Setup
+                  <TooltipWrapper
+                    content="Choose the one metric that decides the winner, then add only the secondary and guardrail events that should change how you read the result."
+                    accessibilityLabel="Decision setup help"
+                    preferredPosition="above"
+                  >
+                    <span className={styles.goalHeaderInfoIcon} tabIndex={0}>
+                      <Icon source={InfoIcon} />
+                    </span>
+                  </TooltipWrapper>
+                </span>
+                <Badge tone="info">{goalGlanceText}</Badge>
               </div>
-              <Badge tone={selectedSecondaryGoals.length > 0 ? 'success' : 'attention'}>
-                {selectedSecondaryGoals.length} extra
-              </Badge>
-            </div>
-            <div className={styles.goalList}>
-              {goalListItems.map(item => (
-                <div key={item.key} className={styles.goalListItem}>
-                  <span className={styles.goalListIcon}>
-                    <Icon source={item.icon} />
-                  </span>
-                  <span className={styles.goalListBody}>
-                    <span className={styles.goalListTitle}>{item.label}</span>
-                    <span className={styles.goalListDetail}>{item.detail}</span>
-                  </span>
-                  <Badge tone={item.badgeTone}>{item.role}</Badge>
-                  {typeof item.secondaryIndex === 'number' && (
-                    <button
-                      type="button"
-                      className={styles.goalListRemove}
-                      onClick={() => removeSecondaryGoal(item.secondaryIndex)}
-                      aria-label={`Remove ${item.label}`}
-                    >
-                      <Icon source={XIcon} />
-                    </button>
-                  )}
-                </div>
-              ))}
             </div>
           </div>
           <div className={styles.goalFormWrapper}>
-            <FormLayout>
-              <div className={styles.goalSectionGroup}>
-                <h4 className={styles.goalSectionGroupTitle}>Primary metric</h4>
-                <div className={styles.formSection} id="targeting-metric">
-                  <h4 className={styles.formSectionTitle}>Choose the winner metric</h4>
-                  <p className={styles.formSectionHint}>
-                    This is the single metric used to decide which variant wins.
-                  </p>
-                  <div className={styles.metricPresets}>
-                    {[
-                      {
-                        label: 'Revenue',
-                        value: 'revenue',
-                        desc: 'Total sales',
-                        icon: ProductIcon,
-                      },
-                      {
-                        label: 'Conversion',
-                        value: 'conversion_rate',
-                        desc: 'Purchase rate',
-                        icon: ChartLineIcon,
-                      },
-                      { label: 'AOV', value: 'aov', desc: 'Order value', icon: CartIcon },
-                    ].map(({ label, value, desc, icon: IconCmp }) => {
-                      const isActive = (formData.goal?.metric || 'revenue') === value;
-                      return (
-                        <button
-                          key={value}
-                          type="button"
-                          className={`${styles.metricPresetChip} ${isActive ? styles.metricPresetChipActive : ''}`}
-                          onClick={() =>
-                            setFormData({
-                              ...formData,
-                              goal: { ...(formData.goal || {}), metric: value },
-                            })
-                          }
-                          aria-pressed={isActive}
-                          aria-label={`${label}: ${desc}. ${isActive ? 'Selected' : 'Click to select'}`}
-                        >
-                          <span className={styles.metricPresetIcon}>
-                            <Icon source={IconCmp} />
-                          </span>
-                          <span className={styles.metricPresetLabel}>{label}</span>
-                          <span className={styles.metricPresetDesc}>{desc}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {isPriceLikeTestType(formData.type) && (
-                    <p className={styles.goalPriceMetricHint}>
-                      For price tests, <strong>Revenue</strong> (or Profit with COGS) is usually the
-                      best primary metric; conversion-only can bias toward lower prices.
-                    </p>
-                  )}
+            <div className={styles.goalDecisionLayout}>
+              <aside className={styles.goalDecisionRail} aria-label="Goal setup overview">
+                <div className={styles.goalDecisionRailCard}>
+                  <span className={styles.goalDecisionRailEyebrow}>
+                    Decision path
+                    <TooltipWrapper
+                      content="Set up the test readout in order: pick the winner metric, add supporting event signals, then lock the decision rules."
+                      accessibilityLabel="Decision path help"
+                      preferredPosition="above"
+                    >
+                      <span className={styles.goalRailInfoIcon} tabIndex={0}>
+                        <Icon source={InfoIcon} />
+                      </span>
+                    </TooltipWrapper>
+                  </span>
+                  <h4>Setup path</h4>
                 </div>
-
-                {formData.goal?.metric === 'revenue' && (
-                  <BlockStack gap="200">
-                    <Checkbox
-                      label="Track profit (subtract COGS from revenue)"
-                      checked={formData.goal?.cogs?.enabled || false}
-                      onChange={value =>
-                        setFormData({
-                          ...formData,
-                          goal: {
-                            ...formData.goal,
-                            cogs: {
-                              ...(formData.goal?.cogs || {}),
-                              enabled: value,
-                              type: formData.goal?.cogs?.type || 'percentage',
-                              value: formData.goal?.cogs?.value ?? 30,
-                            },
-                          },
-                        })
-                      }
-                    />
-                    {formData.goal?.cogs?.enabled && (
-                      <InlineStack gap="200">
-                        <Select
-                          label="COGS type"
-                          options={[
-                            { label: 'Percentage of revenue', value: 'percentage' },
-                            { label: 'Fixed per order', value: 'fixed_per_order' },
-                          ]}
-                          value={formData.goal?.cogs?.type || 'percentage'}
-                          onChange={value =>
-                            setFormData({
-                              ...formData,
-                              goal: {
-                                ...formData.goal,
-                                cogs: { ...(formData.goal?.cogs || {}), type: value },
-                              },
-                            })
-                          }
-                        />
-                        <TextField
-                          label={
-                            formData.goal?.cogs?.type === 'percentage'
-                              ? 'COGS %'
-                              : 'COGS $ per order'
-                          }
-                          type="number"
-                          min={formData.goal?.cogs?.type === 'percentage' ? 0 : undefined}
-                          max={formData.goal?.cogs?.type === 'percentage' ? 100 : undefined}
-                          value={String(formData.goal?.cogs?.value ?? 30)}
+                <div className={styles.goalDecisionSteps}>
+                  <a
+                    href="#goal-decision-metric"
+                    className={styles.goalDecisionStepActive}
+                    onClick={event => {
+                      event.preventDefault();
+                      scrollToGoalSection('goal-decision-metric');
+                    }}
+                  >
+                    <span>1</span>
+                    <strong>Winner metric</strong>
+                    <small>{selectedPrimaryMetric.label}</small>
+                  </a>
+                  <a
+                    href="#goal-supporting-events"
+                    className={
+                      selectedSecondaryGoals.length > 0 ? styles.goalDecisionStepReady : ''
+                    }
+                    onClick={event => {
+                      event.preventDefault();
+                      scrollToGoalSection('goal-supporting-events');
+                    }}
+                  >
+                    <span>2</span>
+                    <strong>Event goals</strong>
+                    <small>
+                      {selectedSecondaryGoals.length} selected · {guardrailGoalCount} guardrails
+                    </small>
+                  </a>
+                  <a
+                    href="#goal-decision-rules"
+                    className={styles.goalDecisionStepReady}
+                    onClick={event => {
+                      event.preventDefault();
+                      scrollToGoalSection('goal-decision-rules');
+                    }}
+                  >
+                    <span>3</span>
+                    <strong>Decision rules</strong>
+                    <small>
+                      {activeAnalysisLabel} · {formData.goal?.conversion_window_days ?? 30} days
+                    </small>
+                  </a>
+                </div>
+                <div className={styles.goalDecisionRailSummary}>
+                  <span>Launch readout</span>
+                  <strong>
+                    {confidencePercent}% confidence / {powerPercent}% power
+                  </strong>
+                  <small>COGS: {cogsSummary}</small>
+                </div>
+              </aside>
+              <div className={styles.goalDecisionWorkspace}>
+                <div className={styles.goalSectionGroup} id="goal-decision-metric">
+                  <div className={styles.goalWorkspaceHeader}>
+                    <span className={styles.goalWorkspaceHeaderNumber}>01</span>
+                    <div>
+                      <span className={styles.goalSectionGroupTitle}>Primary metric</span>
+                      <h4>Choose the winner metric</h4>
+                      <p>Pick the one outcome that decides which variant wins.</p>
+                    </div>
+                    <Badge tone="success">{selectedPrimaryMetric.label}</Badge>
+                  </div>
+                  <div className={styles.formSection}>
+                    <div className={styles.metricPresets}>
+                      {primaryMetricOptions.map(
+                        ({ label, value, desc, recommended, icon: IconCmp }) => {
+                          const isActive = (formData.goal?.metric || 'revenue') === value;
+                          return (
+                            <button
+                              key={value}
+                              type="button"
+                              className={`${styles.metricPresetChip} ${isActive ? styles.metricPresetChipActive : ''}`}
+                              onClick={() =>
+                                setFormData({
+                                  ...formData,
+                                  goal: { ...(formData.goal || {}), metric: value },
+                                })
+                              }
+                              aria-pressed={isActive}
+                              aria-label={`${label}: ${desc}. ${isActive ? 'Selected' : 'Click to select'}`}
+                            >
+                              {recommended && (
+                                <span className={styles.metricRecommendationPill}>Best fit</span>
+                              )}
+                              <span className={styles.metricPresetIcon}>
+                                <Icon source={IconCmp} />
+                              </span>
+                              <span className={styles.metricPresetLabel}>{label}</span>
+                              <span className={styles.metricPresetDesc}>{desc}</span>
+                            </button>
+                          );
+                        }
+                      )}
+                    </div>
+                    <div className={styles.metricActiveSummary}>
+                      <span>
+                        <Icon source={DataTableIcon} />
+                        Using <strong>{selectedPrimaryMetric.label}</strong>
+                      </span>
+                      <small>
+                        {selectedPrimaryMetric.interpretation} Data needed:{' '}
+                        {selectedPrimaryMetric.requiredData}.
+                      </small>
+                    </div>
+                    {isPriceLikeTestType(formData.type) && (
+                      <p className={styles.goalPriceMetricHint}>
+                        For price tests, <strong>Revenue</strong> (or Profit with COGS) is usually
+                        the best primary metric; conversion-only can bias toward lower prices.
+                      </p>
+                    )}
+                    {(formData.goal?.metric === 'revenue' ||
+                      formData.goal?.metric === 'profit_per_visitor') && (
+                      <div className={styles.cogsInlinePanel}>
+                        <Checkbox
+                          label="Track profit (subtract COGS from revenue)"
+                          checked={formData.goal?.cogs?.enabled || false}
                           onChange={value =>
                             setFormData({
                               ...formData,
@@ -8331,380 +8478,530 @@ function TestWizard({
                                 ...formData.goal,
                                 cogs: {
                                   ...(formData.goal?.cogs || {}),
-                                  value: parseFloat(value) || 0,
+                                  enabled: value,
+                                  type: formData.goal?.cogs?.type || 'percentage',
+                                  value: formData.goal?.cogs?.value ?? 30,
                                 },
                               },
                             })
                           }
-                          autoComplete="off"
-                          helpText={
-                            formData.goal?.cogs?.type === 'percentage'
-                              ? '0–100. Revenue minus this % is profit.'
-                              : 'Fixed amount subtracted per conversion.'
-                          }
                         />
-                      </InlineStack>
+                        {formData.goal?.cogs?.enabled && (
+                          <div className={styles.cogsInlineFields}>
+                            <Select
+                              label="COGS type"
+                              options={[
+                                { label: 'Percentage of revenue', value: 'percentage' },
+                                { label: 'Fixed per order', value: 'fixed_per_order' },
+                              ]}
+                              value={formData.goal?.cogs?.type || 'percentage'}
+                              onChange={value =>
+                                setFormData({
+                                  ...formData,
+                                  goal: {
+                                    ...formData.goal,
+                                    cogs: { ...(formData.goal?.cogs || {}), type: value },
+                                  },
+                                })
+                              }
+                            />
+                            <TextField
+                              label={
+                                formData.goal?.cogs?.type === 'percentage'
+                                  ? 'COGS %'
+                                  : 'COGS $ per order'
+                              }
+                              type="number"
+                              min={formData.goal?.cogs?.type === 'percentage' ? 0 : undefined}
+                              max={formData.goal?.cogs?.type === 'percentage' ? 100 : undefined}
+                              value={String(formData.goal?.cogs?.value ?? 30)}
+                              onChange={value =>
+                                setFormData({
+                                  ...formData,
+                                  goal: {
+                                    ...formData.goal,
+                                    cogs: {
+                                      ...(formData.goal?.cogs || {}),
+                                      value: parseFloat(value) || 0,
+                                    },
+                                  },
+                                })
+                              }
+                              autoComplete="off"
+                              helpText={
+                                formData.goal?.cogs?.type === 'percentage'
+                                  ? '0-100. Revenue minus this % is profit.'
+                                  : 'Fixed amount subtracted per conversion.'
+                              }
+                            />
+                          </div>
+                        )}
+                      </div>
                     )}
-                  </BlockStack>
-                )}
+                  </div>
 
-                <div className={styles.formSection}>
-                  <h4 className={styles.formSectionTitle}>Add more goals</h4>
-                  <p className={styles.formSectionHint}>
-                    Add secondary goals and guardrails. Use{' '}
-                    <code className={styles.inlineCode}>
-                      RipX.trackEvent(testId, &apos;event_name&apos;, value)
-                    </code>{' '}
-                    in your theme for custom events.
-                  </p>
-                  <div className={styles.goalPresetList}>
-                    {recommendedGoalPresets.map(preset => {
-                      const isSelected = selectedGoalNames.has(preset.event_name);
-                      return (
-                        <button
-                          key={preset.event_name}
-                          type="button"
-                          className={`${styles.goalPresetRow} ${isSelected ? styles.goalPresetRowSelected : ''}`}
-                          onClick={() => {
-                            if (isSelected) {
-                              const index = selectedSecondaryGoals.findIndex(
-                                goal => getSecondaryGoalName(goal) === preset.event_name
-                              );
-                              removeSecondaryGoal(index);
-                            } else {
-                              addSecondaryGoal({ ...preset, source: 'preset' });
-                            }
-                          }}
-                          aria-pressed={isSelected}
+                  <div className={styles.formSectionDivider} aria-hidden />
+                  <div className={styles.formSection} id="goal-supporting-events">
+                    <div className={styles.goalWorkspaceHeader}>
+                      <span className={styles.goalWorkspaceHeaderNumber}>02</span>
+                      <div>
+                        <span className={styles.goalSectionGroupTitle}>Event Goals</span>
+                        <h4>Choose Supporting Signals</h4>
+                        <p>Add only the events that help explain or guard the result.</p>
+                      </div>
+                      <Badge tone={selectedSecondaryGoals.length > 0 ? 'success' : 'info'}>
+                        {selectedSecondaryGoals.length} selected
+                      </Badge>
+                    </div>
+                    <div className={styles.goalEventCommand}>
+                      <div>
+                        <strong>Manage Event Goals</strong>
+                        <span>
+                          {selectedSecondaryGoals.length > 0
+                            ? `${selectedSecondaryGoals.length} selected · ${guardrailGoalCount} guardrails · ${diagnosticGoalCount} diagnostics`
+                            : `${recommendedGoalPresets.length} reusable events available. Start from catalog or create one.`}
+                        </span>
+                      </div>
+                      <div className={styles.goalSelectionActions}>
+                        <span className={styles.goalSelectionPrimaryAction}>
+                          <Button
+                            variant="primary"
+                            icon={DataTableIcon}
+                            onClick={() => openGoalEventModal('browse')}
+                          >
+                            Manage Event Goals
+                          </Button>
+                        </span>
+                        <span className={styles.goalSelectionSecondaryAction}>
+                          <Button icon={PlusIcon} onClick={() => openGoalEventModal('create')}>
+                            Create New
+                          </Button>
+                        </span>
+                      </div>
+                    </div>
+                    {selectedSecondaryGoals.length > 0 ? (
+                      <div className={styles.goalSelectedEditor}>
+                        <div className={styles.goalSelectedHeader}>
+                          <strong>Selected Event Goals</strong>
+                          <span>Use Manage Event Goals above to add or remove events</span>
+                        </div>
+                        {selectedSecondaryGoals.map((goal, idx) => {
+                          const name = getSecondaryGoalName(goal);
+                          return (
+                            <div key={`${name}-${idx}`} className={styles.goalSelectedCard}>
+                              <div className={styles.goalSelectedTitle}>
+                                <span>
+                                  <strong>{getGoalLabel(goal)}</strong>
+                                  <code>{name}</code>
+                                </span>
+                                <button
+                                  type="button"
+                                  className={styles.goalListRemove}
+                                  onClick={() => removeSecondaryGoal(idx)}
+                                  aria-label={`Remove ${getGoalLabel(goal)}`}
+                                >
+                                  <Icon source={XIcon} />
+                                </button>
+                              </div>
+                              <Select
+                                label="Role"
+                                options={[
+                                  { label: 'Secondary metric', value: 'secondary' },
+                                  { label: 'Guardrail', value: 'guardrail' },
+                                  { label: 'Diagnostic', value: 'diagnostic' },
+                                ]}
+                                value={goal?.metric_role || 'secondary'}
+                                onChange={value => updateSecondaryGoal(idx, { metric_role: value })}
+                              />
+                              <Select
+                                label="Aggregation"
+                                options={[
+                                  { label: 'Count unique users', value: 'count' },
+                                  { label: 'Sum event value', value: 'sum' },
+                                ]}
+                                value={goal?.aggregation || 'count'}
+                                onChange={value => updateSecondaryGoal(idx, { aggregation: value })}
+                              />
+                              <Select
+                                label="Direction"
+                                options={[
+                                  { label: 'Higher is better', value: 'increase' },
+                                  { label: 'Lower is better', value: 'decrease' },
+                                ]}
+                                value={goal?.direction || 'increase'}
+                                onChange={value => updateSecondaryGoal(idx, { direction: value })}
+                              />
+                              {(goal?.metric_role || 'secondary') === 'guardrail' && (
+                                <TextField
+                                  label="Guardrail threshold (% relative lift)"
+                                  type="number"
+                                  value={String(goal?.min_relative_lift ?? -10)}
+                                  onChange={value =>
+                                    updateSecondaryGoal(idx, {
+                                      min_relative_lift: parseFloat(value) || 0,
+                                    })
+                                  }
+                                  autoComplete="off"
+                                  helpText="Example: -10 means alert if this drops more than 10% versus control."
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className={styles.goalSelectedEmpty}>
+                        <strong>No Supporting Event Goals Selected Yet</strong>
+                        <span>
+                          Use the Manage Event Goals action above to add reusable catalog events or
+                          create a new event and attach it immediately.
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div
+                  className={`${styles.goalSectionGroup} ${styles.goalSectionGroupFull}`}
+                  id="goal-decision-rules"
+                >
+                  <div className={styles.goalWorkspaceHeader}>
+                    <span className={styles.goalWorkspaceHeaderNumber}>03</span>
+                    <div>
+                      <span className={styles.goalSectionGroupTitle}>Decision rules</span>
+                      <h4>Set decision rules</h4>
+                      <p>
+                        Defaults are ready. Customize only when attribution or evidence needs to
+                        change.
+                      </p>
+                    </div>
+                    <Badge tone="info">Decision profile</Badge>
+                  </div>
+                  <div className={`${styles.formSection} ${styles.decisionRulesPanel}`}>
+                    <div className={styles.decisionRulesToolbar}>
+                      <div className={styles.decisionRulesToolbarMain}>
+                        <span className={styles.decisionRulesToolbarEyebrow}>Current rules</span>
+                        <ul
+                          className={styles.decisionRulesToolbarChips}
+                          aria-label="Current decision rules"
                         >
-                          <span>
-                            <strong>{preset.label}</strong>
-                            <small>{preset.description}</small>
-                          </span>
-                          <Badge tone={isSelected ? 'success' : 'info'}>
-                            {isSelected ? 'Added' : 'Add'}
-                          </Badge>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div className={styles.quickCustomGoal}>
-                    <TextField
-                      label="Quick custom event"
-                      labelHidden
-                      value={customEventInput}
-                      onChange={setCustomEventInput}
-                      placeholder="Quick add event, e.g. checkout_start"
-                      autoComplete="off"
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          addCustomEvent();
-                        }
-                      }}
-                    />
-                    <Button
-                      variant="secondary"
-                      size="slim"
-                      onClick={addCustomEvent}
-                      disabled={!customEventInput?.trim()}
-                    >
-                      Add
-                    </Button>
-                  </div>
-                  <div className={styles.advancedGoalBuilder}>
-                    <button
-                      type="button"
-                      className={styles.advancedGoalToggle}
-                      onClick={() => setAdvancedGoalOpen(open => !open)}
-                      aria-expanded={advancedGoalOpen}
-                      aria-controls="advanced-custom-goal"
-                    >
-                      <span>
-                        <strong>Advanced custom goal</strong>
-                        <small>Set label, event, aggregation, and desired direction.</small>
-                      </span>
-                      <Icon source={ChevronDownIcon} />
-                    </button>
-                    <Collapsible
-                      id="advanced-custom-goal"
-                      open={advancedGoalOpen}
-                      transition={{ duration: '180ms', timingFunction: 'ease' }}
-                    >
-                      <div className={styles.advancedGoalFields}>
-                        <TextField
-                          label="Goal label"
-                          value={customGoalDraft.label}
-                          onChange={value =>
-                            setCustomGoalDraft(prev => ({ ...prev, label: value }))
-                          }
-                          placeholder="e.g. Checkout intent"
-                          autoComplete="off"
-                        />
-                        <TextField
-                          label="Event name"
-                          value={customGoalDraft.event_name}
-                          onChange={value =>
-                            setCustomGoalDraft(prev => ({ ...prev, event_name: value }))
-                          }
-                          placeholder="e.g. checkout_start"
-                          autoComplete="off"
-                          helpText="Use lowercase event keys. Spaces are converted to underscores."
-                        />
-                        <Select
-                          label="Aggregation"
-                          options={[
-                            { label: 'Count events', value: 'count' },
-                            { label: 'Sum event value', value: 'sum' },
-                          ]}
-                          value={customGoalDraft.aggregation}
-                          onChange={value =>
-                            setCustomGoalDraft(prev => ({ ...prev, aggregation: value }))
-                          }
-                        />
-                        <Select
-                          label="Desired direction"
-                          options={[
-                            { label: 'Higher is better', value: 'increase' },
-                            { label: 'Lower is better', value: 'decrease' },
-                          ]}
-                          value={customGoalDraft.direction}
-                          onChange={value =>
-                            setCustomGoalDraft(prev => ({ ...prev, direction: value }))
-                          }
-                        />
+                          <li>
+                            <span className={styles.decisionRulesToolbarChipKey}>W</span>
+                            <span>{formData.goal?.conversion_window_days ?? 30}d window</span>
+                          </li>
+                          <li>
+                            <span className={styles.decisionRulesToolbarChipKey}>M</span>
+                            <span>{activeAnalysisLabel}</span>
+                          </li>
+                          <li>
+                            <span className={styles.decisionRulesToolbarChipKey}>E</span>
+                            <span>
+                              {activeStatisticalPreset?.label ||
+                                `${confidencePercent}% / ${powerPercent}%`}
+                            </span>
+                          </li>
+                          {formData.goal?.conversion_url ? (
+                            <li>
+                              <span className={styles.decisionRulesToolbarChipKey}>URL</span>
+                              <span>Scoped</span>
+                            </li>
+                          ) : null}
+                        </ul>
+                      </div>
+                      <div className={styles.decisionRulesToolbarActions}>
                         <Button
-                          variant="primary"
-                          onClick={addAdvancedCustomGoal}
-                          disabled={!customGoalCanAdd}
+                          size="slim"
+                          onClick={() => setGoalRulesExpanded(!goalRulesExpanded)}
                         >
-                          Add advanced goal
+                          {goalRulesExpanded ? 'Close rules' : 'Customize rules'}
                         </Button>
+                        <Button
+                          size="slim"
+                          variant={sampleSizeExpanded ? 'primary' : 'secondary'}
+                          icon={CalculatorIcon}
+                          onClick={() => setSampleSizeExpanded(!sampleSizeExpanded)}
+                        >
+                          {sampleSizeExpanded ? 'Close planner' : 'Sample planner'}
+                        </Button>
+                      </div>
+                    </div>
+                    <div className={styles.decisionRulesCrossLink}>
+                      <span>
+                        Evidence uses {confidencePercent}% confidence / {powerPercent}% power
+                        {activeStatisticalPreset ? ` (${activeStatisticalPreset.label})` : ''}.
+                      </span>
+                      <span>
+                        Planner follows the {formData.goal?.conversion_window_days ?? 30}-day window
+                        and {activeAnalysisLabel.toLowerCase()} method above.
+                      </span>
+                    </div>
+                    <Collapsible
+                      id="goal-rules-custom"
+                      open={goalRulesExpanded}
+                      transition={{ duration: '200ms', timingFunction: 'ease' }}
+                    >
+                      <div className={styles.decisionRulesAdvanced}>
+                        <div className={styles.decisionRulesGrid}>
+                          <div
+                            className={`${styles.decisionRuleCard} ${
+                              isCustomConversionWindow || formData.goal?.conversion_url
+                                ? styles.decisionRuleCardCustom
+                                : ''
+                            }`}
+                          >
+                            <div className={styles.decisionRuleCardHeader}>
+                              <span className={styles.decisionRuleIcon}>
+                                <Icon source={ClockIcon} />
+                              </span>
+                              <div>
+                                <strong>Attribution window</strong>
+                                <small>How long after assignment a conversion can count.</small>
+                              </div>
+                            </div>
+                            <div
+                              className={styles.conversionWindowChips}
+                              role="group"
+                              aria-label="Conversion window"
+                            >
+                              {conversionWindowPresets.map(days => {
+                                const isActive = conversionWindowValue === days;
+                                return (
+                                  <button
+                                    key={days}
+                                    type="button"
+                                    onClick={() =>
+                                      setFormData({
+                                        ...formData,
+                                        goal: {
+                                          ...(formData.goal || {}),
+                                          conversion_window_days: days,
+                                        },
+                                      })
+                                    }
+                                    className={`${styles.conversionWindowChip} ${
+                                      isActive ? styles.conversionWindowChipActive : ''
+                                    }`}
+                                    aria-pressed={isActive}
+                                    aria-label={`${days} days conversion window. ${isActive ? 'Selected' : 'Click to select'}`}
+                                  >
+                                    <Icon source={ClockIcon} />
+                                    {days} days
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <div className={styles.decisionRuleCardFooter}>
+                              <Button
+                                size="slim"
+                                variant="plain"
+                                onClick={() => setGoalAttributionExpanded(!goalAttributionExpanded)}
+                              >
+                                {goalAttributionExpanded
+                                  ? 'Hide URL/custom window'
+                                  : 'URL/custom window'}
+                              </Button>
+                              {(isCustomConversionWindow || formData.goal?.conversion_url) && (
+                                <Badge tone="info">Custom active</Badge>
+                              )}
+                            </div>
+                            <Collapsible
+                              id="goal-attribution-options"
+                              open={
+                                goalAttributionExpanded ||
+                                isCustomConversionWindow ||
+                                Boolean(formData.goal?.conversion_url)
+                              }
+                              transition={{ duration: '180ms', timingFunction: 'ease' }}
+                            >
+                              <div className={styles.decisionRuleFields}>
+                                <TextField
+                                  label="Custom window"
+                                  type="number"
+                                  min={1}
+                                  max={365}
+                                  value={String(conversionWindowValue || '')}
+                                  onChange={value =>
+                                    setFormData({
+                                      ...formData,
+                                      goal: {
+                                        ...(formData.goal || {}),
+                                        conversion_window_days: parseInt(value, 10) || 1,
+                                      },
+                                    })
+                                  }
+                                  autoComplete="off"
+                                  helpText={
+                                    isCustomConversionWindow
+                                      ? 'Custom window active. Use 1-365 days.'
+                                      : 'Use this for longer consideration cycles.'
+                                  }
+                                />
+                                <TextField
+                                  label="Goal URL (optional)"
+                                  value={formData.goal?.conversion_url || ''}
+                                  onChange={value =>
+                                    setFormData({
+                                      ...formData,
+                                      goal: { ...(formData.goal || {}), conversion_url: value },
+                                    })
+                                  }
+                                  placeholder={
+                                    isStandalone
+                                      ? '/thank-you, /order-complete, or leave empty for any'
+                                      : '/checkout, /thank-you, or leave empty for any'
+                                  }
+                                  helpText={
+                                    isStandalone
+                                      ? 'Restrict conversions to visits that reached these path(s). Comma-separated for multiple.'
+                                      : 'Restrict conversion counting to specific URL(s). Comma-separated for multiple.'
+                                  }
+                                  autoComplete="off"
+                                />
+                              </div>
+                            </Collapsible>
+                          </div>
+                          <div className={styles.decisionRuleCard}>
+                            <div className={styles.decisionRuleCardHeader}>
+                              <span className={styles.decisionRuleIcon}>
+                                <Icon source={CalculatorIcon} />
+                              </span>
+                              <div>
+                                <strong>Analysis method</strong>
+                                <small>How evidence is explained to stakeholders.</small>
+                              </div>
+                            </div>
+                            <div
+                              className={styles.analysisMethodChips}
+                              role="group"
+                              aria-label="Analysis method"
+                            >
+                              {analysisMethodOptions.map(({ value, label, detail, bestFor }) => {
+                                const isActive =
+                                  (formData.goal?.analysis_method || 'frequentist') === value;
+                                return (
+                                  <button
+                                    key={value}
+                                    type="button"
+                                    onClick={() =>
+                                      setFormData({
+                                        ...formData,
+                                        goal: { ...(formData.goal || {}), analysis_method: value },
+                                      })
+                                    }
+                                    className={`${styles.analysisMethodChip} ${
+                                      isActive ? styles.analysisMethodChipActive : ''
+                                    }`}
+                                    aria-pressed={isActive}
+                                    aria-label={`${label}. ${detail} ${bestFor}. ${isActive ? 'Selected' : 'Click to select'}`}
+                                    title={`${detail} ${bestFor}`}
+                                  >
+                                    <strong>{label}</strong>
+                                    <span>{bestFor}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                        <div className={styles.decisionRulesFootnote}>
+                          {formData.goal?.metric === 'conversion_rate'
+                            ? 'Inference is aligned with the selected conversion primary metric.'
+                            : `${selectedPrimaryMetric.label} remains the business winner metric. Conversion-based inference is kept as evidence quality context.`}
+                        </div>
+                      </div>
+                    </Collapsible>
+                    <Collapsible
+                      id="inline-sample-size"
+                      open={sampleSizeExpanded}
+                      transition={{ duration: '200ms', timingFunction: 'ease' }}
+                    >
+                      <div className={styles.sampleSizeInline}>
+                        <div className={styles.samplePlanningControls}>
+                          <div className={styles.samplePlanningHeader}>
+                            <span>Evidence level</span>
+                            <strong>Choose how strict the test should be</strong>
+                            <small>
+                              Saved with the test and used by the planner below.
+                              <span className={styles.samplePlanningRulesEcho}>
+                                Applies the {formData.goal?.conversion_window_days ?? 30}-day window
+                                and {activeAnalysisLabel.toLowerCase()} method.
+                              </span>
+                            </small>
+                          </div>
+                          <div
+                            className={styles.sampleEvidenceTabs}
+                            role="tablist"
+                            aria-label="Evidence level"
+                          >
+                            {statisticalDesignPresets.map(preset => {
+                              const isActive =
+                                (formData.goal?.significance_level ?? 0.95) === preset.confidence &&
+                                (formData.goal?.statistical_power ?? 0.8) === preset.power;
+                              return (
+                                <button
+                                  key={preset.label}
+                                  type="button"
+                                  className={`${styles.sampleEvidenceTab} ${
+                                    isActive ? styles.sampleEvidenceTabActive : ''
+                                  }`}
+                                  role="tab"
+                                  title={preset.detail}
+                                  onClick={() =>
+                                    setFormData({
+                                      ...formData,
+                                      goal: {
+                                        ...(formData.goal || {}),
+                                        significance_level: preset.confidence,
+                                        statistical_power: preset.power,
+                                      },
+                                    })
+                                  }
+                                  aria-pressed={isActive}
+                                  aria-selected={isActive}
+                                >
+                                  <strong>{preset.label}</strong>
+                                  <span>
+                                    {Math.round(preset.confidence * 100)}% confidence /{' '}
+                                    {Math.round(preset.power * 100)}% power
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        <SampleSizeCalculator
+                          embedded
+                          embeddedHideDesignControls
+                          className={styles.sampleSizeCalculator}
+                          primaryMetricLabel={selectedPrimaryMetric.label}
+                          primaryMetricType={formData.goal?.metric || 'revenue'}
+                          initialValues={{
+                            confidenceLevel: String(
+                              Math.round((formData.goal?.significance_level ?? 0.95) * 100)
+                            ),
+                            power: String(
+                              Math.round((formData.goal?.statistical_power ?? 0.8) * 100)
+                            ),
+                          }}
+                          onDesignChange={nextDesign => {
+                            const nextGoal = { ...(formData.goal || {}) };
+                            if (nextDesign.confidenceLevel) {
+                              nextGoal.significance_level =
+                                (parseFloat(nextDesign.confidenceLevel) || 95) / 100;
+                            }
+                            if (nextDesign.power) {
+                              nextGoal.statistical_power =
+                                (parseFloat(nextDesign.power) || 80) / 100;
+                            }
+                            setFormData({ ...formData, goal: nextGoal });
+                          }}
+                        />
                       </div>
                     </Collapsible>
                   </div>
-                  {selectedSecondaryGoals.length > 0 && (
-                    <div className={styles.goalMatrixList}>
-                      <div className={styles.goalMatrixHeader}>
-                        <span>Goal</span>
-                        <span>Aggregation</span>
-                        <span>Direction</span>
-                      </div>
-                      {selectedSecondaryGoals.map((goal, idx) => {
-                        const name = getSecondaryGoalName(goal);
-                        return (
-                          <div key={`${name}-${idx}`} className={styles.goalMatrixRow}>
-                            <span>{getGoalLabel(goal)}</span>
-                            <Select
-                              label="Aggregation"
-                              labelHidden
-                              options={[
-                                { label: 'Count', value: 'count' },
-                                { label: 'Sum value', value: 'sum' },
-                              ]}
-                              value={goal?.aggregation || 'count'}
-                              onChange={value => updateSecondaryGoal(idx, { aggregation: value })}
-                            />
-                            <Select
-                              label="Direction"
-                              labelHidden
-                              options={[
-                                { label: 'Higher', value: 'increase' },
-                                { label: 'Lower', value: 'decrease' },
-                              ]}
-                              value={goal?.direction || 'increase'}
-                              onChange={value => updateSecondaryGoal(idx, { direction: value })}
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
                 </div>
               </div>
-
-              <div className={styles.formSectionDivider} aria-hidden="true" />
-              <div className={styles.formSection}>
-                <h4 className={styles.formSectionTitle}>Conversion window</h4>
-                <p className={styles.formSectionHint}>
-                  Count conversions within this many days of first visit.
-                </p>
-                <div
-                  className={styles.conversionWindowChips}
-                  role="group"
-                  aria-label="Conversion window"
-                >
-                  {[1, 3, 7, 14, 30].map(days => {
-                    const isActive = (formData.goal?.conversion_window_days ?? 30) === days;
-                    return (
-                      <button
-                        key={days}
-                        type="button"
-                        onClick={() =>
-                          setFormData({
-                            ...formData,
-                            goal: { ...(formData.goal || {}), conversion_window_days: days },
-                          })
-                        }
-                        className={`${styles.conversionWindowChip} ${isActive ? styles.conversionWindowChipActive : ''}`}
-                        aria-pressed={isActive}
-                        aria-label={`${days} days conversion window. ${isActive ? 'Selected' : 'Click to select'}`}
-                      >
-                        <Icon source={ClockIcon} />
-                        {days} days
-                      </button>
-                    );
-                  })}
-                </div>
-                <TextField
-                  label="Goal URL (optional)"
-                  value={formData.goal?.conversion_url || ''}
-                  onChange={value =>
-                    setFormData({
-                      ...formData,
-                      goal: { ...(formData.goal || {}), conversion_url: value },
-                    })
-                  }
-                  placeholder={
-                    isStandalone
-                      ? '/thank-you, /order-complete, or leave empty for any'
-                      : '/checkout, /thank-you, or leave empty for any'
-                  }
-                  helpText={
-                    isStandalone
-                      ? 'Restrict conversions to visits that reached these path(s). Comma-separated for multiple.'
-                      : 'Restrict conversion counting to specific URL(s). Comma-separated for multiple.'
-                  }
-                  autoComplete="off"
-                />
-              </div>
-              <div className={styles.formSectionDivider} aria-hidden="true" />
-              <div className={styles.formSection}>
-                <h4 className={styles.formSectionTitle}>Analysis method</h4>
-                <p className={styles.formSectionHint}>
-                  Bayesian shows probability each variant is best. Frequentist uses traditional
-                  p-values.
-                </p>
-                <div
-                  className={styles.analysisMethodChips}
-                  role="group"
-                  aria-label="Analysis method"
-                >
-                  {[
-                    { value: 'frequentist', label: 'Frequentist (p-values)' },
-                    { value: 'bayesian', label: 'Bayesian (probability of best)' },
-                  ].map(({ value, label }) => {
-                    const isActive = (formData.goal?.analysis_method || 'frequentist') === value;
-                    return (
-                      <button
-                        key={value}
-                        type="button"
-                        onClick={() =>
-                          setFormData({
-                            ...formData,
-                            goal: { ...(formData.goal || {}), analysis_method: value },
-                          })
-                        }
-                        className={`${styles.analysisMethodChip} ${isActive ? styles.analysisMethodChipActive : ''}`}
-                        aria-pressed={isActive}
-                        aria-label={`${label}. ${isActive ? 'Selected' : 'Click to select'}`}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className={`${styles.goalSectionGroup} ${styles.goalSectionGroupFull}`}>
-                <h4 className={styles.goalSectionGroupTitle}>Statistical design</h4>
-                <div className={styles.formSection}>
-                  <h4 className={styles.formSectionTitle}>Statistical design & sample size</h4>
-                  <p className={styles.formSectionHint}>
-                    Set confidence and power, then calculate required visitors for your test.
-                  </p>
-                  <div className={styles.statisticalDesignGrid}>
-                    <div style={{ minWidth: 140 }}>
-                      <Select
-                        label="Confidence level"
-                        options={[
-                          { label: '90%', value: '0.9' },
-                          { label: '95% (recommended)', value: '0.95' },
-                          { label: '99%', value: '0.99' },
-                        ]}
-                        value={String(formData.goal?.significance_level ?? 0.95)}
-                        onChange={value =>
-                          setFormData({
-                            ...formData,
-                            goal: {
-                              ...(formData.goal || {}),
-                              significance_level: parseFloat(value) || 0.95,
-                            },
-                          })
-                        }
-                        helpText="95% means a 5% false-positive risk (not '95% chance this winner is better'). See the Price testing guide for interpretation."
-                      />
-                    </div>
-                    <div style={{ minWidth: 140 }}>
-                      <Select
-                        label="Statistical power"
-                        options={[
-                          { label: '80%', value: '0.8' },
-                          { label: '90%', value: '0.9' },
-                          { label: '95%', value: '0.95' },
-                        ]}
-                        value={String(formData.goal?.statistical_power ?? 0.8)}
-                        onChange={value =>
-                          setFormData({
-                            ...formData,
-                            goal: {
-                              ...(formData.goal || {}),
-                              statistical_power: parseFloat(value) || 0.8,
-                            },
-                          })
-                        }
-                        helpText="Probability to detect real effects"
-                      />
-                    </div>
-                  </div>
-                  <Collapsible
-                    id="inline-sample-size"
-                    open={sampleSizeExpanded}
-                    transition={{ duration: '200ms', timingFunction: 'ease' }}
-                  >
-                    <div className={styles.sampleSizeInline}>
-                      <SampleSizeCalculator
-                        key={`sample-${formData.goal?.significance_level ?? 0.95}-${formData.goal?.statistical_power ?? 0.8}`}
-                        embedded
-                        className={styles.sampleSizeCalculator}
-                        initialValues={{
-                          confidenceLevel: String(
-                            Math.round((formData.goal?.significance_level ?? 0.95) * 100)
-                          ),
-                          power: String(
-                            Math.round((formData.goal?.statistical_power ?? 0.8) * 100)
-                          ),
-                        }}
-                      />
-                    </div>
-                  </Collapsible>
-                  <div className={styles.sampleSizeCta}>
-                    <Button
-                      variant={sampleSizeExpanded ? 'secondary' : 'primary'}
-                      icon={CalculatorIcon}
-                      onClick={() => setSampleSizeExpanded(!sampleSizeExpanded)}
-                    >
-                      {sampleSizeExpanded
-                        ? 'Hide sample size calculator'
-                        : 'Calculate sample size & duration'}
-                    </Button>
-                    <Text variant="bodySm" tone="subdued" as="p" style={{ marginTop: '6px' }}>
-                      Uses the confidence level and statistical power above for estimates.
-                    </Text>
-                  </div>
-                </div>
-              </div>
-            </FormLayout>
+            </div>
           </div>
         </div>
       </Card>
@@ -16462,7 +16759,13 @@ function TestWizard({
                 {(() => {
                   const m = formData.goal?.metric || initialData?.goal?.metric;
                   return m
-                    ? { revenue: 'Revenue', conversion_rate: 'Conversion', aov: 'AOV' }[m] || m
+                    ? {
+                        revenue: 'Revenue',
+                        conversion_rate: 'Conversion',
+                        revenue_per_visitor: 'RPV',
+                        profit_per_visitor: 'PPV',
+                        aov: 'AOV',
+                      }[m] || m
                     : 'Not set';
                 })()}
               </span>
@@ -17241,7 +17544,15 @@ function TestWizard({
       .toLowerCase()
       .trim();
     const metricLabel =
-      metricRaw === 'revenue' ? 'Revenue' : metricRaw === 'aov' ? 'AOV' : 'Conversion';
+      metricRaw === 'revenue'
+        ? 'Revenue'
+        : metricRaw === 'aov'
+          ? 'AOV'
+          : metricRaw === 'revenue_per_visitor'
+            ? 'RPV'
+            : metricRaw === 'profit_per_visitor'
+              ? 'PPV'
+              : 'Conversion';
     const targetTypeRaw = String(formData.target_type || '')
       .toLowerCase()
       .trim();
@@ -17328,6 +17639,14 @@ function TestWizard({
           type={antiFlickerToast.type}
           onClose={() => setAntiFlickerToast(null)}
           duration={2200}
+        />
+      )}
+      {goalEventCopyToast && (
+        <Toast
+          message={goalEventCopyToast.message}
+          type={goalEventCopyToast.type}
+          onClose={() => setGoalEventCopyToast(null)}
+          duration={2500}
         />
       )}
       {shippingExecutionToast && (
@@ -17490,6 +17809,641 @@ function TestWizard({
           </div>
         </Layout.Section>
       </Layout>
+
+      <Modal
+        open={goalEventModalOpen && currentStep === stepIds.goal}
+        onClose={closeGoalEventModal}
+        title="Manage Event Goals"
+        size="large"
+        primaryAction={
+          goalEventModalMode === 'create'
+            ? {
+                content: goalEventDraftCatalogMatch ? 'Add Existing' : 'Create Event',
+                onAction: handleCreateCatalogGoalFromWizard,
+                loading: goalEventCreateSaving,
+                disabled: !goalEventCreateCanSubmit,
+              }
+            : {
+                content: 'Apply',
+                onAction: closeGoalEventModal,
+              }
+        }
+      >
+        <Modal.Section>
+          <div className={styles.goalEventModal} data-goal-event-modal="">
+            <div className={styles.goalEventModalHero}>
+              <div>
+                <span className={styles.goalEventModalHeroKicker}>Event Goal Workspace</span>
+                <Text as="p" variant="bodyMd" fontWeight="semibold">
+                  Build The Supporting Event Set For This Test.
+                </Text>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Review what is already attached, add reusable catalog events, or create a new
+                  tracking event without leaving the wizard.
+                </Text>
+              </div>
+              <div className={styles.goalEventModalHeroActions}>
+                <div
+                  className={styles.goalEventModeSwitch}
+                  role="tablist"
+                  aria-label="Event goal mode"
+                >
+                  <button
+                    type="button"
+                    id="goal-event-browse-tab"
+                    className={goalEventModalMode === 'browse' ? styles.goalEventModeActive : ''}
+                    onClick={() => {
+                      setGoalEventModalMode('browse');
+                      setGoalEventCreateError('');
+                    }}
+                    role="tab"
+                    aria-controls="goal-event-browse-panel"
+                    aria-selected={goalEventModalMode === 'browse'}
+                    onKeyDown={event => {
+                      if (event.key === 'ArrowRight') {
+                        event.preventDefault();
+                        setGoalEventModalMode('create');
+                        setGoalEventCreateError('');
+                      }
+                    }}
+                  >
+                    Browse
+                  </button>
+                  <button
+                    type="button"
+                    id="goal-event-create-tab"
+                    className={goalEventModalMode === 'create' ? styles.goalEventModeActive : ''}
+                    onClick={() => {
+                      setGoalEventModalMode('create');
+                      setGoalEventCreateError('');
+                    }}
+                    role="tab"
+                    aria-controls="goal-event-create-panel"
+                    aria-selected={goalEventModalMode === 'create'}
+                    onKeyDown={event => {
+                      if (event.key === 'ArrowLeft') {
+                        event.preventDefault();
+                        setGoalEventModalMode('browse');
+                        setGoalEventCreateError('');
+                      }
+                    }}
+                  >
+                    Create
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {goalEventModalMode === 'browse' ? (
+              <div
+                className={styles.goalEventModalBrowse}
+                id="goal-event-browse-panel"
+                role="tabpanel"
+                aria-labelledby="goal-event-browse-tab"
+              >
+                <div className={styles.goalEventModalSummary}>
+                  <div className={styles.goalEventModalSummaryItem}>
+                    <span className={styles.goalEventModalSummaryLabel}>Selected</span>
+                    <strong className={styles.goalEventModalSummaryValue}>
+                      {selectedSecondaryGoals.length}
+                    </strong>
+                    <small className={styles.goalEventModalSummaryHint}>Supporting Metrics</small>
+                  </div>
+                  <div className={styles.goalEventModalSummaryItem}>
+                    <span className={styles.goalEventModalSummaryLabel}>Guardrails</span>
+                    <strong className={styles.goalEventModalSummaryValue}>
+                      {guardrailGoalCount}
+                    </strong>
+                    <small className={styles.goalEventModalSummaryHint}>Launch Risk Checks</small>
+                  </div>
+                  <div className={styles.goalEventModalSummaryItem}>
+                    <span className={styles.goalEventModalSummaryLabel}>Diagnostics</span>
+                    <strong className={styles.goalEventModalSummaryValue}>
+                      {diagnosticGoalCount}
+                    </strong>
+                    <small className={styles.goalEventModalSummaryHint}>Learning Signals</small>
+                  </div>
+                  <div className={styles.goalEventModalSummaryItem}>
+                    <span className={styles.goalEventModalSummaryLabel}>Available</span>
+                    <strong className={styles.goalEventModalSummaryValue}>
+                      {availableGoalPresets.length}
+                    </strong>
+                    <small className={styles.goalEventModalSummaryHint}>Not Yet Attached</small>
+                  </div>
+                </div>
+                <div className={styles.goalCatalogToolbar} aria-busy={goalMetricDefinitionsLoading}>
+                  <div className={styles.goalCatalogToolbarSearch}>
+                    <TextField
+                      label="Search reusable event goals"
+                      labelHidden
+                      value={goalCatalogSearch}
+                      onChange={setGoalCatalogSearch}
+                      placeholder="Search events, keys, roles..."
+                      autoComplete="off"
+                      clearButton
+                      onClearButtonClick={() => setGoalCatalogSearch('')}
+                    />
+                  </div>
+                  <div
+                    className={styles.goalCatalogToolbarFilters}
+                    role="group"
+                    aria-label="Filter event goals by role"
+                  >
+                    {goalCatalogRoleFilters.map(filter => (
+                      <button
+                        key={filter.value}
+                        type="button"
+                        className={
+                          goalCatalogRoleFilter === filter.value
+                            ? styles.goalCatalogFilterActive
+                            : ''
+                        }
+                        onClick={() => setGoalCatalogRoleFilter(filter.value)}
+                        aria-pressed={goalCatalogRoleFilter === filter.value}
+                      >
+                        {filter.label}
+                      </button>
+                    ))}
+                  </div>
+                  <Badge tone={goalMetricDefinitionsLoading ? 'attention' : 'info'}>
+                    {goalMetricDefinitionsLoading
+                      ? 'Loading Catalog'
+                      : `${filteredGoalPresets.length} of ${recommendedGoalPresets.length} matching`}
+                  </Badge>
+                </div>
+                <div className={styles.goalEventModalGrid}>
+                  <div
+                    className={`${styles.goalEventModalPane} ${styles.goalEventModalPaneSelected}`}
+                  >
+                    <div className={styles.goalEventModalPaneHeader}>
+                      <strong>Selected For This Test</strong>
+                      <span>{selectedSecondaryGoals.length} goals</span>
+                    </div>
+                    <div className={styles.goalEventModalList}>
+                      {selectedSecondaryGoals.map((goal, index) => {
+                        const name = getSecondaryGoalName(goal);
+                        return (
+                          <div
+                            key={`${name}-${index}`}
+                            className={`${styles.goalEventModalRow} ${styles.goalEventModalRowSelected}`}
+                          >
+                            <span className={styles.goalEventModalRowMain}>
+                              <strong>{getGoalLabel(goal)}</strong>
+                              <span className={styles.goalEventModalRowMeta}>
+                                <Badge
+                                  tone={
+                                    (goal?.metric_role || 'secondary') === 'guardrail'
+                                      ? 'attention'
+                                      : 'info'
+                                  }
+                                >
+                                  {(goal?.metric_role || 'secondary') === 'guardrail'
+                                    ? 'Guardrail'
+                                    : (goal?.metric_role || 'secondary') === 'diagnostic'
+                                      ? 'Diagnostic'
+                                      : 'Secondary'}
+                                </Badge>
+                                <small>{goal?.aggregation || 'count'}</small>
+                              </span>
+                              <code>{name}</code>
+                            </span>
+                            <span className={styles.goalEventModalRowActions}>
+                              <Button
+                                size="slim"
+                                variant="plain"
+                                tone="critical"
+                                onClick={() => removeSecondaryGoal(index)}
+                              >
+                                Remove
+                              </Button>
+                            </span>
+                          </div>
+                        );
+                      })}
+                      {!selectedSecondaryGoals.length && (
+                        <div
+                          className={`${styles.goalEmptyCatalog} ${styles.goalEmptyCatalogSelected}`}
+                        >
+                          <strong>No Supporting Goals Selected Yet</strong>
+                          <span>Add one from the catalog or create a reusable event.</span>
+                          <InlineStack gap="200" wrap>
+                            <Button size="slim" onClick={() => setGoalCatalogSearch('')}>
+                              Browse Catalog
+                            </Button>
+                            <Button size="slim" onClick={() => setGoalEventModalMode('create')}>
+                              Create Event
+                            </Button>
+                          </InlineStack>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className={styles.goalEventModalPane}>
+                    <div className={styles.goalEventModalPaneHeader}>
+                      <strong>Available Catalog</strong>
+                      <span>{availableGoalPresets.length} events</span>
+                    </div>
+                    <div className={styles.goalEventModalList}>
+                      {availableGoalPresets.map(preset => (
+                        <div key={preset.event_name} className={styles.goalEventModalRow}>
+                          <span className={styles.goalEventModalRowMain}>
+                            <strong>{preset.label}</strong>
+                            <small>{preset.description}</small>
+                            <span className={styles.goalEventModalRowMeta}>
+                              <Badge
+                                tone={preset.metric_role === 'guardrail' ? 'attention' : 'info'}
+                              >
+                                {preset.metric_role === 'guardrail'
+                                  ? 'Guardrail'
+                                  : preset.metric_role === 'diagnostic'
+                                    ? 'Diagnostic'
+                                    : 'Secondary'}
+                              </Badge>
+                              <small>{preset.aggregation || 'count'}</small>
+                            </span>
+                            <code>{preset.event_name}</code>
+                          </span>
+                          <span
+                            className={`${styles.goalPresetActions} ${styles.goalEventModalRowActions}`}
+                          >
+                            <Button
+                              size="slim"
+                              variant="primary"
+                              onClick={() =>
+                                addSecondaryGoal({ ...preset, source: preset.source || 'catalog' })
+                              }
+                            >
+                              Add
+                            </Button>
+                          </span>
+                        </div>
+                      ))}
+                      {!availableGoalPresets.length && (
+                        <div className={styles.goalEmptyCatalog}>
+                          <strong>
+                            {goalCatalogSearch || goalCatalogRoleFilter !== 'all'
+                              ? 'No Matching Reusable Events'
+                              : 'All Reusable Events Are Selected'}
+                          </strong>
+                          <span>
+                            {goalCatalogSearch || goalCatalogRoleFilter !== 'all'
+                              ? 'Clear the search or role filter, or create a new event.'
+                              : 'Create a new event if this test needs another supporting signal.'}
+                          </span>
+                          <InlineStack gap="200" wrap>
+                            {(goalCatalogSearch || goalCatalogRoleFilter !== 'all') && (
+                              <Button
+                                size="slim"
+                                onClick={() => {
+                                  setGoalCatalogSearch('');
+                                  setGoalCatalogRoleFilter('all');
+                                }}
+                              >
+                                Clear Filters
+                              </Button>
+                            )}
+                            <Button size="slim" onClick={() => setGoalEventModalMode('create')}>
+                              Create Event
+                            </Button>
+                          </InlineStack>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div
+                className={styles.goalEventCreatePanel}
+                id="goal-event-create-panel"
+                role="tabpanel"
+                aria-labelledby="goal-event-create-tab"
+              >
+                <div className={styles.goalEventCreateReadiness}>
+                  <div
+                    className={goalEventDisplayNameReady ? styles.goalEventReadyItemComplete : ''}
+                  >
+                    <Icon source={goalEventDisplayNameReady ? CheckCircleIcon : ClockIcon} />
+                    <span>Display Name</span>
+                  </div>
+                  <div className={goalEventDraftEventName ? styles.goalEventReadyItemComplete : ''}>
+                    <Icon source={goalEventDraftEventName ? CheckCircleIcon : ClockIcon} />
+                    <span>Event Key</span>
+                  </div>
+                  <div
+                    className={
+                      goalEventCreateNeedsParameter
+                        ? styles.goalEventReadyItemWarning
+                        : styles.goalEventReadyItemComplete
+                    }
+                  >
+                    <Icon source={!goalEventCreateNeedsParameter ? CheckCircleIcon : ClockIcon} />
+                    <span>Value Setup</span>
+                  </div>
+                  {goalEventCreateDraft.metric_role === 'guardrail' && (
+                    <div
+                      className={
+                        goalEventGuardrailThresholdReady
+                          ? styles.goalEventReadyItemComplete
+                          : styles.goalEventReadyItemWarning
+                      }
+                    >
+                      <Icon
+                        source={goalEventGuardrailThresholdReady ? CheckCircleIcon : ClockIcon}
+                      />
+                      <span>Threshold</span>
+                    </div>
+                  )}
+                </div>
+                <div className={styles.goalEventCreateSnapshot}>
+                  <span>
+                    <strong>{goalEventDraftName || 'Untitled Event'}</strong>
+                    <code>{goalEventDraftEventName || 'event_key'}</code>
+                  </span>
+                  <span>
+                    <Badge
+                      tone={goalEventCreateDraft.metric_role === 'guardrail' ? 'attention' : 'info'}
+                    >
+                      {goalEventCreateDraft.metric_role === 'guardrail'
+                        ? 'Guardrail'
+                        : goalEventCreateDraft.metric_role === 'diagnostic'
+                          ? 'Diagnostic'
+                          : 'Secondary'}
+                    </Badge>
+                    <Badge tone="info">{goalEventCreateDraft.aggregation}</Badge>
+                    <Badge tone="success">
+                      {goalEventCreateDraft.direction === 'decrease' ? 'Lower Wins' : 'Higher Wins'}
+                    </Badge>
+                  </span>
+                </div>
+                {goalEventCreateError && (
+                  <Banner tone="critical" title="Could Not Create Reusable Event">
+                    <Text as="p" variant="bodySm">
+                      {goalEventCreateError}
+                    </Text>
+                  </Banner>
+                )}
+                {goalEventDraftCatalogMatch && !goalEventDraftAlreadySelected && (
+                  <Banner tone="info" title="This Event Key Already Exists">
+                    <Text as="p" variant="bodySm">
+                      RipX will attach the existing catalog event and apply the behavior settings
+                      below for this test without overwriting the catalog definition.
+                    </Text>
+                  </Banner>
+                )}
+                {goalEventDraftAlreadySelected && (
+                  <Banner tone="success" title="Already Selected">
+                    <Text as="p" variant="bodySm">
+                      This event is already attached to the test. You can edit its role and
+                      direction in the selected goals list.
+                    </Text>
+                  </Banner>
+                )}
+                {goalEventCreateDraft.metric_role === 'diagnostic' && (
+                  <Banner tone="info" title="Diagnostic Events Are Supporting Context">
+                    <Text as="p" variant="bodySm">
+                      The catalog keeps this as a supporting event, while this test labels it as a
+                      diagnostic signal in the selected goals list.
+                    </Text>
+                  </Banner>
+                )}
+                <div className={styles.goalEventCreateGrid}>
+                  <div className={styles.goalEventCreateCard}>
+                    <div className={styles.goalEventCreateCardHeader}>
+                      <span>01</span>
+                      <div>
+                        <strong>Event Identity</strong>
+                        <small>Name the event and define the reusable tracking key.</small>
+                      </div>
+                    </div>
+                    <div className={styles.goalEventCreateFields}>
+                      <div className={styles.goalEventCreateFieldGroup}>
+                        <TextField
+                          label="Event Name"
+                          value={goalEventCreateDraft.name}
+                          onChange={value =>
+                            setGoalEventCreateDraft(prev => ({
+                              ...prev,
+                              name: value,
+                              event_name: prev.event_name || normalizeGoalEventName(value),
+                            }))
+                          }
+                          placeholder="e.g. Checkout started"
+                          autoComplete="off"
+                          helpText="Use the label teammates will recognize in reports."
+                          error={
+                            goalEventKeyDraftTouched && !goalEventDisplayNameReady
+                              ? 'Add a readable event name.'
+                              : undefined
+                          }
+                        />
+                        <div className={styles.goalEventKeyComposer}>
+                          <TextField
+                            label="Event Key"
+                            value={goalEventCreateDraft.event_name}
+                            onChange={value =>
+                              setGoalEventCreateDraft(prev => ({
+                                ...prev,
+                                event_name: normalizeGoalEventName(value),
+                              }))
+                            }
+                            placeholder="checkout_start"
+                            autoComplete="off"
+                            maxLength={100}
+                            helpText="Lowercase letters, numbers, and underscores. This becomes the tracking key."
+                            error={
+                              goalEventKeyInvalid
+                                ? 'Use at least one letter or number so RipX can generate a tracking key.'
+                                : undefined
+                            }
+                          />
+                          <Button
+                            size="slim"
+                            onClick={() =>
+                              setGoalEventCreateDraft(prev => ({
+                                ...prev,
+                                event_name: normalizeGoalEventName(prev.name),
+                              }))
+                            }
+                            disabled={!goalEventCreateDraft.name.trim()}
+                          >
+                            Generate Key
+                          </Button>
+                        </div>
+                      </div>
+                      <TextField
+                        label="Description"
+                        value={goalEventCreateDraft.description}
+                        onChange={value =>
+                          setGoalEventCreateDraft(prev => ({ ...prev, description: value }))
+                        }
+                        placeholder="What user action should this event represent?"
+                        autoComplete="off"
+                      />
+                    </div>
+                  </div>
+                  <div className={styles.goalEventCreateCard}>
+                    <div className={styles.goalEventCreateCardHeader}>
+                      <span>02</span>
+                      <div>
+                        <strong>Goal Behavior</strong>
+                        <small>Choose how this event influences the readout.</small>
+                      </div>
+                    </div>
+                    <div className={styles.goalEventCreateFields}>
+                      <div className={styles.goalEventCreateSelectGrid}>
+                        <Select
+                          label="Role"
+                          options={[
+                            { label: 'Secondary Metric', value: 'secondary' },
+                            { label: 'Guardrail', value: 'guardrail' },
+                            { label: 'Diagnostic', value: 'diagnostic' },
+                          ]}
+                          value={goalEventCreateDraft.metric_role}
+                          onChange={value =>
+                            setGoalEventCreateDraft(prev => ({ ...prev, metric_role: value }))
+                          }
+                        />
+                        <Select
+                          label="Aggregation"
+                          options={[
+                            { label: 'Count Unique Users', value: 'count' },
+                            { label: 'Sum Event Value', value: 'sum' },
+                          ]}
+                          value={goalEventCreateDraft.aggregation}
+                          onChange={value =>
+                            setGoalEventCreateDraft(prev => ({
+                              ...prev,
+                              aggregation: value,
+                              parameter_name: value === 'count' ? '' : prev.parameter_name,
+                            }))
+                          }
+                        />
+                        <Select
+                          label="Direction"
+                          options={[
+                            { label: 'Higher Is Better', value: 'increase' },
+                            { label: 'Lower Is Better', value: 'decrease' },
+                          ]}
+                          value={goalEventCreateDraft.direction}
+                          onChange={value =>
+                            setGoalEventCreateDraft(prev => ({ ...prev, direction: value }))
+                          }
+                        />
+                      </div>
+                      {goalEventCreateDraft.aggregation === 'sum' && (
+                        <TextField
+                          label="Value Parameter"
+                          value={goalEventCreateDraft.parameter_name}
+                          onChange={value =>
+                            setGoalEventCreateDraft(prev => ({ ...prev, parameter_name: value }))
+                          }
+                          placeholder="amount"
+                          autoComplete="off"
+                          helpText="Match the value key your storefront sends with this event."
+                          error={
+                            goalEventCreateNeedsParameter
+                              ? 'Add the numeric value parameter, for example amount or revenue.'
+                              : undefined
+                          }
+                        />
+                      )}
+                      {goalEventCreateDraft.metric_role === 'guardrail' && (
+                        <TextField
+                          label="Guardrail Threshold (% Relative Lift)"
+                          type="number"
+                          value={String(goalEventCreateDraft.min_relative_lift ?? -10)}
+                          onChange={value =>
+                            setGoalEventCreateDraft(prev => ({
+                              ...prev,
+                              min_relative_lift: parseFloat(value) || 0,
+                            }))
+                          }
+                          autoComplete="off"
+                          helpText={
+                            goalEventCreateDraft.direction === 'decrease'
+                              ? 'Use a positive limit for metrics where lower is better, for example 10.'
+                              : 'Example: -10 alerts if this event drops more than 10% versus control.'
+                          }
+                        />
+                      )}
+                      <div className={styles.goalEventTrackingHint}>
+                        <div className={styles.goalEventTrackingHintHeader}>
+                          <span>
+                            <strong>Tracking Preview</strong>
+                            <small>Use this event key in the shop event call.</small>
+                          </span>
+                          <Button
+                            size="slim"
+                            onClick={async () => {
+                              try {
+                                if (typeof navigator === 'undefined' || !navigator.clipboard) {
+                                  throw new Error('Clipboard is unavailable');
+                                }
+                                await navigator.clipboard.writeText(goalEventTrackingSnippet);
+                                setGoalEventCopyToast({
+                                  type: 'success',
+                                  message: 'Tracking snippet copied',
+                                });
+                              } catch {
+                                setGoalEventCopyToast({
+                                  type: 'error',
+                                  message: 'Could not copy tracking snippet',
+                                });
+                              }
+                              setTimeout(() => setGoalEventCopyToast(null), 2500);
+                            }}
+                          >
+                            Copy
+                          </Button>
+                        </div>
+                        <code>{goalEventTrackingSnippet}</code>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className={styles.goalEventCreateActions}>
+                  <div className={styles.goalEventCreateActionsText}>
+                    <strong>
+                      {goalEventDraftCatalogMatch
+                        ? 'Ready To Add Existing Event'
+                        : 'Ready To Create Event'}
+                    </strong>
+                    <span>
+                      {goalEventCreateCanSubmit
+                        ? goalEventDraftCatalogMatch
+                          ? 'Attach this catalog event to the test with the behavior settings above.'
+                          : 'Create the reusable event and attach it to this test immediately.'
+                        : goalEventDraftAlreadySelected
+                          ? 'This event is already selected for this test.'
+                          : 'Complete the highlighted items above to enable submit.'}
+                    </span>
+                  </div>
+                  <div className={styles.goalEventCreateActionsButtons}>
+                    <Button
+                      onClick={() => {
+                        setGoalEventModalMode('browse');
+                        setGoalEventCreateError('');
+                      }}
+                    >
+                      Back To Browse
+                    </Button>
+                    <Button
+                      variant="primary"
+                      icon={PlusIcon}
+                      loading={goalEventCreateSaving}
+                      disabled={!goalEventCreateCanSubmit}
+                      onClick={handleCreateCatalogGoalFromWizard}
+                    >
+                      {goalEventDraftCatalogMatch ? 'Add Existing' : 'Create Event'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </Modal.Section>
+      </Modal>
 
       <Modal
         open={priceProductModalOpen && currentStep === stepIds.targeting}

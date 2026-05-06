@@ -1,5 +1,16 @@
-# Dockerfile for AB Testing App Backend
-FROM node:20-alpine
+# Dockerfile for AB Testing App
+FROM node:20-alpine AS frontend-build
+
+WORKDIR /app/frontend
+
+COPY frontend/package*.json ./
+RUN npm ci
+
+COPY frontend/ ./
+COPY shopify/ /app/shopify/
+RUN npm run copy:storefront && npm run build
+
+FROM node:20-alpine AS runtime
 
 # Set working directory
 WORKDIR /app
@@ -13,6 +24,7 @@ RUN npm ci --omit=dev
 
 # Copy application code
 COPY backend/ ./backend/
+COPY --from=frontend-build /app/frontend/dist ./frontend/dist
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \

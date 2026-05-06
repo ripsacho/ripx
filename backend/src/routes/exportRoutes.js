@@ -34,9 +34,17 @@ router.get(
   validateTestId,
   asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const { format = 'csv', start_date, end_date } = req.query;
+    const { format = 'csv', start_date, end_date, device, country } = req.query;
     const shopDomain = req.shopDomain;
-    const dateRange = start_date || end_date ? { start_date, end_date } : null;
+    const dateRange =
+      start_date || end_date || device || country
+        ? {
+            start_date,
+            end_date,
+            device: device && device !== 'all' ? device : undefined,
+            country: country && country !== 'all' ? country : undefined,
+          }
+        : null;
 
     if (format === 'csv') {
       const csv = await exportService.exportToCSV(id, shopDomain, dateRange);
@@ -103,7 +111,7 @@ router.post(
         return res.status(404).json({
           success: false,
           error:
-            'BigQuery table or dataset not found. Create tables using backend/docs/bigquery_schema.sql',
+            'BigQuery table or dataset not found. Create tables using backend/docs/bigquery_schema.sql or inspect GET /api/analytics/export/schema',
         });
       }
       next(error);

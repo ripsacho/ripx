@@ -39,6 +39,7 @@ jest.mock('../../jobs/productSyncProcessor', () => ({
 const app = require('../../app');
 const database = require('../../utils/database');
 const abTestEngine = require('../../services/abTestEngine');
+const { SCRIPT_VERSION } = require('../../utils/storefrontScriptRuntime');
 
 const CHECKOUT_CONTRACT_TEST_ID = '00000000-0000-4000-8000-000000000321';
 const CHECKOUT_CONTRACT_SHOP = 'test.myshopify.com';
@@ -230,6 +231,16 @@ describe('API integration', () => {
       expect(res.body).toHaveProperty('success', true);
       expect(res.body).toHaveProperty('reply');
       expect(res.body).toHaveProperty('language', 'es');
+    });
+  });
+
+  describe('POST /api/support/agent', () => {
+    it('requires authentication for the action-capable agent endpoint', async () => {
+      const res = await request(app).post('/api/support/agent').send({
+        message: 'Check my store setup',
+      });
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
     });
   });
 
@@ -456,6 +467,84 @@ describe('API integration', () => {
     });
   });
 
+  describe('GET /api/track variant assignment cache policy', () => {
+    it('marks batched variant assignment responses as no-store even on validation errors', async () => {
+      const res = await request(app).get('/api/track/variants');
+      expect(res.status).toBe(400);
+      expect(res.headers['cache-control']).toBe('no-store');
+    });
+
+    it('marks single variant assignment responses as no-store even on validation errors', async () => {
+      const res = await request(app).get('/api/track/variant');
+      expect(res.status).toBe(400);
+      expect(res.headers['cache-control']).toBe('no-store');
+    });
+  });
+
+  describe('GET /api/track/script.js', () => {
+    afterEach(() => {
+      database.query.mockResolvedValue({ rows: [] });
+    });
+
+    it('serves runtime config with script headers and anti-flicker fields', async () => {
+      const testId = '26262626-2626-4262-8262-262626262626';
+      database.query.mockImplementation(sql => {
+        const normalizedSql = String(sql || '').toLowerCase();
+        if (normalizedSql.includes('from tenants')) {
+          return { rows: [{ domain: 'test.myshopify.com', status: 'active' }] };
+        }
+        if (normalizedSql.includes('from tests')) {
+          return {
+            rows: [
+              {
+                id: testId,
+                shop_domain: 'test.myshopify.com',
+                type: 'pricing',
+                status: 'running',
+                target_type: 'all',
+                target_id: null,
+                target_ids: null,
+                goal: '{}',
+                variants: '[]',
+                segments: JSON.stringify({
+                  anti_flicker_mode: 'strict',
+                  anti_flicker_timeout_ms: 1234,
+                }),
+              },
+            ],
+          };
+        }
+        if (normalizedSql.includes('goal_metric_definitions')) {
+          return { rows: [] };
+        }
+        return { rows: [] };
+      });
+
+      const res = await request(app).get('/api/track/script.js?shop=test.myshopify.com');
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toMatch(/application\/javascript/);
+      expect(res.headers['cache-control']).toMatch(/must-revalidate/);
+      expect(res.headers['x-script-version']).toBe(SCRIPT_VERSION);
+      expect(res.text).toContain('window.AB_TEST_RUNTIME_CONFIG=');
+
+      const runtimeJson = res.text.split('window.AB_TEST_RUNTIME_CONFIG=')[1].split(';\n')[0];
+      const runtime = JSON.parse(runtimeJson);
+
+      expect(runtime.version).toBe(SCRIPT_VERSION);
+      expect(runtime.shopDomain).toBe('test.myshopify.com');
+      expect(runtime.activeTests).toHaveLength(1);
+      expect(runtime.activeTests[0]).toMatchObject({
+        id: testId,
+        type: 'price',
+        targetType: 'all-products',
+        antiFlickerMode: 'strict',
+        antiFlickerTimeoutMs: 1234,
+      });
+      expect(Array.isArray(runtime.goalMetricDefinitions)).toBe(true);
+    });
+  });
+
   describe('Protected routes (require auth)', () => {
     it('GET /api/tests returns 401 when no credentials', async () => {
       const res = await request(app).get('/api/tests');
@@ -565,6 +654,35 @@ describe('API integration', () => {
 
     it('POST /api/admin/mail-test-send returns 401 when no credentials', async () => {
       const res = await request(app).post('/api/admin/mail-test-send').send({ email: 'a@b.co' });
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('POST /api/admin/aggregation/trigger returns 401 when no credentials', async () => {
+      const res = await request(app).post('/api/admin/aggregation/trigger').send({
+        date: '2026-05-01',
+      });
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('POST /api/admin/aggregation/heatmap-rollups returns 401 when no credentials', async () => {
+      const res = await request(app).post('/api/admin/aggregation/heatmap-rollups').send({
+        refresh_since: '2026-05-01',
+        prune: true,
+        retention_days: 30,
+      });
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('success', false);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('POST /api/admin/aggregation/goal-event-rollups returns 401 when no credentials', async () => {
+      const res = await request(app).post('/api/admin/aggregation/goal-event-rollups').send({
+        shop_domain: 'shop.myshopify.com',
+      });
       expect(res.status).toBe(401);
       expect(res.body).toHaveProperty('success', false);
       expect(res.body).toHaveProperty('error');

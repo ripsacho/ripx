@@ -84,7 +84,7 @@ See also `**backend/docs/PRODUCT_EXCELLENCE_ROADMAP.md`\*\* for the long-term pr
 - `**npm run shopify:checkout-discount:sync-config`\*\* — generates `src/ripxConfig.js` from root `.env`:
   - `**RIPX_PRICE_RESOLVE_BATCH_URL**` if set, else `**APP_URL**` + `/api/track/price-resolve-batch`
   - `**RIPX_CHECKOUT_PRICE_SECRET**` optional
-  - Also syncs checkout UI extension config at `extensions/ripx-checkout-ui/src/ripxConfig.js` when present.
+- `**npm run shopify:checkout-ui:sync-config`\*\* — generates ignored checkout UI config at `extensions/ripx-checkout-ui/src/ripxConfig.generated.js`.
 - Or edit `**src/ripxConfig.js**` manually and run `**npm run shopify:checkout-discount:build**` only.
 
 Then `**shopify app deploy**` / `**shopify app dev**` so Admin can attach the function to a discount.

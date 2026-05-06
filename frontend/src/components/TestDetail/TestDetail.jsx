@@ -1,7 +1,7 @@
 /**
  * Test Detail (shared wizard edit view)
  */
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   Page,
   Layout,
@@ -21,6 +21,7 @@ import {
   DuplicateIcon,
   ExportIcon,
   LinkIcon,
+  MenuHorizontalIcon,
   PlayIcon,
   StopCircleIcon,
   TargetIcon,
@@ -97,6 +98,46 @@ function readStoredPreflightFilters() {
   }
 }
 
+function DetailActionMenuItem({
+  icon,
+  label,
+  description,
+  onAction,
+  disabled,
+  destructive,
+  primary,
+}) {
+  return (
+    <button
+      type="button"
+      className={`${styles.detailActionMenuItem} ${primary ? styles.detailActionMenuItemPrimary : ''} ${destructive ? styles.detailActionMenuItemDanger : ''}`}
+      onClick={onAction}
+      disabled={disabled}
+    >
+      <span className={styles.detailActionMenuIcon}>
+        <Icon source={icon} />
+      </span>
+      <span className={styles.detailActionMenuCopy}>
+        <span className={styles.detailActionMenuLabel}>{label}</span>
+        {description ? (
+          <span className={styles.detailActionMenuDescription}>{description}</span>
+        ) : null}
+      </span>
+    </button>
+  );
+}
+
+function DetailActionMenuSection({ title, children }) {
+  const items = React.Children.toArray(children).filter(Boolean);
+  if (items.length === 0) return null;
+  return (
+    <div className={styles.detailActionMenuSection}>
+      <span className={styles.detailActionMenuSectionTitle}>{title}</span>
+      <div className={styles.detailActionMenuItems}>{items}</div>
+    </div>
+  );
+}
+
 function TestDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -108,6 +149,7 @@ function TestDetail() {
   const [startCelebrationMode, setStartCelebrationMode] = useState(null);
   const [deleteModal, setDeleteModal] = useState(false);
   const [stopExpanded, setStopExpanded] = useState(false);
+  const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
   const [rolloutConfigExpanded, setRolloutConfigExpanded] = useState(false);
   const [rolloutInitialPercent, setRolloutInitialPercent] = useState('25');
   const [rolloutDuration, setRolloutDuration] = useState(7);
@@ -164,6 +206,7 @@ function TestDetail() {
   const [storefrontSetupStatus, setStorefrontSetupStatus] = useState(null);
   const [storefrontSetupLoading, setStorefrontSetupLoading] = useState(false);
   const [storefrontSetupError, setStorefrontSetupError] = useState(null);
+  const actionsMenuRef = useRef(null);
 
   const queryClient = useQueryClient();
   const invalidateTests = useInvalidateTests();
@@ -224,6 +267,30 @@ function TestDetail() {
       document.removeEventListener('visibilitychange', refreshDetail);
     };
   }, [id, queryClient, refetchTest]);
+
+  useEffect(() => {
+    if (!actionsMenuOpen) return undefined;
+    const handleKeyDown = event => {
+      if (event.key === 'Escape') {
+        setActionsMenuOpen(false);
+      }
+    };
+    const handlePointerDown = event => {
+      if (!actionsMenuRef.current) return;
+      if (!actionsMenuRef.current.contains(event.target)) {
+        setActionsMenuOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+    };
+  }, [actionsMenuOpen]);
+
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
@@ -735,6 +802,11 @@ function TestDetail() {
       setReportDownloadLoading(false);
     }
   }, [id]);
+
+  const runHeaderAction = useCallback(action => {
+    setActionsMenuOpen(false);
+    if (typeof action === 'function') action();
+  }, []);
 
   const refreshTestAfterShippingExecution = useCallback(async () => {
     try {
@@ -1602,32 +1674,40 @@ function TestDetail() {
                   >
                     ← All Tests
                   </button>
+                  <div className={styles.detailHeroTopBadges}>
+                    <span className={styles.detailHeroMetaKicker}>Test</span>
+                    <span
+                      className={`${styles.detailStatusPill} ${
+                        test.status === 'running'
+                          ? styles.detailStatusRunning
+                          : test.status === 'draft'
+                            ? styles.detailStatusDraft
+                            : styles.detailStatusStopped
+                      }`}
+                    >
+                      <span className={styles.detailStatusDot} aria-hidden="true" />
+                      {test.status === 'running'
+                        ? 'Running'
+                        : test.status === 'draft'
+                          ? 'Draft'
+                          : 'Stopped'}
+                    </span>
+                    <span className={styles.detailHeroMetaChip}>
+                      <span className={styles.detailHeroMetaLabel}>Type</span>
+                      {testTypeLabel}
+                    </span>
+                    {test.variants?.length > 0 && (
+                      <span className={styles.detailHeroMetaChip}>
+                        <span className={styles.detailHeroMetaLabel}>Variants</span>
+                        {getVariantCount(test)} variants
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <h1 className={styles.detailHeroTitle}>{displayTitle}</h1>
-                <div className={styles.detailHeroPillsRow}>
-                  <span
-                    className={`${styles.detailStatusPill} ${
-                      test.status === 'running'
-                        ? styles.detailStatusRunning
-                        : test.status === 'draft'
-                          ? styles.detailStatusDraft
-                          : styles.detailStatusStopped
-                    }`}
-                  >
-                    {test.status === 'running'
-                      ? 'Running'
-                      : test.status === 'draft'
-                        ? 'Draft'
-                        : 'Stopped'}
-                  </span>
-                  <span className={styles.detailHeroMetaChip}>{testTypeLabel}</span>
-                  {test.variants?.length > 0 && (
-                    <span className={styles.detailHeroMetaChip}>
-                      {getVariantCount(test)} variants
-                    </span>
-                  )}
-                </div>
-                {(srmDetected || riskLevel === 'high' || rolloutRecommendation?.action) && (
+                {(srmDetected ||
+                  riskLevel === 'high' ||
+                  rolloutRecommendation?.action === 'canary_rollout') && (
                   <div style={{ marginTop: 12, maxWidth: 760 }}>
                     {srmDetected && (
                       <Banner tone="critical" title="Sample ratio mismatch detected">
@@ -1672,7 +1752,7 @@ function TestDetail() {
                           disabled={actionLoading}
                         >
                           <Icon source={StopCircleIcon} />
-                          Stop Test
+                          StopTest
                         </button>
                       ) : test.status !== 'running' ? (
                         <button
@@ -1682,7 +1762,7 @@ function TestDetail() {
                           disabled={actionLoading}
                         >
                           <Icon source={PlayIcon} />
-                          Start Test
+                          StartTest
                         </button>
                       ) : null}
                       {hasPersonalization && !rolloutConfigExpanded && (
@@ -1699,53 +1779,6 @@ function TestDetail() {
                               </span>
                             )}
                           </div>
-                          <button
-                            type="button"
-                            className={styles.detailSecondaryBtn}
-                            onClick={handleDisablePersonalization}
-                            disabled={actionLoading}
-                          >
-                            <Icon source={XCircleIcon} />
-                            Disable
-                          </button>
-                        </>
-                      )}
-                      {isStopped && !hasPersonalization && !rolloutConfigExpanded && (
-                        <>
-                          <button
-                            type="button"
-                            className={`${styles.detailSecondaryBtn} ${styles.detailSecondaryBtnPrimary}`}
-                            onClick={handlePersonalize}
-                            disabled={actionLoading}
-                          >
-                            <Icon source={TargetIcon} />
-                            Personalize
-                          </button>
-                          <button
-                            type="button"
-                            className={styles.detailSecondaryBtn}
-                            onClick={() => {
-                              setRolloutInitialPercent('25');
-                              setRolloutDuration(7);
-                              setRolloutConfigExpanded(true);
-                            }}
-                            disabled={actionLoading}
-                          >
-                            <Icon source={ChartVerticalFilledIcon} />
-                            Rollout
-                          </button>
-                          {isPriceLikeTest && (
-                            <button
-                              type="button"
-                              className={styles.detailSecondaryBtn}
-                              onClick={handlePersonalizeAndPublish}
-                              disabled={actionLoading}
-                              title="Apply winner to traffic and write prices to Shopify catalog"
-                            >
-                              <Icon source={LinkIcon} />
-                              Personalize + Shopify
-                            </button>
-                          )}
                         </>
                       )}
                     </div>
@@ -1755,181 +1788,258 @@ function TestDetail() {
                       aria-label="Quick actions"
                     >
                       <span className={styles.detailHeroRowLabel}>Actions</span>
-                      <button
-                        type="button"
-                        className={styles.detailSecondaryBtn}
-                        onClick={() => navigate(routes.testAnalytics(id))}
-                      >
-                        <Icon source={ChartLineIcon} />
-                        View Analytics
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.detailSecondaryBtn}
-                        onClick={() => navigate(routes.testExport(id))}
-                      >
-                        <Icon source={ExportIcon} />
-                        Export
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.detailSecondaryBtn}
-                        onClick={handleDownloadReport}
-                        disabled={reportDownloadLoading}
-                        title="Download concise test report (Markdown)"
-                      >
-                        <Icon source={ExportIcon} />
-                        {reportDownloadLoading ? 'Preparing report…' : 'Report (MD)'}
-                      </button>
-                      {(String(test?.type || '').toLowerCase() === 'price' ||
-                        String(test?.type || '').toLowerCase() === 'pricing') &&
-                        isStopped && (
-                          <>
-                            <button
-                              type="button"
-                              className={styles.detailSecondaryBtn}
-                              onClick={handlePersonalizeAndPublish}
-                              disabled={actionLoading}
-                              title="Apply winner to traffic and write prices to Shopify catalog"
-                            >
-                              <Icon source={LinkIcon} />
-                              Publish to Shopify
-                            </button>
-                            <button
-                              type="button"
-                              className={styles.detailSecondaryBtn}
-                              onClick={handleDownloadRolloutCsv}
-                              disabled={rolloutCsvLoading}
-                              title="Download winner price mapping CSV"
-                            >
-                              <Icon source={ExportIcon} />
-                              {rolloutCsvLoading ? 'Preparing CSV…' : 'Rollout CSV'}
-                            </button>
-                          </>
+                      <div className={styles.detailActionsMenuWrap} ref={actionsMenuRef}>
+                        <button
+                          type="button"
+                          className={styles.detailActionsMenuTrigger}
+                          onClick={() => setActionsMenuOpen(open => !open)}
+                          aria-expanded={actionsMenuOpen}
+                          aria-haspopup="menu"
+                        >
+                          <span className={styles.detailActionsMenuTriggerIcon}>
+                            <span className={styles.detailActionsMenuDesktopIcon}>
+                              <Icon source={ChartVerticalFilledIcon} />
+                            </span>
+                            <span className={styles.detailActionsMenuMobileIcon}>
+                              <Icon source={MenuHorizontalIcon} />
+                            </span>
+                          </span>
+                          <span className={styles.detailActionsMenuTriggerCopy}>
+                            <span className={styles.detailActionsMenuTriggerLabel}>
+                              CommandCenter
+                            </span>
+                            <span className={styles.detailActionsMenuTriggerHint}>
+                              Insights, readiness, growth, manage
+                            </span>
+                          </span>
+                          <span
+                            className={`${styles.detailActionsMenuChevron} ${
+                              actionsMenuOpen ? styles.detailActionsMenuChevronOpen : ''
+                            }`}
+                            aria-hidden="true"
+                          >
+                            <Icon source={ChevronDownIcon} />
+                          </span>
+                        </button>
+                        {actionsMenuOpen && (
+                          <div className={styles.detailActionsMenuPanel} role="menu">
+                            <DetailActionMenuSection title="Insights">
+                              <DetailActionMenuItem
+                                icon={ChartLineIcon}
+                                label="Analytics"
+                                description="Open performance and variant metrics."
+                                onAction={() =>
+                                  runHeaderAction(() => navigate(routes.testAnalytics(id)))
+                                }
+                              />
+                              <DetailActionMenuItem
+                                icon={ExportIcon}
+                                label="Export"
+                                description="Open full export options."
+                                onAction={() =>
+                                  runHeaderAction(() => navigate(routes.testExport(id)))
+                                }
+                              />
+                              <DetailActionMenuItem
+                                icon={ExportIcon}
+                                label={reportDownloadLoading ? 'PreparingReport…' : 'ReportMD'}
+                                description="Download a concise markdown report."
+                                disabled={reportDownloadLoading}
+                                onAction={() => runHeaderAction(handleDownloadReport)}
+                              />
+                              <DetailActionMenuItem
+                                icon={ClipboardIcon}
+                                label="IDs"
+                                description="View and copy test or variant IDs."
+                                onAction={() => runHeaderAction(() => setIdsModalOpen(true))}
+                              />
+                            </DetailActionMenuSection>
+
+                            <DetailActionMenuSection title="Readiness">
+                              {supportsCheckoutReadiness && (
+                                <DetailActionMenuItem
+                                  icon={TargetIcon}
+                                  label={
+                                    checkoutReadinessLoading ? 'Checking…' : checkoutReadinessLabel
+                                  }
+                                  description="Check checkout launch readiness."
+                                  disabled={checkoutReadinessLoading || actionLoading}
+                                  onAction={() => runHeaderAction(handleCheckoutReadiness)}
+                                />
+                              )}
+                              {isCheckoutTest && (
+                                <DetailActionMenuItem
+                                  icon={LinkIcon}
+                                  label="CheckoutDocs"
+                                  description="Open checkout setup documentation."
+                                  onAction={() => runHeaderAction(() => navigate(routes.docs))}
+                                />
+                              )}
+                              {isCheckoutTest && hasDeployableCheckoutCustomizationPhase && (
+                                <>
+                                  <DetailActionMenuItem
+                                    icon={ChartVerticalFilledIcon}
+                                    label={
+                                      checkoutCustomizationLoading
+                                        ? 'Running…'
+                                        : 'CustomizationDryRun'
+                                    }
+                                    description="Preview Shopify checkout customization changes."
+                                    disabled={checkoutCustomizationLoading || actionLoading}
+                                    onAction={() =>
+                                      runHeaderAction(() =>
+                                        handleEnsureCheckoutCustomization(false)
+                                      )
+                                    }
+                                  />
+                                  <DetailActionMenuItem
+                                    icon={LinkIcon}
+                                    label={
+                                      checkoutCustomizationLoading
+                                        ? 'Applying…'
+                                        : 'ApplyCustomization'
+                                    }
+                                    description="Create or update Shopify checkout customization."
+                                    disabled={checkoutCustomizationLoading || actionLoading}
+                                    primary
+                                    onAction={() =>
+                                      runHeaderAction(() => handleEnsureCheckoutCustomization(true))
+                                    }
+                                  />
+                                </>
+                              )}
+                              {isShippingTest && (
+                                <>
+                                  <DetailActionMenuItem
+                                    icon={TargetIcon}
+                                    label={
+                                      shippingDiagnosticsLoading
+                                        ? 'Checking…'
+                                        : 'ShippingDiagnostics'
+                                    }
+                                    description="Check shipping readiness and live conflicts."
+                                    disabled={shippingDiagnosticsLoading || actionLoading}
+                                    onAction={() => runHeaderAction(handleShippingDiagnostics)}
+                                  />
+                                  <DetailActionMenuItem
+                                    icon={ChartVerticalFilledIcon}
+                                    label={shippingExecutionLoading ? 'Running…' : 'ShippingDryRun'}
+                                    description="Preview shipping adapter actions."
+                                    disabled={shippingExecutionLoading || actionLoading}
+                                    onAction={() =>
+                                      runHeaderAction(() => handleExecuteShipping(false))
+                                    }
+                                  />
+                                  <DetailActionMenuItem
+                                    icon={LinkIcon}
+                                    label={shippingExecutionLoading ? 'Applying…' : 'ApplyShipping'}
+                                    description="Apply actionable shipping adapter changes."
+                                    disabled={shippingExecutionLoading || actionLoading}
+                                    primary
+                                    onAction={() =>
+                                      runHeaderAction(() => handleExecuteShipping(true))
+                                    }
+                                  />
+                                </>
+                              )}
+                            </DetailActionMenuSection>
+
+                            <DetailActionMenuSection title="Growth">
+                              {hasPersonalization && !rolloutConfigExpanded && (
+                                <DetailActionMenuItem
+                                  icon={XCircleIcon}
+                                  label="DisablePersonalization"
+                                  description="Return this test to normal traffic handling."
+                                  disabled={actionLoading}
+                                  onAction={() => runHeaderAction(handleDisablePersonalization)}
+                                />
+                              )}
+                              {isStopped && !hasPersonalization && !rolloutConfigExpanded && (
+                                <>
+                                  <DetailActionMenuItem
+                                    icon={TargetIcon}
+                                    label="Personalize"
+                                    description="Apply the winner to all eligible traffic."
+                                    disabled={actionLoading}
+                                    primary
+                                    onAction={() => runHeaderAction(handlePersonalize)}
+                                  />
+                                  <DetailActionMenuItem
+                                    icon={ChartVerticalFilledIcon}
+                                    label="Rollout"
+                                    description="Configure a controlled canary rollout."
+                                    disabled={actionLoading}
+                                    onAction={() =>
+                                      runHeaderAction(() => {
+                                        setRolloutInitialPercent('25');
+                                        setRolloutDuration(7);
+                                        setRolloutConfigExpanded(true);
+                                      })
+                                    }
+                                  />
+                                  {isPriceLikeTest && (
+                                    <DetailActionMenuItem
+                                      icon={LinkIcon}
+                                      label="PersonalizeShopify"
+                                      description="Apply winner to traffic and write Shopify prices."
+                                      disabled={actionLoading}
+                                      onAction={() => runHeaderAction(handlePersonalizeAndPublish)}
+                                    />
+                                  )}
+                                </>
+                              )}
+                              {(String(test?.type || '').toLowerCase() === 'price' ||
+                                String(test?.type || '').toLowerCase() === 'pricing') &&
+                                isStopped && (
+                                  <>
+                                    <DetailActionMenuItem
+                                      icon={LinkIcon}
+                                      label="PublishToShopify"
+                                      description="Apply winner to traffic and write catalog prices."
+                                      disabled={actionLoading}
+                                      onAction={() => runHeaderAction(handlePersonalizeAndPublish)}
+                                    />
+                                    <DetailActionMenuItem
+                                      icon={ExportIcon}
+                                      label={rolloutCsvLoading ? 'PreparingCSV…' : 'RolloutCSV'}
+                                      description="Download winner price mapping CSV."
+                                      disabled={rolloutCsvLoading}
+                                      onAction={() => runHeaderAction(handleDownloadRolloutCsv)}
+                                    />
+                                  </>
+                                )}
+                              {test.type === 'offer' && (
+                                <DetailActionMenuItem
+                                  icon={LinkIcon}
+                                  label="PromoLinks"
+                                  description="Open offer promo links."
+                                  onAction={() =>
+                                    runHeaderAction(() => navigate(routes.testPromoLinks(id)))
+                                  }
+                                />
+                              )}
+                            </DetailActionMenuSection>
+
+                            <DetailActionMenuSection title="Manage">
+                              <DetailActionMenuItem
+                                icon={DuplicateIcon}
+                                label="Clone"
+                                description="Create a copy of this test."
+                                disabled={actionLoading}
+                                onAction={() => runHeaderAction(handleClone)}
+                              />
+                              <DetailActionMenuItem
+                                icon={DeleteIcon}
+                                label="Delete"
+                                description="Permanently delete this test."
+                                disabled={actionLoading}
+                                destructive
+                                onAction={() => runHeaderAction(() => setDeleteModal(true))}
+                              />
+                            </DetailActionMenuSection>
+                          </div>
                         )}
-                      {supportsCheckoutReadiness && (
-                        <button
-                          type="button"
-                          className={styles.detailSecondaryBtn}
-                          onClick={handleCheckoutReadiness}
-                          disabled={checkoutReadinessLoading || actionLoading}
-                          title="Check the checkout launch-readiness for this test on the current shop"
-                        >
-                          <Icon source={TargetIcon} />
-                          {checkoutReadinessLoading ? 'Checking…' : checkoutReadinessLabel}
-                        </button>
-                      )}
-                      {isCheckoutTest && (
-                        <button
-                          type="button"
-                          className={styles.detailSecondaryBtn}
-                          onClick={() => navigate(routes.docs)}
-                          title="Open checkout setup and test-type documentation"
-                        >
-                          <Icon source={LinkIcon} />
-                          Checkout docs
-                        </button>
-                      )}
-                      {isCheckoutTest && hasDeployableCheckoutCustomizationPhase && (
-                        <>
-                          <button
-                            type="button"
-                            className={styles.detailSecondaryBtn}
-                            onClick={() => handleEnsureCheckoutCustomization(false)}
-                            disabled={checkoutCustomizationLoading || actionLoading}
-                            title="Preview checkout customization creation/update without changing Shopify resources"
-                          >
-                            <Icon source={ChartVerticalFilledIcon} />
-                            {checkoutCustomizationLoading
-                              ? 'Running…'
-                              : 'Checkout customization dry run'}
-                          </button>
-                          <button
-                            type="button"
-                            className={`${styles.detailSecondaryBtn} ${styles.detailSecondaryBtnPrimary}`}
-                            onClick={() => handleEnsureCheckoutCustomization(true)}
-                            disabled={checkoutCustomizationLoading || actionLoading}
-                            title="Create or update the Shopify checkout customization and save the RipX config metafield"
-                          >
-                            <Icon source={LinkIcon} />
-                            {checkoutCustomizationLoading
-                              ? 'Applying…'
-                              : 'Apply checkout customization'}
-                          </button>
-                        </>
-                      )}
-                      {isShippingTest && (
-                        <>
-                          <button
-                            type="button"
-                            className={styles.detailSecondaryBtn}
-                            onClick={handleShippingDiagnostics}
-                            disabled={shippingDiagnosticsLoading || actionLoading}
-                            title="Check shipping readiness, assignment visibility, and live conflicts"
-                          >
-                            <Icon source={TargetIcon} />
-                            {shippingDiagnosticsLoading ? 'Checking…' : 'Shipping diagnostics'}
-                          </button>
-                          <button
-                            type="button"
-                            className={styles.detailSecondaryBtn}
-                            onClick={() => handleExecuteShipping(false)}
-                            disabled={shippingExecutionLoading || actionLoading}
-                            title="Preview shipping adapter actions without creating/updating resources"
-                          >
-                            <Icon source={ChartVerticalFilledIcon} />
-                            {shippingExecutionLoading ? 'Running…' : 'Shipping dry run'}
-                          </button>
-                          <button
-                            type="button"
-                            className={`${styles.detailSecondaryBtn} ${styles.detailSecondaryBtnPrimary}`}
-                            onClick={() => handleExecuteShipping(true)}
-                            disabled={shippingExecutionLoading || actionLoading}
-                            title="Apply shipping adapter actions for actionable variants"
-                          >
-                            <Icon source={LinkIcon} />
-                            {shippingExecutionLoading ? 'Applying…' : 'Apply shipping'}
-                          </button>
-                        </>
-                      )}
-                      <button
-                        type="button"
-                        className={styles.detailSecondaryBtn}
-                        onClick={() => setIdsModalOpen(true)}
-                        title="View test ID and variant IDs; click a value to copy"
-                      >
-                        <Icon source={ClipboardIcon} />
-                        Test &amp; variant IDs
-                      </button>
-                      {test.type === 'offer' && (
-                        <button
-                          type="button"
-                          className={styles.detailSecondaryBtn}
-                          onClick={() => navigate(routes.testPromoLinks(id))}
-                        >
-                          <Icon source={LinkIcon} />
-                          Promo Links
-                        </button>
-                      )}
-                      <span className={styles.detailHeroRowDivider} aria-hidden />
-                      <button
-                        type="button"
-                        className={styles.detailSecondaryBtn}
-                        onClick={handleClone}
-                        disabled={actionLoading}
-                      >
-                        <Icon source={DuplicateIcon} />
-                        Clone
-                      </button>
-                      <button
-                        type="button"
-                        className={`${styles.detailSecondaryBtn} ${styles.detailSecondaryBtnDestructive}`}
-                        onClick={() => setDeleteModal(true)}
-                        disabled={actionLoading}
-                      >
-                        <Icon source={DeleteIcon} />
-                        Delete
-                      </button>
+                      </div>
                     </div>
                   </div>
                 </div>

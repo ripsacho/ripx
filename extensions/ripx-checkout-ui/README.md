@@ -16,7 +16,7 @@ npm run shopify:checkout-ui:install
 npm run shopify:checkout-ui:sync-config
 ```
 
-This writes `src/ripxConfig.js` from root `.env`:
+This writes ignored local config at `src/ripxConfig.generated.js` from root `.env`:
 
 - `RIPX_CHECKOUT_ASSIGNMENT_URL` (or `APP_URL + /api/track/checkout-assignment`)
 - `RIPX_CHECKOUT_CONVERSION_URL` (or `APP_URL + /api/track/checkout-conversion`)
@@ -33,7 +33,8 @@ This writes `src/ripxConfig.js` from root `.env`:
 
 ## Notes
 
-- If `RIPX_CHECKOUT_PRICE_SECRET` is enabled on the backend, this extension sends it in header/body for both API calls.
+- `src/ripxConfig.generated.js` is intentionally not committed because it can contain tunnel URLs and shared secrets. Commit `src/ripxConfig.example.js` only.
+- If `RIPX_CHECKOUT_PRICE_SECRET` is enabled on the backend, this extension sends it in header/body for both API calls. Treat generated checkout UI builds as environment-specific artifacts.
 - Production checkout experience tests should use `checkout_sections` on each assigned variant. Legacy fields such as `checkout_title`, `checkout_message`, and `checkout_cta_label` are still normalized for backward compatibility.
 - Structured checkout sections can include a stable `id` per section (for example `trust-box` or `shipping-promise`). RipX emits that value as `checkout_section_id` in checkout analytics events.
 - Product list sections support manual, cart-related, and collection-fed sources. The `product_display_layout` prop supports `stacked_cards`, `compact_rows`, `two_column_grid`, and `comparison_table`.

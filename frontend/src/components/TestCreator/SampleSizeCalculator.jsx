@@ -25,7 +25,16 @@ function getZAlpha(confidence) {
   return 1.96;
 }
 
-function SampleSizeCalculator({ onCalculate, embedded, initialValues = {}, className }) {
+function SampleSizeCalculator({
+  onCalculate,
+  embedded,
+  initialValues = {},
+  className,
+  primaryMetricLabel,
+  primaryMetricType,
+  onDesignChange,
+  embeddedHideDesignControls = false,
+}) {
   const [mode, setMode] = useState('sample'); // 'sample' | 'mde'
   const [baselineRate, setBaselineRate] = useState('2');
   const [minimumEffect, setMinimumEffect] = useState('20');
@@ -40,6 +49,22 @@ function SampleSizeCalculator({ onCalculate, embedded, initialValues = {}, class
     if (initialValues.confidenceLevel) setConfidenceLevel(initialValues.confidenceLevel);
     if (initialValues.power) setPower(initialValues.power);
   }, [initialValues.confidenceLevel, initialValues.power]);
+
+  const updateConfidenceLevel = useCallback(
+    value => {
+      setConfidenceLevel(value);
+      onDesignChange?.({ confidenceLevel: value });
+    },
+    [onDesignChange]
+  );
+
+  const updatePower = useCallback(
+    value => {
+      setPower(value);
+      onDesignChange?.({ power: value });
+    },
+    [onDesignChange]
+  );
 
   /** MDE reverse: given sample size per variant + baseline, compute detectable effect */
   const calculateMDE = useCallback(() => {
@@ -178,12 +203,19 @@ function SampleSizeCalculator({ onCalculate, embedded, initialValues = {}, class
   );
 
   const formContent = (
-    <div className={styles.root}>
+    <div className={`${styles.root} ${embedded ? styles.rootEmbedded : ''}`}>
       {embedded && (
         <div className={styles.embeddedIntro}>
           <p className={styles.embeddedIntroText}>
             Estimate visitors needed for significance. Results update as you change inputs.
           </p>
+          {primaryMetricType && primaryMetricType !== 'conversion_rate' && (
+            <p className={styles.metricCaveat}>
+              Planning uses a conversion-rate model. Use it as a traffic estimate for{' '}
+              {primaryMetricLabel || 'this primary metric'}, then judge the winner by the selected
+              business metric.
+            </p>
+          )}
           <div className={styles.modeToggle} role="group" aria-label="Calculator mode">
             <button
               type="button"
@@ -276,7 +308,7 @@ function SampleSizeCalculator({ onCalculate, embedded, initialValues = {}, class
         )}
 
         {mode === 'mde' && (
-          <div className={`${styles.section} ${embedded ? styles.inputsGridFullWidth : ''}`}>
+          <div className={styles.section}>
             <div className={styles.inputWrap}>
               <TextField
                 label="Sample size per variant"
@@ -291,50 +323,54 @@ function SampleSizeCalculator({ onCalculate, embedded, initialValues = {}, class
           </div>
         )}
 
-        <div className={styles.section}>
-          <p className={styles.sectionLabel}>Confidence level</p>
-          <div className={styles.presetRow}>
-            {CONFIDENCE_PRESETS.map(v =>
-              preset(v, confidenceLevel, setConfidenceLevel, 'Confidence')
-            )}
-          </div>
-          <div className={styles.inputWrap}>
-            <TextField
-              label=""
-              labelHidden
-              type="number"
-              value={confidenceLevel}
-              onChange={setConfidenceLevel}
-              suffix="%"
-              helpText="Typically 95%"
-              min={90}
-              max={99}
-            />
-          </div>
-        </div>
+        {!embeddedHideDesignControls && (
+          <>
+            <div className={styles.section}>
+              <p className={styles.sectionLabel}>Confidence level</p>
+              <div className={styles.presetRow}>
+                {CONFIDENCE_PRESETS.map(v =>
+                  preset(v, confidenceLevel, updateConfidenceLevel, 'Confidence')
+                )}
+              </div>
+              <div className={styles.inputWrap}>
+                <TextField
+                  label=""
+                  labelHidden
+                  type="number"
+                  value={confidenceLevel}
+                  onChange={updateConfidenceLevel}
+                  suffix="%"
+                  helpText="Typically 95%"
+                  min={90}
+                  max={99}
+                />
+              </div>
+            </div>
 
-        <div className={styles.section}>
-          <p className={styles.sectionLabel}>Statistical power</p>
-          <div className={styles.presetRow}>
-            {POWER_PRESETS.map(v => preset(v, power, setPower, 'Power'))}
-          </div>
-          <div className={styles.inputWrap}>
-            <TextField
-              label=""
-              labelHidden
-              type="number"
-              value={power}
-              onChange={setPower}
-              suffix="%"
-              helpText="Typically 80%"
-              min={70}
-              max={95}
-            />
-          </div>
-        </div>
+            <div className={styles.section}>
+              <p className={styles.sectionLabel}>Statistical power</p>
+              <div className={styles.presetRow}>
+                {POWER_PRESETS.map(v => preset(v, power, updatePower, 'Power'))}
+              </div>
+              <div className={styles.inputWrap}>
+                <TextField
+                  label=""
+                  labelHidden
+                  type="number"
+                  value={power}
+                  onChange={updatePower}
+                  suffix="%"
+                  helpText="Typically 80%"
+                  min={70}
+                  max={95}
+                />
+              </div>
+            </div>
+          </>
+        )}
 
         {mode === 'sample' && (
-          <div className={`${styles.section} ${embedded ? styles.inputsGridFullWidth : ''}`}>
+          <div className={styles.section}>
             <div className={styles.inputWrap}>
               <TextField
                 label="Daily visitors (for duration)"

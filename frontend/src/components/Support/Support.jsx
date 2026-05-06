@@ -29,13 +29,14 @@ import {
   ImageIcon,
   ListBulletedIcon,
   SendIcon,
+  StoreIcon,
 } from '@shopify/polaris-icons';
 import { PageShell } from '../Shared';
 import { ROUTES } from '../../constants';
 import { apiGet, apiPost } from '../../services/api';
 import { getProfile } from '../../services/profileApi';
+import { subscribeSupportTicketRealtime } from '../../services/supportRealtime';
 import { formatReplyContent, SUGGESTED_PROMPTS, CHAT_PLACEHOLDER } from '../../utils/supportFormat';
-import SupportBubbleChat from './SupportBubbleChat';
 import styles from './Support.module.css';
 
 const CATEGORIES_FALLBACK = [
@@ -75,6 +76,72 @@ const SUPPORT_STATUS_LABEL = {
   maintenance: 'Maintenance',
   outage: 'Outage',
 };
+const SUPPORT_PANEL_META = {
+  0: {
+    title: 'ContactTeam',
+    description:
+      'Send a focused request to the RipX team. Best for account, billing, or detailed investigation.',
+    eyebrow: 'Human support',
+  },
+  1: {
+    title: 'MyRequests',
+    description: 'Review existing conversations, check status, and continue support threads.',
+    eyebrow: 'Ticket history',
+  },
+  2: {
+    title: 'SupportAI',
+    description: 'Ask documentation and setup questions. For store-aware checks, open RipX Agent.',
+    eyebrow: 'Knowledge assistant',
+  },
+  3: {
+    title: 'FeatureRequests',
+    description: 'Share product ideas and vote on improvements that should move up the roadmap.',
+    eyebrow: 'Product feedback',
+  },
+  4: {
+    title: 'StatusLog',
+    description:
+      'Check support availability, incidents, maintenance notes, and recent changelog updates.',
+    eyebrow: 'Operations',
+  },
+  5: {
+    title: 'FAQ',
+    description: 'Open quick answers for common setup, testing, and troubleshooting questions.',
+    eyebrow: 'Instant answers',
+  },
+};
+const SUPPORT_FAQS = [
+  {
+    id: 'connect-store',
+    question: 'How do I connect a Shopify store?',
+    answer:
+      'Open Domains, choose your Shopify store, then complete the Shopify install/authentication flow. After install, return to App settings > Installation and verify the app embed or script status.',
+  },
+  {
+    id: 'test-not-showing',
+    question: 'Why is my test not showing on the live store?',
+    answer:
+      'Check that the test is running, the store script or app embed is verified, targeting rules match the page, and preview/cache settings are not blocking visitor assignment.',
+  },
+  {
+    id: 'checkout-tests',
+    question: 'How do checkout or price tests work?',
+    answer:
+      'Checkout and price tests need Shopify-compatible checkout functions or checkout UI setup. RipX assigns variants on storefront/cart context, then checkout functions or checkout UI read that assigned variant.',
+  },
+  {
+    id: 'agent-vs-support-ai',
+    question: 'What is the difference between SupportAI and RipX Agent?',
+    answer:
+      'SupportAI answers general docs and setup questions. RipX Agent is store-aware and can inspect the current store, test readiness, diagnostics, and propose safe confirmed actions.',
+  },
+  {
+    id: 'human-support',
+    question: 'How do I contact a human?',
+    answer:
+      'Use ContactTeam to create a support request. If you are signed in, you can track replies from MyRequests and continue the thread from the Support page.',
+  },
+];
 const CHAT_LANGUAGE_OPTIONS = [
   { label: 'Auto-detect', value: 'auto' },
   { label: 'English', value: 'en' },
@@ -129,6 +196,10 @@ function Support() {
   const [threadReply, setThreadReply] = useState('');
   const [threadSending, setThreadSending] = useState(false);
   const [threadStreamState, setThreadStreamState] = useState('idle');
+  const [threadPeerTyping, setThreadPeerTyping] = useState(false);
+  const [threadPeerLastReadAt, setThreadPeerLastReadAt] = useState(null);
+  const [threadPeerOnline, setThreadPeerOnline] = useState(false);
+  const [threadPeerDeliveredAt, setThreadPeerDeliveredAt] = useState(null);
   const [categories, setCategories] = useState(CATEGORIES_FALLBACK);
   // Ask AI state
   const [chatInput, setChatInput] = useState('');
@@ -143,6 +214,7 @@ function Support() {
   const [chatEscalationResult, setChatEscalationResult] = useState(null);
   const [featureRequestTitle, setFeatureRequestTitle] = useState('');
   const [featureRequestDetails, setFeatureRequestDetails] = useState('');
+  const [openFaqId, setOpenFaqId] = useState(SUPPORT_FAQS[0]?.id || null);
   const [featureRequests, setFeatureRequests] = useState([]);
   const [featureRequestsLoading, setFeatureRequestsLoading] = useState(true);
   const [featureRequestsSubmitting, setFeatureRequestsSubmitting] = useState(false);
@@ -161,7 +233,8 @@ function Support() {
   const chatScrollRef = useRef(null);
   const mountedRef = useRef(true);
   const chatInputRef = useRef('');
-  const threadEventSourceRef = useRef(null);
+  const threadRealtimeUnsubscribeRef = useRef(null);
+  const threadTypingTimeoutRef = useRef(null);
   chatInputRef.current = chatInput;
 
   const latestAssistantMessage =
@@ -172,6 +245,15 @@ function Support() {
     latestAssistantKey && chatFeedbackByMessage[latestAssistantKey]
       ? chatFeedbackByMessage[latestAssistantKey]
       : null;
+
+  const openRipxAgent = useCallback((prompt = '') => {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(
+      new CustomEvent('ripx-agent-open', {
+        detail: { prompt },
+      })
+    );
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -373,9 +455,14 @@ function Support() {
   }, []);
 
   const closeTicketThread = useCallback(() => {
-    if (threadEventSourceRef.current) {
-      threadEventSourceRef.current.close();
-      threadEventSourceRef.current = null;
+    if (threadRealtimeUnsubscribeRef.current) {
+      threadRealtimeUnsubscribeRef.current.sendTyping?.(false);
+      threadRealtimeUnsubscribeRef.current();
+      threadRealtimeUnsubscribeRef.current = null;
+    }
+    if (threadTypingTimeoutRef.current) {
+      clearTimeout(threadTypingTimeoutRef.current);
+      threadTypingTimeoutRef.current = null;
     }
     setThreadTicket(null);
     setThreadMessages([]);
@@ -384,6 +471,10 @@ function Support() {
     setThreadLoading(false);
     setThreadSending(false);
     setThreadStreamState('idle');
+    setThreadPeerTyping(false);
+    setThreadPeerLastReadAt(null);
+    setThreadPeerOnline(false);
+    setThreadPeerDeliveredAt(null);
   }, []);
 
   const openTicketThread = useCallback(async ticket => {
@@ -417,6 +508,18 @@ function Support() {
         id: data?.ticket?.id || prev?.id || ticketId,
       }));
       setThreadMessages(Array.isArray(data.messages) ? data.messages : []);
+      setTickets(prev =>
+        prev.map(item =>
+          item.id === ticketId
+            ? {
+                ...item,
+                unread_count: 0,
+                has_unread_support_reply: false,
+                user_last_read_at: data?.read_state?.last_read_at || item.user_last_read_at || null,
+              }
+            : item
+        )
+      );
     } catch (err) {
       if (!mountedRef.current) {
         return;
@@ -438,6 +541,11 @@ function Support() {
     }
     setThreadSending(true);
     setThreadError('');
+    threadRealtimeUnsubscribeRef.current?.sendTyping?.(false);
+    if (threadTypingTimeoutRef.current) {
+      clearTimeout(threadTypingTimeoutRef.current);
+      threadTypingTimeoutRef.current = null;
+    }
     try {
       const res = await apiPost(`/support/tickets/${ticketId}/thread/reply`, {
         message: messageText,
@@ -448,6 +556,19 @@ function Support() {
       const payload = res?.data ?? {};
       if (payload?.message?.id) {
         upsertThreadMessage(payload.message);
+        setThreadPeerTyping(false);
+        setTickets(prev =>
+          prev.map(item =>
+            item.id === ticketId
+              ? {
+                  ...item,
+                  updated_at: payload.message.created_at || item.updated_at,
+                  unread_count: 0,
+                  has_unread_support_reply: false,
+                }
+              : item
+          )
+        );
       }
       setThreadReply('');
     } catch (err) {
@@ -464,45 +585,85 @@ function Support() {
 
   useEffect(() => {
     const ticketId = String(threadTicket?.id || '').trim();
-    if (!ticketId || typeof window === 'undefined' || typeof window.EventSource === 'undefined') {
+    if (!ticketId) {
       return undefined;
     }
-    if (threadEventSourceRef.current) {
-      threadEventSourceRef.current.close();
-      threadEventSourceRef.current = null;
+    if (threadRealtimeUnsubscribeRef.current) {
+      threadRealtimeUnsubscribeRef.current();
+      threadRealtimeUnsubscribeRef.current = null;
     }
-    const stream = new window.EventSource(`/api/support/tickets/${ticketId}/thread/stream`);
-    threadEventSourceRef.current = stream;
     setThreadStreamState('connecting');
-
-    stream.onopen = () => {
-      if (mountedRef.current) {
-        setThreadStreamState('live');
-      }
-    };
-    stream.onmessage = event => {
-      try {
-        const payload = JSON.parse(event?.data || '{}');
-        if (payload?.type === 'message' && payload?.message?.id) {
-          upsertThreadMessage(payload.message);
+    threadRealtimeUnsubscribeRef.current = subscribeSupportTicketRealtime({
+      ticketId,
+      audience: 'user',
+      onState: state => {
+        if (mountedRef.current) setThreadStreamState(state);
+      },
+      onMessage: message => {
+        upsertThreadMessage(message);
+        setThreadPeerTyping(false);
+        if (message.sender_type === 'admin') {
+          setTickets(prev =>
+            prev.map(item =>
+              item.id === ticketId
+                ? {
+                    ...item,
+                    unread_count: 0,
+                    has_unread_support_reply: false,
+                    latest_admin_reply_at: message.created_at || item.latest_admin_reply_at,
+                  }
+                : item
+            )
+          );
         }
-      } catch (_err) {
-        // Ignore malformed stream events.
-      }
-    };
-    stream.onerror = () => {
-      if (mountedRef.current) {
-        setThreadStreamState('reconnecting');
-      }
-    };
+      },
+      onError: error => {
+        if (mountedRef.current) setThreadError(error);
+      },
+      onTyping: event => {
+        if (event.audience === 'admin') {
+          setThreadPeerTyping(event.isTyping);
+        }
+      },
+      onRead: event => {
+        if (event.audience === 'admin') {
+          setThreadPeerLastReadAt(event.readState?.last_read_at || event.timestamp || null);
+        }
+      },
+      onPresence: presence => {
+        setThreadPeerOnline(Boolean(presence.hasAdmin));
+      },
+      onDelivered: event => {
+        if (event.senderAudience === 'user' && event.deliveredToAdmin) {
+          setThreadPeerDeliveredAt(event.timestamp || new Date().toISOString());
+        }
+      },
+    });
 
     return () => {
-      stream.close();
-      if (threadEventSourceRef.current === stream) {
-        threadEventSourceRef.current = null;
+      if (threadRealtimeUnsubscribeRef.current) {
+        threadRealtimeUnsubscribeRef.current.sendTyping?.(false);
+        threadRealtimeUnsubscribeRef.current();
+        threadRealtimeUnsubscribeRef.current = null;
       }
+      if (threadTypingTimeoutRef.current) {
+        clearTimeout(threadTypingTimeoutRef.current);
+        threadTypingTimeoutRef.current = null;
+      }
+      setThreadPeerTyping(false);
     };
   }, [threadTicket?.id, upsertThreadMessage]);
+
+  const handleThreadReplyChange = useCallback(value => {
+    setThreadReply(value);
+    threadRealtimeUnsubscribeRef.current?.sendTyping?.(Boolean(String(value || '').trim()));
+    if (threadTypingTimeoutRef.current) {
+      clearTimeout(threadTypingTimeoutRef.current);
+    }
+    threadTypingTimeoutRef.current = setTimeout(() => {
+      threadRealtimeUnsubscribeRef.current?.sendTyping?.(false);
+    }, 1800);
+  }, []);
 
   const handleSubmit = async e => {
     e?.preventDefault();
@@ -537,6 +698,8 @@ function Support() {
             status: 'open',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
+            unread_count: 0,
+            has_unread_support_reply: false,
           },
           ...prev,
         ]);
@@ -815,6 +978,8 @@ function Support() {
             status: 'open',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
+            unread_count: 0,
+            has_unread_support_reply: false,
           },
           ...prev,
         ]);
@@ -872,8 +1037,8 @@ function Support() {
     },
     {
       id: 'ask-ai',
-      content: 'Ask AI',
-      accessibilityLabel: 'Ask AI',
+      content: 'SupportAI',
+      accessibilityLabel: 'SupportAI',
       panelID: 'ask-ai-panel',
     },
     {
@@ -888,7 +1053,14 @@ function Support() {
       accessibilityLabel: 'Status and changelog',
       panelID: 'status-changelog-panel',
     },
+    {
+      id: 'faq',
+      content: 'FAQ',
+      accessibilityLabel: 'FAQ',
+      panelID: 'faq-panel',
+    },
   ];
+  const activePanelMeta = SUPPORT_PANEL_META[selectedTab] || SUPPORT_PANEL_META[0];
 
   return (
     <PageShell className={styles.supportPage}>
@@ -900,14 +1072,34 @@ function Support() {
       >
         <BlockStack gap="600">
           <section className={styles.hero} aria-labelledby="support-hero-title">
-            <span className={styles.heroBadge}>Help center</span>
+            <div className={styles.heroHeaderRow}>
+              <span className={styles.heroBadge}>Help center</span>
+              <Badge tone={SUPPORT_STATUS_TONE[supportStatus.status] || 'info'}>
+                {SUPPORT_STATUS_LABEL[supportStatus.status] || 'Status'}{' '}
+                {supportStatusLoading ? 'checking' : 'live'}
+              </Badge>
+            </div>
             <h1 id="support-hero-title" className={styles.heroTitle}>
-              <span className={styles.heroTitleGradient}>Support</span>
+              <span className={styles.heroTitleGradient}>Support that knows your store.</span>
             </h1>
             <p className={styles.heroSubtext}>
-              Get instant answers from our AI, chat with our team in real time, or send us a
-              message. We typically reply within 24 hours by email.
+              Ask SupportAI for docs help, use RipX Agent in the app for store-aware diagnostics, or
+              send the team a request with context attached.
             </p>
+            <div className={styles.heroSignalGrid} aria-label="Support channels">
+              <span>
+                <Icon source={ChatIcon} tone="base" />
+                AI answers
+              </span>
+              <span>
+                <Icon source={StoreIcon} tone="base" />
+                Store diagnostics
+              </span>
+              <span>
+                <Icon source={EmailIcon} tone="base" />
+                Human follow-up
+              </span>
+            </div>
           </section>
 
           <nav className={styles.quickLinks} aria-label="Popular topics">
@@ -928,71 +1120,134 @@ function Support() {
             </div>
           </nav>
 
-          <div className={styles.actionCardsGrid} role="list">
-            <div className={`${styles.actionCard} ${styles.actionCardAccentAi}`} role="listitem">
-              <div className={styles.actionCardIcon}>
-                <Icon source={ChatIcon} tone="base" />
-              </div>
-              <h2 className={styles.actionCardTitle}>Ask AI</h2>
-              <p className={styles.actionCardDesc}>
-                Get instant answers about RipX, setup, and A/B testing. Or use the chat bubble in
-                the corner.
-              </p>
-              <div className={styles.actionCardCta}>
-                <Button onClick={() => setSelectedTab(2)}>Open Ask AI</Button>
-              </div>
-            </div>
-            <div className={`${styles.actionCard} ${styles.actionCardAccentEmail}`} role="listitem">
-              <div className={styles.actionCardIcon}>
-                <Icon source={EmailIcon} tone="base" />
-              </div>
-              <h2 className={styles.actionCardTitle}>Send a message</h2>
-              <p className={styles.actionCardDesc}>
-                We reply by email, usually within 24 hours. Use for detailed questions or when chat
-                is offline.
-              </p>
-              <div className={styles.actionCardCta}>
-                <Button onClick={() => setSelectedTab(0)}>Contact us</Button>
-              </div>
-            </div>
-            <div
-              className={`${styles.actionCard} ${styles.actionCardAccentTickets}`}
-              role="listitem"
+          <div className={styles.supportPathGrid} role="list" aria-label="Support options">
+            <button
+              type="button"
+              aria-selected={selectedTab === 2}
+              className={`${styles.supportPathCard} ${styles.supportPathCardPrimary} ${
+                selectedTab === 2 ? styles.supportPathCardActive : ''
+              }`}
+              onClick={() => setSelectedTab(2)}
             >
-              <div className={styles.actionCardIcon}>
+              <span className={styles.supportPathIcon}>
+                <Icon source={ChatIcon} tone="base" />
+              </span>
+              <span className={styles.supportPathCopy}>
+                <strong>SupportAI</strong>
+                <span>Docs and setup answers from the support knowledge base.</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              aria-label="Open RipX Agent"
+              className={`${styles.supportPathCard} ${styles.supportPathCardAgent}`}
+              onClick={() => openRipxAgent('Check my current store setup and summarize blockers.')}
+            >
+              <span className={styles.supportPathIcon}>
+                <Icon source={StoreIcon} tone="base" />
+              </span>
+              <span className={styles.supportPathCopy}>
+                <strong>RipXAgent</strong>
+                <span>Store-aware diagnostics and confirmed actions.</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              aria-selected={selectedTab === 0}
+              className={`${styles.supportPathCard} ${
+                selectedTab === 0 ? styles.supportPathCardActive : ''
+              }`}
+              onClick={() => setSelectedTab(0)}
+            >
+              <span className={styles.supportPathIcon}>
+                <Icon source={EmailIcon} tone="base" />
+              </span>
+              <span className={styles.supportPathCopy}>
+                <strong>ContactTeam</strong>
+                <span>Send a support request for human follow-up.</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              aria-selected={selectedTab === 1}
+              className={`${styles.supportPathCard} ${
+                selectedTab === 1 ? styles.supportPathCardActive : ''
+              }`}
+              onClick={() => setSelectedTab(1)}
+            >
+              <span className={styles.supportPathIcon}>
                 <Icon source={ListBulletedIcon} tone="base" />
-              </div>
-              <h2 className={styles.actionCardTitle}>My requests</h2>
-              <p className={styles.actionCardDesc}>
-                View your past support requests and their status. Sign in to see your tickets.
-              </p>
-              <div className={styles.actionCardCta}>
-                <Button onClick={() => setSelectedTab(1)}>View my requests</Button>
-              </div>
-            </div>
+              </span>
+              <span className={styles.supportPathCopy}>
+                <strong>MyRequests</strong>
+                <span>Track open and resolved conversations.</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              aria-selected={selectedTab === 3}
+              className={`${styles.supportPathCard} ${
+                selectedTab === 3 ? styles.supportPathCardActive : ''
+              }`}
+              onClick={() => setSelectedTab(3)}
+            >
+              <span className={styles.supportPathIcon}>
+                <Icon source={ListBulletedIcon} tone="base" />
+              </span>
+              <span className={styles.supportPathCopy}>
+                <strong>FeatureRequests</strong>
+                <span>Share ideas and vote on roadmap items.</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              aria-selected={selectedTab === 4}
+              className={`${styles.supportPathCard} ${
+                selectedTab === 4 ? styles.supportPathCardActive : ''
+              }`}
+              onClick={() => setSelectedTab(4)}
+            >
+              <span className={styles.supportPathIcon}>
+                <Icon source={BookIcon} tone="base" />
+              </span>
+              <span className={styles.supportPathCopy}>
+                <strong>StatusLog</strong>
+                <span>View support status and product updates.</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              aria-selected={selectedTab === 5}
+              className={`${styles.supportPathCard} ${
+                selectedTab === 5 ? styles.supportPathCardActive : ''
+              }`}
+              onClick={() => setSelectedTab(5)}
+            >
+              <span className={styles.supportPathIcon}>
+                <Icon source={BookIcon} tone="base" />
+              </span>
+              <span className={styles.supportPathCopy}>
+                <strong>FAQ</strong>
+                <span>Quick answers without waiting for AI or support.</span>
+              </span>
+            </button>
           </div>
 
           <section className={styles.contentSection} aria-label="Support options">
-            <div className={styles.tabStrip} role="tablist" aria-label="Support options">
-              {tabs.map((tab, i) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={selectedTab === i}
-                  aria-controls={tab.panelID}
-                  id={`${tab.id}-tab`}
-                  className={selectedTab === i ? styles.tabStripItemActive : styles.tabStripItem}
-                  onClick={() => setSelectedTab(i)}
-                >
-                  {tab.content}
-                </button>
-              ))}
+            <div className={styles.supportPanelHeader}>
+              <div>
+                <span className={styles.supportPanelEyebrow}>{activePanelMeta.eyebrow}</span>
+                <h2>{activePanelMeta.title}</h2>
+                <p>{activePanelMeta.description}</p>
+              </div>
+              <Badge tone={SUPPORT_STATUS_TONE[supportStatus.status] || 'info'}>
+                {SUPPORT_STATUS_LABEL[supportStatus.status] || 'Status'}
+              </Badge>
             </div>
             <div
               className={styles.tabPanelContent}
               role="tabpanel"
-              aria-labelledby={`${tabs[selectedTab]?.id}-tab`}
+              aria-label={`${tabs[selectedTab]?.content || 'Support'} panel`}
               id={tabs[selectedTab]?.panelID}
             >
               <Box paddingBlockStart="200">
@@ -1172,21 +1427,28 @@ function Support() {
                                         <Text as="span" fontWeight="medium">
                                           {t.subject ?? t.title ?? '—'}
                                         </Text>
-                                        <span
-                                          className={styles.ticketStatus}
-                                          data-status={String(t.status || 'open').toLowerCase()}
-                                          title={
-                                            t.status === 'closed' || t.status === 'resolved'
-                                              ? 'This request has been closed'
-                                              : 'Open request'
-                                          }
-                                        >
-                                          {t.status === 'closed' || t.status === 'resolved'
-                                            ? t.status === 'resolved'
-                                              ? 'Resolved'
-                                              : 'Closed'
-                                            : 'Open'}
-                                        </span>
+                                        <InlineStack gap="150" blockAlign="center" wrap={false}>
+                                          {t.has_unread_support_reply ? (
+                                            <Badge tone="critical">
+                                              New {t.unread_count > 1 ? t.unread_count : ''}
+                                            </Badge>
+                                          ) : null}
+                                          <span
+                                            className={styles.ticketStatus}
+                                            data-status={String(t.status || 'open').toLowerCase()}
+                                            title={
+                                              t.status === 'closed' || t.status === 'resolved'
+                                                ? 'This request has been closed'
+                                                : 'Open request'
+                                            }
+                                          >
+                                            {t.status === 'closed' || t.status === 'resolved'
+                                              ? t.status === 'resolved'
+                                                ? 'Resolved'
+                                                : 'Closed'
+                                              : 'Open'}
+                                          </span>
+                                        </InlineStack>
                                       </InlineStack>
                                       <Text as="p" variant="bodySm" tone="subdued">
                                         #{String(t.id).slice(0, 8)} ·{' '}
@@ -1199,6 +1461,7 @@ function Support() {
                                         {t.created_at
                                           ? new Date(t.created_at).toLocaleDateString()
                                           : '—'}
+                                        {t.latest_admin_reply_at ? ' · Support replied' : ''}
                                       </Text>
                                       <InlineStack gap="200" blockAlign="center">
                                         <Button
@@ -1228,13 +1491,43 @@ function Support() {
                         <InlineStack gap="200" blockAlign="center">
                           <Icon source={ChatIcon} tone="base" />
                           <Text as="h2" variant="headingMd">
-                            Ask AI
+                            SupportAI
                           </Text>
                         </InlineStack>
+                        <Button
+                          size="slim"
+                          onClick={() =>
+                            openRipxAgent('Check my current store setup and summarize blockers.')
+                          }
+                        >
+                          Open RipX Agent
+                        </Button>
+                      </div>
+                      <div className={styles.aiModeBridge}>
+                        <div>
+                          <Text as="h3" variant="headingSm">
+                            Need store-aware help?
+                          </Text>
+                          <Text as="p" variant="bodySm" tone="subdued">
+                            SupportAI answers general docs questions. RipX Agent can inspect the
+                            active store, tests, readiness, and create confirmed support actions.
+                          </Text>
+                        </div>
+                        <Button
+                          size="slim"
+                          variant="primary"
+                          onClick={() =>
+                            openRipxAgent(
+                              'Check this page and explain what I should do next in RipX.'
+                            )
+                          }
+                        >
+                          Open RipX Agent
+                        </Button>
                       </div>
                       <Text as="p" variant="bodySm" tone="subdued" className={styles.tabCardIntro}>
-                        Get instant answers about RipX and A/B testing. Need a human? Use the
-                        Contact us tab.
+                        Use SupportAI for documentation and setup questions. Use RipX Agent for
+                        store-aware diagnostics, test readiness, and confirmed actions.
                       </Text>
                       {aiNotConfigured && (
                         <Banner
@@ -1738,12 +2031,86 @@ function Support() {
                     </BlockStack>
                   </Card>
                 )}
+
+                {selectedTab === 5 && (
+                  <Card>
+                    <BlockStack gap="400">
+                      <div className={styles.tabCardHeader}>
+                        <InlineStack gap="200" blockAlign="center">
+                          <Icon source={BookIcon} tone="base" />
+                          <Text as="h2" variant="headingMd">
+                            FAQ
+                          </Text>
+                        </InlineStack>
+                        <Button
+                          size="slim"
+                          onClick={() => openRipxAgent('I read the FAQ but still need help.')}
+                        >
+                          Ask RipX Agent
+                        </Button>
+                      </div>
+                      <Text as="p" variant="bodySm" tone="subdued" className={styles.tabCardIntro}>
+                        Browse common questions. Open an item to view the answer instantly, or ask
+                        RipX Agent for store-aware follow-up.
+                      </Text>
+                      <div className={styles.faqGrid}>
+                        <div className={styles.faqQuestionList} role="list">
+                          {SUPPORT_FAQS.map(item => (
+                            <button
+                              key={item.id}
+                              type="button"
+                              className={`${styles.faqQuestionButton} ${
+                                openFaqId === item.id ? styles.faqQuestionButtonActive : ''
+                              }`}
+                              onClick={() => setOpenFaqId(item.id)}
+                            >
+                              {item.question}
+                            </button>
+                          ))}
+                        </div>
+                        <div className={styles.faqAnswerPanel}>
+                          {(() => {
+                            const activeFaq =
+                              SUPPORT_FAQS.find(item => item.id === openFaqId) || SUPPORT_FAQS[0];
+                            return (
+                              <>
+                                <span className={styles.faqAnswerEyebrow}>Answer</span>
+                                <Text as="h3" variant="headingMd">
+                                  {activeFaq.question}
+                                </Text>
+                                <Text as="p" variant="bodyMd">
+                                  {activeFaq.answer}
+                                </Text>
+                                <InlineStack gap="200" wrap>
+                                  <Button
+                                    size="slim"
+                                    onClick={() => openRipxAgent(activeFaq.question)}
+                                  >
+                                    Ask Agent about this
+                                  </Button>
+                                  <Button
+                                    size="slim"
+                                    variant="plain"
+                                    onClick={() => setSelectedTab(0)}
+                                  >
+                                    ContactTeam
+                                  </Button>
+                                </InlineStack>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    </BlockStack>
+                  </Card>
+                )}
               </Box>
             </div>
 
             <div className={styles.moreOptions}>
               <Text as="p" variant="bodySm" tone="subdued">
-                Use the chat bubble (bottom right) to ask AI, or use Contact us to send a message.
+                Use RipXAgent for store-aware help, SupportAI for docs questions, or ContactTeam for
+                a human reply.
               </Text>
             </div>
           </section>
@@ -1791,6 +2158,9 @@ function Support() {
                             : threadStreamState === 'reconnecting'
                               ? 'Reconnecting'
                               : 'Offline'}
+                      </Badge>
+                      <Badge tone={threadPeerOnline ? 'success' : 'new'}>
+                        {threadPeerOnline ? 'Support online' : 'Support away'}
                       </Badge>
                     </InlineStack>
                   </InlineStack>
@@ -1854,10 +2224,26 @@ function Support() {
                     </Banner>
                   ) : null}
 
+                  {threadPeerTyping ? (
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      Support is typing…
+                    </Text>
+                  ) : null}
+
+                  {threadPeerLastReadAt ? (
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      Seen by support {new Date(threadPeerLastReadAt).toLocaleTimeString()}
+                    </Text>
+                  ) : threadPeerDeliveredAt ? (
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      Delivered to support {new Date(threadPeerDeliveredAt).toLocaleTimeString()}
+                    </Text>
+                  ) : null}
+
                   <TextField
                     label="Reply"
                     value={threadReply}
-                    onChange={setThreadReply}
+                    onChange={handleThreadReplyChange}
                     multiline={4}
                     maxLength={5000}
                     autoComplete="off"
@@ -1868,23 +2254,6 @@ function Support() {
               </Modal.Section>
             </Modal>
           )}
-
-          <SupportBubbleChat
-            chatMessages={chatMessages}
-            chatInput={chatInput}
-            chatLoading={chatLoading}
-            onChatInputChange={setChatInput}
-            onSendMessage={sendChatMessage}
-            onClearChat={clearChat}
-            onNavigateToContact={() => setSelectedTab(0)}
-            latestAssistantMessage={latestAssistantMessage}
-            latestAssistantFeedback={latestAssistantFeedback}
-            chatFeedbackSubmitting={chatFeedbackSubmitting}
-            onSubmitChatFeedback={submitChatFeedback}
-            onEscalateToSupport={escalateChatToTicket}
-            chatEscalating={chatEscalating}
-            chatEscalationResult={chatEscalationResult}
-          />
         </BlockStack>
       </Page>
     </PageShell>

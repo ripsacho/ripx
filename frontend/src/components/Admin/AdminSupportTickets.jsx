@@ -23,6 +23,7 @@ import {
 } from '@shopify/polaris';
 import { RefreshIcon } from '@shopify/polaris-icons';
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '../../services';
+import { subscribeSupportTicketRealtime } from '../../services/supportRealtime';
 import { PageShell } from '../Shared';
 import Toast from '../Toast/Toast';
 import AdminPageLayout from './AdminPageLayout';
@@ -142,9 +143,14 @@ export default function AdminSupportTickets() {
   const [threadSending, setThreadSending] = useState(false);
   const [threadStreamState, setThreadStreamState] = useState('idle');
   const [threadError, setThreadError] = useState('');
+  const [threadPeerTyping, setThreadPeerTyping] = useState(false);
+  const [threadPeerLastReadAt, setThreadPeerLastReadAt] = useState(null);
+  const [threadPeerOnline, setThreadPeerOnline] = useState(false);
+  const [threadPeerDeliveredAt, setThreadPeerDeliveredAt] = useState(null);
   const [unifiedInboxSource, setUnifiedInboxSource] = useState('all');
   const [proactiveWindowDays, setProactiveWindowDays] = useState('14');
-  const threadEventSourceRef = useRef(null);
+  const threadRealtimeUnsubscribeRef = useRef(null);
+  const threadTypingTimeoutRef = useRef(null);
 
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['admin', 'support-tickets', statusFilter],
@@ -678,9 +684,14 @@ export default function AdminSupportTickets() {
   };
 
   const closeThreadModal = () => {
-    if (threadEventSourceRef.current) {
-      threadEventSourceRef.current.close();
-      threadEventSourceRef.current = null;
+    if (threadRealtimeUnsubscribeRef.current) {
+      threadRealtimeUnsubscribeRef.current.sendTyping?.(false);
+      threadRealtimeUnsubscribeRef.current();
+      threadRealtimeUnsubscribeRef.current = null;
+    }
+    if (threadTypingTimeoutRef.current) {
+      clearTimeout(threadTypingTimeoutRef.current);
+      threadTypingTimeoutRef.current = null;
     }
     setThreadTicket(null);
     setThreadMessages([]);
@@ -689,6 +700,10 @@ export default function AdminSupportTickets() {
     setThreadSending(false);
     setThreadError('');
     setThreadStreamState('idle');
+    setThreadPeerTyping(false);
+    setThreadPeerLastReadAt(null);
+    setThreadPeerOnline(false);
+    setThreadPeerDeliveredAt(null);
   };
 
   const openThreadModal = async ticket => {
@@ -717,6 +732,7 @@ export default function AdminSupportTickets() {
         id: ticketPayload?.id || prev?.id || ticketId,
       }));
       setThreadMessages(Array.isArray(payload?.messages) ? payload.messages : []);
+      queryClient.invalidateQueries({ queryKey: ['admin', 'support-tickets'] });
     } catch (err) {
       setThreadError(err?.response?.data?.error || err?.message || 'Could not load ticket thread');
       setThreadStreamState('offline');
@@ -733,11 +749,17 @@ export default function AdminSupportTickets() {
     }
     setThreadSending(true);
     setThreadError('');
+    threadRealtimeUnsubscribeRef.current?.sendTyping?.(false);
+    if (threadTypingTimeoutRef.current) {
+      clearTimeout(threadTypingTimeoutRef.current);
+      threadTypingTimeoutRef.current = null;
+    }
     try {
       const res = await apiPost(`/admin/support-tickets/${ticketId}/reply`, { message: text });
       const payload = res?.data?.data ?? res?.data ?? {};
       if (payload?.message?.id) {
         upsertThreadMessage(payload.message);
+        setThreadPeerTyping(false);
       }
       setThreadReply('');
       queryClient.invalidateQueries({ queryKey: ['admin', 'support-tickets'] });
@@ -750,35 +772,69 @@ export default function AdminSupportTickets() {
 
   useEffect(() => {
     const ticketId = String(threadTicket?.id || '').trim();
-    if (!ticketId || typeof window === 'undefined' || typeof window.EventSource === 'undefined') {
+    if (!ticketId) {
       return undefined;
     }
-    if (threadEventSourceRef.current) {
-      threadEventSourceRef.current.close();
-      threadEventSourceRef.current = null;
+    if (threadRealtimeUnsubscribeRef.current) {
+      threadRealtimeUnsubscribeRef.current();
+      threadRealtimeUnsubscribeRef.current = null;
     }
-    const stream = new window.EventSource(`/api/admin/support-tickets/${ticketId}/thread/stream`);
-    threadEventSourceRef.current = stream;
     setThreadStreamState('connecting');
-    stream.onopen = () => setThreadStreamState('live');
-    stream.onmessage = event => {
-      try {
-        const payload = JSON.parse(event?.data || '{}');
-        if (payload?.type === 'message' && payload?.message?.id) {
-          upsertThreadMessage(payload.message);
+    threadRealtimeUnsubscribeRef.current = subscribeSupportTicketRealtime({
+      ticketId,
+      audience: 'admin',
+      onState: setThreadStreamState,
+      onMessage: message => {
+        upsertThreadMessage(message);
+        setThreadPeerTyping(false);
+        if (message.sender_type === 'user') {
+          queryClient.invalidateQueries({ queryKey: ['admin', 'support-tickets'] });
         }
-      } catch (_err) {
-        // Ignore malformed stream payload.
-      }
-    };
-    stream.onerror = () => setThreadStreamState('reconnecting');
+      },
+      onError: error => setThreadError(error),
+      onTyping: event => {
+        if (event.audience === 'user') {
+          setThreadPeerTyping(event.isTyping);
+        }
+      },
+      onRead: event => {
+        if (event.audience === 'user') {
+          setThreadPeerLastReadAt(event.readState?.last_read_at || event.timestamp || null);
+        }
+      },
+      onPresence: presence => {
+        setThreadPeerOnline(Boolean(presence.hasUser));
+      },
+      onDelivered: event => {
+        if (event.senderAudience === 'admin' && event.deliveredToUser) {
+          setThreadPeerDeliveredAt(event.timestamp || new Date().toISOString());
+        }
+      },
+    });
     return () => {
-      stream.close();
-      if (threadEventSourceRef.current === stream) {
-        threadEventSourceRef.current = null;
+      if (threadRealtimeUnsubscribeRef.current) {
+        threadRealtimeUnsubscribeRef.current.sendTyping?.(false);
+        threadRealtimeUnsubscribeRef.current();
+        threadRealtimeUnsubscribeRef.current = null;
       }
+      if (threadTypingTimeoutRef.current) {
+        clearTimeout(threadTypingTimeoutRef.current);
+        threadTypingTimeoutRef.current = null;
+      }
+      setThreadPeerTyping(false);
     };
-  }, [threadTicket?.id]);
+  }, [queryClient, threadTicket?.id]);
+
+  const handleThreadReplyChange = value => {
+    setThreadReply(value);
+    threadRealtimeUnsubscribeRef.current?.sendTyping?.(Boolean(String(value || '').trim()));
+    if (threadTypingTimeoutRef.current) {
+      clearTimeout(threadTypingTimeoutRef.current);
+    }
+    threadTypingTimeoutRef.current = setTimeout(() => {
+      threadRealtimeUnsubscribeRef.current?.sendTyping?.(false);
+    }, 1800);
+  };
 
   const toggleSelectAll = checked => {
     setSelectedIds(checked ? tickets.map(t => t.id) : []);
@@ -816,6 +872,14 @@ export default function AdminSupportTickets() {
     t.escalation_due ? (
       <Badge key={`escalate-${t.id}`} tone="attention">
         Due ({t.escalation_target_priority || 'high'})
+      </Badge>
+    ) : t.admin_has_unread ? (
+      <Badge key={`unread-${t.id}`} tone="critical">
+        Unread {t.admin_unread_count > 1 ? t.admin_unread_count : ''}
+      </Badge>
+    ) : t.customer_waiting ? (
+      <Badge key={`waiting-${t.id}`} tone="attention">
+        Customer waiting
       </Badge>
     ) : (
       <Text key={`ok-${t.id}`} as="span" variant="bodySm" tone="subdued">
@@ -1813,6 +1877,9 @@ export default function AdminSupportTickets() {
                           ? 'Reconnecting'
                           : 'Offline'}
                   </Badge>
+                  <Badge tone={threadPeerOnline ? 'success' : 'new'}>
+                    {threadPeerOnline ? 'Customer online' : 'Customer away'}
+                  </Badge>
                 </InlineStack>
               </InlineStack>
 
@@ -1868,10 +1935,26 @@ export default function AdminSupportTickets() {
                 </Text>
               ) : null}
 
+              {threadPeerTyping ? (
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Customer is typing…
+                </Text>
+              ) : null}
+
+              {threadPeerLastReadAt ? (
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Seen by customer {new Date(threadPeerLastReadAt).toLocaleTimeString()}
+                </Text>
+              ) : threadPeerDeliveredAt ? (
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Delivered to customer {new Date(threadPeerDeliveredAt).toLocaleTimeString()}
+                </Text>
+              ) : null}
+
               <TextField
                 label="Reply to customer"
                 value={threadReply}
-                onChange={setThreadReply}
+                onChange={handleThreadReplyChange}
                 multiline={4}
                 maxLength={5000}
                 autoComplete="off"

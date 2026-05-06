@@ -1,0 +1,178 @@
+name: Deploy Staging (Build in CI)
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Optional existing image tag to deploy to staging.'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository }}/ripx-backend
+
+jobs:
+  build-and-push-image:
+    name: Build and push staging image
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+      image_ref: ${{ steps.meta.outputs.image_ref }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve image mode and tag
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.image_tag }}" ]; then
+            IMAGE_TAG="${{ inputs.image_tag }}"
+            IMAGE_REF="${IMAGE_NAME}:${IMAGE_TAG}"
+            SHOULD_BUILD=false
+          else
+            IMAGE_TAG="stg-${GITHUB_SHA::12}"
+            IMAGE_REF="${IMAGE_NAME}:${IMAGE_TAG}"
+            SHOULD_BUILD=true
+          fi
+          echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "image_ref=${IMAGE_REF}" >> "$GITHUB_OUTPUT"
+          echo "should_build=${SHOULD_BUILD}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Docker Buildx
+        if: ${{ steps.meta.outputs.should_build == 'true' }}
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        if: ${{ steps.meta.outputs.should_build == 'true' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        if: ${{ steps.meta.outputs.should_build == 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          tags: |
+            ${{ steps.meta.outputs.image_ref }}
+            ${{ env.IMAGE_NAME }}:staging-latest
+
+  deploy:
+    name: Deploy to staging host
+    runs-on: ubuntu-latest
+    needs: build-and-push-image
+    timeout-minutes: 20
+    environment:
+      name: staging
+    steps:
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "${{ secrets.STAGING_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          if [ -n "${{ secrets.STAGING_SSH_KNOWN_HOSTS }}" ]; then
+            echo "${{ secrets.STAGING_SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "${{ secrets.STAGING_SSH_HOST }}" >> ~/.ssh/known_hosts
+          fi
+
+      - name: Validate staging deploy configuration
+        env:
+          DEPLOY_HOST: ${{ secrets.STAGING_SSH_HOST }}
+          DEPLOY_USER: ${{ secrets.STAGING_SSH_USER }}
+          GHCR_USER: ${{ secrets.STAGING_GHCR_USER }}
+          GHCR_PAT: ${{ secrets.STAGING_GHCR_PAT }}
+        run: |
+          [ -n "$DEPLOY_HOST" ] || (echo "Missing STAGING_SSH_HOST" && exit 1)
+          [ -n "$DEPLOY_USER" ] || (echo "Missing STAGING_SSH_USER" && exit 1)
+          [ -n "$GHCR_USER" ] || (echo "Missing STAGING_GHCR_USER" && exit 1)
+          [ -n "$GHCR_PAT" ] || (echo "Missing STAGING_GHCR_PAT" && exit 1)
+
+      - name: Deploy image over SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.STAGING_SSH_HOST }}
+          DEPLOY_USER: ${{ secrets.STAGING_SSH_USER }}
+          DEPLOY_PORT: ${{ secrets.STAGING_SSH_PORT }}
+          GHCR_USER: ${{ secrets.STAGING_GHCR_USER }}
+          GHCR_PAT: ${{ secrets.STAGING_GHCR_PAT }}
+          IMAGE_REF: ${{ needs.build-and-push-image.outputs.image_ref }}
+          CONTAINER_NAME: ${{ secrets.STAGING_CONTAINER_NAME }}
+          APP_ENV_FILE: ${{ secrets.STAGING_ENV_FILE_PATH }}
+          APP_PORT: ${{ secrets.STAGING_APP_PORT }}
+        run: |
+          SSH_PORT="${DEPLOY_PORT:-22}"
+          SSH_TARGET="${DEPLOY_USER}@${DEPLOY_HOST}"
+          ssh -p "$SSH_PORT" "$SSH_TARGET" "set -euo pipefail
+            echo '$GHCR_PAT' | docker login ghcr.io -u '$GHCR_USER' --password-stdin
+            docker pull '$IMAGE_REF'
+            docker run --rm \
+              --env-file '${APP_ENV_FILE:-/opt/ripx/.env}' \
+              '$IMAGE_REF' \
+              node backend/migrations/run.js
+            docker stop '${CONTAINER_NAME:-ripx-staging-backend}' || true
+            docker rm '${CONTAINER_NAME:-ripx-staging-backend}' || true
+            docker run -d \
+              --name '${CONTAINER_NAME:-ripx-staging-backend}' \
+              --restart unless-stopped \
+              --env-file '${APP_ENV_FILE:-/opt/ripx/.env}' \
+              -p '${APP_PORT:-3000}:3000' \
+              '$IMAGE_REF'
+            docker image prune -f
+          "
+
+      - name: Health check
+        env:
+          LIVE_HEALTH_URL: ${{ secrets.STAGING_HEALTHCHECK_URL }}
+        run: |
+          if [ -z "${LIVE_HEALTH_URL}" ]; then
+            echo "STAGING_HEALTHCHECK_URL not set. Skipping health check."
+            exit 0
+          fi
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS "${LIVE_HEALTH_URL}" >/dev/null; then
+              echo "Health check passed."
+              exit 0
+            fi
+            echo "Health check retry $i/6..."
+            sleep 5
+          done
+          echo "Health check failed."
+          exit 1
+
+      - name: Smoke checks
+        env:
+          SMOKE_BASE_URL: ${{ secrets.STAGING_SMOKE_BASE_URL }}
+          SMOKE_ADMIN_BEARER: ${{ secrets.STAGING_SMOKE_ADMIN_BEARER }}
+        run: |
+          if [ -z "${SMOKE_BASE_URL}" ]; then
+            echo "STAGING_SMOKE_BASE_URL not set. Skipping smoke checks."
+            exit 0
+          fi
+          BASE="${SMOKE_BASE_URL%/}"
+          curl -fsS "${BASE}/api/live" >/dev/null
+          curl -fsS "${BASE}/api/ready" >/dev/null
+          if [ -n "${SMOKE_ADMIN_BEARER}" ]; then
+            curl -fsS \
+              -H "Authorization: Bearer ${SMOKE_ADMIN_BEARER}" \
+              "${BASE}/api/admin/me" >/dev/null
+          fi

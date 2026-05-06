@@ -15,7 +15,7 @@ import {
   RIPX_CHECKOUT_PRICE_SECRET,
   RIPX_CHECKOUT_UI_SHOP_DOMAIN,
   RIPX_CHECKOUT_UI_TEST_ID,
-} from './ripxConfig';
+} from './ripxConfig.generated';
 
 function normalizeShopDomain(input) {
   const raw = String(input || '')

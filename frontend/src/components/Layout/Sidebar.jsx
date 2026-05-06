@@ -16,6 +16,7 @@ import {
   MagicIcon,
   HomeIcon,
   SettingsIcon,
+  TargetIcon,
 } from '@shopify/polaris-icons';
 import { ROUTES } from '../../constants';
 import { useTests } from '../../hooks';
@@ -32,6 +33,7 @@ const baseNavigationGroups = (domain = null) => {
     : ROUTES.TESTS_PERSONALIZATION;
   const createTest = domain ? ROUTES.appCreateTest(domain) : ROUTES.CREATE_TEST;
   const analytics = domain ? ROUTES.appAnalytics(domain) : ROUTES.ANALYTICS;
+  const goalsMetrics = domain ? ROUTES.appGoalsMetrics(domain) : null;
   const appSettings = domain
     ? `${ROUTES.appSettings(domain)}?tab=installation&guided_setup=1`
     : ROUTES.SETUP;
@@ -57,6 +59,9 @@ const baseNavigationGroups = (domain = null) => {
         },
         { path: createTest, label: 'Create Test', icon: PlusIcon },
         { path: analytics, label: 'Analytics', icon: ChartLineIcon },
+        ...(goalsMetrics
+          ? [{ path: goalsMetrics, label: 'Goals & Metrics', icon: TargetIcon }]
+          : []),
       ],
     },
     {

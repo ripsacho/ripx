@@ -12,7 +12,7 @@ describe('getRoutesForDomain', () => {
     expect(routes.dashboard).toBe(ROUTES.USER_PANEL);
     expect(routes.tests).toBe(ROUTES.TESTS);
     expect(routes.createTest).toBe(ROUTES.CREATE_TEST);
-    expect(routes.settings).toBe(ROUTES.SETTINGS);
+    expect(routes.settings).toBe(ROUTES.PROFILE_ACCOUNT);
     expect(routes.testDetail('id-1')).toBe(ROUTES.TEST_DETAIL('id-1'));
     expect(routes.testEditor('id-2')).toBe(ROUTES.TEST_EDITOR('id-2'));
   });
@@ -30,6 +30,7 @@ describe('getRoutesForDomain', () => {
     expect(routes.tests).toBe(ROUTES.appTests(domain));
     expect(routes.createTest).toBe(ROUTES.appCreateTest(domain));
     expect(routes.settings).toBe(ROUTES.appSettings(domain));
+    expect(routes.goalsMetrics).toBe(ROUTES.appGoalsMetrics(domain));
     expect(routes.testDetail('abc')).toBe(ROUTES.appTestDetail(domain, 'abc'));
     expect(routes.testEditor('xyz')).toBe(ROUTES.appTestEditor(domain, 'xyz'));
   });

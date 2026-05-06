@@ -6,6 +6,7 @@ const SUPPORT_TICKET_THREAD_LIMIT_DEFAULT = 200;
 const SUPPORT_TICKET_THREAD_MESSAGE_MAX_LENGTH = 5000;
 const THREAD_EVENT_BUS = new EventEmitter();
 THREAD_EVENT_BUS.setMaxListeners(0);
+let realtimePublisher = null;
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -175,6 +176,9 @@ function emitSupportTicketThreadMessage(ticketId, message) {
     return;
   }
   THREAD_EVENT_BUS.emit(`support-ticket:${ticketId}`, message);
+  if (typeof realtimePublisher === 'function') {
+    realtimePublisher(ticketId, message);
+  }
 }
 
 function subscribeSupportTicketThread(ticketId, handler) {
@@ -183,6 +187,89 @@ function subscribeSupportTicketThread(ticketId, handler) {
   return () => {
     THREAD_EVENT_BUS.off(eventKey, handler);
   };
+}
+
+function setSupportTicketRealtimePublisher(publisher) {
+  realtimePublisher = typeof publisher === 'function' ? publisher : null;
+}
+
+function normalizeThreadAudience(value) {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase();
+  return normalized === 'admin' ? 'admin' : 'user';
+}
+
+async function markSupportTicketThreadRead(ticketId, audience) {
+  const normalizedTicketId = String(ticketId || '').trim();
+  if (!normalizedTicketId || !UUID_REGEX.test(normalizedTicketId)) {
+    return null;
+  }
+  const normalizedAudience = normalizeThreadAudience(audience);
+  try {
+    const result = await query(
+      `INSERT INTO support_ticket_read_states (ticket_id, audience, last_read_at, updated_at)
+       VALUES ($1::uuid, $2, NOW(), NOW())
+       ON CONFLICT (ticket_id, audience)
+       DO UPDATE SET last_read_at = GREATEST(support_ticket_read_states.last_read_at, EXCLUDED.last_read_at),
+                     updated_at = NOW()
+       RETURNING ticket_id, audience, last_read_at, updated_at`,
+      [normalizedTicketId, normalizedAudience]
+    );
+    const row = result.rows?.[0];
+    return row
+      ? {
+          ticket_id: row.ticket_id,
+          audience: row.audience,
+          last_read_at: row.last_read_at,
+          updated_at: row.updated_at,
+        }
+      : null;
+  } catch (err) {
+    if (
+      err.message &&
+      (/support_ticket_read_states|relation .* does not exist/i.test(err.message) ||
+        /audience|column.*does not exist/i.test(err.message))
+    ) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+async function getSupportTicketThreadReadState(ticketId, audience) {
+  const normalizedTicketId = String(ticketId || '').trim();
+  if (!normalizedTicketId || !UUID_REGEX.test(normalizedTicketId)) {
+    return null;
+  }
+  const normalizedAudience = normalizeThreadAudience(audience);
+  try {
+    const result = await query(
+      `SELECT ticket_id, audience, last_read_at, updated_at
+       FROM support_ticket_read_states
+       WHERE ticket_id = $1::uuid AND audience = $2
+       LIMIT 1`,
+      [normalizedTicketId, normalizedAudience]
+    );
+    const row = result.rows?.[0];
+    return row
+      ? {
+          ticket_id: row.ticket_id,
+          audience: row.audience,
+          last_read_at: row.last_read_at,
+          updated_at: row.updated_at,
+        }
+      : null;
+  } catch (err) {
+    if (
+      err.message &&
+      (/support_ticket_read_states|relation .* does not exist/i.test(err.message) ||
+        /audience|column.*does not exist/i.test(err.message))
+    ) {
+      return null;
+    }
+    throw err;
+  }
 }
 
 async function touchSupportTicketAfterReply(ticketId, senderType) {
@@ -305,6 +392,9 @@ module.exports = {
   getSupportTicketById,
   getSupportTicketForUser,
   listSupportTicketThreadMessages,
+  markSupportTicketThreadRead,
+  getSupportTicketThreadReadState,
   createSupportTicketThreadMessage,
   subscribeSupportTicketThread,
+  setSupportTicketRealtimePublisher,
 };

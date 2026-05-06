@@ -50,6 +50,7 @@
     shopDomain: null,
     activeTests: [],
     featureFlagUrl: '',
+    heatmapCollection: { enabled: true, sampleRate: 1 },
   };
 
   const CONFIG = Object.assign({}, DEFAULT_CONFIG, window.AB_TEST_RUNTIME_CONFIG || {});
@@ -107,7 +108,16 @@
   }
   var _ripxNativeFetch = typeof window.fetch === 'function' ? window.fetch.bind(window) : null;
   const ANTI_FLICKER_MAX_MS = 1400;
-  var antiFlickerState = { active: false, pending: 0, timeoutId: null };
+  const ANTI_FLICKER_PRICE_MAX_MS = 900;
+  var antiFlickerState = {
+    active: false,
+    pending: 0,
+    timeoutId: null,
+    installedAt: 0,
+    timeoutMs: 0,
+    lastReleaseReason: null,
+    lastReleasedAt: 0,
+  };
   /** Backend may send type "pricing"; treat same as "price" for storefront logic. */
   function testTypeIsPrice(test) {
     if (!test || test.type === undefined || test.type === null) return false;
@@ -196,10 +206,29 @@
       .trim();
     return raw === 'strict' ? 'strict' : 'balanced';
   }
+  function getAntiFlickerTimeoutForTest(test) {
+    var parsed = Number(test && (test.antiFlickerTimeoutMs || test.anti_flicker_timeout_ms));
+    if (isFinite(parsed) && parsed > 0) {
+      return Math.max(300, Math.min(2000, Math.round(parsed)));
+    }
+    return testTypeIsPrice(test) ? ANTI_FLICKER_PRICE_MAX_MS : ANTI_FLICKER_MAX_MS;
+  }
+  function isPriceAntiFlickerSurface(test) {
+    if (!testTypeIsPrice(test)) return false;
+    try {
+      if (shouldRunPriceTestOnCurrentPage(test)) return true;
+      var path = String((window.location && window.location.pathname) || '').toLowerCase();
+      if (path.indexOf('/products/') !== -1 && path.length > '/products/'.length + 1) return true;
+      return isProductListingSurface() || isCartSurface() || hasCartUiInDom();
+    } catch (_ePriceAf) {
+      return false;
+    }
+  }
   function shouldUseAntiFlickerForTest(test) {
     var mode = getAntiFlickerModeForTest(test);
-    // strict: include all test types; balanced: avoid price to reduce render delay.
+    // strict: include all test types; balanced: only hide price surfaces that would visibly repaint.
     if (mode === 'strict') return true;
+    if (testTypeIsPrice(test)) return isPriceAntiFlickerSurface(test);
     return !testTypeIsPrice(test);
   }
   function hasAntiFlickerEligibleTests(tests) {
@@ -207,10 +236,22 @@
       return shouldUseAntiFlickerForTest(test);
     });
   }
-  function installAntiFlickerGuard() {
+  function getAntiFlickerTimeoutForTests(tests) {
+    var eligible = (tests || []).filter(function (test) {
+      return shouldUseAntiFlickerForTest(test);
+    });
+    if (!eligible.length) return ANTI_FLICKER_MAX_MS;
+    return eligible.reduce(function (max, test) {
+      return Math.max(max, getAntiFlickerTimeoutForTest(test));
+    }, 0);
+  }
+  function installAntiFlickerGuard(timeoutMs) {
     if (antiFlickerState.active || typeof document === 'undefined') return;
     antiFlickerState.active = true;
     antiFlickerState.pending = 0;
+    antiFlickerState.installedAt = Date.now();
+    antiFlickerState.timeoutMs = timeoutMs || ANTI_FLICKER_MAX_MS;
+    antiFlickerState.lastReleaseReason = null;
     var styleId = 'ripx-anti-flicker-style';
     if (!document.getElementById(styleId)) {
       var styleEl = document.createElement('style');
@@ -220,18 +261,45 @@
     }
     if (document.documentElement) document.documentElement.setAttribute('data-ripx-af', '1');
     antiFlickerState.timeoutId = setTimeout(function () {
-      releaseAntiFlickerGuard();
-    }, ANTI_FLICKER_MAX_MS);
+      releaseAntiFlickerGuard('timeout');
+    }, antiFlickerState.timeoutMs);
   }
-  function releaseAntiFlickerGuard() {
+  function getAntiFlickerDiagnostics() {
+    return {
+      active: !!antiFlickerState.active,
+      pending: antiFlickerState.pending || 0,
+      installedAt: antiFlickerState.installedAt || null,
+      timeoutMs: antiFlickerState.timeoutMs || 0,
+      lastReleaseReason: antiFlickerState.lastReleaseReason || null,
+      lastReleasedAt: antiFlickerState.lastReleasedAt || null,
+      htmlHidden: !!(
+        document &&
+        document.documentElement &&
+        typeof document.documentElement.getAttribute === 'function' &&
+        document.documentElement.getAttribute('data-ripx-af')
+      ),
+    };
+  }
+  function releaseAntiFlickerGuard(reason) {
     if (!antiFlickerState.active) return;
+    var releaseReason = reason || 'manual';
+    var installedAt = antiFlickerState.installedAt || 0;
+    var pendingAtRelease = antiFlickerState.pending || 0;
     antiFlickerState.active = false;
     antiFlickerState.pending = 0;
+    antiFlickerState.lastReleaseReason = releaseReason;
+    antiFlickerState.lastReleasedAt = Date.now();
     if (antiFlickerState.timeoutId) {
       clearTimeout(antiFlickerState.timeoutId);
       antiFlickerState.timeoutId = null;
     }
     if (document.documentElement) document.documentElement.removeAttribute('data-ripx-af');
+    persistRipxLiveDiagnostics('anti_flicker_release', {
+      reason: releaseReason,
+      pendingAtRelease: pendingAtRelease,
+      timeoutMs: antiFlickerState.timeoutMs || 0,
+      durationMs: installedAt ? Date.now() - installedAt : null,
+    });
   }
   function markAntiFlickerPending() {
     if (!antiFlickerState.active) return;
@@ -240,7 +308,7 @@
   function markAntiFlickerDone() {
     if (!antiFlickerState.active) return;
     antiFlickerState.pending = Math.max(0, antiFlickerState.pending - 1);
-    if (antiFlickerState.pending === 0) releaseAntiFlickerGuard();
+    if (antiFlickerState.pending === 0) releaseAntiFlickerGuard('done');
   }
   function debugLog() {
     if (DEBUG && typeof console !== 'undefined' && console.log) {
@@ -781,6 +849,7 @@
           return t && t.id;
         })
         .filter(Boolean);
+      _ripxLiveDiagnostics.antiFlicker = getAntiFlickerDiagnostics();
       if (eventName) {
         _ripxLiveDiagnostics.events.push({
           at: _ripxLiveDiagnostics.updatedAt,
@@ -949,7 +1018,10 @@
       cb();
       return;
     }
-    window.ripx_consent_callback = cb;
+    window.ripx_consent_callback = function () {
+      cb();
+      ensureBatchFetched();
+    };
   }
 
   /**
@@ -1262,6 +1334,7 @@
   // Batch variant cache: pre-fetch live assignments before per-test application starts.
   // Backend caps /track/variants at 50 test IDs; chunk client-side so every running test can still bucket.
   const LIVE_VARIANT_BATCH_SIZE = 50;
+  const LIVE_VARIANT_CHUNK_CONCURRENCY = 3;
   var _variantCachePromise = null;
   /** Single in-flight GET /track/preview per page (main loop + visual preview + reapply share it). */
   var _previewVariantInflight = null;
@@ -1528,6 +1601,7 @@
       baseParams.set('js_targeting_results', JSON.stringify(jsTargetingResults));
     }
     baseParams.set('ripx_diag', 'live_batch');
+    var variantRequestStartedAt = Date.now();
     var testIdChunks = [];
     for (
       var chunkStart = 0;
@@ -1576,21 +1650,28 @@
           return { variants: {}, diagnostics: null, chunkIndex: chunkIndex };
         });
     }
-    function fetchVariantChunksSequentially() {
+    function fetchVariantChunksWithConcurrency() {
       var results = [];
-      return testIdChunks
-        .reduce(function (promise, chunkIds, chunkIndex) {
-          return promise.then(function () {
-            return fetchVariantChunk(chunkIds, chunkIndex).then(function (result) {
-              results.push(result);
-            });
-          });
-        }, Promise.resolve())
-        .then(function () {
-          return results;
+      var nextIndex = 0;
+      var workerCount = Math.min(LIVE_VARIANT_CHUNK_CONCURRENCY, testIdChunks.length);
+      function runWorker() {
+        if (nextIndex >= testIdChunks.length) return Promise.resolve();
+        var chunkIndex = nextIndex;
+        nextIndex += 1;
+        return fetchVariantChunk(testIdChunks[chunkIndex], chunkIndex).then(function (result) {
+          results[chunkIndex] = result;
+          return runWorker();
         });
+      }
+      var workers = [];
+      for (var wi = 0; wi < workerCount; wi++) {
+        workers.push(runWorker());
+      }
+      return Promise.all(workers).then(function () {
+        return results.filter(Boolean);
+      });
     }
-    _variantCachePromise = fetchVariantChunksSequentially()
+    _variantCachePromise = fetchVariantChunksWithConcurrency()
       .then(function (results) {
         var variants = {};
         var backendDiagnostics = [];
@@ -1615,6 +1696,8 @@
             return !Object.prototype.hasOwnProperty.call(variants, testId);
           }),
           chunkCount: testIdChunks.length,
+          chunkConcurrency: Math.min(LIVE_VARIANT_CHUNK_CONCURRENCY, testIdChunks.length),
+          latencyMs: Date.now() - variantRequestStartedAt,
           variants: safeVariants,
           backendDiagnostics: backendDiagnostics,
         });
@@ -1631,7 +1714,80 @@
   }
 
   function ensureBatchFetched() {
+    if (consentRequired && !hasConsent() && !PREVIEW_MODE) {
+      recordRipxSkip('runtime', 'batch_waiting_for_consent', { consentRequired: true });
+      return false;
+    }
     getVariantCachePromise();
+    return true;
+  }
+
+  function isPdpProductPath() {
+    var path = String((window.location && window.location.pathname) || '').toLowerCase();
+    return path.indexOf('/products/') !== -1 && path.length > '/products/'.length + 1;
+  }
+
+  function deferPdpPriceApplyUntilProductId(
+    test,
+    variant,
+    targetType,
+    targetIds,
+    shouldTrackAntiFlicker
+  ) {
+    if (!testTypeIsPrice(test) || !variant || !variant.config || !isPdpProductPath()) return false;
+    var tt = String(targetType || '').toLowerCase();
+    if (tt !== 'all-products' && tt !== 'all_products' && tt !== 'product' && tt !== 'collection') {
+      return false;
+    }
+    var attempts = 0;
+    var maxAttempts = 48;
+    var ids = Array.isArray(targetIds) ? targetIds : [];
+    var iv = setInterval(function () {
+      attempts++;
+      var cid = getCurrentProductId();
+      if (cid) {
+        clearInterval(iv);
+        var shouldApply =
+          tt === 'all-products' ||
+          tt === 'all_products' ||
+          (tt === 'product' &&
+            ids.some(function (id) {
+              return id && gidMatches(id, cid);
+            })) ||
+          (tt === 'collection' && ids.length && productBelongsToPriceTestCollections(ids));
+        if (
+          (tt === 'all-products' || tt === 'all_products') &&
+          isExcludedProductForTest(test, cid)
+        ) {
+          shouldApply = false;
+        }
+        persistRipxLiveDiagnostics('price_apply:pdp_retry', {
+          testId: test.id,
+          productId: cid,
+          targetType: tt,
+          applied: !!shouldApply,
+          variant: sanitizeDiagnosticVariant(variant),
+        });
+        if (shouldApply) {
+          applyPriceTest(test.id, cid, test.targetVariantId || null, variant);
+        }
+        if (shouldTrackAntiFlicker) markAntiFlickerDone();
+      } else if (attempts >= maxAttempts) {
+        clearInterval(iv);
+        if (DEBUG) {
+          debugLog(
+            'PDP: product id not resolved after retries — theme may defer ProductJson; try hard refresh.'
+          );
+        }
+        persistRipxLiveDiagnostics('price_apply:pdp_retry_timeout', {
+          testId: test.id,
+          targetType: tt,
+          attempts: attempts,
+        });
+        if (shouldTrackAntiFlicker) markAntiFlickerDone();
+      }
+    }, 125);
+    return true;
   }
 
   /**
@@ -1951,6 +2107,608 @@
     } catch (error) {
       if (DEBUG) debugLog('track event failed', error && (error.message || error.name));
     }
+  }
+
+  function normalizeRipxCatalogEventName(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 100);
+  }
+
+  function getCatalogDefinitionsForRuntime() {
+    return Array.isArray(CONFIG.goalMetricDefinitions) ? CONFIG.goalMetricDefinitions : [];
+  }
+
+  function getTestsUsingGoalEvent(eventName, tests) {
+    var normalized = normalizeRipxCatalogEventName(eventName);
+    return (tests || CONFIG.activeTests || []).filter(function (test) {
+      return (test.goalEvents || []).some(function (goalEvent) {
+        return normalizeRipxCatalogEventName(goalEvent && goalEvent.eventName) === normalized;
+      });
+    });
+  }
+
+  function getTriggerValue(parameterName, payload, element) {
+    var key = String(parameterName || '').trim();
+    if (payload && typeof payload === 'object' && payload.value !== undefined) {
+      var directValue = Number(payload.value);
+      if (Number.isFinite(directValue)) return directValue;
+    }
+    if (!key) return 0;
+    if (payload && typeof payload === 'object' && payload[key] !== undefined) {
+      var payloadValue = Number(payload[key]);
+      return Number.isFinite(payloadValue) ? payloadValue : 0;
+    }
+    if (element && element.getAttribute) {
+      var attr =
+        element.getAttribute('data-' + key.replace(/_/g, '-')) ||
+        element.getAttribute('data-' + key);
+      var attrValue = Number(attr);
+      return Number.isFinite(attrValue) ? attrValue : 0;
+    }
+    return 0;
+  }
+
+  function fireCatalogEvent(definition, source, payload, element, tests) {
+    if (!definition || !definition.eventName) return;
+    var eventName = normalizeRipxCatalogEventName(definition.eventName);
+    var matchingTests = getTestsUsingGoalEvent(eventName, tests);
+    if (!matchingTests.length) return;
+    var config = definition.triggerConfig || {};
+    var value = getTriggerValue(config.parameterName, payload, element);
+    var metadata = {
+      source: 'goals_metrics_catalog',
+      trigger_type: definition.triggerType || 'custom_event',
+      trigger_source: source || 'runtime',
+      catalog_id: definition.id || null,
+    };
+    if (element) {
+      var elementMetadata = getElementTriggerMetadata(element);
+      Object.keys(elementMetadata).forEach(function (key) {
+        metadata[key] = elementMetadata[key];
+      });
+    }
+    if (payload && payload.metadata && typeof payload.metadata === 'object') {
+      Object.keys(payload.metadata).forEach(function (key) {
+        metadata[key] = payload.metadata[key];
+      });
+    }
+    matchingTests.forEach(function (test) {
+      trackEvent(test.id, eventName, value, metadata);
+    });
+    if (DEBUG) debugLog('catalog event fired', eventName, source, matchingTests.length);
+  }
+
+  function wildcardToRegExp(pattern) {
+    var escaped = String(pattern || '')
+      .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+      .replace(/\*/g, '.*');
+    return new RegExp('^' + escaped + '$', 'i');
+  }
+
+  function urlMatchesPattern(pattern) {
+    var raw = String(pattern || '').trim();
+    if (!raw) return false;
+    var href = String(window.location.href || '');
+    var path = String(window.location.pathname || '/');
+    try {
+      return wildcardToRegExp(raw).test(href) || wildcardToRegExp(raw).test(path);
+    } catch (e) {
+      return href.indexOf(raw) !== -1 || path.indexOf(raw) !== -1;
+    }
+  }
+
+  function getLinkUrl(element) {
+    if (!element || !element.getAttribute) return null;
+    var href = element.getAttribute('href');
+    if (!href) return null;
+    try {
+      return new URL(href, window.location.href);
+    } catch (_eUrl) {
+      return null;
+    }
+  }
+
+  function isFileDownloadUrl(url) {
+    if (!url || !url.pathname) return false;
+    return /\.(pdf|xlsx?|docx?|pptx?|zip|rar|7z|csv|txt|rtf|mp3|mp4|mov|avi|wmv|dmg|exe)$/i.test(
+      url.pathname
+    );
+  }
+
+  function getLinkTriggerMetadata(element) {
+    var url = getLinkUrl(element);
+    if (!url) return {};
+    return {
+      link_url: url.href,
+      link_domain: url.hostname,
+      outbound: url.hostname !== window.location.hostname,
+      file_extension: isFileDownloadUrl(url) ? url.pathname.split('.').pop().toLowerCase() : '',
+    };
+  }
+
+  function shouldFireClickDefinition(definition, element) {
+    var config = definition.triggerConfig || {};
+    var linkKind = String(config.linkKind || '').toLowerCase();
+    if (!linkKind) return true;
+    var url = getLinkUrl(element);
+    if (!url) return false;
+    if (linkKind === 'outbound') return url.hostname !== window.location.hostname;
+    if (linkKind === 'file_download') return isFileDownloadUrl(url);
+    return true;
+  }
+
+  function installCatalogDataLayerBridge(tests) {
+    var definitions = getCatalogDefinitionsForRuntime().filter(function (definition) {
+      return (definition.triggerType || 'custom_event') === 'custom_event';
+    });
+    if (!definitions.length) return;
+    var byEvent = {};
+    definitions.forEach(function (definition) {
+      byEvent[normalizeRipxCatalogEventName(definition.eventName)] = definition;
+    });
+    function inspectDataLayerItem(item) {
+      if (!item || typeof item !== 'object') return;
+      var eventName = normalizeRipxCatalogEventName(item.event || item.event_name);
+      if (eventName && byEvent[eventName]) {
+        fireCatalogEvent(byEvent[eventName], 'dataLayer', item, null, tests);
+      }
+    }
+    var dataLayer = (window.dataLayer = window.dataLayer || []);
+    if (!dataLayer.__ripxPatched) {
+      var originalPush = dataLayer.push;
+      dataLayer.push = function () {
+        var result = originalPush.apply(dataLayer, arguments);
+        for (var i = 0; i < arguments.length; i += 1) inspectDataLayerItem(arguments[i]);
+        return result;
+      };
+      dataLayer.__ripxPatched = true;
+    }
+    dataLayer.slice(0, 50).forEach(inspectDataLayerItem);
+  }
+
+  function installCatalogDomTriggers(tests) {
+    var definitions = getCatalogDefinitionsForRuntime();
+    var clickDefinitions = definitions.filter(function (definition) {
+      return definition.triggerType === 'css_click';
+    });
+    var formStartDefinitions = definitions.filter(function (definition) {
+      return definition.triggerType === 'form_start';
+    });
+    var formDefinitions = definitions.filter(function (definition) {
+      return definition.triggerType === 'form_submit';
+    });
+    var urlDefinitions = definitions.filter(function (definition) {
+      return definition.triggerType === 'url_match';
+    });
+    var visibilityDefinitions = definitions.filter(function (definition) {
+      return definition.triggerType === 'element_visibility';
+    });
+    var javascriptDefinitions = definitions.filter(function (definition) {
+      return definition.triggerType === 'custom_javascript';
+    });
+
+    function fireUrlDefinitions() {
+      urlDefinitions.forEach(function (definition) {
+        if (urlMatchesPattern(definition.triggerConfig && definition.triggerConfig.urlPattern)) {
+          fireCatalogEvent(definition, 'url_match', { url: window.location.href }, null, tests);
+        }
+      });
+    }
+
+    fireUrlDefinitions();
+
+    if (urlDefinitions.length && window.history && !window.__RIPX_URL_TRIGGERS_PATCHED__) {
+      var originalPushState = window.history.pushState;
+      var originalReplaceState = window.history.replaceState;
+      var scheduleUrlFire = function () {
+        setTimeout(fireUrlDefinitions, 0);
+      };
+      window.history.pushState = function () {
+        var result = originalPushState.apply(window.history, arguments);
+        scheduleUrlFire();
+        return result;
+      };
+      window.history.replaceState = function () {
+        var result = originalReplaceState.apply(window.history, arguments);
+        scheduleUrlFire();
+        return result;
+      };
+      window.addEventListener('popstate', scheduleUrlFire);
+      window.__RIPX_URL_TRIGGERS_PATCHED__ = true;
+    }
+
+    if (clickDefinitions.length && document && document.addEventListener) {
+      document.addEventListener(
+        'click',
+        function (event) {
+          clickDefinitions.forEach(function (definition) {
+            var selector = definition.triggerConfig && definition.triggerConfig.selector;
+            if (!selector || !event.target || !event.target.closest) return;
+            try {
+              var matched = event.target.closest(selector);
+              if (matched && shouldFireClickDefinition(definition, matched)) {
+                fireCatalogEvent(
+                  definition,
+                  'css_click',
+                  { metadata: getLinkTriggerMetadata(matched) },
+                  matched,
+                  tests
+                );
+              }
+            } catch (_eSelector) {}
+          });
+        },
+        true
+      );
+    }
+
+    if (formStartDefinitions.length && document && document.addEventListener) {
+      var startedForms = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+      function hasFormStarted(form, eventName) {
+        var state = startedForms ? startedForms.get(form) : form.__ripxFormStartState;
+        return state && state[eventName];
+      }
+      function markFormStarted(form, eventName) {
+        var state = startedForms ? startedForms.get(form) : form.__ripxFormStartState;
+        if (!state) state = {};
+        state[eventName] = true;
+        if (startedForms) startedForms.set(form, state);
+        else form.__ripxFormStartState = state;
+      }
+      function handleFormStart(event) {
+        if (!event.target || !event.target.closest) return;
+        var form = event.target.closest('form');
+        if (!form || !form.matches) return;
+        formStartDefinitions.forEach(function (definition) {
+          var selector = definition.triggerConfig && definition.triggerConfig.selector;
+          if (!selector || hasFormStarted(form, definition.eventName)) return;
+          try {
+            if (form.matches(selector)) {
+              markFormStarted(form, definition.eventName);
+              fireCatalogEvent(definition, 'form_start', {}, form, tests);
+            }
+          } catch (_eSelector) {}
+        });
+      }
+      document.addEventListener('focusin', handleFormStart, true);
+      document.addEventListener('change', handleFormStart, true);
+    }
+
+    if (formDefinitions.length && document && document.addEventListener) {
+      document.addEventListener(
+        'submit',
+        function (event) {
+          formDefinitions.forEach(function (definition) {
+            var selector = definition.triggerConfig && definition.triggerConfig.selector;
+            if (!selector || !event.target || !event.target.matches) return;
+            try {
+              if (event.target.matches(selector)) {
+                fireCatalogEvent(definition, 'form_submit', {}, event.target, tests);
+              }
+            } catch (_eSelector) {}
+          });
+        },
+        true
+      );
+    }
+
+    if (visibilityDefinitions.length)
+      installCatalogVisibilityTriggers(visibilityDefinitions, tests);
+    if (javascriptDefinitions.length)
+      installCatalogJavascriptTriggers(javascriptDefinitions, tests);
+  }
+
+  function getElementTriggerMetadata(element, extra) {
+    var metadata = extra && typeof extra === 'object' ? extra : {};
+    if (!element || !element.getAttribute) return metadata;
+    metadata.element_id = element.getAttribute('id') || '';
+    metadata.element_classes = element.getAttribute('class') || '';
+    metadata.element_text = String(element.textContent || '')
+      .trim()
+      .slice(0, 120);
+    metadata.product_id = element.getAttribute('data-product-id') || '';
+    metadata.product_handle = element.getAttribute('data-product-handle') || '';
+    metadata.promotion_id = element.getAttribute('data-promo-id') || '';
+    if (String(element.tagName || '').toLowerCase() === 'form') {
+      metadata.form_id = element.getAttribute('id') || '';
+      metadata.form_name = element.getAttribute('name') || '';
+      metadata.form_action = element.getAttribute('action') || '';
+      metadata.form_method = element.getAttribute('method') || 'get';
+    }
+    return metadata;
+  }
+
+  function installCatalogVisibilityTriggers(definitions, tests) {
+    if (!document || !document.querySelectorAll) return;
+    definitions.forEach(function (definition) {
+      var config = definition.triggerConfig || {};
+      var selector = config.selector;
+      if (!selector) return;
+      var threshold = Math.min(100, Math.max(1, Number(config.visibilityThreshold || 50))) / 100;
+      var minDuration = Math.max(0, Number(config.visibilityMinDurationMs || 0));
+      var frequency = config.visibilityFrequency || 'once_per_page';
+      var firedPage = false;
+      var firedElements = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
+      var visibleTimers = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+      var observedElements = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
+
+      function hasElementFired(element) {
+        return firedElements && firedElements.has(element);
+      }
+
+      function markElementFired(element) {
+        if (firedElements) firedElements.add(element);
+      }
+
+      function fireVisibility(element, ratio) {
+        if (frequency === 'once_per_page' && firedPage) return;
+        if (frequency === 'once_per_element' && hasElementFired(element)) return;
+        firedPage = true;
+        markElementFired(element);
+        fireCatalogEvent(
+          definition,
+          'element_visibility',
+          {
+            value: Math.round(ratio * 100),
+            metadata: getElementTriggerMetadata(element, {
+              percent_visible: Math.round(ratio * 100),
+              visible_duration_ms: minDuration,
+            }),
+          },
+          element,
+          tests
+        );
+      }
+
+      function handleVisible(element, ratio) {
+        if (!element || ratio < threshold) return;
+        if (frequency === 'once_per_page' && firedPage) return;
+        if (frequency === 'once_per_element' && hasElementFired(element)) return;
+        if (!minDuration) {
+          fireVisibility(element, ratio);
+          return;
+        }
+        if (visibleTimers && visibleTimers.has(element)) return;
+        var timer = setTimeout(function () {
+          if (visibleTimers) visibleTimers.delete(element);
+          fireVisibility(element, ratio);
+        }, minDuration);
+        if (visibleTimers) visibleTimers.set(element, timer);
+      }
+
+      function handleHidden(element) {
+        if (!visibleTimers || !visibleTimers.has(element)) return;
+        clearTimeout(visibleTimers.get(element));
+        visibleTimers.delete(element);
+      }
+
+      function scanWithObserver(observer) {
+        var nodes;
+        try {
+          nodes = document.querySelectorAll(selector);
+        } catch (_eSelector) {
+          nodes = [];
+        }
+        for (var i = 0; i < nodes.length; i += 1) {
+          if (observedElements && observedElements.has(nodes[i])) continue;
+          if (observedElements) observedElements.add(nodes[i]);
+          observer.observe(nodes[i]);
+        }
+      }
+
+      if (typeof IntersectionObserver === 'function') {
+        var observer = new IntersectionObserver(
+          function (entries) {
+            entries.forEach(function (entry) {
+              if (entry.isIntersecting && entry.intersectionRatio >= threshold) {
+                handleVisible(entry.target, entry.intersectionRatio);
+              } else {
+                handleHidden(entry.target);
+              }
+            });
+          },
+          { threshold: [threshold] }
+        );
+        scanWithObserver(observer);
+        if (config.observeDomChanges !== false && typeof MutationObserver === 'function') {
+          var mutationObserver = new MutationObserver(function () {
+            scanWithObserver(observer);
+          });
+          mutationObserver.observe(document.documentElement || document.body, {
+            childList: true,
+            subtree: true,
+          });
+        }
+      } else {
+        try {
+          var fallbackNodes = document.querySelectorAll(selector);
+          for (var fi = 0; fi < fallbackNodes.length; fi += 1) {
+            var rect = fallbackNodes[fi].getBoundingClientRect();
+            var visible =
+              rect.width > 0 &&
+              rect.height > 0 &&
+              rect.bottom >= 0 &&
+              rect.right >= 0 &&
+              rect.top <= (window.innerHeight || document.documentElement.clientHeight) &&
+              rect.left <= (window.innerWidth || document.documentElement.clientWidth);
+            if (visible) handleVisible(fallbackNodes[fi], 1);
+          }
+        } catch (_eFallback) {}
+      }
+    });
+  }
+
+  function normalizeCustomJavascriptResult(result) {
+    if (!result) return null;
+    if (result === true) return { value: 0, metadata: {} };
+    if (typeof result === 'number') return { value: result, metadata: {} };
+    if (typeof result === 'object') {
+      if (result.fire === false) return null;
+      return {
+        value: Number.isFinite(Number(result.value)) ? Number(result.value) : 0,
+        metadata: result.metadata && typeof result.metadata === 'object' ? result.metadata : {},
+      };
+    }
+    return { value: 0, metadata: { result: String(result).slice(0, 120) } };
+  }
+
+  function installCatalogJavascriptTriggers(definitions, tests) {
+    definitions.forEach(function (definition) {
+      var config = definition.triggerConfig || {};
+      var code = String(config.customJavascript || '').trim();
+      if (!code) return;
+      var intervalMs = Math.min(
+        10000,
+        Math.max(250, Number(config.customJavascriptIntervalMs || 1000))
+      );
+      var maxWaitMs = Math.min(
+        120000,
+        Math.max(1000, Number(config.customJavascriptMaxWaitMs || 10000))
+      );
+      var startedAt = Date.now();
+      var fn;
+      try {
+        fn = new Function('context', 'window', 'document', 'dataLayer', '"use strict";\n' + code);
+      } catch (error) {
+        if (DEBUG)
+          debugLog('custom javascript trigger compile failed', definition.eventName, error);
+        return;
+      }
+      function evaluate() {
+        var context = {
+          url: String(window.location.href || ''),
+          path: String(window.location.pathname || ''),
+          query: String(window.location.search || ''),
+          referrer: String(document.referrer || ''),
+          title: String(document.title || ''),
+          shopDomain: getShopDomain(),
+        };
+        try {
+          var result = normalizeCustomJavascriptResult(
+            fn(context, window, document, window.dataLayer || [])
+          );
+          if (result) {
+            fireCatalogEvent(definition, 'custom_javascript', result, null, tests);
+            return true;
+          }
+        } catch (error) {
+          if (DEBUG) debugLog('custom javascript trigger failed', definition.eventName, error);
+          return true;
+        }
+        return Date.now() - startedAt >= maxWaitMs;
+      }
+      if (evaluate()) return;
+      var timer = setInterval(function () {
+        if (evaluate()) clearInterval(timer);
+      }, intervalMs);
+    });
+  }
+
+  function installGoalMetricCatalogTriggers(tests) {
+    if (PREVIEW_MODE || !hasValidConfig || window.__RIPX_GOAL_METRIC_TRIGGERS__) return;
+    window.__RIPX_GOAL_METRIC_TRIGGERS__ = true;
+    installCatalogDataLayerBridge(tests);
+    installCatalogDomTriggers(tests);
+  }
+
+  function debugGoalMetrics(eventName) {
+    var normalized = normalizeRipxCatalogEventName(eventName || '');
+    var definitions = getCatalogDefinitionsForRuntime();
+    var activeTests = CONFIG.activeTests || [];
+    var selectedEvents = [];
+    activeTests.forEach(function (test) {
+      (test.goalEvents || []).forEach(function (goalEvent) {
+        selectedEvents.push({
+          testId: test.id,
+          eventName: goalEvent.eventName,
+          role: goalEvent.metricRole || 'secondary',
+          aggregation: goalEvent.aggregation || 'count',
+        });
+      });
+    });
+    var matchingDefinitions = normalized
+      ? definitions.filter(function (definition) {
+          return normalizeRipxCatalogEventName(definition.eventName) === normalized;
+        })
+      : definitions;
+    var matchingTests = normalized ? getTestsUsingGoalEvent(normalized, activeTests) : [];
+    return {
+      installed: !!window.__RIPX_GOAL_METRIC_TRIGGERS__,
+      previewMode: PREVIEW_MODE,
+      hasValidConfig: hasValidConfig,
+      shopDomain: getShopDomain(),
+      definitionsCount: definitions.length,
+      selectedEventsCount: selectedEvents.length,
+      dataLayerPatched: !!(window.dataLayer && window.dataLayer.__ripxPatched),
+      matchingDefinitions: matchingDefinitions.map(function (definition) {
+        return {
+          id: definition.id || null,
+          name: definition.name || definition.eventName,
+          eventName: definition.eventName,
+          triggerType: definition.triggerType || 'custom_event',
+          triggerConfig: definition.triggerConfig || {},
+        };
+      }),
+      selectedEvents: normalized
+        ? selectedEvents.filter(function (goalEvent) {
+            return normalizeRipxCatalogEventName(goalEvent.eventName) === normalized;
+          })
+        : selectedEvents,
+      matchingTestIds: matchingTests.map(function (test) {
+        return test.id;
+      }),
+      helperCommands: {
+        inspectAll: 'window.RipX.debugGoalMetrics()',
+        inspectEvent: "window.RipX.debugGoalMetrics('event_key')",
+        fireTest: "window.RipX.testGoalMetricEvent('event_key', 1)",
+      },
+    };
+  }
+
+  function testGoalMetricEvent(eventName, value, metadata) {
+    var normalized = normalizeRipxCatalogEventName(eventName);
+    if (!normalized) {
+      return { fired: false, reason: 'event_name_required' };
+    }
+    var definitions = getCatalogDefinitionsForRuntime();
+    var definition = definitions.filter(function (item) {
+      return normalizeRipxCatalogEventName(item.eventName) === normalized;
+    })[0] || { eventName: normalized, triggerType: 'manual_debug', triggerConfig: {} };
+    var matchingTests = getTestsUsingGoalEvent(normalized, CONFIG.activeTests || []);
+    if (!matchingTests.length) {
+      return {
+        fired: false,
+        reason: 'no_active_test_uses_event',
+        eventName: normalized,
+        debug: debugGoalMetrics(normalized),
+      };
+    }
+    var numericValue = Number(value);
+    fireCatalogEvent(
+      definition,
+      'manual_debug',
+      {
+        value: Number.isFinite(numericValue) ? numericValue : 0,
+        metadata: Object.assign(
+          { debug: true },
+          metadata && typeof metadata === 'object' ? metadata : {}
+        ),
+      },
+      null,
+      matchingTests
+    );
+    return {
+      fired: true,
+      eventName: normalized,
+      matchingTestIds: matchingTests.map(function (test) {
+        return test.id;
+      }),
+      note: 'Check Network for POST /api/track with event_type=custom.',
+    };
   }
 
   async function evaluateFeatureFlags(keys) {
@@ -5599,13 +6357,35 @@
       var priceEls = row.querySelectorAll(cartPriceSelectors);
       if (skipIfPainted && priceEls.length) {
         var first = priceEls[0];
-        if (first && first.getAttribute('data-ripx-price') === '1') return;
+        if (
+          first &&
+          first.getAttribute('data-ripx-price') === '1' &&
+          first.textContent === rowDisplay
+        )
+          return;
       }
       priceEls.forEach(function (el) {
-        el.textContent = rowDisplay;
-        el.setAttribute('data-test-variant', String(variantIdForCart));
-        el.setAttribute('data-test-id', String(testId));
-        el.setAttribute('data-ripx-price', '1');
+        var textWrites = 0;
+        var attrWrites = 0;
+        if (el.textContent !== rowDisplay) {
+          el.textContent = rowDisplay;
+          textWrites += 1;
+        }
+        var variantStr = String(variantIdForCart);
+        if (el.getAttribute('data-test-variant') !== variantStr) {
+          el.setAttribute('data-test-variant', variantStr);
+          attrWrites += 1;
+        }
+        var testStr = String(testId);
+        if (el.getAttribute('data-test-id') !== testStr) {
+          el.setAttribute('data-test-id', testStr);
+          attrWrites += 1;
+        }
+        if (el.getAttribute('data-ripx-price') !== '1') {
+          el.setAttribute('data-ripx-price', '1');
+          attrWrites += 1;
+        }
+        recordRipxPaintEvent('cart', textWrites, attrWrites);
       });
     }
     filteredTargetIds.forEach(function (targetId) {
@@ -7769,16 +8549,109 @@
    */
   const heatmapBuffer = [];
   const HEATMAP_FLUSH_INTERVAL = 10000;
+  const HEATMAP_CAPTURE_VERSION = 'full-page-v2';
+
+  function getHeatmapCollectionConfig() {
+    var config = CONFIG.heatmapCollection || {};
+    var sampleRate = Number(config.sampleRate);
+    if (!Number.isFinite(sampleRate)) sampleRate = 1;
+    return {
+      enabled: config.enabled !== false,
+      sampleRate: Math.max(0, Math.min(1, sampleRate)),
+    };
+  }
+
+  const HEATMAP_COLLECTION_CONFIG = getHeatmapCollectionConfig();
+  const HEATMAP_SESSION_INCLUDED = Math.random() < HEATMAP_COLLECTION_CONFIG.sampleRate;
+
+  function shouldCollectHeatmap() {
+    return (
+      hasValidConfig &&
+      !PREVIEW_MODE &&
+      HEATMAP_COLLECTION_CONFIG.enabled &&
+      HEATMAP_SESSION_INCLUDED
+    );
+  }
+
+  function clampHeatmapValue(value, min, max) {
+    var numeric = Number(value);
+    if (!Number.isFinite(numeric)) return null;
+    return Math.max(min, Math.min(max, numeric));
+  }
+
+  function getHeatmapViewportDimensions() {
+    return {
+      width: Math.max(0, Number(window.innerWidth) || 0),
+      height: Math.max(0, Number(window.innerHeight) || 0),
+    };
+  }
+
+  function hasLikelyScrollableContainer() {
+    try {
+      var nodes = document.querySelectorAll('body *');
+      var limit = Math.min(nodes.length, 250);
+      for (var i = 0; i < limit; i += 1) {
+        var node = nodes[i];
+        var style = window.getComputedStyle ? window.getComputedStyle(node) : null;
+        if (!style) continue;
+        var overflowY = String(style.overflowY || '').toLowerCase();
+        if (
+          (overflowY === 'auto' || overflowY === 'scroll') &&
+          node.scrollHeight > node.clientHeight + 80
+        ) {
+          return true;
+        }
+      }
+    } catch (_eScrollable) {}
+    return false;
+  }
+
+  function getHeatmapPageDimensions() {
+    var doc = document.documentElement || {};
+    var body = document.body || {};
+    var viewport = getHeatmapViewportDimensions();
+    var widthCandidates = [
+      Number(doc.scrollWidth) || 0,
+      Number(body.scrollWidth) || 0,
+      Number(doc.offsetWidth) || 0,
+      Number(body.offsetWidth) || 0,
+      viewport.width,
+    ];
+    var heightCandidates = [
+      Number(doc.scrollHeight) || 0,
+      Number(body.scrollHeight) || 0,
+      Number(doc.offsetHeight) || 0,
+      Number(body.offsetHeight) || 0,
+      viewport.height,
+    ];
+    var width = Math.max.apply(Math, widthCandidates);
+    var height = Math.max.apply(Math, heightCandidates);
+    return {
+      width: width,
+      height: height,
+      heightSource:
+        height === (Number(doc.scrollHeight) || 0)
+          ? 'document'
+          : height === (Number(body.scrollHeight) || 0)
+            ? 'body'
+            : 'fallback',
+      scrollContainerDetected: hasLikelyScrollableContainer(),
+    };
+  }
 
   function captureHeatmapEvent(testId, variantId, eventType, data) {
-    if (!hasValidConfig || PREVIEW_MODE) return;
+    if (!shouldCollectHeatmap()) return;
+    var viewport = getHeatmapViewportDimensions();
     heatmapBuffer.push({
       test_id: testId,
       variant_id: variantId,
       page_url: window.location.href,
       event_type: eventType,
-      viewport_width: window.innerWidth,
-      viewport_height: window.innerHeight,
+      device: getDeviceType(),
+      country: getCountryCode(),
+      viewport_width: viewport.width || null,
+      viewport_height: viewport.height || null,
+      capture_version: HEATMAP_CAPTURE_VERSION,
       ...data,
     });
   }
@@ -7794,7 +8667,9 @@
     });
 
     if (sync && navigator.sendBeacon) {
-      navigator.sendBeacon(`${CONFIG.apiUrl}/track/heatmap`, body);
+      var beaconBody =
+        typeof Blob === 'function' ? new Blob([body], { type: 'application/json' }) : body;
+      navigator.sendBeacon(`${CONFIG.apiUrl}/track/heatmap`, beaconBody);
     } else {
       fetch(`${CONFIG.apiUrl}/track/heatmap`, {
         method: 'POST',
@@ -7805,7 +8680,7 @@
   }
 
   function initHeatmap() {
-    if (!hasValidConfig) return;
+    if (!shouldCollectHeatmap()) return;
 
     getVariantCachePromise().then(function (cache) {
       const pageUrl = window.location.href;
@@ -7814,13 +8689,28 @@
         'click',
         function (e) {
           if (!hasConsent()) return;
-          const x = (e.clientX / window.innerWidth) * 100;
-          const y = (e.clientY / window.innerHeight) * 100;
+          const viewport = getHeatmapViewportDimensions();
+          if (!viewport.width || !viewport.height) return;
+          const pageDimensions = getHeatmapPageDimensions();
+          if (!pageDimensions.width || !pageDimensions.height) return;
+          const x = clampHeatmapValue((e.clientX / viewport.width) * 100, 0, 100);
+          const y = clampHeatmapValue((e.clientY / viewport.height) * 100, 0, 100);
+          const pageX = clampHeatmapValue(e.pageX, 0, pageDimensions.width);
+          const pageY = clampHeatmapValue(e.pageY, 0, pageDimensions.height);
           CONFIG.activeTests.forEach(function (test) {
             if (!matchesTarget(test)) return;
             const v = cache[test.id];
             if (!v || !v.variantId) return;
-            captureHeatmapEvent(test.id, v.variantId, 'click', { x, y });
+            captureHeatmapEvent(test.id, v.variantId, 'click', {
+              x,
+              y,
+              page_x: pageX,
+              page_y: pageY,
+              page_width: pageDimensions.width,
+              page_height: pageDimensions.height,
+              page_height_source: pageDimensions.heightSource,
+              scroll_container_detected: pageDimensions.scrollContainerDetected,
+            });
           });
         },
         true
@@ -7834,14 +8724,24 @@
           if (scrollThrottle) return;
           scrollThrottle = setTimeout(function () {
             scrollThrottle = null;
-            const depth =
-              ((window.scrollY + window.innerHeight) / document.documentElement.scrollHeight) * 100;
+            const viewport = getHeatmapViewportDimensions();
+            const pageDimensions = getHeatmapPageDimensions();
+            if (!viewport.height || !pageDimensions.height) return;
+            const depth = clampHeatmapValue(
+              ((window.scrollY + viewport.height) / pageDimensions.height) * 100,
+              0,
+              100
+            );
             CONFIG.activeTests.forEach(function (test) {
               if (!matchesTarget(test)) return;
               const v = cache[test.id];
               if (!v || !v.variantId) return;
               captureHeatmapEvent(test.id, v.variantId, 'scroll', {
-                scroll_depth: Math.min(100, depth),
+                scroll_depth: depth,
+                page_width: pageDimensions.width,
+                page_height: pageDimensions.height,
+                page_height_source: pageDimensions.heightSource,
+                scroll_container_detected: pageDimensions.scrollContainerDetected,
               });
             });
           }, 200);
@@ -8350,6 +9250,9 @@
       installRipxCartAddInterceptors();
 
       const activeTests = CONFIG.activeTests || [];
+      if (!PREVIEW_MODE && activeTests.length > 0) {
+        ensureBatchFetched();
+      }
 
       if (DEBUG && activeTests.length === 0 && !(PREVIEW_MODE && PREVIEW_TEST_ID)) {
         debugLog(
@@ -8414,8 +9317,9 @@
             window.__RIPX_PREVIEW_MERGE__ = mergeMeta;
           } catch (eMerge) {}
         }
+        installGoalMetricCatalogTriggers(testsToRun);
         var guardEnabled = hasAntiFlickerEligibleTests(testsToRun);
-        if (guardEnabled) installAntiFlickerGuard();
+        if (guardEnabled) installAntiFlickerGuard(getAntiFlickerTimeoutForTests(testsToRun));
         clearOfferCodeNotices();
 
         testsToRun.forEach(function (test) {
@@ -8447,6 +9351,7 @@
           }
           getVariant(test.id).then(
             function (variant) {
+              var antiFlickerDeferred = false;
               try {
                 if (!variant) {
                   recordRipxSkip(test.id, 'no_variant_assigned', {
@@ -8588,41 +9493,16 @@
                     });
                     applyPriceTest(test.id, curProductId, test.targetVariantId || null, variant);
                   } else if (
-                    testTypeIsPrice(test) &&
-                    variant &&
-                    variant.config &&
-                    (tt === 'all-products' || tt === 'all_products')
+                    deferPdpPriceApplyUntilProductId(
+                      test,
+                      variant,
+                      tt,
+                      tids,
+                      shouldTrackAntiFlicker
+                    )
                   ) {
-                    // Meta / ProductJson often loads after our first tick — curProductId was null so PDP paint skipped.
-                    var pdpPathEarly = (window.location.pathname || '').toLowerCase();
-                    if (
-                      pdpPathEarly.indexOf('/products/') !== -1 &&
-                      pdpPathEarly.length > '/products/'.length + 1
-                    ) {
-                      var attempts = 0;
-                      var maxAttempts = 48;
-                      var iv = setInterval(function () {
-                        attempts++;
-                        var cid = getCurrentProductId();
-                        if (cid) {
-                          clearInterval(iv);
-                          persistRipxLiveDiagnostics('price_apply:pdp_retry', {
-                            testId: test.id,
-                            productId: cid,
-                            targetType: tt,
-                            variant: sanitizeDiagnosticVariant(variant),
-                          });
-                          applyPriceTest(test.id, cid, test.targetVariantId || null, variant);
-                        } else if (attempts >= maxAttempts) {
-                          clearInterval(iv);
-                          if (DEBUG) {
-                            debugLog(
-                              'PDP: product id not resolved after retries — theme may defer ProductJson; try hard refresh.'
-                            );
-                          }
-                        }
-                      }, 125);
-                    }
+                    // Meta / ProductJson often loads after our first tick — keep the guard pending.
+                    antiFlickerDeferred = shouldTrackAntiFlicker;
                   }
                   if (
                     variant &&
@@ -8656,7 +9536,7 @@
                   }
                 }
               } finally {
-                if (shouldTrackAntiFlicker) markAntiFlickerDone();
+                if (shouldTrackAntiFlicker && !antiFlickerDeferred) markAntiFlickerDone();
               }
             },
             function () {
@@ -8705,7 +9585,8 @@
           scheduleRipxCartNativeStateRefreshBurst();
         }
 
-        // Re-apply price tests after delays so dynamically loaded content (cart drawer, AJAX sections, predictive search) shows test prices (Intelligems-style: price everywhere).
+        // Re-apply price tests for dynamic content. Paint functions are idempotent, so stable nodes
+        // are skipped while AJAX sections, cart drawers, and predictive-search cards can still catch up.
         function reapplyPriceTestsOnly() {
           if (!hasValidConfig || !CONFIG.activeTests || CONFIG.activeTests.length === 0) return;
           CONFIG.activeTests.forEach(function (test) {
@@ -8777,10 +9658,24 @@
             });
           });
         }
-        setTimeout(reapplyPriceTestsOnly, 1200);
-        setTimeout(reapplyPriceTestsOnly, 3500);
-        setTimeout(reapplyPriceTestsOnly, 6000);
-        setTimeout(reapplyPriceTestsOnly, 10000);
+        function hasDynamicPriceSurface() {
+          return isProductListingSurface() || isCartSurface() || hasCartUiInDom() || !!cartUiRoot();
+        }
+        function schedulePriceReapply(delayMs, dynamicOnly) {
+          setTimeout(function () {
+            if (dynamicOnly && !hasDynamicPriceSurface()) return;
+            reapplyPriceTestsOnly();
+          }, delayMs);
+        }
+        schedulePriceReapply(900, false);
+        schedulePriceReapply(2500, true);
+        ['shopify:section:load', 'cart:updated', 'cart:refresh', 'drawer:open'].forEach(
+          function (evt) {
+            document.addEventListener(evt, function () {
+              schedulePriceReapply(80, true);
+            });
+          }
+        );
         document.addEventListener('shopify:section:load', function () {
           setTimeout(reapplyPriceTestsOnly, 300);
         });
@@ -9295,6 +10190,7 @@
         },
         paintStats: getRipxPaintStatsSnapshot(),
         themeStats: getRipxThemeStatsSnapshot(),
+        antiFlicker: getAntiFlickerDiagnostics(),
       },
       checkout: {
         storefrontScriptRunsOnHostedCheckout: false,
@@ -9379,6 +10275,8 @@
     },
     debugCart: debugCartSnapshot,
     debugStatus,
+    debugGoalMetrics,
+    testGoalMetricEvent,
     liveDiagnostics,
     qa: liveDiagnostics,
     debugPaintStats: debugPaintStats,
@@ -9402,6 +10300,10 @@
     window.__RIPX_TEST_HOOKS__.previewTestId = PREVIEW_TEST_ID;
     window.__RIPX_TEST_HOOKS__.previewSessionId = PREVIEW_SESSION_ID;
     window.__RIPX_TEST_HOOKS__.getUserId = getUserId;
+    window.__RIPX_TEST_HOOKS__.ensureBatchFetched = ensureBatchFetched;
+    window.__RIPX_TEST_HOOKS__.getVariantCachePromise = getVariantCachePromise;
+    window.__RIPX_TEST_HOOKS__.getAntiFlickerDiagnostics = getAntiFlickerDiagnostics;
+    window.__RIPX_TEST_HOOKS__.deferPdpPriceApplyUntilProductId = deferPdpPriceApplyUntilProductId;
     window.__RIPX_TEST_HOOKS__.shouldRunPriceTestOnCurrentPage = shouldRunPriceTestOnCurrentPage;
     window.__RIPX_TEST_HOOKS__.shouldShowShippingTestOnCart = shouldShowShippingTestOnCart;
     window.__RIPX_TEST_HOOKS__.injectShippingTestCartAttributes = injectShippingTestCartAttributes;

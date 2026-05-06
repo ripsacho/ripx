@@ -17,6 +17,8 @@
  *
  * Usage (from repo root):
  *   node scripts/write-ripx-checkout-config.js
+ *   node scripts/write-ripx-checkout-config.js --target=discount
+ *   node scripts/write-ripx-checkout-config.js --target=ui
  *   npm run shopify:checkout-discount:sync-config
  *   npm run shopify:checkout-ui:sync-config
  */
@@ -24,6 +26,15 @@ const fs = require('fs');
 const path = require('path');
 
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
+
+const targetArg = process.argv.find(arg => arg.startsWith('--target='));
+const syncTarget = targetArg ? targetArg.split('=')[1] : 'all';
+if (!['all', 'discount', 'ui'].includes(syncTarget)) {
+  console.error('[write-ripx-checkout-config] Invalid --target. Use all, discount, or ui.');
+  process.exit(1);
+}
+const shouldWriteDiscountConfig = syncTarget === 'all' || syncTarget === 'discount';
+const shouldWriteUiConfig = syncTarget === 'all' || syncTarget === 'ui';
 
 const appUrl = (process.env.APP_URL || '').trim().replace(/\/+$/, '');
 let batchUrl = (process.env.RIPX_PRICE_RESOLVE_BATCH_URL || '').trim();
@@ -49,7 +60,9 @@ const probeAttributeMatrix =
     .toLowerCase() === 'true';
 
 function isEphemeralTunnelUrl(rawUrl) {
-  if (!rawUrl) return false;
+  if (!rawUrl) {
+    return false;
+  }
   try {
     const host = new URL(rawUrl).hostname.toLowerCase();
     return (
@@ -69,7 +82,7 @@ const allowEphemeralCheckoutConfig =
     .trim()
     .toLowerCase() === 'true';
 
-if (!batchUrl || !shippingBatchUrl) {
+if (shouldWriteDiscountConfig && (!batchUrl || !shippingBatchUrl)) {
   console.error(
     '[write-ripx-checkout-config] Set APP_URL or RIPX_{PRICE,SHIPPING}_RESOLVE_BATCH_URL in .env (repo root), then re-run.'
   );
@@ -81,12 +94,26 @@ if (!checkoutAssignmentUrl && appUrl) {
 if (!checkoutConversionUrl && appUrl) {
   checkoutConversionUrl = `${appUrl}/api/track/checkout-conversion`;
 }
+if (shouldWriteUiConfig && !checkoutAssignmentUrl) {
+  console.error(
+    '[write-ripx-checkout-config] Set APP_URL or RIPX_CHECKOUT_ASSIGNMENT_URL in .env (repo root), then re-run.'
+  );
+  process.exit(1);
+}
 
 const urlsToCheck = [
-  ['RIPX_PRICE_RESOLVE_BATCH_URL', batchUrl],
-  ['RIPX_SHIPPING_RESOLVE_BATCH_URL', shippingBatchUrl],
-  ['RIPX_CHECKOUT_ASSIGNMENT_URL', checkoutAssignmentUrl],
-  ['RIPX_CHECKOUT_CONVERSION_URL', checkoutConversionUrl],
+  ...(shouldWriteDiscountConfig
+    ? [
+        ['RIPX_PRICE_RESOLVE_BATCH_URL', batchUrl],
+        ['RIPX_SHIPPING_RESOLVE_BATCH_URL', shippingBatchUrl],
+      ]
+    : []),
+  ...(shouldWriteUiConfig
+    ? [
+        ['RIPX_CHECKOUT_ASSIGNMENT_URL', checkoutAssignmentUrl],
+        ['RIPX_CHECKOUT_CONVERSION_URL', checkoutConversionUrl],
+      ]
+    : []),
 ].filter(([, value]) => value);
 const ephemeralUrls = urlsToCheck.filter(([, value]) => isEphemeralTunnelUrl(value));
 if (ephemeralUrls.length > 0 && !allowEphemeralCheckoutConfig) {
@@ -115,13 +142,16 @@ export const RIPX_CHECKOUT_PROBE_ALWAYS_DISCOUNT = ${JSON.stringify(probeAlwaysD
 export const RIPX_CHECKOUT_PROBE_ATTRIBUTE_MATRIX = ${JSON.stringify(probeAttributeMatrix)};
 `;
 
-fs.writeFileSync(dest, content, 'utf8');
-console.log('[write-ripx-checkout-config] Wrote', dest);
+if (shouldWriteDiscountConfig) {
+  fs.writeFileSync(dest, content, 'utf8');
+  console.log('[write-ripx-checkout-config] Wrote', dest);
+}
 
-const uiDest = path.join(__dirname, '../extensions/ripx-checkout-ui/src/ripxConfig.js');
+const uiDest = path.join(__dirname, '../extensions/ripx-checkout-ui/src/ripxConfig.generated.js');
 const uiContent = `/**
  * Synced from root .env via: npm run shopify:checkout-ui:sync-config
  * (or: node scripts/write-ripx-checkout-config.js)
+ * Generated locally before build/deploy. Do not commit this file.
  */
 export const RIPX_CHECKOUT_ASSIGNMENT_URL = ${JSON.stringify(checkoutAssignmentUrl)};
 export const RIPX_CHECKOUT_CONVERSION_URL = ${JSON.stringify(checkoutConversionUrl)};
@@ -129,22 +159,29 @@ export const RIPX_CHECKOUT_PRICE_SECRET = ${JSON.stringify(secret)};
 export const RIPX_CHECKOUT_UI_TEST_ID = ${JSON.stringify(checkoutUiTestId)};
 export const RIPX_CHECKOUT_UI_SHOP_DOMAIN = ${JSON.stringify(checkoutUiShopDomain)};
 `;
-fs.mkdirSync(path.dirname(uiDest), { recursive: true });
-fs.writeFileSync(uiDest, uiContent, 'utf8');
-console.log('[write-ripx-checkout-config] Wrote', uiDest);
+if (shouldWriteUiConfig) {
+  fs.mkdirSync(path.dirname(uiDest), { recursive: true });
+  fs.writeFileSync(uiDest, uiContent, 'utf8');
+  console.log('[write-ripx-checkout-config] Wrote', uiDest);
+}
 
-console.log('[write-ripx-checkout-config] BATCH_URL =', batchUrl);
-console.log('[write-ripx-checkout-config] SHIPPING  =', shippingBatchUrl);
-console.log('[write-ripx-checkout-config] ASSIGNMENT =', checkoutAssignmentUrl || '(empty)');
-console.log('[write-ripx-checkout-config] CONVERSION =', checkoutConversionUrl || '(empty)');
+console.log('[write-ripx-checkout-config] TARGET    =', syncTarget);
+if (shouldWriteDiscountConfig) {
+  console.log('[write-ripx-checkout-config] BATCH_URL =', batchUrl);
+  console.log('[write-ripx-checkout-config] SHIPPING  =', shippingBatchUrl);
+  console.log(
+    '[write-ripx-checkout-config] PROBE     =',
+    probeAlwaysDiscount ? 'always_discount' : 'off'
+  );
+  console.log(
+    '[write-ripx-checkout-config] ATTR_PROBE =',
+    probeAttributeMatrix ? 'attribute_matrix' : 'off'
+  );
+}
+if (shouldWriteUiConfig) {
+  console.log('[write-ripx-checkout-config] ASSIGNMENT =', checkoutAssignmentUrl || '(empty)');
+  console.log('[write-ripx-checkout-config] CONVERSION =', checkoutConversionUrl || '(empty)');
+  console.log('[write-ripx-checkout-config] UI TEST   =', checkoutUiTestId || '(empty)');
+  console.log('[write-ripx-checkout-config] UI SHOP   =', checkoutUiShopDomain || '(empty)');
+}
 console.log('[write-ripx-checkout-config] SECRET    =', secret ? '(set)' : '(empty)');
-console.log('[write-ripx-checkout-config] UI TEST   =', checkoutUiTestId || '(empty)');
-console.log('[write-ripx-checkout-config] UI SHOP   =', checkoutUiShopDomain || '(empty)');
-console.log(
-  '[write-ripx-checkout-config] PROBE     =',
-  probeAlwaysDiscount ? 'always_discount' : 'off'
-);
-console.log(
-  '[write-ripx-checkout-config] ATTR_PROBE =',
-  probeAttributeMatrix ? 'attribute_matrix' : 'off'
-);

@@ -10,6 +10,16 @@ const logger = require('../utils/logger');
 
 const redisUrl = process.env.REDIS_URL;
 
+if (!redisUrl && process.env.NODE_ENV === 'production') {
+  logger.warn(
+    'REDIS_URL is not set; scheduled jobs and archive/retention queues will not run in production.',
+    {
+      archiveDaysAfter: process.env.RIPX_ARCHIVE_DAYS_AFTER || null,
+      webhookEventsRetentionDays: process.env.RIPX_WEBHOOK_EVENTS_RETENTION_DAYS || null,
+    }
+  );
+}
+
 function createQueue(name, opts = {}) {
   if (!redisUrl) {
     return null;

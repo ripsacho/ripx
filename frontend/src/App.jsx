@@ -42,6 +42,7 @@ const queryClient = new QueryClient({
 setQueryClientForPermissionInvalidation(queryClient);
 
 import { Sidebar, TopBar } from './components/Layout';
+import { RipxAssistantWidget } from './components/Assistant';
 import AuthGuard from './components/Connect/AuthGuard';
 import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
 import { RouteLoading } from './components/LoadingSkeleton/RouteLoading';
@@ -207,6 +208,7 @@ import {
   TestEditor,
   Analytics,
   AnalyticsOverview,
+  GoalsMetrics,
   Settings,
   SetupWizard,
   Profile,
@@ -285,6 +287,7 @@ function AppContent() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [authCheckStatus, setAuthCheckStatus] = useState(AUTH_CHECK.IDLE);
   const authCheckStartedRef = useRef(false);
+  const testDetailAutoCollapsedPathRef = useRef('');
   const sidebarWidth = sidebarCollapsed ? 80 : 280;
   const effectiveSidebarWidth = isMobile ? 0 : sidebarWidth;
 
@@ -698,13 +701,35 @@ function AppContent() {
     hasCreds &&
     !shouldHideChromeForPublicPath &&
     (isAppDomainRoute || isUserPanelRoute || isDomainsRoute || isAdminRoute || isUniversalAppRoute);
-  /* Sidebar (AB test nav) only when inside /app/:domain; Profile, Settings, Docs, Notifications are outside the panel (TopBar only) */
+  /* Sidebar (AB test nav) only when inside /app/:domain; universal pages stay TopBar-only. */
   const showSidebar =
     !isOnConnectOrAuthPath &&
     hasCreds &&
     !shouldHideChromeForPublicPath &&
     !isAdminRoute &&
     isAppDomainRoute;
+  const showAssistantWidget = showTopBar && !isAdminRoute;
+  const shouldRaiseAssistantWidget =
+    location.pathname === ROUTES.DASHBOARD || /^\/app\/[^/]+\/?$/.test(location.pathname);
+  const appTestDetailMatch =
+    location.pathname.match(/^\/app\/[^/]+\/tests\/([^/]+)$/) ||
+    location.pathname.match(/^\/tests\/([^/]+)$/);
+  const isTestDetailSidebarAutoCollapseRoute =
+    Boolean(appTestDetailMatch?.[1]) && appTestDetailMatch[1] !== 'new';
+
+  useEffect(() => {
+    if (
+      !showSidebar ||
+      isMobile ||
+      !isTestDetailSidebarAutoCollapseRoute ||
+      testDetailAutoCollapsedPathRef.current === location.pathname
+    ) {
+      return;
+    }
+
+    testDetailAutoCollapsedPathRef.current = location.pathname;
+    setSidebarCollapsed(true);
+  }, [isMobile, isTestDetailSidebarAutoCollapseRoute, location.pathname, showSidebar]);
 
   const announcementBanner = health?.announcementBanner;
   const showAnnouncement =
@@ -1000,6 +1025,7 @@ function AppContent() {
           ...(isSupportPage && { overflow: 'visible', overflowX: 'hidden' }),
         }}
       >
+        {showAssistantWidget && <RipxAssistantWidget elevated={shouldRaiseAssistantWidget} />}
         {showTopBar && !isAdminRoute && (
           <TopBar
             sidebarWidth={showSidebar ? effectiveSidebarWidth : 0}
@@ -1096,7 +1122,7 @@ function AppContent() {
                   </Suspense>
                 }
               />
-              {/* Universal app routes: Profile, Settings, Docs, Notifications (not tied to /app/:domain) */}
+              {/* Universal app routes: Profile, Docs, Notifications (not tied to /app/:domain) */}
               <Route
                 path={ROUTES.PROFILE}
                 element={
@@ -1109,13 +1135,7 @@ function AppContent() {
               />
               <Route
                 path={ROUTES.SETTINGS}
-                element={
-                  <Suspense fallback={<RouteLoading />}>
-                    <AuthGuard>
-                      <Settings />
-                    </AuthGuard>
-                  </Suspense>
-                }
+                element={<Navigate to={ROUTES.PROFILE_ACCOUNT} replace />}
               />
               <Route
                 path={ROUTES.NOTIFICATIONS}
@@ -1246,6 +1266,14 @@ function AppContent() {
                   element={
                     <Suspense fallback={<RouteLoading message="Loading analytics…" />}>
                       <AnalyticsOverview />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="goals-metrics"
+                  element={
+                    <Suspense fallback={<RouteLoading message="Loading goals and metrics…" />}>
+                      <GoalsMetrics />
                     </Suspense>
                   }
                 />

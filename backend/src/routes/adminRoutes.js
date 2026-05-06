@@ -56,9 +56,12 @@ const crypto = require('crypto');
 const abTestEngine = require('../services/abTestEngine');
 const auditLogService = require('../services/auditLogService');
 const timeSeriesService = require('../services/timeSeriesService');
+const { refreshHeatmapDailyRollups, pruneHeatmapEventsOlderThan } = require('../models/heatmap');
+const { refreshGoalMetricEventRollups } = require('../models/goalMetricDefinition');
 const validators = require('../utils/validators');
 const standaloneUser = require('../models/standaloneUser');
 const emailService = require('../services/emailService');
+const notificationService = require('../services/notificationService');
 const mailProcessService = require('../services/mailProcessService');
 const userDomainAccess = require('../models/userDomainAccess');
 const {
@@ -68,6 +71,7 @@ const {
 const {
   SUPPORT_TICKET_THREAD_MESSAGE_MAX_LENGTH,
   listSupportTicketThreadMessages,
+  markSupportTicketThreadRead,
   createSupportTicketThreadMessage,
   subscribeSupportTicketThread,
 } = require('../services/supportTicketThreadService');
@@ -77,6 +81,7 @@ const {
   normalizeGlobalHoldoutPercent,
 } = require('../services/experimentationPolicyService');
 const { getLandingClients, saveLandingClients } = require('../services/landingContentService');
+const { retrieveSupportKbContext } = require('../services/supportAiRagService');
 
 /**
  * GET /api/admin/me - Current user identity (any authenticated shop).
@@ -2579,6 +2584,7 @@ router.get(
  */
 router.post(
   '/aggregation/trigger',
+  requirePermission(PERMISSIONS.ANALYTICS_AGGREGATION),
   asyncHandler(async (req, res) => {
     const { date: dateStr } = req.body || {};
     let targetDate = null;
@@ -2599,6 +2605,82 @@ router.post(
       changes: { date: targetDate ? dateStr : 'yesterday' },
     });
     return sendSuccess(res, HTTP_STATUS.OK, { triggered: true, lastRun: now });
+  })
+);
+
+/**
+ * POST /api/admin/aggregation/heatmap-rollups
+ * Refresh heatmap daily rollups and optionally prune old raw heatmap events.
+ * Body: { refresh_since?: YYYY-MM-DD, retention_days?: number, prune?: boolean }
+ */
+router.post(
+  '/aggregation/heatmap-rollups',
+  requirePermission(PERMISSIONS.ANALYTICS_AGGREGATION),
+  asyncHandler(async (req, res) => {
+    const {
+      refresh_since: refreshSince,
+      retention_days: retentionDays,
+      prune = false,
+    } = req.body || {};
+    const safeRefreshSince =
+      refreshSince && /^\d{4}-\d{2}-\d{2}$/.test(String(refreshSince))
+        ? String(refreshSince)
+        : null;
+    const affectedRows = await refreshHeatmapDailyRollups(safeRefreshSince);
+    let deletedRows = 0;
+    if (prune) {
+      const parsedRetention = Math.max(30, parseInt(retentionDays, 10) || 180);
+      deletedRows = await pruneHeatmapEventsOlderThan(parsedRetention);
+    }
+    await auditLogService.logAdminAction(req, {
+      entityType: 'aggregation',
+      entityId: 'heatmap_rollups',
+      action: prune ? 'refresh_and_prune' : 'refresh',
+      changes: {
+        refreshSince: safeRefreshSince || 'default',
+        prune: Boolean(prune),
+        retentionDays: prune ? Math.max(30, parseInt(retentionDays, 10) || 180) : null,
+        affectedRows,
+        deletedRows,
+      },
+    });
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      refreshed: true,
+      affectedRows,
+      pruned: Boolean(prune),
+      deletedRows,
+    });
+  })
+);
+
+/**
+ * POST /api/admin/aggregation/goal-event-rollups
+ * Rebuild goal metric event rollups after event dedupe/delete/backfill maintenance.
+ * Body: { shop_domain?: string }
+ */
+router.post(
+  '/aggregation/goal-event-rollups',
+  requirePermission(PERMISSIONS.ANALYTICS_AGGREGATION),
+  asyncHandler(async (req, res) => {
+    const shopDomain =
+      typeof req.body?.shop_domain === 'string' && req.body.shop_domain.trim()
+        ? req.body.shop_domain.trim().toLowerCase()
+        : null;
+    const result = await refreshGoalMetricEventRollups(shopDomain);
+    await auditLogService.logAdminAction(req, {
+      entityType: 'aggregation',
+      entityId: 'goal_event_rollups',
+      action: 'refresh',
+      changes: {
+        shopDomain: result.shopDomain || 'all',
+        allTimeRows: result.allTimeRows,
+        dailyRows: result.dailyRows,
+      },
+    });
+    return sendSuccess(res, HTTP_STATUS.OK, {
+      refreshed: true,
+      ...result,
+    });
   })
 );
 
@@ -3501,41 +3583,18 @@ const SUPPORT_PROACTIVE_OUTREACH_EMAIL = 'proactive@ripx.internal';
 const SUPPORT_PROACTIVE_NOTE_MAX_LENGTH = 2000;
 
 async function getSupportKbContextForAdmin(queryText, apiKey) {
-  if (!queryText || !apiKey) {
-    return { context: '', sources: [] };
-  }
-  try {
-    const OpenAI = require('openai').default;
-    const openai = new OpenAI({ apiKey });
-    const embRes = await openai.embeddings.create({
-      model: 'text-embedding-3-small',
-      input: String(queryText).slice(0, SUPPORT_SUGGEST_REPLY_MAX_INPUT_CHARS),
-    });
-    const embedding = embRes?.data?.[0]?.embedding;
-    if (!Array.isArray(embedding) || embedding.length !== 1536) {
-      return { context: '', sources: [] };
+  const result = await retrieveSupportKbContext(
+    String(queryText || '').slice(0, SUPPORT_SUGGEST_REPLY_MAX_INPUT_CHARS),
+    {
+      apiKey,
+      topK: SUPPORT_SUGGEST_REPLY_TOP_K,
     }
-    const vecStr = `[${embedding.join(',')}]`;
-    const result = await query(
-      `SELECT content, source FROM support_kb_chunks
-       WHERE embedding IS NOT NULL
-       ORDER BY embedding <=> $1::vector
-       LIMIT $2`,
-      [vecStr, SUPPORT_SUGGEST_REPLY_TOP_K]
-    );
-    if (!result.rows?.length) {
-      return { context: '', sources: [] };
-    }
-    return {
-      context: result.rows
-        .map((row, idx) => `[${idx + 1}] ${String(row.content || '').trim()}`)
-        .filter(Boolean)
-        .join('\n\n'),
-      sources: [...new Set(result.rows.map(row => row.source).filter(Boolean))],
-    };
-  } catch (_err) {
-    return { context: '', sources: [] };
-  }
+  );
+  return {
+    context: result.context || '',
+    sources: result.sources || [],
+    status: result.status || 'not_available',
+  };
 }
 
 function buildSupportFallbackReply(ticket) {
@@ -3895,8 +3954,31 @@ router.get(
     const sql = `
       SELECT st.id, st.email, st.subject, st.category, st.status, st.priority, st.assigned_to,
              st.metadata,
-             st.created_at, st.updated_at, st.shop_domain, st.tenant_id
+             st.created_at, st.updated_at, st.shop_domain, st.tenant_id,
+             msg.latest_user_reply_at,
+             msg.latest_admin_reply_at,
+             GREATEST(st.created_at, COALESCE(msg.latest_user_reply_at, st.created_at)) AS latest_user_activity_at,
+             rs.last_read_at AS admin_last_read_at,
+             (
+               SELECT COUNT(*)::int
+               FROM support_ticket_messages unread_msg
+               WHERE unread_msg.ticket_id = st.id
+                 AND unread_msg.sender_type = 'user'
+                 AND (rs.last_read_at IS NULL OR unread_msg.created_at > rs.last_read_at)
+             ) + CASE
+               WHEN rs.last_read_at IS NULL OR st.created_at > rs.last_read_at THEN 1
+               ELSE 0
+             END AS admin_unread_count
       FROM support_tickets st
+      LEFT JOIN (
+        SELECT ticket_id,
+          MAX(created_at) FILTER (WHERE sender_type = 'user') AS latest_user_reply_at,
+          MAX(created_at) FILTER (WHERE sender_type = 'admin') AS latest_admin_reply_at
+        FROM support_ticket_messages
+        GROUP BY ticket_id
+      ) msg ON msg.ticket_id = st.id
+      LEFT JOIN support_ticket_read_states rs
+        ON rs.ticket_id = st.id AND rs.audience = 'admin'
       ${whereDeleted}${status ? ' AND st.status = $3' : ''}
       ${orderBy}
       LIMIT $1 OFFSET $2
@@ -3912,10 +3994,20 @@ router.get(
       result = await query(sql, queryParams);
       countResult = await query(countSql, status ? [status] : []);
     } catch (err) {
-      if (err.message && /deleted_at|metadata|column.*does not exist/i.test(err.message)) {
+      if (
+        err.message &&
+        /deleted_at|metadata|support_ticket_read_states|support_ticket_messages|column.*does not exist|relation .* does not exist/i.test(
+          err.message
+        )
+      ) {
         const sqlNoDeleted = `
           SELECT st.id, st.email, st.subject, st.category, st.status, st.priority, st.assigned_to,
-                 st.created_at, st.updated_at, st.shop_domain, st.tenant_id
+                 st.created_at, st.updated_at, st.shop_domain, st.tenant_id,
+                 NULL::timestamptz AS latest_user_reply_at,
+                 NULL::timestamptz AS latest_admin_reply_at,
+                 st.created_at AS latest_user_activity_at,
+                 NULL::timestamptz AS admin_last_read_at,
+                 0::int AS admin_unread_count
           FROM support_tickets st
           ${status ? ' WHERE st.status = $3' : ''}
           ${orderBy}
@@ -3934,6 +4026,15 @@ router.get(
       tickets: result.rows.map(r => {
         const metadata = parseJsonObjectSafe(r.metadata);
         const escalationState = getSupportEscalationState(r, escalationConfig);
+        const latestUserReplyAt = r.latest_user_reply_at || null;
+        const latestAdminReplyAt = r.latest_admin_reply_at || null;
+        const latestUserActivityAt =
+          r.latest_user_activity_at || latestUserReplyAt || r.created_at || null;
+        const adminUnreadCount = Number(r.admin_unread_count || 0);
+        const customerWaiting =
+          latestUserActivityAt &&
+          (!latestAdminReplyAt ||
+            new Date(latestUserActivityAt).getTime() > new Date(latestAdminReplyAt).getTime());
         return {
           id: r.id,
           email: r.email,
@@ -3954,6 +4055,13 @@ router.get(
           updated_at: r.updated_at,
           shop_domain: r.shop_domain,
           tenant_id: r.tenant_id,
+          latest_user_reply_at: latestUserReplyAt,
+          latest_admin_reply_at: latestAdminReplyAt,
+          latest_user_activity_at: latestUserActivityAt,
+          admin_last_read_at: r.admin_last_read_at || null,
+          admin_unread_count: adminUnreadCount,
+          admin_has_unread: adminUnreadCount > 0,
+          customer_waiting: Boolean(customerWaiting),
         };
       }),
       total,
@@ -3986,6 +4094,7 @@ router.get(
     const messages = await listSupportTicketThreadMessages(ticket, {
       limit: parseInt(req.query.limit, 10) || 300,
     });
+    const readState = await markSupportTicketThreadRead(ticket.id, 'admin');
     return sendSuccess(res, HTTP_STATUS.OK, {
       ticket: {
         id: ticket.id,
@@ -3997,6 +4106,7 @@ router.get(
         updated_at: ticket.updated_at,
       },
       messages,
+      read_state: readState,
     });
   })
 );
@@ -4047,6 +4157,7 @@ router.post(
         .status(400)
         .json({ success: false, error: created.error || 'Could not add reply' });
     }
+    const readState = await markSupportTicketThreadRead(ticket.id, 'admin');
 
     await auditLogService.logAdminAction(req, {
       entityType: 'support_ticket',
@@ -4057,9 +4168,34 @@ router.post(
       },
     });
 
+    if (ticket.shop_domain) {
+      notificationService
+        .createInAppNotification(ticket.shop_domain, {
+          type: 'support_reply',
+          title: 'Support replied',
+          message: `New reply on support ticket #${String(ticket.id).slice(0, 8)}`,
+          data: {
+            ticket_id: ticket.id,
+            source: 'customer_support_chat',
+          },
+        })
+        .catch(() => {});
+    }
+
+    if (ticket.email) {
+      emailService
+        .sendMail({
+          to: ticket.email,
+          subject: `[RipX Support] Reply on #${String(ticket.id).slice(0, 8)}: ${String(ticket.subject || 'Support request').slice(0, 120)}`,
+          text: `RipX Support replied to your ticket #${String(ticket.id).slice(0, 8)}.\n\n${message}\n\nOpen RipX Support to continue the conversation.`,
+        })
+        .catch(() => {});
+    }
+
     return sendSuccess(res, HTTP_STATUS.CREATED, {
       ticket_id: ticket.id,
       message: created.message,
+      read_state: readState,
     });
   })
 );
@@ -4100,7 +4236,10 @@ router.get(
       timestamp: new Date().toISOString(),
     });
 
-    const unsubscribe = subscribeSupportTicketThread(ticket.id, messagePayload => {
+    const unsubscribe = subscribeSupportTicketThread(ticket.id, async messagePayload => {
+      if (messagePayload?.sender_type === 'user') {
+        await markSupportTicketThreadRead(ticket.id, 'admin').catch(() => {});
+      }
       writeEvent({
         type: 'message',
         ticket_id: ticket.id,
@@ -5648,14 +5787,15 @@ router.post(
     let suggestedReply = '';
     let provider = 'fallback_template';
     let kbSources = [];
+    let ragStatus = apiKey ? 'not_available' : 'missing_api_key';
 
     if (!apiKey) {
       suggestedReply = buildSupportFallbackReply(ticket);
     } else {
-      const { context: kbContext, sources } = await getSupportKbContextForAdmin(
-        promptInput,
-        apiKey
-      );
+      const ragContext = await getSupportKbContextForAdmin(promptInput, apiKey);
+      const kbContext = ragContext.context;
+      const sources = ragContext.sources;
+      ragStatus = ragContext.status || 'not_available';
       kbSources = sources || [];
       const systemPrompt = `You are a senior RipX customer support agent.
 Write a support reply email draft in plain text only.
@@ -5713,6 +5853,7 @@ Rules:
         provider,
         used_kb: kbSources.length > 0,
         source_count: kbSources.length,
+        rag_status: ragStatus || 'not_available',
       },
     });
 
@@ -5721,6 +5862,7 @@ Rules:
       suggested_reply: suggestedReply,
       provider,
       sources: kbSources,
+      rag_status: apiKey ? ragStatus || 'not_available' : 'missing_api_key',
       generated_at: new Date().toISOString(),
     });
   })

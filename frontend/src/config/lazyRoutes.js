@@ -16,6 +16,7 @@ export const TestDetail = lazy(() => import('../components/TestDetail/TestDetail
 export const TestEditor = lazy(() => import('../components/TestEditor/TestEditor'));
 export const Analytics = lazy(() => import('../components/Analytics/Analytics'));
 export const AnalyticsOverview = lazy(() => import('../components/Analytics/AnalyticsOverview'));
+export const GoalsMetrics = lazy(() => import('../components/GoalsMetrics/GoalsMetrics'));
 export const Settings = lazy(() => import('../components/Settings/Settings'));
 export const SetupWizard = lazy(() => import('../components/SetupWizard/SetupWizard'));
 export const Profile = lazy(() => import('../components/Profile/Profile'));

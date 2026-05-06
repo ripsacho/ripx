@@ -21,6 +21,38 @@ export function getApiBaseUrl() {
   return API_BASE_URL;
 }
 
+export function getApiStreamUrl(endpoint) {
+  const path =
+    endpoint && String(endpoint).startsWith('/') ? String(endpoint) : `/${endpoint || ''}`;
+  return `${API_BASE_URL}${path}`;
+}
+
+export function getRealtimeSocketConfig() {
+  const socketPath = '/realtime/socket.io';
+  if (typeof window === 'undefined') {
+    return { url: '', path: `/api${socketPath}` };
+  }
+  if (/^https?:\/\//i.test(API_BASE_URL)) {
+    try {
+      const parsed = new URL(API_BASE_URL);
+      const apiPath = parsed.pathname.replace(/\/+$/, '');
+      const basePath = apiPath.endsWith('/api') ? apiPath.slice(0, -4) || '' : apiPath;
+      return {
+        url: `${parsed.protocol}//${parsed.host}`,
+        path: `${basePath}/api${socketPath}`,
+      };
+    } catch (_err) {
+      return { url: window.location.origin, path: `/api${socketPath}` };
+    }
+  }
+  const apiPath = API_BASE_URL.startsWith('/') ? API_BASE_URL : `/${API_BASE_URL}`;
+  const normalizedApiPath = apiPath.replace(/\/+$/, '') || '/api';
+  return {
+    url: window.location.origin,
+    path: `${normalizedApiPath}${socketPath}`,
+  };
+}
+
 /** Public: full URL for health check (GET). */
 export function getHealthUrl() {
   return API_BASE_URL + '/health';
@@ -855,6 +887,7 @@ export function apiRequest(method, endpoint, data = null, config = {}) {
     endpoint.startsWith('/dashboard/') ||
     endpoint === '/dashboard/stats' ||
     endpoint.startsWith('/settings') ||
+    endpoint.startsWith('/goal-metrics') ||
     endpoint.startsWith('/targeting-presets') ||
     endpoint.startsWith('/promo-links');
   const canUseEmailSessionForEndpoint =

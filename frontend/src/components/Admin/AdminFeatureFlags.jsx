@@ -15,7 +15,12 @@ import AdminPageLayout from './AdminPageLayout';
 import styles from './Admin.module.css';
 
 const KNOWN_FLAGS = [
-  { key: 'flag.heatmaps', label: 'Heatmaps', description: 'Enable heatmap events and HeatmapView' },
+  {
+    key: 'flag.heatmaps',
+    label: 'Heatmaps',
+    description:
+      'Administrative heatmap rollout flag; storefront collection must also be enabled in runtime config.',
+  },
   { key: 'flag.export', label: 'Export', description: 'Enable CSV/JSON/BigQuery export' },
   { key: 'flag.ga4', label: 'GA4', description: 'Enable GA4 forwarding' },
   { key: 'flag.bigquery', label: 'BigQuery', description: 'Enable BigQuery export job' },

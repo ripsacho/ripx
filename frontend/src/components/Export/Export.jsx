@@ -20,6 +20,7 @@ import { PageShell } from '../Shared';
 import { useAppRoutes } from '../../hooks';
 import { apiGet } from '../../services';
 import { getDefaultExportFormat, getDefaultAnalyticsDateRange } from '../../utils/preferences';
+import { getDateRangeParams } from '../Analytics/funnelViewUtils';
 import styles from './Export.module.css';
 
 const DATE_RANGES = [
@@ -28,21 +29,6 @@ const DATE_RANGES = [
   { label: 'Last 30 days', value: '30' },
   { label: 'Last 90 days', value: '90' },
 ];
-
-function getDateRangeParams(value) {
-  if (!value || value === 'all') return {};
-  const days = parseInt(value, 10);
-  if (isNaN(days)) return {};
-  const end = new Date();
-  const start = new Date();
-  start.setDate(start.getDate() - days);
-  const endNext = new Date(end);
-  endNext.setDate(endNext.getDate() + 1);
-  return {
-    start_date: start.toISOString().split('T')[0],
-    end_date: endNext.toISOString().split('T')[0],
-  };
-}
 
 function Export({ testId }) {
   const [format, setFormat] = useState(() => getDefaultExportFormat());
@@ -168,7 +154,8 @@ function Export({ testId }) {
                 </div>
               </InlineStack>
               <Text variant="bodySm" color="subdued" as="p">
-                Date range applies to funnel data. Core metrics use all-time data.
+                Date range applies to variant metrics, decision readiness, funnel data, and heatmap
+                summaries in this export.
               </Text>
               <Button variant="primary" onClick={handleExport} loading={exporting}>
                 Download {format.toUpperCase()}

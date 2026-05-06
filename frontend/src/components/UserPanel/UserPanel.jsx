@@ -70,12 +70,11 @@ function getTimeGreeting() {
 }
 
 const ACCOUNT_TILES = [
-  { to: ROUTES.PROFILE, icon: ProfileIcon, label: 'Profile', desc: 'Theme & preferences' },
   {
-    to: ROUTES.SETTINGS,
-    icon: SettingsIcon,
-    label: 'Settings',
-    desc: 'Installation hub & account settings',
+    to: ROUTES.PROFILE,
+    icon: ProfileIcon,
+    label: 'Profile',
+    desc: 'Profile, account & API access',
   },
   {
     to: ROUTES.DOCS,

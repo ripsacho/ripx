@@ -22,9 +22,18 @@ function verifyWebhook(data, hmacHeader) {
   if (!hmacHeader || !process.env.SHOPIFY_API_SECRET) {
     return false;
   }
-  const hmac = crypto.createHmac('sha256', process.env.SHOPIFY_API_SECRET);
-  const hash = hmac.update(data).digest('base64');
-  return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(hmacHeader));
+  try {
+    const hmac = crypto.createHmac('sha256', process.env.SHOPIFY_API_SECRET);
+    const hash = hmac.update(data).digest('base64');
+    const expected = Buffer.from(hash, 'utf8');
+    const received = Buffer.from(String(hmacHeader).trim(), 'utf8');
+    if (expected.length !== received.length) {
+      return false;
+    }
+    return crypto.timingSafeEqual(expected, received);
+  } catch {
+    return false;
+  }
 }
 
 async function recordWebhookEvent({ shopDomain, webhookId, topic, payloadHash }) {
@@ -278,3 +287,4 @@ router.post(
 );
 
 module.exports = router;
+module.exports.verifyWebhook = verifyWebhook;

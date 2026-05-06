@@ -22,7 +22,7 @@ const shopifyService = require('./shopifyService');
 const { inferTemplateKey } = require('../utils/testType');
 const { getSignatureSecret } = require('../utils/priceAssignmentSignature');
 
-const CHECKOUT_UI_CONFIG_RELATIVE_PATH = 'extensions/ripx-checkout-ui/src/ripxConfig.js';
+const CHECKOUT_UI_CONFIG_RELATIVE_PATH = 'extensions/ripx-checkout-ui/src/ripxConfig.generated.js';
 const SUPPORTED_TEMPLATE_KEYS = new Set(['pricing', 'offer', 'checkout', 'shipping']);
 
 function normalizeLower(value) {

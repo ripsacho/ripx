@@ -12,6 +12,7 @@
 require('dotenv').config();
 
 const express = require('express');
+const http = require('http');
 const cors = require('cors');
 const compression = require('compression');
 const cookieParser = require('cookie-parser');
@@ -151,6 +152,7 @@ const proxyRoutes = require('./routes/proxyRoutes');
 const featureFlagRoutes = require('./routes/featureFlagRoutes');
 const visualEditorRoutes = require('./routes/visualEditorRoutes');
 const recommendationRoutes = require('./routes/recommendationRoutes');
+const goalMetricRoutes = require('./routes/goalMetricRoutes');
 const webhookRoutes = require('./routes/webhookRoutes');
 const promoLinkRoutes = require('./routes/promoLinkRoutes');
 const profileRoutes = require('./routes/profileRoutes');
@@ -158,6 +160,8 @@ const settingsRoutes = require('./routes/settingsRoutes');
 const targetingPresetRoutes = require('./routes/targetingPresetRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const supportRoutes = require('./routes/supportRoutes');
+const supportAgentRoutes = require('./routes/supportAgentRoutes');
+const { initializeSupportRealtime } = require('./services/supportRealtimeSocketService');
 const tenantRoutes = require('./routes/tenantRoutes');
 const accountRoutes = require('./routes/accountRoutes');
 const authRoutes = require('./routes/authRoutes');
@@ -291,11 +295,15 @@ app.use((req, res, next) => {
   const connectSrcParts = [
     "'self'",
     appCspOrigin,
+    appCspOrigin.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:'),
     'https://*.myshopify.com',
     'https://*.shopify.com',
+    'wss://*.myshopify.com',
+    'wss://*.shopify.com',
   ];
   if (frontendCspOrigin && frontendCspOrigin !== appCspOrigin) {
     connectSrcParts.push(frontendCspOrigin);
+    connectSrcParts.push(frontendCspOrigin.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:'));
   }
   const frameAncestors = validShop
     ? `https://${shop} https://admin.shopify.com ${appCspOrigin}`
@@ -547,7 +555,16 @@ const supportLimiter = rateLimit({
   message: { success: false, error: 'Too many support requests. Please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: req => req.path === '/chat' || (req.originalUrl && req.originalUrl.endsWith('/chat')),
+  skip: req => {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(String(req.method || '').toUpperCase())) {
+      return true;
+    }
+    return (
+      req.path === '/chat' ||
+      req.path === '/agent' ||
+      (req.originalUrl && (req.originalUrl.endsWith('/chat') || req.originalUrl.endsWith('/agent')))
+    );
+  },
 });
 app.use('/api/support', supportLimiter);
 
@@ -560,6 +577,15 @@ const supportChatLimiter = rateLimit({
   legacyHeaders: false,
 });
 app.use('/api/support/chat', supportChatLimiter);
+
+const supportAgentLimiter = rateLimit({
+  windowMs: RATE_LIMIT.WINDOW_MS,
+  max: parseInt(process.env.RATE_LIMIT_SUPPORT_AGENT_MAX, 10) || 20,
+  message: { success: false, error: 'Too many agent requests. Please try again in a few minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/support/agent', supportAgentLimiter);
 
 // API docs (Swagger UI at /api-docs)
 app.use('/api-docs', apiDocsRoutes);
@@ -766,6 +792,7 @@ app.use('/api/dashboard', authenticate, require('./routes/dashboardRoutes'));
 app.use('/api/tests', authenticate, testRoutes);
 app.use('/api/visual-editor', authenticate, visualEditorRoutes);
 app.use('/api/recommendations', authenticate, recommendationRoutes);
+app.use('/api/goal-metrics', authenticate, goalMetricRoutes);
 app.use('/api/analytics', authenticate, analyticsRoutes);
 app.use('/api/shopify', authenticateShopify, shopifyRoutes); // Shopify-specific (requires shop)
 app.use('/api/track', trackRoutes); // Public endpoint for tracking
@@ -787,6 +814,7 @@ app.use(
   allowAnonymousUiEvents ? optionalAuthenticate : authenticate,
   uiEventsRoutes
 );
+app.use('/api/support/agent', authenticate, supportAgentRoutes);
 app.use('/api/support', supportRoutes); // Ticket submit (public) + My tickets (authenticated)
 app.use('/api/landing', landingRoutes); // Public landing-page content
 app.use('/api/admin', adminRoutes); // Admin panel (requireAdmin inside router)
@@ -965,7 +993,9 @@ process.on('uncaughtException', error => {
 // Start server only when run directly (e.g. node app.js). When required (e.g. by supertest),
 // do not listen so the app can be used with request(app) without binding to PORT.
 if (require.main === module) {
-  const server = app.listen(PORT, () => {
+  const server = http.createServer(app);
+  initializeSupportRealtime(server);
+  server.listen(PORT, () => {
     server.timeout = parseInt(process.env.REQUEST_TIMEOUT_MS, 10) || 60000;
     server.keepAliveTimeout = 65000;
     server.headersTimeout = 66000;

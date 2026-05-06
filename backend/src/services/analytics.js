@@ -9,10 +9,15 @@
  */
 
 const { query } = require('../utils/database');
-const { getTestAnalytics, getSecondaryEventMetrics } = require('../models/analytics');
+const {
+  getTestAnalytics,
+  getSecondaryEventMetrics,
+  getEventCollectionStats,
+} = require('../models/analytics');
 const { getTestById } = require('../models/test');
 const { STATISTICAL_THRESHOLD, SETTINGS_BOUNDS } = require('../constants');
 const { getCheckoutPhaseFromTest } = require('../utils/checkoutPhases');
+const { parseGoalConfig } = require('../utils/goalConfig');
 
 const CHECKOUT_SECTION_EVENT_NAMES = Object.freeze([
   'checkout_section_impression',
@@ -34,6 +39,61 @@ const CHECKOUT_DELIVERY_EVENT_NAMES = Object.freeze([
   'checkout_delivery_method_action',
   'checkout_customization_match',
 ]);
+
+function normalizeAnalyticsEventName(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 100);
+}
+
+function getVariantIdentity(variant = {}) {
+  return variant.id ?? variant.variant_id ?? variant.name ?? null;
+}
+
+function resolveControlVariantId(test = {}, variants = []) {
+  const configuredVariants = Array.isArray(test?.variants) ? test.variants : [];
+  const configuredControl =
+    configuredVariants.find(variant => variant?.is_control || variant?.isControl) ||
+    configuredVariants.find(variant => String(variant?.name || '').toLowerCase() === 'control') ||
+    configuredVariants[0];
+  const configuredId = getVariantIdentity(configuredControl);
+  if (configuredId !== null && configuredId !== undefined) {
+    return String(configuredId);
+  }
+  const dataControl = variants.find(
+    variant => String(variant?.name || '').toLowerCase() === 'control'
+  );
+  return dataControl?.id ?? variants[0]?.id ?? null;
+}
+
+function orderVariantsForComparison(variants = [], test = {}) {
+  const configuredVariants = Array.isArray(test?.variants) ? test.variants : [];
+  const configuredOrder = new Map();
+  configuredVariants.forEach((variant, index) => {
+    const identity = getVariantIdentity(variant);
+    if (identity !== null && identity !== undefined) {
+      configuredOrder.set(String(identity), index);
+    }
+    if (variant?.name) {
+      configuredOrder.set(String(variant.name), index);
+    }
+  });
+  const controlId = resolveControlVariantId(test, variants);
+  return [...variants].sort((a, b) => {
+    if (controlId && String(a.id) === String(controlId)) {
+      return -1;
+    }
+    if (controlId && String(b.id) === String(controlId)) {
+      return 1;
+    }
+    const aOrder = configuredOrder.get(String(a.id)) ?? configuredOrder.get(String(a.name)) ?? 999;
+    const bOrder = configuredOrder.get(String(b.id)) ?? configuredOrder.get(String(b.name)) ?? 999;
+    return aOrder - bOrder;
+  });
+}
 
 class AnalyticsService {
   /**
@@ -413,6 +473,18 @@ class AnalyticsService {
       winnerVariantId: winner === 'best' ? best?.id : null,
       bestVariantId: best?.id ?? null,
       method: 'chi2',
+      comparisonGuidance:
+        variants.length > 2
+          ? 'Global chi-square is used for multi-variant evidence. Pairwise winner reads are exploratory unless you apply multiplicity control or a fixed-horizon decision rule.'
+          : null,
+      multiplicity: {
+        applies: variants.length > 2,
+        correctionApplied: false,
+        recommendation:
+          variants.length > 2
+            ? 'Use this as a screening signal, then validate the winning variant against control before promotion.'
+            : null,
+      },
       chiSquare: Math.round(chiSquare * 100) / 100,
       pairwisePValue,
       confidenceInterval: null,
@@ -451,7 +523,9 @@ class AnalyticsService {
       return [];
     }
     if (Array.isArray(goal.secondary)) {
-      return goal.secondary.map(s => s?.event_name || s?.eventName).filter(Boolean);
+      return goal.secondary
+        .map(s => normalizeAnalyticsEventName(s?.event_name || s?.eventName))
+        .filter(Boolean);
     }
     return [];
   }
@@ -473,7 +547,7 @@ class AnalyticsService {
       // Ignore
     }
 
-    const goal = test?.goal || {};
+    const goal = parseGoalConfig(test?.goal);
     const conversionWindowDays =
       options.conversionWindowDays ?? goal.conversion_window_days ?? null;
     const conversionUrl = options.conversionUrl ?? goal.conversion_url ?? null;
@@ -491,49 +565,68 @@ class AnalyticsService {
       new Set([...secondaryEventNames, ...checkoutSectionEventNames])
     );
     let eventMetrics = {};
+    let secondaryEventStats = {};
     if (eventNamesForMetrics.length > 0) {
-      eventMetrics = await getSecondaryEventMetrics(
-        testId,
-        shopDomain,
-        eventNamesForMetrics,
-        options
-      );
+      [eventMetrics, secondaryEventStats] = await Promise.all([
+        getSecondaryEventMetrics(testId, shopDomain, eventNamesForMetrics, options),
+        getEventCollectionStats(testId, shopDomain, eventNamesForMetrics, options),
+      ]);
     }
 
+    const calculateProfit = variant => {
+      const revenue = Number(variant.revenue) || 0;
+      const conversions = Number(variant.conversions) || 0;
+      const cogs = goal?.cogs;
+      if (!cogs?.enabled) {
+        return revenue;
+      }
+      if (cogs.type === 'fixed_per_order') {
+        return revenue - conversions * (Number(cogs.value) || 0);
+      }
+      return revenue - revenue * ((Number(cogs.value) || 0) / 100);
+    };
+
     // Calculate metrics for each variant
-    const variants = (rawData || []).map(variant => {
-      const v = {
-        id: variant.variant_id,
-        name: variant.variant_name,
-        visitors: variant.visitors || 0,
-        conversions: variant.conversions || 0,
-        conversionRate: this.calculateConversionRate(
-          variant.conversions || 0,
-          variant.visitors || 0
-        ),
-        revenue: variant.revenue || 0,
-        avgOrderValue: variant.conversions > 0 ? (variant.revenue || 0) / variant.conversions : 0,
-        secondaryEvents: {},
-        checkoutSectionEvents: {},
-      };
-      secondaryEventNames.forEach(eventName => {
-        const data = eventMetrics[eventName]?.[variant.variant_id];
-        v.secondaryEvents[eventName] = {
-          count: data?.count ?? 0,
-          sum: data?.sum ?? 0,
-          rate: v.visitors > 0 ? ((data?.count ?? 0) / v.visitors) * 100 : 0,
+    const variants = orderVariantsForComparison(
+      (rawData || []).map(variant => {
+        const visitors = Number(variant.visitors) || 0;
+        const revenue = Number(variant.revenue) || 0;
+        const conversions = Number(variant.conversions) || 0;
+        const profit = calculateProfit({ ...variant, visitors, revenue, conversions });
+        const v = {
+          id: variant.variant_id,
+          name: variant.variant_name,
+          visitors,
+          conversions,
+          conversionRate: this.calculateConversionRate(conversions, visitors),
+          revenue,
+          revenuePerVisitor: visitors > 0 ? revenue / visitors : 0,
+          profit,
+          profitPerVisitor: visitors > 0 ? profit / visitors : 0,
+          avgOrderValue: conversions > 0 ? revenue / conversions : 0,
+          secondaryEvents: {},
+          checkoutSectionEvents: {},
         };
-      });
-      checkoutSectionEventNames.forEach(eventName => {
-        const data = eventMetrics[eventName]?.[variant.variant_id];
-        v.checkoutSectionEvents[eventName] = {
-          count: data?.count ?? 0,
-          sum: data?.sum ?? 0,
-          rate: v.visitors > 0 ? ((data?.count ?? 0) / v.visitors) * 100 : 0,
-        };
-      });
-      return v;
-    });
+        secondaryEventNames.forEach(eventName => {
+          const data = eventMetrics[eventName]?.[variant.variant_id];
+          v.secondaryEvents[eventName] = {
+            count: data?.count ?? 0,
+            sum: data?.sum ?? 0,
+            rate: v.visitors > 0 ? ((data?.count ?? 0) / v.visitors) * 100 : 0,
+          };
+        });
+        checkoutSectionEventNames.forEach(eventName => {
+          const data = eventMetrics[eventName]?.[variant.variant_id];
+          v.checkoutSectionEvents[eventName] = {
+            count: data?.count ?? 0,
+            sum: data?.sum ?? 0,
+            rate: v.visitors > 0 ? ((data?.count ?? 0) / v.visitors) * 100 : 0,
+          };
+        });
+        return v;
+      }),
+      test
+    );
 
     if (!rawData || rawData.length < 2) {
       const totalVisitors = variants.reduce((sum, v) => sum + (v.visitors || 0), 0);
@@ -541,6 +634,7 @@ class AnalyticsService {
         error: 'Insufficient data for analysis',
         variants,
         secondaryEventNames,
+        secondaryEventStats,
         checkoutSectionEventNames,
         significance: {
           significant: false,
@@ -560,13 +654,22 @@ class AnalyticsService {
     // Calculate significance (frequentist) or Bayesian probability to beat control
     const analysisMethod = goal.analysis_method || 'frequentist';
     let significanceThreshold = STATISTICAL_THRESHOLD.P_VALUE;
+    const configuredGoalConfidence = Number(goal.significance_level);
     try {
-      const settingsRes = await query(
-        'SELECT confidence_level FROM shop_settings WHERE shop_domain = $1',
-        [shopDomain]
-      );
-      const conf =
-        Number(settingsRes.rows[0]?.confidence_level) || SETTINGS_BOUNDS.DEFAULT_CONFIDENCE_LEVEL;
+      let conf =
+        Number.isFinite(configuredGoalConfidence) &&
+        configuredGoalConfidence > 0 &&
+        configuredGoalConfidence < 1
+          ? configuredGoalConfidence
+          : null;
+      if (!conf) {
+        const settingsRes = await query(
+          'SELECT confidence_level FROM shop_settings WHERE shop_domain = $1',
+          [shopDomain]
+        );
+        conf =
+          Number(settingsRes.rows[0]?.confidence_level) || SETTINGS_BOUNDS.DEFAULT_CONFIDENCE_LEVEL;
+      }
       significanceThreshold = 1 - conf;
     } catch {
       // Use default
@@ -602,18 +705,44 @@ class AnalyticsService {
           probabilityToBeatControl: Math.round(prob * 1000) / 1000,
         };
       });
-      significance = { ...significance, bayesian: true, probToBeatControl };
+      significance = {
+        ...significance,
+        bayesian: true,
+        probabilityMethod: 'normal_approximation',
+        probabilityLabel: 'Directional probability',
+        probabilityNote:
+          'This is a normal-approximation directional probability, not a full Beta-Binomial posterior.',
+        probToBeatControl,
+      };
     }
 
-    // Calculate revenue impact
-    const revenueImpact = this.calculateRevenueImpact(variants[0], variants[1]);
+    // Calculate revenue impact against the actual winner/best variant when available.
+    const controlVariant = variants[0];
+    const comparisonVariant =
+      variants.find(v => v.id === (significance.winnerVariantId || significance.bestVariantId)) ||
+      variants[1];
+    const revenueImpact =
+      controlVariant && comparisonVariant && controlVariant.id !== comparisonVariant.id
+        ? {
+            ...this.calculateRevenueImpact(controlVariant, comparisonVariant),
+            controlVariantId: controlVariant.id,
+            controlVariantName: controlVariant.name,
+            comparisonVariantId: comparisonVariant.id,
+            comparisonVariantName: comparisonVariant.name,
+          }
+        : null;
 
     // Sample Ratio Mismatch (SRM) detection - data quality check
     const totalVisitors = variants.reduce((sum, v) => sum + v.visitors, 0);
     const holdoutPercent = test?.holdout_percent ?? 0;
     const variantsWithAllocation = variants.map(v => {
       if (v.id === 'holdout' || v.name === 'Holdout') {
-        return { ...v, allocation: holdoutPercent || 100 / variants.length };
+        return {
+          ...v,
+          allocation: Number.isFinite(Number(holdoutPercent))
+            ? Number(holdoutPercent)
+            : 100 / variants.length,
+        };
       }
       const testVariant = (test?.variants || []).find(tv => tv?.id === v.id || tv?.name === v.name);
       return { ...v, allocation: testVariant?.allocation ?? 100 / variants.length };
@@ -627,6 +756,7 @@ class AnalyticsService {
       analysisMethod: analysisMethod || 'frequentist',
       revenueImpact,
       secondaryEventNames,
+      secondaryEventStats,
       checkoutSectionEventNames,
       srm,
       summary: {

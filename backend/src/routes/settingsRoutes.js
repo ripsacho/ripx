@@ -1753,6 +1753,9 @@ router.put(
     }
 
     const dbConfig = await integrationConfig.getIntegrationConfig(shopDomain);
+    const storedConfig = await integrationConfig
+      .getStoredIntegrationConfig(shopDomain)
+      .catch(() => null);
     const PLACEHOLDER = '••••••••';
     const mergeSecret = (val, existing) => {
       if (val === undefined) {
@@ -1768,7 +1771,10 @@ router.put(
         (config.ga4MeasurementId !== undefined
           ? config.ga4MeasurementId
           : dbConfig?.ga4MeasurementId) || '',
-      ga4ApiSecret: mergeSecret(config.ga4ApiSecret, dbConfig?.ga4ApiSecret),
+      ga4ApiSecret: mergeSecret(
+        config.ga4ApiSecret,
+        dbConfig?.ga4ApiSecret || storedConfig?.ga4_api_secret
+      ),
       bigqueryProjectId:
         (config.bigqueryProjectId !== undefined
           ? config.bigqueryProjectId
@@ -1779,10 +1785,10 @@ router.put(
           : dbConfig?.bigqueryDataset) || 'ripx_analytics',
       bigqueryCredentials:
         config.bigqueryCredentials === '[configured]' || config.bigqueryCredentials === PLACEHOLDER
-          ? dbConfig?.bigqueryCredentials || ''
+          ? dbConfig?.bigqueryCredentials || storedConfig?.bigquery_credentials || ''
           : (config.bigqueryCredentials !== undefined
               ? config.bigqueryCredentials
-              : dbConfig?.bigqueryCredentials) || '',
+              : dbConfig?.bigqueryCredentials || storedConfig?.bigquery_credentials) || '',
     };
 
     await integrationConfig.saveIntegrationConfig(shopDomain, merged);

@@ -1902,27 +1902,31 @@
   z-index: 100;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 1rem 1.5rem;
-  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--futuristic-violet) 100%);
-  color: white;
-  border: none;
+  gap: 0.65rem;
+  min-height: 56px;
+  padding: 0.58rem 1.1rem 0.58rem 0.66rem;
+  background:
+    linear-gradient(135deg, rgba(6, 182, 212, 0.98), rgba(139, 92, 246, 0.98)) padding-box,
+    linear-gradient(135deg, rgba(255, 255, 255, 0.85), rgba(6, 182, 212, 0.35)) border-box;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.26);
   border-radius: 999px;
-  font-weight: 700;
-  font-size: 0.9375rem;
+  font-weight: 800;
+  font-size: 0.9rem;
   cursor: pointer;
   box-shadow:
-    0 8px 28px rgba(6, 182, 212, 0.35),
-    0 2px 8px rgba(0, 0, 0, 0.08),
-    0 0 0 1px rgba(255, 255, 255, 0.2) inset;
+    0 18px 44px rgba(15, 23, 42, 0.18),
+    0 8px 26px rgba(139, 92, 246, 0.24),
+    0 0 0 1px rgba(255, 255, 255, 0.18) inset;
   transition: all var(--dash-motion-slow) var(--dash-motion-spring);
+  isolation: isolate;
 }
 
 .fab:hover {
-  transform: var(--ripx-interactive-lift, translateY(-1px));
+  transform: translateY(-2px);
   box-shadow:
-    0 6px 20px rgba(6, 182, 212, 0.25),
-    0 2px 8px rgba(0, 0, 0, 0.08),
+    0 22px 54px rgba(15, 23, 42, 0.22),
+    0 12px 32px rgba(139, 92, 246, 0.3),
     0 0 0 1px rgba(255, 255, 255, 0.25) inset;
 }
 
@@ -1934,17 +1938,26 @@
   outline: none;
   box-shadow:
     0 8px 32px rgba(6, 182, 212, 0.4),
-    0 0 0 3px rgba(6, 182, 212, 0.3);
+    0 0 0 4px rgba(6, 182, 212, 0.32);
 }
 
 .fabIcon {
-  font-size: 1.25rem;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32);
+  font-size: 1.35rem;
   line-height: 1;
-  font-weight: 300;
+  font-weight: 500;
 }
 
 .fabLabel {
-  letter-spacing: 0.02em;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
 }
 
 .fabActive {
@@ -1987,7 +2000,11 @@
   .fab {
     bottom: max(1.5rem, env(safe-area-inset-bottom, 0px) + 0.75rem);
     right: max(1.5rem, env(safe-area-inset-right, 0px) + 0.75rem);
-    padding: 0.875rem 1.25rem;
+    min-width: 56px;
+    width: 56px;
+    min-height: 56px;
+    padding: 0;
+    justify-content: center;
   }
   .fabLabel {
     display: none;

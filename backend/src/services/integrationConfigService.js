@@ -6,6 +6,20 @@
  */
 
 const { query } = require('../utils/database');
+const { decryptSecret, encryptSecret, isEncryptedSecret } = require('../utils/secretCrypto');
+
+async function getStoredIntegrationConfig(shopDomain) {
+  if (!shopDomain || !shopDomain.trim()) {
+    return null;
+  }
+
+  const result = await query(
+    `SELECT ga4_measurement_id, ga4_api_secret, bigquery_project_id, bigquery_dataset, bigquery_credentials
+     FROM shop_settings WHERE shop_domain = $1`,
+    [shopDomain]
+  );
+  return result.rows[0] || null;
+}
 
 /**
  * Get integration config for a shop from DB
@@ -17,21 +31,16 @@ async function getIntegrationConfig(shopDomain) {
     return null;
   }
   try {
-    const result = await query(
-      `SELECT ga4_measurement_id, ga4_api_secret, bigquery_project_id, bigquery_dataset, bigquery_credentials
-       FROM shop_settings WHERE shop_domain = $1`,
-      [shopDomain]
-    );
-    const row = result.rows[0];
+    const row = await getStoredIntegrationConfig(shopDomain);
     if (!row) {
       return null;
     }
     return {
       ga4MeasurementId: row.ga4_measurement_id?.trim() || null,
-      ga4ApiSecret: row.ga4_api_secret?.trim() || null,
+      ga4ApiSecret: decryptSecret(row.ga4_api_secret?.trim()) || null,
       bigqueryProjectId: row.bigquery_project_id?.trim() || null,
       bigqueryDataset: row.bigquery_dataset?.trim() || 'ripx_analytics',
-      bigqueryCredentials: row.bigquery_credentials?.trim() || null,
+      bigqueryCredentials: decryptSecret(row.bigquery_credentials?.trim()) || null,
     };
   } catch (e) {
     return null;
@@ -127,7 +136,7 @@ async function saveIntegrationConfig(shopDomain, config) {
   const bqCreds = (config.bigqueryCredentials || '').trim() || null;
 
   // Validate BigQuery credentials JSON if provided
-  if (bqCreds) {
+  if (bqCreds && !isEncryptedSecret(bqCreds)) {
     try {
       JSON.parse(bqCreds);
     } catch {
@@ -146,12 +155,13 @@ async function saveIntegrationConfig(shopDomain, config) {
        bigquery_dataset = $5,
        bigquery_credentials = $6,
        updated_at = NOW()`,
-    [shopDomain, ga4Id, ga4Secret, bqProject, bqDataset, bqCreds]
+    [shopDomain, ga4Id, encryptSecret(ga4Secret), bqProject, bqDataset, encryptSecret(bqCreds)]
   );
 }
 
 module.exports = {
   getIntegrationConfig,
+  getStoredIntegrationConfig,
   getGA4Config,
   getBigQueryConfig,
   isGA4Configured,

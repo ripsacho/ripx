@@ -1,9 +1,22 @@
-import { defineConfig } from 'vite';
+import { createLogger, defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'url';
 import path from 'path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const logger = createLogger();
+const loggerWarn = logger.warn;
+
+logger.warn = (message, options) => {
+  const text = String(message || '');
+  if (
+    text.includes('[esbuild css minify]') &&
+    text.includes('@media (--p-breakpoints-md-up) and print')
+  ) {
+    return;
+  }
+  loggerWarn(message, options);
+};
 
 function resolveManualChunk(id) {
   if (!id || typeof id !== 'string') return undefined;
@@ -38,6 +51,7 @@ function resolveManualChunk(id) {
 export default defineConfig(() => {
   return {
     plugins: [react()],
+    customLogger: logger,
     // Load .env from repo root so VITE_* and backend can share one .env when running npm run dev from root
     envDir: path.resolve(__dirname, '..'),
     server: {
@@ -64,7 +78,7 @@ export default defineConfig(() => {
       // Disable sourcemaps in production for security and performance
       sourcemap: process.env.NODE_ENV !== 'production',
       minify: 'terser',
-      // Keep CSS minification compatible with existing Polaris/global selectors.
+      // Keep esbuild CSS minification for performance; a known Polaris v12 custom-media warning is filtered above.
       cssMinify: 'esbuild',
       terserOptions: {
         compress: {

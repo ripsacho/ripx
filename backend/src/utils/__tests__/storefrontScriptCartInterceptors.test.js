@@ -3,6 +3,7 @@ const path = require('path');
 const vm = require('vm');
 
 function createDocumentStub(opts = {}) {
+  const documentElementAttrs = {};
   return {
     readyState: opts.readyState || 'loading',
     cookie: '',
@@ -15,8 +16,13 @@ function createDocumentStub(opts = {}) {
     },
     head: { appendChild: jest.fn() },
     documentElement: {
-      setAttribute: jest.fn(),
-      removeAttribute: jest.fn(),
+      setAttribute: jest.fn((name, value) => {
+        documentElementAttrs[String(name)] = String(value);
+      }),
+      getAttribute: jest.fn(name => documentElementAttrs[String(name)] || null),
+      removeAttribute: jest.fn(name => {
+        delete documentElementAttrs[String(name)];
+      }),
       appendChild: jest.fn(),
     },
     getElementById: jest.fn(() => null),
@@ -114,6 +120,7 @@ function bootStorefrontScriptHarness(opts = {}) {
     __RIPX_TEST_HOOKS__: {},
     __RIPX_DEBUG__: false,
     __RIPX_PRICE_PREVIEW_FRAME__: Boolean(opts.pricePreviewFrame),
+    ripx_consent: opts.ripxConsent === true,
     location,
     sessionStorage,
     localStorage,
@@ -295,6 +302,80 @@ describe('storefront script cart/add interceptors', () => {
     expect(hooks.looksLikeCartAddNearMiss('/apps/proxy/cart-add-line')).toBe(true);
     expect(hooks.looksLikeCartAddNearMiss('/cart/add.js')).toBe(false);
     expect(typeof hooks.getRipxCartAttributeState).toBe('function');
+  });
+
+  it('waits for consent before starting eager live batch assignment', async () => {
+    const testId = '24242424-2424-4242-8242-242424242424';
+    const { hooks, fetchCalls, windowObj } = bootStorefrontScriptHarness({
+      readyState: 'complete',
+      runtimeConfig: {
+        apiUrl: 'https://api.example.com/api',
+        consentRequired: true,
+        activeTests: [{ id: testId, type: 'price', targetType: 'all-products' }],
+      },
+      fetchImpl: input => {
+        const url = getFetchInputUrl({ input });
+        if (url.includes('/track/variants')) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ variants: { [testId]: { variantId: 'v1' } } }),
+          });
+        }
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+      },
+    });
+
+    expect(hooks.ensureBatchFetched()).toBe(false);
+    expect(fetchCalls.some(call => getFetchInputUrl(call).includes('/track/variants'))).toBe(false);
+
+    windowObj.ripx_consent = true;
+    windowObj.ripx_consent_callback();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(fetchCalls.some(call => getFetchInputUrl(call).includes('/track/variants'))).toBe(true);
+  });
+
+  it('defers PDP price apply until product id is available for selected product targets', () => {
+    const intervals = [];
+    const clearIntervalStub = jest.fn();
+    const { hooks, windowObj } = bootStorefrontScriptHarness({
+      setInterval: jest.fn(cb => {
+        intervals.push(cb);
+        return intervals.length;
+      }),
+      clearInterval: clearIntervalStub,
+    });
+
+    const deferred = hooks.deferPdpPriceApplyUntilProductId(
+      {
+        id: '25252525-2525-4252-8252-252525252525',
+        type: 'price',
+        targetVariantId: null,
+      },
+      { variantId: 'v1', config: { priceMode: 'percent', value: 10 } },
+      'product',
+      ['gid://shopify/Product/200'],
+      true
+    );
+
+    expect(deferred).toBe(true);
+    expect(intervals).toHaveLength(1);
+
+    windowObj.ShopifyAnalytics = { meta: { product: { id: 200 } } };
+    intervals[0]();
+
+    expect(clearIntervalStub).toHaveBeenCalled();
+    expect(
+      windowObj.__RIPX_LIVE_DIAGNOSTICS__.events.some(
+        event => event.event === 'price_apply:pdp_retry'
+      )
+    ).toBe(true);
+    expect(hooks.getAntiFlickerDiagnostics()).toMatchObject({
+      active: false,
+      pending: 0,
+    });
   });
 
   it('recognizes cart add paths (suffix match; any Markets / locale depth)', () => {

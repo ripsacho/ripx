@@ -15,10 +15,14 @@ const emailService = require('../services/emailService');
 const auditLogService = require('../services/auditLogService');
 const logger = require('../utils/logger');
 const { syncSupportTicketToExternalInbox } = require('../services/supportInboxIntegrationService');
+const { retrieveSupportKbContext } = require('../services/supportAiRagService');
+const { FAQ_ALL_CATEGORY, buildFaqSuggestions } = require('../services/supportFaqService');
+const { redactText } = require('../services/supportAgentRedactionService');
 const {
   SUPPORT_TICKET_THREAD_MESSAGE_MAX_LENGTH,
   getSupportTicketForUser,
   listSupportTicketThreadMessages,
+  markSupportTicketThreadRead,
   createSupportTicketThreadMessage,
   subscribeSupportTicketThread,
 } = require('../services/supportTicketThreadService');
@@ -549,6 +553,92 @@ router.get(
       app_domain: appDomain || null,
       ...payload,
     });
+  })
+);
+
+/**
+ * GET /api/support/faq-suggestions
+ * Returns page-aware FAQ cards with an optional knowledge-base fallback signal.
+ */
+router.get(
+  '/faq-suggestions',
+  optionalAuthenticate,
+  asyncHandler(async (req, res) => {
+    const pathname = normalizeContextPathname(
+      req.query.pathname || req.query.path || req.get('x-ripx-pathname') || '/'
+    );
+    const q = String(req.query.q || req.query.query || '')
+      .trim()
+      .slice(0, 240);
+    const category = String(req.query.category || FAQ_ALL_CATEGORY).trim() || FAQ_ALL_CATEGORY;
+    const limit = Math.max(1, Math.min(parseInt(req.query.limit, 10) || 3, 8));
+    const payload = await buildFaqSuggestions({
+      pathname,
+      query: q,
+      category,
+      limit,
+      retrieveKbContext: retrieveSupportKbContext,
+    });
+
+    return res.json({
+      success: true,
+      pathname,
+      query: q,
+      category,
+      ...payload,
+    });
+  })
+);
+
+/**
+ * POST /api/support/faq-feedback
+ * Captures lightweight usefulness signals for FAQ answers.
+ */
+router.post(
+  '/faq-feedback',
+  optionalAuthenticate,
+  asyncHandler(async (req, res) => {
+    const faqId = String(req.body?.faq_id || '')
+      .trim()
+      .slice(0, 80);
+    if (!faqId) {
+      return res.status(400).json({ success: false, error: 'faq_id is required' });
+    }
+    const helpful = Boolean(req.body?.helpful);
+    const category = String(req.body?.category || '')
+      .trim()
+      .slice(0, 80);
+    const reason =
+      String(req.body?.reason || '')
+        .trim()
+        .slice(0, 160) || null;
+    const routeContext =
+      req.body?.route_context && typeof req.body.route_context === 'object'
+        ? req.body.route_context
+        : {};
+    const searchQuery = String(req.body?.search_query || '')
+      .trim()
+      .slice(0, 240);
+
+    await auditLogService.log('__support__', {
+      entityType: 'support_faq',
+      entityId: faqId,
+      action: helpful ? 'faq_helpful' : 'faq_still_need_help',
+      userId: req.user?.id || req.shopDomain || null,
+      actorType: req.user?.id ? 'user' : 'anonymous',
+      actorId: req.user?.id || req.shopDomain || req.ip || 'anonymous',
+      ipAddress: req.ip || req.connection?.remoteAddress,
+      changes: {
+        faq_id: faqId,
+        category,
+        helpful,
+        reason,
+        route_context: routeContext,
+        search_query: searchQuery,
+      },
+    });
+
+    return res.json({ success: true });
   })
 );
 
@@ -1220,12 +1310,31 @@ router.get(
     }
 
     let result;
-    const baseWhereEmail = 'WHERE LOWER(email) = LOWER($1)';
-    const baseWhereShop = 'WHERE LOWER(shop_domain) = LOWER($1)';
-    const deletedFilter = ' AND (deleted_at IS NULL)';
-    const orderLimit = ' ORDER BY created_at DESC LIMIT $2';
-    const selectCols =
-      'SELECT id, subject, category, status, created_at, updated_at, metadata FROM support_tickets ';
+    const baseWhereEmail = 'WHERE LOWER(st.email) = LOWER($1)';
+    const baseWhereShop = 'WHERE LOWER(st.shop_domain) = LOWER($1)';
+    const deletedFilter = ' AND (st.deleted_at IS NULL)';
+    const orderLimit = ' ORDER BY st.updated_at DESC, st.created_at DESC LIMIT $2';
+    const selectCols = `
+      SELECT st.id, st.subject, st.category, st.status, st.created_at, st.updated_at, st.metadata,
+             msg.latest_admin_reply_at,
+             rs.last_read_at AS user_last_read_at,
+             (
+               SELECT COUNT(*)::int
+               FROM support_ticket_messages unread_msg
+               WHERE unread_msg.ticket_id = st.id
+                 AND unread_msg.sender_type = 'admin'
+                 AND (rs.last_read_at IS NULL OR unread_msg.created_at > rs.last_read_at)
+             ) AS unread_count
+      FROM support_tickets st
+      LEFT JOIN (
+        SELECT ticket_id,
+          MAX(created_at) FILTER (WHERE sender_type = 'admin') AS latest_admin_reply_at
+        FROM support_ticket_messages
+        GROUP BY ticket_id
+      ) msg ON msg.ticket_id = st.id
+      LEFT JOIN support_ticket_read_states rs
+        ON rs.ticket_id = st.id AND rs.audience = 'user'
+    `;
     try {
       if (byEmail) {
         result = await query(selectCols + baseWhereEmail + deletedFilter + orderLimit, [
@@ -1239,9 +1348,14 @@ router.get(
         ]);
       }
     } catch (err) {
-      if (err.message && /deleted_at|metadata|column.*does not exist/i.test(err.message)) {
+      if (
+        err.message &&
+        /deleted_at|metadata|support_ticket_read_states|support_ticket_messages|column.*does not exist|relation .* does not exist/i.test(
+          err.message
+        )
+      ) {
         const fallbackSelectCols =
-          'SELECT id, subject, category, status, created_at, updated_at FROM support_tickets ';
+          'SELECT st.id, st.subject, st.category, st.status, st.created_at, st.updated_at FROM support_tickets st ';
         if (byEmail) {
           result = await query(fallbackSelectCols + baseWhereEmail + orderLimit, [
             req.email.trim(),
@@ -1271,6 +1385,10 @@ router.get(
           status: r.status,
           created_at: r.created_at,
           updated_at: r.updated_at,
+          latest_admin_reply_at: r.latest_admin_reply_at || null,
+          user_last_read_at: r.user_last_read_at || null,
+          unread_count: Number(r.unread_count || 0),
+          has_unread_support_reply: Number(r.unread_count || 0) > 0,
         };
       }),
     });
@@ -1300,6 +1418,7 @@ router.get(
     const messages = await listSupportTicketThreadMessages(ticket, {
       limit: parseInt(req.query.limit, 10) || 200,
     });
+    const readState = await markSupportTicketThreadRead(ticket.id, 'user');
     return res.json({
       success: true,
       ticket: {
@@ -1311,6 +1430,7 @@ router.get(
         updated_at: ticket.updated_at,
       },
       messages,
+      read_state: readState,
     });
   })
 );
@@ -1366,11 +1486,39 @@ router.post(
         .status(400)
         .json({ success: false, error: created.error || 'Could not add reply' });
     }
+    const readState = await markSupportTicketThreadRead(ticket.id, 'user');
+
+    auditLogService
+      .log(req.shopDomain || '__support__', {
+        entityType: 'support_ticket',
+        entityId: String(ticket.id),
+        action: 'customer_reply',
+        userId: req.userId || null,
+        actorType: req.authType || 'user',
+        actorId: req.userId || req.email || req.shopDomain || 'customer',
+        ipAddress: req.ip || req.connection?.remoteAddress,
+        changes: {
+          message_length: message.length,
+          source: 'customer_support_chat',
+        },
+      })
+      .catch(() => {});
+
+    if (SUPPORT_EMAIL_TO) {
+      emailService
+        .sendMail({
+          to: SUPPORT_EMAIL_TO,
+          subject: `[RipX Support] New reply on #${String(ticket.id).slice(0, 8)}`,
+          text: `A customer replied to support ticket #${String(ticket.id).slice(0, 8)}.\n\nSubject: ${ticket.subject || 'Support request'}\nShop: ${ticket.shop_domain || 'n/a'}\n\n${message}`,
+        })
+        .catch(() => {});
+    }
 
     return res.status(201).json({
       success: true,
       ticket_id: ticket.id,
       message: created.message,
+      read_state: readState,
     });
   })
 );
@@ -1416,7 +1564,10 @@ router.get(
       timestamp: new Date().toISOString(),
     });
 
-    const unsubscribe = subscribeSupportTicketThread(ticket.id, messagePayload => {
+    const unsubscribe = subscribeSupportTicketThread(ticket.id, async messagePayload => {
+      if (messagePayload?.sender_type === 'admin') {
+        await markSupportTicketThreadRead(ticket.id, 'user').catch(() => {});
+      }
       writeEvent({
         type: 'message',
         ticket_id: ticket.id,
@@ -1578,40 +1729,12 @@ function parseHelpfulBoolean(value) {
  * @returns {Promise<{ context: string, sources: string[] }>}
  */
 async function getKbContext(queryText, apiKey) {
-  if (!queryText || !apiKey) {
-    return { context: '', sources: [] };
-  }
-  try {
-    const OpenAI = require('openai').default;
-    const openai = new OpenAI({ apiKey });
-    const embRes = await openai.embeddings.create({
-      model: 'text-embedding-3-small',
-      input: queryText.slice(0, 8000),
-    });
-    const embedding = embRes?.data?.[0]?.embedding;
-    if (!Array.isArray(embedding) || embedding.length !== 1536) {
-      return { context: '', sources: [] };
-    }
-    const vecStr = `[${embedding.join(',')}]`;
-    const result = await query(
-      `SELECT content, source FROM support_kb_chunks
-       WHERE embedding IS NOT NULL
-       ORDER BY embedding <=> $1::vector
-       LIMIT $2`,
-      [vecStr, RAG_TOP_K]
-    );
-    if (!result.rows.length) {
-      return { context: '', sources: [] };
-    }
-    const context = result.rows
-      .map((r, i) => `[${i + 1}] ${(r.content || '').trim()}`)
-      .join('\n\n');
-    const sources = [...new Set(result.rows.map(r => r.source).filter(Boolean))];
-    return { context, sources };
-  } catch (err) {
-    logger.warn('Support RAG getKbContext failed', { error: err.message });
-    return { context: '', sources: [] };
-  }
+  const result = await retrieveSupportKbContext(queryText, { apiKey, topK: RAG_TOP_K });
+  return {
+    context: result.context || '',
+    sources: result.sources || [],
+    status: result.status || 'not_available',
+  };
 }
 
 /**
@@ -1716,7 +1839,12 @@ router.post(
   asyncHandler(async (req, res) => {
     const body = req.body || {};
     const raw = typeof body.message === 'string' ? body.message.trim() : '';
-    const history = Array.isArray(body.messages) ? body.messages.slice(0, 20) : [];
+    const history = Array.isArray(body.messages)
+      ? body.messages.slice(-20).map(message => ({
+          ...message,
+          content: redactText(message?.content || ''),
+        }))
+      : [];
     const chatLanguage = normalizeSupportChatLanguage(body.language);
     const conversationId =
       body.conversation_id && typeof body.conversation_id === 'string'
@@ -1737,12 +1865,13 @@ router.post(
     const shopDomain = req.shopDomain && typeof req.shopDomain === 'string' ? req.shopDomain : null;
 
     const apiKey = process.env.OPENAI_API_KEY;
+    const safeRaw = redactText(raw);
     let reply;
     if (!apiKey) {
       reply = getSupportLanguageMessage(SUPPORT_CHAT_NOT_CONFIGURED_MESSAGE, chatLanguage);
       const persisted = await persistChatTurn({
         conversationId,
-        userMessage: raw,
+        userMessage: safeRaw,
         assistantReply: reply,
         userId,
         tenantId,
@@ -1758,12 +1887,16 @@ router.post(
       });
     }
 
-    const { context: kbContext, sources: kbSources } = await getKbContext(raw, apiKey);
+    const {
+      context: kbContext,
+      sources: kbSources,
+      status: ragStatus,
+    } = await getKbContext(safeRaw, apiKey);
     const systemPrompt = withSupportLanguageInstruction(
       kbContext ? CHAT_SYSTEM_PROMPT_RAG(kbContext) : CHAT_SYSTEM_PROMPT,
       chatLanguage
     );
-    const openaiMessages = buildChatMessages(raw, history, systemPrompt);
+    const openaiMessages = buildChatMessages(safeRaw, history, systemPrompt);
 
     try {
       const OpenAI = require('openai').default;
@@ -1788,7 +1921,7 @@ router.post(
 
     const persisted = await persistChatTurn({
       conversationId,
-      userMessage: raw,
+      userMessage: safeRaw,
       assistantReply: reply,
       userId,
       tenantId,
@@ -1799,6 +1932,7 @@ router.post(
       success: true,
       reply,
       sources: kbSources || [],
+      rag_status: ragStatus,
       language: chatLanguage,
       conversation_id: persisted.conversationId || undefined,
       assistant_message_id: persisted.assistantMessageId || undefined,

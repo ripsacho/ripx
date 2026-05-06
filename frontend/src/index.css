@@ -443,14 +443,13 @@ textarea:focus-visible {
   min-height: 100vh;
 }
 
-/* Profile, Settings, Docs, Notifications: standalone pages (TopBar only, no AB sidebar) */
+/* Profile, Docs, Notifications: standalone pages (TopBar only, no AB sidebar) */
 .main-content-wrapper--universal {
   min-height: 100vh;
 }
 
 /* Constrain width and center content on universal pages for readability */
 .main-content-wrapper--universal .profilePage,
-.main-content-wrapper--universal .settingsPage,
 .main-content-wrapper--universal .notificationsPage,
 .main-content-wrapper--universal .supportPage {
   max-width: 1000px;
@@ -1907,53 +1906,6 @@ textarea:focus-visible {
   box-shadow: 0 2px 8px rgba(6, 182, 212, 0.35);
 }
 
-/* Sample Size Result (embedded in wizard) - Advanced */
-.sample-size-result {
-  position: relative;
-  padding: 0;
-  margin: 0;
-  border-radius: 14px;
-  overflow: hidden;
-  border: 1px solid var(--border-secondary);
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.04) 0%, rgba(20, 184, 166, 0.03) 100%);
-  box-shadow:
-    0 2px 12px rgba(0, 0, 0, 0.04),
-    0 1px 0 rgba(255, 255, 255, 0.9) inset,
-    0 0 0 1px rgba(0, 0, 0, 0.02);
-}
-
-.sample-size-result::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 4px;
-  height: 100%;
-  background: linear-gradient(180deg, var(--futuristic-cyan) 0%, var(--futuristic-violet) 100%);
-  opacity: 0.8;
-  border-radius: 4px 0 0 4px;
-}
-
-.sample-size-result .Polaris-Card {
-  border: none !important;
-  box-shadow: none !important;
-  background: transparent !important;
-  border-radius: 14px !important;
-}
-
-/* Sample Size inputs - 2-column grid when embedded */
-.sample-size-inputs-grid .Polaris-BlockStack {
-  display: grid !important;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 1rem 1.5rem;
-}
-
-@media (max-width: 600px) {
-  .sample-size-inputs-grid .Polaris-BlockStack {
-    grid-template-columns: 1fr;
-  }
-}
-
 /* Status Indicators */
 .status-indicator {
   display: inline-block;
@@ -2526,7 +2478,7 @@ body:has(.wizard-page) {
     0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 
-/* Editable wizard title - edit icon on hover only */
+/* Editable wizard title */
 .wizard-title-editable {
   display: flex;
   align-items: center;
@@ -2560,11 +2512,16 @@ body:has(.wizard-page) {
 
 .wizard-title-edit-icon {
   flex-shrink: 0;
-  opacity: 0;
-  color: var(--text-secondary);
-  transition: opacity var(--transition-fast);
+  opacity: 1;
+  color: var(--accent-primary);
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast),
+    transform var(--transition-fast);
   padding: var(--spacing-xs);
   border-radius: var(--radius-sm);
+  background: rgba(6, 182, 212, 0.08);
+  border: 1px solid rgba(6, 182, 212, 0.14);
 }
 
 .wizard-title-editable:hover .wizard-title-edit-icon {
@@ -2573,6 +2530,8 @@ body:has(.wizard-page) {
 
 .wizard-title-editable:hover .wizard-title-edit-icon:hover {
   color: var(--accent-primary);
+  background: rgba(6, 182, 212, 0.14);
+  transform: translateY(-1px);
 }
 
 /* In-page title (replaces Page title) - compact for header */

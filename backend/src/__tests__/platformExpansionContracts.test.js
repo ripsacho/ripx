@@ -26,6 +26,9 @@ const {
   getExportSchemaManifest,
   validateExportSchemaManifest,
 } = require('../services/warehouseExportSchemaService');
+const { BIGQUERY_EXPORT_FIELDS } = require('../jobs/bigQueryExport');
+const { PERMISSIONS, ROUTE_PERMISSION_MAP, hasPermission } = require('../permissions');
+const { resolveWinningVariant } = require('../jobs/analyticsAutomation');
 
 describe('platform expansion contracts', () => {
   beforeEach(() => {
@@ -49,8 +52,47 @@ describe('platform expansion contracts', () => {
     expect(result.metrics[0].variants[0].breached).toBe(true);
   });
 
+  it('summarizes catalog event guardrail breaches from secondary events', () => {
+    const test = {
+      goal: {
+        secondary: [
+          {
+            event_name: 'support_click',
+            label: 'Support click',
+            metric_role: 'guardrail',
+            aggregation: 'count',
+            direction: 'decrease',
+            min_relative_lift: 10,
+          },
+        ],
+      },
+    };
+    const analytics = {
+      variants: [
+        {
+          id: 'a',
+          name: 'Control',
+          visitors: 100,
+          secondaryEvents: { support_click: { count: 5, sum: 0, rate: 5 } },
+        },
+        {
+          id: 'b',
+          name: 'B',
+          visitors: 100,
+          secondaryEvents: { support_click: { count: 8, sum: 0, rate: 8 } },
+        },
+      ],
+    };
+    const result = buildGuardrailMetricSummary(test, analytics);
+    expect(result.status).toBe('breached');
+    expect(result.metrics[0].source).toBe('catalog_event');
+    expect(result.metrics[0].variants[0].breached).toBe(true);
+  });
+
   it('builds ordered funnel sequencing scaffolding without changing current counts', () => {
     const result = buildOrderedFunnelScaffold({
+      mode: 'ordered_sequence',
+      semantics: { ordered: true },
       steps: [{ id: 'visitors' }, { id: 'conversion' }],
     });
     expect(result.mode).toBe('ordered_sequence');
@@ -114,5 +156,41 @@ describe('platform expansion contracts', () => {
     const manifest = getExportSchemaManifest();
     expect(manifest.schemas.events).toBeTruthy();
     expect(validateExportSchemaManifest(manifest).valid).toBe(true);
+  });
+
+  it('keeps BigQuery exported fields aligned with warehouse manifest fields', () => {
+    const manifest = getExportSchemaManifest();
+    Object.entries(BIGQUERY_EXPORT_FIELDS).forEach(([tableName, exportedFields]) => {
+      const manifestFields = (manifest.schemas[tableName] || []).map(field => field.name);
+      expect(manifestFields).toEqual(expect.arrayContaining(exportedFields));
+    });
+  });
+
+  it('gates analytics aggregation operations behind explicit admin permission', () => {
+    expect(ROUTE_PERMISSION_MAP['POST /api/admin/aggregation/trigger']).toBe(
+      PERMISSIONS.ANALYTICS_AGGREGATION
+    );
+    expect(ROUTE_PERMISSION_MAP['POST /api/admin/aggregation/heatmap-rollups']).toBe(
+      PERMISSIONS.ANALYTICS_AGGREGATION
+    );
+    expect(ROUTE_PERMISSION_MAP['POST /api/admin/aggregation/goal-event-rollups']).toBe(
+      PERMISSIONS.ANALYTICS_AGGREGATION
+    );
+    expect(hasPermission('admin', PERMISSIONS.ANALYTICS_AGGREGATION)).toBe(true);
+  });
+
+  it('resolves automation winners from winner ids before positional fallbacks', () => {
+    const winner = resolveWinningVariant({
+      variants: [
+        { id: 'control', name: 'Control' },
+        { id: 'variant-a', name: 'Variant A' },
+        { id: 'variant-b', name: 'Variant B' },
+      ],
+      significance: {
+        winner: 'best',
+        winnerVariantId: 'variant-b',
+      },
+    });
+    expect(winner.name).toBe('Variant B');
   });
 });

@@ -24,6 +24,7 @@ describe('ROUTES', () => {
     const domain = 'my-store.myshopify.com';
     expect(ROUTES.appTests(domain)).toBe('/app/my-store.myshopify.com/tests');
     expect(ROUTES.appCreateTest(domain)).toBe('/app/my-store.myshopify.com/tests/new');
+    expect(ROUTES.appGoalsMetrics(domain)).toBe('/app/my-store.myshopify.com/goals-metrics');
     expect(ROUTES.appTestDetail(domain, 'abc-123')).toBe(
       '/app/my-store.myshopify.com/tests/abc-123'
     );
@@ -48,7 +49,8 @@ describe('MAIN_APP_PATHS', () => {
   it('includes user panel and main app paths', () => {
     expect(MAIN_APP_PATHS).toContain(ROUTES.USER_PANEL);
     expect(MAIN_APP_PATHS).toContain(ROUTES.TESTS);
-    expect(MAIN_APP_PATHS).toContain(ROUTES.SETTINGS);
+    expect(MAIN_APP_PATHS).toContain(ROUTES.PROFILE);
+    expect(MAIN_APP_PATHS).not.toContain(ROUTES.SETTINGS);
   });
 });
 

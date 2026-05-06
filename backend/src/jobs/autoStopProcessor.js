@@ -9,10 +9,10 @@
 const { query } = require('../utils/database');
 const logger = require('../utils/logger');
 const { updateTest } = require('../models/test');
-const analyticsService = require('../services/analytics');
 const notificationService = require('../services/notificationService');
 const outboundWebhookService = require('../services/outboundWebhookService');
 const { TEST_HEALTH } = require('../constants');
+const { getAutomationAnalytics, resolveWinningVariant } = require('./analyticsAutomation');
 
 async function processAutoStop() {
   try {
@@ -34,7 +34,7 @@ async function processAutoStop() {
 
     for (const test of tests) {
       try {
-        const analytics = await analyticsService.getTestAnalytics(test.id, test.shop_domain);
+        const analytics = await getAutomationAnalytics(test.id, test.shop_domain);
 
         if (!analytics?.significance || !analytics?.variants) {
           continue;
@@ -56,34 +56,8 @@ async function processAutoStop() {
             stopped_at: new Date(),
           });
 
-          // Resolve winner variant: 2-variant uses 'variantA'/'variantB'; 3+ uses 'best' + winnerVariantId
-          const sig = analytics.significance;
-          let winnerIndex = 0;
-          if (winner === 'variantB' && analytics.variants.length >= 2) {
-            winnerIndex = 1;
-          } else if (winner === 'variantA') {
-            winnerIndex = 0;
-          } else if (
-            winner === 'best' &&
-            ((sig.winnerVariantId !== undefined && sig.winnerVariantId !== null) ||
-              (sig.bestVariantId !== undefined && sig.bestVariantId !== null))
-          ) {
-            const winnerId = sig.winnerVariantId ?? sig.bestVariantId;
-            const idx = analytics.variants.findIndex(
-              v =>
-                String(v.id) === String(winnerId) ||
-                (v.id !== null && v.id !== undefined && v.id === winnerId)
-            );
-            if (idx >= 0) {
-              winnerIndex = idx;
-            }
-          }
-          const winnerVariant = analytics.variants[winnerIndex];
-          const winnerName =
-            winnerVariant?.name ||
-            (winnerIndex === 1 && analytics.variants.length === 2
-              ? 'Variant B'
-              : `Variant ${winnerIndex + 1}`);
+          const winnerVariant = resolveWinningVariant(analytics);
+          const winnerName = winnerVariant?.name || 'Winning variant';
 
           await notificationService.createInAppNotification(test.shop_domain, {
             type: 'test_complete',
@@ -92,12 +66,12 @@ async function processAutoStop() {
             data: { testId: test.id, testName: test.name },
           });
 
-          const stopAnalytics = await analyticsService.getTestAnalytics(test.id, test.shop_domain);
           await outboundWebhookService.fireWebhook(test.shop_domain, 'test_complete', {
             testId: test.id,
             testName: test.name,
             reason: 'auto_significance',
-            analytics: stopAnalytics?.variants,
+            analytics: analytics?.variants,
+            analyticsScope: analytics?.automationScope,
           });
 
           logger.info('Test auto-stopped on significance', {

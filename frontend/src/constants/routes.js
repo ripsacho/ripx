@@ -21,6 +21,7 @@ export const ROUTES = {
     `/app/${encodeURIComponent(domain)}/tests?view=personalization`,
   appCreateTest: domain => `/app/${encodeURIComponent(domain)}/tests/new`,
   appAnalytics: domain => `/app/${encodeURIComponent(domain)}/analytics`,
+  appGoalsMetrics: domain => `/app/${encodeURIComponent(domain)}/goals-metrics`,
   appSetup: domain => `/app/${encodeURIComponent(domain)}/setup`,
   appSettings: domain => `/app/${encodeURIComponent(domain)}/settings`,
   appProfile: domain => `/app/${encodeURIComponent(domain)}/profile`,
@@ -32,7 +33,7 @@ export const ROUTES = {
   appTestExport: (domain, id) => `/app/${encodeURIComponent(domain)}/tests/${id}/export`,
   appTestPromoLinks: (domain, id) => `/app/${encodeURIComponent(domain)}/tests/${id}/promo-links`,
 
-  // Legacy root paths (redirect to user panel or /app/:domain when appropriate)
+  // Legacy root paths (redirect to user panel, profile, or /app/:domain when appropriate)
   DASHBOARD: '/home',
   TESTS: '/tests',
   TESTS_PERSONALIZATION: '/tests?view=personalization',
@@ -112,6 +113,7 @@ export const ROUTES = {
 
   // Profile tabs
   PROFILE_ACCOUNT: '/profile?tab=account',
+  PROFILE_APPEARANCE: '/profile?tab=appearance',
   PROFILE_PREFERENCES: '/profile?tab=preferences',
 };
 
@@ -124,17 +126,15 @@ export const MAIN_APP_PATHS = [
   ROUTES.CREATE_TEST,
   ROUTES.ANALYTICS,
   ROUTES.SETUP,
-  ROUTES.SETTINGS,
   ROUTES.PROFILE,
   ROUTES.NOTIFICATIONS,
   ROUTES.DOCS,
   ROUTES.SUPPORT,
 ];
 
-/** Universal app routes: Profile, Account settings, Notifications, Documentation. Shown with TopBar only (no sidebar). */
+/** Universal app routes: Profile, Notifications, Documentation. Shown with TopBar only (no sidebar). */
 export const UNIVERSAL_APP_ROUTES = [
   ROUTES.PROFILE,
-  ROUTES.SETTINGS,
   ROUTES.NOTIFICATIONS,
   ROUTES.DOCS,
   ROUTES.SUPPORT,
