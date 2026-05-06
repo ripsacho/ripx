@@ -198,6 +198,7 @@ git clean -fd "frontend"
 cd ~/RipX
 git stash push -u -m "server local changes before pull"
 git pull
+npm --prefix frontend ci
 NODE_OPTIONS=--max-old-space-size=4096 npm run build --prefix frontend
 npm run migrate
 pm2 restart ripx --update-env
@@ -214,6 +215,7 @@ pm2 restart ripx --update-env
 cd ~/RipX
 git stash push -u -m "server local changes before pull"
 git pull
+npm --prefix frontend ci
 NODE_OPTIONS=--max-old-space-size=4096 npm run build --prefix frontend
 npm run migrate
 shopify app deploy --config shopify.app.production.toml
