@@ -116,7 +116,7 @@
     "connect-redis": "^7.1.1",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.6",
-    "dotenv": "^16.4.0",
+    "dotenv": "^17.4.2",
     "express": "^4.21.0",
     "express-rate-limit": "^8.2.0",
     "express-session": "^1.19.0",
