@@ -52,7 +52,7 @@ jobs:
 
       - name: Setup Docker Buildx
         if: ${{ steps.meta.outputs.should_build == 'true' }}
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to GHCR
         if: ${{ steps.meta.outputs.should_build == 'true' }}
