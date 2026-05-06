@@ -19,6 +19,7 @@ npm run dev
 npm run shopify:dev:local:safe   # local/dev Partner app with env/client_id guard
 npm run shopify:deploy:production:safe   # production Partner app with env/client_id guard
 npm run build         # production frontend build
+# Use the safe Shopify deploy scripts; they generate ignored extension config files before deploy.
 # Checkout price function (Shopify Plus + network access): set APP_URL / secrets in .env, then:
 # npm run shopify:checkout-discount:prepare && shopify app deploy
 # Checkout UI block extension (Shopify Plus): set checkout UI env values in .env, then:
@@ -204,11 +205,7 @@ npm run migrate
 pm2 restart ripx --update-env
 
 npm run install:all
-npm run shopify:checkout-discount:prepare
-npm run shopify:cart-transform:prepare
-npm run shopify:payment-customization:prepare
-npm run shopify:delivery-customization:prepare
-shopify app deploy --config shopify.app.production.toml
+npm run shopify:deploy:production:safe
 pm2 restart ripx --update-env
 
 
@@ -218,7 +215,7 @@ git pull
 npm --prefix frontend ci
 NODE_OPTIONS=--max-old-space-size=4096 npm run build --prefix frontend
 npm run migrate
-shopify app deploy --config shopify.app.production.toml
+npm run shopify:deploy:production:safe
 pm2 restart ripx --update-env
 ```
 
