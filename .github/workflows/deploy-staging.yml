@@ -32,7 +32,7 @@ jobs:
       image_ref: ${{ steps.meta.outputs.image_ref }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Resolve image mode and tag
         id: meta
