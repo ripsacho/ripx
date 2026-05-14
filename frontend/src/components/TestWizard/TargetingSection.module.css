@@ -414,31 +414,44 @@
 
 .metricPresets {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 8px;
+  width: 100%;
+}
+
+.metricPresetItem {
+  display: flex;
+  min-width: 0;
+}
+
+.metricPresetItem > span {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
   width: 100%;
 }
 
 @media (min-width: 480px) {
   .metricPresets {
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
     gap: 10px;
   }
 }
 
 @media (max-width: 479px) {
   .metricPresets {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
   }
 }
 
 .metricPresetChip {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  padding: 9px 10px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
   border-radius: 12px;
   border: 1px solid rgba(148, 163, 184, 0.18);
   background: rgba(255, 255, 255, 0.9);
@@ -446,7 +459,7 @@
   transition: all var(--transition-standard);
   font-family: inherit;
   text-align: left;
-  min-height: 78px;
+  min-height: 44px;
   position: relative;
   overflow: hidden;
   box-shadow: none;
@@ -516,9 +529,12 @@
 }
 
 .metricPresetLabel {
-  font-size: 0.75rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.78rem;
   font-weight: 700;
   color: var(--text-primary);
+  line-height: 1.2;
 }
 
 .metricPresetDesc {
@@ -606,6 +622,14 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.metricSecondaryChipWrap {
+  display: inline-flex;
+}
+
+.metricSecondaryChipWrap > span {
+  display: inline-flex;
 }
 
 .metricSecondaryChip {

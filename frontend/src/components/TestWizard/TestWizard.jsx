@@ -7980,32 +7980,35 @@ function TestWizard({
                         ({ label, value, desc, recommended, icon: IconCmp, ...optionMeta }) => {
                           const isActive = (formData.goal?.metric || 'revenue') === value;
                           return (
-                            <TooltipWrapper
-                              key={value}
-                              content={buildGoalMetricTooltip({
-                                label,
-                                value,
-                                desc,
-                                recommended,
-                                ...optionMeta,
-                              })}
-                            >
-                              <button
-                                type="button"
-                                className={`${styles.metricPresetChip} ${isActive ? styles.metricPresetChipActive : ''}`}
-                                onClick={() => setPrimaryGoalMetric(value)}
-                                aria-pressed={isActive}
-                                aria-label={`${label}: ${desc}. ${isActive ? 'Selected' : 'Click to select'}`}
+                            <div key={value} className={styles.metricPresetItem}>
+                              <TooltipWrapper
+                                content={buildGoalMetricTooltip({
+                                  label,
+                                  value,
+                                  desc,
+                                  recommended,
+                                  ...optionMeta,
+                                })}
                               >
-                                {recommended && (
-                                  <span className={styles.metricRecommendationPill}>Best fit</span>
-                                )}
-                                <span className={styles.metricPresetIcon}>
-                                  <Icon source={IconCmp} />
-                                </span>
-                                <span className={styles.metricPresetLabel}>{label}</span>
-                              </button>
-                            </TooltipWrapper>
+                                <button
+                                  type="button"
+                                  className={`${styles.metricPresetChip} ${isActive ? styles.metricPresetChipActive : ''}`}
+                                  onClick={() => setPrimaryGoalMetric(value)}
+                                  aria-pressed={isActive}
+                                  aria-label={`${label}: ${desc}. ${isActive ? 'Selected' : 'Click to select'}`}
+                                >
+                                  {recommended && (
+                                    <span className={styles.metricRecommendationPill}>
+                                      Best fit
+                                    </span>
+                                  )}
+                                  <span className={styles.metricPresetIcon}>
+                                    <Icon source={IconCmp} />
+                                  </span>
+                                  <span className={styles.metricPresetLabel}>{label}</span>
+                                </button>
+                              </TooltipWrapper>
+                            </div>
                           );
                         }
                       )}
@@ -8037,24 +8040,23 @@ function TestWizard({
                         {secondaryBusinessMetricOptions.map(option => {
                           const isActive = selectedSecondaryBusinessMetric === option.value;
                           return (
-                            <TooltipWrapper
-                              key={option.value}
-                              content={buildGoalMetricTooltip(option)}
-                            >
-                              <button
-                                type="button"
-                                className={`${styles.metricSecondaryChip} ${
-                                  isActive ? styles.metricSecondaryChipActive : ''
-                                }`}
-                                onClick={() => setSecondaryGoalMetric(option.value)}
-                                aria-pressed={isActive}
-                                aria-label={`${option.label}: ${option.desc}. ${
-                                  isActive ? 'Selected' : 'Click to select'
-                                }`}
-                              >
-                                <span>{option.label}</span>
-                              </button>
-                            </TooltipWrapper>
+                            <div key={option.value} className={styles.metricSecondaryChipWrap}>
+                              <TooltipWrapper content={buildGoalMetricTooltip(option)}>
+                                <button
+                                  type="button"
+                                  className={`${styles.metricSecondaryChip} ${
+                                    isActive ? styles.metricSecondaryChipActive : ''
+                                  }`}
+                                  onClick={() => setSecondaryGoalMetric(option.value)}
+                                  aria-pressed={isActive}
+                                  aria-label={`${option.label}: ${option.desc}. ${
+                                    isActive ? 'Selected' : 'Click to select'
+                                  }`}
+                                >
+                                  <span>{option.label}</span>
+                                </button>
+                              </TooltipWrapper>
+                            </div>
                           );
                         })}
                       </div>
